@@ -28,8 +28,8 @@ export default function SocialShare({ track }: SocialShareProps) {
   const links = useMemo(() => {
     if (!isMounted || !isShareable) return null;
     const url = (channel: ShareChannel) => listeningShareUrl(origin, track, channel) ?? "";
-    const x = listeningShareMessage(track, "x");
-    const reddit = listeningShareMessage(track, "reddit");
+    const x = listeningShareMessage(track, "x", { origin });
+    const reddit = listeningShareMessage(track, "reddit", { origin });
     return {
       x: `https://x.com/intent/tweet?text=${encodeURIComponent(x.text)}&url=${encodeURIComponent(url("x"))}`,
       facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url("facebook"))}`,
@@ -53,7 +53,7 @@ export default function SocialShare({ track }: SocialShareProps) {
     return (
       <div className="share-actions-container">
         <p style={{ margin: 0, fontSize: "12px", color: "var(--color-muted)" }}>
-          Sharing is available for tracks published on Resonate.
+          Sharing is available for tracks with a public Resonate release.
         </p>
       </div>
     );
@@ -76,7 +76,7 @@ export default function SocialShare({ track }: SocialShareProps) {
       setStatus("Sharing not supported.");
       return;
     }
-    const message = listeningShareMessage(track, "native");
+    const message = listeningShareMessage(track, "native", { origin });
     try {
       await navigator.share({ title: message.title, text: message.text, url: links.native });
       setStatus("Shared.");
@@ -114,10 +114,16 @@ export default function SocialShare({ track }: SocialShareProps) {
 
         {/* Reddit Icon */}
         <a className="share-icon-btn" href={links?.reddit} target="_blank" rel="noreferrer" title="Share on Reddit" aria-label="Share on Reddit" onClick={() => recordShare("reddit")}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="16" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12.01" y2="8" />
+          {/* Reddit "Snoo": antenna, ears, head, eyes, and smile. */}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <ellipse cx="12" cy="14.5" rx="8" ry="5.5" />
+            <circle cx="19.5" cy="10.5" r="1.8" />
+            <circle cx="4.5" cy="10.5" r="1.8" />
+            <path d="M12 9l1.2-5 4.3 1" />
+            <circle cx="18.5" cy="5" r="1.4" />
+            <circle cx="9" cy="13.5" r="0.9" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="13.5" r="0.9" fill="currentColor" stroke="none" />
+            <path d="M9.2 16.8c1.7 1.1 3.9 1.1 5.6 0" />
           </svg>
         </a>
 

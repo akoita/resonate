@@ -18,6 +18,7 @@ import { libraryArtistNameForProfile } from "../../../lib/libraryNavigation";
 import { catalogArtistPlaybackTracks } from "../../../lib/catalogArtistPlayback";
 import { usePlayer } from "../../../lib/playerContext";
 import { QueueActionsButton } from "../../../components/player/QueueActionsButton";
+import { ArtistCampaignLink } from "../../../components/shows/ArtistCampaignLink";
 
 type ArtistTab = "discography" | "community";
 
@@ -241,6 +242,9 @@ export default function ArtistPage() {
                                 </Button>
                                 ) : null}
                             </div>
+                        ) : null}
+                        {artist ? (
+                            <ArtistCampaignLink artistId={artist.id} artistName={artist.displayName} />
                         ) : null}
                         {artist ? (
                             <ArtistProfileEditor

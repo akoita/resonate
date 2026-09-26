@@ -21,6 +21,15 @@ import { PromptModal } from "../ui/PromptModal";
 import { PlaylistShareControl } from "./PlaylistShareControl";
 import type { PlaylistVisibility } from "../../lib/playlistStore";
 import { useWebSockets } from "../../hooks/useWebSockets";
+import {
+    applyPlaylistDrop,
+    parsePlaylistDropPayload,
+    playlistDropEffect,
+    playlistDropForTarget,
+    playlistDropToast,
+    playlistSourceType,
+    type PlaylistAddRequest,
+} from "../layout/playlistDrop";
 import { libraryArtistHref } from "../../lib/artistRoutes";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 import {
@@ -192,6 +201,22 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         setShowRenameModal(false);
     };
 
+    const handleInsertDrop = async (request: PlaylistAddRequest, toIndex: number) => {
+        const name = playlist?.name || "playlist";
+        try {
+            const outcome = await applyPlaylistDrop(playlistId, request, toIndex);
+            if (!outcome.ok) {
+                addToast({ type: "error", title: `Couldn't add to ${name}`, message: "Sync your playlists and try again." });
+                return;
+            }
+            addToast(playlistDropToast(outcome.playlist.name || name, outcome.requested, outcome.added, outcome.title));
+            if (outcome.added > 0) await loadPlaylistData();
+        } catch (err) {
+            console.error("Drop failed", err);
+            addToast({ type: "error", title: `Couldn't add to ${name}`, message: "Sync your playlists and try again." });
+        }
+    };
+
     const handleReorder = async (fromIndex: number, toIndex: number) => {
         if (fromIndex === toIndex || !playlist) return;
 
@@ -342,10 +367,12 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                     onDragStart={(e) => {
                                         e.stopPropagation();
                                         setDraggingTrackId(track.id);
-                                        const payload = JSON.stringify({ type: "reorder-track", trackId: track.id, index });
+                                        const payload = JSON.stringify({ type: "reorder-track", playlistId, trackId: track.id, index });
                                         e.dataTransfer.setData("application/json", payload);
                                         e.dataTransfer.setData("text/plain", payload);
-                                        e.dataTransfer.effectAllowed = "move";
+                                        e.dataTransfer.setData(playlistSourceType(playlistId), track.id);
+                                        // Move within this playlist, copy onto another one.
+                                        e.dataTransfer.effectAllowed = "copyMove";
 
                                         // Set a ghost image or just let it be
                                         if (e.currentTarget instanceof HTMLElement) {
@@ -363,7 +390,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                     onDragOver={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        e.dataTransfer.dropEffect = "move";
+                                        e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed, { types: e.dataTransfer.types, playlistId });
 
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const midpoint = rect.top + rect.height / 2;
@@ -382,16 +409,19 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                         const midpoint = rect.top + rect.height / 2;
                                         const finalToIndex = e.clientY < midpoint ? index : index + 1;
 
-                                        const jsonData = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
-                                        if (jsonData) {
-                                            try {
-                                                const data = JSON.parse(jsonData);
-                                                if (data.type === "reorder-track") {
-                                                    void handleReorder(data.index, finalToIndex);
-                                                }
-                                            } catch (err) {
-                                                console.error("Failed to parse drop data", err);
-                                            }
+                                        // Rows of this playlist reorder; tracks from another
+                                        // playlist or the library are inserted here.
+                                        const request = playlistDropForTarget(
+                                            parsePlaylistDropPayload(
+                                                e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain"),
+                                            ),
+                                            playlistId,
+                                        );
+                                        if (!request) return;
+                                        if (request.kind === "reorder") {
+                                            void handleReorder(request.index, finalToIndex);
+                                        } else {
+                                            void handleInsertDrop(request, finalToIndex);
                                         }
                                     }}
                                 >

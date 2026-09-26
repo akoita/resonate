@@ -8303,6 +8303,13 @@ a.listener-cohort-detail__action:focus-visible {
   transform: scale(1.05);
 }
 
+/* Your-playlist cover mosaic (PlaylistCoverThumb) in the artwork slot: the
+   same square box, clipped to the slot's radius. */
+.playlist-card-cover {
+  display: block;
+  overflow: hidden;
+}
+
 .playlist-card-title {
   font-weight: 600;
   font-size: 1.1rem;

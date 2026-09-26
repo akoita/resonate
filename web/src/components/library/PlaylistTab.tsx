@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import {
@@ -14,10 +14,8 @@ import {
     deleteFolder,
     renamePlaylist,
     renameFolder,
-    addTrackToPlaylist,
-    addTracksByCriteria,
 } from "../../lib/playlistStore";
-import { LocalTrack } from "../../lib/localLibrary";
+import { LocalTrack, getArtworkUrl } from "../../lib/localLibrary";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { usePlayer } from "../../lib/playerContext";
@@ -30,6 +28,13 @@ import {
     type SavedPlaylistView,
 } from "../../lib/api";
 import { queueableTracks } from "./trackAvailability";
+import { COVER_TRACK_SAMPLE, PlaylistCoverThumb, playlistCoverUrls } from "../catalog/CatalogPlaylistCard";
+import {
+    applyPlaylistDrop,
+    parsePlaylistDropPayload,
+    playlistDropForTarget,
+    playlistDropToast,
+} from "../layout/playlistDrop";
 
 interface PlaylistTabProps {
     tracks: LocalTrack[];
@@ -105,12 +110,51 @@ export function PlaylistTab({
         return playlists.filter((p) => p.folderId === (currentFolder?.id ?? null));
     }, [playlists, currentFolder]);
 
-    // Get artwork for playlist (from first track)
-    const getPlaylistArtwork = (playlist: Playlist): string | null => {
-        if (playlist.trackIds.length === 0) return null;
-        const firstTrackId = playlist.trackIds[0];
-        return artworkUrls.get(firstTrackId) || null;
-    };
+    // Cover art for playlist tracks that aren't in the library's artwork map
+    // (e.g. catalog tracks added without saving them): resolved once per id.
+    const [trackCovers, setTrackCovers] = useState<Map<string, string | null>>(() => new Map());
+    const pendingCoverIds = useRef(new Set<string>());
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        const missing: string[] = [];
+        for (const playlist of playlists) {
+            for (const trackId of playlist.trackIds.slice(0, COVER_TRACK_SAMPLE)) {
+                if (artworkUrls.has(trackId) || trackCovers.has(trackId) || pendingCoverIds.current.has(trackId)) continue;
+                pendingCoverIds.current.add(trackId);
+                missing.push(trackId);
+            }
+        }
+        if (missing.length === 0) return;
+
+        void Promise.all(
+            missing.map(async (trackId): Promise<[string, string | null]> => {
+                try {
+                    const track = await getTrack(trackId);
+                    return [trackId, track ? await getArtworkUrl(track) : null];
+                } catch {
+                    return [trackId, null];
+                }
+            }),
+        ).then((entries) => {
+            for (const [trackId] of entries) pendingCoverIds.current.delete(trackId);
+            if (!mounted.current) return;
+            setTrackCovers((prev) => {
+                const next = new Map(prev);
+                for (const [trackId, url] of entries) next.set(trackId, url);
+                return next;
+            });
+        });
+    }, [playlists, artworkUrls, trackCovers]);
+
+    const getPlaylistCovers = (playlist: Playlist): string[] =>
+        playlistCoverUrls(playlist.trackIds, (trackId) => artworkUrls.get(trackId) ?? trackCovers.get(trackId));
 
     const handleDelete = async (id: string, type: "playlist" | "folder") => {
         const name = type === "playlist"
@@ -145,32 +189,36 @@ export function PlaylistTab({
         await loadData();
     };
 
-    const handleDrop = async (e: React.DragEvent, playlistId: string) => {
+    const handleDrop = async (e: React.DragEvent, playlist: Playlist) => {
         e.preventDefault();
         setDragOverId(null);
 
+        // A track dragged from another playlist is copied onto this card;
+        // reordering happens inside a playlist, not onto its own card.
+        const request = playlistDropForTarget(
+            parsePlaylistDropPayload(
+                e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain"),
+            ),
+            playlist.id,
+        );
+        if (!request || request.kind === "reorder") return;
+
+        const failed = () => addToast({
+            type: "error",
+            title: `Couldn't add to ${playlist.name}`,
+            message: "Reload your playlists and try again.",
+        });
         try {
-            const data = JSON.parse(e.dataTransfer.getData("application/json"));
-            let result = null;
-
-            if (data.type === "track") {
-                result = await addTrackToPlaylist(playlistId, data.id);
-            } else if (data.type === "album") {
-                result = await addTracksByCriteria(playlistId, { album: data.name, artist: data.artist });
-            } else if (data.type === "artist") {
-                result = await addTracksByCriteria(playlistId, { artist: data.name });
+            const outcome = await applyPlaylistDrop(playlist.id, request);
+            if (!outcome.ok) {
+                failed();
+                return;
             }
-
-            if (result) {
-                addToast({
-                    type: "success",
-                    title: "Tracks Added",
-                    message: `Added to ${result.name}`,
-                });
-                await loadData();
-            }
+            addToast(playlistDropToast(outcome.playlist.name || playlist.name, outcome.requested, outcome.added, outcome.title));
+            if (outcome.added > 0) await loadData();
         } catch (err) {
             console.error("Drop failed", err);
+            failed();
         }
     };
 
@@ -382,7 +430,6 @@ export function PlaylistTab({
                     </div>
                 ) : (
                     visiblePlaylists.map((playlist) => {
-                        const artUrl = getPlaylistArtwork(playlist);
                         const trackCount = playlist.trackIds.length;
                         return (
                             <div
@@ -391,23 +438,16 @@ export function PlaylistTab({
                                 onClick={() => onSelectPlaylist(playlist)}
                                 onDragOver={(e) => {
                                     e.preventDefault();
+                                    // Library/catalog drags allow "copy" only.
+                                    e.dataTransfer.dropEffect = "copy";
                                     setDragOverId(playlist.id);
                                 }}
                                 onDragLeave={() => setDragOverId(null)}
-                                onDrop={(e) => handleDrop(e, playlist.id)}
+                                onDrop={(e) => void handleDrop(e, playlist)}
                             >
-                                {artUrl ? (
-                                    <>
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                            src={artUrl}
-                                            alt={playlist.name}
-                                            className="playlist-card-artwork"
-                                        />
-                                    </>
-                                ) : (
-                                    <div className="playlist-card-icon">🎶</div>
-                                )}
+                                <div className="playlist-card-artwork playlist-card-cover">
+                                    <PlaylistCoverThumb name={playlist.name} covers={getPlaylistCovers(playlist)} />
+                                </div>
                                 {editingId === playlist.id ? (
                                     <input
                                         type="text"

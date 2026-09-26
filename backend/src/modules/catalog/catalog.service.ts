@@ -1850,7 +1850,6 @@ export class CatalogService implements OnModuleInit {
 
     const publicStemCount = track.stems.length;
     const mintedStems = track.stems.filter((stem) => stem.nftMint);
-    const firstInspectableStem = mintedStems[0];
     const licenseTypes = Array.from(new Set(activeListings.map((listing) => listing.licenseType)));
     const hasRemixListing = activeListings.some((listing) => listing.licenseType === LicenseType.remix);
     const hasRemixableMint = track.stems.some((stem) => stem.nftMint?.remixable);
@@ -1950,9 +1949,10 @@ export class CatalogService implements OnModuleInit {
               key: "inspect_stems",
               label: PLAYER_ACTION_LABELS.inspect_stems,
               status: "available",
-              href: firstInspectableStem?.nftMint
-                ? `/stem/${firstInspectableStem.nftMint.tokenId.toString()}`
-                : `/release/${track.release.id}`,
+              // The release page lists every stem of the track; a single
+              // `/stem/<tokenId>` page leads with Remix Studio instead, which
+              // is the Remix action's job, not "Inspect stems".
+              href: `/release/${track.release.id}`,
               metadata: {
                 stemCount: publicStemCount,
                 mintedStemCount: mintedStems.length,
