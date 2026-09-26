@@ -6,6 +6,7 @@ import type {
   RightsVerificationState,
 } from "./verificationSemantics";
 import { invalidateStoredAuthSession } from "./authSession";
+import type { RemixBeatRecipe } from "./remixBeat";
 import type { RemixFxRecipe } from "./remixFx";
 import type { RemixStructure, RemixStructureSegment } from "./remixStructure";
 
@@ -5901,6 +5902,11 @@ export type RemixRenderMetadata = {
   outputChannels: number;
   inputCount: number;
   activeStemCount: number;
+  /**
+   * Parts the studio added on top of the stems (#1902), e.g. ["beat"]; a
+   * synthesized beat is neither AI nor source audio.
+   */
+  addedParts?: string[];
 };
 
 /** Targeted per-stem AI operation (#1316); variation mode only. */
@@ -6022,6 +6028,8 @@ export type RemixProject = {
    * `timelineFromSegments` for duration and master fades.
    */
   timeline?: RemixStructureSegment[] | null;
+  /** Beat recipe `remix-beat/v1` (#1902); null/absent = no beat. */
+  beat?: RemixBeatRecipe | null;
 };
 
 /** Studio AI target (#1882): whole track, a new layer, or a stem replacement. */
@@ -6074,6 +6082,11 @@ export type RemixProjectPatch = {
    * Send the remapped per-block stem masks in the same PATCH.
    */
   structure?: RemixStructure | null;
+  /**
+   * Beat recipe `remix-beat/v1` (#1902), always the whole normalized
+   * recipe; null removes the beat.
+   */
+  beat?: RemixBeatRecipe | null;
 };
 
 export async function updateRemixProject(

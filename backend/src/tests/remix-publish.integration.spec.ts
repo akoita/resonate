@@ -671,6 +671,105 @@ describe("Remix publish (integration)", () => {
     expect("conditioningStructure" in lineage).toBe(false);
   });
 
+  const BEAT = {
+    schemaVersion: "remix-beat/v1",
+    kit: "punchy",
+    pattern: {
+      kick: Array.from({ length: 16 }, (_, step) => step % 4 === 0),
+      snare: new Array(16).fill(false),
+      clap: Array.from({ length: 16 }, (_, step) => step === 4 || step === 12),
+      hat: new Array(16).fill(false),
+      openHat: new Array(16).fill(false),
+    },
+    swing: 0.1,
+    gainDb: -2,
+    blocks: [true, false, true],
+  };
+
+  it("records the rendered beat as an added part in the publish lineage (#1902)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 2,
+          activeStemCount: 1,
+          beat: BEAT,
+          beatDspVersion: "remix-beat-dsp/v1",
+          addedParts: ["beat"],
+        },
+      }),
+    });
+    // The live beat changed after the render: lineage records what the
+    // published audio was actually rendered with.
+    await prisma.remixProject.update({
+      where: { id: project.id },
+      data: { beat: { ...BEAT, kit: "808", blocks: null } },
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    // A synthesized beat is neither AI nor source audio: grounding unchanged.
+    expect(lineage).toMatchObject({
+      grounding: "stem_audio",
+      aiGenerated: false,
+      beat: BEAT,
+      beatDspVersion: "remix-beat-dsp/v1",
+      addedParts: ["beat"],
+    });
+    expect("conditioningBeat" in lineage).toBe(false);
+  });
+
+  it("records the audio-conditioned conditioning beat in the lineage (#1902)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "audio_conditioned",
+        conditioningBeat: { beat: BEAT, beatDspVersion: "remix-beat-dsp/v1" },
+      }),
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage).toMatchObject({
+      grounding: "audio_conditioned",
+      conditioningBeat: { beat: BEAT, beatDspVersion: "remix-beat-dsp/v1" },
+    });
+    // The conditioning beat is not claimed as a part of the artifact.
+    expect("beat" in lineage).toBe(false);
+    expect("addedParts" in lineage).toBe(false);
+  });
+
+  it("omits the beat from the lineage when the draft had none or a malformed one (#1902)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 1,
+          activeStemCount: 1,
+          beat: { ...BEAT, kit: "tr909" },
+        },
+      }),
+    });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect("beat" in lineage).toBe(false);
+    expect("beatDspVersion" in lineage).toBe(false);
+    expect("addedParts" in lineage).toBe(false);
+    expect("conditioningBeat" in lineage).toBe(false);
+  });
+
   it("serves the published track through existing catalog streaming", async () => {
     const project = await createProjectRow({ userId: CREATOR_ID });
     const result = await projectService.publishProject(CREATOR_ID, project.id);

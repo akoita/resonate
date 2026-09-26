@@ -116,6 +116,63 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
     );
   });
 
+  it("forwards the beat (#1902) to the mixer's final graph", async () => {
+    const beat = {
+      beat: {
+        schemaVersion: "remix-beat/v1" as const,
+        kit: "808" as const,
+        pattern: {
+          kick: Array.from({ length: 16 }, (_, step) => step % 4 === 0),
+          snare: new Array<boolean>(16).fill(false),
+          clap: new Array<boolean>(16).fill(false),
+          hat: new Array<boolean>(16).fill(false),
+          openHat: new Array<boolean>(16).fill(false),
+        },
+        swing: 0,
+        gainDb: -3,
+        blocks: null,
+      },
+      grid: {
+        kind: "bars" as const,
+        bpm: 120,
+        sectionSeconds: 16,
+        durationSeconds: 32,
+        sections: [
+          { startSec: 0, endSec: 16 },
+          { startSec: 16, endSec: 32 },
+        ],
+      },
+      segments: [],
+    };
+    await renderer().render({
+      remixProjectId: "project-1",
+      stems: [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      authorization,
+      beat,
+      layer: {
+        provider: "lyria-3-pro-preview",
+        jobId: "layer-job",
+        prompt: "add piano",
+        constraints: {},
+        output: {
+          outputUri: "local://layer.wav",
+          mimeType: "audio/wav",
+          synthIdPresent: true,
+          seed: 1,
+          sampleRate: 48000,
+        },
+      },
+    });
+    expect(mixer.mixUnmutedStemsWithAudioBuffers).toHaveBeenCalledWith(
+      [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      [expect.objectContaining({ label: "generated-layer", gainDb: 0 })],
+      authorization,
+      undefined,
+      undefined,
+      beat,
+    );
+  });
+
   it("mixes arranged stems and the generated layer into one stored draft", async () => {
     const job = await renderer().render({
       remixProjectId: "project-1",

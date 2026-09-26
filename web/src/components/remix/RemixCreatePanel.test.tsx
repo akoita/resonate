@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  BEAT_PRESETS,
+  defaultBeat,
+  type RemixBeatRecipe,
+} from "../../lib/remixBeat";
 import { REMIX_PROMPT_PRESETS } from "../../lib/remixPromptPresets";
 import { REMIX_RECIPES } from "../../lib/remixRecipes";
 import { REMIX_AI_INTENTS } from "../../lib/remixIntent";
@@ -15,6 +21,11 @@ import {
   type RemixDescribeContext,
 } from "../../lib/remixDescribe";
 import {
+  BEAT_NEEDS_TEMPO_NOTE,
+  beatAfterPreset,
+  BeatMakerView,
+  type BeatMakerViewProps,
+  formatBeatGroove,
   DESCRIBE_APPLIED_NOTE,
   DESCRIBE_NOT_UNDERSTOOD,
   DESCRIBE_PRIVACY_NOTE,
@@ -559,5 +570,170 @@ describe("RemixCreatePanel — Describe it (#1900)", () => {
     expect(describeProposal(plan, slowed).changes).toEqual([
       { label: "Speed", from: "0.85×", to: "1.00×" },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Add a beat" (#1902)
+
+type HostElement = ReactElement<Record<string, unknown>>;
+
+/** Host elements of a hook-free tree, expanding function components. */
+function hostElements(node: ReactNode): HostElement[] {
+  if (Array.isArray(node)) return node.flatMap(hostElements);
+  if (!isValidElement(node)) return [];
+  const element = node as HostElement;
+  if (typeof element.type === "function") {
+    return hostElements(
+      (element.type as (props: unknown) => ReactNode)(element.props),
+    );
+  }
+  return [element, ...hostElements(element.props.children as ReactNode)];
+}
+
+function beatView(overrides: Partial<BeatMakerViewProps> = {}) {
+  const onChange = vi.fn();
+  const props: BeatMakerViewProps = {
+    idPrefix: "t",
+    beat: null,
+    available: true,
+    onChange,
+    locked: false,
+    ...overrides,
+  };
+  const elements = hostElements(BeatMakerView(props));
+  const byLabel = (label: string) =>
+    elements.find(
+      (element) =>
+        element.type === "button" &&
+        (element.props["aria-label"] === label ||
+          element.props.children === label),
+    );
+  const click = (label: string) => {
+    const button = byLabel(label);
+    if (!button) throw new Error(`No button ${label}`);
+    (button.props.onClick as () => void)();
+  };
+  const html = renderToStaticMarkup(<BeatMakerView {...props} />);
+  return { elements, byLabel, click, onChange, html };
+}
+
+describe("RemixCreatePanel — Add a beat (#1902)", () => {
+  it("shows after Song length & shape only with onBeatChange", () => {
+    expect(render()).not.toContain("Add a beat");
+    const html = render({
+      onBeatChange: noop,
+      beatAvailable: true,
+      structureOptions: [
+        {
+          id: "original",
+          label: "Original",
+          description: "",
+          pressed: true,
+          enabled: true,
+          reason: null,
+          lengthLabel: null,
+        },
+      ],
+      onApplyStructure: noop,
+    });
+    expect(html.indexOf("Add a beat")).toBeGreaterThan(
+      html.indexOf("Song length &amp; shape"),
+    );
+    expect(html.indexOf("Add a beat")).toBeLessThan(
+      html.indexOf("One-click arrangements"),
+    );
+  });
+
+  it("offers the five presets and creates a Punchy beat from one", () => {
+    const view = beatView();
+    for (const preset of BEAT_PRESETS) expect(view.byLabel(preset.label)).toBeDefined();
+    expect(view.html).not.toContain("remix-beat-kits");
+    expect(view.html).not.toContain("remix-beat-grid");
+    expect(view.html).not.toContain("Remove beat");
+    view.click("Boom bap");
+    expect(view.onChange).toHaveBeenCalledWith(defaultBeat("boom_bap", "punchy"));
+  });
+
+  it("with a beat: kit control, presets replace the pattern, grid, groove, remove", () => {
+    const beat: RemixBeatRecipe = {
+      ...defaultBeat("four_on_the_floor", "808"),
+      swing: 0.3,
+      gainDb: -4,
+      blocks: [true, false],
+    };
+    const view = beatView({ beat });
+    expect(view.html).toMatch(/aria-pressed="true"[^>]*remix-beat-kit-808/);
+    expect(view.html).toMatch(/aria-pressed="true"[^>]*remix-beat-preset-four_on_the_floor/);
+    // 5 × 16 steps, labeled per instrument, quarters grouped.
+    const steps = view.elements.filter((element) =>
+      String(element.props.className ?? "").includes("remix-beat-step"),
+    );
+    expect(steps).toHaveLength(80);
+    expect(view.byLabel("Kick step 5")?.props["aria-pressed"]).toBe(true);
+    expect(view.byLabel("Kick step 2")?.props["aria-pressed"]).toBe(false);
+    expect(view.byLabel("Open hat step 16")).toBeDefined();
+    for (const label of ["Kick", "Snare", "Clap", "Hat", "Open hat"]) {
+      expect(view.html).toContain(`>${label}</span>`);
+    }
+
+    view.click("Kick step 2");
+    expect(view.onChange.mock.calls[0][0].pattern.kick[1]).toBe(true);
+    view.click("Lo-fi");
+    expect(view.onChange.mock.calls[1][0]).toEqual({ ...beat, kit: "lofi" });
+    view.click("Trap");
+    expect(view.onChange.mock.calls[2][0]).toEqual({
+      ...beat,
+      pattern: BEAT_PRESETS[2].pattern,
+    });
+    view.click("Remove beat");
+    expect(view.onChange.mock.calls[3][0]).toBeNull();
+
+    const groove = view.elements.find(
+      (element) => element.type === "input" && element.props.type === "range",
+    )!;
+    expect(groove.props.value).toBe(0.3);
+    expect(groove.props["aria-valuetext"]).toBe("50% swung");
+    (groove.props.onChange as (event: unknown) => void)({
+      target: { value: "0.6" },
+    });
+    expect(view.onChange.mock.calls[4][0]).toEqual({ ...beat, swing: 0.6 });
+    expect(view.html).toContain("Groove");
+    expect(view.html).toContain("Straight");
+    expect(view.html).toContain("Swung");
+  });
+
+  it("reads the groove in plain words", () => {
+    expect(formatBeatGroove(0)).toBe("Straight");
+    expect(formatBeatGroove(0.6)).toBe("100% swung");
+  });
+
+  it("keeps kit, groove, level and blocks when a preset replaces the pattern", () => {
+    const beat = { ...defaultBeat("trap", "lofi"), swing: 0.2, blocks: [false, true] };
+    expect(beatAfterPreset(beat, "half_time")).toEqual({
+      ...beat,
+      pattern: BEAT_PRESETS[4].pattern,
+    });
+  });
+
+  it("disables everything when the remix is published", () => {
+    const view = beatView({ beat: defaultBeat("trap"), locked: true });
+    const buttons = view.elements.filter((element) => element.type === "button");
+    expect(buttons.length).toBeGreaterThan(80);
+    for (const button of buttons) expect(button.props.disabled).toBe(true);
+    const inputs = view.elements.filter((element) => element.type === "input");
+    for (const input of inputs) expect(input.props.disabled).toBe(true);
+    view.click("Kick step 2");
+    view.click("Remove beat");
+    expect(view.onChange).not.toHaveBeenCalled();
+    const empty = beatView({ locked: true });
+    empty.click("Trap");
+    expect(empty.onChange).not.toHaveBeenCalled();
+  });
+
+  it("explains honestly without a measured tempo", () => {
+    const view = beatView({ available: false, beat: defaultBeat("trap") });
+    expect(view.html).toContain(BEAT_NEEDS_TEMPO_NOTE.replaceAll("'", "&#x27;"));
+    expect(view.elements.filter((element) => element.type === "button")).toHaveLength(0);
   });
 });

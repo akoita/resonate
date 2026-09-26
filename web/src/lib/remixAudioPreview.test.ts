@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  beatPreviewGain,
   blockLoopSource,
   createStemPreviewEngine,
   loopEntryOffset,
@@ -22,6 +23,11 @@ import {
   type RemixFxRecipe,
 } from "./remixFx";
 import { structureTimeline, type RemixStructureBlock } from "./remixStructure";
+import {
+  defaultBeat,
+  REMIX_BEAT_LANE_ID,
+  type RemixBeatRecipe,
+} from "./remixBeat";
 
 /**
  * Minimal fake WebAudio graph: enough surface for the preview engine to wire
@@ -126,6 +132,13 @@ class FakeAudioBuffer {
   ) {}
   copyToChannel(data: Float32Array, channel: number) {
     this.channels[channel] = data;
+  }
+  getChannelData(channel: number): Float32Array {
+    this.channels[channel] ??= new Float32Array(this.length);
+    return this.channels[channel];
+  }
+  get duration() {
+    return this.length / this.sampleRate;
   }
 }
 
@@ -1301,5 +1314,203 @@ describe("structure scheduling helpers (#1899)", () => {
       ["set", 0.5, 10],
       ["ramp", 0, 11],
     ]);
+  });
+});
+
+describe("createStemPreviewEngine beat (#1902)", () => {
+  const beatGrid = {
+    bpm: 120,
+    sectionSeconds: 16,
+    sections: [
+      { startSec: 0, endSec: 16 },
+      { startSec: 16, endSec: 32 },
+    ],
+  };
+  const beatSegments = [
+    { section: 0, outStartSec: 0, outEndSec: 16 },
+    { section: 1, outStartSec: 16, outEndSec: 32 },
+  ];
+  function previewBeat(overrides: Partial<RemixBeatRecipe> = {}) {
+    return {
+      recipe: { ...defaultBeat("four_on_the_floor"), ...overrides },
+      grid: beatGrid,
+      segments: beatSegments,
+    };
+  }
+  /** The beat's source is the last one created. */
+  const beatSourceOf = (context: FakeAudioContext) =>
+    context.sources[context.sources.length - 1];
+
+  it("keeps the graph unchanged without a beat", async () => {
+    for (const beat of [undefined, null]) {
+      const { engine, contexts } = setup();
+      await engine.play({ stems, soloStemId: null, beat });
+      const context = contexts[0];
+      expect(context.sources).toHaveLength(2);
+      expect(context.gains).toHaveLength(4);
+      expect(context.audioBuffers).toHaveLength(0);
+    }
+  });
+
+  it("plays one extra source through a beat gain into the limiter", async () => {
+    const { engine, contexts } = setup();
+    const beat = previewBeat({ gainDb: -6 });
+    const handle = await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 4,
+      beat,
+    });
+    const context = contexts[0];
+    expect(context.sources).toHaveLength(3);
+    expect(context.gains).toHaveLength(5);
+    const source = beatSourceOf(context);
+    const buffer = source.buffer as FakeAudioBuffer;
+    expect(buffer.numberOfChannels).toBe(1);
+    expect(buffer.sampleRate).toBe(48000);
+    expect(buffer.length).toBe(32 * 48000 + 0.9 * 48000);
+    const beatGain = source.connections[0] as FakeGain;
+    expect(beatGain.gain.value).toBeCloseTo(Math.pow(10, -6 / 20));
+    expect(beatGain.connections).toEqual([context.compressor]);
+    // Timeline time from the offset; stops once the last hit rang out.
+    const [when, offset, duration] = source.start.mock.calls[0];
+    expect(when).toBe(0.03);
+    expect(offset).toBe(4);
+    expect(duration).toBeGreaterThan(27);
+    expect(duration).toBeLessThanOrEqual(28.9);
+    expect(source.playbackRate.value).toBe(1);
+
+    // Live level, mute and solo.
+    handle.update(stems, null, null, previewBeat({ gainDb: 0 }));
+    expect(beatGain.gain.value).toBe(1);
+    handle.update(stems, "vocals");
+    expect(beatGain.gain.value).toBe(0);
+    handle.update(stems, REMIX_BEAT_LANE_ID);
+    expect(beatGain.gain.value).toBe(1);
+    // Beat solo: only the beat is heard.
+    for (const stemSource of context.sources.slice(0, 2)) {
+      expect((stemSource.connections[0] as FakeGain).gain.value).toBe(0);
+    }
+    handle.update(stems, null, null, previewBeat({ muted: true }));
+    expect(beatGain.gain.value).toBe(0);
+    handle.update(stems, null, "vocals", previewBeat());
+    expect(beatGain.gain.value).toBe(0);
+
+    handle.stop();
+    expect(beatGain.disconnected).toBe(true);
+    expect(source.disconnected).toBe(true);
+  });
+
+  it("reuses the built buffer for an equal beat and rebuilds on change", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({ stems, soloStemId: null, beat: previewBeat() });
+    await engine.play({
+      stems,
+      soloStemId: null,
+      beat: previewBeat({ gainDb: -3 }),
+    });
+    const context = contexts[0];
+    expect(context.audioBuffers).toHaveLength(1);
+    expect(engine.beatBuffer(previewBeat())).toBe(context.audioBuffers[0]);
+    await engine.play({
+      stems,
+      soloStemId: null,
+      beat: previewBeat({ kit: "808" }),
+    });
+    expect(context.audioBuffers).toHaveLength(2);
+  });
+
+  it("follows speed and sends 0.7 × master space to the reverb", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems,
+      soloStemId: null,
+      beat: previewBeat(),
+      effects: fxRecipe({ master: { speed: 1.25, space: 0.5 } }),
+    });
+    const context = contexts[0];
+    const source = beatSourceOf(context);
+    expect(source.playbackRate.value).toBe(1.25);
+    const beatGain = source.connections[0] as FakeGain;
+    const [masterBus, send] = beatGain.connections as FakeGain[];
+    expect(send.gain.value).toBeCloseTo(0.35);
+    expect(send.connections).toEqual([context.convolvers[0]]);
+    expect(context.convolvers[0].connections).toEqual([masterBus]);
+  });
+
+  it("is not structure-scheduled and loops with the timeline loop", async () => {
+    const { engine, contexts } = setup();
+    const timeline = structureTimeline(structureGrid, sections(1, 2, 2, 1, 3));
+    await engine.play({
+      stems,
+      soloStemId: null,
+      timeline,
+      offsetSec: 20,
+      loop: { startSec: 16, endSec: 32 },
+      beat: previewBeat(),
+    });
+    const context = contexts[0];
+    const source = beatSourceOf(context);
+    expect(source.loop).toBe(true);
+    expect([source.loopStart, source.loopEnd]).toEqual([16, 32]);
+    expect(source.start).toHaveBeenCalledWith(0.03, 20);
+    // Straight into the master fade gain, with no join gain.
+    const beatGain = source.connections[0] as FakeGain;
+    expect(beatGain.gain.events).toEqual([]);
+  });
+
+  it("skips a beat with no hits", async () => {
+    const { engine, contexts } = setup();
+    const empty = previewBeat();
+    empty.recipe = {
+      ...empty.recipe,
+      pattern: {
+        kick: new Array(16).fill(false),
+        snare: new Array(16).fill(false),
+        clap: new Array(16).fill(false),
+        hat: new Array(16).fill(false),
+        openHat: new Array(16).fill(false),
+      },
+    };
+    await engine.play({ stems, soloStemId: null, beat: empty });
+    expect(contexts[0].sources).toHaveLength(2);
+    expect(contexts[0].gains).toHaveLength(4);
+  });
+});
+
+describe("beatPreviewGain (#1902)", () => {
+  const recipe = { ...defaultBeat("trap"), gainDb: -6 };
+  it("is silent for a reference, mute, a stem solo or no beat", () => {
+    expect(beatPreviewGain(null, null)).toBe(0);
+    expect(beatPreviewGain({ recipe }, null, "ref")).toBe(0);
+    expect(beatPreviewGain({ recipe: { ...recipe, muted: true } }, null)).toBe(0);
+    expect(beatPreviewGain({ recipe }, "vocals")).toBe(0);
+    expect(beatPreviewGain({ recipe }, REMIX_BEAT_LANE_ID)).toBeCloseTo(0.501, 3);
+    expect(beatPreviewGain({ recipe }, null)).toBeCloseTo(0.501, 3);
+  });
+});
+
+describe("muted beat (#1902)", () => {
+  it("stays in the graph at gain 0 and reuses the buffer when unmuted", async () => {
+    const { engine, contexts } = setup();
+    const beat = {
+      recipe: { ...defaultBeat("trap"), muted: true as const },
+      grid: {
+        bpm: 120,
+        sectionSeconds: 16,
+        sections: [{ startSec: 0, endSec: 16 }],
+      },
+      segments: [{ section: 0, outStartSec: 0, outEndSec: 16 }],
+    };
+    const handle = await engine.play({ stems, soloStemId: null, beat });
+    const context = contexts[0];
+    const beatGain = context.sources[2].connections[0] as FakeGain;
+    expect(beatGain.gain.value).toBe(0);
+    handle.update(stems, null, null, {
+      ...beat,
+      recipe: defaultBeat("trap"),
+    });
+    expect(beatGain.gain.value).toBe(1);
+    expect(context.audioBuffers).toHaveLength(1);
   });
 });

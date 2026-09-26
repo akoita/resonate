@@ -26,6 +26,7 @@ import {
   sectionMask,
   timelineSeconds,
   toggleInSet,
+  type LaneBeat,
   type LaneStem,
   type RemixSessionLanesProps,
 } from "./RemixSessionLanes";
@@ -502,5 +503,75 @@ describe("structure blocks (#1899)", () => {
     expect(nextMenuIndex("End", 0, 6)).toBe(5);
     expect(nextMenuIndex("a", 0, 6)).toBeNull();
     expect(nextMenuIndex("ArrowDown", 0, 0)).toBeNull();
+  });
+});
+
+describe("Beat lane (#1902)", () => {
+  function laneBeat(overrides: Partial<LaneBeat> = {}): LaneBeat {
+    return {
+      kitLabel: "808",
+      muted: false,
+      soloed: false,
+      soloedOut: false,
+      gainDb: -4.5,
+      blocks: null,
+      peaks: [0.1, 0.9, 0.2, 0.8],
+      durationSec: 52,
+      ...overrides,
+    };
+  }
+  /** The markup of the beat row. */
+  const beatRow = (html: string) =>
+    html.slice(html.indexOf('data-stem-id="remix-beat"'));
+
+  it("appears under the stems only when a beat exists", () => {
+    expect(render()).not.toContain("remix-lane-beat");
+    const html = render({ beat: laneBeat() });
+    expect(html.indexOf('data-stem-id="remix-beat"')).toBeGreaterThan(
+      html.indexOf('data-stem-id="stem-drums"'),
+    );
+  });
+
+  it("has a strip with name, kit, mute, solo and level, and no FX toggle", () => {
+    const row = beatRow(render({ beat: laneBeat(), onFxChange: () => undefined }));
+    expect(row).toContain(">Beat</div>");
+    expect(row).toContain("808 kit");
+    expect(row).toContain('aria-label="Mute Beat"');
+    expect(row).toContain('aria-label="Solo Beat"');
+    expect(row).toContain('aria-label="Beat level in decibels"');
+    expect(row).toContain("-4.5 dB");
+    expect(row).not.toContain("remix-lane-fx-toggle");
+    expect(row).toContain("remix-lane-beat-waveform");
+    // The waveform spans the timeline it covers (52 of the 64 s shown).
+    expect(row).toContain("width:81.25%");
+  });
+
+  it("shows one cell per block from beat.blocks", () => {
+    const row = beatRow(render({ beat: laneBeat({ blocks: [true, false, true, true] }) }));
+    expect(countMatches(row, /remix-lane-cell /g)).toBe(4);
+    expect(row).toMatch(/aria-pressed="false"[^>]*aria-label="Beat: section 2 off"/);
+    expect(row).toMatch(/aria-pressed="true"[^>]*aria-label="Beat: section 1 on"/);
+    // A stale mask shows every block on.
+    const stale = beatRow(render({ beat: laneBeat({ blocks: [false] }) }));
+    expect(countMatches(stale, /remix-lane-cell-off/g)).toBe(0);
+  });
+
+  it("reflects mute and solo state, and loads its waveform", () => {
+    const muted = beatRow(render({ beat: laneBeat({ muted: true }) }));
+    expect(muted).toContain("remix-lane-row-dimmed");
+    expect(muted).toMatch(/aria-pressed="true"[^>]*aria-label="Mute Beat"/);
+    const soloedOut = beatRow(render({ beat: laneBeat({ soloedOut: true }) }));
+    expect(soloedOut).toContain("muted by solo");
+    const soloed = beatRow(render({ beat: laneBeat({ soloed: true }) }));
+    expect(soloed).toMatch(/aria-pressed="true"[^>]*aria-label="Solo Beat"/);
+    const loading = beatRow(render({ beat: laneBeat({ peaks: null }) }));
+    expect(loading).toContain("remix-lane-waveform-loading");
+  });
+
+  it("locks edits when disabled (solo stays available)", () => {
+    const row = beatRow(render({ beat: laneBeat(), disabled: true }));
+    expect(row).toMatch(/<button[^>]*disabled=""[^>]*remix-lane-mute/);
+    expect(row).toMatch(/<input[^>]*disabled=""[^>]*remix-lane-gain/);
+    expect(row).not.toMatch(/<button[^>]*disabled=""[^>]*remix-lane-solo/);
   });
 });

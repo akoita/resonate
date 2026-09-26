@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
 import type { RemixRenderStructure, RemixStructure } from "./remix-structure";
+import type { RemixBeat, RemixRenderBeat } from "./remix-beat";
 
 /**
  * Provider boundary for AI-assisted remix draft generation (#896, backlog D1).
@@ -459,6 +460,14 @@ export type RemixRenderMetadata = {
    */
   structure?: RemixStructure;
   structureVersion?: string;
+  /**
+   * Beat maker recipe (#1902) mixed into the artifact, plus the synthesis
+   * rules version, and `addedParts: ["beat"]` (a synthesized part that is
+   * neither AI nor source audio). Absent when the project had no beat.
+   */
+  beat?: RemixBeat;
+  beatDspVersion?: string;
+  addedParts?: Array<"beat">;
 };
 
 export type RemixConditioningEffects = {
@@ -469,6 +478,11 @@ export type RemixConditioningEffects = {
 export type RemixConditioningStructure = {
   structure: RemixStructure;
   structureVersion: string;
+};
+
+export type RemixConditioningBeat = {
+  beat: RemixBeat;
+  beatDspVersion: string;
 };
 
 export type RemixGenerationInput = {
@@ -503,6 +517,12 @@ export type RemixGenerationInput = {
    * project keeps the original order; prompt-only providers ignore it.
    */
   renderStructure?: RemixRenderStructure;
+  /**
+   * The project's beat (#1902) + its bar grid and timeline at process time,
+   * mixed wherever the arranged stems are mixed. Absent when the project has
+   * no beat (or no bar grid); prompt-only providers ignore it.
+   */
+  renderBeat?: RemixRenderBeat;
   /** Targeted per-stem operation (#1316); absent = whole-track behavior. */
   stemTransform?: RemixStemTransform;
   provenance: RemixGenerationProvenance;
@@ -526,6 +546,11 @@ export type RemixGenerationJob = {
    * of {@link conditioningEffects}. Present only when a structure applied.
    */
   conditioningStructure?: RemixConditioningStructure;
+  /**
+   * Beat (#1902) mixed into the conditioning audio, the sibling of
+   * {@link conditioningEffects}. Present only when a beat applied.
+   */
+  conditioningBeat?: RemixConditioningBeat;
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
   outputMetadata: RemixGenerationOutputMetadata;
 };

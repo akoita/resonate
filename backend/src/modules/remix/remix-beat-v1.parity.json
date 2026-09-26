@@ -1,0 +1,858 @@
+{
+  "schemaVersion": "remix-beat/v1",
+  "note": "Parity fixture for #1902: backend (render) and web (preview) must reproduce these values within 1e-9 at 48 kHz.",
+  "sampleRate": 48000,
+  "instruments": [
+    "kick",
+    "snare",
+    "clap",
+    "hat",
+    "openHat"
+  ],
+  "seeds": {
+    "snare": 3001,
+    "clap": 3002,
+    "hat": 3003,
+    "openHat": 3004
+  },
+  "kits": {
+    "808": {
+      "gain": 0.8,
+      "lowpassHz": null,
+      "kick": {
+        "f0": 120,
+        "f1": 45,
+        "tauF": 0.06,
+        "tauA": 0.6,
+        "dur": 1.4
+      },
+      "snare": {
+        "bodyHz": 170,
+        "bodyTau": 0.1,
+        "noiseTau": 0.12,
+        "hpHz": 1500,
+        "body": 0.4,
+        "noise": 0.6,
+        "dur": 0.4
+      },
+      "clap": {
+        "hpHz": 900,
+        "lpHz": 3500,
+        "tail": 0.15,
+        "dur": 0.55
+      },
+      "hat": {
+        "hpHz": 8000,
+        "tau": 0.035,
+        "level": 0.55,
+        "dur": 0.2
+      },
+      "openHat": {
+        "hpHz": 8000,
+        "tau": 0.35,
+        "level": 0.45,
+        "dur": 0.8
+      }
+    },
+    "punchy": {
+      "gain": 0.8,
+      "lowpassHz": null,
+      "kick": {
+        "f0": 150,
+        "f1": 50,
+        "tauF": 0.04,
+        "tauA": 0.25,
+        "dur": 0.9
+      },
+      "snare": {
+        "bodyHz": 185,
+        "bodyTau": 0.08,
+        "noiseTau": 0.15,
+        "hpHz": 1200,
+        "body": 0.5,
+        "noise": 0.7,
+        "dur": 0.4
+      },
+      "clap": {
+        "hpHz": 800,
+        "lpHz": 4000,
+        "tail": 0.12,
+        "dur": 0.5
+      },
+      "hat": {
+        "hpHz": 7000,
+        "tau": 0.045,
+        "level": 0.6,
+        "dur": 0.2
+      },
+      "openHat": {
+        "hpHz": 7000,
+        "tau": 0.28,
+        "level": 0.5,
+        "dur": 0.7
+      }
+    },
+    "lofi": {
+      "gain": 0.8,
+      "lowpassHz": 5000,
+      "kick": {
+        "f0": 110,
+        "f1": 52,
+        "tauF": 0.05,
+        "tauA": 0.3,
+        "dur": 0.9
+      },
+      "snare": {
+        "bodyHz": 190,
+        "bodyTau": 0.07,
+        "noiseTau": 0.13,
+        "hpHz": 1000,
+        "body": 0.55,
+        "noise": 0.55,
+        "dur": 0.4
+      },
+      "clap": {
+        "hpHz": 700,
+        "lpHz": 3000,
+        "tail": 0.1,
+        "dur": 0.5
+      },
+      "hat": {
+        "hpHz": 6000,
+        "tau": 0.04,
+        "level": 0.45,
+        "dur": 0.2
+      },
+      "openHat": {
+        "hpHz": 6000,
+        "tau": 0.25,
+        "level": 0.4,
+        "dur": 0.7
+      }
+    }
+  },
+  "oneShots": {
+    "808": {
+      "kick": {
+        "length": 67200,
+        "first": [
+          0,
+          0.012565418,
+          0.025124137,
+          0.037673066,
+          0.050209118,
+          0.062729213
+        ],
+        "at2400": -0.707132207,
+        "peak": 0.797198676
+      },
+      "snare": {
+        "length": 19200,
+        "first": [
+          0.168486685,
+          0.046309595,
+          -0.384305031,
+          -0.241358935,
+          -0.297837282,
+          -0.127724369
+        ],
+        "at2400": 0.072796774,
+        "peak": 0.806055082
+      },
+      "clap": {
+        "length": 26400,
+        "first": [
+          -0.004962458,
+          0.204097631,
+          0.337374717,
+          0.170823111,
+          0.032955334,
+          -0.055881703
+        ],
+        "at2400": -0.081536416,
+        "peak": 0.718960828
+      },
+      "hat": {
+        "length": 9600,
+        "first": [
+          -0.012129725,
+          -0.05725108,
+          0.170828424,
+          -0.060652756,
+          -0.126733843,
+          0.112008742
+        ],
+        "at2400": 0.02909403,
+        "peak": 0.204570086
+      },
+      "openHat": {
+        "length": 38400,
+        "first": [
+          0.044922049,
+          -0.036883044,
+          -0.099207631,
+          0.147408111,
+          -0.034928527,
+          0.023674045
+        ],
+        "at2400": 0.02537766,
+        "peak": 0.17106785
+      }
+    },
+    "punchy": {
+      "kick": {
+        "length": 43200,
+        "first": [
+          0,
+          0.015705645,
+          0.031397171,
+          0.047068547,
+          0.062713764,
+          0.078326833
+        ],
+        "at2400": 0.518234502,
+        "peak": 0.794616349
+      },
+      "snare": {
+        "length": 19200,
+        "first": [
+          0.203239077,
+          0.062723844,
+          -0.455094556,
+          -0.296071103,
+          -0.371015931,
+          -0.173702444
+        ],
+        "at2400": 0.294912178,
+        "peak": 0.901481104
+      },
+      "clap": {
+        "length": 24000,
+        "first": [
+          -0.005492067,
+          0.225982785,
+          0.36918992,
+          0.179805788,
+          0.028193067,
+          -0.066316497
+        ],
+        "at2400": -0.082925678,
+        "peak": 0.769881996
+      },
+      "hat": {
+        "length": 9600,
+        "first": [
+          -0.015101948,
+          -0.072296451,
+          0.207446458,
+          -0.064205404,
+          -0.156805468,
+          0.129588329
+        ],
+        "at2400": 0.048354555,
+        "peak": 0.254401571
+      },
+      "openHat": {
+        "length": 33600,
+        "first": [
+          0.056965317,
+          -0.04296919,
+          -0.126874757,
+          0.177944846,
+          -0.036649649,
+          0.031179791
+        ],
+        "at2400": 0.02943917,
+        "peak": 0.212694022
+      }
+    },
+    "lofi": {
+      "kick": {
+        "length": 43200,
+        "first": [
+          0,
+          0.004556364,
+          0.011864075,
+          0.020831215,
+          0.030796876,
+          0.041360658
+        ],
+        "at2400": 0.283696885,
+        "peak": 0.793582517
+      },
+      "snare": {
+        "length": 19200,
+        "first": [
+          0.064632848,
+          0.06155241,
+          -0.103542445,
+          -0.154702338,
+          -0.210083044,
+          -0.181766746
+        ],
+        "at2400": -0.04667256,
+        "peak": 0.639045384
+      },
+      "clap": {
+        "length": 24000,
+        "first": [
+          -0.00180397,
+          0.073007448,
+          0.170661633,
+          0.174949815,
+          0.128912513,
+          0.067400816
+        ],
+        "at2400": -0.10754755,
+        "peak": 0.526528202
+      },
+      "hat": {
+        "length": 9600,
+        "first": [
+          -0.005161695,
+          -0.028223334,
+          0.051718131,
+          0.013513972,
+          -0.044662221,
+          0.013621063
+        ],
+        "at2400": 0.011897511,
+        "peak": 0.077775678
+      },
+      "openHat": {
+        "length": 33600,
+        "first": [
+          0.020768189,
+          -0.001523805,
+          -0.047453943,
+          0.032490095,
+          0.009096257,
+          0.017476985
+        ],
+        "at2400": 0.009332656,
+        "peak": 0.073361286
+      }
+    }
+  },
+  "scenario": {
+    "grid": {
+      "kind": "bars",
+      "bpm": 120,
+      "sectionSeconds": 16,
+      "durationSeconds": 38,
+      "sections": [
+        {
+          "startSec": 0,
+          "endSec": 6
+        },
+        {
+          "startSec": 6,
+          "endSec": 22
+        },
+        {
+          "startSec": 22,
+          "endSec": 38
+        }
+      ]
+    },
+    "segments": [
+      {
+        "section": 0,
+        "outStartSec": 0,
+        "outEndSec": 6
+      },
+      {
+        "section": 1,
+        "outStartSec": 6,
+        "outEndSec": 22
+      },
+      {
+        "section": 2,
+        "outStartSec": 22,
+        "outEndSec": 38
+      }
+    ],
+    "recipe": {
+      "schemaVersion": "remix-beat/v1",
+      "kit": "punchy",
+      "pattern": {
+        "kick": [
+          true,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "clap": [
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "hat": [
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          true,
+          false
+        ],
+        "openHat": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ]
+      },
+      "swing": 0.3,
+      "gainDb": 0,
+      "blocks": [
+        true,
+        true,
+        false
+      ]
+    }
+  },
+  "hits": [
+    {
+      "timeSec": 6,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 6.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 6.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 6.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 6.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 6.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 7,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 7.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 7.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 7.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 7.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 7.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 8,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 8.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 8.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 8.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 8.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 8.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 9,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 9.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 9.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 9.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 9.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 9.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 10,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 10.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 10.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 10.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 10.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 10.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 11,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 11.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 11.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 11.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 11.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 11.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 12,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 12.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 12.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 12.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 12.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 12.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 13,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 13.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 13.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 13.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 13.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 13.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 14,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 14.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 14.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 14.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 14.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 14.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 15,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 15.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 15.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 15.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 15.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 15.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 16,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 16.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 16.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 16.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 16.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 16.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 17,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 17.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 17.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 17.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 17.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 17.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 18,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 18.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 18.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 18.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 18.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 18.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 19,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 19.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 19.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 19.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 19.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 19.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 20,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 20.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 20.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 20.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 20.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 20.89375,
+      "instrument": "openHat"
+    },
+    {
+      "timeSec": 21,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 21.25,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 21.5,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 21.5,
+      "instrument": "clap"
+    },
+    {
+      "timeSec": 21.75,
+      "instrument": "hat"
+    },
+    {
+      "timeSec": 21.89375,
+      "instrument": "openHat"
+    }
+  ],
+  "track": {
+    "length": 1867200,
+    "at": {
+      "288000": 0,
+      "288100": 0.742636184,
+      "300000": -0.002749336,
+      "312000": -0.004793539,
+      "500000": -0.126965852,
+      "700000": -0.428757226
+    }
+  }
+}

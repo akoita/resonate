@@ -583,4 +583,63 @@ test.describe("Remix Studio session view (#1879)", () => {
       )
       .toBe(true);
   });
+
+  test("beat maker: add a preset beat, edit a step, play, remove (#1902)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    type BeatPatch = {
+      kit?: string;
+      pattern?: Record<string, boolean[]>;
+    } | null;
+    const beatOf = (patch: Record<string, unknown>) => patch.beat as BeatPatch | undefined;
+
+    // One click adds a beat that locks to the song's tempo.
+    await page.getByRole("button", { name: /Four on the floor/ }).first().click();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const beat = beatOf(patch);
+            return !!beat && beat.pattern?.kick?.[0] === true && beat.pattern?.kick?.[4] === true;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    // The Beat lane joins the session.
+    await expect(page.getByRole("button", { name: "Mute Beat" })).toBeVisible();
+
+    // Edit the pattern: add a snare on step 5.
+    await page.getByRole("button", { name: "Snare step 5" }).click();
+    await expect
+      .poll(
+        () => patches.some((patch) => beatOf(patch)?.pattern?.snare?.[4] === true),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+
+    // The beat plays with the stems through the preview engine.
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-beat.png"),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // Remove beat clears the recipe.
+    await page.getByRole("button", { name: "Remove beat" }).click();
+    await expect
+      .poll(() => patches.some((patch) => "beat" in patch && patch.beat === null), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+  });
 });

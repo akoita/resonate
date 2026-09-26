@@ -143,6 +143,8 @@ export class RemixController {
       effects?: unknown;
       /** Structure blocks remix-structure/v1 (#1899); validated in the service. */
       structure?: unknown;
+      /** Beat maker remix-beat/v1 (#1902); validated in the service. */
+      beat?: unknown;
     },
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);

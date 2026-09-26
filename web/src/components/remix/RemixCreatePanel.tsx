@@ -23,6 +23,21 @@ import {
 } from "../../lib/remixFx";
 import type { RemixSectionGrid } from "../../lib/api";
 import {
+  activeBeatPresetId,
+  BEAT_PRESETS,
+  beatPresetPattern,
+  defaultBeat,
+  REMIX_BEAT_INSTRUMENT_LABELS,
+  REMIX_BEAT_INSTRUMENTS,
+  REMIX_BEAT_KIT_IDS,
+  REMIX_BEAT_KIT_LABELS,
+  REMIX_BEAT_STEPS,
+  REMIX_BEAT_SWING_RANGE,
+  toggleBeatStep,
+  type RemixBeatPresetId,
+  type RemixBeatRecipe,
+} from "../../lib/remixBeat";
+import {
   formatSongLength,
   parseRemixDescription,
   planToEdits,
@@ -92,6 +107,14 @@ export type RemixCreatePanelProps = {
   describeContext?: RemixDescribeContext;
   /** Sets the described edits (Apply) or restores the previous ones (Undo). */
   onApplyEdits?(edits: RemixDescribeEdits): void;
+  /**
+   * Beat maker (#1902): the current beat (null = none) and whether the
+   * track has a bar grid with a measured tempo. The "Add a beat" section
+   * shows only with `onBeatChange`; it receives null to remove the beat.
+   */
+  beat?: RemixBeatRecipe | null;
+  beatAvailable?: boolean;
+  onBeatChange?(beat: RemixBeatRecipe | null): void;
   primary: RemixCreatePrimaryAction;
   creditMeter: ReactNode;
   attribution: ReactNode;
@@ -299,6 +322,251 @@ function StructureShapeSection({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// "Add a beat" (#1902): a code-synthesized drum kit, pattern presets, a
+// 16-step grid and a groove (swing) control.
+
+export const BEAT_NEEDS_TEMPO_NOTE =
+  "The beat maker needs a measured tempo, and this track doesn't have one yet.";
+
+/** Groove (swing) in plain words. */
+export function formatBeatGroove(swing: number): string {
+  if (!(swing > 0)) return "Straight";
+  return `${Math.round((swing / REMIX_BEAT_SWING_RANGE.max) * 100)}% swung`;
+}
+
+/**
+ * A preset press: a new beat with the Punchy kit, or the current beat with
+ * the preset's pattern (kit, groove, level and blocks kept).
+ */
+export function beatAfterPreset(
+  beat: RemixBeatRecipe | null,
+  presetId: RemixBeatPresetId,
+): RemixBeatRecipe {
+  return beat
+    ? { ...beat, pattern: beatPresetPattern(presetId) }
+    : defaultBeat(presetId, "punchy");
+}
+
+export type BeatMakerViewProps = {
+  /** Prefix for element ids (from useId in `BeatMakerSection`). */
+  idPrefix: string;
+  beat: RemixBeatRecipe | null;
+  available: boolean;
+  onChange(beat: RemixBeatRecipe | null): void;
+  locked: boolean;
+};
+
+/** "Add a beat" (#1902) section; hook-free, every state renders from props. */
+export function BeatMakerSection(props: Omit<BeatMakerViewProps, "idPrefix">) {
+  return <BeatMakerView idPrefix={useId()} {...props} />;
+}
+
+export function BeatMakerView({
+  idPrefix,
+  beat,
+  available,
+  onChange,
+  locked,
+}: BeatMakerViewProps) {
+  const labelId = `${idPrefix}-beat`;
+  const presetsLabelId = `${idPrefix}-beat-presets`;
+  const grooveId = `${idPrefix}-beat-groove`;
+  const activePreset = activeBeatPresetId(beat);
+  const choosePreset = (presetId: RemixBeatPresetId) => {
+    if (locked) return;
+    onChange(beatAfterPreset(beat, presetId));
+  };
+  return (
+    <div className="mt-4 remix-beat-maker">
+      <div className="text-xs text-zinc-500 mb-2" id={labelId}>
+        Add a beat
+      </div>
+      {!available ? (
+        <p className="text-xs text-zinc-400 remix-beat-needs-tempo">
+          {BEAT_NEEDS_TEMPO_NOTE}
+        </p>
+      ) : (
+        <div className="space-y-3" role="group" aria-labelledby={labelId}>
+          {beat && (
+            <div
+              className="grid grid-cols-3 rounded-md border border-zinc-700 overflow-hidden remix-beat-kits"
+              role="group"
+              aria-label="Drum kit"
+            >
+              {REMIX_BEAT_KIT_IDS.map((kit) => {
+                const active = beat.kit === kit;
+                return (
+                  <button
+                    key={kit}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={locked}
+                    className={`px-2 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 remix-beat-kit remix-beat-kit-${kit} ${
+                      active
+                        ? "bg-purple-500/25 text-purple-200"
+                        : "bg-zinc-950 text-zinc-400 hover:text-zinc-200"
+                    }`}
+                    onClick={() => {
+                      if (!locked) onChange({ ...beat, kit });
+                    }}
+                  >
+                    {REMIX_BEAT_KIT_LABELS[kit]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div>
+            {beat && (
+              <div className="text-[11px] text-zinc-500 mb-1" id={presetsLabelId}>
+                Start from a pattern
+              </div>
+            )}
+            <div
+              className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+              role="group"
+              aria-label={beat ? "Beat patterns" : "Choose a beat"}
+            >
+              {BEAT_PRESETS.map((preset) => {
+                const active = preset.id === activePreset;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    aria-pressed={beat ? active : undefined}
+                    disabled={locked}
+                    title={preset.description}
+                    className={`rounded-md border px-2 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 remix-beat-preset remix-beat-preset-${preset.id} ${
+                      active
+                        ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+                        : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-purple-500/60 hover:bg-purple-500/10"
+                    }`}
+                    onClick={() => choosePreset(preset.id)}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {beat && (
+            <>
+              <BeatStepGrid beat={beat} locked={locked} onChange={onChange} />
+              <div className="remix-beat-groove">
+                <div className="flex items-baseline justify-between text-xs">
+                  <label htmlFor={grooveId} className="text-zinc-300">
+                    Groove
+                  </label>
+                  <span className="tabular-nums text-zinc-400">
+                    {formatBeatGroove(beat.swing)}
+                  </span>
+                </div>
+                <input
+                  id={grooveId}
+                  type="range"
+                  min={REMIX_BEAT_SWING_RANGE.min}
+                  max={REMIX_BEAT_SWING_RANGE.max}
+                  step={0.05}
+                  value={beat.swing}
+                  disabled={locked}
+                  aria-valuetext={formatBeatGroove(beat.swing)}
+                  className="mt-1 h-1 w-full cursor-pointer accent-purple-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  onChange={(event) => {
+                    if (!locked) {
+                      onChange({ ...beat, swing: parseFloat(event.target.value) });
+                    }
+                  }}
+                />
+                <div
+                  aria-hidden="true"
+                  className="mt-0.5 flex justify-between text-[10px] text-zinc-500"
+                >
+                  <span>Straight</span>
+                  <span>Swung</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={locked}
+                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-300 transition-colors hover:border-red-500/60 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50 remix-beat-remove"
+                onClick={() => {
+                  if (!locked) onChange(null);
+                }}
+              >
+                Remove beat
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The 5-row × 16-step grid; steps are grouped by beat (4 sixteenths). */
+export function BeatStepGrid({
+  beat,
+  locked,
+  onChange,
+}: {
+  beat: RemixBeatRecipe;
+  locked: boolean;
+  onChange(beat: RemixBeatRecipe): void;
+}) {
+  const quarters = Array.from({ length: REMIX_BEAT_STEPS / 4 }, (_, quarter) =>
+    Array.from({ length: 4 }, (_, step) => quarter * 4 + step),
+  );
+  return (
+    <div
+      className="space-y-1 overflow-x-auto remix-beat-grid"
+      role="group"
+      aria-label="Beat steps"
+    >
+      {REMIX_BEAT_INSTRUMENTS.map((instrument) => {
+        const label = REMIX_BEAT_INSTRUMENT_LABELS[instrument];
+        const row = beat.pattern[instrument];
+        return (
+          <div
+            key={instrument}
+            className={`flex items-center gap-1.5 remix-beat-row remix-beat-row-${instrument}`}
+          >
+            <span className="w-14 shrink-0 text-[10px] text-zinc-400">{label}</span>
+            <div className="flex flex-1 gap-1.5">
+              {quarters.map((steps, quarter) => (
+                <div key={quarter} className="flex flex-1 gap-0.5">
+                  {steps.map((step) => {
+                    const on = row[step] === true;
+                    return (
+                      <button
+                        key={step}
+                        type="button"
+                        aria-pressed={on}
+                        aria-label={`${label} step ${step + 1}`}
+                        disabled={locked}
+                        className={`h-5 min-w-[0.75rem] flex-1 rounded-sm border transition-colors disabled:cursor-not-allowed disabled:opacity-50 remix-beat-step ${
+                          on
+                            ? "border-purple-400/70 bg-purple-500/60 hover:bg-purple-500/70"
+                            : quarter % 2 === 0
+                              ? "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+                              : "border-zinc-700 bg-zinc-900 hover:bg-zinc-700"
+                        }`}
+                        onClick={() => {
+                          if (!locked) onChange(toggleBeatStep(beat, instrument, step));
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -688,6 +956,9 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     onApplyStructure,
     describeContext,
     onApplyEdits,
+    beat,
+    beatAvailable,
+    onBeatChange,
     primary,
     creditMeter,
     attribution,
@@ -776,6 +1047,14 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
             <StructureShapeSection
               options={structureOptions}
               onApply={onApplyStructure}
+              locked={locked}
+            />
+          )}
+          {onBeatChange && (
+            <BeatMakerSection
+              beat={beat ?? null}
+              available={beatAvailable ?? false}
+              onChange={onBeatChange}
               locked={locked}
             />
           )}

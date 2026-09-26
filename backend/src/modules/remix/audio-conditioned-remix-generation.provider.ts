@@ -16,6 +16,7 @@ import {
 import { type StemAudioMixer } from "./stem-audio-mixer";
 import { REMIX_FX_DSP_VERSION } from "./remix-fx";
 import { REMIX_STRUCTURE_DSP_VERSION } from "./remix-structure";
+import { REMIX_BEAT_DSP_VERSION } from "./remix-beat";
 
 /**
  * Audio-conditioned remix provider (#1182 slice 4) — the first provider that
@@ -91,24 +92,32 @@ export class AudioConditionedRemixGenerationProvider
     // Effects (#1897) shape the conditioning mix exactly as the user hears
     // them in the studio; omitted entirely when the project has none.
     // Structure blocks (#1899) likewise: the model conditions on the
-    // restructured arrangement the user hears.
-    const mixed = input.renderStructure
+    // restructured arrangement the user hears. The beat (#1902) too.
+    const mixed = input.renderBeat
       ? await this.mixer.mixUnmutedStems(
           input.stemArrangement,
           authorization,
           input.renderFx,
           input.renderStructure,
+          input.renderBeat,
         )
-      : input.renderFx
+      : input.renderStructure
         ? await this.mixer.mixUnmutedStems(
             input.stemArrangement,
             authorization,
             input.renderFx,
+            input.renderStructure,
           )
-        : await this.mixer.mixUnmutedStems(
-            input.stemArrangement,
-            authorization,
-          );
+        : input.renderFx
+          ? await this.mixer.mixUnmutedStems(
+              input.stemArrangement,
+              authorization,
+              input.renderFx,
+            )
+          : await this.mixer.mixUnmutedStems(
+              input.stemArrangement,
+              authorization,
+            );
 
     const generated = await this.callWorker({
       config,
@@ -172,6 +181,15 @@ export class AudioConditionedRemixGenerationProvider
             conditioningStructure: {
               structure: input.renderStructure.structure,
               structureVersion: REMIX_STRUCTURE_DSP_VERSION,
+            },
+          }
+        : {}),
+      // #1902 provenance: the beat mixed into the conditioning audio.
+      ...(input.renderBeat
+        ? {
+            conditioningBeat: {
+              beat: input.renderBeat.beat,
+              beatDspVersion: REMIX_BEAT_DSP_VERSION,
             },
           }
         : {}),
