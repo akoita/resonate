@@ -6,8 +6,6 @@ import {
     listPlaylists,
     listFolders,
     getPlaylist,
-    addTrackToPlaylist,
-    addTracksToPlaylist,
     createPlaylist,
     createFolder,
     renamePlaylist,
@@ -17,8 +15,8 @@ import {
     reorderTracks,
     removeTrackFromPlaylist,
     syncPlaylists,
-    addTracksByCriteria,
 } from "../../lib/playlistStore";
+import { applyPlaylistDrop, parsePlaylistDropPayload, playlistDropEffect, playlistDropToast } from "./playlistDrop";
 import { LocalTrack, getTrack } from "../../lib/localLibrary";
 import { useUIStore } from "../../lib/uiStore";
 import { useToast } from "../ui/Toast";
@@ -339,89 +337,47 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
 
     // -- Drag and Drop --
 
-    const handleDrop = async (e: React.DragEvent, playlistId?: string, index?: number) => {
-        if (!playlistId) return; // For now, only drop on playlists is supported
-
+    const handleDrop = async (e: React.DragEvent, playlistId: string, index?: number) => {
+        e.preventDefault();
         e.stopPropagation();
         setDragOverId(null);
         setDragOverIndex(null);
 
+        const request = parsePlaylistDropPayload(
+            e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain"),
+        );
+        if (!request) return;
+
+        if (request.kind === "reorder") {
+            if (request.playlistId === playlistId) {
+                await handleReorder(playlistId, request.index, index ?? 0);
+            }
+            return;
+        }
+
+        const playlistName = playlists.find(p => p.id === playlistId)?.name || "playlist";
+        const failed = () => addToast({
+            type: "error",
+            title: `Couldn't add to ${playlistName}`,
+            message: "Sync your playlists and try again.",
+        });
+
         try {
-            const jsonData = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
-            if (!jsonData) return;
-
-            let data;
-            try {
-                data = JSON.parse(jsonData);
-            } catch {
-                console.warn("Dropped data is not valid JSON:", jsonData.substring(0, 50));
+            const outcome = await applyPlaylistDrop(playlistId, request, index);
+            if (!outcome.ok) {
+                failed();
                 return;
             }
-
-            if (data.type === "reorder-track") {
-                if (data.playlistId === playlistId) {
-                    await handleReorder(playlistId, data.index, index ?? 0);
-                }
-                return;
-            }
-
-            let addedCount = 0;
-            let title = "";
-
-            if (data.type === "album" && data.tracks) {
-                const tracks = data.tracks as LocalTrack[];
-                const trackIdsToAdd = tracks.map(track => track.id);
-                await addTracksToPlaylist(playlistId, trackIdsToAdd, index);
-                addedCount = tracks.length;
-                title = data.name || "album";
-            } else if (data.type === "track") {
-                // Handle both full track object and just ID
-                const trackId = data.id;
-                // Use full track object if available for title, but don't save metadata
-                if (data.title) {
-                    title = data.title;
-                } else {
-                    const track = await getTrack(trackId);
-                    if (track) title = track.title;
-                }
-                await addTrackToPlaylist(playlistId, trackId, index);
-                addedCount = 1;
-            } else if (data.type === "artist") {
-                const result = await addTracksByCriteria(playlistId, { artist: data.name });
-                if (result) {
-                    addedCount = result.trackIds.length;
-                    title = data.name;
-                }
-            } else if (data.type === "release-track" && data.track) {
-                // Single track dragged from release page
-                const trackId = data.track.id;
-                title = data.track.title || data.title || "track";
-                await addTrackToPlaylist(playlistId, trackId, index);
-                addedCount = 1;
-            } else if ((data.type === "release-selection" || data.type === "release-album") && data.tracks) {
-                // Multiple tracks or full album dragged from release page
-                const tracks = data.tracks as LocalTrack[];
-                const trackIdsToAdd = tracks.map(track => track.id);
-                await addTracksToPlaylist(playlistId, trackIdsToAdd, index);
-                addedCount = tracks.length;
-                title = data.title || `${tracks.length} tracks`;
-            }
-
-            if (addedCount > 0) {
-                const playlist = playlists.find(p => p.id === playlistId);
-                addToast({
-                    type: "success",
-                    title: addedCount > 1 ? "Tracks Added" : "Track Added",
-                    message: `Added ${addedCount > 1 ? addedCount + " tracks" : `"${title}"`} to ${playlist?.name || "playlist"}`,
-                });
+            addToast(playlistDropToast(outcome.playlist.name || playlistName, outcome.requested, outcome.added, outcome.title));
+            if (outcome.added > 0) {
                 await refreshPlaylistTracks(playlistId);
-                refreshLibrary();
+                void refreshLibrary();
             }
         } catch (err) {
             console.error("Drop failed", err);
+            failed();
         }
     };
-
 
     const renderPlaylist = (p: Playlist, isNested: boolean) => {
         const isExpanded = expandedPlaylists.has(p.id);
@@ -435,11 +391,12 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                     onClick={() => togglePlaylist(p.id)}
                     onDragOver={(e) => {
                         e.preventDefault();
-                        e.dataTransfer.dropEffect = "copy";
+                        e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed);
                         setDragOverId(p.id);
+                        setDragOverIndex(null);
                     }}
                     onDragLeave={() => setDragOverId(null)}
-                    onDrop={(e) => handleDrop(e, p.id)}
+                    onDrop={(e) => void handleDrop(e, p.id)}
                     onContextMenu={(e) => showPlaylistMenu(e, p)}
                 >
                     <span className={`gpp-chevron ${isExpanded ? "rotated" : ""}`}>
@@ -475,7 +432,18 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                 </div>
 
                 {isExpanded && (
-                    <div className="gpp-tracks-list">
+                    <div
+                        className="gpp-tracks-list"
+                        // Gaps and the "Empty" row append to the playlist; the
+                        // track rows below handle positional drops themselves.
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed);
+                            setDragOverId(p.id);
+                            setDragOverIndex(null);
+                        }}
+                        onDrop={(e) => void handleDrop(e, p.id)}
+                    >
                         {tracks.length === 0 ? (
                             <div className="gpp-track-item empty">Empty</div>
                         ) : (
@@ -503,7 +471,9 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                                     onDragOver={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        e.dataTransfer.dropEffect = "move";
+                                        // Library/catalog drags only allow "copy"; advertising
+                                        // "move" here made the browser refuse them.
+                                        e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed);
                                         setDragOverId(p.id);
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const midpoint = rect.top + rect.height / 2;
@@ -514,28 +484,11 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                                         }
                                     }}
                                     onDrop={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const midpoint = rect.top + rect.height / 2;
-                                        const finalIndex = e.clientY < midpoint ? idx : idx + 1;
-
-                                        const jsonData = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
-                                        if (jsonData) {
-                                            try {
-                                                const data = JSON.parse(jsonData);
-                                                if (data.type === "reorder-track" && data.playlistId === p.id) {
-                                                    void handleReorder(p.id, data.index, finalIndex);
-                                                } else {
-                                                    void handleDrop(e, p.id, finalIndex);
-                                                }
-                                            } catch {
-                                                void handleDrop(e, p.id, finalIndex);
-                                            }
-                                        }
-
-                                        setDragOverId(null);
-                                        setDragOverIndex(null);
+                                        // handleDrop reorders same-playlist drags and
+                                        // inserts everything else at this position.
+                                        void handleDrop(e, p.id, e.clientY < midpoint ? idx : idx + 1);
                                     }}
                                 >
                                     <div className="gpp-track-drag-handle">
@@ -644,13 +597,12 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                                     className={`gpp-folder-item ${isExpanded ? "expanded" : ""}`}
                                     style={{ userSelect: "none" }}
                                     onClick={() => toggleFolder(folder.id)}
-                                    onDragOver={(e) => {
-                                        e.preventDefault();
-                                        e.dataTransfer.dropEffect = "copy";
-                                        setDragOverId(folder.id);
+                                    // A folder is not a drop target (tracks live in its
+                                    // playlists); hovering it during a drag opens it so
+                                    // the playlists inside can take the drop.
+                                    onDragEnter={() => {
+                                        setExpandedFolders(prev => prev.has(folder.id) ? prev : new Set(prev).add(folder.id));
                                     }}
-                                    onDragLeave={() => setDragOverId(null)}
-                                    onDrop={(e) => handleDrop(e, undefined)}
                                 >
                                     <span className={`gpp-chevron ${isExpanded ? "rotated" : ""}`}>
                                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

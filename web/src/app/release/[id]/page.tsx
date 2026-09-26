@@ -37,6 +37,8 @@ import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
 import { MixerConsole } from "../../../components/player/MixerConsole";
 import { QueueActionsButton } from "../../../components/player/QueueActionsButton";
+import { ArtistCampaignLink } from "../../../components/shows/ArtistCampaignLink";
+import { releaseCampaignArtistIdentity } from "../../../lib/shows";
 import { useQueueActions } from "../../../lib/useQueueActions";
 
 import { useToast } from "../../../components/ui/Toast";
@@ -2164,6 +2166,9 @@ export default function ReleaseDetails() {
             )}
           </div>
 
+          {/* Link to the credited artist's live show campaign, if any. */}
+          <ArtistCampaignLink {...releaseCampaignArtistIdentity(release)} />
+
           {/* Marketplace restriction CTA — collapsible so it doesn't
            * dominate the mobile above-the-fold. Summary row (icon +
            * chip + chevron) always visible; tap to expand the
@@ -2613,17 +2618,22 @@ export default function ReleaseDetails() {
                             {safeAudioReplacementFailureMessage(track.audioReplacementError)}
                           </span>}
                         </span>}
-                        {canReplaceTrackAudio && release.status === "ready" && <button
-                          type="button"
+                        {canReplaceTrackAudio && release.status === "ready" && <Button
+                          variant="ghost"
+                          className="ui-btn-sm track-audio-replace-btn"
                           aria-label={`Replace audio for ${track.title}`}
                           aria-controls="track-audio-replacement-file"
                           aria-busy={isTrackAudioBusy}
                           disabled={isTrackAudioBusy || uploadingTrackAudioId !== null}
                           onClick={(event) => { event.stopPropagation(); chooseTrackAudioFile(track.id); }}
-                          style={{ whiteSpace: "nowrap", minHeight: 32, padding: "4px 9px", fontSize: 12 }}
                         >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <path d="M17 8l-5-5-5 5" />
+                            <path d="M12 3v12" />
+                          </svg>
                           {isTrackAudioBusy ? "Replacing…" : "Replace audio"}
-                        </button>}
+                        </Button>}
                       </div>}
 
                       {canUseMixerPreview && track.stems && track.stems.length > 1 && (
@@ -3548,6 +3558,20 @@ export default function ReleaseDetails() {
           padding: 1px 4px;
           border-radius: 2px;
           font-weight: 700;
+        }
+
+        /* Compact glass control for the owner's per-track audio replacement;
+         * the Button primitive is a child component, so reach it via :global. */
+        :global(.track-audio-replace-btn) {
+          gap: 6px;
+          min-height: 32px;
+          padding: 5px 12px;
+          white-space: nowrap;
+          color: rgba(255, 255, 255, 0.85);
+        }
+
+        :global(.track-audio-replace-btn:hover:not(:disabled)) {
+          color: #fff;
         }
 
         .stem-selector {

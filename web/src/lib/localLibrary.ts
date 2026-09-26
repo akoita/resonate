@@ -22,7 +22,9 @@ import {
     getStemPreviewUrl,
     getTrack as getCatalogTrack,
     getReleaseArtworkUrl,
+    getReleaseTrackStreamUrl,
     type AiDisclosure,
+    type Track as CatalogTrack,
 } from "./api";
 import { sanitizeStemUrl } from "./urlUtils";
 
@@ -332,44 +334,63 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
         } catch {
             // not in user's library — try catalog next
         }
+    }
 
-        // Fallback 2: try Catalog API (platform tracks, e.g. Sonic Radar discoveries)
-        try {
-            const catalogTrack = await getCatalogTrack(id, token);
-            if (catalogTrack) {
-                return {
-                    id: catalogTrack.id,
-                    title: catalogTrack.title,
-                    artist: catalogTrack.artist || null,
-                    albumArtist: null,
-                    album: catalogTrack.release?.title || null,
-                    year: null,
-                    genre: null,
-                    duration: null,
-                    createdAt: catalogTrack.createdAt || new Date().toISOString(),
-                    source: "remote",
-                    catalogTrackId: catalogTrack.id,
-                    remoteArtworkUrl: catalogTrack.release?.artworkUrl || (catalogTrack.release?.artworkMimeType
-                        ? getReleaseArtworkUrl(catalogTrack.release.id, {
-                            artworkRevision: catalogTrack.release.artworkRevision,
-                        })
-                        : undefined),
-                    stems: catalogTrack.stems?.map(s => ({
-                        id: s.id,
-                        uri: isMixerStemType(s.type) ? getStemPreviewUrl(s.id) : s.uri,
-                        type: s.type,
-                        durationSeconds: s.durationSeconds,
-                        isEncrypted: isMixerStemType(s.type) ? false : s.isEncrypted,
-                        encryptionMetadata: isMixerStemType(s.type) ? null : s.encryptionMetadata,
-                    })),
-                };
-            }
-        } catch {
-            // not found anywhere
-        }
+    // Fallback 2: try Catalog API (platform tracks referenced by playlists,
+    // Sonic Radar discoveries, …). Public catalog reads work without a token,
+    // so a playlist entry that was never saved to the library still resolves.
+    try {
+        const catalogTrack = await getCatalogTrack(id, token);
+        if (catalogTrack) return catalogTrackToLocal(catalogTrack);
+    } catch {
+        // not found anywhere
     }
 
     return null;
+}
+
+/**
+ * Map a catalog track to a fully playable remote LocalTrack (stream URL,
+ * release/artist ids, duration). Mirrors the release-page and artist-playback
+ * mappers so a playlist entry plays the same way as a release track.
+ */
+export function catalogTrackToLocal(catalogTrack: CatalogTrack): LocalTrack {
+    const release = catalogTrack.release;
+    const releaseId = release?.id || catalogTrack.releaseId || null;
+    return {
+        id: catalogTrack.id,
+        title: catalogTrack.title,
+        artist:
+            catalogTrack.artist?.trim() ||
+            release?.primaryArtist?.trim() ||
+            release?.artist?.displayName?.trim() ||
+            null,
+        albumArtist: release?.primaryArtist || release?.artist?.displayName || null,
+        album: release?.title || null,
+        year: release?.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
+        genre: release?.genre || null,
+        duration: catalogTrack.stems?.[0]?.durationSeconds ?? null,
+        createdAt: catalogTrack.createdAt || new Date().toISOString(),
+        source: "remote",
+        catalogTrackId: catalogTrack.id,
+        releaseId,
+        artistId: release?.artist?.id || release?.artistId || null,
+        aiDisclosure: catalogTrack.aiDisclosure ?? null,
+        remoteUrl: releaseId ? getReleaseTrackStreamUrl(releaseId, catalogTrack.id) : undefined,
+        remoteArtworkUrl: release?.artworkUrl || (release?.artworkMimeType
+            ? getReleaseArtworkUrl(release.id, {
+                artworkRevision: release.artworkRevision,
+            })
+            : undefined),
+        stems: catalogTrack.stems?.map(s => ({
+            id: s.id,
+            uri: isMixerStemType(s.type) ? getStemPreviewUrl(s.id) : s.uri,
+            type: s.type,
+            durationSeconds: s.durationSeconds,
+            isEncrypted: isMixerStemType(s.type) ? false : s.isEncrypted,
+            encryptionMetadata: isMixerStemType(s.type) ? null : s.encryptionMetadata,
+        })),
+    };
 }
 
 /**

@@ -198,6 +198,54 @@ describe("PlayerActionPanel", () => {
     expect(html).not.toMatch(/aria-label="Saved — remove from library"[^>]*disabled/);
   });
 
+  it("reserves the loaded panel's two rows while the first actions load", () => {
+    const html = renderToStaticMarkup(
+      <PlayerActionPanel actionState={null} loading onAction={vi.fn()} />,
+    );
+
+    expect(html).toContain("aria-busy=\"true\"");
+    expect(html).toContain("player-action-row");
+    expect(html).toContain("player-action-locked");
+  });
+
+  it("keeps the previous track's layout but makes every chip inert while the next loads", () => {
+    const html = renderToStaticMarkup(
+      <PlayerActionPanel actionState={actionState} loading stale onAction={vi.fn()} />,
+    );
+
+    // Same layout as the loaded panel — no skeleton swap, no jump.
+    expect(html).toContain("Inspect stems");
+    expect(html).toContain("player-action-locked");
+    expect(html).not.toContain("player-action-chip is-loading");
+    // …but nothing can act on the wrong track.
+    expect(html).toContain("is-stale");
+    expect(html).toContain("aria-busy=\"true\"");
+    expect(html).not.toContain("player-action-chip--available");
+    const chipCount = html.match(/<button/g)?.length ?? 0;
+    const disabledCount = html.match(/<button[^>]*disabled=""/g)?.length ?? 0;
+    expect(chipCount).toBeGreaterThan(0);
+    expect(disabledCount).toBe(chipCount);
+  });
+
+  it("gives remix and show-campaign chips their own icons", () => {
+    const html = renderToStaticMarkup(
+      <PlayerActionPanel
+        actionState={{
+          ...actionState,
+          actions: [
+            { key: "remix", label: "Remix", status: "available", href: "/release/release-1" },
+            { key: "shows_campaign", label: "Support a show", status: "available", href: "/shows/a" },
+          ],
+        }}
+        loading={false}
+        onAction={vi.fn()}
+      />,
+    );
+
+    // The generic fallback glyph is a lone circle of radius 9.
+    expect(html).not.toContain("r=\"9\"");
+  });
+
   it("marks the save chip busy while the library update is in flight", () => {
     const html = renderToStaticMarkup(
       <PlayerActionPanel actionState={actionState} loading={false} saving onAction={vi.fn()} />,

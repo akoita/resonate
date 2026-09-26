@@ -615,6 +615,9 @@ export default function LibraryPage() {
             {selectedRemovable.length > 0 && (
                 <div className="library-selection-bar">
                     <span>{selectedRemovable.length} track{selectedRemovable.length === 1 ? "" : "s"} selected</span>
+                    <button type="button" onClick={() => setTracksToAddToPlaylist(selectedRemovable)}>
+                        Add {selectedRemovable.length} to playlist
+                    </button>
                     <button type="button" onClick={() => requestRemoval(selectedRemovable, `${selectedRemovable.length} selected track${selectedRemovable.length === 1 ? "" : "s"}`)}>
                         Remove {selectedRemovable.length} track{selectedRemovable.length === 1 ? "" : "s"}
                     </button>

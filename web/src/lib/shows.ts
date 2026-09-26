@@ -7,6 +7,7 @@
  */
 
 import { API_BASE, type Release } from "./api";
+import { artistProfileHref, catalogArtistHref } from "./artistRoutes";
 import { getChainExplorerContractUrl } from "./explorer";
 
 export type CampaignStatus = "active" | "funded" | "refunded" | "booked";
@@ -197,6 +198,91 @@ export function campaignStatusBadge(campaign: Pick<Campaign, "rawStatus">): Camp
 
 export function campaignDisplayTitle(campaign: Pick<Campaign, "title" | "artistName" | "city">): string {
   return campaign.title?.trim() || `${campaign.artistName} in ${campaign.city}`;
+}
+
+/**
+ * Where a campaign's artist lives in the app: the artist's Resonate profile
+ * when the campaign is linked to one, otherwise the catalog credit page for
+ * the campaign's free-text artist name.
+ */
+export function campaignArtistHref(campaign: Pick<Campaign, "artistName"> & Partial<Pick<Campaign, "artistId">>): string {
+  return campaign.artistId
+    ? artistProfileHref(campaign.artistId)
+    : catalogArtistHref(campaign.artistName.trim());
+}
+
+export type ArtistCampaignIdentity = {
+  artistId?: string | null;
+  artistName?: string | null;
+};
+
+const LIVE_CAMPAIGN_STATUS_RANK: Record<string, number> = {
+  active: 0,
+  funded: 1,
+  booking_confirmed: 2,
+  deposit_released: 2,
+  fulfilled: 3,
+};
+
+/**
+ * The still-actionable show campaigns for one artist, most relevant first.
+ *
+ * A campaign matches on artist profile id when both sides have one — two
+ * different profiles never match, even with identical names. Name matching
+ * (case/whitespace-insensitive, exact) is only the fallback for campaigns or
+ * artists that carry no profile id. Order: id matches before name matches,
+ * then campaigns still taking pledges before funded/booked ones, then the
+ * nearest pledge deadline.
+ */
+export function findArtistCampaigns<
+  T extends Pick<Campaign, "rawStatus" | "artistName"> & Partial<Pick<Campaign, "artistId" | "deadline">>,
+>(campaigns: T[], artist: ArtistCampaignIdentity, nowMs: number = Date.now()): T[] {
+  const artistId = artist.artistId?.trim() || null;
+  const artistName = normalizedArtistCredit(artist.artistName);
+  if (!artistId && !artistName) return [];
+
+  const matches: Array<{ campaign: T; byId: boolean; index: number }> = [];
+  filterActionableCampaigns(campaigns, nowMs).forEach((campaign, index) => {
+    const campaignArtistId = campaign.artistId?.trim() || null;
+    if (artistId && campaignArtistId) {
+      if (campaignArtistId === artistId) matches.push({ campaign, byId: true, index });
+      return;
+    }
+    if (artistName && normalizedArtistCredit(campaign.artistName) === artistName) {
+      matches.push({ campaign, byId: false, index });
+    }
+  });
+
+  const deadlineMs = (campaign: T) => {
+    const value = campaign.deadline ? new Date(campaign.deadline).getTime() : Number.NaN;
+    return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+  };
+  return matches
+    .sort((left, right) =>
+      Number(right.byId) - Number(left.byId)
+      || (LIVE_CAMPAIGN_STATUS_RANK[left.campaign.rawStatus] ?? 4)
+        - (LIVE_CAMPAIGN_STATUS_RANK[right.campaign.rawStatus] ?? 4)
+      || deadlineMs(left.campaign) - deadlineMs(right.campaign)
+      || left.index - right.index)
+    .map((match) => match.campaign);
+}
+
+/**
+ * The artist identity a release's show campaigns are keyed on — the same
+ * credited-profile resolution the campaign creator uses to link a campaign
+ * to a catalog artist (never the uploader when the credit names someone else).
+ */
+export function releaseCampaignArtistIdentity(
+  release: Pick<Release, "primaryArtist" | "artist" | "artistCredits">,
+): { artistId: string | null; artistName: string } {
+  const mainCredit = mainReleaseCredits(release)[0];
+  return {
+    artistId: releaseCreditProfileId(release),
+    artistName: mainCredit?.displayName.trim()
+      || release.primaryArtist?.trim()
+      || release.artist?.displayName?.trim()
+      || "",
+  };
 }
 
 export function campaignDisplayInitial(campaign: Pick<Campaign, "title" | "artistName" | "city">): string {

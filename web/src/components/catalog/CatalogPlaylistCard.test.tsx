@@ -1,7 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PublicPlaylistSummary } from "../../lib/api";
-import { CatalogPlaylistCard, CatalogPlaylistThumb } from "./CatalogPlaylistCard";
+import {
+  CatalogPlaylistCard,
+  CatalogPlaylistThumb,
+  PlaylistCoverThumb,
+  playlistCoverUrls,
+} from "./CatalogPlaylistCard";
 
 const basePlaylist: PublicPlaylistSummary = {
   id: "pl-1",
@@ -60,5 +65,53 @@ describe("CatalogPlaylistThumb", () => {
     );
     expect(html).toContain("ng-playlist-thumb__monogram");
     expect(html).toContain(">Z<");
+  });
+});
+
+describe("PlaylistCoverThumb", () => {
+  it("renders the same mosaic / single / monogram shapes from a plain cover list", () => {
+    const mosaic = renderToStaticMarkup(
+      <PlaylistCoverThumb name="Mine" covers={["a", "b", "c", "d"].map((s) => `blob:${s}`)} />,
+    );
+    expect(mosaic.match(/ng-playlist-thumb__cell/g) ?? []).toHaveLength(4);
+
+    const single = renderToStaticMarkup(<PlaylistCoverThumb name="Mine" covers={["blob:a", "blob:b"]} />);
+    expect(single).toContain("ng-playlist-thumb__single");
+    expect(single).toContain("blob:a");
+
+    const monogram = renderToStaticMarkup(<PlaylistCoverThumb name="mine" covers={[]} />);
+    expect(monogram).toContain("ng-playlist-thumb__monogram");
+    expect(monogram).toContain(">M<");
+  });
+});
+
+describe("playlistCoverUrls", () => {
+  const covers: Record<string, string | null> = {
+    t1: "https://cdn/1.jpg",
+    t2: "https://cdn/1.jpg",
+    t3: null,
+    t4: "https://cdn/2.jpg",
+    t5: "https://cdn/3.jpg",
+    t6: "https://cdn/4.jpg",
+    t7: "https://cdn/5.jpg",
+  };
+  const coverFor = (id: string) => covers[id];
+
+  it("keeps distinct covers in playlist order, capped at four", () => {
+    expect(playlistCoverUrls(["t1", "t2", "t3", "t4", "t5", "t6", "t7"], coverFor)).toEqual([
+      "https://cdn/1.jpg",
+      "https://cdn/2.jpg",
+      "https://cdn/3.jpg",
+      "https://cdn/4.jpg",
+    ]);
+  });
+
+  it("only samples the leading tracks", () => {
+    const ids = [...Array.from({ length: 8 }, (_, i) => `missing-${i}`), "t1"];
+    expect(playlistCoverUrls(ids, coverFor)).toEqual([]);
+  });
+
+  it("returns nothing for an empty playlist", () => {
+    expect(playlistCoverUrls([], coverFor)).toEqual([]);
   });
 });

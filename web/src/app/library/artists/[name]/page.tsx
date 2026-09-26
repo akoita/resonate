@@ -13,6 +13,7 @@ import AuthGate from "../../../../components/auth/AuthGate";
 import { Button } from "../../../../components/ui/Button";
 import { TrackActionMenu } from "../../../../components/ui/TrackActionMenu";
 import { QueueActionsButton } from "../../../../components/player/QueueActionsButton";
+import { useAddToPlaylist } from "../../../../components/library/useAddToPlaylist";
 import { usePlayer } from "../../../../lib/playerContext";
 import { useQueueActions } from "../../../../lib/useQueueActions";
 import { getArtworkUrl, listTracks, type LocalTrack } from "../../../../lib/localLibrary";
@@ -41,6 +42,12 @@ export default function LibraryArtistPage() {
 
   const { playQueue, currentTrack } = usePlayer();
   const queueActions = useQueueActions();
+  const { openAddToPlaylist } = useAddToPlaylist();
+  const addToPlaylistItem = (list: LocalTrack[]) => ({
+    label: "Add to Playlist",
+    icon: "🎵",
+    onClick: () => openAddToPlaylist(list),
+  });
 
   useEffect(() => {
     if (!artistName) return;
@@ -167,6 +174,9 @@ export default function LibraryArtistPage() {
                     label="Queue artist"
                     nextLabel="Play artist next"
                   />
+                  <Button variant="ghost" onClick={() => openAddToPlaylist(tracks)}>
+                    Add to playlist
+                  </Button>
                   <Button variant="ghost" onClick={() => router.push(catalogHref)}>
                     {linksToProfile ? "View Resonate profile" : "Explore in catalog"}
                   </Button>
@@ -205,7 +215,12 @@ export default function LibraryArtistPage() {
                     </div>
                   </Link>
                   <div className="library-card-actions">
-                    <TrackActionMenu actions={queueActions.actionMenuItems(album.tracks)} />
+                    <TrackActionMenu
+                      actions={[
+                        ...queueActions.actionMenuItems(album.tracks),
+                        addToPlaylistItem(album.tracks),
+                      ]}
+                    />
                   </div>
                 </div>
               ))}
@@ -261,7 +276,12 @@ export default function LibraryArtistPage() {
                     </div>
                     <div className="library-item-duration">{formatDuration(track.duration)}</div>
                     <div onClick={(e) => e.stopPropagation()}>
-                      <TrackActionMenu actions={queueActions.actionMenuItems(track)} />
+                      <TrackActionMenu
+                        actions={[
+                          ...queueActions.actionMenuItems(track),
+                          addToPlaylistItem([track]),
+                        ]}
+                      />
                     </div>
                   </div>
                 );

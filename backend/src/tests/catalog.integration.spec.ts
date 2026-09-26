@@ -2035,6 +2035,15 @@ describe('CatalogService (integration)', () => {
     const remixAction = result!.actions.find((action) => action.key === 'remix');
     expect(remixAction?.status).toBe('available');
 
+    // "Inspect stems" always opens the release page (every stem of the
+    // track), even when a minted stem page exists — that page leads with Remix.
+    const inspectAction = result!.actions.find((action) => action.key === 'inspect_stems');
+    expect(inspectAction).toMatchObject({
+      status: 'available',
+      href: `/release/${releaseId}`,
+      metadata: expect.objectContaining({ stemCount: 2, mintedStemCount: 1 }),
+    });
+
     const serialized = JSON.stringify(result);
     expect(serialized).not.toContain(sellerAddress);
     expect(serialized).not.toContain('listing_expired');

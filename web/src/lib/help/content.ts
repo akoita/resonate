@@ -326,7 +326,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Artists show their latest cover, how many releases and stems they have, and their main genre. Stems are grouped by track: each row lists the parts that track offers (Full mix, Vocals, Drums, Bass, and so on) and opens the release mixer. The Recently Added section on the home page shows a smaller preview with the same cards, plus buttons to add a release to a playlist or save it to your library.",
+            text: "Artists show their latest cover, how many releases and stems they have, and their main genre. Stems are grouped by track: each row lists the parts that track offers (Full mix, Vocals, Drums, Bass, and so on) and opens the release mixer. Each release cover also has buttons to add the release to a playlist or save it to your library, both here and in the smaller Recently Added preview on the home page.",
           },
           {
             kind: "figure",
@@ -451,11 +451,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Save the track to your library or add it to a playlist.",
-              "Inspect the track's stems to hear the individual parts.",
+              "Inspect stems opens the release page with every stem of the track, so you can hear the individual parts.",
+              "Remix opens Remix Studio straight away when you are allowed to remix the track; when a remix license is needed, it takes you to the license instead.",
               "Check the AI-contribution badge without leaving the player.",
               "Open licensing actions when a stem is available to collect or license in the Marketplace.",
               "Support a show when the playing artist has a live campaign; the chip opens the campaign page so you can review the details before pledging.",
-              "Share what you are playing from Broadcast Signal. The link opens the track's release page, with its cover in the preview. Only tracks published on Resonate can be shared; files from your device cannot.",
+              "Share what you are playing from Broadcast Signal. The link opens the track's release page, with its cover in the preview. When the artist has a live show campaign, the post invites your friends to back it and links to it. The post only mentions what the artist keeps from a sale when something of theirs is actually for sale. Tracks with a public Resonate release can be shared; files from your device cannot.",
             ],
           },
           {
@@ -607,10 +608,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open the Add to playlist action on any track.",
-              "Create a new playlist or add the track to an existing one.",
-              "Reorder and manage tracks from the Playlists tab in your library.",
+              "Open the Add to playlist action on any track, release, album, or artist page — including artist pages inside My Library.",
+              "To add several tracks at once, select them in My Library and choose Add to playlist, or drag them onto a playlist in the side panel.",
+              "Create a new playlist or add the tracks to an existing one.",
+              "Reorder and manage tracks from the Playlists tab in your library. Playlist covers show a mosaic of the artwork inside.",
             ],
+          },
+          {
+            kind: "paragraph",
+            text: "Adding a track to a playlist does not save it to your library, and it doesn't need to: catalog tracks play from a playlist whether or not you have saved them. Removing a track from your library leaves your playlists as they are.",
           },
         ],
       },
@@ -1657,6 +1663,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Pick an artist and a city, lock funds in a smart contract, and if enough fans commit, the artist's team gets a demand signal backed by money — not just likes. If the show isn't confirmed, every pledge is refunded automatically.",
+          },
+          {
+            kind: "paragraph",
+            text: "A campaign page links to the artist so you can listen before you pledge, and an artist's profile and release pages show a banner for any of their show campaigns that are still running.",
           },
           {
             kind: "figure",

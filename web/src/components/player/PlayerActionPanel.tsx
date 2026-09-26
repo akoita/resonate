@@ -101,6 +101,12 @@ function ActionIcon({ k }: { k: PlayerTrackActionKey | string }) {
       return (<svg {...common}><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></svg>);
     case "buy_license":
       return (<svg {...common}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>);
+    case "remix":
+      // Two crossing arrows (shuffle) — the track re-cut into something new.
+      return (<svg {...common}><polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /><line x1="4" y1="4" x2="9" y2="9" /></svg>);
+    case "shows_campaign":
+      // Ticket stub — back a live show.
+      return (<svg {...common}><path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z" /><line x1="14" y1="6" x2="14" y2="8" /><line x1="14" y1="11" x2="14" y2="13" /><line x1="14" y1="16" x2="14" y2="18" /></svg>);
     default:
       return (<svg {...common}><circle cx="12" cy="12" r="9" /></svg>);
   }
@@ -109,25 +115,48 @@ function ActionIcon({ k }: { k: PlayerTrackActionKey | string }) {
 export function PlayerActionPanel({
   actionState,
   loading,
+  stale = false,
   saved = false,
   saving = false,
   onAction,
 }: {
   actionState: PlayerTrackActionsResponse | null;
+  /** First load with nothing to show yet: renders a same-height skeleton. */
   loading: boolean;
+  /**
+   * `actionState` belongs to the previous track while the current one's
+   * actions load. The last layout stays in place (no console jump) but every
+   * chip is inert so a click can never act on the wrong track.
+   */
+  stale?: boolean;
   saved?: boolean;
   saving?: boolean;
   onAction: (action: PlayerTrackAction) => void;
 }) {
-  if (loading) {
+  if (loading && !actionState) {
+    // Reserve the loaded panel's footprint (kicker row, primary row, locked
+    // row) so the queue below does not jump when the actions arrive.
     return (
-      <section className="player-action-panel" aria-label="Now Playing actions" aria-busy="true">
-        <div className="studio-label player-action-kicker">Now Playing Actions</div>
+      <section className="player-action-panel is-loading" aria-label="Now Playing actions" aria-busy="true">
+        <div className="player-action-kicker-row">
+          <div className="studio-label player-action-kicker">Now Playing Actions</div>
+        </div>
         <div className="player-action-row">
           {["save", "add_to_playlist", "inspect_stems", "buy_license"].map((k) => (
-            <button key={k} className="player-action-chip is-loading" type="button" disabled>
+            <button key={k} className="player-action-chip is-loading" type="button" disabled aria-hidden="true" tabIndex={-1}>
               <ActionIcon k={k} />
             </button>
+          ))}
+        </div>
+        <div className="player-action-locked" aria-hidden="true">
+          {[72, 88, 64].map((width) => (
+            <span
+              key={width}
+              className="player-action-lockchip player-action-lockchip--loading"
+              style={{ width, opacity: 0.4 }}
+            >
+              {"\u00a0"}
+            </span>
           ))}
         </div>
       </section>
@@ -139,9 +168,15 @@ export function PlayerActionPanel({
   }
 
   const { primaryActions, unavailableActions } = groupPlayerActions(actionState, saved);
+  const inert = stale || loading;
 
   return (
-    <section className="player-action-panel" aria-label="Now Playing actions">
+    <section
+      className={`player-action-panel${inert ? " is-stale" : ""}`}
+      aria-label="Now Playing actions"
+      aria-busy={inert || undefined}
+      style={inert ? { opacity: 0.55, transition: "opacity 0.15s ease" } : { transition: "opacity 0.15s ease" }}
+    >
       <div className="player-action-kicker-row">
         <div className="studio-label player-action-kicker">Now Playing Actions</div>
         {actionState.recommendation?.summary && (
@@ -156,15 +191,19 @@ export function PlayerActionPanel({
           {primaryActions.map((action) => {
             const isSavedAction = action.key === "save" && saved;
             const isBusy = saving && action.key === "save";
+            const disabled = isBusy || inert;
             const detail = getActionDetail(action);
             const hint = detail || action.reason;
             return (
               <button
                 key={action.key}
-                className={`player-action-chip player-action-chip--available ${isSavedAction ? "is-saved" : ""} ${isBusy ? "is-busy" : ""}`}
+                className={`player-action-chip ${inert ? "" : "player-action-chip--available"} ${isSavedAction ? "is-saved" : ""} ${isBusy ? "is-busy" : ""}`}
                 type="button"
-                onClick={() => onAction(action)}
-                disabled={isBusy}
+                onClick={() => {
+                  if (!disabled) onAction(action);
+                }}
+                disabled={disabled}
+                style={inert ? { cursor: "progress" } : undefined}
                 aria-pressed={isSavedAction || undefined}
                 aria-busy={isBusy || undefined}
                 /* The accessible name has to contain the visible label

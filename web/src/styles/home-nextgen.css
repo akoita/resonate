@@ -650,9 +650,12 @@
   display: block;
 }
 
-/* Public-playlist cover (catalog/discovery). Fills the card art box with a
-   2×2 mosaic, single cover, or name monogram, plus a small badge. */
-.home-ng .ng-playlist-thumb {
+/* Playlist cover (catalog/discovery and the library's own playlists — see
+   `PlaylistCoverThumb`). Fills its box with a 2×2 mosaic, single cover, or
+   name monogram, plus a small badge. Unscoped from `.home-ng` because the
+   library playlist cards render it too; the `ng-playlist-thumb` names are
+   unique to this component. */
+.ng-playlist-thumb {
   position: relative;
   display: block;
   width: 100%;
@@ -661,35 +664,35 @@
   background: var(--r-grad-brand);
 }
 
-.home-ng .ng-playlist-thumb__single,
-.home-ng .ng-playlist-thumb__mosaic,
-.home-ng .ng-playlist-thumb__monogram {
+.ng-playlist-thumb__single,
+.ng-playlist-thumb__mosaic,
+.ng-playlist-thumb__monogram {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.home-ng .ng-playlist-thumb__single {
+.ng-playlist-thumb__single {
   background-image: var(--cover);
   background-size: cover;
   background-position: center;
 }
 
-.home-ng .ng-playlist-thumb__mosaic {
+.ng-playlist-thumb__mosaic {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 1px;
 }
 
-.home-ng .ng-playlist-thumb__cell {
+.ng-playlist-thumb__cell {
   background-image: var(--cover);
   background-size: cover;
   background-position: center;
   background-color: #08080f;
 }
 
-.home-ng .ng-playlist-thumb__monogram {
+.ng-playlist-thumb__monogram {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -705,7 +708,7 @@
   font-weight: 700;
 }
 
-.home-ng .ng-playlist-thumb__badge {
+.ng-playlist-thumb__badge {
   position: absolute;
   left: 8px;
   bottom: 8px;
@@ -721,7 +724,7 @@
   backdrop-filter: blur(4px);
 }
 
-.home-ng .ng-playlist-thumb__badge .ms-icon {
+.ng-playlist-thumb__badge .ms-icon {
   font-size: 16px;
 }
 
