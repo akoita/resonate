@@ -2,7 +2,21 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixSectionGrid } from "../../lib/api";
 import {
+  identityBlocks,
+  structureEditState,
+  structureTimeline,
+  type RemixStructureBlock,
+} from "../../lib/remixStructure";
+import {
   applyPaint,
+  blockActionResult,
+  blockMenuEntries,
+  isRepeatBlock,
+  LaneBlockMenu,
+  laneColumns,
+  nextMenuIndex,
+  sectionPlaceLabel,
+  slicePeaks,
   laneHasFx,
   LaneFxRow,
   normalizeSections,
@@ -314,5 +328,179 @@ describe("per-lane FX (#1897)", () => {
     const open = toggleInSet(new Set(), "a");
     expect([...open]).toEqual(["a"]);
     expect([...toggleInSet(open, "a")]).toEqual([]);
+  });
+});
+
+describe("structure blocks (#1899)", () => {
+  const grid = barsGrid(16, 4); // 4 × 16 s = 64 s
+  const blocks: RemixStructureBlock[] = [
+    { section: 0 },
+    { section: 1 },
+    { section: 1 },
+    { section: 3, fadeIn: true, fadeOut: true },
+  ];
+  const timeline = structureTimeline(grid, blocks);
+  const state = structureEditState(grid, { blocks }, {});
+
+  function renderBlocks(overrides: Partial<RemixSessionLanesProps> = {}): string {
+    return render({
+      grid,
+      timeline,
+      structureState: state,
+      onBlockAction: noop,
+      stems: [stem({ peaks: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] })],
+      ...overrides,
+    });
+  }
+
+  it("lays out one column per block, sized by timeline duration", () => {
+    const html = renderBlocks();
+    expect(countMatches(html, /remix-lane-block-header /g)).toBe(4);
+    expect(countMatches(html, /remix-lane-cell /g)).toBe(4);
+    // Block 3 (the repeat) sits at 25–50 % of the 64 s timeline.
+    expect(html).toContain("left:25%;width:25%");
+    expect(html).toContain('aria-label="Drums: section 4 on"');
+    expect(laneColumns(grid, null).map((column) => column.section)).toEqual([
+      0, 1, 2, 3,
+    ]);
+    expect(laneColumns(grid, timeline)).toBe(timeline.segments);
+  });
+
+  it("names each column after its source section, marking repeats and fades", () => {
+    const html = renderBlocks();
+    expect(html).toContain('title="Repeat of bar 9"');
+    expect(countMatches(html, /remix-lane-repeat-mark/g)).toBe(1);
+    expect(html).toContain(
+      'aria-label="Loop section 3 (starts 0:32, repeat of bar 9)"',
+    );
+    expect(html).toContain(
+      'aria-label="Loop section 4 (starts 0:48, fades in, fades out)"',
+    );
+    expect(html).toContain("◢</span>25<span");
+    expect(html).toContain("◣</span></button>");
+    expect(isRepeatBlock(timeline.segments, 2)).toBe(true);
+    expect(isRepeatBlock(timeline.segments, 1)).toBe(false);
+    expect(sectionPlaceLabel(barsGrid(4, 3), 0)).toBe("the pickup");
+    expect(sectionPlaceLabel(timeGrid(), 2)).toBe("the section at 0:32");
+  });
+
+  it("draws each block's slice of the source waveform", () => {
+    const html = renderBlocks();
+    expect(countMatches(html, /remix-lane-block-waveform/g)).toBe(4);
+    // 8 buckets over 64 s: 16 s = 2 buckets.
+    const peaks = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
+    expect(slicePeaks(peaks, 64, 16, 32)).toEqual([0.3, 0.4]);
+    expect(slicePeaks(peaks, 64, 48, 64)).toEqual([0.7, 0.8]);
+    // A sliver still draws one bucket; nothing for empty input.
+    expect(slicePeaks(peaks, 64, 63.9, 64)).toEqual([0.8]);
+    expect(slicePeaks([], 64, 0, 16)).toEqual([]);
+    expect(slicePeaks(peaks, 0, 0, 16)).toEqual([]);
+    // The identity order keeps the single full-lane waveform.
+    const plain = render({ grid, stems: [stem()] });
+    expect(plain).not.toContain("remix-lane-block-waveform");
+    expect(plain).toContain("remix-lane-waveform");
+  });
+
+  it("loops a block over its timeline span", () => {
+    const html = renderBlocks({ loopSectionIndex: 3 });
+    expect(html).toMatch(/remix-lane-loop-band[^"]*" style="left:75%;width:25%"/);
+  });
+
+  it("offers a section menu per block, locked when published", () => {
+    const html = renderBlocks();
+    expect(countMatches(html, /aria-haspopup="menu"/g)).toBe(4);
+    expect(html).toContain('aria-label="Section options for bar 1"');
+    expect(html).toContain('aria-label="Section options for bar 9 (repeat)"');
+    expect(html).toMatch(/aria-haspopup="menu" aria-expanded="false"/);
+    expect(renderBlocks({ disabled: true })).toMatch(
+      /aria-label="Section options for bar 1"[^>]*disabled=""/,
+    );
+    // No handler, no menu.
+    expect(render({ grid })).not.toContain("aria-haspopup");
+  });
+
+  it("disables refused menu entries with a plain reason", () => {
+    const first = blockMenuEntries(state, 0, grid);
+    expect(first.map((entry) => entry.label)).toEqual([
+      "Repeat this section",
+      "Remove",
+      "Move earlier",
+      "Move later",
+      "Fade in",
+      "Fade out",
+    ]);
+    expect(first.find((entry) => entry.action === "earlier")).toMatchObject({
+      enabled: false,
+      reason: "This is already the first section",
+    });
+    expect(
+      blockMenuEntries(state, 3, grid).find((entry) => entry.action === "later"),
+    ).toMatchObject({ enabled: false, reason: "This is already the last section" });
+    expect(blockMenuEntries(state, 3, grid).slice(4)).toMatchObject([
+      { action: "fade_in", checked: true, enabled: true },
+      { action: "fade_out", checked: true, enabled: true },
+    ]);
+    const single = structureEditState(grid, { blocks: [{ section: 2 }] }, {});
+    expect(
+      blockMenuEntries(single, 0, grid).find((entry) => entry.action === "remove"),
+    ).toMatchObject({ enabled: false, reason: "The song needs at least one section" });
+    // Two passes = 128 s, already at the 2 × 64 s cap: any repeat is over.
+    const long = structureEditState(
+      grid,
+      { blocks: [...identityBlocks(4), ...identityBlocks(4)] },
+      {},
+    );
+    expect(blockMenuEntries(long, 0, grid)[0]).toMatchObject({
+      action: "repeat",
+      enabled: false,
+      reason: "That would make the remix more than twice as long as the original.",
+    });
+  });
+
+  it("runs menu actions through the structure ops", () => {
+    expect(
+      blockActionResult(state, 1, "later", grid)!.blocks.map((block) => block.section),
+    ).toEqual([0, 1, 1, 3]);
+    expect(
+      blockActionResult(state, 0, "later", grid)!.blocks.map((block) => block.section),
+    ).toEqual([1, 0, 1, 3]);
+    expect(blockActionResult(state, 0, "fade_in", grid)!.blocks[0]).toEqual({
+      section: 0,
+      fadeIn: true,
+    });
+    expect(blockActionResult(state, 0, "earlier", grid)).toBeNull();
+  });
+
+  it("renders an accessible menu with checkable fades and inert refused entries", () => {
+    const html = renderToStaticMarkup(
+      <LaneBlockMenu
+        id="menu"
+        label="Options for bar 1"
+        entries={blockMenuEntries(state, 0, grid)}
+        onSelect={noop}
+        onClose={noop}
+      />,
+    );
+    expect(html).toContain('role="menu"');
+    expect(html).toContain('aria-label="Options for bar 1"');
+    expect(countMatches(html, /role="menuitem"/g)).toBe(4);
+    expect(countMatches(html, /role="menuitemcheckbox"/g)).toBe(2);
+    expect(countMatches(html, /aria-checked="false"/g)).toBe(2);
+    expect(countMatches(html, /tabindex="-1"/g)).toBe(6);
+    expect(html).toMatch(
+      /role="menuitem" aria-disabled="true" tabindex="-1" title="This is already the first section"/,
+    );
+    expect(html).toContain("Move earlier");
+  });
+
+  it("moves through menu entries with the arrow keys, wrapping", () => {
+    expect(nextMenuIndex("ArrowDown", -1, 6)).toBe(0);
+    expect(nextMenuIndex("ArrowDown", 5, 6)).toBe(0);
+    expect(nextMenuIndex("ArrowUp", 0, 6)).toBe(5);
+    expect(nextMenuIndex("ArrowUp", -1, 6)).toBe(5);
+    expect(nextMenuIndex("Home", 3, 6)).toBe(0);
+    expect(nextMenuIndex("End", 0, 6)).toBe(5);
+    expect(nextMenuIndex("a", 0, 6)).toBeNull();
+    expect(nextMenuIndex("ArrowDown", 0, 0)).toBeNull();
   });
 });

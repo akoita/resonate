@@ -5,6 +5,15 @@ import { REMIX_RECIPES } from "../../lib/remixRecipes";
 import { REMIX_AI_INTENTS } from "../../lib/remixIntent";
 import { REMIX_FX_SCHEMA_VERSION, REMIX_VIBES } from "../../lib/remixFx";
 import {
+  identityBlocks,
+  structureEditState,
+  type RemixStructureBlock,
+} from "../../lib/remixStructure";
+import type { RemixSectionGrid } from "../../lib/api";
+import {
+  formatSongLength,
+  structureShapeOptions,
+  structureShapeResult,
   primaryActionable,
   primaryClickHandler,
   REMIX_STUDIO_LOCKED_NOTE,
@@ -294,3 +303,99 @@ function countRanges(html: string, disabled: boolean): number {
   const ranges = html.match(/<input[^>]*type="range"[^>]*>/g) ?? [];
   return ranges.filter((tag) => tag.includes('disabled=""') === disabled).length;
 }
+
+describe("RemixCreatePanel — Song length & shape (#1899)", () => {
+  // Four 16 s sections: 1:04, no pickup.
+  const grid: RemixSectionGrid = {
+    kind: "bars",
+    sections: [0, 16, 32, 48].map((startSec) => ({ startSec, endSec: startSec + 16 })),
+    sectionSeconds: 16,
+    durationSeconds: 64,
+    bpm: 120,
+  };
+  const stateFor = (blocks: RemixStructureBlock[] | null) =>
+    structureEditState(grid, blocks ? { blocks } : null, {});
+
+  it("offers three shapes with the length change spelled out", () => {
+    const options = structureShapeOptions(grid, stateFor(null));
+    expect(options.map((option) => option.label)).toEqual([
+      "Original length",
+      "Extended mix",
+      "Short edit",
+    ]);
+    expect(options[0]).toMatchObject({ pressed: true, lengthLabel: "1:04" });
+    // Extended: 0,0,1,2,3,3 = 96 s. Short: ceil(0.6 × 4) = 3 sections.
+    expect(options[1]).toMatchObject({ pressed: false, lengthLabel: "1:04 → 1:36" });
+    expect(options[2]).toMatchObject({ pressed: false, lengthLabel: "1:04 → 0:48" });
+    expect(options[1].description).toBe("Longer intro and outro — handy for DJs");
+    expect(options[2].description).toBe("About a third shorter, fades out");
+  });
+
+  it("presses the shape the structure already has", () => {
+    const short = structureShapeResult(grid, stateFor(null), "short")!;
+    const options = structureShapeOptions(grid, stateFor(short.blocks));
+    expect(options.map((option) => option.pressed)).toEqual([false, false, true]);
+    expect(options[0].lengthLabel).toBe("0:48 → 1:04");
+    // Re-pressing an applied shape changes nothing.
+    expect(structureShapeResult(grid, stateFor(short.blocks), "short")).toBeNull();
+    expect(structureShapeResult(grid, stateFor(null), "original")).toBeNull();
+  });
+
+  it("disables the extended mix past the length cap, saying why", () => {
+    const tight = { ...grid, durationSeconds: 40 }; // cap 80 s < 96 s
+    const options = structureShapeOptions(
+      tight,
+      structureEditState(tight, null, {}),
+    );
+    expect(options[1]).toMatchObject({
+      enabled: false,
+      reason: "That would make the remix more than twice as long as the original.",
+      lengthLabel: null,
+    });
+  });
+
+  it("renders the section between Vibe and One-click arrangements", () => {
+    const html = render({
+      structureOptions: structureShapeOptions(grid, stateFor(null)),
+      onApplyStructure: noop,
+    });
+    expect(html).toContain("Song length &amp; shape");
+    expect(html.indexOf("remix-vibe-controls")).toBeLessThan(
+      html.indexOf("remix-structure-shapes"),
+    );
+    expect(html.indexOf("remix-structure-shapes")).toBeLessThan(
+      html.indexOf("One-click arrangements"),
+    );
+    expect(buttonTag(html, "remix-structure-shape-original")).toContain(
+      'aria-pressed="true"',
+    );
+    expect(buttonTag(html, "remix-structure-shape-extended")).toContain(
+      'aria-pressed="false"',
+    );
+    expect(html).toContain("1:04 → 1:36");
+    expect(html).toContain("Longer intro and outro — handy for DJs");
+    expect(buttonTag(html, "remix-structure-shape-short")).not.toContain('disabled=""');
+  });
+
+  it("locks the shapes on a published remix and hides them without a grid", () => {
+    const locked = render({
+      structureOptions: structureShapeOptions(grid, stateFor(identityBlocks(4))),
+      onApplyStructure: noop,
+      locked: true,
+    });
+    for (const id of ["original", "extended", "short"]) {
+      expect(buttonTag(locked, `remix-structure-shape-${id}`)).toContain('disabled=""');
+    }
+    expect(render({ structureOptions: [], onApplyStructure: noop })).not.toContain(
+      "remix-structure-shapes",
+    );
+    expect(render()).not.toContain("Song length");
+    expect(render({ intent: "reimagine" })).not.toContain("remix-structure-shapes");
+  });
+
+  it("formats song lengths as m:ss", () => {
+    expect(formatSongLength(216)).toBe("3:36");
+    expect(formatSongLength(288.4)).toBe("4:48");
+    expect(formatSongLength(-1)).toBe("0:00");
+  });
+});

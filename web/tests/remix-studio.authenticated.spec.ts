@@ -238,7 +238,7 @@ test.describe("Remix Studio session view (#1879)", () => {
     // The muted full mix is a reference source, not a lane.
     await expect(page.getByRole("button", { name: "Mute Vocals" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Mute Original" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Original" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Original", exact: true })).toBeVisible();
 
     // Drag-free edit: switch the drums off for section 2 → autosaved.
     await page.getByRole("button", { name: "Drums: section 2 on" }).click();
@@ -454,6 +454,74 @@ test.describe("Remix Studio session view (#1879)", () => {
       .click();
     await expect
       .poll(() => patches.some((patch) => "effects" in patch && patch.effects === null), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+  });
+
+  test("structure blocks: repeat a section and one-click short edit (#1899)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    // Repeat the section starting at bar 17 from its options menu.
+    await page.getByRole("button", { name: "Section options for bar 17" }).click();
+    await page.getByRole("menuitem", { name: /Repeat this section/ }).click();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const structure = patch.structure as
+              | { blocks?: Array<{ section: number }> }
+              | null
+              | undefined;
+            return (
+              JSON.stringify(structure?.blocks?.map((block) => block.section)) ===
+              JSON.stringify([0, 1, 2, 2, 3])
+            );
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    // The repeated block shows its repeat mark.
+    await expect(page.getByTitle(/Repeat of bar 17/).first()).toBeVisible();
+
+    // One-click Short edit: shorter and fades out.
+    await page.getByRole("button", { name: /Short edit/ }).click();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const structure = patch.structure as
+              | { blocks?: Array<{ section: number; fadeOut?: boolean }> }
+              | null
+              | undefined;
+            const blocks = structure?.blocks ?? [];
+            return blocks.length > 0 && blocks.length < 4 && blocks.at(-1)?.fadeOut === true;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+
+    // The restructured timeline plays through the preview engine.
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-structure.png"),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // Original length restores the original order (structure null).
+    await page.getByRole("button", { name: /Original length/ }).click();
+    await expect
+      .poll(() => patches.some((patch) => "structure" in patch && patch.structure === null), {
         timeout: 10_000,
       })
       .toBe(true);

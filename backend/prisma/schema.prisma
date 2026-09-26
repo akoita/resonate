@@ -1208,6 +1208,9 @@ model RemixProject {
   // Shared effects recipe (#1897): remix-fx/v1 { schemaVersion, master?,
   // stems? }; null means untouched (no effects applied at render time).
   effects            Json?
+  // Structure blocks (#1899): remix-structure/v1 { schemaVersion, blocks:
+  // [{ section, fadeIn?, fadeOut? }] }; null means the original order.
+  structure          Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())

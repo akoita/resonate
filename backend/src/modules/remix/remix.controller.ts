@@ -141,6 +141,8 @@ export class RemixController {
       aiTarget?: { kind: string; stemId?: string | null } | null;
       /** Shared effects recipe remix-fx/v1 (#1897); validated in the service. */
       effects?: unknown;
+      /** Structure blocks remix-structure/v1 (#1899); validated in the service. */
+      structure?: unknown;
     },
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);

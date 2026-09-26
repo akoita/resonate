@@ -15,6 +15,14 @@ import {
   warmthCurve,
   type RemixFxRecipe,
 } from "./remixFx";
+import {
+  isIdentityTimeline,
+  masterFadeValueAt,
+  REMIX_STRUCTURE_JOIN_FADE_SECONDS,
+  type RemixMasterFadeRamp,
+  type RemixStructureSegment,
+  type RemixStructureTimeline,
+} from "./remixStructure";
 
 export type RemixDraftOutputMetadata = {
   outputUri: string | null;
@@ -222,6 +230,138 @@ export function wrapLoopPosition(positionSec: number, loop: PreviewLoop): number
   return loop.startSec + ((positionSec - loop.startSec) % length);
 }
 
+/**
+ * A block loop under a structure (#1899): the timeline loop clamped to the
+ * block that contains its start, and the matching SOURCE range the looping
+ * buffer source cycles. Null when the loop is shorter than `minSeconds`
+ * after clamping or starts outside every block.
+ */
+export function blockLoopSource(
+  segments: RemixStructureSegment[],
+  loop: PreviewLoop,
+  minSeconds = 0.05,
+): {
+  segment: RemixStructureSegment;
+  loop: PreviewLoop;
+  srcLoopStartSec: number;
+  srcLoopEndSec: number;
+} | null {
+  const startSec = Math.max(loop.startSec, 0);
+  const segment = segments.find(
+    (candidate) =>
+      candidate.outStartSec <= startSec + 1e-9 && startSec < candidate.outEndSec,
+  );
+  if (!segment) return null;
+  const endSec = Math.min(loop.endSec, segment.outEndSec);
+  if (endSec - startSec < minSeconds) return null;
+  return {
+    segment,
+    loop: { startSec, endSec },
+    srcLoopStartSec: segment.srcStartSec + (startSec - segment.outStartSec),
+    srcLoopEndSec: segment.srcStartSec + (endSec - segment.outStartSec),
+  };
+}
+
+/**
+ * One scheduled block source (#1899): `start(whenSec, offsetSec,
+ * durationSec)` in context time with source offsets/durations in buffer
+ * time. Timeline position T plays at `startAt + (T − offset)/speed`; a block
+ * already under way at the offset starts mid-block.
+ */
+export type BlockSourcePlan = {
+  segment: RemixStructureSegment;
+  whenSec: number;
+  offsetSec: number;
+  durationSec: number;
+  /** Apply the 10 ms join fade-in (the block starts from its beginning). */
+  fadeIn: boolean;
+  fadeOut: boolean;
+};
+
+export function planBlockSources(
+  segments: RemixStructureSegment[],
+  input: { startAt: number; offsetSec: number; speed: number },
+): BlockSourcePlan[] {
+  const { startAt, offsetSec, speed } = input;
+  const plans: BlockSourcePlan[] = [];
+  segments.forEach((segment, index) => {
+    const isLast = index === segments.length - 1;
+    // Past blocks are skipped; the last one is kept (possibly empty) so a
+    // start at the very end still ends through onended.
+    if (segment.outEndSec <= offsetSec && !isLast) return;
+    const into = Math.max(0, offsetSec - segment.outStartSec);
+    const length = segment.srcEndSec - segment.srcStartSec;
+    plans.push({
+      segment,
+      whenSec: startAt + Math.max(0, segment.outStartSec - offsetSec) / speed,
+      offsetSec: segment.srcStartSec + Math.min(into, length),
+      durationSec: Math.max(0, length - into),
+      fadeIn: segment.joinFadeIn && into === 0,
+      fadeOut: segment.joinFadeOut && segment.outEndSec > offsetSec,
+    });
+  });
+  return plans;
+}
+
+/**
+ * Schedule a block's 10 ms join fades (source time, so J/speed in context
+ * time) on its own gain param: fade-in from the block start, fade-out
+ * ending at the block end.
+ */
+export function scheduleJoinFades(
+  param: SchedulableParam,
+  plan: BlockSourcePlan,
+  input: { startAt: number; offsetSec: number; speed: number },
+  fadeSeconds: number = REMIX_STRUCTURE_JOIN_FADE_SECONDS,
+): void {
+  const toContext = (sec: number) =>
+    input.startAt + (sec - input.offsetSec) / input.speed;
+  const { outStartSec, outEndSec } = plan.segment;
+  if (plan.fadeIn) {
+    param.setValueAtTime(0, toContext(outStartSec));
+    param.linearRampToValueAtTime(1, toContext(outStartSec + fadeSeconds));
+  }
+  if (plan.fadeOut) {
+    const fadeStart = Math.max(
+      outEndSec - fadeSeconds,
+      input.offsetSec,
+      plan.fadeIn ? outStartSec + fadeSeconds : outStartSec,
+    );
+    param.setValueAtTime(1, toContext(Math.min(fadeStart, outEndSec)));
+    param.linearRampToValueAtTime(0, toContext(outEndSec));
+  }
+}
+
+/**
+ * Schedule the master fade ramps (#1899) from timeline position
+ * `offsetSec`: pins the level at the offset at `startAt`, then each later
+ * ramp in context time. A non-final fade-out returns to 1 at its end
+ * (unless a ramp starts right there); a `holdAfter` ramp leaves the level
+ * at 0 for the effects tail.
+ */
+export function scheduleMasterFades(
+  param: SchedulableParam,
+  ramps: RemixMasterFadeRamp[],
+  input: { startAt: number; offsetSec: number; speed: number },
+): void {
+  const toContext = (sec: number) =>
+    input.startAt + (sec - input.offsetSec) / input.speed;
+  param.setValueAtTime(masterFadeValueAt(ramps, input.offsetSec), input.startAt);
+  ramps.forEach((ramp, index) => {
+    if (ramp.endSec <= input.offsetSec) return;
+    if (ramp.startSec >= input.offsetSec) {
+      param.setValueAtTime(ramp.from, toContext(ramp.startSec));
+    }
+    param.linearRampToValueAtTime(ramp.to, toContext(ramp.endSec));
+    if (!ramp.holdAfter && ramp.to !== 1) {
+      const next = ramps[index + 1];
+      if (!next || next.startSec > ramp.endSec + 1e-9) {
+        param.setValueAtTime(1, toContext(ramp.endSec));
+      }
+    }
+  });
+}
+
 /** Post-limiter output level for the studio meter. */
 export type PreviewLevel = {
   /** Peak absolute sample value after the limiter, linear 0..1. */
@@ -239,11 +379,15 @@ export type StemArrangementPreviewHandle = {
   stop(): void;
   level(): PreviewLevel;
   /**
-   * Seconds on the source timeline (#1879): wraps inside a loop, clamps to
+   * Seconds on the timeline (#1879): the source timeline, or the structure's
+   * output timeline when one plays (#1899). Wraps inside a loop, clamps to
    * the duration otherwise, and freezes at the last position after stop.
    */
   position(): number;
-  /** Longest decoded buffer among the playing stems, in seconds. */
+  /**
+   * Longest decoded buffer among the playing stems, in seconds; the
+   * structure timeline's duration when one plays (#1899).
+   */
   duration(): number;
   /**
    * Live section-cell edits (#1879): re-schedule each playing stem's section
@@ -287,6 +431,19 @@ export type StemPreviewEngine = {
     effects?: RemixFxRecipe | null;
     /** Bar-grid tempo for tempo-synced echo; null = the 0.375 s fallback. */
     bpm?: number | null;
+    /**
+     * Structure timeline `remix-structure/v1` (#1899). Null/absent (or an
+     * identity timeline) keeps the plain single-source-per-stem graph.
+     * Otherwise `offsetSec`, `loop`, `position()`, `duration()` and the
+     * stems' `activeIntervals` (from `gateIntervalsForBlocks`) are all in
+     * TIMELINE time; each stem plays one buffer source per block, with
+     * 10 ms join-fade gains only where flagged, and a master fade gain
+     * (after the reverb return, before master tone) carries the user fades.
+     * A loop must lie within a single block: it is clamped to the block
+     * containing its start and cycles that block's source range; master
+     * fades are held at 1 while looping.
+     */
+    timeline?: RemixStructureTimeline | null;
   }): Promise<StemArrangementPreviewHandle>;
   /**
    * Fetch and decode stems into the cache ahead of play (#1879), e.g. for
@@ -665,16 +822,26 @@ export function createStemPreviewEngine(input: {
       return INERT_HANDLE;
     }
     const output = master.compressor;
-    const duration = decoded.reduce(
-      (longest, buffer) => Math.max(longest, buffer.duration),
-      0,
-    );
+    // Structure (#1899): everything below runs in timeline time.
+    const structure =
+      request.timeline && !isIdentityTimeline(request.timeline)
+        ? request.timeline
+        : null;
+    const duration = structure
+      ? structure.durationSec
+      : decoded.reduce((longest, buffer) => Math.max(longest, buffer.duration), 0);
     // Clamp the loop to the audio; a degenerate loop plays unlooped.
     const requestedLoop = request.loop ?? null;
-    const loop: PreviewLoop | null =
-      requestedLoop &&
-      Math.min(requestedLoop.endSec, duration) - Math.max(requestedLoop.startSec, 0) >=
-        MIN_LOOP_SECONDS
+    const structureLoop =
+      structure && requestedLoop
+        ? blockLoopSource(structure.segments, requestedLoop, MIN_LOOP_SECONDS)
+        : null;
+    const loop: PreviewLoop | null = structure
+      ? structureLoop?.loop ?? null
+      : requestedLoop &&
+          Math.min(requestedLoop.endSec, duration) -
+            Math.max(requestedLoop.startSec, 0) >=
+            MIN_LOOP_SECONDS
         ? {
             startSec: Math.max(requestedLoop.startSec, 0),
             endSec: Math.min(requestedLoop.endSec, duration),
@@ -715,11 +882,15 @@ export function createStemPreviewEngine(input: {
       return loop ? wrapLoopPosition(linear, loop) : Math.min(linear, duration);
     };
 
+    // Structure-only nodes (#1899): per-block join gains, master fade.
+    const structureNodes: AudioNode[] = [];
+
     const releaseNodes = () => {
       for (const source of sources) source.disconnect();
       for (const gain of gains.values()) gain.disconnect();
       for (const gain of sectionGains.values()) gain.disconnect();
       for (const node of fx?.nodes ?? []) node.disconnect();
+      for (const node of structureNodes) node.disconnect();
     };
 
     const scheduleSections = (stems: PreviewStemState[], now: number) => {
@@ -811,7 +982,16 @@ export function createStemPreviewEngine(input: {
     // a reverb send into one shared convolver → master bus; then master
     // bus → master tone → warmth → limiter. Every stage is built with
     // bypass gains so live edits never change the topology.
-    let stemInput: (stemId: string) => AudioNode = () => output;
+    // Master fade (#1899), structure only: after the master bus sum (reverb
+    // return included), before master tone; straight into the limiter
+    // without effects.
+    let masterFade: GainNode | null = null;
+    if (structure) {
+      masterFade = audioContext.createGain();
+      structureNodes.push(masterFade);
+    }
+    let stemInput: (stemId: string) => AudioNode = () => masterFade ?? output;
+    if (masterFade && !effects) masterFade.connect(output);
     if (effects) {
       const nodes: AudioNode[] = [];
       const masterBus = audioContext.createGain();
@@ -820,7 +1000,12 @@ export function createStemPreviewEngine(input: {
       convolver.buffer = reverbBuffer(audioContext);
       convolver.connect(masterBus);
       nodes.push(masterBus, convolver);
-      const masterTone = createToneStage(audioContext, masterBus, nodes);
+      if (masterFade) masterBus.connect(masterFade);
+      const masterTone = createToneStage(
+        audioContext,
+        masterFade ?? masterBus,
+        nodes,
+      );
       const warmthDry = audioContext.createGain();
       const warmthPre = audioContext.createGain();
       const shaper = audioContext.createWaveShaper();
@@ -877,7 +1062,80 @@ export function createStemPreviewEngine(input: {
       stemInput = (stemId) => stemInputs.get(stemId) ?? masterBus;
     }
 
+    const onSourceEnded = () => {
+      endedCount += 1;
+      // A looping preview only ends through stop().
+      if (!loop && !stopped && tailTimer === null && endedCount >= sources.length) {
+        const finish = () => {
+          tailTimer = null;
+          if (stopped) return;
+          frozenPosition = livePosition();
+          stopped = true;
+          releaseNodes();
+          if (current === handle) current = null;
+          request.onEnded?.();
+        };
+        // Like the render (#1897), keep the graph connected until the
+        // reverb/echo tail has rung out; the playhead holds at the end
+        // (position clamps to the duration) meanwhile.
+        const tail = fx?.tailSeconds ?? 0;
+        if (tail > 0) {
+          tailTimer = setTimeout(finish, tail * 1000);
+        } else {
+          finish();
+        }
+      }
+    };
+    // Deferred source starts, run after the envelopes are scheduled.
+    const starts: Array<() => void> = [];
+    const timing = { startAt, offsetSec: offset, speed };
+
     request.stems.forEach((stem, index) => {
+      if (structure) {
+        // One buffer source per block (#1899): no audio copies, flat memory.
+        const gain = audioContext.createGain();
+        const sectionGain = audioContext.createGain();
+        gain.connect(sectionGain).connect(stemInput(stem.stemId));
+        gains.set(stem.stemId, gain);
+        sectionGains.set(stem.stemId, sectionGain);
+        if (structureLoop) {
+          // A block loop cycles the block's source range on one source.
+          const source = audioContext.createBufferSource();
+          source.buffer = decoded[index];
+          source.loop = true;
+          source.loopStart = structureLoop.srcLoopStartSec;
+          source.loopEnd = structureLoop.srcLoopEndSec;
+          if (speed !== 1) source.playbackRate.value = speed;
+          source.connect(gain);
+          source.onended = onSourceEnded;
+          sources.push(source);
+          const entry =
+            structureLoop.segment.srcStartSec +
+            (offset - structureLoop.segment.outStartSec);
+          starts.push(() => source.start(startAt, entry));
+          return;
+        }
+        for (const plan of planBlockSources(structure.segments, timing)) {
+          const source = audioContext.createBufferSource();
+          source.buffer = decoded[index];
+          if (speed !== 1) source.playbackRate.value = speed;
+          if (plan.fadeIn || plan.fadeOut) {
+            // Click-free join: a small per-block gain, only where flagged.
+            const joinGain = audioContext.createGain();
+            scheduleJoinFades(joinGain.gain, plan, timing);
+            source.connect(joinGain).connect(gain);
+            structureNodes.push(joinGain);
+          } else {
+            source.connect(gain);
+          }
+          source.onended = onSourceEnded;
+          sources.push(source);
+          starts.push(() =>
+            source.start(plan.whenSec, plan.offsetSec, plan.durationSec),
+          );
+        }
+        return;
+      }
       const source = audioContext.createBufferSource();
       const gain = audioContext.createGain();
       // Section envelope (#1314) lives on its own node so scheduled
@@ -893,33 +1151,11 @@ export function createStemPreviewEngine(input: {
       }
       if (speed !== 1) source.playbackRate.value = speed;
       source.connect(gain).connect(sectionGain).connect(stemInput(stem.stemId));
-      source.onended = () => {
-        endedCount += 1;
-        // A looping preview only ends through stop().
-        if (!loop && !stopped && tailTimer === null && endedCount >= sources.length) {
-          const finish = () => {
-            tailTimer = null;
-            if (stopped) return;
-            frozenPosition = livePosition();
-            stopped = true;
-            releaseNodes();
-            if (current === handle) current = null;
-            request.onEnded?.();
-          };
-          // Like the render (#1897), keep the graph connected until the
-          // reverb/echo tail has rung out; the playhead holds at the end
-          // (position clamps to the duration) meanwhile.
-          const tail = fx?.tailSeconds ?? 0;
-          if (tail > 0) {
-            tailTimer = setTimeout(finish, tail * 1000);
-          } else {
-            finish();
-          }
-        }
-      };
+      source.onended = onSourceEnded;
       sources.push(source);
       gains.set(stem.stemId, gain);
       sectionGains.set(stem.stemId, sectionGain);
+      starts.push(() => source.start(startAt, offset));
     });
 
     handle.update(
@@ -930,9 +1166,15 @@ export function createStemPreviewEngine(input: {
     // Envelopes follow the arrangement at start; `updateSections` re-schedules
     // them live when cells change during playback (#1879).
     scheduleSections(request.stems, startAt);
-    for (const source of sources) {
-      source.start(startAt, offset);
+    if (masterFade) {
+      if (loop) {
+        // Loops audition the block's audio; fades play in linear playback.
+        masterFade.gain.setValueAtTime(1, startAt);
+      } else {
+        scheduleMasterFades(masterFade.gain, structure?.masterFades ?? [], timing);
+      }
     }
+    for (const start of starts) start();
     current = handle;
     return handle;
   };

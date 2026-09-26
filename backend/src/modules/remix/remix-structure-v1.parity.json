@@ -1,0 +1,530 @@
+{
+  "schemaVersion": "remix-structure/v1",
+  "note": "Parity fixture for #1899: backend (ffmpeg render) and web (WebAudio preview) must reproduce these values within 1e-9.",
+  "constants": {
+    "joinFadeSeconds": 0.01,
+    "maxBlocks": 96
+  },
+  "grid": {
+    "kind": "bars",
+    "sectionSeconds": 16,
+    "bpm": 120,
+    "durationSeconds": 58,
+    "sections": [
+      {
+        "startSec": 0,
+        "endSec": 6
+      },
+      {
+        "startSec": 6,
+        "endSec": 22
+      },
+      {
+        "startSec": 22,
+        "endSec": 38
+      },
+      {
+        "startSec": 38,
+        "endSec": 54
+      },
+      {
+        "startSec": 54,
+        "endSec": 58
+      }
+    ]
+  },
+  "timelines": [
+    {
+      "name": "identity",
+      "blocks": null,
+      "durationSec": 58,
+      "segments": [
+        {
+          "index": 0,
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 6,
+          "srcStartSec": 0,
+          "srcEndSec": 6,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 1,
+          "section": 1,
+          "outStartSec": 6,
+          "outEndSec": 22,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 2,
+          "section": 2,
+          "outStartSec": 22,
+          "outEndSec": 38,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 3,
+          "section": 3,
+          "outStartSec": 38,
+          "outEndSec": 54,
+          "srcStartSec": 38,
+          "srcEndSec": 54,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 4,
+          "section": 4,
+          "outStartSec": 54,
+          "outEndSec": 58,
+          "srcStartSec": 54,
+          "srcEndSec": 58,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        }
+      ],
+      "masterFades": []
+    },
+    {
+      "name": "reorder-repeat",
+      "blocks": [
+        {
+          "section": 1
+        },
+        {
+          "section": 2
+        },
+        {
+          "section": 2
+        },
+        {
+          "section": 1
+        },
+        {
+          "section": 3
+        }
+      ],
+      "durationSec": 80,
+      "segments": [
+        {
+          "index": 0,
+          "section": 1,
+          "outStartSec": 0,
+          "outEndSec": 16,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": true,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 1,
+          "section": 2,
+          "outStartSec": 16,
+          "outEndSec": 32,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": false,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 2,
+          "section": 2,
+          "outStartSec": 32,
+          "outEndSec": 48,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": true,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 3,
+          "section": 1,
+          "outStartSec": 48,
+          "outEndSec": 64,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": true,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 4,
+          "section": 3,
+          "outStartSec": 64,
+          "outEndSec": 80,
+          "srcStartSec": 38,
+          "srcEndSec": 54,
+          "joinFadeIn": true,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        }
+      ],
+      "masterFades": []
+    },
+    {
+      "name": "extended-mix",
+      "blocks": [
+        {
+          "section": 1
+        },
+        {
+          "section": 1
+        },
+        {
+          "section": 2
+        },
+        {
+          "section": 3
+        },
+        {
+          "section": 4
+        },
+        {
+          "section": 4,
+          "fadeOut": true
+        }
+      ],
+      "durationSec": 72,
+      "segments": [
+        {
+          "index": 0,
+          "section": 1,
+          "outStartSec": 0,
+          "outEndSec": 16,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": true,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 1,
+          "section": 1,
+          "outStartSec": 16,
+          "outEndSec": 32,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": true,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 2,
+          "section": 2,
+          "outStartSec": 32,
+          "outEndSec": 48,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 3,
+          "section": 3,
+          "outStartSec": 48,
+          "outEndSec": 64,
+          "srcStartSec": 38,
+          "srcEndSec": 54,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 4,
+          "section": 4,
+          "outStartSec": 64,
+          "outEndSec": 68,
+          "srcStartSec": 54,
+          "srcEndSec": 58,
+          "joinFadeIn": false,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 5,
+          "section": 4,
+          "outStartSec": 68,
+          "outEndSec": 72,
+          "srcStartSec": 54,
+          "srcEndSec": 58,
+          "joinFadeIn": true,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": true
+        }
+      ],
+      "masterFades": [
+        {
+          "startSec": 68,
+          "endSec": 72,
+          "from": 1,
+          "to": 0,
+          "holdAfter": true
+        }
+      ]
+    },
+    {
+      "name": "fades",
+      "blocks": [
+        {
+          "section": 0,
+          "fadeIn": true
+        },
+        {
+          "section": 1,
+          "fadeIn": true,
+          "fadeOut": true
+        },
+        {
+          "section": 2
+        },
+        {
+          "section": 3,
+          "fadeOut": true
+        }
+      ],
+      "durationSec": 54,
+      "segments": [
+        {
+          "index": 0,
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 6,
+          "srcStartSec": 0,
+          "srcEndSec": 6,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": true,
+          "fadeOut": false
+        },
+        {
+          "index": 1,
+          "section": 1,
+          "outStartSec": 6,
+          "outEndSec": 22,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": true,
+          "fadeOut": true
+        },
+        {
+          "index": 2,
+          "section": 2,
+          "outStartSec": 22,
+          "outEndSec": 38,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 3,
+          "section": 3,
+          "outStartSec": 38,
+          "outEndSec": 54,
+          "srcStartSec": 38,
+          "srcEndSec": 54,
+          "joinFadeIn": false,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": true
+        }
+      ],
+      "masterFades": [
+        {
+          "startSec": 0,
+          "endSec": 6,
+          "from": 0,
+          "to": 1
+        },
+        {
+          "startSec": 6,
+          "endSec": 14,
+          "from": 0,
+          "to": 1
+        },
+        {
+          "startSec": 14,
+          "endSec": 22,
+          "from": 1,
+          "to": 0,
+          "holdAfter": false
+        },
+        {
+          "startSec": 38,
+          "endSec": 54,
+          "from": 1,
+          "to": 0,
+          "holdAfter": true
+        }
+      ]
+    }
+  ],
+  "gate": [
+    {
+      "case": "reorder-repeat",
+      "mask": [
+        true,
+        false,
+        false,
+        true,
+        true
+      ],
+      "intervals": [
+        {
+          "startSec": 0,
+          "endSec": 16
+        },
+        {
+          "startSec": 48,
+          "endSec": 80
+        }
+      ]
+    },
+    {
+      "case": "reorder-repeat",
+      "mask": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "intervals": null
+    },
+    {
+      "case": "reorder-repeat",
+      "mask": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "intervals": []
+    },
+    {
+      "case": "reorder-repeat",
+      "mask": [
+        true,
+        true
+      ],
+      "intervals": null
+    }
+  ],
+  "normalize": [
+    {
+      "input": null,
+      "output": {
+        "value": null
+      }
+    },
+    {
+      "input": {
+        "blocks": [
+          {
+            "section": 0
+          },
+          {
+            "section": 1
+          },
+          {
+            "section": 2
+          },
+          {
+            "section": 3
+          },
+          {
+            "section": 4
+          }
+        ]
+      },
+      "output": {
+        "value": null
+      }
+    },
+    {
+      "input": {
+        "blocks": [
+          {
+            "section": 2,
+            "fadeIn": false
+          },
+          {
+            "section": 2,
+            "fadeOut": true
+          }
+        ]
+      },
+      "output": {
+        "value": {
+          "schemaVersion": "remix-structure/v1",
+          "blocks": [
+            {
+              "section": 2
+            },
+            {
+              "section": 2,
+              "fadeOut": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": {
+        "blocks": [
+          {
+            "section": 5
+          }
+        ]
+      },
+      "output": {
+        "error": "structure.blocks[].section must be an integer in 0..4"
+      }
+    },
+    {
+      "input": {
+        "blocks": []
+      },
+      "output": {
+        "error": "structure.blocks must have 1..96 entries"
+      }
+    }
+  ]
+}

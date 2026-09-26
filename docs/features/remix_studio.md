@@ -549,6 +549,59 @@ from the JWT, never the request body.
   - **Provenance.** Effects are not AI, so renders keep `stem_audio`
     grounding. `renderMetadata` and publish lineage record the recipe and
     `remix-fx-dsp/v1`.
+- Structure blocks (#1899, slice S2 of epic #1896). Users can repeat, remove
+  and reorder sections of the song, and fade any block in or out, to make an
+  extended mix, a short edit, or a version that returns to a favourite part.
+  - **Recipe.** `remix-structure/v1` is stored as `RemixProject.structure`
+    (null = original order). It is an ordered list of the source grid's
+    sections (1–96 blocks) with optional `fadeIn` / `fadeOut`.
+    - The identity order without fades normalises to null.
+    - Project reads return the structure and the derived `timeline`
+      segments, so the client and server share one derivation, like
+      `sectionGrid`.
+  - **Masks are per block.** Stem on/off masks are indexed by timeline block,
+    so toggling one copy of a repeated section doesn't change the other.
+    - With no structure, blocks are the sections, so existing masks keep
+      their meaning.
+    - Structure edits carry their mask columns with them (repeat copies,
+      remove drops, move moves) in the same PATCH.
+    - The server validates mask length against the block count.
+  - **Click-free joins.**
+    - A 10 ms join fade applies only where the audio jumps: a
+      non-consecutive section, a mid-song start, or an early end.
+    - Consecutive blocks join seamlessly.
+    - User fades apply to the whole mix across the block. A fade-out on the
+      last block holds silence, so the reverb tail doesn't return.
+  - **Same contract, two engines.**
+    - The render compiles the structure per stem in source time (trim,
+      concat and join fades) before the S1 effects chain, and applies the
+      master fades before loudness.
+    - The preview schedules one buffer source per block, so there are no
+      audio copies.
+    - The transport, lanes and loop run in timeline time.
+    - A parity fixture
+      (`backend/src/modules/remix/remix-structure-v1.parity.json`) holds both
+      engines to the same timeline, join fades, gate intervals and fade
+      ramps.
+    - With no structure, the render graph is byte-identical.
+  - **Controls.**
+    - Each block header has a menu: Repeat, Remove, Move earlier, Move later,
+      Fade in, Fade out. Clicking a header still loops that block.
+    - Create → Mix stems adds one-click **Structure** options: Original
+      length; **Extended mix** (drops the pickup, doubles the first full
+      section and the last section, fades out); **Short edit** (about the
+      first 60 %, fades out).
+  - **Limits.** A structure can make the song at most twice as long as the
+    original, up to 15 minutes.
+    - The PATCH returns 400 past that.
+    - The studio disables Repeat / Extended mix with the reason before the
+      limit is reached.
+    - A stored over-limit structure renders in the original order.
+    - Renders use one ffmpeg input per block, which keeps memory bounded
+      (the single-decode split held pending blocks in memory).
+  - **Deferred.** Build-ups (a filter sweep plus a gain ramp) are a follow-up.
+  - **Provenance.** Stays `stem_audio`. `renderMetadata` and publish lineage
+    record the structure.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

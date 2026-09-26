@@ -17,8 +17,9 @@
  */
 
 import { execFileSync } from "child_process";
-import { readdirSync } from "fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
+import { join } from "path";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "../db/prisma";
 import {
@@ -27,6 +28,7 @@ import {
 } from "../modules/encryption/encryption.service";
 import { AesEncryptionProvider } from "../modules/encryption/providers/aes_encryption_provider";
 import { FfmpegStemAudioMixer } from "../modules/remix/stem-audio-mixer";
+import { structureTimeline } from "../modules/remix/remix-structure";
 import type { StemRenderAuthorization } from "../modules/remix/remix-generation.provider";
 import type { StorageProvider } from "../modules/storage/storage_provider";
 
@@ -466,6 +468,63 @@ describe("FfmpegStemAudioMixer decrypt-for-render boundary (integration)", () =>
       // The generated IR lives only in the per-render temp dir.
       const after = remixMixTempDirs();
       expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
+    });
+
+    it("renders structure blocks without effects and records them (#1899)", async () => {
+      const mixer = new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService,
+      );
+      const grid = {
+        kind: "time" as const,
+        sectionSeconds: 0.5,
+        bpm: null,
+        durationSeconds: 1,
+        sections: [
+          { startSec: 0, endSec: 0.5 },
+          { startSec: 0.5, endSec: 1 },
+        ],
+      };
+      const structure = {
+        schemaVersion: "remix-structure/v1" as const,
+        blocks: [
+          { section: 1 },
+          { section: 0 },
+          { section: 1, fadeOut: true as const },
+        ],
+      };
+      const mixed = await mixer.mixUnmutedStems(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        undefined,
+        { structure, segments: structureTimeline(grid, structure.blocks) },
+      );
+
+      expect(mixed.renderMetadata).toMatchObject({
+        schemaVersion: "remix-render-policy/v1",
+        structure,
+        structureVersion: "remix-structure-dsp/v1",
+      });
+      expect("effects" in mixed.renderMetadata).toBe(false);
+      // The render lasts the 1.5 s timeline, not the 1 s source.
+      const dir = mkdtempSync(join(tmpdir(), "remix-structure-mixer-"));
+      try {
+        const out = join(dir, "mix.mp3");
+        writeFileSync(out, mixed.buffer);
+        const raw = execFileSync(
+          "ffmpeg",
+          ["-hide_banner", "-loglevel", "error", "-i", out, "-ac", "1", "-f", "f32le", "-c:a", "pcm_f32le", "-"],
+          { timeout: 60_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+        const seconds = raw.length / 4 / 48_000;
+        expect(Math.abs(seconds - 1.5)).toBeLessThan(0.1);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
   },
 );

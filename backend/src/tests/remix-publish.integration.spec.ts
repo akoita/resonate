@@ -573,6 +573,104 @@ describe("Remix publish (integration)", () => {
     expect("conditioningEffects" in lineage).toBe(false);
   });
 
+  it("records the rendered structure blocks in the publish lineage (#1899)", async () => {
+    const structure = {
+      schemaVersion: "remix-structure/v1",
+      blocks: [{ section: 1 }, { section: 1 }, { section: 0, fadeOut: true }],
+    };
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 1,
+          activeStemCount: 1,
+          structure,
+          structureVersion: "remix-structure-dsp/v1",
+        },
+      }),
+    });
+    // The live structure changed after the render: lineage records what the
+    // published audio was actually rendered with.
+    await prisma.remixProject.update({
+      where: { id: project.id },
+      data: {
+        structure: {
+          schemaVersion: "remix-structure/v1",
+          blocks: [{ section: 0 }],
+        },
+      },
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage).toMatchObject({
+      grounding: "stem_audio",
+      aiGenerated: false,
+      structure,
+      structureVersion: "remix-structure-dsp/v1",
+    });
+    expect("conditioningStructure" in lineage).toBe(false);
+  });
+
+  it("records audio-conditioned conditioning structure in the lineage (#1899)", async () => {
+    const structure = {
+      schemaVersion: "remix-structure/v1",
+      blocks: [{ section: 1, fadeIn: true }, { section: 0 }],
+    };
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "audio_conditioned",
+        conditioningStructure: {
+          structure,
+          structureVersion: "remix-structure-dsp/v1",
+        },
+      }),
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage).toMatchObject({
+      grounding: "audio_conditioned",
+      conditioningStructure: {
+        structure,
+        structureVersion: "remix-structure-dsp/v1",
+      },
+    });
+    // The conditioning structure is not claimed as the artifact's structure.
+    expect("structure" in lineage).toBe(false);
+  });
+
+  it("omits structure from the lineage when the draft had none or a malformed one (#1899)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 1,
+          activeStemCount: 1,
+          structure: { schemaVersion: "remix-structure/v1", blocks: [] },
+        },
+      }),
+    });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect("structure" in lineage).toBe(false);
+    expect("structureVersion" in lineage).toBe(false);
+    expect("conditioningStructure" in lineage).toBe(false);
+  });
+
   it("serves the published track through existing catalog streaming", async () => {
     const project = await createProjectRow({ userId: CREATOR_ID });
     const result = await projectService.publishProject(CREATOR_ID, project.id);
@@ -793,6 +891,20 @@ describe("Remix publish (integration)", () => {
       select: { effects: true },
     });
     expect(lockedRow.effects).toBeNull();
+
+    // Structure edits (#1899) are locked too.
+    const structureError = await projectService
+      .updateProject(CREATOR_ID, project.id, {
+        structure: { blocks: [{ section: 0 }] },
+      })
+      .then(() => null)
+      .catch((caught) => caught);
+    expect(structureError).toBeInstanceOf(ConflictException);
+    const lockedStructure = await prisma.remixProject.findUniqueOrThrow({
+      where: { id: project.id },
+      select: { structure: true },
+    });
+    expect(lockedStructure.structure).toBeNull();
 
     await expect(
       projectService.generateDraft(CREATOR_ID, project.id, { retry: true }),

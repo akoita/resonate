@@ -34,6 +34,14 @@ import {
   type RemixFxStem,
   type RemixRenderFx,
 } from "./remix-fx";
+import {
+  JOIN_FADE_SECONDS,
+  masterFadeRamps,
+  REMIX_STRUCTURE_DSP_VERSION,
+  type RemixMasterFadeRamp,
+  type RemixRenderStructure,
+  type RemixStructureSegment,
+} from "./remix-structure";
 
 const execFileAsync = promisify(execFile);
 
@@ -100,17 +108,22 @@ export interface StemAudioMixer {
   /**
    * @param fx Shared effects recipe (#1897) + grid tempo; absent = the
    *   pre-#1897 graph, byte-identical.
+   * @param structure Structure blocks (#1899) + derived timeline; absent =
+   *   the original section order, byte-identical. Stem `activeIntervals` are
+   *   then in timeline time (block-indexed masks).
    */
   mixUnmutedStems(
     stems: StemArrangementEntry[],
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
+    structure?: RemixRenderStructure,
   ): Promise<MixedStemAudio>;
   mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
     inputs: AudioBufferMixInput[],
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
+    structure?: RemixRenderStructure,
   ): Promise<MixedAudioBuffers>;
 }
 
@@ -143,6 +156,14 @@ export type StemMixFfmpegFx = {
   afirOptions?: string;
 };
 
+/**
+ * Structure context for {@link buildStemMixFfmpegArgs} (#1899): the derived
+ * timeline (see remix-structure.ts). Empty/absent = the original order.
+ */
+export type StemMixFfmpegStructure = {
+  segments: RemixStructureSegment[];
+};
+
 /** Default afir options: no IR normalization (ffmpeg >= 7.0). */
 export const AFIR_UNITY_GAIN_OPTIONS = "irnorm=-1";
 
@@ -153,14 +174,17 @@ export const AFIR_UNITY_GAIN_OPTIONS = "irnorm=-1";
  * amix sums to the longest input without renormalizing each source down,
  * matching the studio's preview gain model.
  *
- * With a non-null effects recipe (#1897) the graph gains the remix-fx/v1
- * chain (see {@link buildFxStemMixFilter}); without one the args are
- * byte-identical to the pre-#1897 graph.
+ * With a non-null effects recipe (#1897) and/or a structure timeline (#1899)
+ * the graph gains the remix-fx/v1 chain and the structure front end (see
+ * {@link buildFxStemMixFilter}); without either the args are byte-identical
+ * to the pre-#1897 graph, and without a structure they are byte-identical to
+ * the #1897 graph.
  */
 export function buildStemMixFfmpegArgs(
   inputs: StemMixFfmpegInput[],
   outputPath: string,
   fx?: StemMixFfmpegFx | null,
+  structure?: StemMixFfmpegStructure | null,
 ): string[] {
   if (inputs.length === 0) {
     throw new RemixGenerationProviderError(
@@ -171,18 +195,40 @@ export function buildStemMixFfmpegArgs(
   }
   // -loglevel error keeps execFile's stderr buffer tiny on long renders.
   const args: string[] = ["-y", "-nostdin", "-hide_banner", "-loglevel", "error"];
-  for (const input of inputs) {
-    args.push("-i", input.path);
-  }
-  if (fx?.effects) {
-    const { filter, needsImpulse } = buildFxStemMixFilter(inputs, fx);
+  const hasStructure = !!structure && structure.segments.length > 0;
+  if (fx?.effects || hasStructure) {
+    const renderFx: StemMixFfmpegFx = fx ?? { effects: null };
+    const segments = hasStructure ? structure!.segments : null;
+    // One ffmpeg input per source run with a structure (#1899): every run of
+    // one stem reads the same (already decrypted) temp file.
+    for (const plan of ffmpegInputPlan(inputs, segments)) {
+      for (const source of plan.sources) {
+        if (source.run) {
+          args.push(
+            "-ss",
+            fxNum(source.run.seekSec),
+            "-t",
+            fxNum(source.run.readSec),
+          );
+        }
+        args.push("-i", source.path);
+      }
+    }
+    const { filter, needsImpulse } = buildFxStemMixFilter(
+      inputs,
+      renderFx,
+      hasStructure ? structure : null,
+    );
     if (needsImpulse) {
-      if (!fx.impulsePath) {
+      if (!renderFx.impulsePath) {
         throw new Error("A reverb send needs the impulse response file path.");
       }
-      args.push("-i", fx.impulsePath);
+      args.push("-i", renderFx.impulsePath);
     }
     return pushOutputArgs(args, filter, outputPath);
+  }
+  for (const input of inputs) {
+    args.push("-i", input.path);
   }
   const labelled = inputs.map((input, index) => {
     const gain = normalizeRemixStemGainDb(input.gainDb);
@@ -266,6 +312,178 @@ export function stemMixReverbSends(
   );
 }
 
+/** An empty recipe: structure without effects renders the plain chain. */
+const NO_EFFECTS: RemixFxRecipe = { schemaVersion: "remix-fx/v1" };
+
+/**
+ * ffmpeg volume expression for the whole-mix structure fades (#1899), in
+ * OUTPUT time (ramp times ÷ speed). Each ramp is
+ * `if(between(t,s,e), from+(to-from)*(t-s)/(e-s), 1)`; a `holdAfter` ramp
+ * (last-block fade-out) is wrapped in `if(gte(t,e), 0, …)` so the reverb and
+ * echo tails stay silent; the terms multiply. Numbers only, never user
+ * strings (commas escaped for the filtergraph parser). Null = no ramps.
+ */
+export function buildMasterFadeVolumeExpression(
+  ramps: RemixMasterFadeRamp[],
+  speed = 1,
+): string | null {
+  if (ramps.length === 0) return null;
+  const terms = ramps.map((ramp) => {
+    const start = ramp.startSec / speed;
+    const end = ramp.endSec / speed;
+    const s = fxNum(start);
+    const e = fxNum(end);
+    const value = `${fxNum(ramp.from)}+(${fxNum(ramp.to - ramp.from)})*(t-${s})/${fxNum(end - start)}`;
+    const term = `if(between(t\\,${s}\\,${e})\\,${value}\\,1)`;
+    return ramp.holdAfter ? `if(gte(t\\,${e})\\,0\\,${term})` : term;
+  });
+  return terms.join("*");
+}
+
+/**
+ * Pre/post-roll decoded around every structure run and discarded in-graph
+ * (#1899). A cold seek glitches at the cut — an MP3 decoder lacks its bit
+ * reservoir and the resampler starts from silence — so each run decodes from
+ * up to {@link RUN_PREROLL_SECONDS} earlier (and past its end), resamples,
+ * then trims at 48 kHz exactly like a full decode would.
+ */
+export const RUN_PREROLL_SECONDS = 0.1;
+/**
+ * Seek points land on a 1/50 s grid: exact in ffmpeg's microsecond time base
+ * and on the sample grid of every common rate (44.1/48/88.2/96/32/22.05/16
+ * kHz), so the resampler phase matches a full decode.
+ */
+const RUN_SEEK_GRID_PER_SECOND = 50;
+
+/**
+ * One contiguous stretch of source audio on the timeline: consecutive blocks
+ * (section k then k+1) are one run — their join is seamless source audio —
+ * and join fades only ever sit at run edges.
+ */
+export type StructureRun = {
+  srcStartSec: number;
+  srcEndSec: number;
+  joinFadeIn: boolean;
+  joinFadeOut: boolean;
+  /** Input seek (`-ss`): the run start minus the pre-roll, grid-aligned. */
+  seekSec: number;
+  /** Decoded pre-roll trimmed off the front: srcStartSec − seekSec. */
+  prerollSec: number;
+  /** Input read length (`-t`): pre-roll + run + post-roll. */
+  readSec: number;
+};
+
+/** Group the timeline into source runs (see {@link StructureRun}). */
+export function structureRuns(
+  segments: RemixStructureSegment[],
+): StructureRun[] {
+  const groups: RemixStructureSegment[][] = [];
+  segments.forEach((segment, index) => {
+    const previous = index > 0 ? segments[index - 1] : null;
+    const continues =
+      previous !== null &&
+      !segment.joinFadeIn &&
+      !previous.joinFadeOut &&
+      Math.abs(previous.srcEndSec - segment.srcStartSec) < 1e-9;
+    if (continues) groups[groups.length - 1].push(segment);
+    else groups.push([segment]);
+  });
+  return groups.map((group) => {
+    const first = group[0];
+    const last = group[group.length - 1];
+    const seekSec = Math.max(
+      0,
+      Math.floor(
+        (first.srcStartSec - RUN_PREROLL_SECONDS) * RUN_SEEK_GRID_PER_SECOND,
+      ) / RUN_SEEK_GRID_PER_SECOND,
+    );
+    const prerollSec = first.srcStartSec - seekSec;
+    return {
+      srcStartSec: first.srcStartSec,
+      srcEndSec: last.srcEndSec,
+      joinFadeIn: first.joinFadeIn,
+      joinFadeOut: last.joinFadeOut,
+      seekSec,
+      prerollSec,
+      readSec:
+        prerollSec + (last.srcEndSec - first.srcStartSec) + RUN_PREROLL_SECONDS,
+    };
+  });
+}
+
+type FfmpegInputPlan = {
+  /** ffmpeg input index of this stem input's first source. */
+  firstIndex: number;
+  sources: Array<{ path: string; run: StructureRun | null }>;
+};
+
+/**
+ * ffmpeg input layout: without a structure one input per stem (identical to
+ * the pre-#1899 layout); with one, every SOURCE stem contributes one seeked
+ * input per run of the same file, while AI layers stay a single input.
+ */
+function ffmpegInputPlan(
+  inputs: StemMixFfmpegInput[],
+  segments: RemixStructureSegment[] | null,
+): FfmpegInputPlan[] {
+  const runs = segments ? structureRuns(segments) : null;
+  let next = 0;
+  return inputs.map((input) => {
+    const sources =
+      runs && !input.aiLayer
+        ? runs.map((run) => ({ path: input.path, run }))
+        : [{ path: input.path, run: null }];
+    const plan = { firstIndex: next, sources };
+    next += sources.length;
+    return plan;
+  });
+}
+
+/**
+ * Structure front end for one source stem (#1899), in SOURCE time: each run
+ * is its own seeked input, normalized to 48 kHz float, padded (a stem shorter
+ * than the run's range keeps later blocks aligned), trimmed past its pre-roll
+ * to exactly the run, given 10 ms join fades where the audio jumps, and the
+ * runs are concatenated. Memory stays flat: runs decode lazily in order.
+ * Returns the graph parts and the head feeding the per-stem chain.
+ */
+function structureFrontEnd(
+  index: number,
+  plan: FfmpegInputPlan,
+): { parts: string[]; head: string } {
+  const branch = (run: StructureRun) => {
+    const duration = run.srcEndSec - run.srcStartSec;
+    const trimEnd = fxNum(run.prerollSec + duration);
+    const filters = [
+      "aresample=48000",
+      "aformat=sample_fmts=fltp",
+      `apad=whole_dur=${trimEnd}`,
+      `atrim=start=${fxNum(run.prerollSec)}:end=${trimEnd}`,
+      "asetpts=PTS-STARTPTS",
+    ];
+    if (run.joinFadeIn) {
+      filters.push(`afade=t=in:st=0:d=${fxNum(JOIN_FADE_SECONDS)}`);
+    }
+    if (run.joinFadeOut) {
+      filters.push(
+        `afade=t=out:st=${fxNum(duration - JOIN_FADE_SECONDS)}:d=${fxNum(JOIN_FADE_SECONDS)}`,
+      );
+    }
+    return filters.join(",");
+  };
+  const runs = plan.sources.map((source) => source.run!);
+  if (runs.length === 1) {
+    return { parts: [], head: `[${plan.firstIndex}:a]${branch(runs[0])},` };
+  }
+  const labels = runs.map((_, k) => `[x${index}c${k}]`);
+  return {
+    parts: runs.map(
+      (run, k) => `[${plan.firstIndex + k}:a]${branch(run)}${labels[k]}`,
+    ),
+    head: `${labels.join("")}concat=n=${runs.length}:v=0:a=1,`,
+  };
+}
+
 /**
  * remix-fx/v1 render graph (#1897), in the contract order:
  *  - per input: aresample=48000 (float) → varispeed (asetrate=48000·s,
@@ -279,13 +497,25 @@ export function stemMixReverbSends(
  *    the last send ends (padding after afir would only append silence);
  *  - master: amix(dry + AI layers + reverb) → master tone → warmth
  *    tanh(k·x)/tanh(k) → the versioned loudness policy.
+ *
+ * With a structure timeline (#1899) each SOURCE stem first runs the
+ * structure front end in source time ({@link structureFrontEnd}: one seeked
+ * input per run → trim past the pre-roll + join fades → concat) before the
+ * chain above, whose gate
+ * intervals are then timeline (block) spans ÷ s. AI layers are generated
+ * audio, not source stems, so they are NOT restructured. The whole-mix block
+ * fades run on the master sum (dry + AI layers + reverb) in output time,
+ * before master tone/warmth/loudness ({@link buildMasterFadeVolumeExpression}).
  * Every value is numeric and derived from the validated recipe.
  */
 export function buildFxStemMixFilter(
   inputs: StemMixFfmpegInput[],
   fx: StemMixFfmpegFx,
+  structure?: StemMixFfmpegStructure | null,
 ): { filter: string; needsImpulse: boolean } {
-  const effects = fx.effects;
+  const segments =
+    structure && structure.segments.length > 0 ? structure.segments : null;
+  const effects = fx.effects ?? (segments ? NO_EFFECTS : null);
   if (!effects) {
     throw new Error("buildFxStemMixFilter requires an effects recipe.");
   }
@@ -297,6 +527,7 @@ export function buildFxStemMixFilter(
   const sends = stemMixReverbSends(inputs, effects);
   const needsImpulse = sends.some((wet) => wet > 0);
 
+  const plans = ffmpegInputPlan(inputs, segments);
   const graph: string[] = [];
   const dryLabels: string[] = [];
   const wetLabels: string[] = [];
@@ -304,7 +535,16 @@ export function buildFxStemMixFilter(
     const stemFx = stemFxFor(effects, input);
     // aformat pins float processing so gain/echo never clip in an integer
     // sample format before the loudness policy (the preview is float too).
-    const chain: string[] = ["aresample=48000", "aformat=sample_fmts=fltp"];
+    // With a structure (#1899) every run is normalized before the concat,
+    // so all runs share one format.
+    const plan = plans[index];
+    const restructure = segments !== null && !input.aiLayer;
+    const front = restructure ? structureFrontEnd(index, plan) : null;
+    const head = front ? front.head : `[${plan.firstIndex}:a]`;
+    if (front) graph.push(...front.parts);
+    const chain: string[] = front
+      ? []
+      : ["aresample=48000", "aformat=sample_fmts=fltp"];
     if (speedHundredths !== 100) {
       chain.push(`asetrate=${480 * speedHundredths}`, "aresample=48000");
     }
@@ -332,18 +572,19 @@ export function buildFxStemMixFilter(
       }
     }
     if (sends[index] > 0) {
-      graph.push(`[${index}:a]${chain.join(",")},asplit=2[d${index}][s${index}]`);
+      graph.push(`${head}${chain.join(",")},asplit=2[d${index}][s${index}]`);
       graph.push(`[s${index}]volume=${fxNum(sends[index])}[w${index}]`);
       dryLabels.push(`[d${index}]`);
       wetLabels.push(`[w${index}]`);
     } else {
-      graph.push(`[${index}:a]${chain.join(",")}[a${index}]`);
+      graph.push(`${head}${chain.join(",")}[a${index}]`);
       dryLabels.push(`[a${index}]`);
     }
   });
 
   if (needsImpulse) {
-    const irIndex = inputs.length;
+    const last = plans[plans.length - 1];
+    const irIndex = last.firstIndex + last.sources.length;
     const afirOptions = fx.afirOptions ?? AFIR_UNITY_GAIN_OPTIONS;
     // Stereo bus so afir convolves L/R with the IR's own L/R channels; the
     // pad lets the natural reverb tail ring out (master amix is "longest").
@@ -355,6 +596,10 @@ export function buildFxStemMixFilter(
   }
 
   const masterChain: string[] = [];
+  const fades = segments
+    ? buildMasterFadeVolumeExpression(masterFadeRamps(segments), speed)
+    : null;
+  if (fades) masterChain.push(`volume=volume=${fades}:eval=frame`);
   const masterTone = fxToneFilter(master.tone);
   if (masterTone) masterChain.push(masterTone);
   const warmth = master.warmth ?? 0;
@@ -408,6 +653,7 @@ function renderMetadata(
   inputCount: number,
   activeStemCount: number,
   fx?: RemixRenderFx,
+  structure?: RemixRenderStructure,
 ): RemixRenderMetadata {
   return {
     ...REMIX_RENDER_AUDIO_POLICY,
@@ -416,6 +662,13 @@ function renderMetadata(
     // #1897: the exact recipe + DSP version this artifact was rendered with.
     ...(fx
       ? { effects: fx.effects, effectsDspVersion: REMIX_FX_DSP_VERSION }
+      : {}),
+    // #1899: the structure blocks + timeline rules version.
+    ...(structure
+      ? {
+          structure: structure.structure,
+          structureVersion: REMIX_STRUCTURE_DSP_VERSION,
+        }
       : {}),
   };
 }
@@ -433,8 +686,16 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     stems: StemArrangementEntry[],
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
+    structure?: RemixRenderStructure,
   ): Promise<MixedStemAudio> {
-    return this.mixStemArrangement(stems, [], authorization, true, fx);
+    return this.mixStemArrangement(
+      stems,
+      [],
+      authorization,
+      true,
+      fx,
+      structure,
+    );
   }
 
   async mixUnmutedStemsWithAudioBuffers(
@@ -442,8 +703,16 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     inputs: AudioBufferMixInput[],
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
+    structure?: RemixRenderStructure,
   ): Promise<MixedAudioBuffers> {
-    return this.mixStemArrangement(stems, inputs, authorization, false, fx);
+    return this.mixStemArrangement(
+      stems,
+      inputs,
+      authorization,
+      false,
+      fx,
+      structure,
+    );
   }
 
   private async mixStemArrangement(
@@ -452,6 +721,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     authorization: StemRenderAuthorization,
     stemOnly: true,
     fx?: RemixRenderFx,
+    structure?: RemixRenderStructure,
   ): Promise<MixedStemAudio>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -459,6 +729,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     authorization: StemRenderAuthorization,
     stemOnly: false,
     fx?: RemixRenderFx,
+    structure?: RemixRenderStructure,
   ): Promise<MixedAudioBuffers>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -466,6 +737,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     authorization: StemRenderAuthorization,
     stemOnly: boolean,
     fx?: RemixRenderFx,
+    structure?: RemixRenderStructure,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const label = authorization.remixProjectId;
     // A stem whose section mask disables every section ([]) is effectively
@@ -559,7 +831,9 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
             : {}),
         };
       }
-      const args = buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx);
+      const args = structure
+        ? buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx, structure)
+        : buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx);
       const started = Date.now();
       try {
         await execFileAsync("ffmpeg", args, { timeout: FFMPEG_TIMEOUT_MS });
@@ -581,6 +855,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         ffmpegInputs.length,
         activeStems.length,
         fx,
+        structure,
       );
       return stemOnly
         ? {
