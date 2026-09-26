@@ -51,6 +51,10 @@ import {
   type RemixIntent,
 } from "../../lib/remixIntent";
 import { applicableRecipes, applyRecipe } from "../../lib/remixRecipes";
+import type {
+  RemixDescribeContext,
+  RemixDescribeEdits,
+} from "../../lib/remixDescribe";
 import {
   applyVibe,
   normalizeRemixFx,
@@ -910,6 +914,31 @@ export function editsWithStructure(
     if (current) stems[stemId] = { ...current, sections: mask };
   }
   return { ...edits, structure: result.structure, stems };
+}
+
+/**
+ * Sets a "Describe it" result (#1900) in one update: the mute/mask state of
+ * the project's stems, the effects and the structure. Everything else
+ * (title, prompt, gains, AI target) keeps the latest value, so a proposal
+ * computed a moment ago never clobbers unrelated typing.
+ */
+export function applyDescribedEdits(
+  edits: ProjectEdits,
+  next: RemixDescribeEdits,
+): ProjectEdits {
+  const stems = { ...edits.stems };
+  for (const [stemId, edit] of Object.entries(next.stems)) {
+    const current = stems[stemId];
+    if (current) {
+      stems[stemId] = { ...current, muted: edit.muted, sections: edit.sections };
+    }
+  }
+  return {
+    ...edits,
+    stems,
+    effects: next.effects,
+    structure: next.structure,
+  };
 }
 
 export function stemPreviewStates(
@@ -2030,6 +2059,22 @@ export function RemixStudioEditor({
     sectionGrid && structureState
       ? structureShapeOptions(sectionGrid, structureState)
       : [];
+  // "Describe it" (#1900): proposals are computed from these edits; Apply
+  // (and Undo) set the described slice in one update and autosave persists it.
+  const describeContext: RemixDescribeContext<ProjectEdits> = {
+    edits,
+    stems: project.stems.map((stem) => ({
+      stemId: stem.stemId,
+      type: stem.type,
+      name: stemDisplayName(stem),
+      reference: referenceIds.has(stem.stemId),
+    })),
+    grid: sectionGrid,
+  };
+  const handleApplyDescribedEdits = (next: RemixDescribeEdits) => {
+    if (published) return;
+    setEdits((prev) => applyDescribedEdits(prev, next));
+  };
   const replaceStemOptions = project.stems
     .filter((stem) => !referenceIds.has(stem.stemId))
     .map((stem) => ({ stemId: stem.stemId, name: stemDisplayName(stem) }));
@@ -2456,6 +2501,8 @@ export function RemixStudioEditor({
               onMasterFxChange={handleMasterFxChange}
               structureOptions={structureOptions}
               onApplyStructure={handleApplyStructure}
+              describeContext={describeContext}
+              onApplyEdits={handleApplyDescribedEdits}
               primary={{
                 label: generateLabel,
                 enabled: generateAvailability.enabled,

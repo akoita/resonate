@@ -11,6 +11,16 @@ import {
 } from "../../lib/remixStructure";
 import type { RemixSectionGrid } from "../../lib/api";
 import {
+  parseRemixDescription,
+  type RemixDescribeContext,
+} from "../../lib/remixDescribe";
+import {
+  DESCRIBE_APPLIED_NOTE,
+  DESCRIBE_NOT_UNDERSTOOD,
+  DESCRIBE_PRIVACY_NOTE,
+  DescribeRemixView,
+  describeProposal,
+  type DescribeRemixViewProps,
   formatSongLength,
   structureShapeOptions,
   structureShapeResult,
@@ -397,5 +407,157 @@ describe("RemixCreatePanel — Song length & shape (#1899)", () => {
     expect(formatSongLength(216)).toBe("3:36");
     expect(formatSongLength(288.4)).toBe("4:48");
     expect(formatSongLength(-1)).toBe("0:00");
+  });
+});
+
+describe("RemixCreatePanel — Describe it (#1900)", () => {
+  const grid: RemixSectionGrid = {
+    kind: "bars",
+    sections: [0, 16, 32, 48].map((startSec) => ({ startSec, endSec: startSec + 16 })),
+    sectionSeconds: 16,
+    durationSeconds: 64,
+    bpm: 120,
+  };
+  const describeContext: RemixDescribeContext = {
+    edits: {
+      stems: {
+        "stem-vox": { gainDb: null, muted: false, sections: null },
+        "stem-drums": { gainDb: null, muted: false, sections: null },
+      },
+      effects: null,
+      structure: null,
+    },
+    stems: [
+      { stemId: "stem-vox", type: "vocals", name: "Vocals", reference: false },
+      { stemId: "stem-drums", type: "drums", name: "Drums", reference: false },
+    ],
+    grid,
+  };
+  const proposalFor = (text: string) =>
+    describeProposal(parseRemixDescription(text), describeContext);
+  const view = (overrides: Partial<DescribeRemixViewProps> = {}) =>
+    renderToStaticMarkup(
+      <DescribeRemixView
+        text=""
+        onTextChange={noop}
+        onPreview={noop}
+        proposal={null}
+        onApply={noop}
+        onCancel={noop}
+        applied={false}
+        onUndo={noop}
+        locked={false}
+        {...overrides}
+      />,
+    );
+
+  it("renders the box at the top of Mix stems, above the Vibe", () => {
+    const html = render({ describeContext, onApplyEdits: noop });
+    expect(html).toContain("Describe the remix you want");
+    expect(html).toContain('placeholder="e.g. slower and dreamy, no drums, longer"');
+    expect(html).toMatch(/<input[^>]*maxLength="200"[^>]*remix-describe-input/);
+    expect(html).toContain('aria-live="polite" class="remix-describe-proposal"');
+    // Honest about where the words go, and tied to the input.
+    expect(html).toContain(DESCRIBE_PRIVACY_NOTE);
+    const privacyId = html.match(/id="([^"]*)" class="[^"]*remix-describe-privacy/)?.[1];
+    expect(privacyId).toBeTruthy();
+    expect(html).toMatch(
+      new RegExp(`<input[^>]*aria-describedby="${privacyId}"[^>]*remix-describe-input`),
+    );
+    expect(html.indexOf("remix-describe")).toBeLessThan(html.indexOf("remix-vibe"));
+    // Nothing is proposed before Preview.
+    expect(html).not.toContain("remix-describe-apply");
+    // Empty input: Preview waits for words.
+    expect(buttonTag(html, "remix-describe-preview")).toContain('disabled=""');
+    expect(buttonTag(html, "remix-describe-preview")).toContain('type="submit"');
+  });
+
+  it("is hidden without a context and on the Add AI side", () => {
+    expect(render()).not.toContain("remix-describe");
+    expect(render({ describeContext })).not.toContain("remix-describe");
+    expect(
+      render({ intent: "reimagine", describeContext, onApplyEdits: noop }),
+    ).not.toContain("remix-describe");
+  });
+
+  it("shows a proposal as a diff with Apply and Cancel", () => {
+    const proposal = proposalFor("slower, no drums, no guitar, purple");
+    expect(proposal.understood).toBe(true);
+    const html = view({ text: "slower, no drums, no guitar, purple", proposal });
+    expect(html).toContain("Proposed changes");
+    expect(html).toMatch(/Speed<\/span>.*1\.00×.*→.*0\.85×/);
+    expect(html).toMatch(/Drums<\/span>.*on.*→.*muted/);
+    expect(html).toContain("This track has no guitar stem");
+    expect(html).toContain("Not understood: purple");
+    // The shape line carries the length change.
+    const longer = view({ text: "longer", proposal: proposalFor("longer") });
+    expect(longer).toMatch(/Song shape<\/span>.*Original length.*→.*Extended mix \(1:04 → 1:36\)/);
+    expect(buttonTag(html, "remix-describe-apply")).not.toContain('disabled=""');
+    expect(buttonTag(html, "remix-describe-apply")).toContain("bg-purple-600");
+    expect(buttonTag(html, "remix-describe-cancel")).toContain("bg-zinc-900");
+    expect(buttonTag(html, "remix-describe-preview")).not.toContain('disabled=""');
+  });
+
+  it("says when nothing was understood, without an Apply", () => {
+    const proposal = proposalFor("purple bananas");
+    expect(proposal.understood).toBe(false);
+    const html = view({ text: "purple bananas", proposal });
+    expect(html).toContain(DESCRIBE_NOT_UNDERSTOOD.replace("'", "&#x27;"));
+    expect(html).not.toContain("remix-describe-apply");
+    expect(html).not.toContain("Not understood:");
+    expect(html).toContain("remix-describe-cancel");
+  });
+
+  it("says when there is nothing to change", () => {
+    const html = view({ text: "not so dark", proposal: proposalFor("not so dark") });
+    expect(html).toContain("Nothing to change — it already sounds like that.");
+    expect(html).not.toContain("remix-describe-apply");
+    const missing = view({ text: "no guitar", proposal: proposalFor("no guitar") });
+    expect(missing).toContain("Nothing to change.");
+    expect(missing).toContain("This track has no guitar stem");
+    // Unsupported asks explain themselves.
+    const quieter = view({ text: "less drums", proposal: proposalFor("less drums") });
+    expect(quieter).toContain("volume slider");
+    expect(quieter).not.toContain(DESCRIBE_NOT_UNDERSTOOD.slice(0, 10));
+  });
+
+  it("confirms an Apply with a one-step Undo", () => {
+    const html = view({ text: "slower", applied: true });
+    expect(html).toContain(DESCRIBE_APPLIED_NOTE);
+    expect(buttonTag(html, "remix-describe-undo")).not.toContain('disabled=""');
+    expect(buttonTag(html, "remix-describe-undo")).toContain("bg-zinc-900");
+    expect(view({ text: "slower" })).not.toContain("remix-describe-undo");
+  });
+
+  it("locks the box on a published remix", () => {
+    const html = view({
+      text: "slower",
+      proposal: proposalFor("slower"),
+      applied: false,
+      locked: true,
+    });
+    expect(html).toMatch(/<input[^>]*disabled=""[^>]*remix-describe-input/);
+    expect(buttonTag(html, "remix-describe-preview")).toContain('disabled=""');
+    expect(buttonTag(html, "remix-describe-apply")).toContain('disabled=""');
+    expect(
+      buttonTag(view({ text: "x", applied: true, locked: true }), "remix-describe-undo"),
+    ).toContain('disabled=""');
+    const panel = render({ describeContext, onApplyEdits: noop, locked: true });
+    expect(panel).toMatch(/<input[^>]*disabled=""[^>]*remix-describe-input/);
+  });
+
+  it("computes the proposal live from the current edits", () => {
+    const slowed: RemixDescribeContext = {
+      ...describeContext,
+      edits: {
+        ...describeContext.edits,
+        effects: { schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { speed: 0.85 } },
+      },
+    };
+    const plan = parseRemixDescription("not so slow");
+    expect(describeProposal(plan, describeContext).changes).toEqual([]);
+    expect(describeProposal(plan, slowed).changes).toEqual([
+      { label: "Speed", from: "0.85×", to: "1.00×" },
+    ]);
   });
 });

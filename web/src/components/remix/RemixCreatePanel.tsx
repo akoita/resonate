@@ -1,7 +1,7 @@
 "use client";
 
-import { useId } from "react";
-import type { MouseEvent, ReactNode } from "react";
+import { useId, useState } from "react";
+import type { FormEvent, MouseEvent, ReactNode } from "react";
 import {
   intentForSwitch,
   isAiIntent,
@@ -22,6 +22,18 @@ import {
   type RemixVibeId,
 } from "../../lib/remixFx";
 import type { RemixSectionGrid } from "../../lib/api";
+import {
+  formatSongLength,
+  parseRemixDescription,
+  planToEdits,
+  REMIX_DESCRIBE_MAX_LENGTH,
+  REMIX_DESCRIBE_SHAPE_LABELS,
+  sameDescribeEdits,
+  type RemixDescribeChange,
+  type RemixDescribeContext,
+  type RemixDescribeEdits,
+  type RemixIntentPlan,
+} from "../../lib/remixDescribe";
 import {
   extendedMix,
   normalizeRemixStructure,
@@ -73,6 +85,13 @@ export type RemixCreatePanelProps = {
    */
   structureOptions?: RemixStructureShapeOption[];
   onApplyStructure?(id: RemixStructureShapeId): void;
+  /**
+   * "Describe it" (#1900): the current edits, stems and grid the proposal
+   * is computed from; absent = the box is hidden.
+   */
+  describeContext?: RemixDescribeContext;
+  /** Sets the described edits (Apply) or restores the previous ones (Undo). */
+  onApplyEdits?(edits: RemixDescribeEdits): void;
   primary: RemixCreatePrimaryAction;
   creditMeter: ReactNode;
   attribution: ReactNode;
@@ -128,26 +147,23 @@ export const REMIX_STRUCTURE_SHAPES: readonly {
 }[] = [
   {
     id: "original",
-    label: "Original length",
+    label: REMIX_DESCRIBE_SHAPE_LABELS.original,
     description: "The song as released, in its original order",
   },
   {
     id: "extended",
-    label: "Extended mix",
+    label: REMIX_DESCRIBE_SHAPE_LABELS.extended,
     description: "Longer intro and outro — handy for DJs",
   },
   {
     id: "short",
-    label: "Short edit",
+    label: REMIX_DESCRIBE_SHAPE_LABELS.short,
     description: "About a third shorter, fades out",
   },
 ];
 
-/** m:ss for a length in seconds. */
-export function formatSongLength(sec: number): string {
-  const total = Math.max(0, Math.round(Number.isFinite(sec) ? sec : 0));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
+// m:ss song lengths live with the describe diff, which shows them too.
+export { formatSongLength } from "../../lib/remixDescribe";
 
 function shapeOp(
   grid: RemixSectionGrid,
@@ -284,6 +300,242 @@ function StructureShapeSection({
         ))}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// "Describe it" (#1900): plain words → a visible diff of control changes.
+
+export const DESCRIBE_NOT_UNDERSTOOD =
+  "I didn't catch that. Try words like slower, dreamy, darker, no drums, or longer.";
+export const DESCRIBE_APPLIED_NOTE = "Applied — adjust anything below.";
+export const DESCRIBE_PRIVACY_NOTE = "Understood on your device — nothing is sent.";
+
+/** What the proposal shows for a parsed description. */
+export type DescribeProposal = {
+  /** Proposed edits (unchanged when there is nothing to change). */
+  edits: RemixDescribeEdits;
+  changes: RemixDescribeChange[];
+  /** Missing parts, refused shapes and unsupported asks, in plain words. */
+  skipped: string[];
+  unrecognizedWords: string[];
+  /** Whether any word was understood (a directive or an honest note). */
+  understood: boolean;
+};
+
+/** The proposal for a plan against the current edits (pure). */
+export function describeProposal(
+  plan: RemixIntentPlan,
+  context: RemixDescribeContext,
+): DescribeProposal {
+  const result = planToEdits(plan, context);
+  return {
+    edits: result.edits,
+    changes: result.changes,
+    skipped: [...result.skipped, ...plan.notes],
+    unrecognizedWords: plan.unrecognizedWords,
+    understood: plan.directives.length > 0 || plan.notes.length > 0,
+  };
+}
+
+export type DescribeRemixViewProps = {
+  text: string;
+  onTextChange(text: string): void;
+  onPreview(): void;
+  proposal: DescribeProposal | null;
+  onApply(): void;
+  onCancel(): void;
+  /** The last Apply is still in place and can be undone. */
+  applied: boolean;
+  onUndo(): void;
+  locked: boolean;
+};
+
+/** Stateless "Describe it" box; every state renders from props. */
+export function DescribeRemixView({
+  text,
+  onTextChange,
+  onPreview,
+  proposal,
+  onApply,
+  onCancel,
+  applied,
+  onUndo,
+  locked,
+}: DescribeRemixViewProps) {
+  const id = useId();
+  const inputId = `${id}-describe`;
+  const privacyId = `${id}-describe-privacy`;
+  const canPreview = !locked && text.trim().length > 0;
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (canPreview) onPreview();
+  };
+  const hasChanges = !!proposal && proposal.changes.length > 0;
+  return (
+    <form className="remix-describe" onSubmit={handleSubmit}>
+      <label htmlFor={inputId} className="block text-xs text-zinc-500 mb-1">
+        Describe the remix you want
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <input
+          id={inputId}
+          type="text"
+          value={text}
+          maxLength={REMIX_DESCRIBE_MAX_LENGTH}
+          placeholder="e.g. slower and dreamy, no drums, longer"
+          disabled={locked}
+          autoComplete="off"
+          aria-describedby={privacyId}
+          className="min-w-[12rem] flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-purple-500/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 remix-describe-input"
+          onChange={(event) =>
+            onTextChange(event.target.value.slice(0, REMIX_DESCRIBE_MAX_LENGTH))
+          }
+        />
+        <button
+          type="submit"
+          disabled={!canPreview}
+          className="shrink-0 rounded-md border border-purple-500/60 bg-purple-500/15 px-3 py-1.5 text-sm text-purple-200 transition-colors hover:bg-purple-500/25 disabled:cursor-not-allowed disabled:opacity-50 remix-describe-preview"
+        >
+          Preview changes
+        </button>
+      </div>
+      <p id={privacyId} className="mt-1 text-xs text-zinc-500 remix-describe-privacy">
+        {DESCRIBE_PRIVACY_NOTE}
+      </p>
+      <div aria-live="polite" className="remix-describe-proposal">
+        {proposal && (
+          <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
+            {hasChanges ? (
+              <>
+                <div className="text-xs text-zinc-500">Proposed changes</div>
+                <ul className="mt-1 space-y-0.5 text-sm remix-describe-changes">
+                  {proposal.changes.map((change, index) => (
+                    <li
+                      key={`${change.label}-${index}`}
+                      className="flex items-baseline justify-between gap-2 remix-describe-change"
+                    >
+                      <span className="text-zinc-300">{change.label}</span>
+                      <span className="shrink-0 tabular-nums text-zinc-400">
+                        {change.from} <span aria-hidden="true">→</span>
+                        <span className="sr-only">to</span>{" "}
+                        <span className="text-purple-200">{change.to}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : proposal.understood ? (
+              <p className="text-sm text-zinc-300 remix-describe-nothing">
+                {proposal.skipped.length > 0
+                  ? "Nothing to change."
+                  : "Nothing to change — it already sounds like that."}
+              </p>
+            ) : (
+              <p className="text-sm text-zinc-300 remix-describe-not-understood">
+                {DESCRIBE_NOT_UNDERSTOOD}
+              </p>
+            )}
+            {proposal.skipped.map((note) => (
+              <p key={note} className="mt-1 text-xs text-zinc-500 remix-describe-skipped">
+                {note}
+              </p>
+            ))}
+            {proposal.understood && proposal.unrecognizedWords.length > 0 && (
+              <p className="mt-1 text-xs text-zinc-500 remix-describe-unrecognized">
+                Not understood: {proposal.unrecognizedWords.join(", ")}
+              </p>
+            )}
+            <div className="mt-2 flex gap-2">
+              {hasChanges && (
+                <button
+                  type="button"
+                  disabled={locked}
+                  className="rounded-md border border-purple-400 bg-purple-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50 remix-describe-apply"
+                  onClick={onApply}
+                >
+                  Apply
+                </button>
+              )}
+              <button
+                type="button"
+                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 remix-describe-cancel"
+                onClick={onCancel}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {!proposal && applied && (
+          <p className="mt-2 flex items-center justify-between gap-2 text-xs text-zinc-400 remix-describe-applied">
+            <span>{DESCRIBE_APPLIED_NOTE}</span>
+            <button
+              type="button"
+              disabled={locked}
+              className="shrink-0 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 remix-describe-undo"
+              onClick={onUndo}
+            >
+              Undo
+            </button>
+          </p>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/**
+ * "Describe it" (#1900): the listener's words become a proposal computed
+ * live from the current edits; nothing changes until Apply, and one Undo
+ * restores the edits from before the last Apply while they are unchanged.
+ */
+function DescribeRemixSection({
+  context,
+  onApplyEdits,
+  locked,
+}: {
+  context: RemixDescribeContext;
+  onApplyEdits(edits: RemixDescribeEdits): void;
+  locked: boolean;
+}) {
+  const [text, setText] = useState("");
+  const [plan, setPlan] = useState<RemixIntentPlan | null>(null);
+  const [applied, setApplied] = useState<{
+    before: RemixDescribeEdits;
+    after: RemixDescribeEdits;
+  } | null>(null);
+  const proposal = plan ? describeProposal(plan, context) : null;
+  // Undo is only offered while the applied edits are still in place.
+  const undoable = !!applied && sameDescribeEdits(context.edits, applied.after);
+  return (
+    <DescribeRemixView
+      text={text}
+      onTextChange={(next) => {
+        setText(next);
+        setPlan(null);
+      }}
+      onPreview={() => {
+        if (locked) return;
+        setPlan(parseRemixDescription(text));
+        setApplied(null);
+      }}
+      proposal={proposal}
+      onApply={() => {
+        if (locked || !proposal || proposal.changes.length === 0) return;
+        onApplyEdits(proposal.edits);
+        setApplied({ before: context.edits, after: proposal.edits });
+        setPlan(null);
+      }}
+      onCancel={() => setPlan(null)}
+      applied={undoable}
+      onUndo={() => {
+        if (locked || !applied) return;
+        onApplyEdits(applied.before);
+        setApplied(null);
+      }}
+      locked={locked}
+    />
   );
 }
 
@@ -434,6 +686,8 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     onMasterFxChange,
     structureOptions,
     onApplyStructure,
+    describeContext,
+    onApplyEdits,
     primary,
     creditMeter,
     attribution,
@@ -502,6 +756,15 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
 
       {!ai ? (
         <div className="mt-4 remix-create-mix">
+          {describeContext && onApplyEdits && (
+            <div className="mb-4">
+              <DescribeRemixSection
+                context={describeContext}
+                onApplyEdits={onApplyEdits}
+                locked={locked}
+              />
+            </div>
+          )}
           <p className="text-xs text-zinc-400 remix-create-free-note">{STEM_MIX_FREE_NOTE}</p>
           <VibeSection
             effects={effects}

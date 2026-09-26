@@ -39,6 +39,7 @@ import {
   stemDisplayName,
   editsTimeline,
   editsWithStructure,
+  applyDescribedEdits,
   projectStructure,
   structureEditStateFor,
   AUTOSAVE_DELAY_MS,
@@ -2263,5 +2264,57 @@ describe("structure blocks (#1899)", () => {
     );
     expect(html).toMatch(/aria-label="Section options for bar 1"[^>]*disabled=""/);
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*remix-structure-shape-original/);
+  });
+});
+
+describe("Describe it (#1900)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    sections: [0, 16, 32, 48].map((startSec) => ({ startSec, endSec: startSec + 16 })),
+    sectionSeconds: 16,
+    durationSeconds: 64,
+    bpm: 120,
+  };
+
+  it("applyDescribedEdits sets mutes, masks, effects and structure in one update", () => {
+    const edits = { ...initialEdits(project({ sectionGrid })), title: "Typed meanwhile" };
+    const effects = { schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { speed: 0.85 } };
+    const structure = {
+      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+      blocks: [0, 1, 2].map((section) => ({ section })),
+    };
+    const next = applyDescribedEdits(edits, {
+      stems: {
+        "stem-1": { gainDb: 6, muted: true, sections: [true, false, true] },
+        "stem-2": { gainDb: null, muted: false, sections: null },
+        "stem-gone": { gainDb: null, muted: true, sections: null },
+      },
+      effects,
+      structure,
+    });
+    expect(next.title).toBe("Typed meanwhile");
+    expect(next.prompt).toBe(edits.prompt);
+    expect(next.aiTarget).toBe(edits.aiTarget);
+    // Gains stay the listener's own; unknown stems are ignored.
+    expect(next.stems).toEqual({
+      "stem-1": { gainDb: -3, muted: true, sections: [true, false, true] },
+      "stem-2": { gainDb: null, muted: false, sections: null },
+    });
+    expect(next.effects).toBe(effects);
+    expect(next.structure).toBe(structure);
+    expect(buildProjectPatch(project({ sectionGrid }), next)).toMatchObject({
+      effects,
+      structure,
+    });
+  });
+
+  it("renders the Describe box in the studio and locks it once published", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project({ sectionGrid })} />);
+    expect(html).toContain("Describe the remix you want");
+    expect(html).toMatch(/<input(?![^>]*disabled="")[^>]*remix-describe-input/);
+    const published = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ sectionGrid, status: "published" })} />,
+    );
+    expect(published).toMatch(/<input[^>]*disabled=""[^>]*remix-describe-input/);
   });
 });
