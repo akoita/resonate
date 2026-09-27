@@ -20,6 +20,7 @@ import {
   slicePeaks,
   laneHasFx,
   LaneFxRow,
+  LaneProStrip,
   normalizeSections,
   peaksToSvgPath,
   RemixSessionLanes,
@@ -333,6 +334,114 @@ describe("per-lane FX (#1897)", () => {
     const open = toggleInSet(new Set(), "a");
     expect([...open]).toEqual(["a"]);
     expect([...toggleInSet(open, "a")]).toEqual([]);
+  });
+});
+
+describe("Pro channel strip and badge (#1903)", () => {
+  type HostElement = ReactElement<Record<string, unknown>>;
+  function hostElements(node: ReactNode): HostElement[] {
+    if (Array.isArray(node)) return node.flatMap(hostElements);
+    if (!isValidElement(node)) return [];
+    const element = node as HostElement;
+    if (typeof element.type === "function") {
+      return hostElements((element.type as (props: unknown) => ReactNode)(element.props));
+    }
+    return [element, ...hostElements(element.props.children as ReactNode)];
+  }
+
+  it("shows a 'Pro' badge for saved Pro settings while Pro is off", () => {
+    const off = render({
+      onFxChange: noop,
+      stems: [stem({ name: "Bass", pro: { eqLow: 3, eqMid: 0, eqHigh: 0, pan: -0.3 } })],
+    });
+    expect(off).toContain("remix-lane-pro-badge");
+    expect(off).toContain('title="Pro EQ/pan active — turn on Pro to edit"');
+    // The FX dot stays about the FX row's own effects.
+    expect(off).not.toContain("remix-lane-fx-dot");
+
+    const on = render({
+      onFxChange: noop,
+      proMode: true,
+      onProChange: noop,
+      stems: [stem({ name: "Bass", pro: { eqLow: 3, eqMid: 0, eqHigh: 0, pan: -0.3 } })],
+    });
+    expect(on).not.toContain("remix-lane-pro-badge");
+    expect(on).toContain("remix-lane-fx-dot");
+    // No badge without Pro settings; the lane keeps its height with Pro off.
+    expect(render({ onFxChange: noop, stems: [stem({ pro: { eqLow: 0, eqMid: 0, eqHigh: 0, pan: 0 } })] })).not.toContain(
+      "remix-lane-pro",
+    );
+  });
+
+  it("adds the Pro strip to the FX row only in Pro mode", () => {
+    const withPro = renderToStaticMarkup(
+      <LaneFxRow
+        id="fx-row"
+        stem={{ stemId: "stem-bass", name: "Bass", pro: { eqLow: 3, eqMid: -4.5, pan: -0.3 } }}
+        disabled={false}
+        onFxChange={noop}
+        onProChange={noop}
+      />,
+    );
+    expect(withPro).toContain('aria-label="Bass Pro channel strip"');
+    expect(withPro).toContain('aria-label="Bass EQ Low 200 Hz"');
+    expect(withPro).toContain('aria-label="Bass EQ Mid 1 kHz"');
+    expect(withPro).toContain('aria-label="Bass EQ High 4 kHz"');
+    expect(withPro).toContain('aria-label="Bass pan"');
+    expect(withPro).toContain('aria-valuetext="+3 dB"');
+    expect(withPro).toContain('aria-valuetext="\u22124.5 dB"');
+    expect(withPro).toContain('aria-valuetext="0 dB"');
+    expect(withPro).toContain('aria-valuetext="L 30"');
+    expect(withPro).toMatch(/min="-12" max="12" step="0.5"/);
+    expect(withPro).toMatch(/min="-1" max="1" step="0.01"/);
+    expect(countMatches(withPro, /type="range"/g)).toBe(3 + 4);
+
+    const withoutPro = renderToStaticMarkup(
+      <LaneFxRow
+        id="fx-row"
+        stem={{ stemId: "stem-bass", name: "Bass", pro: { eqLow: 3 } }}
+        disabled={false}
+        onFxChange={noop}
+      />,
+    );
+    expect(withoutPro).not.toContain("Pro channel strip");
+    expect(countMatches(withoutPro, /type="range"/g)).toBe(3);
+  });
+
+  it("reports edits and double-click resets to 0", () => {
+    const onProChange = vi.fn();
+    const elements = hostElements(
+      LaneProStrip({
+        stem: { stemId: "stem-bass", name: "Bass", pro: { eqLow: 3, eqMid: 0, eqHigh: 0, pan: 0.2 } },
+        disabled: false,
+        onProChange,
+      }),
+    );
+    const slider = (label: string) =>
+      elements.find(
+        (element) => element.type === "input" && element.props["aria-label"] === label,
+      )!;
+    (slider("Bass EQ High 4 kHz").props.onChange as (event: unknown) => void)({
+      target: { value: "-6.5" },
+    });
+    expect(onProChange).toHaveBeenLastCalledWith("stem-bass", "eqHigh", -6.5);
+    (slider("Bass pan").props.onChange as (event: unknown) => void)({
+      target: { value: "-0.3" },
+    });
+    expect(onProChange).toHaveBeenLastCalledWith("stem-bass", "pan", -0.3);
+    (slider("Bass EQ Low 200 Hz").props.onDoubleClick as () => void)();
+    expect(onProChange).toHaveBeenLastCalledWith("stem-bass", "eqLow", 0);
+    // Already at 0: a double-click reports nothing.
+    onProChange.mockClear();
+    (slider("Bass EQ Mid 1 kHz").props.onDoubleClick as () => void)();
+    expect(onProChange).not.toHaveBeenCalled();
+  });
+
+  it("locks the strip under the published lock", () => {
+    const html = renderToStaticMarkup(
+      <LaneProStrip stem={{ stemId: "s", name: "Bass" }} disabled onProChange={noop} />,
+    );
+    expect(countMatches(html, /type="range"[^>]*disabled=""/g)).toBe(4);
   });
 });
 

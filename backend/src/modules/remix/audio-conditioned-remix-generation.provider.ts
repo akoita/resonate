@@ -14,7 +14,12 @@ import {
   stemTransformPromptLead,
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
-import { REMIX_FX_DSP_VERSION, remixFxStretchPlan } from "./remix-fx";
+import {
+  REMIX_FX_DSP_VERSION,
+  REMIX_FX_PRO_DSP_VERSION,
+  remixFxStretchPlan,
+  remixFxUsesPro,
+} from "./remix-fx";
 import { remixStretchMetadata } from "./remix-stretch";
 import { REMIX_STRUCTURE_DSP_VERSION } from "./remix-structure";
 import { REMIX_BEAT_DSP_VERSION } from "./remix-beat";
@@ -192,6 +197,10 @@ export class AudioConditionedRemixGenerationProvider
             conditioningEffects: {
               effects: input.renderFx.effects,
               effectsDspVersion: REMIX_FX_DSP_VERSION,
+              // #1903: the Pro EQ/pan mapping, when the recipe uses it.
+              ...(remixFxUsesPro(input.renderFx.effects)
+                ? { effectsProDspVersion: REMIX_FX_PRO_DSP_VERSION }
+                : {}),
               // #1898: the time-stretch stage the conditioning mix ran.
               ...conditioningStretch(input.renderFx.effects),
             },

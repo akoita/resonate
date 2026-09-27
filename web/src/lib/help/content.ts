@@ -892,7 +892,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning"],
     sections: [
       {
         id: "eligibility",
@@ -999,6 +999,32 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "The preview takes a few seconds to catch up",
             text: "After you change these, the studio prepares the new version of each part on your device, with a progress percentage under the controls. Until it's ready, the preview already plays at the new tempo, and the kept pitch or new key comes in by itself once preparation finishes, picking up at the same spot. If preparation fails, press Try again \u2014 the mix you render still gets the change either way.",
+          },
+        ],
+      },
+      {
+        id: "pro-mode",
+        heading: "Pro mode",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The Pro switch at the top of the Session adds engineer tools to each stem. Turn it on, open a stem's FX row, and you'll find a Pro strip under Space, Echo and Tone. Your device remembers the switch; it never changes your remix by itself.",
+          },
+          {
+            kind: "list",
+            items: [
+              "EQ: three sliders shape a stem's sound. Low (200 Hz) adds or removes weight and rumble, Mid (1 kHz) brings a part forward or pushes it back, and High (4 kHz) adds or removes brightness and air. Each goes from \u221212 dB to +12 dB.",
+              "Pan: places the stem from left (L 100) through the center (C) to right (R 100), so parts can sit side by side instead of on top of each other.",
+              "Double-click a slider to put it back to 0. Your changes save automatically, and the preview and the mix you render sound the same.",
+              "With Pro off, your EQ and pan still play and render. A small \"Pro\" badge on a stem's row tells you it has Pro settings \u2014 turn Pro on to edit them.",
+              "Vibes keep your Pro settings. \"No effects\" removes them along with every other effect (your Key and Keep original pitch stay), and \"Reset to original\" clears everything.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Pro is free for now",
+            text: "Pro mode costs nothing and uses no credits. More engineer tools will join it over time.",
           },
         ],
       },

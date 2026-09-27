@@ -74,9 +74,9 @@ function expectClose(actual: number, expected: number) {
 
 describe("remix-fx/v1 parity fixture (#1897)", () => {
   it("shares the schema version", () => {
-    // The fixture pins the v1 DSP numbers, unchanged by v2 (#1898).
+    // The fixture pins the v1 DSP numbers, unchanged by v2 (#1898) and v3 (#1903).
     expect(fixture.schemaVersion).toBe(REMIX_FX_V1_SCHEMA_VERSION);
-    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v2");
+    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v3");
   });
 
   it("maps tone to the same filters", () => {
@@ -181,7 +181,7 @@ describe("normalizeRemixFx (#1897)", () => {
     expect(normalizeRemixFx([])).toBeNull();
     expect(normalizeRemixFx({ master: "loud" })).toBeNull();
     expect(
-      normalizeRemixFx({ schemaVersion: "remix-fx/v3", master: { speed: 0.9 } }),
+      normalizeRemixFx({ schemaVersion: "remix-fx/v4", master: { speed: 0.9 } }),
     ).toBeNull();
   });
 
@@ -212,24 +212,24 @@ describe("normalizeRemixFx (#1897)", () => {
 });
 
 describe("remix-fx/v2 tempo/key fields (#1898)", () => {
-  it("reads v1 and v2 and always writes v2", () => {
+  it("reads v1 and v2 and always writes v3 (#1903)", () => {
     expect(
       normalizeRemixFx({ schemaVersion: REMIX_FX_V1_SCHEMA_VERSION, master: { speed: 0.9 } }),
-    ).toEqual({ schemaVersion: "remix-fx/v2", master: { speed: 0.9 } });
+    ).toEqual({ schemaVersion: "remix-fx/v3", master: { speed: 0.9 } });
     expect(
       normalizeRemixFx({
         schemaVersion: "remix-fx/v2",
         master: { speed: 0.85, keepPitch: true, semitones: 2 },
       }),
     ).toEqual({
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { speed: 0.85, keepPitch: true, semitones: 2 },
     });
   });
 
   it("clamps and rounds semitones, omits defaults and drops bad types", () => {
     expect(normalizeRemixFx({ master: { semitones: 9 } })).toEqual({
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { semitones: 6 },
     });
     expect(normalizeRemixFx({ master: { semitones: -2.6 } })?.master).toEqual({
@@ -238,9 +238,9 @@ describe("remix-fx/v2 tempo/key fields (#1898)", () => {
     expect(normalizeRemixFx({ master: { semitones: 0.4, keepPitch: false } })).toBeNull();
     expect(
       normalizeRemixFx({ master: { semitones: "2", keepPitch: "yes", speed: 0.9 } }),
-    ).toEqual({ schemaVersion: "remix-fx/v2", master: { speed: 0.9 } });
+    ).toEqual({ schemaVersion: "remix-fx/v3", master: { speed: 0.9 } });
     expect(normalizeRemixFx({ master: { keepPitch: true } })).toEqual({
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { keepPitch: true },
     });
   });

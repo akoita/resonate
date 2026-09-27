@@ -478,6 +478,71 @@ describe("FfmpegStemAudioMixer decrypt-for-render boundary (integration)", () =>
       expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
     });
 
+    it("renders Pro EQ and pan on the (mono) stem and records the Pro mapping (#1903)", async () => {
+      const mixer = new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService,
+      );
+      const effects = {
+        schemaVersion: "remix-fx/v3" as const,
+        stems: { [E2E_STEM]: { eqLow: 3, eqHigh: -2, pan: -0.3 } },
+      };
+      const before = remixMixTempDirs();
+      const mixed = await mixer.mixUnmutedStems(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        { effects, bpm: null },
+      );
+      expect(mixed.buffer.length).toBeGreaterThan(1000);
+      expect(mixed.renderMetadata).toMatchObject({
+        effects,
+        effectsDspVersion: "remix-fx-dsp/v1",
+        effectsProDspVersion: "remix-fx-pro-dsp/v1",
+      });
+      // Panned left: the mono stem (probed, up-mixed at unity) is louder on
+      // the left than on the right (L = 1 + gL ≈ 1.45, R = gR ≈ 0.89).
+      const dir = mkdtempSync(join(tmpdir(), "remix-pro-mixer-"));
+      try {
+        const out = join(dir, "mix.mp3");
+        writeFileSync(out, mixed.buffer);
+        const raw = execFileSync(
+          "ffmpeg",
+          ["-hide_banner", "-loglevel", "error", "-i", out, "-f", "f32le", "-c:a", "pcm_f32le", "-"],
+          { timeout: 60_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+        let left = 0;
+        let right = 0;
+        for (let frame = 0; frame < raw.length / 8; frame++) {
+          left += raw.readFloatLE(frame * 8) ** 2;
+          right += raw.readFloatLE(frame * 8 + 4) ** 2;
+        }
+        const ratioDb = 10 * Math.log10(left / right);
+        expect(Math.abs(ratioDb - 20 * Math.log10(1.45399 / 0.891007))).toBeLessThan(0.3);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+      // No Pro fields: no Pro mapping recorded.
+      const plain = await mixer.mixUnmutedStems(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        {
+          effects: { schemaVersion: "remix-fx/v3", stems: { [E2E_STEM]: { echo: 0.2 } } },
+          bpm: null,
+        },
+      );
+      expect("effectsProDspVersion" in plain.renderMetadata).toBe(false);
+      const after = remixMixTempDirs();
+      expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
+    });
+
     it("renders structure blocks without effects and records them (#1899)", async () => {
       const mixer = new FfmpegStemAudioMixer(
         storageProvider as unknown as StorageProvider,

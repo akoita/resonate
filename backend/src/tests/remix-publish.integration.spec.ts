@@ -528,16 +528,48 @@ describe("Remix publish (integration)", () => {
       grounding: "stem_audio",
       aiGenerated: false,
       sourceArrangement: [{ stemId: LICENSED_STEM_ID, gainDb: 0, muted: false }],
-      // A v1 render recipe is recorded with its values, read as v2 (#1898).
-      effects: { ...effects, schemaVersion: "remix-fx/v2" },
+      // A v1 render recipe is recorded with its values, read as v3 (#1898, #1903).
+      effects: { ...effects, schemaVersion: "remix-fx/v3" },
       effectsDspVersion: "remix-fx-dsp/v1",
     });
     expect("stretch" in (track.generationMetadata as object)).toBe(false);
   });
 
+  it("records the Pro EQ/pan mapping version in the publish lineage (#1903)", async () => {
+    const effects = {
+      schemaVersion: "remix-fx/v3",
+      stems: { [LICENSED_STEM_ID]: { eqLow: 3, pan: -0.3 } },
+    };
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 1,
+          activeStemCount: 1,
+          effects,
+          effectsDspVersion: "remix-fx-dsp/v1",
+          effectsProDspVersion: "remix-fx-pro-dsp/v1",
+        },
+      }),
+    });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    expect(track.generationMetadata).toMatchObject({
+      // Pro EQ and pan are DSP: grounding is unchanged.
+      grounding: "stem_audio",
+      aiGenerated: false,
+      effects,
+      effectsDspVersion: "remix-fx-dsp/v1",
+      effectsProDspVersion: "remix-fx-pro-dsp/v1",
+    });
+  });
+
   it("records the time-stretch stage of a tempo/key render in the lineage (#1898)", async () => {
     const effects = {
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { speed: 0.85, keepPitch: true, semitones: 2 },
     };
     const stretch = {
@@ -576,7 +608,7 @@ describe("Remix publish (integration)", () => {
 
   it("records the conditioning mix's stretch and drops a malformed one (#1898)", async () => {
     const effects = {
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { semitones: -3 },
     };
     const stretch = {
@@ -658,7 +690,7 @@ describe("Remix publish (integration)", () => {
       grounding: "audio_conditioned",
       aiGenerated: true,
       conditioningEffects: {
-        effects: { ...effects, schemaVersion: "remix-fx/v2" },
+        effects: { ...effects, schemaVersion: "remix-fx/v3" },
         effectsDspVersion: "remix-fx-dsp/v1",
       },
     });
