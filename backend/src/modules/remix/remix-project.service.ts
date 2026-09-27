@@ -14,7 +14,7 @@ import {
 import { PromptModerationService } from "../moderation/prompt-moderation.service";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
-import { randomUUID } from "crypto";
+import { randomInt, randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
@@ -95,6 +95,33 @@ import {
 } from "./remix-beat";
 import { readStoredRemixStretch } from "./remix-stretch";
 import {
+  buildPartPrompt,
+  deriveSongKey,
+  isPitchedPartRole,
+  normalizePartGenerateRequest,
+  normalizeRemixPartsInput,
+  PART_CLIP_SECONDS,
+  PART_MAX_LENGTH_SECONDS,
+  PART_TAKE_GROUNDING,
+  PART_TAKES_PER_PROJECT_MAX,
+  partLengthSeconds,
+  PARTS_NEED_TEMPO_ERROR,
+  quotePartTakesCents,
+  readStoredRemixParts,
+  referencedTakeIds,
+  REMIX_PART_PROMPT_VERSION,
+  REMIX_PART_TAKE_JOB,
+  toPartTakeResponse,
+  type PartRole,
+  type PartTakeErrorCode,
+  type RemixParts,
+} from "./remix-parts";
+import {
+  conformPartClip,
+  PartConformError,
+  type PartConformTarget,
+} from "./remix-part-conform";
+import {
   AI_DISCLOSURE_VERSION,
   deriveRemixAiDisclosure,
 } from "../catalog/ai-disclosure.policy";
@@ -164,6 +191,38 @@ export type RemixGenerationJobData = {
   projectId: string;
   generationInput: ReturnType<typeof buildRemixGenerationInput>;
 };
+
+/** One AI part take job (#1901), job name {@link REMIX_PART_TAKE_JOB}. */
+export type RemixPartTakeJobData = {
+  kind: "part_take";
+  takeId: string;
+  userId: string;
+  projectId: string;
+};
+
+/** Read shape of a part take audio stream (#1901). */
+export type RemixPartTakeAudio = RemixDraftAudio;
+
+/**
+ * A take failure with a safe, stored code (#1901). The message is internal
+ * (logged server-side only); the take records the code alone.
+ */
+class PartTakeFailure extends Error {
+  constructor(
+    readonly code: PartTakeErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PartTakeFailure";
+  }
+}
+
+function partTakeErrorCode(error: unknown): PartTakeErrorCode {
+  if (error instanceof PartTakeFailure) return error.code;
+  if (error instanceof RemixGenerationProviderError) return error.code;
+  if (error instanceof PartConformError) return "conform_failed";
+  return "internal_error";
+}
 
 /**
  * Review fix (#1165): the D2 Lyria provider stores .wav files, so a
@@ -350,6 +409,11 @@ const PROJECT_INCLUDE = {
       stem: { select: { type: true, title: true, audioFeatures: true } },
     },
   },
+  // AI part takes (#1901): bounded (the per-project cap), newest first.
+  partTakes: {
+    orderBy: { createdAt: "desc" },
+    take: PART_TAKES_PER_PROJECT_MAX,
+  },
   sourceTrack: {
     select: {
       title: true,
@@ -419,7 +483,9 @@ export class RemixProjectService {
     private readonly stemMixRenderer: StemMixRenderer,
     private readonly storageProvider: StorageProvider,
     @InjectQueue(REMIX_GENERATION_QUEUE)
-    private readonly generationQueue: Queue<RemixGenerationJobData>,
+    private readonly generationQueue: Queue<
+      RemixGenerationJobData | RemixPartTakeJobData
+    >,
     private readonly credits: GenerationCreditsService,
     @Inject(REMIX_LAYERED_RENDERER)
     private readonly layeredRenderer?: LayeredRemixRenderer,
@@ -435,13 +501,17 @@ export class RemixProjectService {
     action: "create" | "generate",
     userId: string,
     maxPerHour: number,
+    /** Generations this request counts as (an AI part batch = its takes). */
+    count = 1,
+    /** Check without recording a hit. */
+    dryRun = false,
   ): void {
     const key = `${action}:${userId}`;
     const now = Date.now();
     const timestamps = (this.rateLimits.get(key) ?? []).filter(
       (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
     );
-    if (timestamps.length >= maxPerHour) {
+    if (timestamps.length + count > maxPerHour) {
       throw new HttpException(
         `Rate limit exceeded: maximum ${maxPerHour} remix ${
           action === "create" ? "project creations" : "generation requests"
@@ -449,7 +519,8 @@ export class RemixProjectService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    timestamps.push(now);
+    if (dryRun) return;
+    for (let i = 0; i < count; i += 1) timestamps.push(now);
     this.rateLimits.set(key, timestamps);
   }
 
@@ -610,7 +681,13 @@ export class RemixProjectService {
   }
 
   async getProject(userId: string, projectId: string) {
-    const project = await this.loadOwnedProject(userId, projectId);
+    let project = await this.loadOwnedProject(userId, projectId);
+    // AI part takes (#1901): settle takes whose job or worker was lost, so a
+    // charged take never stays "processing" (and charged) forever.
+    if (this.hasStalePartTakes(project.partTakes)) {
+      await this.sweepStalePartTakes(project.id);
+      project = (await loadProject(project.id)) ?? project;
+    }
     const response = {
       ...this.toResponse(project),
       // Sell-rights bridge (#1413): additive/backward-compatible — lets the
@@ -758,6 +835,13 @@ export class RemixProjectService {
        * blocks alongside structure edits.
        */
       beat?: unknown;
+      /**
+       * AI part lanes remix-parts/v1 (#1901): undefined leaves them
+       * unchanged, null (or an empty list) clears them. At most 4 parts; each
+       * takeId must be a COMPLETED take of this project with the same role
+       * (checked under the project row lock); `blocks` follows the beat.
+       */
+      parts?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -840,7 +924,8 @@ export class RemixProjectService {
     const sectionGrid =
       hasArrangementUpdates ||
       patch.structure !== undefined ||
-      patch.beat !== undefined
+      patch.beat !== undefined ||
+      patch.parts !== undefined
         ? deriveSectionGrid(
             project.stems.map((stem) => ({
               audioFeatures: stem.stem.audioFeatures,
@@ -899,6 +984,21 @@ export class RemixProjectService {
       beat = normalized.value;
     }
 
+    // AI parts (#1901): shape here (the beat's block rules); the takes are
+    // checked inside the transaction, under the project row lock.
+    let parts: RemixParts | null | undefined;
+    if (patch.parts !== undefined) {
+      const normalized = normalizeRemixPartsInput(
+        patch.parts,
+        blockCountAfterPatch() ?? 0,
+        sectionGrid,
+      );
+      if ("error" in normalized) {
+        throw new BadRequestException(normalized.error);
+      }
+      parts = normalized.value;
+    }
+
     // Section-grid arrangement masks (#1314) must match the grid the studio
     // derived for this source; a null payload restores the always-on default.
     // Masks are block-indexed (#1899): submitted masks are measured against
@@ -950,6 +1050,35 @@ export class RemixProjectService {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      if (parts) {
+        // Serializes with take deletion and batch eviction (#1901): a take
+        // referenced here cannot disappear before this write commits.
+        await tx.$queryRaw`SELECT "id" FROM "RemixProject" WHERE "id" = ${project.id} FOR UPDATE`;
+        const takeIds = Array.from(new Set(parts.parts.map((part) => part.takeId)));
+        const takes = await tx.remixPartTake.findMany({
+          where: { id: { in: takeIds }, projectId: project.id },
+          select: { id: true, role: true, status: true },
+        });
+        const takeById = new Map(takes.map((take) => [take.id, take]));
+        parts.parts.forEach((part, index) => {
+          const take = takeById.get(part.takeId);
+          if (!take) {
+            throw new BadRequestException(
+              `parts[${index}].takeId is not a take of this project`,
+            );
+          }
+          if (take.status !== "completed") {
+            throw new BadRequestException(
+              `parts[${index}].takeId is not a completed take`,
+            );
+          }
+          if (take.role !== part.role) {
+            throw new BadRequestException(
+              `parts[${index}].takeId is a ${take.role} take, not ${part.role}`,
+            );
+          }
+        });
+      }
       if (addStemIds.length > 0) {
         // Added on explicit user intent, so they arrive unmuted (unlike
         // creation hydration, which parks auto-added siblings muted).
@@ -1018,6 +1147,14 @@ export class RemixProjectService {
                   beat === null
                     ? Prisma.DbNull
                     : (beat as unknown as Prisma.JsonObject),
+              }
+            : {}),
+          ...(parts !== undefined
+            ? {
+                parts:
+                  parts === null
+                    ? Prisma.DbNull
+                    : (parts as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1703,6 +1840,644 @@ export class RemixProjectService {
 
       throw normalized;
     }
+  }
+
+  // --- AI parts (#1901) -------------------------------------------------------
+
+  /**
+   * Starts a batch of AI part takes (#1901). ADR-BM-6 line (2): each take is
+   * one 30 s model generation charged at the canonical per-30 s price, so the
+   * quote is takes × price. Every check that can refuse the request — input,
+   * ownership, draft state, provider capability, tempo grid, clip length,
+   * style moderation, eligibility, rate limit (the batch counts as `takes`
+   * generations) and the balance (402) — runs BEFORE any take row exists.
+   * Each take is debited once, in the worker, and refunded on any failure.
+   */
+  async generatePartTakes(userId: string, projectId: string, input: unknown) {
+    const normalized = normalizePartGenerateRequest(input);
+    if ("error" in normalized) {
+      throw new BadRequestException({
+        code: "invalid_input",
+        message: normalized.error,
+      });
+    }
+    const request = normalized.value;
+    const project = await this.loadOwnedProject(userId, projectId);
+    if (project.status !== "draft") {
+      throw new ConflictException({
+        code: project.status === "published" ? "project_published" : "project_not_draft",
+        message: "Only draft remix projects can generate AI parts.",
+      });
+    }
+    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+      throw new RemixGenerationProviderError(
+        "provider_disabled",
+        "AI remix generation is not enabled on this environment yet.",
+        false,
+      );
+    }
+    if (typeof this.generationProvider.createPartClip !== "function") {
+      throw new BadRequestException({
+        code: "parts_unsupported",
+        message: "The configured AI provider cannot generate parts.",
+      });
+    }
+    const grid = deriveSectionGrid(
+      project.stems.map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+    );
+    if (!grid || grid.kind !== "bars" || !grid.bpm || grid.bpm <= 0) {
+      throw new ConflictException({
+        code: "no_tempo_grid",
+        message: PARTS_NEED_TEMPO_ERROR,
+      });
+    }
+    if (partLengthSeconds(grid.bpm, request.bars) > PART_MAX_LENGTH_SECONDS) {
+      throw new BadRequestException({
+        code: "part_too_long",
+        message: `${request.bars} bars at this song's tempo do not fit in one generated clip. Pick fewer bars.`,
+      });
+    }
+    // Style words are a prompt fragment: screened like a draft prompt (#1343)
+    // before any work.
+    if (request.style) {
+      const moderation = (
+        this.promptModeration ?? new PromptModerationService()
+      ).screen(request.style);
+      if (!moderation.allowed) {
+        throw new UnprocessableEntityException({
+          message: moderation.message,
+          code: "prompt_rejected",
+          category: moderation.category,
+        });
+      }
+    }
+    // Generation is rights-relevant: the creation-time decision is not trusted.
+    const stemIds = project.stems.map((stem) => stem.stemId);
+    const eligibility = await this.eligibilityService.checkEligibility({
+      userId,
+      trackId: project.sourceTrackId,
+      stemIds,
+      allowHistoricalStemIds: true,
+    });
+    if (!eligibility.allowed) {
+      this.publishDenialEvents(
+        { userId, sourceTrackId: project.sourceTrackId, stemIds },
+        eligibility,
+      );
+      throw new ForbiddenException({
+        message: "AI parts are not allowed for this source",
+        eligibility,
+      });
+    }
+
+    this.enforceRateLimit(
+      "generate",
+      userId,
+      this.maxGenerationsPerHour,
+      request.takes,
+      true,
+    );
+    const perTakeCents = this.credits.costForDurationCents(PART_CLIP_SECONDS);
+    const quoteCents = quotePartTakesCents(request.takes, perTakeCents);
+    const { balanceCents } = await this.credits.getBalance(userId);
+    if (balanceCents < quoteCents) {
+      throw new InsufficientCreditsException(userId, quoteCents, balanceCents);
+    }
+    this.enforceRateLimit("generate", userId, this.maxGenerationsPerHour, request.takes);
+
+    await this.sweepStalePartTakes(project.id);
+
+    const batchId = randomUUID();
+    const { created, evicted } = await prisma.$transaction(async (tx) => {
+      // Serializes with PATCH parts, take deletion and other batches.
+      await tx.$queryRaw`SELECT "id" FROM "RemixProject" WHERE "id" = ${project.id} FOR UPDATE`;
+      const fresh = await tx.remixProject.findUnique({
+        where: { id: project.id },
+        select: { status: true, parts: true },
+      });
+      if (!fresh || fresh.status !== "draft") {
+        throw new ConflictException({
+          code: "project_not_draft",
+          message: "Only draft remix projects can generate AI parts.",
+        });
+      }
+      const existing = await tx.remixPartTake.findMany({
+        where: { projectId: project.id },
+        select: { id: true, status: true, storageUri: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+      const overflow =
+        existing.length + request.takes - PART_TAKES_PER_PROJECT_MAX;
+      let evictedRows: Array<{ id: string; storageUri: string | null }> = [];
+      if (overflow > 0) {
+        // Oldest settled takes that no part names (valid or not) go first.
+        const referenced = referencedTakeIds(fresh.parts);
+        const candidates = existing.filter(
+          (take) =>
+            (take.status === "completed" || take.status === "failed") &&
+            !referenced.has(take.id),
+        );
+        if (candidates.length < overflow) {
+          throw new ConflictException({
+            code: "take_limit_reached",
+            message:
+              "This project already holds the maximum number of AI part takes. Delete unused takes or wait for running ones to finish.",
+          });
+        }
+        evictedRows = candidates.slice(0, overflow);
+        await tx.remixPartTake.deleteMany({
+          where: {
+            projectId: project.id,
+            id: { in: evictedRows.map((take) => take.id) },
+          },
+        });
+      }
+      const createdAt = Date.now();
+      const rows = [];
+      for (let index = 0; index < request.takes; index += 1) {
+        rows.push(
+          await tx.remixPartTake.create({
+            data: {
+              projectId: project.id,
+              userId,
+              batchId,
+              role: request.role,
+              bars: request.bars,
+              style: request.style,
+              // Stored so a take can be reproduced (same prompt + seed).
+              seed: randomInt(0, 2_147_483_647),
+              status: "pending",
+              promptVersion: REMIX_PART_PROMPT_VERSION,
+              grounding: PART_TAKE_GROUNDING,
+              costCents: perTakeCents,
+              // Distinct timestamps keep the batch's order stable.
+              createdAt: new Date(createdAt + index),
+            },
+          }),
+        );
+      }
+      return { created: rows, evicted: evictedRows };
+    });
+
+    for (const take of evicted) {
+      await this.deletePartTakeAudio(project.id, take.id, take.storageUri);
+    }
+
+    const unqueued: string[] = [];
+    for (const take of created) {
+      try {
+        await this.generationQueue.add(
+          REMIX_PART_TAKE_JOB,
+          { kind: "part_take", takeId: take.id, userId, projectId: project.id },
+          {
+            jobId: `rmxpart_${take.id}`,
+            attempts: 1,
+            removeOnComplete: true,
+            removeOnFail: false,
+          },
+        );
+      } catch {
+        unqueued.push(take.id);
+      }
+    }
+    if (unqueued.length > 0) {
+      // Nothing was debited yet (the worker debits), so nothing to refund.
+      await prisma.remixPartTake.updateMany({
+        where: { id: { in: unqueued }, status: "pending" },
+        data: { status: "failed", errorCode: "queue_unavailable" },
+      });
+      if (unqueued.length === created.length) {
+        throw new RemixGenerationProviderError(
+          "provider_unavailable",
+          "The AI part jobs could not be queued. Please try again later.",
+          true,
+        );
+      }
+    }
+
+    const takes = await prisma.remixPartTake.findMany({
+      where: { batchId, projectId: project.id },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    return {
+      batchId,
+      quoteCents,
+      perTakeCents,
+      takes: takes.map(toPartTakeResponse),
+    };
+  }
+
+  /**
+   * Worker half of one take (#1901): claim (row lock; a stale `processing`
+   * claim may be reclaimed), re-verify the project and eligibility, debit
+   * exactly once (the ledger is checked by take id first), generate, conform,
+   * store. Every failure after the debit refunds it (idempotent per take id)
+   * and records a safe error code; internal detail is logged only.
+   */
+  async processPartTakeJob(data: RemixPartTakeJobData) {
+    const claim = await this.claimPartTake(data);
+    if (!claim) return { skipped: true, reason: "not_claimable" };
+    const { take, startedAt } = claim;
+    const claimedWhere = { id: take.id, status: "processing", startedAt };
+    const markFailed = async (code: PartTakeErrorCode) => {
+      await prisma.remixPartTake.updateMany({
+        where: claimedWhere,
+        data: { status: "failed", errorCode: code },
+      });
+    };
+    const processingStartedAtMs = Date.now();
+
+    const project = await loadProject(data.projectId);
+    if (!project || project.creatorUserId !== data.userId) {
+      await markFailed("invalid_input");
+      return { failed: true, errorCode: "invalid_input" };
+    }
+    if (project.status !== "draft") {
+      await markFailed("project_not_draft");
+      return { failed: true, errorCode: "project_not_draft" };
+    }
+    try {
+      const eligibility = await this.eligibilityService.checkEligibility({
+        userId: data.userId,
+        trackId: project.sourceTrackId,
+        stemIds: project.stems.map((stem) => stem.stemId),
+        allowHistoricalStemIds: true,
+      });
+      if (!eligibility.allowed) {
+        await markFailed("not_eligible");
+        return { failed: true, errorCode: "not_eligible" };
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Part take ${take.id}: eligibility re-check failed (${
+          error instanceof Error ? error.name : "unknown"
+        })`,
+      );
+      await markFailed("not_eligible");
+      return { failed: true, errorCode: "not_eligible" };
+    }
+
+    // Debit exactly once per take: a reclaimed (stale) claim finds the first
+    // run's ledger row and does not charge again.
+    let chargedCents = 0;
+    if (take.costCents > 0) {
+      const existingDebit = await prisma.generationCreditTransaction.findFirst({
+        where: { userId: data.userId, jobId: take.id, type: "debit" },
+        select: { amountCents: true },
+      });
+      if (existingDebit) {
+        chargedCents = existingDebit.amountCents;
+      } else {
+        try {
+          await this.credits.debit(
+            data.userId,
+            take.costCents,
+            "remix_part",
+            take.id,
+            "remix_draft",
+          );
+          chargedCents = take.costCents;
+        } catch (error) {
+          if (error instanceof InsufficientCreditsException) {
+            await markFailed("insufficient_credits");
+            return { failed: true, errorCode: "insufficient_credits" };
+          }
+          // The debit's own transaction rolls back on error; refund anyway if
+          // a ledger row exists (a lost commit acknowledgement).
+          await this.refundPartTakeIfCharged(data.userId, take.id);
+          await markFailed("internal_error");
+          throw error;
+        }
+      }
+    }
+
+    let providerCalled = false;
+    let clipModel: string | null = null;
+    let estimatedCostUsd = 0;
+    try {
+      const grid = deriveSectionGrid(
+        project.stems.map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+      );
+      if (!grid || grid.kind !== "bars" || !grid.bpm || grid.bpm <= 0) {
+        throw new PartTakeFailure("no_tempo_grid", "no bar grid at process time");
+      }
+      const createPartClip = this.generationProvider.createPartClip;
+      if (typeof createPartClip !== "function") {
+        throw new PartTakeFailure("parts_unsupported", "provider has no clip capability");
+      }
+      const role = take.role as PartRole;
+      const songKey = deriveSongKey(
+        project.stems.map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+      );
+      const prompt = buildPartPrompt({
+        role,
+        style: take.style,
+        bpm: grid.bpm,
+        key: songKey,
+      });
+      providerCalled = true;
+      const clip = await createPartClip.call(this.generationProvider, {
+        prompt: prompt.prompt,
+        negativePrompt: prompt.negativePrompt,
+        seed: take.seed,
+      });
+      clipModel = clip.model;
+      estimatedCostUsd = clip.estimatedCostUsd;
+
+      const target: PartConformTarget = {
+        bpm: grid.bpm,
+        bars: take.bars,
+        pitched: isPitchedPartRole(role),
+        key: songKey,
+      };
+      let conformed;
+      try {
+        conformed = await conformPartClip(clip.audio, target, {
+          logError: (message) =>
+            this.logger.error(`Part take ${take.id}: ${message}`),
+        });
+      } catch (error) {
+        this.logger.error(
+          `Part take ${take.id}: conform failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        throw new PartTakeFailure("conform_failed", "conform failed");
+      }
+
+      let storageUri: string;
+      try {
+        const stored = await this.storageProvider.upload(
+          conformed.flac,
+          // Flat, id-only name scoped to the project (no user text).
+          `remix-part-${project.id}-${take.id}.flac`,
+          "audio/flac",
+        );
+        storageUri = stored.uri;
+      } catch (error) {
+        this.logger.error(
+          `Part take ${take.id}: storage write failed (${
+            error instanceof Error ? error.name : "unknown"
+          })`,
+        );
+        throw new PartTakeFailure("storage_failed", "storage write failed");
+      }
+
+      const completed = await prisma.remixPartTake.updateMany({
+        where: claimedWhere,
+        data: {
+          status: "completed",
+          storageUri,
+          mimeType: "audio/flac",
+          durationSec: conformed.durationSec,
+          conform: conformed.record as unknown as Prisma.JsonObject,
+          provider: clip.provider,
+          model: clip.model,
+          errorCode: null,
+          completedAt: new Date(),
+        },
+      });
+      if (completed.count === 0) {
+        // Superseded: swept as stale or its project is gone. The take is not
+        // delivered, so it is not charged; drop the stored audio.
+        await this.refundPartTakeIfCharged(data.userId, take.id);
+        await this.deletePartTakeAudio(project.id, take.id, storageUri);
+        return { skipped: true, reason: "superseded" };
+      }
+      await this.recordGenerationCost({
+        jobId: take.id,
+        userId: data.userId,
+        path: clip.model,
+        durationSeconds: PART_CLIP_SECONDS,
+        wallClockMs: Date.now() - processingStartedAtMs,
+        estimatedCostUsd: clip.estimatedCostUsd,
+        sellPriceCents: chargedCents,
+      });
+      return { takeId: take.id, status: "completed" };
+    } catch (error) {
+      const code = partTakeErrorCode(error);
+      // Internal detail stays in server logs; the take stores the code only.
+      this.logger.warn(
+        `Part take ${take.id} failed (${code})${
+          error instanceof PartTakeFailure
+            ? ""
+            : `: ${error instanceof Error ? error.message : String(error)}`
+        }`,
+      );
+      await this.refundPartTakeIfCharged(data.userId, take.id);
+      await markFailed(code);
+      if (providerCalled) {
+        await this.recordGenerationCost({
+          jobId: take.id,
+          userId: data.userId,
+          path: clipModel ?? "remix-stub",
+          durationSeconds: PART_CLIP_SECONDS,
+          wallClockMs: Date.now() - processingStartedAtMs,
+          estimatedCostUsd:
+            estimatedCostUsd ||
+            estimateGenerationCostUsd(clipModel ?? "remix-stub", PART_CLIP_SECONDS),
+          sellPriceCents: chargedCents,
+        });
+      }
+      return { failed: true, errorCode: code };
+    }
+  }
+
+  private hasStalePartTakes(
+    takes: Array<{ status: string; createdAt: Date; startedAt: Date | null }>,
+  ): boolean {
+    const cutoff = Date.now() - this.generationStaleAfterMs;
+    return takes.some(
+      (take) =>
+        (take.status === "pending" && take.createdAt.getTime() <= cutoff) ||
+        (take.status === "processing" &&
+          (!take.startedAt || take.startedAt.getTime() <= cutoff)),
+    );
+  }
+
+  /**
+   * Row-locked claim: pending → processing, or a `processing` claim older
+   * than the stale window (its worker died) is reclaimed. Anything else is
+   * not claimable (already settled, deleted, or another owner's).
+   */
+  private async claimPartTake(data: RemixPartTakeJobData) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "RemixPartTake" WHERE "id" = ${data.takeId} FOR UPDATE`;
+      const take = await tx.remixPartTake.findUnique({ where: { id: data.takeId } });
+      if (
+        !take ||
+        take.userId !== data.userId ||
+        take.projectId !== data.projectId
+      ) {
+        return null;
+      }
+      const staleClaim =
+        take.status === "processing" &&
+        (!take.startedAt ||
+          Date.now() - take.startedAt.getTime() >= this.generationStaleAfterMs);
+      if (take.status !== "pending" && !staleClaim) return null;
+      const startedAt = new Date();
+      await tx.remixPartTake.update({
+        where: { id: take.id },
+        data: { status: "processing", startedAt, errorCode: null },
+      });
+      return { take, startedAt };
+    });
+  }
+
+  /**
+   * Stale reclaim for takes (#1901), the draft rule applied per take: a
+   * pending take older than the stale window (its job was lost) or a
+   * processing take whose claim is older (its worker died) fails as `stale`
+   * and is refunded if it was charged. Conditional on the exact state read,
+   * so a live worker's own settle wins any race.
+   */
+  private async sweepStalePartTakes(projectId: string): Promise<void> {
+    const cutoff = new Date(Date.now() - this.generationStaleAfterMs);
+    const stale = await prisma.remixPartTake.findMany({
+      where: {
+        projectId,
+        OR: [
+          { status: "pending", createdAt: { lte: cutoff } },
+          { status: "processing", startedAt: { lte: cutoff } },
+          { status: "processing", startedAt: null },
+        ],
+      },
+      select: { id: true, userId: true, status: true, startedAt: true },
+    });
+    for (const take of stale) {
+      const marked = await prisma.remixPartTake.updateMany({
+        where: { id: take.id, status: take.status, startedAt: take.startedAt },
+        data: { status: "failed", errorCode: "stale" },
+      });
+      if (marked.count === 1) {
+        await this.refundPartTakeIfCharged(take.userId, take.id);
+      }
+    }
+  }
+
+  /**
+   * Refunds a take's debit, if the ledger holds one: the amount is the
+   * ledger's, and GenerationCreditsService.refund is idempotent per take id,
+   * so every failure path may call this. A refund error is logged loudly and
+   * never masks the take's own failure.
+   */
+  private async refundPartTakeIfCharged(userId: string, takeId: string) {
+    try {
+      const debit = await prisma.generationCreditTransaction.findFirst({
+        where: { userId, jobId: takeId, type: "debit" },
+        select: { amountCents: true },
+      });
+      if (!debit || debit.amountCents <= 0) return;
+      await this.credits.refund(
+        userId,
+        debit.amountCents,
+        "remix_part_failed_refund",
+        takeId,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Part take refund failed (take=${takeId}, error=${
+          error instanceof Error ? error.name : "unknown"
+        }); reconcile the credit ledger for this take.`,
+      );
+    }
+  }
+
+  private async deletePartTakeAudio(
+    projectId: string,
+    takeId: string,
+    storageUri: string | null,
+  ): Promise<void> {
+    if (!storageUri) return;
+    try {
+      await this.storageProvider.delete(storageUri);
+    } catch (error) {
+      // Ids only: the URI and the provider error body stay out of logs.
+      this.logger.warn(
+        `Part take audio delete failed (project=${projectId}, take=${takeId}, error=${
+          error instanceof Error ? error.name : "unknown"
+        })`,
+      );
+    }
+  }
+
+  /** Streams a COMPLETED take's conformed FLAC (#1901). Owner-only. */
+  async getPartTakeAudio(
+    userId: string,
+    projectId: string,
+    takeId: string,
+  ): Promise<RemixPartTakeAudio> {
+    await this.loadOwnedProject(userId, projectId);
+    const take = await prisma.remixPartTake.findFirst({
+      where: { id: takeId, projectId },
+      select: { status: true, storageUri: true, mimeType: true },
+    });
+    if (!take || take.status !== "completed" || !take.storageUri) {
+      throw new NotFoundException({
+        code: "take_not_found",
+        message: "This AI part take has no audio.",
+      });
+    }
+    const data = await this.storageProvider.download(take.storageUri);
+    if (!data) {
+      throw new NotFoundException({
+        code: "take_not_found",
+        message: "This AI part take has no audio.",
+      });
+    }
+    return { data, mimeType: take.mimeType ?? "audio/flac" };
+  }
+
+  /**
+   * Deletes a take and its audio (#1901). Owner-only; published projects are
+   * locked (409); a take a part still names answers 409 `take_in_use`, a
+   * pending/processing one 409 `take_processing` (after the stale sweep).
+   * The row goes first under the project lock; the audio delete is
+   * best-effort.
+   */
+  async deletePartTake(userId: string, projectId: string, takeId: string) {
+    const project = await this.loadOwnedProject(userId, projectId);
+    if (project.status === "published") {
+      throw new ConflictException({
+        code: "project_published",
+        message: "This remix project was published and can no longer be edited.",
+      });
+    }
+    await this.sweepStalePartTakes(projectId);
+    const removed = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "RemixProject" WHERE "id" = ${projectId} FOR UPDATE`;
+      const fresh = await tx.remixProject.findUnique({
+        where: { id: projectId },
+        select: { parts: true },
+      });
+      const take = await tx.remixPartTake.findFirst({
+        where: { id: takeId, projectId },
+        select: { id: true, status: true, storageUri: true },
+      });
+      if (!take) {
+        throw new NotFoundException({
+          code: "take_not_found",
+          message: "This AI part take does not exist.",
+        });
+      }
+      if (take.status === "pending" || take.status === "processing") {
+        throw new ConflictException({
+          code: "take_processing",
+          message: "This AI part take is still being generated.",
+        });
+      }
+      if (referencedTakeIds(fresh?.parts).has(take.id)) {
+        throw new ConflictException({
+          code: "take_in_use",
+          message: "This AI part take is used by a part. Remove the part first.",
+        });
+      }
+      await tx.remixPartTake.delete({ where: { id: take.id } });
+      return take;
+    });
+    await this.deletePartTakeAudio(projectId, removed.id, removed.storageUri);
+    return this.getProject(userId, projectId);
   }
 
   /**
@@ -2796,6 +3571,17 @@ export class RemixProjectService {
         project.beat,
         sectionGrid ? structureBlockCount(sectionGrid, structure) : null,
       ),
+      // AI part lanes (#1901), read tolerantly: a part whose take is not a
+      // completed take of this project with its role is dropped; a stale
+      // per-block list reads as on-everywhere, like the beat.
+      parts: readStoredRemixParts(
+        project.parts,
+        sectionGrid ? structureBlockCount(sectionGrid, structure) : null,
+        project.partTakes,
+      ),
+      // Newest first, at most the per-project cap; no storage URIs (the
+      // audio streams through the owner-only take audio endpoint).
+      partTakes: project.partTakes.map(toPartTakeResponse),
       policyVersion: project.policyVersion,
       publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,

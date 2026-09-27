@@ -742,6 +742,86 @@ from the JWT, never the request body.
     (−6..+6, "Original key", "+2 (higher)", "−3 (lower)"). Vibes, "No
     effects" and Describe it keep both fields; "Reset to original" clears
     them.
+- AI parts (#1901, slice S4 of epic #1896). **Status: partial** — PR 1
+  (backend) shipped; PR 2 (render and preview placement of the chosen take,
+  lineage and AI disclosure for drafts with parts) and PR 3 (UI, help,
+  Playwright, whole-track generation moved under "Experimental") remain
+  tracked on #1901.
+  - **Idea.** "Add an AI part": pick one role (drums, bass, keys, pad,
+    strings, guitar), 4 or 8 bars and optional style words. The studio
+    generates takes (3 by default, 1–4), each locked to the song, the user
+    auditions them and places the chosen take on blocks as a lane.
+  - **Money.** ADR-BM-6 line (2), AI generation credits. Each take is one
+    30 s model generation, charged at the canonical
+    `GENERATION_PRICE_CENTS_PER_30S` from `docs/rfc/business-model.md`; there
+    is no new price. The quote is takes × that price (3 × 10¢ at the
+    default). ADR-BM-4 is unaffected.
+    - The request answers 402 (and creates nothing) when the balance is
+      below the quote.
+    - Each take is debited exactly once, in the worker, when it is claimed
+      (ledger reason `remix_part`, job id = the take id); a reclaimed claim
+      finds the existing debit instead of charging again.
+    - Every failure after the debit (provider, conform, storage, a stale
+      claim swept after the generation stale window, a superseded result)
+      refunds it (`remix_part_failed_refund`, idempotent per take). A
+      worker-time shortfall fails the take uncharged.
+  - **API.** Owner-only, identity from the JWT.
+    - `POST /remix/projects/:id/parts/generate` `{ role, bars, style?,
+      takes? }` → 202 `{ batchId, quoteCents, perTakeCents, takes }`. Refusals
+      happen before any work: 400 `invalid_input` / `parts_unsupported` /
+      `part_too_long` (N bars don't fit one 30 s clip at this tempo), 402,
+      403 eligibility, 409 `no_tempo_grid` / `take_limit_reached` /
+      `project_published`, 422 `prompt_rejected` (style words are screened
+      like draft prompts), 429 (a batch counts as `takes` generations), 503
+      `provider_disabled`. One BullMQ job per take, `generate-remix-part-take`,
+      on the existing `remix-generation` queue.
+    - `GET /remix/projects/:id/parts/takes/:takeId/audio` streams a completed
+      take's FLAC with range support.
+    - `DELETE /remix/projects/:id/parts/takes/:takeId` removes a take and its
+      audio; 409 `take_in_use` when a part names it, 409 `take_processing`
+      while it generates.
+    - `GET /remix/projects/:id` returns `parts` and `partTakes` (newest first,
+      at most 24). Takes carry no storage URI and are always labelled
+      `aiGenerated: true`.
+  - **Data.** `RemixPartTake` rows (status, seed, style, prompt version,
+    provider/model, grounding, cost, conform, safe error code). At most 24
+    per project: a new batch evicts the oldest completed/failed takes that no
+    part names (and their audio), or answers 409 when it can't.
+    `RemixProject.parts` holds `remix-parts/v1` `{ schemaVersion, parts: [{
+    id, role, takeId, gainDb?, muted?, blocks? }] }`: at most 4 parts, ids
+    `[a-z0-9-]{1,32}`, each take a completed take of the project with the same
+    role (checked under the project row lock), `blocks` with the beat's rules.
+    PATCH is strict (400); reads are tolerant (invalid parts are dropped, a
+    stale block list plays everywhere).
+  - **Prompt.** `remix-part-prompt/v1`, server-side: "{role descriptor},
+    solo {role}, isolated instrument, {style}, {bpm} BPM, {key}, loopable,
+    instrumental, no vocals" plus role-specific exclusions; the key is
+    omitted for drums. Style words are trimmed, whitespace-collapsed, stripped
+    of control/format characters and capped at 80 characters; they are only
+    ever a prompt fragment. The seed is stored per take.
+  - **Providers.** An optional `createPartClip` capability: Lyria (one 30 s
+    generation, Lyria 2 on Vertex) and a deterministic stub (a synthesized
+    clip at the tempo ± a seeded 3 % drift, so the conform has real work).
+    The audio-conditioned provider answers `parts_unsupported`.
+  - **Conform** (`remix-part-conform/v1`, `remix-part-conform.ts`),
+    deterministic and run in a worker thread: decode to 48 kHz stereo;
+    spectral-flux onset envelope (hop 512) scored against beat combs at
+    ratios 0.90–1.10 of B, B/2 and 2B (low confidence keeps r = 1); beat phase
+    and downbeat (the strongest of the first four beats from 0.25 s); cut N
+    bars and stretch them with the #1898 Signalsmith engine to exactly
+    N × 4 × 60 / B seconds; for pitched roles a chroma + Krumhansl-Schmuckler
+    key shifted onto the song's key set by −6..+5 semitones (a relative
+    major/minor needs none; skipped with a recorded reason when either key is
+    not confident); a 3 ms fade-in and an equal-power 10 ms pre-roll
+    crossfade into the tail; 16-bit FLAC (not mp3, whose encoder delay breaks
+    loops). The parameters are stored on the take.
+  - **Provenance.** Takes are `feature_conditioned` (the prompt is
+    conditioned on the measured tempo and key and the result is conformed)
+    and AI-generated.
+  - **Deferred** (tracked on #1901): Demucs isolation of a take if
+    prompt-only isolation leaks, more roles, an audio-conditioned part
+    provider, and a separate "AI part" line in Usage & Billing (debits use the
+    existing `remix_draft` meter kind with reason `remix_part`).
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

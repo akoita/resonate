@@ -230,6 +230,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "creatorUserId" }],
   },
   {
+    model: "RemixPartTake",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "AI part takes this person generated in Remix Studio (#1901): role, style words, seed, provider and conform parameters.",
+  },
+  {
     model: "Session",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

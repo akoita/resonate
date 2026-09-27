@@ -167,7 +167,7 @@ verifying it is set before the first real erasure request.
 
 These declare a `User` relation, so Prisma knows about them and a cascade
 reaches them. **Eleven do not use `userId` as the foreign key**, which is the
-trap: a scan for `userId` finds 25 of 36 and looks thorough.
+trap: a scan for `userId` finds 26 of 37 and looks thorough.
 
 The non-obvious keys: `authorId` (CommunityMessage), `claimantUserId` and
 `reviewerUserId` (ArtistClaimRequest), `actorUserId`
@@ -183,7 +183,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `CommunityCohortMembership`, `CommunityBenefitRedemption`,
 `CommunityMembership`, `CommunityMessage`, `CommunityModerationReport`,
 `PasskeyIdentity`, `Artist`, `ArtistClaimRequest`, `ArtistClaimDecisionEvent`,
-`StemQualityRating`, `RemixProject`, `Session`,
+`StemQualityRating`, `RemixProject`, `RemixPartTake`, `Session`,
 `AgentSignal`, `ListenerTasteMemorySettings`, `ListenerTasteSignalControl`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
