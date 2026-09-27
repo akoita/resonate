@@ -97,6 +97,11 @@ export type RemixTransportInput = {
   parts?: TransportPart[] | null;
   partTimeline?: PreviewPartTimeline | null;
   /**
+   * AI part takes (#1901) to decode for their mini waveforms (the takes
+   * tray); `partTakePeaks` fills in as they decode. Absent = none.
+   */
+  waveformTakeIds?: string[];
+  /**
    * Listening volume (#1910): linear gain 0..1 for this device only — the
    * engine's final output stage and the draft element's `volume`. Applied
    * live, never restarting playback; absent = unity.
@@ -193,7 +198,20 @@ export type RemixTransport = {
   stretch: StretchPreviewState;
   /** Try a failed preparation again. */
   retryStretch: () => void;
+  /**
+   * Waveform buckets of decoded AI part takes (#1901), by take id: the
+   * saved parts' takes and `waveformTakeIds`.
+   */
+  partTakePeaks: Record<string, number[]>;
+  /**
+   * Fetch and decode a take ahead of playing it (#1901 audition), so the
+   * preview switches to it in one restart. Resolves false when it failed.
+   */
+  preloadPartTake: (takeId: string) => Promise<boolean>;
 };
+
+/** Buckets per take waveform (#1901): one loop, drawn small. */
+export const PART_TAKE_PEAK_BUCKETS = 200;
 
 /**
  * Object-URL cache key for a draft source: archived versions by job id, the
@@ -601,6 +619,9 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   // AI part takes decoded so far (#1901), by take id; bumps re-render.
   const partBuffersRef = useRef(new Map<string, AudioBuffer>());
   const [partBuffersRevision, setPartBuffersRevision] = useState(0);
+  // Their waveforms (#1901), kept once computed.
+  const [partTakePeaks, setPartTakePeaks] = useState<Record<string, number[]>>({});
+  const partPeaksRequestedRef = useRef(new Set<string>());
 
   // Latest inputs for callbacks that must stay stable across renders.
   const inputRef = useRef(input);
@@ -1175,21 +1196,66 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     () => [...new Set((input.parts ?? []).map((part) => part.takeId))].sort().join("\n"),
     [input.parts],
   );
+  // Fetch + decode one take on the engine (LRU cached), recording its
+  // waveform the first time.
+  const decodePartTake = useCallback(
+    (takeId: string): Promise<AudioBuffer> => {
+      const { token, projectId } = inputRef.current;
+      if (!token) return Promise.reject(new Error("Not signed in."));
+      return engine()
+        .partTakeBuffer(takeId, () =>
+          fetchRemixPartTakeAudio(token, projectId, takeId),
+        )
+        .then((buffer) => {
+          if (!unmountedRef.current) {
+            setPartTakePeaks((known) =>
+              known[takeId]
+                ? known
+                : { ...known, [takeId]: computePeaks(buffer, PART_TAKE_PEAK_BUCKETS) },
+            );
+          }
+          return buffer;
+        });
+    },
+    [engine],
+  );
+  const preloadPartTake = useCallback(
+    async (takeId: string): Promise<boolean> => {
+      try {
+        const buffer = await decodePartTake(takeId);
+        if (unmountedRef.current) return false;
+        // Ready before the parts switch to it: one restart, not two.
+        partBuffersRef.current.set(takeId, buffer);
+        setPartBuffersRevision((revision) => revision + 1);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [decodePartTake],
+  );
+  const waveformTakeIdsKey = [...new Set(input.waveformTakeIds ?? [])].join("\n");
+  useEffect(() => {
+    const requested = partPeaksRequestedRef.current;
+    for (const takeId of waveformTakeIdsKey ? waveformTakeIdsKey.split("\n") : []) {
+      if (requested.has(takeId)) continue;
+      requested.add(takeId);
+      // A failure is retried on the next change of the list.
+      decodePartTake(takeId).catch(() => requested.delete(takeId));
+    }
+  }, [decodePartTake, waveformTakeIdsKey]);
   useEffect(() => {
     const takeIds = partTakeIdsKey ? partTakeIdsKey.split("\n") : [];
     const known = partBuffersRef.current;
     for (const takeId of [...known.keys()]) {
       if (!takeIds.includes(takeId)) known.delete(takeId);
     }
-    const { token, projectId } = inputRef.current;
+    const { token } = inputRef.current;
     if (!token || takeIds.length === 0) return;
     let cancelled = false;
     for (const takeId of takeIds) {
       if (known.has(takeId)) continue;
-      engine()
-        .partTakeBuffer(takeId, () =>
-          fetchRemixPartTakeAudio(token, projectId, takeId),
-        )
+      decodePartTake(takeId)
         .then(
           (buffer) => {
             if (cancelled || unmountedRef.current) return;
@@ -1202,7 +1268,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     return () => {
       cancelled = true;
     };
-  }, [engine, input.token, partTakeIdsKey]);
+  }, [decodePartTake, input.token, partTakeIdsKey]);
   const loadedTakeIds = useMemo(
     () => new Set(partBuffersRef.current.keys()),
     // Recomputed when a take finishes decoding.
@@ -1458,5 +1524,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     setLoop,
     stretch: stretchState,
     retryStretch,
+    partTakePeaks,
+    preloadPartTake,
   };
 }

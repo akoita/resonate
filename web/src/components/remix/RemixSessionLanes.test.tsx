@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixSectionGrid } from "../../lib/api";
 import {
@@ -26,7 +27,10 @@ import {
   sectionMask,
   timelineSeconds,
   toggleInSet,
+  PartLaneRow,
+  tilePeaks,
   type LaneBeat,
+  type LanePart,
   type LaneStem,
   type RemixSessionLanesProps,
 } from "./RemixSessionLanes";
@@ -573,5 +577,152 @@ describe("Beat lane (#1902)", () => {
     expect(row).toMatch(/<button[^>]*disabled=""[^>]*remix-lane-mute/);
     expect(row).toMatch(/<input[^>]*disabled=""[^>]*remix-lane-gain/);
     expect(row).not.toMatch(/<button[^>]*disabled=""[^>]*remix-lane-solo/);
+  });
+});
+
+describe("AI part lanes (#1901)", () => {
+  function lanePart(overrides: Partial<LanePart> = {}): LanePart {
+    return {
+      partId: "bass-1",
+      name: "AI Bass",
+      takeLabel: "Take 2 · 4 bars",
+      muted: false,
+      soloed: false,
+      soloedOut: false,
+      gainDb: -2,
+      blocks: null,
+      cellNotes: [null, null, null, null],
+      spans: [
+        { outStartSec: 0, outEndSec: 16, fadeOut: false },
+        { outStartSec: 16, outEndSec: 32, fadeOut: false },
+      ],
+      loopSec: 8,
+      peaks: [0.2, 0.9, 0.4, 0.7],
+      ...overrides,
+    };
+  }
+  const partRow = (html: string) => html.slice(html.indexOf('data-stem-id="remix-part:bass-1"'));
+
+  it("follows the beat lane, one row per part, AI-labelled", () => {
+    const html = render({
+      beat: {
+        kitLabel: "808",
+        muted: false,
+        soloed: false,
+        soloedOut: false,
+        gainDb: 0,
+        blocks: null,
+        peaks: null,
+        durationSec: 64,
+      },
+      parts: [lanePart(), lanePart({ partId: "keys-1", name: "AI Keys" })],
+    });
+    expect(html.indexOf('data-stem-id="remix-part:bass-1"')).toBeGreaterThan(
+      html.indexOf('data-stem-id="remix-beat"'),
+    );
+    expect(html.indexOf('data-stem-id="remix-part:keys-1"')).toBeGreaterThan(
+      html.indexOf('data-stem-id="remix-part:bass-1"'),
+    );
+    const row = partRow(html);
+    expect(row).toContain(">AI Bass</span>");
+    expect(row).toMatch(/remix-lane-ai-badge[^>]*>AI</);
+    expect(row).toContain("Take 2 · 4 bars");
+    expect(row).toContain('aria-label="Mute AI Bass"');
+    expect(row).toContain('aria-label="Solo AI Bass"');
+    expect(row).toContain('aria-label="AI Bass level in decibels"');
+    expect(row).toContain("-2.0 dB");
+    expect(row).not.toContain("remix-lane-fx-toggle");
+  });
+
+  it("tiles the take's loop over each span it plays", () => {
+    const row = partRow(render({ parts: [lanePart()] }));
+    expect(countMatches(row, /remix-lane-part-waveform/g)).toBe(2);
+    // Without a decoded take, a plain span bar marks where it plays.
+    const loading = partRow(render({ parts: [lanePart({ peaks: null })] }));
+    expect(countMatches(loading, /remix-lane-part-span/g)).toBe(2);
+    expect(tilePeaks([0.1, 0.9], 16, 8)).toEqual([0.1, 0.9, 0.1, 0.9]);
+    // A span that cuts the loop ends mid-way.
+    expect(tilePeaks([0.1, 0.5, 0.9, 0.3], 6, 8)).toEqual([0.1, 0.5, 0.9]);
+    expect(tilePeaks([0.5], 1000, 1, 10)).toHaveLength(10);
+    expect(tilePeaks([], 16, 8)).toEqual([]);
+  });
+
+  it("toggles its blocks like the beat, with pickup cells inert and explained", () => {
+    const row = partRow(
+      render({
+        grid: barsGrid(4),
+        parts: [
+          lanePart({
+            blocks: [true, true, false, true],
+            cellNotes: ["No AI part in the pickup.", null, null, null],
+          }),
+        ],
+      }),
+    );
+    expect(row).toMatch(/aria-disabled="true"[^>]*aria-label="AI Bass: section 1 — No AI part in the pickup\."/);
+    expect(row).toContain("remix-lane-cell-inert");
+    expect(row).toMatch(/aria-pressed="false"[^>]*aria-label="AI Bass: section 3 off"/);
+    expect(row).toMatch(/aria-pressed="true"[^>]*aria-label="AI Bass: section 2 on"/);
+  });
+
+  type HostElement = ReactElement<Record<string, unknown>>;
+  function hostElements(node: ReactNode): HostElement[] {
+    if (Array.isArray(node)) return node.flatMap(hostElements);
+    if (!isValidElement(node)) return [];
+    const element = node as HostElement;
+    if (typeof element.type === "function") {
+      return hostElements((element.type as (props: unknown) => ReactNode)(element.props));
+    }
+    return [element, ...hostElements(element.props.children as ReactNode)];
+  }
+
+  it("opens other takes and asks to remove (the editor confirms)", () => {
+    const onTryOtherTakes = vi.fn();
+    const onRemove = vi.fn();
+    const onToggleMute = vi.fn();
+    const elements = hostElements(
+      PartLaneRow({
+        part: lanePart(),
+        disabled: false,
+        timelineStyle: undefined,
+        totalSec: 64,
+        onToggleMute,
+        onToggleSolo: vi.fn(),
+        onGainChange: vi.fn(),
+        onTryOtherTakes,
+        onRemove,
+        cells: null,
+      }),
+    );
+    const button = (label: string) =>
+      elements.find(
+        (element) =>
+          element.type === "button" &&
+          (element.props["aria-label"] === label || element.props.children === label),
+      );
+    (button("Try other takes")?.props.onClick as () => void)();
+    (button("Remove AI Bass")?.props.onClick as () => void)();
+    (button("Mute AI Bass")?.props.onClick as () => void)();
+    expect(onTryOtherTakes).toHaveBeenCalledTimes(1);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(onToggleMute).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks edits when published, saying why (solo stays available)", () => {
+    const row = partRow(
+      render({
+        parts: [lanePart()],
+        disabled: true,
+        onTryOtherTakes: () => undefined,
+        onRemovePart: () => undefined,
+      }),
+    );
+    expect(row).toMatch(/<button[^>]*disabled=""[^>]*title="Published remixes are locked"[^>]*remix-lane-part-takes/);
+    expect(row).toMatch(/<button[^>]*disabled=""[^>]*remix-lane-part-remove/);
+    expect(row).not.toMatch(/<button[^>]*disabled=""[^>]*remix-lane-solo/);
+    expect(row).toContain("Take 2 · 4 bars");
+    expect(partRow(render({ parts: [lanePart({ takeLabel: null })] }))).toContain(
+      "Take unavailable",
+    );
   });
 });

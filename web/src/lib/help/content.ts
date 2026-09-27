@@ -892,7 +892,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental"],
     sections: [
       {
         id: "eligibility",
@@ -924,7 +924,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The transport's source switch plays your Arrangement, your latest Draft, or the Original track, so you can compare them at the same point in the song.",
               "If the track's full original mix is in your session, it stays out of the mix (it already contains every part) and is used only for that comparison.",
               "Your edits save automatically. The preview runs through a limiter so stacking many stems doesn't distort, and starting it pauses the main player.",
-              "The Volume slider in the transport only changes how loud things play on your device \u2014 it doesn't change your remix. Want to start over? \"Reset to original\" clears your effects, song shape, beat, and part changes (your drafts are kept).",
+              "The Volume slider in the transport only changes how loud things play on your device \u2014 it doesn't change your remix. Want to start over? \"Reset to original\" clears your effects, song shape, beat, AI parts, and stem changes (your drafts and AI takes are kept).",
               "Shortcuts: Space plays or stops, M and S mute or solo the row you're on, and Esc clears a loop.",
               "The \"Also on this track\" list shows the track's remaining stems: licensed ones join your session with one click, and the others link to their license page.",
               "In the Create panel, choose \"Mix stems\" to render your arrangement as it sounds \u2014 it's free. One-click arrangements (Acapella, Instrumental, Drums & bass, Breakdown \u2192 drop) set up a starting point you can keep editing.",
@@ -933,11 +933,48 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Open a stem's FX to give just that part its own space, echo, or tone \u2014 for example, an echo on the vocals only.",
               "Change the song's shape: open the \u22ef menu on any section to repeat it, remove it, move it earlier or later, or fade it in or out. Or pick a one-click structure \u2014 Extended mix (a longer intro and outro, handy for DJs) or Short edit (a shorter version that fades out). Original length puts everything back.",
               "Add a beat under your remix: in \"Add a beat\", pick a style like Four on the floor or Boom bap, choose a drum kit (Punchy, 808, or Lo-fi), and tap the steps in the grid to change the pattern. The Groove slider adds swing. The beat locks to the song's tempo, and you can switch it off in any section from its row in the Session.",
-              "Choose \"Add AI\" to reimagine the track, add a new part on top, replace a single stem with an AI-generated one, or extend the track. Write a prompt (or start from a preset) describing the direction you want. Your choice is remembered the next time you open the project.",
-              "AI drafts keep your licensed stems and are clearly labelled as AI-assisted. They use generation credits; the panel shows the price per 30 seconds of audio and your balance.",
+              "Choose \"Add AI\" to add an AI part \u2014 one instrument that plays along with your remix (see Add an AI part below). Rendering your mix with its AI parts is free.",
+              "AI drafts and AI parts are clearly labelled as AI-assisted. They use generation credits; the panel shows the price and your balance before you spend anything.",
               "The first AI draft after a quiet period may take a few minutes while the generation service wakes up; later drafts are usually much faster.",
               "The Drafts panel shows your latest draft with its waveform, how it was made, and what it cost. Publish or export it from there. Regenerating keeps your previous versions \u2014 play any of them to compare before you publish. You can delete versions you don't want to keep.",
             ],
+          },
+        ],
+      },
+      {
+        id: "ai-part",
+        heading: "Add an AI part",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "\"Add a part\" asks an AI musician to play one instrument over your remix \u2014 drums, bass, keys, a pad, strings, or guitar. It plays a short loop of 4 or 8 bars, locked to the song's tempo (and to its key for everything except drums). You get 3 takes to choose from, then keep the one you like as its own row in the Session.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Open \"Add AI\" in the Create panel, pick one instrument and a length, and, if you like, add a few style words such as \"warm, funky, 80s\".",
+              "Each take costs the same as 30 seconds of AI generation. The panel shows the price for all 3 takes and your balance before you press \"Generate 3 takes\". A take that doesn't work is refunded (or never charged).",
+              "Press Audition on a take to hear your arrangement with it playing along, from where you are in the song. Press it again, or the \u00d7 next to \"Auditioning\" in the transport, to go back to your remix as it is. Stopping playback ends the audition too.",
+              "Press \"Use this take\" to add it as an \"AI\" row in the Session. Like the beat, it has mute, solo, and a level, and you switch it on or off per section with the cells over its waveform. It never plays in a short lead-in before the first full bar.",
+              "\"Try other takes\" on the row brings back its takes, so you can audition more and swap the one it plays. \"Remove\" takes the row out of your remix; its takes stay in the list.",
+              "A remix holds up to 4 AI parts. You can delete takes you don't need; a take a row is using can't be deleted until you remove the row or swap the take.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Tips for a good part",
+            text: "Pick one instrument the song is missing, and try style words to steer it. Audition all 3 takes before you choose \u2014 they really differ. Then turn the part off in sections where it crowds the vocals, for example a quiet verse.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "AI parts are labelled",
+            text: "When you publish a remix with an AI part in it, the release is marked as AI-assisted, with the instruments the AI played.",
+          },
+          {
+            kind: "paragraph",
+            text: "Experimental: change the whole track. Under \"Add a part\" you'll find the older options that re-generate the whole song with AI in one go: reimagine the track, add a layer to the whole track, replace a single stem, or extend the track. Write a prompt (or start from a preset) to steer them. They take longer, cost more, and are harder to steer than adding a part. Your choice is remembered the next time you open the project.",
           },
         ],
       },

@@ -341,3 +341,50 @@ export function withPartMuted(
     return muted ? { ...next, muted: true } : next;
   });
 }
+
+/**
+ * A fresh part id for a new `role` lane: `{role}-{n}` with the lowest n ≥ 1
+ * no part of the recipe uses (matches REMIX_PART_ID_PATTERN).
+ */
+export function nextPartId(recipe: RemixParts | null, role: RemixPartRole): string {
+  const used = new Set((recipe?.parts ?? []).map((part) => part.id));
+  for (let n = 1; ; n += 1) {
+    const id = `${role}-${n}`;
+    if (!used.has(id)) return id;
+  }
+}
+
+/**
+ * Per-lane block masks of the parts (#1901) keyed by their lane id, read
+ * against `blockCount` blocks (a stale or absent list = every block on), so
+ * a structure edit can move them with their blocks like a stem mask.
+ */
+export function partLaneMasks(
+  recipe: RemixParts | null,
+  blockCount: number,
+): Record<string, boolean[] | null> {
+  const masks: Record<string, boolean[] | null> = {};
+  for (const part of recipe?.parts ?? []) {
+    masks[partLaneId(part.id)] = normalizeBlockMask(part.blocks ?? null, blockCount);
+  }
+  return masks;
+}
+
+/**
+ * The recipe with each part's blocks taken from structure-edit result
+ * masks keyed by lane id (`partLaneMasks`); a part without an entry keeps
+ * its blocks.
+ */
+export function withPartLaneMasks(
+  recipe: RemixParts | null,
+  masks: Readonly<Record<string, boolean[] | null>>,
+): RemixParts | null {
+  if (!recipe) return null;
+  let next: RemixParts | null = recipe;
+  for (const part of recipe.parts) {
+    const laneId = partLaneId(part.id);
+    if (!(laneId in masks)) continue;
+    next = withPartBlocks(next, part.id, masks[laneId] ?? null);
+  }
+  return next;
+}
