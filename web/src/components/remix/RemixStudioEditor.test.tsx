@@ -41,6 +41,7 @@ import {
   editsWithStructure,
   editsAfterStructureOp,
   editsPreviewBeat,
+  projectPreviewParts,
   applyDescribedEdits,
   projectStructure,
   structureEditStateFor,
@@ -2786,5 +2787,91 @@ describe("tempo & key in the studio (#1898)", () => {
       schemaVersion: "remix-fx/v2",
       master: { keepPitch: true, semitones: 2 },
     });
+  });
+});
+
+describe("saved AI parts in the preview (#1901)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    sections: [0, 16, 32].map((startSec) => ({ startSec, endSec: startSec + 16 })),
+    sectionSeconds: 16,
+    durationSeconds: 48,
+    bpm: 120,
+  };
+  const take = (id: string, role: string, status = "completed") =>
+    ({
+      id,
+      batchId: "b",
+      role,
+      bars: 4,
+      style: null,
+      seed: 1,
+      status,
+      promptVersion: "remix-part-prompt/v1",
+      provider: "stub",
+      model: "stub",
+      grounding: "feature_conditioned",
+      aiGenerated: true as const,
+      costCents: 10,
+      mimeType: "audio/flac",
+      durationSec: 8,
+      conform: null,
+      errorCode: null,
+      createdAt: "2026-09-27T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+    }) as NonNullable<RemixProject["partTakes"]>[number];
+  const parts = {
+    schemaVersion: "remix-parts/v1" as const,
+    parts: [
+      { id: "keys-1", role: "keys" as const, takeId: "t-keys", gainDb: -4, blocks: [false, true, true] },
+      { id: "drums-1", role: "drums" as const, takeId: "t-drums", muted: true as const },
+      // No completed take of that role: never played.
+      { id: "bass-1", role: "bass" as const, takeId: "t-pending" },
+      { id: "pad-1", role: "pad" as const, takeId: "t-keys" },
+    ],
+  };
+  const partTakes = [take("t-keys", "keys"), take("t-drums", "drums"), take("t-pending", "bass", "pending")];
+
+  it("plays the saved parts whose completed take matches, on the edited timeline", () => {
+    const withParts = project({ sectionGrid, parts, partTakes });
+    const preview = projectPreviewParts(withParts, initialEdits(withParts));
+    expect(preview?.parts).toEqual([
+      { partId: "keys-1", role: "keys", takeId: "t-keys", bars: 4, gainDb: -4, muted: false, blocks: [false, true, true] },
+      { partId: "drums-1", role: "drums", takeId: "t-drums", bars: 4, gainDb: 0, muted: true, blocks: null },
+    ]);
+    expect(preview?.partTimeline.grid).toBe(sectionGrid);
+    expect(preview?.partTimeline.segments).toHaveLength(3);
+  });
+
+  it("a structure edit reads a stale per-block list as on everywhere", () => {
+    const withParts = project({ sectionGrid, parts, partTakes });
+    const edits = {
+      ...initialEdits(withParts),
+      structure: {
+        schemaVersion: "remix-structure/v1" as const,
+        blocks: [{ section: 0 }, { section: 1 }],
+      },
+    };
+    const preview = projectPreviewParts(withParts, edits);
+    expect(preview?.partTimeline.segments).toHaveLength(2);
+    expect(preview?.parts[0].blocks).toBeNull();
+  });
+
+  it("nothing without parts, playable takes or a bar grid with a tempo", () => {
+    const edits = initialEdits(project({ sectionGrid }));
+    expect(projectPreviewParts(project({ sectionGrid }), edits)).toBeNull();
+    expect(projectPreviewParts(project({ sectionGrid, parts, partTakes: [] }), edits)).toBeNull();
+    expect(
+      projectPreviewParts(project({ sectionGrid: { ...sectionGrid, bpm: null }, parts, partTakes }), edits),
+    ).toBeNull();
+  });
+
+  it("adds no visible UI for parts yet", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ sectionGrid, parts, partTakes })} />,
+    );
+    expect(html).not.toContain("remix-part:");
+    expect(html).not.toContain("t-keys");
   });
 });

@@ -13,17 +13,34 @@
  * never interpolated into a filtergraph, a path or a shell argument.
  */
 
+import { execFile } from "child_process";
+import { open, readFile, rm } from "fs/promises";
+import { promisify } from "util";
 import type { SectionGrid } from "./remix-arrangement";
+import {
+  floatWavHeader,
+  isBeatPickupSection,
+  type BeatGrid,
+  type BeatSegment,
+} from "./remix-beat";
+import {
+  JOIN_FADE_SECONDS,
+  type RemixStructureSegment,
+} from "./remix-structure";
 import {
   isValidRemixStemGainDb,
   REMIX_STEM_GAIN_DB_MAX,
   REMIX_STEM_GAIN_DB_MIN,
 } from "./remix-gain";
 import {
+  PART_CHANNELS,
+  PART_SAMPLE_RATE,
   PITCH_CLASS_NAMES,
   tonicPitchClass,
   type PartKey,
 } from "./remix-part-conform";
+
+const execFileAsync = promisify(execFile);
 
 export const REMIX_PARTS_SCHEMA_VERSION = "remix-parts/v1";
 export const REMIX_PART_PROMPT_VERSION = "remix-part-prompt/v1";
@@ -544,4 +561,311 @@ export function toPartTakeResponse(take: PartTakeRow) {
     startedAt: take.startedAt,
     completedAt: take.completedAt,
   };
+}
+
+// --- Placement (both engines; pinned by remix-parts-v1.parity.json) -----------------------
+
+/**
+ * Version of the placement + part-track rules below, recorded with every
+ * render that includes parts. Changing any rule (span, loop phase, fade)
+ * requires a new version so older drafts stay auditable.
+ */
+export const REMIX_PARTS_DSP_VERSION = "remix-parts-dsp/v1";
+/** Fade-out where a span cuts a loop mid-way: the structure join fade. */
+export const PART_SPAN_FADE_SECONDS = JOIN_FADE_SECONDS;
+/** A span is a whole number of loops when within this of one (seconds). */
+export const PART_LOOP_MULTIPLE_EPSILON = 1e-6;
+
+/** One timeline span where a part plays its loop (timeline time). */
+export type PartPlacementSpan = {
+  outStartSec: number;
+  outEndSec: number;
+  /** A 10 ms fade-out ending at `outEndSec`: the span cuts the loop mid-way. */
+  fadeOut: boolean;
+};
+
+/** Round to 9 decimals (the shared time grid of both engines, like beatHits). */
+function round9(value: number): number {
+  const rounded = Math.round(value * 1e9) / 1e9;
+  return rounded === 0 ? 0 : rounded;
+}
+
+/**
+ * Where a part plays on the timeline: one span per block that is on for the
+ * part (`blocks[i] !== false`) and is not a pickup block (the beat's rule,
+ * {@link isBeatPickupSection}). In a span the loop restarts at phase 0 at
+ * `outStartSec` and repeats until `outEndSec`; `fadeOut` is set when the
+ * span is not a whole number of `loopSec` loops (within 1e-6), i.e. it cuts
+ * the loop mid-way. Times are rounded to 9 decimals. Mirrored by the web
+ * preview (`web/src/lib/remixParts.ts`).
+ */
+export function partPlacementSpans(
+  part: { blocks?: boolean[] | null },
+  grid: BeatGrid,
+  segments: BeatSegment[],
+  loopSec: number,
+): PartPlacementSpan[] {
+  if (!Number.isFinite(loopSec) || !(loopSec > 0)) return [];
+  const spans: PartPlacementSpan[] = [];
+  segments.forEach((segment, blockIndex) => {
+    if (part.blocks && part.blocks[blockIndex] === false) return;
+    if (isBeatPickupSection(grid, segment.section)) return;
+    const outStartSec = round9(segment.outStartSec);
+    const outEndSec = round9(segment.outEndSec);
+    const length = round9(outEndSec - outStartSec);
+    if (!(length > 0)) return;
+    const loops = Math.round(length / loopSec);
+    const wholeLoops =
+      loops >= 1 &&
+      Math.abs(round9(length - loops * loopSec)) <= PART_LOOP_MULTIPLE_EPSILON;
+    spans.push({ outStartSec, outEndSec, fadeOut: !wholeLoops });
+  });
+  return spans;
+}
+
+/**
+ * The time-stretch stage of one part (#1898): pitched parts take the
+ * recipe's tempo and key shift like stems; drum parts take the tempo only
+ * (never transposed). Null when the stage would be the identity.
+ */
+export function partStretchPlan(
+  role: string,
+  plan: { tempo: number; semitones: number } | null,
+): { tempo: number; semitones: number } | null {
+  if (!plan) return null;
+  const semitones = isPitchedPartRole(role) ? plan.semitones : 0;
+  if (plan.tempo === 1 && semitones === 0) return null;
+  return { tempo: plan.tempo, semitones };
+}
+
+// --- Render context --------------------------------------------------------------------------
+
+/** Why a saved part was left out of a render (recorded, never an error). */
+export type PartSkippedReason = "take_missing" | "take_not_ready";
+
+/** One audible part at render time (read from the owned project's takes). */
+export type RemixRenderPart = {
+  partId: string;
+  role: PartRole;
+  takeId: string;
+  gainDb: number;
+  blocks: boolean[] | null;
+  bars: number;
+  /** Internal: where the conformed FLAC lives. Never recorded. */
+  storageUri: string;
+  provider: string | null;
+  model: string | null;
+  promptVersion: string;
+  conformVersion: string | null;
+};
+
+/**
+ * Render-time parts context (#1901): the audible parts (unmuted, with a
+ * completed take of this project and role), the parts left out with a
+ * reason, and the bar grid + timeline they are placed on. Never built
+ * without a bar grid.
+ */
+export type RemixRenderParts = {
+  parts: RemixRenderPart[];
+  skipped: Array<{ partId: string; takeId: string; reason: PartSkippedReason }>;
+  grid: SectionGrid;
+  segments: RemixStructureSegment[];
+};
+
+/** Lineage of one part mixed into a render (renderMetadata / publish). */
+export type RemixRenderedPart = {
+  partId: string;
+  role: string;
+  takeId: string;
+  provider: string | null;
+  model: string | null;
+  promptVersion: string;
+  conformVersion: string | null;
+  bars: number;
+  gainDb: number;
+};
+
+export function renderedPartLineage(part: RemixRenderPart): RemixRenderedPart {
+  return {
+    partId: part.partId,
+    role: part.role,
+    takeId: part.takeId,
+    provider: part.provider,
+    model: part.model,
+    promptVersion: part.promptVersion,
+    conformVersion: part.conformVersion,
+    bars: part.bars,
+    gainDb: part.gainDb,
+  };
+}
+
+/**
+ * Tolerant read of recorded part lineage (render metadata, conditioning
+ * provenance): entries without the identifying strings are dropped; ids are
+ * kept verbatim (they were validated when the render ran).
+ */
+export function readRenderedParts(value: unknown): RemixRenderedPart[] {
+  if (!Array.isArray(value)) return [];
+  const out: RemixRenderedPart[] = [];
+  for (const entry of value) {
+    if (!isPlainObject(entry)) continue;
+    if (
+      typeof entry.partId !== "string" ||
+      typeof entry.role !== "string" ||
+      typeof entry.takeId !== "string"
+    ) {
+      continue;
+    }
+    out.push({
+      partId: entry.partId,
+      role: entry.role,
+      takeId: entry.takeId,
+      provider: typeof entry.provider === "string" ? entry.provider : null,
+      model: typeof entry.model === "string" ? entry.model : null,
+      promptVersion:
+        typeof entry.promptVersion === "string"
+          ? entry.promptVersion
+          : REMIX_PART_PROMPT_VERSION,
+      conformVersion:
+        typeof entry.conformVersion === "string" ? entry.conformVersion : null,
+      bars: typeof entry.bars === "number" ? entry.bars : 0,
+      gainDb: typeof entry.gainDb === "number" ? entry.gainDb : 0,
+    });
+  }
+  return out;
+}
+
+// --- Part track rendering ------------------------------------------------------------------------
+
+/** A decoded take longer than this is refused (takes are ≤ 29.75 s). */
+export const PART_TAKE_MAX_DECODE_SECONDS = 32;
+const PART_DECODE_TIMEOUT_MS = 60_000;
+/** Frames rendered per chunk by {@link writePartTrackWav} (1 s at 48 kHz). */
+const PART_WAV_CHUNK_FRAMES = 48_000;
+
+/**
+ * ffmpeg args decoding a take to raw interleaved 32-bit float stereo at
+ * 48 kHz, capped at {@link PART_TAKE_MAX_DECODE_SECONDS}. Paths are argv
+ * entries, never shell-interpolated; no user string reaches ffmpeg.
+ */
+export function buildPartDecodeArgs(inputPath: string, outputPath: string): string[] {
+  return [
+    "-y",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    inputPath,
+    "-vn",
+    "-t",
+    String(PART_TAKE_MAX_DECODE_SECONDS),
+    "-f",
+    "f32le",
+    "-c:a",
+    "pcm_f32le",
+    "-ac",
+    String(PART_CHANNELS),
+    "-ar",
+    String(PART_SAMPLE_RATE),
+    outputPath,
+  ];
+}
+
+/**
+ * Decode a take file (in the render's temp dir) to its loop: interleaved
+ * stereo float at 48 kHz. The raw intermediate is deleted before returning.
+ * Memory: the loop only (≤ 32 s of stereo float).
+ */
+export async function decodePartTakeLoop(
+  inputPath: string,
+  rawPath: string,
+): Promise<Float32Array> {
+  try {
+    await execFileAsync("ffmpeg", buildPartDecodeArgs(inputPath, rawPath), {
+      timeout: PART_DECODE_TIMEOUT_MS,
+    });
+    const bytes = await readFile(rawPath);
+    const frames = Math.floor(bytes.length / (4 * PART_CHANNELS));
+    if (frames === 0) throw new Error("The take decoded to no audio.");
+    const loop = new Float32Array(frames * PART_CHANNELS);
+    for (let i = 0; i < loop.length; i += 1) loop[i] = bytes.readFloatLE(i * 4);
+    return loop;
+  } finally {
+    await rm(rawPath, { force: true });
+  }
+}
+
+/**
+ * Render a part's track over [offset, offset + frames) into `out`
+ * (interleaved stereo): for each span the loop restarts at phase 0 at
+ * round(outStartSec·sr) and repeats until round(outEndSec·sr); a `fadeOut`
+ * span gets a linear 10 ms fade ending at its last frame. Frames outside
+ * every span are left untouched (zero).
+ */
+export function renderPartTrackInto(
+  out: Float32Array | Float64Array,
+  offset: number,
+  frames: number,
+  loop: Float32Array,
+  spans: PartPlacementSpan[],
+  sampleRate: number = PART_SAMPLE_RATE,
+): void {
+  const loopFrames = Math.floor(loop.length / PART_CHANNELS);
+  if (loopFrames === 0) return;
+  const end = offset + frames;
+  const fadeLength = Math.round(PART_SPAN_FADE_SECONDS * sampleRate);
+  for (const span of spans) {
+    const s0 = Math.round(span.outStartSec * sampleRate);
+    const s1 = Math.round(span.outEndSec * sampleRate);
+    if (s1 <= offset || s0 >= end || s1 <= s0) continue;
+    const fadeFrames = span.fadeOut ? Math.min(fadeLength, s1 - s0) : 0;
+    const fadeStart = s1 - fadeFrames;
+    const from = Math.max(s0, offset);
+    const to = Math.min(s1, end);
+    let phase = (from - s0) % loopFrames;
+    for (let f = from; f < to; f += 1) {
+      const gain = f >= fadeStart && fadeFrames > 0 ? (s1 - f) / fadeFrames : 1;
+      const o = (f - offset) * PART_CHANNELS;
+      const i = phase * PART_CHANNELS;
+      out[o] = loop[i] * gain;
+      out[o + 1] = loop[i + 1] * gain;
+      phase += 1;
+      if (phase === loopFrames) phase = 0;
+    }
+  }
+}
+
+/**
+ * Write a part's track in TIMELINE time as a stereo 32-bit float 48 kHz WAV
+ * — the render's extra ffmpeg input — ceil(durationSec·sr) frames long,
+ * streamed in 1 s chunks so memory stays at the loop plus one chunk for any
+ * timeline length. Block on/off and the loop phase reset are baked in.
+ */
+export async function writePartTrackWav(
+  path: string,
+  loop: Float32Array,
+  spans: PartPlacementSpan[],
+  durationSec: number,
+  sampleRate: number = PART_SAMPLE_RATE,
+): Promise<{ frames: number }> {
+  const frames = Math.max(1, Math.ceil(Math.max(0, durationSec) * sampleRate));
+  const handle = await open(path, "w");
+  try {
+    await handle.write(floatWavHeader(frames, PART_CHANNELS, sampleRate));
+    const chunk = new Float32Array(PART_WAV_CHUNK_FRAMES * PART_CHANNELS);
+    const bytes = Buffer.alloc(chunk.length * 4);
+    for (let offset = 0; offset < frames; offset += PART_WAV_CHUNK_FRAMES) {
+      const count = Math.min(PART_WAV_CHUNK_FRAMES, frames - offset);
+      chunk.fill(0);
+      renderPartTrackInto(chunk, offset, count, loop, spans, sampleRate);
+      for (let i = 0; i < count * PART_CHANNELS; i += 1) {
+        bytes.writeFloatLE(chunk[i], i * 4);
+      }
+      await handle.write(bytes, 0, count * PART_CHANNELS * 4);
+    }
+  } finally {
+    await handle.close();
+  }
+  return { frames };
 }

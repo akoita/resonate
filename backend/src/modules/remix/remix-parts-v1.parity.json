@@ -1,0 +1,610 @@
+{
+  "schemaVersion": "remix-parts/v1",
+  "dspVersion": "remix-parts-dsp/v1",
+  "note": "Parity fixture for #1901: the render (backend partPlacementSpans) and the preview (web partPlacementSpans) must reproduce these spans exactly.",
+  "fadeSeconds": 0.01,
+  "cases": [
+    {
+      "name": "plain timeline, 4 bars at 120",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 6
+          },
+          {
+            "startSec": 6,
+            "endSec": 22
+          },
+          {
+            "startSec": 22,
+            "endSec": 38
+          },
+          {
+            "startSec": 38,
+            "endSec": 54
+          },
+          {
+            "startSec": 54,
+            "endSec": 60
+          }
+        ],
+        "sectionSeconds": 16,
+        "bpm": 120
+      },
+      "segments": [
+        {
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 6
+        },
+        {
+          "section": 1,
+          "outStartSec": 6,
+          "outEndSec": 22
+        },
+        {
+          "section": 2,
+          "outStartSec": 22,
+          "outEndSec": 38
+        },
+        {
+          "section": 3,
+          "outStartSec": 38,
+          "outEndSec": 54
+        },
+        {
+          "section": 4,
+          "outStartSec": 54,
+          "outEndSec": 60
+        }
+      ],
+      "blocks": null,
+      "bars": 4,
+      "loopSec": 8,
+      "spans": [
+        {
+          "outStartSec": 6,
+          "outEndSec": 22,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 22,
+          "outEndSec": 38,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 38,
+          "outEndSec": 54,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 54,
+          "outEndSec": 60,
+          "fadeOut": true
+        }
+      ]
+    },
+    {
+      "name": "plain timeline, 8 bars at 120",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 6
+          },
+          {
+            "startSec": 6,
+            "endSec": 22
+          },
+          {
+            "startSec": 22,
+            "endSec": 38
+          },
+          {
+            "startSec": 38,
+            "endSec": 54
+          },
+          {
+            "startSec": 54,
+            "endSec": 60
+          }
+        ],
+        "sectionSeconds": 16,
+        "bpm": 120
+      },
+      "segments": [
+        {
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 6
+        },
+        {
+          "section": 1,
+          "outStartSec": 6,
+          "outEndSec": 22
+        },
+        {
+          "section": 2,
+          "outStartSec": 22,
+          "outEndSec": 38
+        },
+        {
+          "section": 3,
+          "outStartSec": 38,
+          "outEndSec": 54
+        },
+        {
+          "section": 4,
+          "outStartSec": 54,
+          "outEndSec": 60
+        }
+      ],
+      "blocks": null,
+      "bars": 8,
+      "loopSec": 16,
+      "spans": [
+        {
+          "outStartSec": 6,
+          "outEndSec": 22,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 22,
+          "outEndSec": 38,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 38,
+          "outEndSec": 54,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 54,
+          "outEndSec": 60,
+          "fadeOut": true
+        }
+      ]
+    },
+    {
+      "name": "reordered, repeated and removed blocks",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 6
+          },
+          {
+            "startSec": 6,
+            "endSec": 22
+          },
+          {
+            "startSec": 22,
+            "endSec": 38
+          },
+          {
+            "startSec": 38,
+            "endSec": 54
+          },
+          {
+            "startSec": 54,
+            "endSec": 60
+          }
+        ],
+        "sectionSeconds": 16,
+        "bpm": 120
+      },
+      "segments": [
+        {
+          "section": 2,
+          "outStartSec": 0,
+          "outEndSec": 16
+        },
+        {
+          "section": 1,
+          "outStartSec": 16,
+          "outEndSec": 32
+        },
+        {
+          "section": 1,
+          "outStartSec": 32,
+          "outEndSec": 48
+        },
+        {
+          "section": 3,
+          "outStartSec": 48,
+          "outEndSec": 64
+        }
+      ],
+      "blocks": null,
+      "bars": 4,
+      "loopSec": 8,
+      "spans": [
+        {
+          "outStartSec": 0,
+          "outEndSec": 16,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 16,
+          "outEndSec": 32,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 32,
+          "outEndSec": 48,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 48,
+          "outEndSec": 64,
+          "fadeOut": false
+        }
+      ]
+    },
+    {
+      "name": "blocks off",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 6
+          },
+          {
+            "startSec": 6,
+            "endSec": 22
+          },
+          {
+            "startSec": 22,
+            "endSec": 38
+          },
+          {
+            "startSec": 38,
+            "endSec": 54
+          },
+          {
+            "startSec": 54,
+            "endSec": 60
+          }
+        ],
+        "sectionSeconds": 16,
+        "bpm": 120
+      },
+      "segments": [
+        {
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 6
+        },
+        {
+          "section": 1,
+          "outStartSec": 6,
+          "outEndSec": 22
+        },
+        {
+          "section": 2,
+          "outStartSec": 22,
+          "outEndSec": 38
+        },
+        {
+          "section": 3,
+          "outStartSec": 38,
+          "outEndSec": 54
+        },
+        {
+          "section": 4,
+          "outStartSec": 54,
+          "outEndSec": 60
+        }
+      ],
+      "blocks": [
+        true,
+        false,
+        true,
+        false,
+        true
+      ],
+      "bars": 8,
+      "loopSec": 16,
+      "spans": [
+        {
+          "outStartSec": 22,
+          "outEndSec": 38,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 54,
+          "outEndSec": 60,
+          "fadeOut": true
+        }
+      ]
+    },
+    {
+      "name": "a pickup block placed mid-song",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 6
+          },
+          {
+            "startSec": 6,
+            "endSec": 22
+          },
+          {
+            "startSec": 22,
+            "endSec": 38
+          },
+          {
+            "startSec": 38,
+            "endSec": 54
+          },
+          {
+            "startSec": 54,
+            "endSec": 60
+          }
+        ],
+        "sectionSeconds": 16,
+        "bpm": 120
+      },
+      "segments": [
+        {
+          "section": 1,
+          "outStartSec": 0,
+          "outEndSec": 16
+        },
+        {
+          "section": 0,
+          "outStartSec": 16,
+          "outEndSec": 22
+        },
+        {
+          "section": 2,
+          "outStartSec": 22,
+          "outEndSec": 38
+        },
+        {
+          "section": 0,
+          "outStartSec": 38,
+          "outEndSec": 44
+        }
+      ],
+      "blocks": [
+        true,
+        true,
+        false,
+        true
+      ],
+      "bars": 4,
+      "loopSec": 8,
+      "spans": [
+        {
+          "outStartSec": 0,
+          "outEndSec": 16,
+          "fadeOut": false
+        }
+      ]
+    },
+    {
+      "name": "truncated tail, 4 bars at 93",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 21.845161
+          },
+          {
+            "startSec": 21.845161,
+            "endSec": 42.490323
+          },
+          {
+            "startSec": 42.490323,
+            "endSec": 63.135484
+          },
+          {
+            "startSec": 63.135484,
+            "endSec": 70
+          }
+        ],
+        "sectionSeconds": 20.645161,
+        "bpm": 93
+      },
+      "segments": [
+        {
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 21.845161
+        },
+        {
+          "section": 1,
+          "outStartSec": 21.845161,
+          "outEndSec": 42.490323
+        },
+        {
+          "section": 2,
+          "outStartSec": 42.490323,
+          "outEndSec": 63.135484
+        },
+        {
+          "section": 3,
+          "outStartSec": 63.135484,
+          "outEndSec": 70
+        }
+      ],
+      "blocks": null,
+      "bars": 4,
+      "loopSec": 10.32258064516129,
+      "spans": [
+        {
+          "outStartSec": 0,
+          "outEndSec": 21.845161,
+          "fadeOut": true
+        },
+        {
+          "outStartSec": 21.845161,
+          "outEndSec": 42.490323,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 42.490323,
+          "outEndSec": 63.135484,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 63.135484,
+          "outEndSec": 70,
+          "fadeOut": true
+        }
+      ]
+    },
+    {
+      "name": "truncated tail, 8 bars at 93",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 21.845161
+          },
+          {
+            "startSec": 21.845161,
+            "endSec": 42.490323
+          },
+          {
+            "startSec": 42.490323,
+            "endSec": 63.135484
+          },
+          {
+            "startSec": 63.135484,
+            "endSec": 70
+          }
+        ],
+        "sectionSeconds": 20.645161,
+        "bpm": 93
+      },
+      "segments": [
+        {
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 21.845161
+        },
+        {
+          "section": 1,
+          "outStartSec": 21.845161,
+          "outEndSec": 42.490323
+        },
+        {
+          "section": 2,
+          "outStartSec": 42.490323,
+          "outEndSec": 63.135484
+        },
+        {
+          "section": 3,
+          "outStartSec": 63.135484,
+          "outEndSec": 70
+        }
+      ],
+      "blocks": null,
+      "bars": 8,
+      "loopSec": 20.64516129032258,
+      "spans": [
+        {
+          "outStartSec": 0,
+          "outEndSec": 21.845161,
+          "fadeOut": true
+        },
+        {
+          "outStartSec": 21.845161,
+          "outEndSec": 42.490323,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 42.490323,
+          "outEndSec": 63.135484,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 63.135484,
+          "outEndSec": 70,
+          "fadeOut": true
+        }
+      ]
+    },
+    {
+      "name": "no pickup, 8 bars at 100, last block repeated",
+      "grid": {
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 19.2
+          },
+          {
+            "startSec": 19.2,
+            "endSec": 38.4
+          },
+          {
+            "startSec": 38.4,
+            "endSec": 57.6
+          },
+          {
+            "startSec": 57.6,
+            "endSec": 70
+          }
+        ],
+        "sectionSeconds": 19.2,
+        "bpm": 100
+      },
+      "segments": [
+        {
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 19.2
+        },
+        {
+          "section": 1,
+          "outStartSec": 19.2,
+          "outEndSec": 38.4
+        },
+        {
+          "section": 3,
+          "outStartSec": 38.4,
+          "outEndSec": 50.8
+        },
+        {
+          "section": 3,
+          "outStartSec": 50.8,
+          "outEndSec": 63.199999999999996
+        }
+      ],
+      "blocks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "bars": 8,
+      "loopSec": 19.2,
+      "spans": [
+        {
+          "outStartSec": 0,
+          "outEndSec": 19.2,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 19.2,
+          "outEndSec": 38.4,
+          "fadeOut": false
+        },
+        {
+          "outStartSec": 38.4,
+          "outEndSec": 50.8,
+          "fadeOut": true
+        },
+        {
+          "outStartSec": 50.8,
+          "outEndSec": 63.2,
+          "fadeOut": true
+        }
+      ]
+    }
+  ]
+}

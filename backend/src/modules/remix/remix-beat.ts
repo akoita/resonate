@@ -707,7 +707,7 @@ export function renderBeatTrack(
 const WAV_CHUNK_FRAMES = 48_000;
 const WAV_HEADER_BYTES = 44;
 
-function floatWavHeader(
+export function floatWavHeader(
   frames: number,
   channels: number,
   sampleRate: number,
