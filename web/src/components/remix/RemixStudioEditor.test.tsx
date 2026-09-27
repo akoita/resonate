@@ -21,7 +21,6 @@ import {
   doublingReferenceStemIds,
   effectsBpm,
   initialEdits,
-  intentReturningFromMix,
   isFullMixStemType,
   normalizeAiTarget,
   previewMeterDb,
@@ -42,6 +41,11 @@ import {
   editsAfterStructureOp,
   editsPreviewBeat,
   projectPreviewParts,
+  previewPartsWithAudition,
+  lanePartsFor,
+  partTakeIdsInUse,
+  AUDITION_PART_ID,
+  REMOVE_PART_CONFIRM_MESSAGE,
   applyDescribedEdits,
   projectStructure,
   structureEditStateFor,
@@ -1719,7 +1723,13 @@ describe("per-stem AI transforms (#1316)", () => {
       <RemixStudioEditor project={project({ mode: "variation" })} />,
     );
     expect(variation).toContain('aria-label="AI intent"');
-    expect(variation).toContain("Add a new part");
+    expect(variation).toContain("Add a layer to the whole track");
+    // #1901: the whole-track intents sit under "Experimental", opened for a
+    // saved whole-track intent, below the "Add a part" flow.
+    expect(variation).toContain("Experimental: change the whole track");
+    expect(variation.indexOf("Add a part")).toBeLessThan(
+      variation.indexOf('aria-label="AI intent"'),
+    );
     expect(variation).toContain("Replace a stem");
 
     const stemMix = renderToStaticMarkup(
@@ -1931,18 +1941,6 @@ describe("Create + Drafts panels (#1879)", () => {
 });
 
 describe("saved AI target (#1882)", () => {
-  it("restores the saved variation target when switching back from Mix", () => {
-    const addLayer = { kind: "add_layer" as const };
-    const replace = { kind: "replace_stem" as const };
-    const whole = { kind: "whole" as const };
-    expect(intentReturningFromMix("stem_mix", addLayer, "reimagine")).toBe("add_part");
-    expect(intentReturningFromMix("stem_mix", replace, "reimagine")).toBe("replace_stem");
-    expect(intentReturningFromMix("stem_mix", whole, "reimagine")).toBe("reimagine");
-    // Explicit picks inside Add AI, and non-mix starting points, pass through.
-    expect(intentReturningFromMix("variation", addLayer, "reimagine")).toBe("reimagine");
-    expect(intentReturningFromMix("stem_mix", addLayer, "extend")).toBe("extend");
-  });
-
   it("initialEdits restores a saved replace_stem target with its stem", () => {
     const edits = initialEdits(
       project({
@@ -2684,7 +2682,7 @@ describe("Reset to original (#1910)", () => {
   it("confirms with honest copy", () => {
     expect(RESET_ORIGINAL_CONFIRM_TITLE).toBe("Reset to the original?");
     expect(RESET_ORIGINAL_CONFIRM_MESSAGE).toBe(
-      "This clears your effects, song shape, beat and stem changes. Your drafts are kept.",
+      "This clears your effects, song shape, beat, AI parts and stem changes. Your drafts are kept.",
     );
   });
 
@@ -2867,11 +2865,216 @@ describe("saved AI parts in the preview (#1901)", () => {
     ).toBeNull();
   });
 
-  it("adds no visible UI for parts yet", () => {
+  it("shows one AI-labelled lane per saved part in the session", () => {
     const html = renderToStaticMarkup(
       <RemixStudioEditor project={project({ sectionGrid, parts, partTakes })} />,
     );
-    expect(html).not.toContain("remix-part:");
-    expect(html).not.toContain("t-keys");
+    expect(html).toContain('data-stem-id="remix-part:keys-1"');
+    expect(html).toContain('aria-label="Mute AI Keys"');
+    expect(html).toContain('aria-label="Mute AI Drums"');
+    expect(html.match(/remix-lane-ai-badge/g)?.length).toBe(4);
+  });
+});
+
+describe("AI part lanes in the editor (#1901)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    // A 4 s pickup, then three 8-bar sections at 120 BPM.
+    sections: [
+      { startSec: 0, endSec: 4 },
+      { startSec: 4, endSec: 20 },
+      { startSec: 20, endSec: 36 },
+      { startSec: 36, endSec: 52 },
+    ],
+    sectionSeconds: 16,
+    durationSeconds: 52,
+    bpm: 120,
+  };
+  const take = (id: string, role: string, createdAt: string, batchId = "b1") =>
+    ({
+      id,
+      batchId,
+      role,
+      bars: 4,
+      style: null,
+      seed: 1,
+      status: "completed",
+      promptVersion: "remix-part-prompt/v1",
+      provider: "stub",
+      model: "stub",
+      grounding: "feature_conditioned",
+      aiGenerated: true as const,
+      costCents: 10,
+      mimeType: "audio/flac",
+      durationSec: 8,
+      conform: null,
+      errorCode: null,
+      createdAt,
+      startedAt: null,
+      completedAt: null,
+    }) as NonNullable<RemixProject["partTakes"]>[number];
+  const partTakes = [
+    take("t1", "bass", "2026-09-27T12:00:00.000Z"),
+    take("t2", "bass", "2026-09-27T12:00:01.000Z"),
+    take("t3", "bass", "2026-09-27T12:00:02.000Z"),
+  ];
+  const bass = { id: "bass-1", role: "bass" as const, takeId: "t2" };
+
+  it("hydrates the saved parts into the edits and saves them back whole", () => {
+    const plain = project({ sectionGrid, partTakes });
+    const edits = initialEdits(plain);
+    expect(edits.parts).toBeNull();
+    // Use this take: a new lane, every block on.
+    const added = { schemaVersion: "remix-parts/v1" as const, parts: [bass] };
+    expect(buildProjectPatch(plain, { ...edits, parts: added })).toEqual({ parts: added });
+    const saved = project({ sectionGrid, partTakes, parts: added });
+    const savedEdits = initialEdits(saved);
+    expect(savedEdits.parts).toEqual(added);
+    expect(buildProjectPatch(saved, savedEdits)).toEqual({});
+    // Replace the take of that lane, then turn a block off.
+    const replaced = {
+      schemaVersion: "remix-parts/v1" as const,
+      parts: [{ ...bass, takeId: "t3", blocks: [true, false, true, true] }],
+    };
+    expect(buildProjectPatch(saved, { ...savedEdits, parts: replaced })).toEqual({
+      parts: replaced,
+    });
+    // Remove: null clears every part.
+    expect(buildProjectPatch(saved, { ...savedEdits, parts: null })).toEqual({ parts: null });
+  });
+
+  it("structure edits move each part's blocks with them, in the same update", () => {
+    const saved = project({
+      sectionGrid,
+      partTakes,
+      parts: {
+        schemaVersion: "remix-parts/v1",
+        parts: [
+          { ...bass, blocks: [true, false, true, true] },
+          { id: "keys-1", role: "keys", takeId: "k1" },
+        ],
+      },
+    });
+    const edits = initialEdits(saved);
+    const next = editsAfterStructureOp(edits, sectionGrid, (state) =>
+      blockActionResult(state, 1, "repeat", sectionGrid),
+    );
+    expect(next.parts?.parts[0].blocks).toEqual([true, false, false, true, true]);
+    expect(next.parts?.parts[1].blocks).toBeUndefined();
+    expect(Object.keys(next.stems).some((id) => id.startsWith("remix-part:"))).toBe(false);
+    expect(buildProjectPatch(saved, next)).toMatchObject({
+      structure: next.structure,
+      parts: {
+        parts: [{ id: "bass-1", blocks: [true, false, false, true, true] }, { id: "keys-1" }],
+      },
+    });
+  });
+
+  it("Reset to original clears the parts (their takes stay)", () => {
+    const saved = project({
+      sectionGrid,
+      partTakes,
+      parts: { schemaVersion: "remix-parts/v1", parts: [bass] },
+    });
+    const refs = referenceStemIds(saved.stems);
+    const edits = initialEdits(saved);
+    const plainStems = originalEdits(edits, refs);
+    expect(plainStems.parts).toBeNull();
+    expect(editsAreOriginal(plainStems, refs)).toBe(true);
+    expect(editsAreOriginal({ ...plainStems, parts: edits.parts }, refs)).toBe(false);
+    expect(buildProjectPatch(saved, plainStems).parts).toBeNull();
+    expect(REMOVE_PART_CONFIRM_MESSAGE).toContain("stays in the takes list");
+  });
+
+  it("auditions a take on every eligible block in place of its lane", () => {
+    const saved = project({
+      sectionGrid,
+      partTakes,
+      parts: {
+        schemaVersion: "remix-parts/v1",
+        parts: [{ ...bass, gainDb: -3, blocks: [true, false, true, true] }],
+      },
+    });
+    const edits = initialEdits(saved);
+    const audition = {
+      takeId: "t3",
+      role: "bass" as const,
+      bars: 4,
+      replacesPartId: "bass-1",
+      label: "Auditioning Take 3 · AI Bass",
+    };
+    const preview = previewPartsWithAudition(saved, edits, audition);
+    expect(preview?.parts).toEqual([
+      {
+        partId: AUDITION_PART_ID,
+        role: "bass",
+        takeId: "t3",
+        bars: 4,
+        gainDb: -3,
+        muted: false,
+        blocks: null,
+      },
+    ]);
+    // An extra part when no lane plays the instrument; none without audition.
+    const plain = project({ sectionGrid, partTakes });
+    expect(
+      previewPartsWithAudition(plain, initialEdits(plain), { ...audition, replacesPartId: null })
+        ?.parts.map((part) => part.partId),
+    ).toEqual([AUDITION_PART_ID]);
+    expect(previewPartsWithAudition(plain, initialEdits(plain), null)).toBeNull();
+    // Never saved.
+    expect(buildProjectPatch(saved, edits)).toEqual({});
+  });
+
+  it("builds AI-labelled lanes with the take, inert pickups and loop spans", () => {
+    const saved = project({
+      sectionGrid,
+      partTakes,
+      parts: { schemaVersion: "remix-parts/v1", parts: [{ ...bass, muted: true }] },
+    });
+    const [lane] = lanePartsFor(saved, initialEdits(saved), {
+      soloStemId: null,
+      peaks: { t2: [0.5, 0.2] },
+    });
+    expect(lane).toMatchObject({
+      partId: "bass-1",
+      name: "AI Bass",
+      takeLabel: "Take 2 · 4 bars",
+      muted: true,
+      loopSec: 8,
+      peaks: [0.5, 0.2],
+    });
+    expect(lane.cellNotes[0]).toContain("pickup");
+    expect(lane.cellNotes.slice(1)).toEqual([null, null, null]);
+    expect(lane.spans.map((span) => [span.outStartSec, span.outEndSec])).toEqual([
+      [4, 20],
+      [20, 36],
+      [36, 52],
+    ]);
+    const soloed = lanePartsFor(saved, initialEdits(saved), {
+      soloStemId: "stem-1",
+      peaks: {},
+    });
+    expect(soloed[0].soloedOut).toBe(true);
+    expect(partTakeIdsInUse(saved, { parts: null })).toEqual(new Set(["t2"]));
+  });
+
+  it("shows the lane in the session and the Add AI side on a saved whole-track intent", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          sectionGrid,
+          partTakes,
+          mode: "variation",
+          aiTarget: { kind: "replace_stem", stemId: "stem-2" },
+          parts: { schemaVersion: "remix-parts/v1", parts: [bass] },
+        })}
+      />,
+    );
+    expect(html).toContain('data-stem-id="remix-part:bass-1"');
+    expect(html).toContain("Remove AI Bass");
+    // The experimental disclosure opens with the saved intent selected.
+    expect(html).toMatch(/aria-expanded="true"[^>]*remix-experimental-toggle/);
+    expect(html).toMatch(/<input[^>]*checked=""[^>]*value="replace_stem"/);
   });
 });

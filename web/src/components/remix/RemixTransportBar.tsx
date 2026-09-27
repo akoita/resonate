@@ -36,6 +36,13 @@ export type RemixTransportBarProps = {
   onSourceChange(source: RemixTransportSourceChange): void;
   onClearLoop(): void;
   /**
+   * An AI take being auditioned (#1901), e.g. "Auditioning Take 2 · AI
+   * Bass"; null/absent = none. Never saved.
+   */
+  auditionLabel?: string | null;
+  /** Back to the saved arrangement (the audition ends, playback goes on). */
+  onStopAudition?(): void;
+  /**
    * Listening volume on this device (#1910) — never saved to the remix.
    * Absent = no volume control.
    */
@@ -101,6 +108,8 @@ export function RemixTransportBar({
   onToggle,
   onSourceChange,
   onClearLoop,
+  auditionLabel,
+  onStopAudition,
   volume,
 }: RemixTransportBarProps) {
   const options = SOURCE_OPTIONS.filter(
@@ -192,6 +201,26 @@ export function RemixTransportBar({
           >
             <span aria-hidden="true">×</span>
           </button>
+        </span>
+      )}
+
+      {auditionLabel && (
+        <span
+          role="status"
+          className="remix-transport-audition inline-flex items-center gap-1 rounded-full border border-sky-400/50 bg-sky-500/15 py-0.5 pl-2.5 pr-1 text-xs text-sky-100"
+        >
+          <span>{auditionLabel}</span>
+          {onStopAudition && (
+            <button
+              type="button"
+              aria-label="Stop auditioning"
+              title="Back to your arrangement"
+              className="flex h-4 w-4 items-center justify-center rounded-full bg-transparent text-sky-200 hover:bg-sky-400/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
+              onClick={onStopAudition}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          )}
         </span>
       )}
 

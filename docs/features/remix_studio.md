@@ -742,12 +742,11 @@ from the JWT, never the request body.
     (−6..+6, "Original key", "+2 (higher)", "−3 (lower)"). Vibes, "No
     effects" and Describe it keep both fields; "Reset to original" clears
     them.
-- AI parts (#1901, slice S4 of epic #1896). **Status: partial** — PR 1
-  (backend) and PR 2 (render and preview placement, lineage and AI
-  disclosure for drafts with parts) shipped; PR 3 (UI, help, Playwright,
-  whole-track generation moved under "Experimental") remains tracked on
-  #1901. Until then parts are set through `PATCH parts`; the studio has no
-  part lane yet but plays saved parts in the preview.
+- AI parts (#1901, slice S4 of epic #1896). PR 1 shipped the backend, PR 2
+  the render and preview placement with lineage and AI disclosure for drafts
+  with parts, and PR 3 the studio UI ("Add a part", the takes tray,
+  audition, part lanes), the User Guide section and the end-to-end flow,
+  with whole-track generation moved under "Experimental".
   - **Idea.** "Add an AI part": pick one role (drums, bass, keys, pad,
     strings, guitar), 4 or 8 bars and optional style words. The studio
     generates takes (3 by default, 1–4), each locked to the song, the user
@@ -866,6 +865,56 @@ from the JWT, never the request body.
     loop cycles the part's audio over that loop. With tempo/key the part
     takes are stretched in the worker pool with their own plans and count
     toward readiness like stems (varispeed fallback until ready).
+  - **Studio UI** (PR 3, `RemixPartsSection.tsx`, `RemixCreatePanel.tsx`,
+    `RemixSessionLanes.tsx`, `RemixStudioEditor.tsx`).
+    - **Create → Add AI** opens on "Add a part" (AI-labelled) without
+      changing the saved mode: the free "Render mix" renders the parts. An
+      instrument radiogroup (Drums, Bass, Keys, Pad, Strings, Guitar), a
+      4 / 8 bars radiogroup (8 bars disabled with the reason when they don't
+      fit one 30 s take at the song's tempo, mirroring `part_too_long`), an
+      optional Style input (80 characters, with a counter), and the money
+      line "3 takes · 30¢ · you have 70¢" computed as 3 × the
+      `priceCentsPer30s` of `GET /credits/balance` before anything is spent.
+    - **"Generate 3 takes"** is aria-disabled with a plain reason when the
+      remix is published, the site can't make parts (a sticky
+      `parts_unsupported` / `provider_disabled` answer), there is no tempo
+      grid (the form is replaced by the note, no dead button), the bars
+      don't fit, a take is still generating, the balance is loading, or the
+      balance is short (with the existing "Request credits" action, #1885).
+      Refusals (`part_too_long`, `no_tempo_grid`, `take_limit_reached`,
+      `prompt_rejected`, 402, 403, 429, 503) are mapped to plain text.
+    - **Takes tray** for the selected instrument: batches newest first,
+      "Take 1/2/3" cards with Generating… (indeterminate bar), Ready (mini
+      waveform) or "Didn't work, credit refunded" / "not charged" plus the
+      safe error code in plain words, an aria-live summary, and an
+      AI badge per take. The studio polls `GET /remix/projects/:id` at the
+      draft cadence (4 s) while any take is pending or processing.
+    - **Audition** pre-decodes the take (the engine's take LRU) and plays the
+      arrangement with it as a temporary part on every eligible block, in
+      place of the lane it would replace (at that lane's level), from the
+      current position; the transport shows "Auditioning Take 2 · AI Bass"
+      with a one-click way back. It is never saved; stopping, switching the
+      preview source or using a take ends it.
+    - **Use this take** adds a lane (the role, the take, every block on) or
+      swaps the take of the lane whose "Try other takes" opened the tray
+      (else the instrument's existing lane); "In use" when that lane already
+      plays it; disabled with the reason at 4 parts. Takes are deleted from
+      the tray (confirmed) unless a saved or edited lane uses them or they
+      are still generating, each with the reason.
+    - **Part lanes** follow the beat lane: "AI Bass" with an AI badge, the
+      take ("Take 2 · 4 bars"), mute (saved), solo (preview only), level,
+      block cells painted like the beat's with pickup blocks inert and
+      explained, "Try other takes" and a confirmed Remove; the waveform is
+      the take's loop tiled over the spans it plays. The parts are part of
+      the edit state (`ProjectEdits.parts`), autosaved as the whole
+      `remix-parts/v1` recipe; a structure edit moves every part's blocks
+      with the beat's rule in the same update; "Reset to original" clears
+      the parts (the takes stay).
+    - **Experimental: change the whole track** is a disclosure under "Add a
+      part" holding the previous intents (reimagine, add a layer to the
+      whole track — renamed from "Add a new part" to avoid confusion —,
+      replace a stem, extend) with their prompt, credit meter and Generate
+      button, unchanged; a saved whole-track intent opens it selected.
   - **Deferred** (tracked on #1901): Demucs isolation of a take if
     prompt-only isolation leaks, more roles, an audio-conditioned part
     provider, and a separate "AI part" line in Usage & Billing (debits use the

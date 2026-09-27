@@ -64,12 +64,21 @@ import {
   type RemixStructureEditState,
 } from "../../lib/remixStructure";
 import type { StretchPreviewState } from "./useRemixTransport";
+import { RemixPartsSection, type RemixPartsModel } from "./RemixPartsSection";
 
 export const REMIX_STUDIO_LOCKED_NOTE =
   "This remix is published — the studio is locked.";
 
 export const STEM_MIX_FREE_NOTE =
   "Free — renders your arrangement exactly as you hear it.";
+
+/** Under "Render mix" on the Add AI side (#1901): parts render for free. */
+export const PARTS_RENDER_NOTE =
+  "Free — renders your arrangement, AI parts included, exactly as you hear it.";
+
+export const EXPERIMENTAL_AI_LABEL = "Experimental: change the whole track";
+export const EXPERIMENTAL_AI_NOTE =
+  "These re-generate the whole song with AI in one go. They take longer, cost more and are harder to steer than adding a part.";
 
 export type RemixCreatePrimaryAction = {
   label: string;
@@ -131,7 +140,38 @@ export type RemixCreatePanelProps = {
   attribution: ReactNode;
   /** Published remix: everything is read-only. */
   locked: boolean;
+  /**
+   * "Add a part" (#1901): with it, the Add AI side opens on the part flow
+   * and the whole-track intents move under an "Experimental" disclosure.
+   */
+  parts?: RemixPartsModel;
+  /**
+   * The Add AI side is showing while the intent is still the free mix (the
+   * part flow doesn't change the saved mode). With `onAiSideChange`, the
+   * switch toggles this instead of asking for a whole-track intent.
+   */
+  aiSide?: boolean;
+  onAiSideChange?(ai: boolean): void;
 };
+
+/**
+ * A "Mix stems" | "Add AI" switch click. With the part flow (#1901) the AI
+ * side opens on "Add a part" and keeps the saved (free mix) mode; leaving it
+ * drops a whole-track intent back to the mix. Without it, the switch picks
+ * an intent as before.
+ */
+export function switchCreateSide(
+  side: "mix" | "ai",
+  intent: RemixIntent,
+  handlers: Pick<RemixCreatePanelProps, "onIntentChange" | "onAiSideChange">,
+): void {
+  if (!handlers.onAiSideChange) {
+    handlers.onIntentChange(intentForSwitch(side, intent));
+    return;
+  }
+  handlers.onAiSideChange(side === "ai");
+  if (side === "mix" && isAiIntent(intent)) handlers.onIntentChange("mix");
+}
 
 /** Whether the primary Create action may run right now. */
 export function primaryActionable(
@@ -1131,11 +1171,19 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     creditMeter,
     attribution,
     locked,
+    parts,
+    aiSide,
+    onAiSideChange,
   } = props;
-  const ai = isAiIntent(intent);
-  const actionable = primaryActionable(primary, locked);
-  // When locked, the note at the top of the panel is the reason.
-  const primaryReason = locked ? null : primary.reason;
+  const experimentalIntent = isAiIntent(intent);
+  const ai = experimentalIntent || (onAiSideChange !== undefined && aiSide === true);
+  // The whole-track intents sit in a disclosure next to "Add a part" (#1901);
+  // a saved whole-track intent opens it with that intent selected.
+  const [experimentalOpen, setExperimentalOpen] = useState(experimentalIntent);
+  const experimentalShown = !parts || experimentalOpen;
+  // The primary button: in the disclosure for a whole-track intent, else
+  // at the bottom (the mix render, AI parts included).
+  const primaryInDisclosure = !!parts && ai && experimentalIntent;
   const id = useId();
   const headingId = `${id}-heading`;
   const lockedId = `${id}-locked`;
@@ -1144,6 +1192,7 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
   const promptId = `${id}-prompt`;
   const reasonId = `${id}-reason`;
   const intentDescriptionId = `${id}-intent-description`;
+  const experimentalId = `${id}-experimental`;
   const activeIntent = REMIX_AI_INTENTS.find((entry) => entry.intent === intent) ?? null;
 
   return (
@@ -1185,7 +1234,9 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
                   ? "bg-purple-500/25 text-purple-200"
                   : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
               }`}
-              onClick={() => onIntentChange(intentForSwitch(option.side, intent))}
+              onClick={() =>
+                switchCreateSide(option.side, intent, { onIntentChange, onAiSideChange })
+              }
             >
               {option.label}
             </button>
@@ -1256,141 +1307,212 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
         </div>
       ) : (
         <div className="mt-4 remix-create-ai">
-          {/* One compact line per intent; only the selected intent's
-              description is shown, once, as helper text (#1879 layout). */}
-          <div
-            role="radiogroup"
-            aria-label="AI intent"
-            aria-describedby={activeIntent ? intentDescriptionId : undefined}
-            className="space-y-1.5 remix-intents"
-          >
-            {REMIX_AI_INTENTS.map((entry) => {
-              const active = entry.intent === intent;
-              return (
-                <label
-                  key={entry.intent}
-                  className={`flex min-h-9 items-center rounded-md border px-3 py-1.5 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-purple-300 remix-intent remix-intent-${entry.intent} ${
-                    locked ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-                  } ${
-                    active
-                      ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
-                      : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-zinc-500"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name={`${id}-intent`}
-                    value={entry.intent}
-                    className="sr-only"
-                    checked={active}
-                    disabled={locked}
-                    onChange={() => onIntentChange(entry.intent)}
-                  />
-                  <span className="truncate">{entry.label}</span>
-                </label>
-              );
-            })}
-          </div>
-          {activeIntent && (
-            <p
-              id={intentDescriptionId}
-              className="mt-2 text-xs text-zinc-500 remix-intent-description"
-            >
-              {activeIntent.description}
-            </p>
-          )}
-
-          {intent === "replace_stem" && (
-            <div className="mt-3 remix-replace-stem">
-              <label className="block text-xs text-zinc-500 mb-1" htmlFor={replaceId}>
-                Stem to replace
-              </label>
-              <select
-                id={replaceId}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded-md px-2 py-1.5 text-sm text-zinc-200 disabled:opacity-60"
-                value={replaceStemId ?? ""}
-                disabled={locked}
-                onChange={(event) => onReplaceStemChange(event.target.value || null)}
+          {parts && <RemixPartsSection model={parts} locked={locked} />}
+          {parts && (
+            <div className="mt-5 border-t border-zinc-800 pt-3 remix-experimental">
+              <button
+                type="button"
+                aria-expanded={experimentalOpen}
+                aria-controls={experimentalId}
+                className="flex w-full items-center justify-between gap-2 rounded border-0 bg-transparent px-0 py-1 text-left text-xs font-medium text-zinc-300 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300 remix-experimental-toggle"
+                onClick={() => setExperimentalOpen((open) => !open)}
               >
-                <option value="">Choose stem…</option>
-                {replaceStemOptions.map((option) => (
-                  <option key={option.stemId} value={option.stemId}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
+                <span>{EXPERIMENTAL_AI_LABEL}</span>
+                <span aria-hidden="true" className="text-zinc-500">
+                  {experimentalOpen ? "\u2212" : "+"}
+                </span>
+              </button>
             </div>
           )}
-
-          <div className="mt-3">
-            <label className="block text-sm text-zinc-400 mb-1" htmlFor={promptId}>
-              Prompt
-            </label>
-            {/* Presets are transparent templates (#1177): a click fills the
-                editable textarea with the full text, never a hidden augmentation. */}
-            {presets.length > 0 && (
+          {experimentalShown && (
+            <div
+              id={parts ? experimentalId : undefined}
+              className={parts ? "mt-2 remix-experimental-body" : undefined}
+            >
+              {parts && (
+                <p className="mb-2 text-xs text-zinc-500 remix-experimental-note">
+                  {EXPERIMENTAL_AI_NOTE}
+                </p>
+              )}
+              {/* One compact line per intent; only the selected intent's
+                  description is shown, once, as helper text (#1879 layout). */}
               <div
-                className="flex items-center gap-2 flex-wrap mb-2"
-                role="group"
-                aria-label="Prompt presets"
+                role="radiogroup"
+                aria-label="AI intent"
+                aria-describedby={activeIntent ? intentDescriptionId : undefined}
+                className="space-y-1.5 remix-intents"
               >
-                {presets.map((preset) => {
-                  const active = activePresetLabel === preset.label;
+                {REMIX_AI_INTENTS.map((entry) => {
+                  const active = entry.intent === intent;
                   return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      disabled={locked}
-                      aria-pressed={active}
-                      title={preset.prompt}
-                      className={`px-3 py-1 rounded-full text-xs border transition-colors disabled:cursor-not-allowed remix-prompt-preset ${
+                    <label
+                      key={entry.intent}
+                      className={`flex min-h-9 items-center rounded-md border px-3 py-1.5 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-purple-300 remix-intent remix-intent-${entry.intent} ${
+                        locked ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                      } ${
                         active
                           ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
-                          : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+                          : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-zinc-500"
                       }`}
-                      onClick={() => onPromptChange(preset.prompt)}
                     >
-                      {preset.label}
-                    </button>
+                      <input
+                        type="radio"
+                        name={`${id}-intent`}
+                        value={entry.intent}
+                        className="sr-only"
+                        checked={active}
+                        disabled={locked}
+                        onChange={() => onIntentChange(entry.intent)}
+                      />
+                      <span className="truncate">{entry.label}</span>
+                    </label>
                   );
                 })}
               </div>
-            )}
-            <textarea
-              id={promptId}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-3 text-sm text-zinc-200 disabled:opacity-50"
-              rows={3}
-              placeholder="Describe the sound you want…"
-              value={prompt}
-              disabled={locked}
-              onChange={(event) => onPromptChange(event.target.value)}
-            />
-          </div>
+              {activeIntent && (
+                <p
+                  id={intentDescriptionId}
+                  className="mt-2 text-xs text-zinc-500 remix-intent-description"
+                >
+                  {activeIntent.description}
+                </p>
+              )}
 
-          {creditMeter && <div className="mt-2 remix-create-credits">{creditMeter}</div>}
-          {attribution}
+              {intent === "replace_stem" && (
+                <div className="mt-3 remix-replace-stem">
+                  <label className="block text-xs text-zinc-500 mb-1" htmlFor={replaceId}>
+                    Stem to replace
+                  </label>
+                  <select
+                    id={replaceId}
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded-md px-2 py-1.5 text-sm text-zinc-200 disabled:opacity-60"
+                    value={replaceStemId ?? ""}
+                    disabled={locked}
+                    onChange={(event) => onReplaceStemChange(event.target.value || null)}
+                  >
+                    <option value="">Choose stem…</option>
+                    {replaceStemOptions.map((option) => (
+                      <option key={option.stemId} value={option.stemId}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="mt-3">
+                <label className="block text-sm text-zinc-400 mb-1" htmlFor={promptId}>
+                  Prompt
+                </label>
+                {/* Presets are transparent templates (#1177): a click fills the
+                    editable textarea with the full text, never a hidden augmentation. */}
+                {presets.length > 0 && (
+                  <div
+                    className="flex items-center gap-2 flex-wrap mb-2"
+                    role="group"
+                    aria-label="Prompt presets"
+                  >
+                    {presets.map((preset) => {
+                      const active = activePresetLabel === preset.label;
+                      return (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          disabled={locked}
+                          aria-pressed={active}
+                          title={preset.prompt}
+                          className={`px-3 py-1 rounded-full text-xs border transition-colors disabled:cursor-not-allowed remix-prompt-preset ${
+                            active
+                              ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+                              : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+                          }`}
+                          onClick={() => onPromptChange(preset.prompt)}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <textarea
+                  id={promptId}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-3 text-sm text-zinc-200 disabled:opacity-50"
+                  rows={3}
+                  placeholder="Describe the sound you want…"
+                  value={prompt}
+                  disabled={locked}
+                  onChange={(event) => onPromptChange(event.target.value)}
+                />
+              </div>
+
+              {creditMeter && <div className="mt-2 remix-create-credits">{creditMeter}</div>}
+              {attribution}
+              {primaryInDisclosure && (
+                <PrimaryButton
+                  primary={primary}
+                  locked={locked}
+                  reasonId={reasonId}
+                  lockedId={lockedId}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      <div className="mt-4">
-        <button
-          type="button"
-          className="ui-btn ui-btn-primary w-full remix-generate-btn"
-          aria-disabled={!actionable || undefined}
-          aria-busy={primary.busy || undefined}
-          aria-describedby={
-            locked ? lockedId : primaryReason ? reasonId : undefined
-          }
-          onClick={primaryClickHandler(primary, locked)}
-        >
-          {primary.label}
-        </button>
-        {primaryReason && (
-          <p id={reasonId} className="mt-2 text-xs text-zinc-500 remix-create-reason">
-            {primaryReason}
-          </p>
-        )}
-      </div>
+      {!primaryInDisclosure && (
+        <>
+          {parts && ai && (
+            <p className="mt-5 text-xs text-zinc-400 remix-create-parts-render-note">
+              {PARTS_RENDER_NOTE}
+            </p>
+          )}
+          <PrimaryButton
+            primary={primary}
+            locked={locked}
+            reasonId={reasonId}
+            lockedId={lockedId}
+          />
+        </>
+      )}
     </section>
+  );
+}
+
+/** The panel's primary action, aria-disabled with its honest reason. */
+function PrimaryButton({
+  primary,
+  locked,
+  reasonId,
+  lockedId,
+}: {
+  primary: RemixCreatePrimaryAction;
+  locked: boolean;
+  reasonId: string;
+  lockedId: string;
+}) {
+  const actionable = primaryActionable(primary, locked);
+  // When locked, the note at the top of the panel is the reason.
+  const primaryReason = locked ? null : primary.reason;
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        className="ui-btn ui-btn-primary w-full remix-generate-btn"
+        aria-disabled={!actionable || undefined}
+        aria-busy={primary.busy || undefined}
+        aria-describedby={
+          locked ? lockedId : primaryReason ? reasonId : undefined
+        }
+        onClick={primaryClickHandler(primary, locked)}
+      >
+        {primary.label}
+      </button>
+      {primaryReason && (
+        <p id={reasonId} className="mt-2 text-xs text-zinc-500 remix-create-reason">
+          {primaryReason}
+        </p>
+      )}
+    </div>
   );
 }

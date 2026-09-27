@@ -89,7 +89,7 @@ describe("REMIX_AI_INTENTS", () => {
     ]);
     expect(REMIX_AI_INTENTS.map((entry) => entry.label)).toEqual([
       "Reimagine the track",
-      "Add a new part",
+      "Add a layer to the whole track",
       "Replace a stem",
       "Extend the track",
     ]);
