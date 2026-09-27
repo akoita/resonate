@@ -113,4 +113,34 @@ describe("sample show campaign fixture creation", () => {
     });
     expect(other.artist?.profileType).toBe("fixture");
   });
+
+  it("links a name-only catalog artist to its catalog page, never to the uploader, and keeps the sample bio", async () => {
+    const fixture = SHOW_CAMPAIGN_FIXTURES.find((entry) => entry.artist.id === "sample-artist-aya-nakamura")!;
+    const uploaderId = `${TEST_PREFIX}uploader`;
+    await prisma.artist.create({ data: { id: uploaderId, displayName: "Some Uploader", profileType: "artist" } });
+    await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}name-only-release`,
+        artistId: uploaderId,
+        title: "NAKAMURA",
+        status: "published",
+        primaryArtist: fixture.artist.displayName,
+        // A credit that names the artist but points at the uploader's profile.
+        artistCredits: {
+          create: { artistId: uploaderId, role: "main", displayName: fixture.artist.displayName, identityStatus: "inferred" },
+        },
+      },
+    });
+
+    await applyShowCampaignFixtures(prisma, storage, { assetDirectory, chainId: 31337, now: new Date("2026-06-21T12:00:00.000Z") });
+
+    const campaign = await prisma.showCampaign.findUniqueOrThrow({ where: { id: fixture.campaign.id } });
+    expect(campaign.artistId).toBeNull();
+    expect(campaign.artistDisplayName).toBe(fixture.artist.displayName);
+    expect(await prisma.artist.count({ where: { id: fixture.artist.id } })).toBe(0);
+    const uploader = await prisma.artist.findUniqueOrThrow({ where: { id: uploaderId } });
+    expect(uploader).toMatchObject({ displayName: "Some Uploader", summary: null, imageUrl: null });
+    const presentation = (campaign.metadata as { artistPresentation?: { summary?: string } }).artistPresentation;
+    expect(presentation?.summary).toBe(fixture.artist.summary);
+  });
 });

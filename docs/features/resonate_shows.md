@@ -371,14 +371,25 @@ The command validates every asset, uploads through the configured
 Re-running it refreshes future dates and replaces only fixture-owned children.
 Shared environments require `ALLOW_SAMPLE_SHOW_FIXTURES=true` explicitly.
 
-**Artist linkage.** When the catalog already has the campaign's artist — exactly
-one non-fixture profile with a main/primary, non-ambiguous credit on a ready or
-published release under that name — the sample campaign links to that real
-profile, so the campaign page, artist page, releases and campaign banner all
-connect. The seed never writes fixture copy, portrait or links onto a real
-profile, and it removes the fixture stand-in profile left by earlier seeds when
-nothing else depends on it. Only artists the catalog does not have get a
-`profileType: "fixture"` stand-in profile.
+**Artist linkage — one page per artist.** The seed never creates a second
+artist page next to the one the catalog already has:
+
+- exactly one real (non-fixture) profile whose own name matches and that is
+  credited main/primary (non-ambiguous) on, or uploaded, a ready/published
+  release → the sample campaign links to that profile;
+- the name appears on ready/published releases only as a credit or primary
+  artist (no single profile, or credits pointing at another profile such as the
+  uploader) → the campaign has no `artistId` and links to the catalog artist
+  page for that name, which also shows the campaign banner;
+- the catalog does not have the artist → only then is a
+  `profileType: "fixture"` stand-in profile created.
+
+The seed never writes fixture copy, portrait or links onto a real profile, and
+removes stand-in profiles left by earlier seeds when nothing depends on them
+(cascading relations are checked first). The sample "Meet the artist" bio,
+portrait and links live in the campaign's fixture metadata
+(`metadata.artistPresentation`); the public campaign DTO uses them only for
+fixture campaigns and only where the linked profile has no value of its own.
 
 ## Production Beta Requirements
 

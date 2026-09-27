@@ -11,6 +11,7 @@ import { libraryArtistNameForCatalogCredit } from "../../../../lib/libraryNaviga
 import { catalogArtistPlaybackTracks } from "../../../../lib/catalogArtistPlayback";
 import { usePlayer } from "../../../../lib/playerContext";
 import { QueueActionsButton } from "../../../../components/player/QueueActionsButton";
+import { ArtistCampaignLink } from "../../../../components/shows/ArtistCampaignLink";
 
 function getReleaseYear(release: Release) {
   return release.releaseDate ? new Date(release.releaseDate).getFullYear() : "";
@@ -120,6 +121,7 @@ export default function CatalogArtistPage() {
                 ) : null}
               </div>
             ) : null}
+            {artistName ? <ArtistCampaignLink artistName={artistName} /> : null}
           </div>
         </div>
       </div>

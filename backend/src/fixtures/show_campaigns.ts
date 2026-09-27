@@ -496,30 +496,70 @@ export function validateShowCampaignFixtures(assetDirectory: string) {
 /** Release states that make an artist part of the public catalog (mirrors the Shows subject gate). */
 const CATALOG_CONTENT_STATUSES = ["ready", "published"];
 
+export type FixtureCatalogArtist =
+  /** The catalog has exactly one real profile for this artist: link to it. */
+  | { kind: "profile"; id: string }
+  /** The catalog knows the artist only as a release credit (no single profile). */
+  | { kind: "credit" };
+
 /**
- * The real catalog profile a sample campaign should point at, if the catalog
- * already has this artist: the one non-fixture profile holding a main/primary,
- * non-ambiguous credit on a ready or published release under this exact name
- * (case-insensitive). Returns null when there is none, or when the name maps to
- * more than one profile — a sample campaign must never guess between people.
+ * How the public catalog already knows a sample campaign's artist, so the seed
+ * never creates a second, empty artist page next to the real one.
+ *
+ * - `profile`: exactly one non-fixture profile, whose own name matches, is
+ *   credited main/primary (non-ambiguous) on a ready/published release, or
+ *   uploaded such a release under its own name. A credit row pointing at a
+ *   profile with a different name (e.g. the uploader) never counts.
+ * - `credit`: the name appears on ready/published releases (credit or primary
+ *   artist) but not as exactly one profile — the campaign links to the catalog
+ *   artist page for that name.
+ * - `null`: the catalog does not have this artist; only then does the seed
+ *   create a fixture stand-in profile.
  */
 export async function findCatalogArtistForFixture(
   prisma: PrismaClient,
   displayName: string,
-): Promise<{ id: string } | null> {
-  const credits = await prisma.releaseArtistCredit.findMany({
+): Promise<FixtureCatalogArtist | null> {
+  const name = { equals: displayName.trim(), mode: "insensitive" as const };
+  const realProfile = { profileType: { not: "fixture" }, displayName: name };
+  const released = { status: { in: CATALOG_CONTENT_STATUSES } };
+
+  const [credits, uploads] = await Promise.all([
+    prisma.releaseArtistCredit.findMany({
+      where: {
+        displayName: name,
+        role: { in: ["main", "primary"] },
+        identityStatus: { not: "ambiguous" },
+        release: released,
+        artist: realProfile,
+      },
+      select: { artistId: true },
+      take: 50,
+    }),
+    prisma.release.findMany({
+      where: {
+        ...released,
+        artist: realProfile,
+        OR: [{ primaryArtist: null }, { primaryArtist: "" }, { primaryArtist: name }],
+      },
+      select: { artistId: true },
+      take: 50,
+    }),
+  ]);
+  const ids = new Set([...credits, ...uploads].map((row) => row.artistId));
+  if (ids.size === 1) return { kind: "profile", id: [...ids][0] };
+
+  const credited = await prisma.release.findFirst({
     where: {
-      displayName: { equals: displayName.trim(), mode: "insensitive" },
-      role: { in: ["main", "primary"] },
-      identityStatus: { not: "ambiguous" },
-      release: { status: { in: CATALOG_CONTENT_STATUSES } },
-      artist: { profileType: { not: "fixture" } },
+      ...released,
+      OR: [
+        { artistCredits: { some: { displayName: name, role: { in: ["main", "primary"] } } } },
+        { primaryArtist: name },
+      ],
     },
-    select: { artistId: true },
-    take: 50,
+    select: { id: true },
   });
-  const ids = Array.from(new Set(credits.map((credit) => credit.artistId)));
-  return ids.length === 1 ? { id: ids[0] } : null;
+  return credited || ids.size > 1 ? { kind: "credit" } : null;
 }
 
 export async function applyShowCampaignFixtures(
@@ -581,7 +621,9 @@ export async function applyShowCampaignFixtures(
     // and never writes fixture copy or imagery onto it. The fixture profile is
     // only a stand-in for artists the catalog does not have.
     const catalogArtist = await findCatalogArtistForFixture(prisma, fixture.artist.displayName);
-    const campaignArtistId = catalogArtist?.id ?? fixture.artist.id;
+    const campaignArtistId = !catalogArtist
+      ? fixture.artist.id
+      : catalogArtist.kind === "profile" ? catalogArtist.id : null;
 
     const campaignData = {
       slug: fixture.campaign.slug,
@@ -620,6 +662,13 @@ export async function applyShowCampaignFixtures(
         artistEndorsed: false,
         venueConfirmed: false,
         sources: fixture.sources,
+        // Sample "Meet the artist" presentation, used when the linked catalog
+        // artist has none of its own (the seed never writes it onto them).
+        artistPresentation: {
+          summary: fixture.artist.summary,
+          socialLinks: fixture.artist.socialLinks,
+          imageUrl: artistImageUrl,
+        },
       },
     };
 
