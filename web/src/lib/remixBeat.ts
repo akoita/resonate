@@ -620,7 +620,13 @@ export type RemixBeatHit = { timeSec: number; instrument: RemixBeatInstrument };
 
 const round9 = (value: number) => Math.round(value * 1e9) / 1e9;
 
-function isPickupSection(grid: RemixBeatGrid, section: number): boolean {
+/**
+ * A pickup block plays section 0 of a multi-section grid whose first
+ * section is shorter than 0.75 × a section (a lead-in before the first
+ * downbeat): no beat, and no AI part (#1901). Mirrors the backend
+ * `isBeatPickupSection`.
+ */
+export function isBeatPickupSection(grid: RemixBeatGrid, section: number): boolean {
   const first = grid.sections[0];
   return (
     section === 0 &&
@@ -651,7 +657,7 @@ export function beatHits(
   const out: RemixBeatHit[] = [];
   segments.forEach((segment, blockIndex) => {
     if (recipe.blocks && recipe.blocks[blockIndex] === false) return;
-    if (isPickupSection(grid, segment.section)) return;
+    if (isBeatPickupSection(grid, segment.section)) return;
     for (let bar = 0; ; bar += 1) {
       const barStart = segment.outStartSec + bar * barSec;
       if (barStart >= segment.outEndSec - 1e-9) break;

@@ -7,6 +7,7 @@ import type {
 } from "./verificationSemantics";
 import { invalidateStoredAuthSession } from "./authSession";
 import type { RemixBeatRecipe } from "./remixBeat";
+import type { RemixPartRole, RemixParts } from "./remixParts";
 import type { RemixFxRecipe } from "./remixFx";
 import type { RemixStructure, RemixStructureSegment } from "./remixStructure";
 
@@ -5906,10 +5907,62 @@ export type RemixRenderMetadata = {
   inputCount: number;
   activeStemCount: number;
   /**
-   * Parts the studio added on top of the stems (#1902), e.g. ["beat"]; a
-   * synthesized beat is neither AI nor source audio.
+   * Parts the studio added on top of the stems: "beat" (#1902, synthesized,
+   * neither AI nor source audio) and "ai_part" (#1901, generated audio).
    */
   addedParts?: string[];
+  /** AI parts mixed into the render (#1901): the take lineage. */
+  parts?: RemixRenderedPart[];
+  /** Saved parts left out of the render, with a reason (#1901). */
+  partsSkipped?: Array<{
+    partId: string;
+    takeId: string;
+    reason: "take_missing" | "take_not_ready" | string;
+  }>;
+  partsDspVersion?: string;
+};
+
+/** One AI part mixed into a render (#1901). */
+export type RemixRenderedPart = {
+  partId: string;
+  role: string;
+  takeId: string;
+  provider: string | null;
+  model: string | null;
+  promptVersion: string;
+  conformVersion: string | null;
+  bars: number;
+  gainDb: number;
+};
+
+export type RemixPartTakeStatus = "pending" | "processing" | "completed" | "failed";
+
+/**
+ * One generated AI part take (#1901): a conformed FLAC of exactly `bars`
+ * bars at the song's tempo. Audio streams through the owner-only
+ * `fetchRemixPartTakeAudio`; every take is AI-generated.
+ */
+export type RemixPartTake = {
+  id: string;
+  batchId: string;
+  role: RemixPartRole | string;
+  bars: number;
+  style: string | null;
+  seed: number;
+  status: RemixPartTakeStatus | string;
+  promptVersion: string;
+  provider: string | null;
+  model: string | null;
+  grounding: string;
+  aiGenerated: true;
+  costCents: number;
+  mimeType: string | null;
+  durationSec: number | null;
+  conform: Record<string, unknown> | null;
+  errorCode: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 };
 
 /** Targeted per-stem AI operation (#1316); variation mode only. */
@@ -6033,6 +6086,14 @@ export type RemixProject = {
   timeline?: RemixStructureSegment[] | null;
   /** Beat recipe `remix-beat/v1` (#1902); null/absent = no beat. */
   beat?: RemixBeatRecipe | null;
+  /**
+   * AI part lanes `remix-parts/v1` (#1901), read tolerantly by the server
+   * (a part whose take is not a completed take of this project is dropped);
+   * null/absent = no parts.
+   */
+  parts?: RemixParts | null;
+  /** Generated AI part takes (#1901), newest first (at most 24). */
+  partTakes?: RemixPartTake[];
 };
 
 /** Studio AI target (#1882): whole track, a new layer, or a stem replacement. */
@@ -6090,6 +6151,12 @@ export type RemixProjectPatch = {
    * recipe; null removes the beat.
    */
   beat?: RemixBeatRecipe | null;
+  /**
+   * AI part lanes `remix-parts/v1` (#1901), the whole normalized recipe;
+   * every takeId must be a completed take of this project with the part's
+   * role. null (or no parts) removes every part.
+   */
+  parts?: RemixParts | null;
 };
 
 export async function updateRemixProject(
@@ -6129,6 +6196,83 @@ export async function generateRemixDraft(
     { method: "POST", body: JSON.stringify(options) },
     token
   );
+}
+
+/** Shape returned by POST /remix/projects/:id/parts/generate (#1901). */
+export type RemixPartsGenerateResult = {
+  batchId: string;
+  /** takes × the canonical per-30 s generation price, in cents. */
+  quoteCents: number;
+  perTakeCents: number;
+  takes: RemixPartTake[];
+};
+
+/**
+ * Starts a batch of AI part takes (#1901): one role, 4 or 8 bars, optional
+ * style words, 1–4 takes (default 3). Each take is one 30 s generation at
+ * the canonical price; 402 when the balance can't cover the quote.
+ */
+export async function generateRemixParts(
+  token: string,
+  projectId: string,
+  body: {
+    role: RemixPartRole;
+    bars: 4 | 8;
+    style?: string | null;
+    takes?: number;
+  }
+) {
+  return apiRequest<RemixPartsGenerateResult>(
+    `/remix/projects/${projectId}/parts/generate`,
+    { method: "POST", body: JSON.stringify(body) },
+    token
+  );
+}
+
+/**
+ * Deletes an unused AI part take and its audio (#1901); returns the updated
+ * project. 409 when a part still uses it or it is still generating.
+ */
+export async function deleteRemixPartTake(
+  token: string,
+  projectId: string,
+  takeId: string
+) {
+  return apiRequest<RemixProject>(
+    `/remix/projects/${projectId}/parts/takes/${encodeURIComponent(takeId)}`,
+    { method: "DELETE" },
+    token
+  );
+}
+
+/**
+ * A completed take's conformed audio (#1901), owner-only, as raw bytes for
+ * the preview engine to decode.
+ */
+export async function fetchRemixPartTakeAudio(
+  token: string,
+  projectId: string,
+  takeId: string,
+): Promise<ArrayBuffer> {
+  const response = await fetch(
+    `${API_BASE}/remix/projects/${projectId}/parts/takes/${encodeURIComponent(
+      takeId,
+    )}/audio`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      formatApiErrorMessage(response.status, response.statusText, detail),
+    );
+  }
+
+  return response.arrayBuffer();
 }
 
 export async function getRemixDraftAudioBlob(

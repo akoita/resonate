@@ -10,6 +10,8 @@ import {
   loopForTimeline,
   BEAT_PEAKS_DEBOUNCE_MS,
   previewBeatKey,
+  previewPartsFor,
+  previewPartsKey,
   previewSectionsKey,
   scheduleBeatPeaks,
   resolveDraftCacheKey,
@@ -491,5 +493,81 @@ describe("tempo & key preparation (#1898)", () => {
     expect(due({ status: "failed" })).toBe(false);
     // This readiness already restarted once.
     expect(due({ consumedToken: 2 })).toBe(false);
+  });
+});
+
+describe("AI parts in the transport (#1901)", () => {
+  const grid = {
+    sections: [
+      { startSec: 0, endSec: 16 },
+      { startSec: 16, endSec: 32 },
+    ],
+    sectionSeconds: 16,
+    bpm: 120,
+  };
+  const segments = grid.sections.map((section, index) => ({
+    section: index,
+    outStartSec: section.startSec,
+    outEndSec: section.endSec,
+  }));
+  const timeline = { grid, segments };
+  const keys = {
+    partId: "keys-1",
+    role: "keys",
+    takeId: "t-keys",
+    bars: 4,
+    gainDb: -3,
+    muted: false,
+    blocks: null,
+  };
+  const drums = { ...keys, partId: "drums-1", role: "drums", takeId: "t-drums" };
+
+  it("plays only the parts whose take has decoded", () => {
+    const buffer = { duration: 8 } as AudioBuffer;
+    expect(previewPartsFor([keys, drums], new Map([["t-drums", buffer]]))).toEqual([
+      { ...drums, buffer },
+    ]);
+    expect(previewPartsFor(null, new Map())).toEqual([]);
+  });
+
+  it("restarts for what a part plays, never for its level or mute", () => {
+    const loaded = new Set(["t-keys"]);
+    const key = previewPartsKey([keys], timeline, loaded);
+    expect(key).not.toBe("");
+    expect(previewPartsKey([{ ...keys, gainDb: 2, muted: true }], timeline, loaded)).toBe(key);
+    expect(previewPartsKey([{ ...keys, blocks: [false, true] }], timeline, loaded)).not.toBe(key);
+    expect(previewPartsKey([{ ...keys, takeId: "t-2" }], timeline, loaded)).not.toBe(key);
+    // A take finishing decoding changes what plays.
+    expect(previewPartsKey([keys], timeline, new Set())).not.toBe(key);
+    expect(
+      previewPartsKey([keys], { grid, segments: segments.slice(0, 1) }, loaded),
+    ).not.toBe(key);
+    expect(previewPartsKey([], timeline, loaded)).toBe("");
+    expect(previewPartsKey([keys], null, loaded)).toBe("");
+  });
+
+  it("the preparer stretches part takes alongside the stems", () => {
+    vi.useFakeTimers();
+    try {
+      const prepare = vi.fn(async () => "ready" as const);
+      const preparer = createStretchPreparer({ prepare, onState: () => undefined, onReady: () => undefined });
+      const buffer = { duration: 8 } as AudioBuffer;
+      const plan = { tempo: 0.9, semitones: 2 };
+      preparer.request(plan, ["a"], [{ takeId: "t-drums", role: "drums", buffer }]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      expect(prepare).toHaveBeenCalledWith(plan, ["a"], expect.any(Function), [
+        { takeId: "t-drums", role: "drums", buffer },
+      ]);
+      // Same stems and takes: nothing new; a new take re-prepares.
+      preparer.request(plan, ["a"], [{ takeId: "t-drums", role: "drums", buffer }]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      expect(prepare).toHaveBeenCalledTimes(1);
+      preparer.request(plan, ["a"], []);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      expect(prepare).toHaveBeenCalledTimes(2);
+      expect(prepare).toHaveBeenLastCalledWith(plan, ["a"], expect.any(Function));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

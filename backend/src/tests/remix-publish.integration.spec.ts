@@ -875,6 +875,120 @@ describe("Remix publish (integration)", () => {
     expect("conditioningBeat" in lineage).toBe(false);
   });
 
+  const RENDERED_PART = {
+    partId: "keys-1",
+    role: "keys",
+    takeId: "take-keys-1",
+    provider: "lyria",
+    model: "lyria-002",
+    promptVersion: "remix-part-prompt/v1",
+    conformVersion: "remix-part-conform/v1",
+    bars: 4,
+    gainDb: -3,
+  };
+
+  it("publishes a stem mix with AI parts as AI-assisted, with the parts lineage (#1901)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        grounding: "stem_plus_ai",
+        aiGenerated: true,
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 3,
+          activeStemCount: 1,
+          beat: BEAT,
+          beatDspVersion: "remix-beat-dsp/v1",
+          parts: [RENDERED_PART],
+          partsSkipped: [
+            { partId: "bass-1", takeId: "gone", reason: "take_missing" },
+          ],
+          partsDspVersion: "remix-parts-dsp/v1",
+          addedParts: ["beat", "ai_part"],
+        },
+      }),
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage).toMatchObject({
+      grounding: "stem_plus_ai",
+      aiGenerated: true,
+      parts: [RENDERED_PART],
+      partsDspVersion: "remix-parts-dsp/v1",
+      addedParts: ["beat", "ai_part"],
+    });
+    expect("conditioningParts" in lineage).toBe(false);
+    // Declared AI at least PARTLY, with the instruments facet.
+    expect(track.aiDisclosureLevel).toBe("PARTLY");
+    expect(track.aiContributionFacets).toEqual(
+      expect.arrayContaining(["instruments"]),
+    );
+  });
+
+  it("never publishes a draft with AI parts as AI-free, even with a stem_audio grounding (#1901)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 2,
+          activeStemCount: 1,
+          parts: [RENDERED_PART],
+          partsDspVersion: "remix-parts-dsp/v1",
+          addedParts: ["ai_part"],
+        },
+      }),
+    });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage).toMatchObject({
+      grounding: "stem_plus_ai",
+      aiGenerated: true,
+      parts: [RENDERED_PART],
+      addedParts: ["ai_part"],
+    });
+    // Upgraded to stem_plus_ai: its production facet plus instruments.
+    expect(track.aiDisclosureLevel).toBe("PARTLY");
+    expect(track.aiContributionFacets).toEqual(["production", "instruments"]);
+  });
+
+  it("records conditioning parts of an audio-conditioned draft (#1901)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "audio_conditioned",
+        conditioningParts: {
+          parts: [RENDERED_PART],
+          partsDspVersion: "remix-parts-dsp/v1",
+        },
+      }),
+    });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage).toMatchObject({
+      grounding: "audio_conditioned",
+      conditioningParts: {
+        parts: [RENDERED_PART],
+        partsDspVersion: "remix-parts-dsp/v1",
+      },
+    });
+    expect("parts" in lineage).toBe(false);
+    expect("addedParts" in lineage).toBe(false);
+    expect(track.aiDisclosureLevel).toBe("PARTLY");
+    expect(track.aiContributionFacets).toEqual(["production", "instruments"]);
+  });
+
   it("serves the published track through existing catalog streaming", async () => {
     const project = await createProjectRow({ userId: CREATOR_ID });
     const result = await projectService.publishProject(CREATOR_ID, project.id);

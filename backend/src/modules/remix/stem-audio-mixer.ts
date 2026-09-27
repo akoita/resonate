@@ -54,6 +54,18 @@ import {
   type RemixRenderBeat,
 } from "./remix-beat";
 import {
+  decodePartTakeLoop,
+  partLengthSeconds,
+  partPlacementSpans,
+  partStretchPlan,
+  REMIX_PARTS_DSP_VERSION,
+  renderedPartLineage,
+  writePartTrackWav,
+  type PartSkippedReason,
+  type RemixRenderedPart,
+  type RemixRenderParts,
+} from "./remix-parts";
+import {
   REMIX_STRETCH_CHANNELS,
   REMIX_STRETCH_DITHER_SEED_BASE,
   REMIX_STRETCH_SAMPLE_RATE,
@@ -137,6 +149,10 @@ export interface StemAudioMixer {
    * @param beat Beat maker recipe (#1902) + bar grid + timeline; absent = no
    *   beat, byte-identical. Rendered to a 48 kHz track in the temp dir and
    *   mixed as one extra input.
+   * @param parts AI parts (#1901) + bar grid + timeline; absent = no parts,
+   *   byte-identical. Each part's take is fetched through the storage
+   *   provider into the temp dir, laid out on the timeline and mixed as one
+   *   extra input; skipped parts are only recorded.
    */
   mixUnmutedStems(
     stems: StemArrangementEntry[],
@@ -144,6 +160,7 @@ export interface StemAudioMixer {
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
+    parts?: RemixRenderParts,
   ): Promise<MixedStemAudio>;
   mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
@@ -152,6 +169,7 @@ export interface StemAudioMixer {
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
+    parts?: RemixRenderParts,
   ): Promise<MixedAudioBuffers>;
 }
 
@@ -175,6 +193,15 @@ export type StemMixFfmpegInput = {
    * in output time and the varispeed rate is 1.
    */
   beat?: boolean;
+  /**
+   * An AI part track (#1901): a stereo WAV already in timeline time with its
+   * blocks and loop phase baked in, like the beat. Varispeed and its gain
+   * (stem gain rules) apply; per-stem fx, gating and the structure front end
+   * do not; it sends `master.space` to the reverb bus like an AI layer. It
+   * goes through the time-stretch pre-stage like a stem (drums never
+   * transposed).
+   */
+  part?: { role: string };
 };
 
 /** Effects context for {@link buildStemMixFfmpegArgs} (#1897). */
@@ -232,9 +259,10 @@ export function buildStemMixFfmpegArgs(
   // -loglevel error keeps execFile's stderr buffer tiny on long renders.
   const args: string[] = ["-y", "-nostdin", "-hide_banner", "-loglevel", "error"];
   const hasStructure = !!structure && structure.segments.length > 0;
-  // A beat input (#1902) needs the fx graph; without one nothing changes.
-  const hasBeat = inputs.some((input) => input.beat);
-  if (fx?.effects || hasStructure || hasBeat) {
+  // A beat (#1902) or AI part (#1901) input needs the fx graph; without one
+  // nothing changes.
+  const hasAddedTrack = inputs.some((input) => input.beat || input.part);
+  if (fx?.effects || hasStructure || hasAddedTrack) {
     const renderFx: StemMixFfmpegFx = fx ?? { effects: null };
     const segments = hasStructure
       ? stretchedSourceSegments(structure!.segments, renderFx.effects)
@@ -336,13 +364,13 @@ function stemFxFor(
   effects: RemixFxRecipe,
   input: StemMixFfmpegInput,
 ): RemixFxStem {
-  if (input.aiLayer || input.beat || !input.fxStemId) return {};
+  if (input.aiLayer || input.beat || input.part || !input.fxStemId) return {};
   return effects.stems?.[input.fxStemId] ?? {};
 }
 
 /**
- * Per-input reverb wet level (0 = no send). AI layers and the beat (#1902)
- * send master.space.
+ * Per-input reverb wet level (0 = no send). AI layers, the beat (#1902) and
+ * AI parts (#1901) send master.space.
  */
 export function stemMixReverbSends(
   inputs: StemMixFfmpegInput[],
@@ -496,7 +524,7 @@ function ffmpegInputPlan(
   let next = 0;
   return inputs.map((input) => {
     const sources =
-      runs && !input.aiLayer && !input.beat
+      runs && !input.aiLayer && !input.beat && !input.part
         ? runs.map((run) => ({ path: input.path, run }))
         : [{ path: input.path, run: null }];
     const plan = { firstIndex: next, sources };
@@ -577,6 +605,9 @@ function structureFrontEnd(
  * normalize → mono-to-stereo → varispeed → gain → master amix (plus a
  * `0.7 × master.space` reverb send), with no per-stem fx, gate or structure
  * front end; master fades, tone, warmth and loudness apply to it in the mix.
+ * AI part inputs (#1901) are stereo tracks already in timeline time, like
+ * the beat without the mono up-mix: normalize → varispeed → gain → master
+ * amix (plus the same reverb send).
  * Every value is numeric and derived from the validated recipe.
  */
 export function buildFxStemMixFilter(
@@ -586,8 +617,9 @@ export function buildFxStemMixFilter(
 ): { filter: string; needsImpulse: boolean } {
   const segments =
     structure && structure.segments.length > 0 ? structure.segments : null;
-  const hasBeat = inputs.some((input) => input.beat);
-  const effects = fx.effects ?? (segments || hasBeat ? NO_EFFECTS : null);
+  const hasAddedTrack = inputs.some((input) => input.beat || input.part);
+  const effects =
+    fx.effects ?? (segments || hasAddedTrack ? NO_EFFECTS : null);
   if (!effects) {
     throw new Error("buildFxStemMixFilter requires an effects recipe.");
   }
@@ -616,7 +648,8 @@ export function buildFxStemMixFilter(
     // With a structure (#1899) every run is normalized before the concat,
     // so all runs share one format.
     const plan = plans[index];
-    const restructure = segments !== null && !input.aiLayer && !input.beat;
+    const restructure =
+      segments !== null && !input.aiLayer && !input.beat && !input.part;
     const front = restructure ? structureFrontEnd(index, plan) : null;
     const head = front ? front.head : `[${plan.firstIndex}:a]`;
     if (front) graph.push(...front.parts);
@@ -630,9 +663,11 @@ export function buildFxStemMixFilter(
       chain.push(`asetrate=${480 * rateHundredths}`, "aresample=48000");
     }
     chain.push(`volume=${normalizeRemixStemGainDb(input.gainDb)}dB`);
-    // The beat's block on/off is baked into its track: never gated.
+    // The beat's (and a part's) block on/off is baked into its track: never
+    // gated.
     if (
       !input.beat &&
+      !input.part &&
       input.activeIntervals &&
       input.activeIntervals.length > 0
     ) {
@@ -645,7 +680,7 @@ export function buildFxStemMixFilter(
         `volume=volume=${buildSectionGateVolumeExpression(scaled)}:eval=frame`,
       );
     }
-    if (!input.aiLayer && !input.beat) {
+    if (!input.aiLayer && !input.beat && !input.part) {
       const tone = fxToneFilter(stemFx.tone);
       if (tone) chain.push(tone);
       const taps = echoTaps(stemFx.echo ?? 0, bpm, speed);
@@ -766,6 +801,24 @@ export function buildStretchDecodeArgs(
   ];
 }
 
+/** One time-stretch stage (#1898): tempo factor and key shift. */
+export type StretchStage = { tempo: number; semitones: number };
+
+/**
+ * The stretch stage of one mix input for a recipe's plan (#1901): stems and
+ * AI layers take the recipe plan; AI parts take it through
+ * {@link partStretchPlan} (drums: tempo only, never transposed; null when
+ * that is the identity). The beat never reaches the stretch stage.
+ */
+export function mixInputStretchStage(
+  input: StemMixFfmpegInput,
+  plan: StretchStage | null,
+): StretchStage | null {
+  if (!plan || input.beat) return null;
+  if (input.part) return partStretchPlan(input.part.role, plan);
+  return plan;
+}
+
 /** Run `task` over `items` with at most `limit` in flight; fail fast. */
 async function runPooled<T>(
   items: T[],
@@ -807,14 +860,20 @@ async function runPooled<T>(
  * as they are consumed. Audio shorter than the engine minimum is zero-padded
  * and trimmed back by the worker. Errors map to safe provider errors;
  * `logError` receives internal detail only.
+ *
+ * `plan` is one stage for every input, or a PER-INPUT plan (#1901): a
+ * function returning an input's stage, or null to leave that input as is
+ * (e.g. a drum part at tempo 1). Dither seeds stay base + input index.
  */
 export async function stretchMixInputs(
   inputs: StemMixFfmpegInput[],
   workDir: string,
-  plan: { tempo: number; semitones: number },
+  plan: StretchStage | ((input: StemMixFfmpegInput, index: number) => StretchStage | null),
   logError: (message: string) => void = () => undefined,
 ): Promise<void> {
   await runPooled(inputs, STRETCH_POOL_SIZE, async (input, index) => {
+    const stage = typeof plan === "function" ? plan(input, index) : plan;
+    if (!stage) return;
     const rawPath = join(workDir, `stretch-${index}.s16`);
     const wavPath = join(workDir, `stretch-${index}.wav`);
     try {
@@ -837,8 +896,8 @@ export async function stretchMixInputs(
       await stretchRawFileToWavInWorker({
         inputPath: rawPath,
         outputPath: wavPath,
-        tempo: plan.tempo,
-        semitones: plan.semitones,
+        tempo: stage.tempo,
+        semitones: stage.semitones,
         ditherSeed: REMIX_STRETCH_DITHER_SEED_BASE + index,
       });
     } catch (error) {
@@ -857,14 +916,25 @@ export async function stretchMixInputs(
   });
 }
 
+/** What the render did with the project's AI parts (#1901). */
+type RenderedPartsRecord = {
+  rendered: RemixRenderedPart[];
+  skipped: Array<{ partId: string; takeId: string; reason: PartSkippedReason }>;
+};
+
 function renderMetadata(
   inputCount: number,
   activeStemCount: number,
   fx?: RemixRenderFx,
   structure?: RemixRenderStructure,
   beat?: RemixRenderBeat,
+  parts?: RenderedPartsRecord,
 ): RemixRenderMetadata {
   const stretchPlan = fx ? remixFxStretchPlan(fx.effects) : null;
+  const addedParts: Array<"beat" | "ai_part"> = [
+    ...(beat ? (["beat"] as const) : []),
+    ...(parts && parts.rendered.length > 0 ? (["ai_part"] as const) : []),
+  ];
   return {
     ...REMIX_RENDER_AUDIO_POLICY,
     inputCount,
@@ -888,9 +958,18 @@ function renderMetadata(
       ? {
           beat: beat.beat,
           beatDspVersion: REMIX_BEAT_DSP_VERSION,
-          addedParts: ["beat" as const],
         }
       : {}),
+    // #1901: the AI parts mixed in (generated audio: the draft is
+    // AI-assisted) and the saved parts left out, with a reason.
+    ...(parts
+      ? {
+          parts: parts.rendered,
+          partsSkipped: parts.skipped,
+          partsDspVersion: REMIX_PARTS_DSP_VERSION,
+        }
+      : {}),
+    ...(addedParts.length > 0 ? { addedParts } : {}),
   };
 }
 
@@ -909,6 +988,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
+    parts?: RemixRenderParts,
   ): Promise<MixedStemAudio> {
     return this.mixStemArrangement(
       stems,
@@ -918,6 +998,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       fx,
       structure,
       beat,
+      parts,
     );
   }
 
@@ -928,6 +1009,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
+    parts?: RemixRenderParts,
   ): Promise<MixedAudioBuffers> {
     return this.mixStemArrangement(
       stems,
@@ -937,6 +1019,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       fx,
       structure,
       beat,
+      parts,
     );
   }
 
@@ -948,6 +1031,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
+    parts?: RemixRenderParts,
   ): Promise<MixedStemAudio>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -957,6 +1041,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
+    parts?: RemixRenderParts,
   ): Promise<MixedAudioBuffers>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -966,6 +1051,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
     renderBeat?: RemixRenderBeat,
+    renderParts?: RemixRenderParts,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const label = authorization.remixProjectId;
     // A muted beat (#1902) is skipped entirely: the graph and metadata are
@@ -1040,16 +1126,25 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           aiLayer: true,
         });
       }
+      // #1901: every audible AI part becomes one timeline-time track, BEFORE
+      // the stretch stage (parts take the tempo stretch like stems).
+      const partsRecord = renderParts
+        ? await this.addPartInputs(renderParts, ffmpegInputs, workDir, label)
+        : undefined;
       const stretchPlan = fx ? remixFxStretchPlan(fx.effects) : null;
       if (stretchPlan) {
         // #1898: every source stem and AI layer is time-stretched / pitch-
-        // shifted before the graph, replacing its input file.
+        // shifted before the graph, replacing its input file. AI parts take
+        // a per-input stage (drums: tempo only, #1901).
         const stretchStarted = Date.now();
-        await stretchMixInputs(ffmpegInputs, workDir, stretchPlan, (message) =>
+        const stageOf = (input: StemMixFfmpegInput) =>
+          mixInputStretchStage(input, stretchPlan);
+        await stretchMixInputs(ffmpegInputs, workDir, stageOf, (message) =>
           this.logger.error(`${label}: ${message}`),
         );
+        const stretched = ffmpegInputs.filter((input) => stageOf(input)).length;
         this.logger.log(
-          `[mix] ${label}: time-stretched ${ffmpegInputs.length} inputs (tempo ${stretchPlan.tempo}, ${stretchPlan.semitones} st) in ${Date.now() - stretchStarted}ms`,
+          `[mix] ${label}: time-stretched ${stretched} inputs (tempo ${stretchPlan.tempo}, ${stretchPlan.semitones} st) in ${Date.now() - stretchStarted}ms`,
         );
       }
       if (beat) {
@@ -1130,6 +1225,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         fx,
         structure,
         beat,
+        partsRecord,
       );
       return stemOnly
         ? {
@@ -1157,6 +1253,105 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         );
       });
     }
+  }
+
+  /**
+   * AI parts (#1901): for each audible part, fetch the take's conformed FLAC
+   * through the StorageProvider into this render's temp dir, decode it (the
+   * loop), lay it out on the timeline ({@link partPlacementSpans}) and
+   * stream it to a stereo WAV input. One part at a time, so memory stays at
+   * one loop plus one chunk. A take with no stored bytes is skipped
+   * (`take_missing`, recorded); a storage or decode failure fails the render
+   * (retryable). The takes were already paid for: nothing here costs credits.
+   */
+  private async addPartInputs(
+    renderParts: RemixRenderParts,
+    ffmpegInputs: StemMixFfmpegInput[],
+    workDir: string,
+    label: string,
+  ): Promise<RenderedPartsRecord> {
+    const record: RenderedPartsRecord = {
+      rendered: [],
+      skipped: [...renderParts.skipped],
+    };
+    const bpm = renderParts.grid.bpm;
+    const segments = renderParts.segments;
+    const durationSec =
+      segments.length > 0 ? segments[segments.length - 1].outEndSec : 0;
+    if (!bpm || !(bpm > 0) || segments.length === 0) {
+      for (const part of renderParts.parts) {
+        record.skipped.push({
+          partId: part.partId,
+          takeId: part.takeId,
+          reason: "take_not_ready",
+        });
+      }
+      return record;
+    }
+    const started = Date.now();
+    for (const [index, part] of renderParts.parts.entries()) {
+      let audio: Buffer | null;
+      try {
+        audio = await this.storageProvider.download(part.storageUri);
+      } catch {
+        // Ids only: storage messages can carry bucket names or paths.
+        this.logger.warn(
+          `Storage download failed for part take ${part.takeId} (${label})`,
+        );
+        throw new RemixGenerationProviderError(
+          "provider_unavailable",
+          "An AI part could not be loaded for the mix. Please try again later.",
+          true,
+        );
+      }
+      if (!audio || audio.length === 0) {
+        record.skipped.push({
+          partId: part.partId,
+          takeId: part.takeId,
+          reason: "take_missing",
+        });
+        continue;
+      }
+      const takePath = join(workDir, `part-${index}.take`);
+      const rawPath = join(workDir, `part-${index}.f32`);
+      const trackPath = join(workDir, `part-${index}.wav`);
+      let loop: Float32Array;
+      try {
+        await writeFile(takePath, audio);
+        audio = null;
+        loop = await decodePartTakeLoop(takePath, rawPath);
+      } catch (error) {
+        this.logger.error(
+          `${label}: part take ${part.takeId} decode failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        throw new RemixGenerationProviderError(
+          "provider_unavailable",
+          "An AI part could not be prepared for the mix. Please try again later.",
+          true,
+        );
+      } finally {
+        await rm(takePath, { force: true });
+      }
+      const spans = partPlacementSpans(
+        part,
+        renderParts.grid,
+        segments,
+        partLengthSeconds(bpm, part.bars),
+      );
+      await writePartTrackWav(trackPath, loop, spans, durationSec);
+      ffmpegInputs.push({
+        path: trackPath,
+        gainDb: part.gainDb,
+        part: { role: part.role },
+      });
+      record.rendered.push(renderedPartLineage(part));
+    }
+    this.logger.log(
+      `[mix] ${label}: laid out ${record.rendered.length} AI part tracks in ${Date.now() - started}ms`,
+    );
+    return record;
   }
 
   /**

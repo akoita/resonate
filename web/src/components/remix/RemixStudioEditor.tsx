@@ -37,6 +37,7 @@ import {
   remixDraftOutputUri,
   type PreviewBeat,
   type PreviewLevel,
+  type PreviewPartTimeline,
   type PreviewStemState,
   type StemArrangementPreviewHandle,
 } from "../../lib/remixAudioPreview";
@@ -76,6 +77,7 @@ import type {
   RemixDescribeContext,
   RemixDescribeEdits,
 } from "../../lib/remixDescribe";
+import { normalizeRemixParts } from "../../lib/remixParts";
 import {
   applyVibe,
   normalizeRemixFx,
@@ -127,7 +129,11 @@ import {
   type RemixCurrentDraft,
   type RemixDraftVersion,
 } from "./RemixDraftsPanel";
-import { useRemixTransport, type TransportSource } from "./useRemixTransport";
+import {
+  useRemixTransport,
+  type TransportPart,
+  type TransportSource,
+} from "./useRemixTransport";
 
 // Shared helpers moved to lib (#1879) so the lanes, recipes and drafts panel
 // use them without importing the editor; re-exported for existing callers.
@@ -1076,6 +1082,49 @@ export function editsPreviewBeat(
 }
 
 /**
+ * The saved AI parts (#1901) as the preview plays them: the project's
+ * `remix-parts/v1` recipe (normalized against the edited timeline's blocks —
+ * a stale per-block list plays everywhere, like the render) with each
+ * part's COMPLETED take of the same role from `partTakes`, placed on the
+ * edited timeline. Null without parts, a bar grid with a tempo, or a
+ * timeline. Parts are not edited locally yet (the lane arrives with the
+ * generate flow), so the saved recipe is what plays.
+ */
+export function projectPreviewParts(
+  project: Pick<RemixProject, "sectionGrid" | "parts" | "partTakes">,
+  edits: Pick<ProjectEdits, "structure">,
+): { parts: TransportPart[]; partTimeline: PreviewPartTimeline } | null {
+  const grid = project.sectionGrid ?? null;
+  if (!grid || !beatGridAvailable(grid)) return null;
+  const timeline = editsTimeline(project, edits);
+  if (!timeline || timeline.segments.length === 0) return null;
+  const recipe = normalizeRemixParts(project.parts ?? null, timeline.segments.length);
+  if (!recipe) return null;
+  const takes = new Map(
+    (project.partTakes ?? [])
+      .filter((take) => take.status === "completed")
+      .map((take) => [take.id, take]),
+  );
+  const parts: TransportPart[] = recipe.parts.flatMap((part) => {
+    const take = takes.get(part.takeId);
+    if (!take || take.role !== part.role || !(take.bars > 0)) return [];
+    return [
+      {
+        partId: part.id,
+        role: part.role,
+        takeId: take.id,
+        bars: take.bars,
+        gainDb: part.gainDb ?? 0,
+        muted: part.muted === true,
+        blocks: part.blocks ?? null,
+      },
+    ];
+  });
+  if (parts.length === 0) return null;
+  return { parts, partTimeline: { grid, segments: timeline.segments } };
+}
+
+/**
  * Sets a "Describe it" result (#1900) in one update: the mute/mask state of
  * the project's stems, the effects and the structure. Everything else
  * (title, prompt, gains, AI target) keeps the latest value, so a proposal
@@ -1565,6 +1614,8 @@ export function RemixStudioEditor({
   const previewBeat = beatAvailable
     ? editsPreviewBeat(project, edits)
     : null;
+  // AI parts (#1901): the saved lanes play in the preview (no part UI yet).
+  const previewParts = projectPreviewParts(project, edits);
   // A beat solo ends with the beat (removed, or no longer playable).
   const soloStemId =
     soloState === REMIX_BEAT_LANE_ID && !previewBeat ? null : soloState;
@@ -1592,6 +1643,8 @@ export function RemixStudioEditor({
     bpm: effectsBpm(project.sectionGrid),
     timeline,
     beat: previewBeat,
+    parts: previewParts?.parts ?? null,
+    partTimeline: previewParts?.partTimeline ?? null,
     outputGain: listeningGain(listeningVolume),
     onError: (kind) => {
       addToast(

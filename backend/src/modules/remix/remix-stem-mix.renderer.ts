@@ -8,6 +8,7 @@ import {
 import type { RemixRenderFx } from "./remix-fx";
 import type { RemixRenderStructure } from "./remix-structure";
 import type { RemixRenderBeat } from "./remix-beat";
+import type { RemixRenderParts } from "./remix-parts";
 import {
   buildStemMixFfmpegArgs,
   type StemArrangementEntry,
@@ -31,6 +32,11 @@ export type StemMixRenderInput = {
   structure?: RemixRenderStructure;
   /** Beat maker recipe + bar grid + timeline (#1902); absent = no beat. */
   beat?: RemixRenderBeat;
+  /**
+   * AI parts + bar grid + timeline (#1901); absent = no parts. Rendering
+   * them is free: the takes were already paid for.
+   */
+  parts?: RemixRenderParts;
 };
 
 /**
@@ -55,7 +61,16 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
 
   async render(input: StemMixRenderInput): Promise<RemixGenerationJob> {
     const jobId = randomUUID();
-    const mixed = input.beat
+    const mixed = input.parts
+      ? await this.mixer.mixUnmutedStems(
+          input.stems,
+          input.authorization,
+          input.fx,
+          input.structure,
+          input.beat,
+          input.parts,
+        )
+      : input.beat
       ? await this.mixer.mixUnmutedStems(
           input.stems,
           input.authorization,

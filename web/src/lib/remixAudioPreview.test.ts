@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   beatPlayback,
   beatPreviewGain,
+  partLoopChannels,
+  partPreviewGain,
+  partStretchItemId,
+  planPartSources,
+  PREVIEW_PART_TAKE_CACHE_SIZE,
+  type PreviewPart,
   blockLoopSource,
   clampOutputVolume,
   createStemPreviewEngine,
@@ -2067,5 +2073,366 @@ describe("createStemPreviewEngine tempo & key (#1898)", () => {
       beatTrackLength(beat.recipe.kit, beatSegments, 48000),
     );
     expect(plain.playbackRate.value).toBe(0.8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AI parts (#1901).
+
+/** 120 bpm, two full 8-bar sections (no pickup) and a 6 s tail. */
+const PART_GRID = {
+  sections: [
+    { startSec: 0, endSec: 16 },
+    { startSec: 16, endSec: 32 },
+    { startSec: 32, endSec: 38 },
+  ],
+  sectionSeconds: 16,
+  bpm: 120,
+};
+const PART_SEGMENTS = PART_GRID.sections.map((section, index) => ({
+  section: index,
+  outStartSec: section.startSec,
+  outEndSec: section.endSec,
+}));
+const PART_TIMELINE = { grid: PART_GRID, segments: PART_SEGMENTS };
+
+/** A 4-bar (8 s) stereo take at a tiny rate: L = frame index, R = −index. */
+function partTake(seconds = 8, rate = 100): FakeAudioBuffer {
+  const buffer = new FakeAudioBuffer(2, seconds * rate, rate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+  for (let i = 0; i < left.length; i += 1) {
+    left[i] = i;
+    right[i] = -i;
+  }
+  return buffer;
+}
+
+function previewPart(overrides: Partial<PreviewPart> = {}): PreviewPart {
+  return {
+    partId: "keys-1",
+    role: "keys",
+    takeId: "take-keys",
+    buffer: partTake() as unknown as AudioBuffer,
+    bars: 4,
+    gainDb: -6,
+    muted: false,
+    blocks: null,
+    ...overrides,
+  };
+}
+
+function partSources(context: FakeAudioContext, buffer: AudioBuffer): FakeSource[] {
+  return context.sources.filter((source) => source.buffer === buffer);
+}
+
+describe("part scheduling helpers (#1901)", () => {
+  const spans = [
+    { outStartSec: 16, outEndSec: 32, fadeOut: false },
+    { outStartSec: 32, outEndSec: 38, fadeOut: true },
+  ];
+
+  it("starts each span at phase 0 at its context time and stops at its end", () => {
+    expect(
+      planPartSources(spans, { startAt: 1, offsetSec: 0, speed: 1, tempo: 1, loopBufferSec: 8 }),
+    ).toEqual([
+      { span: spans[0], whenSec: 17, phaseSec: 0, stopSec: 33, fade: null },
+      { span: spans[1], whenSec: 33, phaseSec: 0, stopSec: 39, fade: { startSec: 38.99, endSec: 39 } },
+    ]);
+  });
+
+  it("starts mid-loop inside a span, skips past spans and maps speed and stretch", () => {
+    const [first, ...rest] = planPartSources(spans, {
+      startAt: 1,
+      offsetSec: 27,
+      speed: 2,
+      tempo: 2,
+      loopBufferSec: 4,
+    });
+    // 11 s into the span = 5.5 s of a buffer stretched by 2, mod 4.
+    expect(first).toMatchObject({ whenSec: 1, phaseSec: 1.5, stopSec: 3.5, fade: null });
+    expect(rest[0].whenSec).toBeCloseTo(3.5, 12);
+    expect(rest[0].fade?.startSec).toBeCloseTo(1 + (37.99 - 27) / 2, 12);
+    expect(planPartSources(spans, { startAt: 1, offsetSec: 38, speed: 1, tempo: 1, loopBufferSec: 8 })).toEqual([]);
+  });
+
+  it("builds a timeline loop's frames with the span phase and fade", () => {
+    const take = partTake(8, 100);
+    const channels = [take.getChannelData(0), take.getChannelData(1)];
+    const loop = partLoopChannels(channels, 100, spans, { startSec: 18, endSec: 26 }, 1)!;
+    expect(loop[0].length).toBe(800);
+    // Timeline 18 s = 2 s into the span → phase 200.
+    expect(loop[0][0]).toBe(200);
+    expect(loop[1][0]).toBe(-200);
+    // Wraps at the take's end (phase 799 → 0 at timeline 24 s).
+    expect(loop[0][599]).toBe(799);
+    expect(loop[0][600]).toBe(0);
+    // The cut tail span fades over its last 10 ms (1 frame at 100 Hz).
+    const tail = partLoopChannels(channels, 100, spans, { startSec: 32, endSec: 38 }, 1)!;
+    expect(tail[0][598]).toBe(598);
+    expect(tail[0][599]).toBe(599 * 1);
+    expect(partLoopChannels(channels, 100, spans, { startSec: 2, endSec: 10 }, 1)).toBeNull();
+  });
+
+  it("lane gains: level, mute, solo and the reference", () => {
+    const state = { partId: "keys-1", gainDb: -6, muted: false };
+    expect(partPreviewGain(state, null)).toBeCloseTo(0.501187, 5);
+    expect(partPreviewGain({ ...state, muted: true }, null)).toBe(0);
+    expect(partPreviewGain(state, "remix-part:keys-1")).toBeCloseTo(0.501187, 5);
+    expect(partPreviewGain(state, "remix-part:other")).toBe(0);
+    expect(partPreviewGain(state, REMIX_BEAT_LANE_ID)).toBe(0);
+    expect(partPreviewGain(state, "vocals")).toBe(0);
+    expect(partPreviewGain(state, null, "reference")).toBe(0);
+    expect(partPreviewGain(null, null)).toBe(0);
+    // Soloing a part silences stems.
+    expect(stemPreviewGain({ stemId: "vocals", gainDb: 0, muted: false }, "remix-part:keys-1")).toBe(0);
+  });
+});
+
+describe("createStemPreviewEngine AI parts (#1901)", () => {
+  it("plays one looping source per span, from phase 0, stopped at the span end", async () => {
+    const { engine, contexts } = setup();
+    const part = previewPart({ blocks: [false, true, true] });
+    await engine.play({ stems, soloStemId: null, parts: [part], partTimeline: PART_TIMELINE });
+    const context = contexts[0];
+    const sources = partSources(context, part.buffer);
+    expect(sources).toHaveLength(2);
+    for (const source of sources) {
+      expect(source.loop).toBe(true);
+      expect(source.loopStart).toBe(0);
+      expect(source.loopEnd).toBe(8);
+    }
+    expect(sources[0].start).toHaveBeenCalledWith(16.03, 0);
+    expect(sources[0].stop).toHaveBeenCalledWith(32.03);
+    expect(sources[1].start).toHaveBeenCalledWith(32.03, 0);
+    // The cut tail fades over its last 10 ms on its own gain.
+    const fade = sources[1].connections[0] as FakeGain;
+    expect(fade.gain.events).toEqual([
+      ["set", 1, 32.03 + 5.99],
+      ["ramp", 0, 38.03],
+    ]);
+    const partGain = fade.connections[0] as FakeGain;
+    expect(sources[0].connections[0]).toBe(partGain);
+    expect(partGain.gain.value).toBeCloseTo(0.501187, 5);
+    // Without effects the part goes straight to the limiter.
+    expect(partGain.connections).toEqual([context.compressor]);
+  });
+
+  it("starts mid-loop when play starts inside a span, at the varispeed rate", async () => {
+    const { engine, contexts } = setup();
+    const part = previewPart();
+    await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 20,
+      effects: fxRecipe({ master: { speed: 1.25 } }),
+      parts: [part],
+      partTimeline: PART_TIMELINE,
+    });
+    const [current, tail] = partSources(contexts[0], part.buffer);
+    expect(current.start).toHaveBeenCalledWith(0.03, 4);
+    expect(current.stop).toHaveBeenCalledWith(0.03 + 12 / 1.25);
+    expect(current.playbackRate.value).toBe(1.25);
+    expect(tail.start).toHaveBeenCalledWith(0.03 + 12 / 1.25, 0);
+  });
+
+  it("routes parts into the master bus with a master-space reverb send", async () => {
+    const { engine, contexts } = setup();
+    const part = previewPart({ blocks: [true, false, false] });
+    await engine.play({
+      stems,
+      soloStemId: null,
+      effects: fxRecipe({ master: { space: 0.5 } }),
+      parts: [part],
+      partTimeline: PART_TIMELINE,
+    });
+    const context = contexts[0];
+    const [source] = partSources(context, part.buffer);
+    const partGain = source.connections[0] as FakeGain;
+    expect(partGain.connections).toHaveLength(2);
+    const send = partGain.connections[1] as FakeGain;
+    expect(send.gain.value).toBeCloseTo(0.35, 12);
+    expect(send.connections).toEqual([context.convolvers[0]]);
+  });
+
+  it("applies live mute, gain and solo through update()", async () => {
+    const { engine, contexts } = setup();
+    const part = previewPart();
+    const handle = await engine.play({ stems, soloStemId: null, parts: [part], partTimeline: PART_TIMELINE });
+    const [source] = partSources(contexts[0], part.buffer);
+    const partGain = source.connections[0] as FakeGain;
+    handle.update(stems, null, null, undefined, [{ partId: "keys-1", gainDb: 0, muted: true }]);
+    expect(partGain.gain.value).toBe(0);
+    handle.update(stems, null, null, undefined, [{ partId: "keys-1", gainDb: 0, muted: false }]);
+    expect(partGain.gain.value).toBe(1);
+    // Soloing the part silences the stems; soloing a stem silences the part.
+    handle.update(stems, "remix-part:keys-1");
+    expect(partGain.gain.value).toBe(1);
+    const vocalsGain = contexts[0].sources[0].connections[0] as FakeGain;
+    expect(vocalsGain.gain.value).toBe(0);
+    handle.update(stems, "vocals");
+    expect(partGain.gain.value).toBe(0);
+    // Silent while the reference plays.
+    handle.update(stems, null, "vocals");
+    expect(partGain.gain.value).toBe(0);
+  });
+
+  it("follows the timeline loop with one looping source of the loop's frames", async () => {
+    const { engine, contexts } = setup();
+    const part = previewPart({ buffer: partTake(8, 100) as unknown as AudioBuffer });
+    await engine.play({
+      stems,
+      soloStemId: null,
+      loop: { startSec: 18, endSec: 26 },
+      offsetSec: 20,
+      parts: [part],
+      partTimeline: PART_TIMELINE,
+    });
+    const context = contexts[0];
+    const looped = context.sources.find(
+      (source) => (source.buffer as FakeAudioBuffer)?.length === 800 && source.buffer !== part.buffer,
+    )!;
+    expect(looped.loop).toBe(true);
+    expect(looped.loopStart).toBe(0);
+    expect(looped.loopEnd).toBe(8);
+    expect(looped.start).toHaveBeenCalledWith(0.03, 2);
+    expect((looped.buffer as FakeAudioBuffer).getChannelData(0)[0]).toBe(200);
+    expect(partSources(context, part.buffer)).toHaveLength(0);
+  });
+
+  it("keeps the graph unchanged without parts or a part timeline", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({ stems, soloStemId: null, parts: [previewPart()] });
+    expect(contexts[0].sources).toHaveLength(2);
+  });
+
+  it("caches decoded takes (LRU of 8) and never caches a failure", async () => {
+    const { engine, contexts } = setup();
+    const load = vi.fn(async () => new ArrayBuffer(4));
+    for (let i = 0; i <= PREVIEW_PART_TAKE_CACHE_SIZE; i += 1) {
+      await engine.partTakeBuffer(`t${i}`, load);
+    }
+    expect(load).toHaveBeenCalledTimes(PREVIEW_PART_TAKE_CACHE_SIZE + 1);
+    await engine.partTakeBuffer("t8", load);
+    expect(load).toHaveBeenCalledTimes(PREVIEW_PART_TAKE_CACHE_SIZE + 1);
+    // t0 was the least recently used: evicted, loaded again.
+    await engine.partTakeBuffer("t0", load);
+    expect(load).toHaveBeenCalledTimes(PREVIEW_PART_TAKE_CACHE_SIZE + 2);
+    expect(contexts[0].decodeAudioData).toHaveBeenCalledTimes(PREVIEW_PART_TAKE_CACHE_SIZE + 2);
+    const failing = vi.fn(async () => {
+      throw new Error("404");
+    });
+    await expect(engine.partTakeBuffer("bad", failing)).rejects.toThrow("404");
+    await expect(engine.partTakeBuffer("bad", failing)).rejects.toThrow("404");
+    expect(failing).toHaveBeenCalledTimes(2);
+    engine.dispose();
+    await expect(engine.partTakeBuffer("t1", load)).rejects.toThrow();
+  });
+});
+
+describe("AI parts tempo & key (#1901, #1898)", () => {
+  const keepPitch = fxRecipe({ master: { speed: 0.8, keepPitch: true, semitones: 2 } });
+  const keepPlan = { tempo: 0.8, semitones: 2 };
+
+  function parts() {
+    const drums = previewPart({ partId: "drums-1", role: "drums", takeId: "t-drums" });
+    const keys = previewPart({ partId: "keys-1", role: "keys", takeId: "t-keys" });
+    return { drums, keys };
+  }
+  const stretchParts = (list: PreviewPart[]) =>
+    list.map((part) => ({ takeId: part.takeId, role: part.role, buffer: part.buffer }));
+
+  it("stretches part takes with a per-item plan: drums are never transposed", async () => {
+    const { engine, runs, finish } = stretchSetup();
+    const { drums, keys } = parts();
+    const pending = engine.prepareStretch(keepPlan, ["vocals"], undefined, stretchParts([drums, keys]));
+    await tick();
+    // Vocals and keys take the recipe plan; the drum part the tempo only.
+    expect(
+      runs.map((run) => `${run.job.tempo}/${run.job.semitones}`).sort(),
+    ).toEqual(["0.8/0", "0.8/2", "0.8/2"]);
+    // The part's own take is what gets stretched.
+    const drumRun = runs.find((run) => run.job.semitones === 0)!;
+    const channels = (drumRun.job.channels as () => Float32Array[])();
+    expect(channels[0][5]).toBe(5);
+    expect(engine.stretchReady(keepPlan, ["vocals"], [drums, keys])).toBe(false);
+    runs.forEach((_, index) => finish(index, 10));
+    await expect(pending).resolves.toBe("ready");
+    expect(engine.stretchReady(keepPlan, ["vocals"], [drums, keys])).toBe(true);
+    expect(partStretchItemId("t-drums")).toBe("part:t-drums");
+  });
+
+  it("a key shift alone leaves drum parts as they are (no job)", async () => {
+    const { engine, runs, finish } = stretchSetup();
+    const { drums, keys } = parts();
+    const plan = { tempo: 1, semitones: -3 };
+    const pending = engine.prepareStretch(plan, [], undefined, stretchParts([drums, keys]));
+    await tick();
+    expect(runs.map((run) => run.job.semitones)).toEqual([-3]);
+    finish(0, 8);
+    await expect(pending).resolves.toBe("ready");
+    expect(engine.stretchReady(plan, [], [drums, keys])).toBe(true);
+  });
+
+  it("plays the stretched part buffers in the stretched path", async () => {
+    const setup = stretchSetup();
+    const { drums, keys } = parts();
+    const pending = setup.engine.prepareStretch(
+      keepPlan,
+      ["vocals", "drums"],
+      undefined,
+      stretchParts([drums, keys]),
+    );
+    await tick();
+    setup.runs.forEach((_, index) => setup.finish(index, 10));
+    await pending;
+    const handle = await setup.engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 20,
+      effects: keepPitch,
+      parts: [drums, keys],
+      partTimeline: PART_TIMELINE,
+    });
+    expect(handle.stretchPending()).toBe(false);
+    const context = setup.contexts[0];
+    const partSourceList = context.sources.filter(
+      (source) => (source.buffer as FakeAudioBuffer).length === 480000,
+    );
+    // Stems (2 × 10 s) + 2 parts × 2 spans, all stretched buffers.
+    expect(partSourceList).toHaveLength(6);
+    const drumsNow = partSourceList[2];
+    expect(drumsNow.playbackRate.value).toBe(1);
+    // 4 s into the span = 5 s of a buffer stretched by 0.8, mod 10.
+    expect(drumsNow.start).toHaveBeenCalledWith(0.03, 5);
+    expect(drumsNow.stop).toHaveBeenCalledWith(0.03 + 12 / 0.8);
+  });
+
+  it("falls back to varispeed until an audible part's stretched buffer is ready", async () => {
+    const setup = stretchSetup();
+    const { drums, keys } = parts();
+    const pending = setup.engine.prepareStretch(keepPlan, ["vocals", "drums"]);
+    await tick();
+    setup.runs.forEach((_, index) => setup.finish(index, 10));
+    await pending;
+    const handle = await setup.engine.play({
+      stems,
+      soloStemId: null,
+      effects: keepPitch,
+      parts: [drums, keys],
+      partTimeline: PART_TIMELINE,
+    });
+    expect(handle.stretchPending()).toBe(true);
+    const [first] = partSources(setup.contexts[0], keys.buffer);
+    expect(first.playbackRate.value).toBe(0.8);
+    // A muted part without its buffer does not hold the stretch back.
+    const muted = await setup.engine.play({
+      stems,
+      soloStemId: null,
+      effects: keepPitch,
+      parts: [{ ...keys, muted: true }],
+      partTimeline: PART_TIMELINE,
+    });
+    expect(muted.stretchPending()).toBe(false);
   });
 });
