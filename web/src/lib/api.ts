@@ -6018,7 +6018,7 @@ export type RemixProject = {
   eligibility?: RemixEligibilityResponse;
   /** Saved Studio AI intent (#1882); null/absent = whole track. */
   aiTarget?: RemixAiTarget | null;
-  /** Effects recipe `remix-fx/v1` (#1897); null/absent = untouched. */
+  /** Effects recipe `remix-fx/v2` (#1897, #1898; stored v1 reads as v2); null/absent = untouched. */
   effects?: RemixFxRecipe | null;
   /** Structure recipe `remix-structure/v1` (#1899); null/absent = original order. */
   structure?: RemixStructure | null;
@@ -6075,7 +6075,7 @@ export type RemixProjectPatch = {
   addStemIds?: string[];
   /** Saved Studio AI intent (#1882); null (or kind "whole") clears it. */
   aiTarget?: { kind: RemixAiTargetKind; stemId?: string | null } | null;
-  /** Effects recipe `remix-fx/v1` (#1897); null clears it. */
+  /** Effects recipe `remix-fx/v2` (#1897, #1898; v1 accepted); null clears it. */
   effects?: RemixFxRecipe | null;
   /**
    * Structure recipe `remix-structure/v1` (#1899); null = original order.

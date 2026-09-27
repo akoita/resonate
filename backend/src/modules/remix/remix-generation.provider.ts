@@ -3,6 +3,7 @@ import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
 import type { RemixRenderStructure, RemixStructure } from "./remix-structure";
 import type { RemixBeat, RemixRenderBeat } from "./remix-beat";
+import type { RemixStretchMetadata } from "./remix-stretch";
 
 /**
  * Provider boundary for AI-assisted remix draft generation (#896, backlog D1).
@@ -455,6 +456,12 @@ export type RemixRenderMetadata = {
   effects?: RemixFxRecipe;
   effectsDspVersion?: string;
   /**
+   * Time-stretch stage (#1898) of a `remix-fx/v2` keepPitch / key-shift
+   * render: the engine build and its tempo/semitones. Absent when no stretch
+   * ran (no fx, varispeed only, or an identity stage).
+   */
+  stretch?: RemixStretchMetadata;
+  /**
    * Structure blocks (#1899) the artifact was rendered with, plus the
    * timeline rules version. Absent when the project kept the original order.
    */
@@ -473,6 +480,8 @@ export type RemixRenderMetadata = {
 export type RemixConditioningEffects = {
   effects: RemixFxRecipe;
   effectsDspVersion: string;
+  /** The time-stretch stage of the conditioning mix (#1898), if any. */
+  stretch?: RemixStretchMetadata;
 };
 
 export type RemixConditioningStructure = {

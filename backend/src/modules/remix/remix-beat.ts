@@ -592,6 +592,32 @@ export function beatHits(
   );
 }
 
+/**
+ * The beat timing in OUTPUT time for a tempo change that keeps the pitch
+ * (`remix-fx/v2` keepPitch, #1898): the grid tempo × speed and the timeline
+ * ÷ speed, so every hit lands at its timeline time ÷ speed and bars stay on
+ * the stretched song's downbeats. The one-shots are not touched (no rate
+ * change, and a key shift never transposes the drums); the pickup rule reads
+ * only the grid's section proportions, which do not change. Speed 1 returns
+ * the inputs unchanged.
+ */
+export function beatTimingAtSpeed<
+  G extends BeatGrid,
+  S extends BeatSegment,
+>(grid: G, segments: S[], speed: number): { grid: G; segments: S[] } {
+  if (speed === 1 || !Number.isFinite(speed) || !(speed > 0)) {
+    return { grid, segments };
+  }
+  return {
+    grid: { ...grid, bpm: grid.bpm !== null ? grid.bpm * speed : null },
+    segments: segments.map((segment) => ({
+      ...segment,
+      outStartSec: segment.outStartSec / speed,
+      outEndSec: segment.outEndSec / speed,
+    })),
+  };
+}
+
 // --- Track rendering ----------------------------------------------------------
 
 type PreparedBeat = {

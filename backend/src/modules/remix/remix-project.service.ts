@@ -93,6 +93,7 @@ import {
   type RemixBeat,
   type RemixRenderBeat,
 } from "./remix-beat";
+import { readStoredRemixStretch } from "./remix-stretch";
 import {
   AI_DISCLOSURE_VERSION,
   deriveRemixAiDisclosure,
@@ -738,7 +739,7 @@ export class RemixProjectService {
        */
       aiTarget?: { kind: string; stemId?: string | null } | null;
       /**
-       * Shared effects recipe remix-fx/v1 (#1897): undefined leaves it
+       * Shared effects recipe remix-fx/v2 (#1897, #1898; v1 accepted): undefined leaves it
        * unchanged, null clears it, an all-default recipe normalizes to null.
        */
       effects?: unknown;
@@ -2025,10 +2026,17 @@ export class RemixProjectService {
     const output = normalizeMetadataObject(metadata.output);
     const renderMetadataRecord = normalizeMetadataObject(metadata.renderMetadata);
     const renderedEffects = readStoredRemixFx(renderMetadataRecord.effects);
+    // #1898: the time-stretch stage the render (or conditioning mix) ran.
+    const renderedStretch = renderedEffects
+      ? readStoredRemixStretch(renderMetadataRecord.stretch)
+      : null;
     const conditioningRecord = normalizeMetadataObject(
       metadata.conditioningEffects,
     );
     const conditioningEffects = readStoredRemixFx(conditioningRecord.effects);
+    const conditioningStretch = conditioningEffects
+      ? readStoredRemixStretch(conditioningRecord.stretch)
+      : null;
     // #1899: lineage records what the render recorded (no grid range check —
     // the render already resolved sections against its grid).
     const renderedStructure = readStoredRemixStructure(
@@ -2109,6 +2117,7 @@ export class RemixProjectService {
               typeof renderMetadataRecord.effectsDspVersion === "string"
                 ? renderMetadataRecord.effectsDspVersion
                 : REMIX_FX_DSP_VERSION,
+            ...(renderedStretch ? { stretch: renderedStretch } : {}),
           }
         : {}),
       // Audio-conditioned drafts (#1897): the recipe that shaped the audio
@@ -2121,6 +2130,7 @@ export class RemixProjectService {
                 typeof conditioningRecord.effectsDspVersion === "string"
                   ? conditioningRecord.effectsDspVersion
                   : REMIX_FX_DSP_VERSION,
+              ...(conditioningStretch ? { stretch: conditioningStretch } : {}),
             },
           }
         : {}),

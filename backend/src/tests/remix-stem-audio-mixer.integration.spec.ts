@@ -34,6 +34,10 @@ import {
   type RemixBeat,
 } from "../modules/remix/remix-beat";
 import type { StemRenderAuthorization } from "../modules/remix/remix-generation.provider";
+import {
+  REMIX_STRETCH_ENGINE,
+  REMIX_STRETCH_WASM_SHA256,
+} from "../modules/remix/remix-stretch";
 import type { StorageProvider } from "../modules/storage/storage_provider";
 
 const TEST_PREFIX = `mixer_${Date.now()}_`;
@@ -620,6 +624,149 @@ describe("FfmpegStemAudioMixer decrypt-for-render boundary (integration)", () =>
       expect(mutedMix.renderMetadata.inputCount).toBe(1);
       expect("beat" in mutedMix.renderMetadata).toBe(false);
       expect("addedParts" in mutedMix.renderMetadata).toBe(false);
+    });
+
+    /** Decoded length of an mp3 render, in seconds. */
+    function renderSeconds(buffer: Buffer): number {
+      const dir = mkdtempSync(join(tmpdir(), "remix-stretch-mixer-"));
+      try {
+        const out = join(dir, "mix.mp3");
+        writeFileSync(out, buffer);
+        const raw = execFileSync(
+          "ffmpeg",
+          ["-hide_banner", "-loglevel", "error", "-i", out, "-ac", "1", "-f", "f32le", "-c:a", "pcm_f32le", "-"],
+          { timeout: 60_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+        return raw.length / 4 / 48_000;
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    it("time-stretches the decrypted stem and the AI layer (keepPitch + key), records the engine and cleans up (#1898)", async () => {
+      const mixer = new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService,
+      );
+      const effects = {
+        schemaVersion: "remix-fx/v2" as const,
+        master: { speed: 0.85, keepPitch: true as const, semitones: 2 },
+      };
+      const before = remixMixTempDirs();
+      const mixed = await mixer.mixUnmutedStemsWithAudioBuffers(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        [
+          {
+            buffer: sineWav(330, 1),
+            mimeType: "audio/wav",
+            gainDb: 0,
+            label: "generated-layer",
+          },
+        ],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        { effects, bpm: 120 },
+      );
+      expect(mixed.inputCount).toBe(2);
+      expect(mixed.renderMetadata).toMatchObject({
+        effects,
+        effectsDspVersion: "remix-fx-dsp/v1",
+        stretch: {
+          engine: REMIX_STRETCH_ENGINE,
+          wasmSha256: REMIX_STRETCH_WASM_SHA256,
+          tempo: 0.85,
+          semitones: 2,
+        },
+      });
+      // Tempo changed by the stretch (no varispeed): 1 s → 1/0.85 s.
+      expect(Math.abs(renderSeconds(mixed.buffer) - 1 / 0.85)).toBeLessThan(0.08);
+      // Decrypted plaintext, raw decodes and stretched WAVs all lived only in
+      // the per-render temp dir.
+      const after = remixMixTempDirs();
+      expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
+    });
+
+    it("records no stretch for a varispeed-only v2 recipe (#1898)", async () => {
+      const mixer = new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService,
+      );
+      const mixed = await mixer.mixUnmutedStems(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        { effects: { schemaVersion: "remix-fx/v2", master: { speed: 0.85 } }, bpm: null },
+      );
+      expect("stretch" in mixed.renderMetadata).toBe(false);
+      expect(Math.abs(renderSeconds(mixed.buffer) - 1 / 0.85)).toBeLessThan(0.08);
+    });
+
+    it("stretches under a structure and synthesizes the beat in output time (#1898)", async () => {
+      const mixer = new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService,
+      );
+      const grid = {
+        kind: "bars" as const,
+        sectionSeconds: 0.5,
+        bpm: 480,
+        durationSeconds: 1,
+        sections: [
+          { startSec: 0, endSec: 0.5 },
+          { startSec: 0.5, endSec: 1 },
+        ],
+      };
+      const structure = {
+        schemaVersion: "remix-structure/v1" as const,
+        blocks: [{ section: 1 }, { section: 0 }, { section: 1 }],
+      };
+      const segments = structureTimeline(grid, structure.blocks);
+      const off = new Array<boolean>(16).fill(false);
+      const beat: RemixBeat = {
+        schemaVersion: REMIX_BEAT_SCHEMA_VERSION,
+        kit: "punchy",
+        pattern: { kick: [true, ...off.slice(1)], snare: off, clap: off, hat: off, openHat: off },
+        swing: 0,
+        gainDb: -6,
+        blocks: null,
+      };
+      const before = remixMixTempDirs();
+      const mixed = await mixer.mixUnmutedStems(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        {
+          effects: {
+            schemaVersion: "remix-fx/v2",
+            master: { speed: 1.25, keepPitch: true },
+          },
+          bpm: 480,
+        },
+        { structure, segments },
+        { beat, grid, segments },
+      );
+      expect(mixed.renderMetadata).toMatchObject({
+        structure,
+        beat,
+        stretch: { tempo: 1.25, semitones: 0 },
+      });
+      // 1.5 s timeline ÷ 1.25 = 1.2 s of stems; the beat track is synthesized
+      // in output time: 1.2 s + its 0.9 s one-shot decay room = 2.1 s, at
+      // rate 1. (Varispeeding a timeline-time beat would give 2.4/1.25 =
+      // 1.92 s.)
+      const seconds = renderSeconds(mixed.buffer);
+      expect(Math.abs(seconds - 2.1)).toBeLessThan(0.06);
+      const after = remixMixTempDirs();
+      expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
     });
   },
 );
