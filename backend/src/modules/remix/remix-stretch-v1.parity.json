@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "remix-stretch/v1",
+  "note": "Parity fixture for #1898: the Signalsmith Stretch WASM driven by our loader must reproduce these outputs (sha256 over little-endian float32 L then R) in Node and in the browser.",
+  "engine": {
+    "package": "signalsmith-stretch",
+    "version": "1.3.2",
+    "npmIntegrity": "sha512-tJqRbwPCoWLSHXwO29UQ75u72IwPsHns3RG+TKzuOAp7OduJiJMzEtz32JEFbPFQcTR7aiKCIVc+/Kzw8bMZUw==",
+    "wasmSha256": "83869197b3c5ebf9fc8c517a1586aef1ecf77404842218d62b9c0e82882d8ca3",
+    "wasmBytes": 64494
+  },
+  "driver": {
+    "chunk": 4096,
+    "preset": "default",
+    "tonalityHz": 8000,
+    "seed": 24301
+  },
+  "input": {
+    "sampleRate": 48000,
+    "seconds": 6,
+    "generator": "chord: 0.2*(sin 220Hz + sin 277.18Hz + sin 329.63Hz); bursts: every 0.5 s for 30 ms, 0.5*lcg*(1-ph/0.03) with lcg s=12345, s=(s*1103515245+12345)>>>0, v=s/2^32*2-1; L=chord+burst, R=0.8*chord-0.7*burst",
+    "sha256": "2b5db0369d1334b074b6de746202ef72ba8caea9e02f61babacaf46ac4b0e82e"
+  },
+  "cases": [
+    {
+      "tempo": 0.85,
+      "semitones": 0,
+      "outputLength": 338824,
+      "sha256": "b551db4d681af9208f568cc2d29de91945110f0de244a924f2ddb1ef106a1a39",
+      "fnv": "796f8239",
+      "first": [
+        -0.2582891881465912,
+        -0.2633070945739746,
+        -0.26738354563713074,
+        -0.27143746614456177
+      ]
+    },
+    {
+      "tempo": 1,
+      "semitones": 2,
+      "outputLength": 288000,
+      "sha256": "f0828fb7633c338e01bc6b7aa794b11ad23ab245d8bfbe20b7429041b5d603cc",
+      "fnv": "aceda5d1",
+      "first": [
+        -0.2809889018535614,
+        -0.2685873806476593,
+        -0.2558499872684479,
+        -0.24293822050094604
+      ]
+    },
+    {
+      "tempo": 0.85,
+      "semitones": 2,
+      "outputLength": 338824,
+      "sha256": "835ce00626bdec3414c0fb65cdcbb410ff779695250cf63a9f0e58c18951df9a",
+      "fnv": "aac8d8bf",
+      "first": [
+        -0.3368317186832428,
+        -0.34064802527427673,
+        -0.34464943408966064,
+        -0.34713470935821533
+      ]
+    },
+    {
+      "tempo": 1.2,
+      "semitones": -3,
+      "outputLength": 240000,
+      "sha256": "2f1386db8a679e18127f4f89d77ea19981c0cd1de37c4b80cd34d45343403a75",
+      "fnv": "2f3a972d",
+      "first": [
+        -0.0687752440571785,
+        -0.07605601102113724,
+        -0.08339297771453857,
+        -0.09085416793823242
+      ]
+    },
+    {
+      "tempo": 1,
+      "semitones": 0,
+      "outputLength": 288000,
+      "sha256": "e63fcffdb9e8f8814726063cf3120417c879cb349d5fda27fc8cdc7a8e5920b4",
+      "fnv": "c7fd6d89",
+      "first": [
+        -0.24204884469509125,
+        -0.22917218506336212,
+        -0.21597051620483398,
+        -0.2024630606174469
+      ]
+    }
+  ]
+}

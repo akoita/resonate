@@ -14,6 +14,7 @@ import {
   normalizeRemixFx,
   REMIX_FX_REVERB_SEEDS,
   REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V1_SCHEMA_VERSION,
   REMIX_FX_WARMTH_CURVE_POINTS,
   REMIX_VIBES,
   reverbWet,
@@ -23,7 +24,12 @@ import {
   warmthAt,
   warmthCurve,
   warmthK,
+  remixFxMaster,
+  remixFxPitch,
+  remixFxStretchPlan,
+  remixFxVarispeedRate,
   withMasterFx,
+  withRemixFxPitch,
   withStemFx,
   type RemixFxRecipe,
 } from "./remixFx";
@@ -67,7 +73,9 @@ function expectClose(actual: number, expected: number) {
 
 describe("remix-fx/v1 parity fixture (#1897)", () => {
   it("shares the schema version", () => {
-    expect(fixture.schemaVersion).toBe(REMIX_FX_SCHEMA_VERSION);
+    // The fixture pins the v1 DSP numbers, unchanged by v2 (#1898).
+    expect(fixture.schemaVersion).toBe(REMIX_FX_V1_SCHEMA_VERSION);
+    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v2");
   });
 
   it("maps tone to the same filters", () => {
@@ -134,8 +142,13 @@ describe("remix-fx/v1 parity fixture (#1897)", () => {
   });
 
   it("normalizes like the backend", () => {
+    // v1 fixture outputs are rewritten as v2 (#1898) with the same values.
     for (const entry of fixture.normalize) {
-      expect(normalizeRemixFx(entry.input)).toEqual(entry.output);
+      expect(normalizeRemixFx(entry.input)).toEqual(
+        entry.output === null
+          ? null
+          : { ...(entry.output as object), schemaVersion: REMIX_FX_SCHEMA_VERSION },
+      );
     }
   });
 });
@@ -167,7 +180,7 @@ describe("normalizeRemixFx (#1897)", () => {
     expect(normalizeRemixFx([])).toBeNull();
     expect(normalizeRemixFx({ master: "loud" })).toBeNull();
     expect(
-      normalizeRemixFx({ schemaVersion: "remix-fx/v2", master: { speed: 0.9 } }),
+      normalizeRemixFx({ schemaVersion: "remix-fx/v3", master: { speed: 0.9 } }),
     ).toBeNull();
   });
 
@@ -194,6 +207,77 @@ describe("normalizeRemixFx (#1897)", () => {
     const echoed = withStemFx(slowed, "a", "echo", 0.4);
     expect(echoed?.stems).toEqual({ a: { echo: 0.4 } });
     expect(withMasterFx(withStemFx(echoed, "a", "echo", 0), "speed", 1)).toBeNull();
+  });
+});
+
+describe("remix-fx/v2 tempo/key fields (#1898)", () => {
+  it("reads v1 and v2 and always writes v2", () => {
+    expect(
+      normalizeRemixFx({ schemaVersion: REMIX_FX_V1_SCHEMA_VERSION, master: { speed: 0.9 } }),
+    ).toEqual({ schemaVersion: "remix-fx/v2", master: { speed: 0.9 } });
+    expect(
+      normalizeRemixFx({
+        schemaVersion: "remix-fx/v2",
+        master: { speed: 0.85, keepPitch: true, semitones: 2 },
+      }),
+    ).toEqual({
+      schemaVersion: "remix-fx/v2",
+      master: { speed: 0.85, keepPitch: true, semitones: 2 },
+    });
+  });
+
+  it("clamps and rounds semitones, omits defaults and drops bad types", () => {
+    expect(normalizeRemixFx({ master: { semitones: 9 } })).toEqual({
+      schemaVersion: "remix-fx/v2",
+      master: { semitones: 6 },
+    });
+    expect(normalizeRemixFx({ master: { semitones: -2.6 } })?.master).toEqual({
+      semitones: -3,
+    });
+    expect(normalizeRemixFx({ master: { semitones: 0.4, keepPitch: false } })).toBeNull();
+    expect(
+      normalizeRemixFx({ master: { semitones: "2", keepPitch: "yes", speed: 0.9 } }),
+    ).toEqual({ schemaVersion: "remix-fx/v2", master: { speed: 0.9 } });
+    expect(normalizeRemixFx({ master: { keepPitch: true } })).toEqual({
+      schemaVersion: "remix-fx/v2",
+      master: { keepPitch: true },
+    });
+  });
+
+  it("keeps the pitch fields out of the slider values and through slider edits", () => {
+    const recipe = withRemixFxPitch(withMasterFx(null, "speed", 0.85), {
+      keepPitch: true,
+      semitones: -1,
+    });
+    expect(remixFxMaster(recipe)).toEqual({ speed: 0.85, space: 0, tone: 0, warmth: 0 });
+    expect(remixFxPitch(recipe)).toEqual({ keepPitch: true, semitones: -1 });
+    const toned = withMasterFx(recipe, "tone", 0.3);
+    expect(toned?.master).toEqual({ speed: 0.85, tone: 0.3, keepPitch: true, semitones: -1 });
+    expect(withRemixFxPitch(toned, { keepPitch: false, semitones: 0 })?.master).toEqual({
+      speed: 0.85,
+      tone: 0.3,
+    });
+    expect(remixFxPitch(null)).toEqual({ keepPitch: false, semitones: 0 });
+  });
+
+  it("derives the render's stretch stage and varispeed rate", () => {
+    const recipe = (master: Record<string, unknown>) =>
+      normalizeRemixFx({ master }) as RemixFxRecipe | null;
+    expect(remixFxStretchPlan(null)).toBeNull();
+    expect(remixFxVarispeedRate(null)).toBe(1);
+    expect(remixFxStretchPlan(recipe({ speed: 0.85 }))).toBeNull();
+    expect(remixFxVarispeedRate(recipe({ speed: 0.85 }))).toBe(0.85);
+    expect(remixFxStretchPlan(recipe({ keepPitch: true }))).toBeNull();
+    expect(remixFxStretchPlan(recipe({ speed: 0.85, keepPitch: true }))).toEqual({
+      tempo: 0.85,
+      semitones: 0,
+    });
+    expect(remixFxVarispeedRate(recipe({ speed: 0.85, keepPitch: true }))).toBe(1);
+    expect(remixFxStretchPlan(recipe({ speed: 1.2, semitones: -3 }))).toEqual({
+      tempo: 1,
+      semitones: -3,
+    });
+    expect(remixFxVarispeedRate(recipe({ speed: 1.2, semitones: -3 }))).toBe(1.2);
   });
 });
 

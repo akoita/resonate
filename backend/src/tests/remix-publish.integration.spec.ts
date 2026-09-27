@@ -528,9 +528,111 @@ describe("Remix publish (integration)", () => {
       grounding: "stem_audio",
       aiGenerated: false,
       sourceArrangement: [{ stemId: LICENSED_STEM_ID, gainDb: 0, muted: false }],
-      effects,
+      // A v1 render recipe is recorded with its values, read as v2 (#1898).
+      effects: { ...effects, schemaVersion: "remix-fx/v2" },
       effectsDspVersion: "remix-fx-dsp/v1",
     });
+    expect("stretch" in (track.generationMetadata as object)).toBe(false);
+  });
+
+  it("records the time-stretch stage of a tempo/key render in the lineage (#1898)", async () => {
+    const effects = {
+      schemaVersion: "remix-fx/v2",
+      master: { speed: 0.85, keepPitch: true, semitones: 2 },
+    };
+    const stretch = {
+      engine: "signalsmith-stretch@1.3.2",
+      wasmSha256:
+        "83869197b3c5ebf9fc8c517a1586aef1ecf77404842218d62b9c0e82882d8ca3",
+      tempo: 0.85,
+      semitones: 2,
+    };
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 1,
+          activeStemCount: 1,
+          effects,
+          effectsDspVersion: "remix-fx-dsp/v1",
+          stretch,
+        },
+      }),
+    });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    expect(track.generationMetadata).toMatchObject({
+      // Tempo/key are DSP: grounding is unchanged.
+      grounding: "stem_audio",
+      aiGenerated: false,
+      effects,
+      effectsDspVersion: "remix-fx-dsp/v1",
+      stretch,
+    });
+  });
+
+  it("records the conditioning mix's stretch and drops a malformed one (#1898)", async () => {
+    const effects = {
+      schemaVersion: "remix-fx/v2",
+      master: { semitones: -3 },
+    };
+    const stretch = {
+      engine: "signalsmith-stretch@1.3.2",
+      wasmSha256:
+        "83869197b3c5ebf9fc8c517a1586aef1ecf77404842218d62b9c0e82882d8ca3",
+      tempo: 1,
+      semitones: -3,
+    };
+    const conditioned = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "audio_conditioned",
+        conditioningEffects: {
+          effects,
+          effectsDspVersion: "remix-fx-dsp/v1",
+          stretch,
+        },
+      }),
+    });
+    const published = await projectService.publishProject(CREATOR_ID, conditioned.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: published.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage.conditioningEffects).toEqual({
+      effects,
+      effectsDspVersion: "remix-fx-dsp/v1",
+      stretch,
+    });
+    expect("stretch" in lineage).toBe(false);
+
+    const malformed = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 1,
+          activeStemCount: 1,
+          effects,
+          effectsDspVersion: "remix-fx-dsp/v1",
+          stretch: { engine: "signalsmith-stretch@1.3.2", tempo: "fast" },
+        },
+      }),
+    });
+    const malformedResult = await projectService.publishProject(
+      CREATOR_ID,
+      malformed.id,
+    );
+    const malformedTrack = await prisma.track.findFirstOrThrow({
+      where: { releaseId: malformedResult.publishedReleaseId! },
+    });
+    const malformedLineage = malformedTrack.generationMetadata as Record<string, unknown>;
+    expect(malformedLineage.effects).toEqual(effects);
+    expect("stretch" in malformedLineage).toBe(false);
   });
 
   it("records audio-conditioned conditioning effects in the lineage (#1897)", async () => {
@@ -555,7 +657,10 @@ describe("Remix publish (integration)", () => {
     expect(lineage).toMatchObject({
       grounding: "audio_conditioned",
       aiGenerated: true,
-      conditioningEffects: { effects, effectsDspVersion: "remix-fx-dsp/v1" },
+      conditioningEffects: {
+        effects: { ...effects, schemaVersion: "remix-fx/v2" },
+        effectsDspVersion: "remix-fx-dsp/v1",
+      },
     });
     // The conditioning recipe is not claimed as the artifact's render recipe.
     expect("effects" in lineage).toBe(false);
@@ -990,6 +1095,23 @@ describe("Remix publish (integration)", () => {
       select: { effects: true },
     });
     expect(lockedRow.effects).toBeNull();
+
+    // Tempo/key edits (#1898) are locked like every other effects edit.
+    const pitchError = await projectService
+      .updateProject(CREATOR_ID, project.id, {
+        effects: { master: { speed: 0.85, keepPitch: true, semitones: 2 } },
+      })
+      .then(() => null)
+      .catch((caught) => caught);
+    expect(pitchError).toBeInstanceOf(ConflictException);
+    expect(
+      (
+        await prisma.remixProject.findUniqueOrThrow({
+          where: { id: project.id },
+          select: { effects: true },
+        })
+      ).effects,
+    ).toBeNull();
 
     // Structure edits (#1899) are locked too.
     const structureError = await projectService

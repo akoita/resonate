@@ -1,5 +1,5 @@
 /**
- * Shared Remix Studio effects recipe `remix-fx/v1` (#1897).
+ * Shared Remix Studio effects recipe `remix-fx/v2` (#1897, #1898).
  *
  * One versioned recipe is persisted on `RemixProject.effects` and executed by
  * both engines: the server ffmpeg render (stem-audio-mixer.ts) and the browser
@@ -8,17 +8,34 @@
  * engines must reproduce (within 1e-9). Changing any mapping requires a new
  * {@link REMIX_FX_DSP_VERSION} so older drafts stay auditable.
  *
+ * v2 (#1898) adds `master.keepPitch` (tempo changes keep the pitch: the speed
+ * becomes a time-stretch instead of varispeed) and `master.semitones` (a key
+ * shift), executed by the Signalsmith Stretch engine (remix-stretch.ts). The
+ * v1 DSP numbers are unchanged; v1 recipes still read and are rewritten as v2.
+ *
  * Effects are deterministic DSP, not AI: they never change a render's
  * grounding, cost nothing, and never interpolate user strings into a graph.
  */
 
 import { writeFile } from "fs/promises";
 
-export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v1";
+export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v2";
+/** The pre-#1898 recipe version: still read, rewritten as v2. */
+export const REMIX_FX_V1_SCHEMA_VERSION = "remix-fx/v1";
 export const REMIX_FX_DSP_VERSION = "remix-fx-dsp/v1";
+/** Key shift bounds (integer semitones). */
+export const REMIX_FX_SEMITONES_MIN = -6;
+export const REMIX_FX_SEMITONES_MAX = 6;
+
+export type RemixFxSchemaVersion =
+  | typeof REMIX_FX_SCHEMA_VERSION
+  | typeof REMIX_FX_V1_SCHEMA_VERSION;
 
 export type RemixFxMaster = {
-  /** Varispeed factor (pitch follows speed); default 1. */
+  /**
+   * Speed factor; default 1. Varispeed (pitch follows speed) unless
+   * {@link keepPitch} is set.
+   */
   speed?: number;
   /** Master reverb send 0..1; default 0. */
   space?: number;
@@ -26,7 +43,17 @@ export type RemixFxMaster = {
   tone?: number;
   /** tanh saturation amount 0..1; default 0. */
   warmth?: number;
+  /** v2: speed changes the tempo but keeps the pitch (omitted when false). */
+  keepPitch?: true;
+  /** v2: key shift in integer semitones −6..6 (omitted when 0). */
+  semitones?: number;
 };
+
+/** The numeric 0-default-style master controls shared with v1. */
+type RemixFxMasterLevels = Pick<
+  RemixFxMaster,
+  "speed" | "space" | "tone" | "warmth"
+>;
 
 export type RemixFxStem = {
   space?: number;
@@ -35,7 +62,8 @@ export type RemixFxStem = {
 };
 
 export type RemixFxRecipe = {
-  schemaVersion: typeof REMIX_FX_SCHEMA_VERSION;
+  /** Normalized recipes are always v2; the v1 literal types stored shapes. */
+  schemaVersion: RemixFxSchemaVersion;
   master?: RemixFxMaster;
   /** Keyed by project stem id (the `stemId` of a RemixProjectStem row). */
   stems?: Record<string, RemixFxStem>;
@@ -50,7 +78,7 @@ export type RemixRenderFx = {
 
 type FieldSpec = { min: number; max: number; defaultValue: number };
 
-const MASTER_FIELDS: Record<keyof RemixFxMaster, FieldSpec> = {
+const MASTER_FIELDS: Record<keyof RemixFxMasterLevels, FieldSpec> = {
   speed: { min: 0.75, max: 1.25, defaultValue: 1 },
   space: { min: 0, max: 1, defaultValue: 0 },
   tone: { min: -1, max: 1, defaultValue: 0 },
@@ -79,6 +107,7 @@ function normalizeFields<T extends Record<string, number | undefined>>(
   value: unknown,
   fields: Record<string, FieldSpec>,
   path: string,
+  allowedNames: readonly string[] = Object.keys(fields),
 ): { value: T | null } | { error: string } {
   if (value === undefined || value === null) return { value: null };
   if (!isPlainObject(value)) {
@@ -89,7 +118,7 @@ function normalizeFields<T extends Record<string, number | undefined>>(
     const spec = fields[key];
     if (!spec) {
       return {
-        error: `${path}.${key} is not a supported effect (allowed: ${Object.keys(fields).join(", ")})`,
+        error: `${path}.${key} is not a supported effect (allowed: ${allowedNames.join(", ")})`,
       };
     }
     if (raw === undefined) continue;
@@ -107,10 +136,60 @@ function normalizeFields<T extends Record<string, number | undefined>>(
   return { value: Object.keys(out).length > 0 ? (out as T) : null };
 }
 
+const MASTER_ALLOWED = [
+  ...Object.keys(MASTER_FIELDS),
+  "keepPitch",
+  "semitones",
+] as const;
+
 /**
- * Validate + normalize a PATCH `effects` payload. Values round to 2 decimals,
- * defaults are omitted, stems left with no non-default value are dropped, and
- * an all-default recipe normalizes to null (untouched). Callers must skip this
+ * The master group: the v1 level fields plus the v2 pitch fields
+ * (`keepPitch` a boolean, omitted when false; `semitones` an integer
+ * −6..6, omitted when 0).
+ */
+function normalizeMaster(
+  value: unknown,
+): { value: RemixFxMaster | null } | { error: string } {
+  if (value === undefined || value === null) return { value: null };
+  if (!isPlainObject(value)) {
+    return { error: "effects.master must be an object" };
+  }
+  const { keepPitch, semitones, ...levelInput } = value;
+  const levels = normalizeFields<RemixFxMasterLevels>(
+    levelInput,
+    MASTER_FIELDS,
+    "effects.master",
+    MASTER_ALLOWED,
+  );
+  if ("error" in levels) return levels;
+  const out: RemixFxMaster = { ...levels.value };
+  if (keepPitch !== undefined) {
+    if (typeof keepPitch !== "boolean") {
+      return { error: "effects.master.keepPitch must be a boolean" };
+    }
+    if (keepPitch) out.keepPitch = true;
+  }
+  if (semitones !== undefined) {
+    if (
+      typeof semitones !== "number" ||
+      !Number.isInteger(semitones) ||
+      semitones < REMIX_FX_SEMITONES_MIN ||
+      semitones > REMIX_FX_SEMITONES_MAX
+    ) {
+      return {
+        error: `effects.master.semitones must be a whole number between ${REMIX_FX_SEMITONES_MIN} and ${REMIX_FX_SEMITONES_MAX}`,
+      };
+    }
+    if (semitones !== 0) out.semitones = semitones;
+  }
+  return { value: Object.keys(out).length > 0 ? out : null };
+}
+
+/**
+ * Validate + normalize a PATCH `effects` payload. Accepts a v1 or v2 recipe
+ * (or none) and always writes v2. Values round to 2 decimals, defaults are
+ * omitted, stems left with no non-default value are dropped, and an
+ * all-default recipe normalizes to null (untouched). Callers must skip this
  * for `undefined` (field absent = unchanged).
  *
  * @param projectStemIds ids allowed as `stems` keys; null skips membership
@@ -133,18 +212,15 @@ export function normalizeRemixFxInput(
   }
   if (
     value.schemaVersion !== undefined &&
-    value.schemaVersion !== REMIX_FX_SCHEMA_VERSION
+    value.schemaVersion !== REMIX_FX_SCHEMA_VERSION &&
+    value.schemaVersion !== REMIX_FX_V1_SCHEMA_VERSION
   ) {
     return {
-      error: `effects.schemaVersion must be "${REMIX_FX_SCHEMA_VERSION}"`,
+      error: `effects.schemaVersion must be "${REMIX_FX_SCHEMA_VERSION}" or "${REMIX_FX_V1_SCHEMA_VERSION}"`,
     };
   }
 
-  const master = normalizeFields<RemixFxMaster>(
-    value.master,
-    MASTER_FIELDS,
-    "effects.master",
-  );
+  const master = normalizeMaster(value.master);
   if ("error" in master) return master;
 
   let stems: Record<string, RemixFxStem> | null = null;
@@ -190,9 +266,52 @@ export function normalizeRemixFxInput(
  */
 export function readStoredRemixFx(stored: unknown): RemixFxRecipe | null {
   if (!isPlainObject(stored)) return null;
-  if (stored.schemaVersion !== REMIX_FX_SCHEMA_VERSION) return null;
+  if (
+    stored.schemaVersion !== REMIX_FX_SCHEMA_VERSION &&
+    stored.schemaVersion !== REMIX_FX_V1_SCHEMA_VERSION
+  ) {
+    return null;
+  }
   const normalized = normalizeRemixFxInput(stored, null);
   return "error" in normalized ? null : normalized.value;
+}
+
+// --- Tempo / key (v2, #1898) ---------------------------------------------------
+
+/** The recipe's speed on the 1/100 grid the render uses (default 1). */
+export function remixFxSpeed(
+  effects: RemixFxRecipe | null | undefined,
+): number {
+  return Math.round((effects?.master?.speed ?? 1) * 100) / 100;
+}
+
+/**
+ * The time-stretch stage a recipe needs, or null for none: tempo = keepPitch
+ * ? speed : 1, semitones = the key shift. A stage that would be the identity
+ * (tempo 1, 0 semitones — e.g. keepPitch at speed 1) is skipped, so such a
+ * recipe renders exactly like one without the flag.
+ */
+export function remixFxStretchPlan(
+  effects: RemixFxRecipe | null | undefined,
+): { tempo: number; semitones: number } | null {
+  const master = effects?.master;
+  if (!master) return null;
+  const tempo = master.keepPitch === true ? remixFxSpeed(effects) : 1;
+  const semitones = master.semitones ?? 0;
+  if (tempo === 1 && semitones === 0) return null;
+  return { tempo, semitones };
+}
+
+/**
+ * The varispeed rate that follows the stretch stage: 1 with keepPitch (the
+ * stretch already changed the tempo), the speed otherwise. The output
+ * duration still scales by 1/speed either way, so every output-time rule
+ * (gates, echo, master fades) is unchanged.
+ */
+export function remixFxVarispeedRate(
+  effects: RemixFxRecipe | null | undefined,
+): number {
+  return effects?.master?.keepPitch === true ? 1 : remixFxSpeed(effects);
 }
 
 // --- DSP mapping (identical in both engines; pinned by the parity fixture) ---

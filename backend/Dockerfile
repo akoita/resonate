@@ -58,6 +58,11 @@ COPY package.json package-lock.json .npmrc ./
 # Copy compiled output
 COPY --from=build /app/dist ./dist
 
+# Vendored runtime assets: the pinned Signalsmith Stretch WASM for Remix
+# Studio tempo/key renders (#1898), resolved as ../../../assets from
+# dist/modules/remix and sha256-checked at load.
+COPY assets ./assets
+
 # Sample-data fixture assets (Show campaign artist/hero/gallery images) so the
 # `fixtures:shows:prod` seed can run from this image as a one-off Cloud Run Job.
 # Only used when explicitly invoked with ALLOW_SAMPLE_SHOW_FIXTURES=true.

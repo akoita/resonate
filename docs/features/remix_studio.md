@@ -687,6 +687,38 @@ from the JWT, never the request body.
       published release has its own catalog copy.
     - Archived outputs therefore persist until the owner deletes the version.
     - The Drafts panel offers a confirmed Delete on each previous version.
+- Keep-pitch tempo and key shift (#1898, slice S1b of epic #1896). **Status:
+  partial.** PR 1 ships the engine, the recipe and the server render. PR 2
+  adds the preview workers and the "Keep original pitch" / "Key" controls.
+  - **Engine.** Signalsmith Stretch (MIT; `signalsmith-stretch@1.3.2`'s
+    WASM) is vendored as `backend/assets/wasm/` and
+    `web/public/wasm/signalsmith-stretch-1.3.2.wasm`. Its sha256 is asserted
+    at load, and the licence text is in `NOTICE`.
+    - Our loader seeds the engine deterministically, and an offline or
+      streaming driver (pinned 4096-sample chunks) produces
+      **byte-identical** output in Node and in the browser.
+    - A parity fixture (`backend/src/modules/remix/remix-stretch-v1.parity.json`)
+      holds the golden sha256 values.
+    - The npm AudioWorklet node isn't used, because it isn't
+      sample-comparable.
+  - **Recipe `remix-fx/v2`.** Master gains `keepPitch` and `semitones`
+    (−6..6); v1 recipes still read.
+    - Stems are first stretched with tempo = keepPitch ? speed : 1 and the
+      key shift.
+    - Varispeed then runs at rate = keepPitch ? 1 : speed.
+    - Output-time gating, echo and fades are unchanged.
+    - With keep-pitch, the beat is synthesized at the new tempo and is never
+      transposed.
+    - Varispeed-only and no-effects renders stay byte-identical.
+  - **Render.** Each stem is decoded and stretched in a bounded worker pool,
+    streaming, into a 16-bit dithered temp WAV that replaces the stem input.
+    Structure seeks scale by 1/tempo.
+    - `renderMetadata` and the publish lineage record the engine, the WASM
+      sha256, the tempo and the key.
+    - Where the temp directory is memory-backed (as on serverless
+      containers), a 4 × 4-minute keep-pitch render peaks near 300 MB of
+      temp files; container memory sizing belongs to the deployment
+      configuration.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

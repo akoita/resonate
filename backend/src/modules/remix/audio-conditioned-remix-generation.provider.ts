@@ -14,7 +14,8 @@ import {
   stemTransformPromptLead,
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
-import { REMIX_FX_DSP_VERSION } from "./remix-fx";
+import { REMIX_FX_DSP_VERSION, remixFxStretchPlan } from "./remix-fx";
+import { remixStretchMetadata } from "./remix-stretch";
 import { REMIX_STRUCTURE_DSP_VERSION } from "./remix-structure";
 import { REMIX_BEAT_DSP_VERSION } from "./remix-beat";
 
@@ -30,6 +31,14 @@ import { REMIX_BEAT_DSP_VERSION } from "./remix-beat";
  * honest audio_conditioned grounding label is emitted by the project service
  * (#1207). Behind the master gate + provider-kind selection, default off.
  */
+/** The `stretch` block of a conditioning mix's effects (#1898), if any. */
+function conditioningStretch(
+  effects: Parameters<typeof remixFxStretchPlan>[0],
+): { stretch?: ReturnType<typeof remixStretchMetadata> } {
+  const plan = remixFxStretchPlan(effects);
+  return plan ? { stretch: remixStretchMetadata(plan) } : {};
+}
+
 @Injectable()
 export class AudioConditionedRemixGenerationProvider
   implements RemixGenerationProvider
@@ -172,6 +181,8 @@ export class AudioConditionedRemixGenerationProvider
             conditioningEffects: {
               effects: input.renderFx.effects,
               effectsDspVersion: REMIX_FX_DSP_VERSION,
+              // #1898: the time-stretch stage the conditioning mix ran.
+              ...conditioningStretch(input.renderFx.effects),
             },
           }
         : {}),
