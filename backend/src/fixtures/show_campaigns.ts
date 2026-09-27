@@ -493,6 +493,35 @@ export function validateShowCampaignFixtures(assetDirectory: string) {
   }
 }
 
+/** Release states that make an artist part of the public catalog (mirrors the Shows subject gate). */
+const CATALOG_CONTENT_STATUSES = ["ready", "published"];
+
+/**
+ * The real catalog profile a sample campaign should point at, if the catalog
+ * already has this artist: the one non-fixture profile holding a main/primary,
+ * non-ambiguous credit on a ready or published release under this exact name
+ * (case-insensitive). Returns null when there is none, or when the name maps to
+ * more than one profile — a sample campaign must never guess between people.
+ */
+export async function findCatalogArtistForFixture(
+  prisma: PrismaClient,
+  displayName: string,
+): Promise<{ id: string } | null> {
+  const credits = await prisma.releaseArtistCredit.findMany({
+    where: {
+      displayName: { equals: displayName.trim(), mode: "insensitive" },
+      role: { in: ["main", "primary"] },
+      identityStatus: { not: "ambiguous" },
+      release: { status: { in: CATALOG_CONTENT_STATUSES } },
+      artist: { profileType: { not: "fixture" } },
+    },
+    select: { artistId: true },
+    take: 50,
+  });
+  const ids = Array.from(new Set(credits.map((credit) => credit.artistId)));
+  return ids.length === 1 ? { id: ids[0] } : null;
+}
+
 export async function applyShowCampaignFixtures(
   prisma: PrismaClient,
   storage: StorageProvider,
@@ -547,9 +576,16 @@ export async function applyShowCampaignFixtures(
           artistAuthorityStatus: "none" as const,
         };
 
+    // When the catalog already has this artist, the sample campaign links to
+    // that real profile (so the campaign, artist page and releases connect)
+    // and never writes fixture copy or imagery onto it. The fixture profile is
+    // only a stand-in for artists the catalog does not have.
+    const catalogArtist = await findCatalogArtistForFixture(prisma, fixture.artist.displayName);
+    const campaignArtistId = catalogArtist?.id ?? fixture.artist.id;
+
     const campaignData = {
       slug: fixture.campaign.slug,
-      artistId: fixture.artist.id,
+      artistId: campaignArtistId,
       artistDisplayName: fixture.artist.displayName,
       artistImageUrl,
       heroImageUrl: heroUrl,
@@ -587,7 +623,7 @@ export async function applyShowCampaignFixtures(
       },
     };
 
-    await prisma.artist.upsert({
+    if (!catalogArtist) await prisma.artist.upsert({
       where: { id: fixture.artist.id },
       update: {
         displayName: fixture.artist.displayName,
@@ -613,6 +649,8 @@ export async function applyShowCampaignFixtures(
       update: campaignData,
       create: { id: fixture.campaign.id, ...campaignData },
     });
+
+    if (catalogArtist) await removeStaleFixtureArtist(prisma, fixture.artist.id);
 
     await prisma.showCampaignTier.deleteMany({ where: { campaignId: fixture.campaign.id } });
     await prisma.showCampaignTier.createMany({
@@ -667,4 +705,30 @@ export async function applyShowCampaignFixtures(
   }
 
   return { campaigns: SHOW_CAMPAIGN_FIXTURES.length, dryRun: false };
+}
+
+/**
+ * Drop a fixture stand-in profile left over from earlier seeds once its sample
+ * campaign points at the real catalog artist. Only `fixture` profiles are
+ * touched. A profile that anything still hangs off is kept: the relations that
+ * would CASCADE (community rooms/benefits/bridges, claim requests, management
+ * grants) are checked explicitly so a delete can never silently take them
+ * along, and restrictive foreign keys (campaigns, credits, …) make the delete
+ * fail, which is caught.
+ */
+async function removeStaleFixtureArtist(prisma: PrismaClient, fixtureArtistId: string) {
+  const where = { artistId: fixtureArtistId };
+  const dependents = await Promise.all([
+    prisma.communityBenefitRule.count({ where }),
+    prisma.communityRoom.count({ where }),
+    prisma.communityDiscordBridge.count({ where }),
+    prisma.artistClaimRequest.count({ where }),
+    prisma.managementGrant.count({ where }),
+  ]);
+  if (dependents.some((count) => count > 0)) return;
+  try {
+    await prisma.artist.deleteMany({ where: { id: fixtureArtistId, profileType: "fixture" } });
+  } catch {
+    // Still referenced; keep it. It no longer backs the sample campaign.
+  }
 }
