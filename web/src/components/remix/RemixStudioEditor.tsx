@@ -160,7 +160,7 @@ export type ProjectEdits = {
   stems: Record<string, StemEdit>;
   /** Studio AI intent (#1882), saved with the project; whole = default. */
   aiTarget: AiTargetEdit;
-  /** Effects recipe `remix-fx/v1` (#1897), normalized; null = untouched. */
+  /** Effects recipe `remix-fx/v2` (#1897, #1898), normalized; null = untouched. */
   effects: RemixFxRecipe | null;
   /**
    * Structure recipe `remix-structure/v1` (#1899), normalized against the

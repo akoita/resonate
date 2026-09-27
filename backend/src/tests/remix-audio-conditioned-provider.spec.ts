@@ -206,6 +206,32 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     });
   });
 
+  it("records the conditioning mix's time-stretch stage for a tempo/key recipe (#1898)", async () => {
+    const { provider } = buildProvider();
+    const renderFx = {
+      effects: {
+        schemaVersion: "remix-fx/v2" as const,
+        master: { speed: 0.9, keepPitch: true as const, semitones: -1 },
+      },
+      bpm: 120,
+    };
+    const job = await provider.createRemixDraft(
+      generationInput({ renderFx }),
+      AUTH,
+    );
+    expect(job.conditioningEffects).toEqual({
+      effects: renderFx.effects,
+      effectsDspVersion: "remix-fx-dsp/v1",
+      stretch: {
+        engine: "signalsmith-stretch@1.3.2",
+        wasmSha256:
+          "83869197b3c5ebf9fc8c517a1586aef1ecf77404842218d62b9c0e82882d8ca3",
+        tempo: 0.9,
+        semitones: -1,
+      },
+    });
+  });
+
   it("conditions on the structured mix and records the structure (#1899)", async () => {
     const { provider, mix } = buildProvider();
     const renderStructure = {

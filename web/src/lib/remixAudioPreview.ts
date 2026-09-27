@@ -450,7 +450,7 @@ export type StemPreviewEngine = {
     offsetSec?: number;
     loop?: PreviewLoop | null;
     /**
-     * Effects recipe `remix-fx/v1` (#1897); null/absent keeps the plain
+     * Effects recipe `remix-fx/v2` (#1897, #1898); null/absent keeps the plain
      * graph (source → gain → section gain → limiter), with no extra nodes.
      */
     effects?: RemixFxRecipe | null;

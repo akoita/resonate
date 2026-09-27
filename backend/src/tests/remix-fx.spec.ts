@@ -1,8 +1,10 @@
 /**
- * Shared effects recipe remix-fx/v1 (#1897) — pure unit tests.
+ * Shared effects recipe remix-fx/v2 (#1897, #1898) — pure unit tests.
  *
- * The parity block replays the committed fixture the web preview is also
- * tested against, so both engines reproduce the same DSP numbers (1e-9).
+ * The parity block replays the committed v1 fixture the web preview is also
+ * tested against, so both engines reproduce the same DSP numbers (1e-9). The
+ * v1 DSP mapping is unchanged by v2; normalization now writes v2, so the
+ * fixture's normalize outputs are compared with their version upgraded.
  */
 
 import { readFileSync } from "fs";
@@ -16,6 +18,10 @@ import {
   REMIX_FX_DSP_VERSION,
   REMIX_FX_IMPULSE,
   REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V1_SCHEMA_VERSION,
+  remixFxSpeed,
+  remixFxStretchPlan,
+  remixFxVarispeedRate,
   reverbWet,
   toneFilter,
   warmthCurve,
@@ -66,7 +72,9 @@ function expectClose(actual: number, expected: number) {
 
 describe("remix-fx/v1 parity fixture (#1897)", () => {
   it("pins the schema version", () => {
-    expect(fixture.schemaVersion).toBe(REMIX_FX_SCHEMA_VERSION);
+    // The fixture pins the v1 DSP numbers, which v2 (#1898) keeps unchanged.
+    expect(fixture.schemaVersion).toBe(REMIX_FX_V1_SCHEMA_VERSION);
+    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v2");
     expect(REMIX_FX_DSP_VERSION).toBe("remix-fx-dsp/v1");
   });
 
@@ -133,8 +141,13 @@ describe("remix-fx/v1 parity fixture (#1897)", () => {
   it.each(fixture.normalize.map((entry, index) => ({ ...entry, index })))(
     "normalize case $index",
     ({ input, output }) => {
+      // v1 fixture outputs are rewritten as v2 (#1898); the values are the
+      // same.
       expect(normalizeRemixFxInput(input, ["a", "b"])).toEqual({
-        value: output,
+        value:
+          output === null
+            ? null
+            : { ...(output as object), schemaVersion: REMIX_FX_SCHEMA_VERSION },
       });
     },
   );
@@ -158,7 +171,7 @@ describe("normalizeRemixFxInput (#1897)", () => {
       ),
     ).toEqual({
       value: {
-        schemaVersion: "remix-fx/v1",
+        schemaVersion: "remix-fx/v2",
         master: { space: 0.46, warmth: 0.2 },
         stems: { "stem-1": { tone: -0.33 } },
       },
@@ -172,7 +185,7 @@ describe("normalizeRemixFxInput (#1897)", () => {
         stems,
       ),
     ).toEqual({
-      value: { schemaVersion: "remix-fx/v1", stems: { "stem-2": { echo: 1 } } },
+      value: { schemaVersion: "remix-fx/v2", stems: { "stem-2": { echo: 1 } } },
     });
   });
 
@@ -184,12 +197,12 @@ describe("normalizeRemixFxInput (#1897)", () => {
       ),
     ).toEqual({
       value: {
-        schemaVersion: "remix-fx/v1",
+        schemaVersion: "remix-fx/v2",
         master: { speed: 0.75, space: 1, tone: -1, warmth: 1 },
       },
     });
     expect(normalizeRemixFxInput({ master: { speed: 1.25 } }, stems)).toEqual({
-      value: { schemaVersion: "remix-fx/v1", master: { speed: 1.25 } },
+      value: { schemaVersion: "remix-fx/v2", master: { speed: 1.25 } },
     });
   });
 
@@ -197,7 +210,7 @@ describe("normalizeRemixFxInput (#1897)", () => {
     ["a string", "slowed", /effects must be an object or null/],
     ["an array", [], /effects must be an object or null/],
     ["an unknown top-level key", { vibe: "lofi" }, /effects\.vibe/],
-    ["a foreign schema version", { schemaVersion: "remix-fx/v2" }, /schemaVersion/],
+    ["a foreign schema version", { schemaVersion: "remix-fx/v3" }, /schemaVersion/],
     ["a non-object master", { master: 3 }, /effects\.master must be an object/],
     ["an unknown master field", { master: { pitch: 1 } }, /effects\.master\.pitch/],
     ["speed below range", { master: { speed: 0.74 } }, /speed must be between 0\.75 and 1\.25/],
@@ -227,12 +240,116 @@ describe("normalizeRemixFxInput (#1897)", () => {
   });
 });
 
+describe("normalizeRemixFxInput remix-fx/v2 fields (#1898)", () => {
+  it("accepts keepPitch and semitones and writes v2", () => {
+    expect(
+      normalizeRemixFxInput(
+        {
+          schemaVersion: "remix-fx/v2",
+          master: { speed: 0.85, keepPitch: true, semitones: 2 },
+        },
+        [],
+      ),
+    ).toEqual({
+      value: {
+        schemaVersion: "remix-fx/v2",
+        master: { speed: 0.85, keepPitch: true, semitones: 2 },
+      },
+    });
+  });
+
+  it("upgrades a v1 recipe (or none) to v2 without changing values", () => {
+    for (const schemaVersion of ["remix-fx/v1", undefined]) {
+      expect(
+        normalizeRemixFxInput({ schemaVersion, master: { speed: 1.1 } }, []),
+      ).toEqual({
+        value: { schemaVersion: "remix-fx/v2", master: { speed: 1.1 } },
+      });
+    }
+  });
+
+  it("omits keepPitch false and semitones 0; all-default is null", () => {
+    expect(
+      normalizeRemixFxInput(
+        { master: { speed: 0.9, keepPitch: false, semitones: 0 } },
+        [],
+      ),
+    ).toEqual({
+      value: { schemaVersion: "remix-fx/v2", master: { speed: 0.9 } },
+    });
+    expect(
+      normalizeRemixFxInput({ master: { keepPitch: false, semitones: -0 } }, []),
+    ).toEqual({ value: null });
+  });
+
+  it("keeps keepPitch alone (a saved preference) and a key shift alone", () => {
+    expect(normalizeRemixFxInput({ master: { keepPitch: true } }, [])).toEqual({
+      value: { schemaVersion: "remix-fx/v2", master: { keepPitch: true } },
+    });
+    expect(normalizeRemixFxInput({ master: { semitones: -6 } }, [])).toEqual({
+      value: { schemaVersion: "remix-fx/v2", master: { semitones: -6 } },
+    });
+    expect(normalizeRemixFxInput({ master: { semitones: 6 } }, [])).toEqual({
+      value: { schemaVersion: "remix-fx/v2", master: { semitones: 6 } },
+    });
+  });
+
+  it.each([
+    ["keepPitch as a string", { master: { keepPitch: "yes" } }, /keepPitch must be a boolean/],
+    ["keepPitch as 1", { master: { keepPitch: 1 } }, /keepPitch must be a boolean/],
+    ["fractional semitones", { master: { semitones: 1.5 } }, /semitones must be a whole number between -6 and 6/],
+    ["semitones below range", { master: { semitones: -7 } }, /semitones must be a whole number/],
+    ["semitones above range", { master: { semitones: 7 } }, /semitones must be a whole number/],
+    ["semitones as a string", { master: { semitones: "2" } }, /semitones must be a whole number/],
+    ["NaN semitones", { master: { semitones: Number.NaN } }, /semitones must be a whole number/],
+    ["an unknown master field", { master: { pitch: 2 } }, /allowed: speed, space, tone, warmth, keepPitch, semitones/],
+    ["a pitch field on a stem", { stems: { a: { semitones: 2 } } }, /effects\.stems\.a\.semitones/],
+  ])("rejects %s", (_label, input, message) => {
+    const result = normalizeRemixFxInput(input, ["a"]);
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toMatch(message);
+  });
+});
+
+describe("tempo/key stretch plan (#1898)", () => {
+  const recipe = (master: Record<string, unknown>) =>
+    ({ schemaVersion: "remix-fx/v2", master }) as never;
+
+  it.each([
+    ["no recipe", null, null, 1],
+    ["varispeed only", recipe({ speed: 0.85 }), null, 0.85],
+    ["keepPitch at speed 1 (identity stage)", recipe({ keepPitch: true }), null, 1],
+    ["keepPitch at 0.85", recipe({ speed: 0.85, keepPitch: true }), { tempo: 0.85, semitones: 0 }, 1],
+    ["a key shift with varispeed", recipe({ speed: 1.2, semitones: -3 }), { tempo: 1, semitones: -3 }, 1.2],
+    ["keepPitch and a key shift", recipe({ speed: 0.85, keepPitch: true, semitones: 2 }), { tempo: 0.85, semitones: 2 }, 1],
+  ])("%s", (_label, effects, plan, rate) => {
+    expect(remixFxStretchPlan(effects)).toEqual(plan);
+    expect(remixFxVarispeedRate(effects)).toBe(rate);
+  });
+
+  it("uses the render's 1/100 speed grid", () => {
+    expect(remixFxSpeed(recipe({ speed: 0.854 }))).toBe(0.85);
+    expect(remixFxSpeed(null)).toBe(1);
+  });
+});
+
 describe("readStoredRemixFx (#1897)", () => {
-  it("reads a stored recipe", () => {
+  it("reads a stored v1 recipe as v2 (#1898)", () => {
     const stored = {
       schemaVersion: "remix-fx/v1",
       master: { speed: 0.85, space: 0.45 },
       stems: { a: { echo: 0.33 } },
+    };
+    expect(readStoredRemixFx(stored)).toEqual({
+      ...stored,
+      schemaVersion: "remix-fx/v2",
+    });
+  });
+
+  it("reads a stored v2 recipe with keepPitch and a key shift (#1898)", () => {
+    const stored = {
+      schemaVersion: "remix-fx/v2",
+      master: { speed: 0.85, keepPitch: true, semitones: -2 },
     };
     expect(readStoredRemixFx(stored)).toEqual(stored);
   });
@@ -243,6 +360,8 @@ describe("readStoredRemixFx (#1897)", () => {
     ["an array", []],
     ["a missing version", { master: { speed: 0.85 } }],
     ["a foreign version", { schemaVersion: "remix-fx/v0", master: { speed: 0.85 } }],
+    ["a future version", { schemaVersion: "remix-fx/v3", master: { speed: 0.85 } }],
+    ["a fractional key shift", { schemaVersion: "remix-fx/v2", master: { semitones: 1.5 } }],
     ["an out-of-range value", { schemaVersion: "remix-fx/v1", master: { speed: 9 } }],
     ["an all-default recipe", { schemaVersion: "remix-fx/v1", master: { speed: 1 } }],
   ])("reads %s as null", (_label, stored) => {

@@ -1,5 +1,5 @@
 /**
- * Shared effects recipe remix-fx/v1 (#1897) — Integration Test (Testcontainers)
+ * Shared effects recipe remix-fx/v2 (#1897, #1898) — Integration Test (Testcontainers)
  *
  * Against real Postgres: PATCH persists/normalizes/clears/keeps the recipe and
  * rejects invalid payloads with 400 before any write; reads return it; renders
@@ -226,7 +226,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       },
     });
     const normalized = {
-      schemaVersion: "remix-fx/v1",
+      schemaVersion: "remix-fx/v2",
       master: { speed: 0.85, space: 0.45 },
       stems: { [VOCALS_STEM_ID]: { echo: 0.33 } },
     };
@@ -284,7 +284,10 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       { master: { pitch: 1 } },
       { stems: { "not-a-project-stem": { echo: 0.5 } } },
       { stems: { [VOCALS_STEM_ID]: { echo: -0.1 } } },
-      { schemaVersion: "remix-fx/v2" },
+      { schemaVersion: "remix-fx/v3" },
+      { master: { semitones: 1.5 } },
+      { master: { semitones: 7 } },
+      { master: { keepPitch: "yes" } },
     ];
     for (const effects of invalid) {
       await expect(
@@ -298,9 +301,69 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
     const unchanged = await projectService.getProject(OWNER_ID, created.id);
     expect(unchanged.title).toBe("FX invalid");
     expect(unchanged.effects).toEqual({
-      schemaVersion: "remix-fx/v1",
+      schemaVersion: "remix-fx/v2",
       master: { space: 0.2 },
     });
+  });
+
+  it("PATCH accepts the v2 tempo/key fields, reads them back, and upgrades stored v1 (#1898)", async () => {
+    const created = await createProject("FX v2 pitch");
+    const saved = await projectService.updateProject(OWNER_ID, created.id, {
+      effects: {
+        schemaVersion: "remix-fx/v1",
+        master: { speed: 0.85, keepPitch: true, semitones: -2 },
+      },
+    });
+    const normalized = {
+      schemaVersion: "remix-fx/v2",
+      master: { speed: 0.85, keepPitch: true, semitones: -2 },
+    };
+    expect(saved.effects).toEqual(normalized);
+    expect(await storedEffects(created.id)).toEqual(normalized);
+    expect((await projectService.getProject(OWNER_ID, created.id)).effects).toEqual(
+      normalized,
+    );
+
+    // keepPitch false and semitones 0 are omitted.
+    const plain = await projectService.updateProject(OWNER_ID, created.id, {
+      effects: { master: { speed: 0.85, keepPitch: false, semitones: 0 } },
+    });
+    expect(plain.effects).toEqual({
+      schemaVersion: "remix-fx/v2",
+      master: { speed: 0.85 },
+    });
+
+    // A stored v1 row (written before #1898) reads as v2 with the same values.
+    await prisma.remixProject.update({
+      where: { id: created.id },
+      data: { effects: { schemaVersion: "remix-fx/v1", master: { speed: 1.1 } } },
+    });
+    expect((await projectService.getProject(OWNER_ID, created.id)).effects).toEqual({
+      schemaVersion: "remix-fx/v2",
+      master: { speed: 1.1 },
+    });
+  });
+
+  it("stem_mix renders receive the v2 tempo/key recipe unchanged (#1898)", async () => {
+    const created = await createProject("FX v2 render");
+    await projectService.updateProject(OWNER_ID, created.id, {
+      effects: { master: { speed: 1.2, keepPitch: true, semitones: 3 } },
+    });
+    await projectService.generateDraft(OWNER_ID, created.id, {});
+    await processQueued();
+    const renderInput = stemMixRenderer.render.mock.calls.at(-1)?.[0];
+    expect(renderInput.fx).toEqual({
+      effects: {
+        schemaVersion: "remix-fx/v2",
+        master: { speed: 1.2, keepPitch: true, semitones: 3 },
+      },
+      bpm: 120,
+    });
+    // Tempo/key are DSP, not AI: grounding stays stem_audio.
+    const completed = await projectService.getProject(OWNER_ID, created.id);
+    expect(completed.generationMetadata).toEqual(
+      expect.objectContaining({ status: "completed", grounding: "stem_audio" }),
+    );
   });
 
   it("reads a malformed stored recipe as null", async () => {
@@ -327,7 +390,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
     const renderInput = stemMixRenderer.render.mock.calls.at(-1)?.[0];
     expect(renderInput.fx).toEqual({
       effects: {
-        schemaVersion: "remix-fx/v1",
+        schemaVersion: "remix-fx/v2",
         master: { speed: 0.85, space: 0.3 },
         stems: { [DRUMS_STEM_ID]: { echo: 0.5 } },
       },
@@ -372,7 +435,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       const renderInput = stemMixRenderer.render.mock.calls.at(-1)?.[0];
       expect(renderInput.fx).toEqual({
         effects: {
-          schemaVersion: "remix-fx/v1",
+          schemaVersion: "remix-fx/v2",
           stems: { [VOCALS_STEM_ID]: { echo: 0.4 } },
         },
         bpm: null,
@@ -421,7 +484,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
 
       const providerInput = layerProvider.createRemixDraft.mock.calls.at(-1)?.[0];
       expect(providerInput.renderFx).toEqual({
-        effects: { schemaVersion: "remix-fx/v1", master: { speed: 0.9, space: 0.2 } },
+        effects: { schemaVersion: "remix-fx/v2", master: { speed: 0.9, space: 0.2 } },
         bpm: 120,
       });
       // Not lyria: no layered render, the provider audio is the draft.
@@ -431,7 +494,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       const metadata = completed.generationMetadata as Record<string, unknown>;
       expect(metadata.status).toBe("completed");
       expect(metadata.conditioningEffects).toEqual({
-        effects: { schemaVersion: "remix-fx/v1", master: { speed: 0.9, space: 0.2 } },
+        effects: { schemaVersion: "remix-fx/v2", master: { speed: 0.9, space: 0.2 } },
         effectsDspVersion: "remix-fx-dsp/v1",
       });
       expect("renderMetadata" in metadata).toBe(false);
@@ -450,7 +513,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
 
     const expectedFx = {
       effects: {
-        schemaVersion: "remix-fx/v1",
+        schemaVersion: "remix-fx/v2",
         master: { speed: 1.1, warmth: 0.25 },
       },
       bpm: 120,

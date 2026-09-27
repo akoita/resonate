@@ -26,6 +26,10 @@ import {
   REMIX_FX_DSP_VERSION,
   REMIX_FX_FILTER_Q,
   REMIX_FX_IMPULSE,
+  REMIX_FX_SCHEMA_VERSION,
+  remixFxSpeed,
+  remixFxStretchPlan,
+  remixFxVarispeedRate,
   reverbWet,
   toneFilter,
   warmthK,
@@ -43,17 +47,30 @@ import {
   type RemixStructureSegment,
 } from "./remix-structure";
 import {
+  beatTimingAtSpeed,
   REMIX_BEAT_DSP_VERSION,
   REMIX_BEAT_RENDER_SAMPLE_RATE,
   writeBeatWav,
   type RemixRenderBeat,
 } from "./remix-beat";
+import {
+  REMIX_STRETCH_CHANNELS,
+  REMIX_STRETCH_DITHER_SEED_BASE,
+  REMIX_STRETCH_SAMPLE_RATE,
+  remixStretchMetadata,
+  stretchRawFileToWavInWorker,
+} from "./remix-stretch";
 
 const execFileAsync = promisify(execFile);
 
 export const STEM_AUDIO_MIXER = "STEM_AUDIO_MIXER";
 
 const FFMPEG_TIMEOUT_MS = 120_000;
+/**
+ * Stems stretched at once (#1898): each stretch is a worker thread at ~30×
+ * realtime; a small pool bounds CPU, heap and temp-dir use per render.
+ */
+export const STRETCH_POOL_SIZE = 2;
 
 /**
  * Product audio policy, not environment configuration. Identical saved
@@ -154,7 +171,8 @@ export type StemMixFfmpegInput = {
    * The synthesized beat track (#1902): a mono WAV already in timeline time
    * with block on/off baked in. Varispeed and its gain apply; per-stem fx,
    * gating and the structure front end do not; it sends `master.space` to the
-   * reverb bus like an AI layer.
+   * reverb bus like an AI layer. With keepPitch (#1898) the track is already
+   * in output time and the varispeed rate is 1.
    */
   beat?: boolean;
 };
@@ -218,7 +236,9 @@ export function buildStemMixFfmpegArgs(
   const hasBeat = inputs.some((input) => input.beat);
   if (fx?.effects || hasStructure || hasBeat) {
     const renderFx: StemMixFfmpegFx = fx ?? { effects: null };
-    const segments = hasStructure ? structure!.segments : null;
+    const segments = hasStructure
+      ? stretchedSourceSegments(structure!.segments, renderFx.effects)
+      : null;
     // One ffmpeg input per source run with a structure (#1899): every run of
     // one stem reads the same (already decrypted) temp file.
     for (const plan of ffmpegInputPlan(inputs, segments)) {
@@ -339,7 +359,27 @@ export function stemMixReverbSends(
  * An empty recipe: structure or a beat without effects renders the plain
  * chain.
  */
-const NO_EFFECTS: RemixFxRecipe = { schemaVersion: "remix-fx/v1" };
+const NO_EFFECTS: RemixFxRecipe = { schemaVersion: REMIX_FX_SCHEMA_VERSION };
+
+/**
+ * The timeline as the source stems' structure front end reads it (#1898):
+ * with a keepPitch time-stretch (tempo ≠ 1) every source stem was stretched
+ * before the graph, so its source times scale by 1/tempo — the run seeks and
+ * trims land in the stretched file's time. Timeline (out*) times are
+ * untouched; without a tempo stretch the segments are returned as is.
+ */
+export function stretchedSourceSegments(
+  segments: RemixStructureSegment[],
+  effects: RemixFxRecipe | null | undefined,
+): RemixStructureSegment[] {
+  const tempo = remixFxStretchPlan(effects)?.tempo ?? 1;
+  if (tempo === 1) return segments;
+  return segments.map((segment) => ({
+    ...segment,
+    srcStartSec: segment.srcStartSec / tempo,
+    srcEndSec: segment.srcEndSec / tempo,
+  }));
+}
 
 /**
  * ffmpeg volume expression for the whole-mix structure fades (#1899), in
@@ -553,13 +593,19 @@ export function buildFxStemMixFilter(
   }
   const master = effects.master ?? {};
   // speed has 2 decimals, so 48000·s = 480·(100·s) is an exact integer rate.
-  const speedHundredths = Math.round((master.speed ?? 1) * 100);
-  const speed = speedHundredths / 100;
+  // Output time always scales by 1/speed; the varispeed RATE is the speed,
+  // or 1 when a keepPitch time-stretch (#1898) already changed the tempo.
+  const speed = remixFxSpeed(effects);
+  const rateHundredths = Math.round(remixFxVarispeedRate(effects) * 100);
   const bpm = fx.bpm ?? null;
   const sends = stemMixReverbSends(inputs, effects);
   const needsImpulse = sends.some((wet) => wet > 0);
 
-  const plans = ffmpegInputPlan(inputs, segments);
+  // Source runs seek in the (possibly stretched) stem file's time.
+  const plans = ffmpegInputPlan(
+    inputs,
+    segments ? stretchedSourceSegments(segments, effects) : null,
+  );
   const graph: string[] = [];
   const dryLabels: string[] = [];
   const wetLabels: string[] = [];
@@ -580,8 +626,8 @@ export function buildFxStemMixFilter(
     // The beat track is mono: duplicate it to both channels at unity, like
     // the preview's mono → stereo up-mix (ffmpeg's auto up-mix is −3 dB).
     if (input.beat) chain.push("pan=stereo|c0=c0|c1=c0");
-    if (speedHundredths !== 100) {
-      chain.push(`asetrate=${480 * speedHundredths}`, "aresample=48000");
+    if (rateHundredths !== 100) {
+      chain.push(`asetrate=${480 * rateHundredths}`, "aresample=48000");
     }
     chain.push(`volume=${normalizeRemixStemGainDb(input.gainDb)}dB`);
     // The beat's block on/off is baked into its track: never gated.
@@ -689,6 +735,128 @@ export function resolveAfirUnityGainOptions(logger?: Logger): Promise<string> {
   return afirOptionsProbe;
 }
 
+/**
+ * ffmpeg args decoding one input to raw interleaved 16-bit stereo at 48 kHz
+ * — the time-stretch stage's input (#1898; 16-bit halves the temp-dir
+ * footprint, the stretch worker converts to float). Paths are argv entries,
+ * never shell-interpolated.
+ */
+export function buildStretchDecodeArgs(
+  inputPath: string,
+  outputPath: string,
+): string[] {
+  return [
+    "-y",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    inputPath,
+    "-vn",
+    "-f",
+    "s16le",
+    "-c:a",
+    "pcm_s16le",
+    "-ac",
+    String(REMIX_STRETCH_CHANNELS),
+    "-ar",
+    String(REMIX_STRETCH_SAMPLE_RATE),
+    outputPath,
+  ];
+}
+
+/** Run `task` over `items` with at most `limit` in flight; fail fast. */
+async function runPooled<T>(
+  items: T[],
+  limit: number,
+  task: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  let failed = false;
+  const lane = async () => {
+    while (!failed && next < items.length) {
+      const index = next;
+      next += 1;
+      try {
+        await task(items[index], index);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  };
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, lane);
+  const results = await Promise.allSettled(lanes);
+  const rejected = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (rejected) throw rejected.reason;
+}
+
+/**
+ * The time-stretch pre-stage (#1898): each input is decoded by ffmpeg to raw
+ * 48 kHz 16-bit stereo, stretched chunk-streamed in a worker thread
+ * (tempo/semitones from the recipe; float DSP) into a TPDF-dithered 16-bit
+ * WAV (dither seed = base + input index, so identical renders are
+ * byte-identical) that REPLACES the input's path, at most
+ * {@link STRETCH_POOL_SIZE} at a time. 16-bit intermediates keep the temp dir
+ * small where it is memory-backed. Every file stays in `workDir` (the
+ * render's temp dir, so plaintext of encrypted stems never leaves its cleanup
+ * boundary); the decoded source and the raw intermediate are deleted as soon
+ * as they are consumed. Audio shorter than the engine minimum is zero-padded
+ * and trimmed back by the worker. Errors map to safe provider errors;
+ * `logError` receives internal detail only.
+ */
+export async function stretchMixInputs(
+  inputs: StemMixFfmpegInput[],
+  workDir: string,
+  plan: { tempo: number; semitones: number },
+  logError: (message: string) => void = () => undefined,
+): Promise<void> {
+  await runPooled(inputs, STRETCH_POOL_SIZE, async (input, index) => {
+    const rawPath = join(workDir, `stretch-${index}.s16`);
+    const wavPath = join(workDir, `stretch-${index}.wav`);
+    try {
+      await execFileAsync("ffmpeg", buildStretchDecodeArgs(input.path, rawPath), {
+        timeout: FFMPEG_TIMEOUT_MS,
+      });
+    } catch (error) {
+      await rm(rawPath, { force: true });
+      logError(
+        `ffmpeg stretch decode failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new RemixGenerationProviderError(
+        "provider_unavailable",
+        "The stems could not be prepared for a tempo or key change. Please try again later.",
+        true,
+      );
+    }
+    await rm(input.path, { force: true });
+    try {
+      await stretchRawFileToWavInWorker({
+        inputPath: rawPath,
+        outputPath: wavPath,
+        tempo: plan.tempo,
+        semitones: plan.semitones,
+        ditherSeed: REMIX_STRETCH_DITHER_SEED_BASE + index,
+      });
+    } catch (error) {
+      logError(
+        `time-stretch failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new RemixGenerationProviderError(
+        "provider_unavailable",
+        "The tempo or key change could not be rendered. Please try again later.",
+        true,
+      );
+    } finally {
+      await rm(rawPath, { force: true });
+    }
+    input.path = wavPath;
+  });
+}
+
 function renderMetadata(
   inputCount: number,
   activeStemCount: number,
@@ -696,6 +864,7 @@ function renderMetadata(
   structure?: RemixRenderStructure,
   beat?: RemixRenderBeat,
 ): RemixRenderMetadata {
+  const stretchPlan = fx ? remixFxStretchPlan(fx.effects) : null;
   return {
     ...REMIX_RENDER_AUDIO_POLICY,
     inputCount,
@@ -704,6 +873,8 @@ function renderMetadata(
     ...(fx
       ? { effects: fx.effects, effectsDspVersion: REMIX_FX_DSP_VERSION }
       : {}),
+    // #1898: the time-stretch engine build + stage parameters.
+    ...(stretchPlan ? { stretch: remixStretchMetadata(stretchPlan) } : {}),
     // #1899: the structure blocks + timeline rules version.
     ...(structure
       ? {
@@ -869,16 +1040,38 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           aiLayer: true,
         });
       }
+      const stretchPlan = fx ? remixFxStretchPlan(fx.effects) : null;
+      if (stretchPlan) {
+        // #1898: every source stem and AI layer is time-stretched / pitch-
+        // shifted before the graph, replacing its input file.
+        const stretchStarted = Date.now();
+        await stretchMixInputs(ffmpegInputs, workDir, stretchPlan, (message) =>
+          this.logger.error(`${label}: ${message}`),
+        );
+        this.logger.log(
+          `[mix] ${label}: time-stretched ${ffmpegInputs.length} inputs (tempo ${stretchPlan.tempo}, ${stretchPlan.semitones} st) in ${Date.now() - stretchStarted}ms`,
+        );
+      }
       if (beat) {
         // #1902: the beat is synthesized over the (structured) timeline at
-        // 48 kHz and streamed to a WAV in this render's temp dir.
+        // 48 kHz and streamed to a WAV in this render's temp dir. With
+        // keepPitch (#1898) it is synthesized in output time instead (hits ÷
+        // speed, no varispeed) and never transposed.
         const beatPath = join(workDir, "beat.wav");
         const beatStarted = Date.now();
+        const beatTiming =
+          fx && remixFxVarispeedRate(fx.effects) !== remixFxSpeed(fx.effects)
+            ? beatTimingAtSpeed(
+                beat.grid,
+                beat.segments,
+                remixFxSpeed(fx.effects),
+              )
+            : { grid: beat.grid, segments: beat.segments };
         const { frames } = await writeBeatWav(
           beatPath,
           beat.beat,
-          beat.grid,
-          beat.segments,
+          beatTiming.grid,
+          beatTiming.segments,
         );
         this.logger.log(
           `[mix] ${label}: synthesized a ${(frames / REMIX_BEAT_RENDER_SAMPLE_RATE).toFixed(1)}s beat track in ${Date.now() - beatStarted}ms`,
