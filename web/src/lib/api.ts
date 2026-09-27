@@ -2050,7 +2050,10 @@ export async function getTrustTier(artistId: string, token: string) {
 }
 
 export async function getArtistPublic(artistId: string) {
-  return apiRequest<ArtistProfile>(`/artists/${artistId}`, {});
+  const artist = await apiRequest<ArtistProfile>(`/artists/${artistId}`, {});
+  // Profile images can be API-relative paths (e.g. a Shows visual); an
+  // unresolved path would load from the web origin and 404.
+  return artist ? { ...artist, imageUrl: resolveApiAssetUrl(artist.imageUrl ?? null) } : artist;
 }
 
 export async function createArtist(

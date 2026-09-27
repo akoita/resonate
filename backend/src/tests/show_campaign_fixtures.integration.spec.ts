@@ -46,6 +46,8 @@ describe("sample show campaign fixture creation", () => {
     await prisma.showCampaign.deleteMany({
       where: { id: { in: SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.campaign.id) } },
     });
+    await prisma.release.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.artist.deleteMany({
       where: { id: { in: SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.artist.id) } },
     });
@@ -72,5 +74,43 @@ describe("sample show campaign fixture creation", () => {
     expect(campaigns.every((campaign) => campaign.artist?.profileType === "fixture")).toBe(true);
     expect(campaigns.every((campaign) => (campaign.metadata as { fictionalCampaign?: boolean }).fictionalCampaign)).toBe(true);
     expect(await prisma.showCampaign.count({ where: { id: `${TEST_PREFIX}campaign` } })).toBe(1);
+  });
+
+  it("links a sample campaign to the real catalog artist and never overwrites that profile", async () => {
+    const fixture = SHOW_CAMPAIGN_FIXTURES.find((entry) => entry.artist.id === "sample-artist-tiken-jah-fakoly")!;
+    const realArtistId = `${TEST_PREFIX}real-artist`;
+    await prisma.artist.create({
+      data: { id: realArtistId, displayName: fixture.artist.displayName, profileType: "artist", summary: "Real bio" },
+    });
+    await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}release`,
+        artistId: realArtistId,
+        title: "Coup de Geule",
+        status: "published",
+        primaryArtist: fixture.artist.displayName,
+        artistCredits: {
+          create: { artistId: realArtistId, role: "main", displayName: fixture.artist.displayName.toUpperCase(), identityStatus: "selected" },
+        },
+      },
+    });
+
+    const options = { assetDirectory, chainId: 31337, now: new Date("2026-06-21T12:00:00.000Z") };
+    await applyShowCampaignFixtures(prisma, storage, options);
+    await applyShowCampaignFixtures(prisma, storage, options);
+
+    const campaign = await prisma.showCampaign.findUniqueOrThrow({ where: { id: fixture.campaign.id } });
+    expect(campaign.artistId).toBe(realArtistId);
+    const realArtist = await prisma.artist.findUniqueOrThrow({ where: { id: realArtistId } });
+    expect(realArtist).toMatchObject({ summary: "Real bio", imageUrl: null, profileType: "artist" });
+    // The stand-in created by the previous test's seed is gone.
+    expect(await prisma.artist.count({ where: { id: fixture.artist.id } })).toBe(0);
+
+    // Artists the catalog does not have keep their fixture stand-in.
+    const other = await prisma.showCampaign.findUniqueOrThrow({
+      where: { id: SHOW_CAMPAIGN_FIXTURES.find((entry) => entry !== fixture)!.campaign.id },
+      include: { artist: true },
+    });
+    expect(other.artist?.profileType).toBe("fixture");
   });
 });
