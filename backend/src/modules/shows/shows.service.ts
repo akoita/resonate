@@ -847,11 +847,15 @@ export function serializePublicShowCampaign(campaign: any) {
   // (image / summary / social links). These are the same public fields shown on
   // the catalog artist page — never authority evidence — so they are safe to
   // whitelist here for "Meet the artist" surfaces on list + detail.
-  const artist = campaign.artist
+  // Sample (fixture) campaigns carry their own presentation in metadata: the
+  // seed links them to the real catalog artist without writing sample copy
+  // onto that profile, so the profile's own fields win and the sample fills gaps.
+  const sample = fixtureArtistPresentation(campaign.metadata);
+  const artist = campaign.artist || sample
     ? {
-        imageUrl: campaign.artist.imageUrl ?? null,
-        summary: campaign.artist.summary ?? null,
-        socialLinks: campaign.artist.socialLinks ?? null,
+        imageUrl: campaign.artist?.imageUrl ?? sample?.imageUrl ?? null,
+        summary: campaign.artist?.summary ?? sample?.summary ?? null,
+        socialLinks: campaign.artist?.socialLinks ?? sample?.socialLinks ?? null,
       }
     : undefined;
 
@@ -3696,4 +3700,30 @@ function campaignTargetGeo(campaign: { city: string; country: string }): Analyti
 function countryCode(country: string) {
   const normalized = country.trim().toUpperCase();
   return /^[A-Z]{2}$/.test(normalized) ? normalized : undefined;
+}
+
+/** Sample-campaign "Meet the artist" fields, only from fixture-owned metadata. */
+function fixtureArtistPresentation(metadata: unknown): {
+  imageUrl: string | null;
+  summary: string | null;
+  socialLinks: Record<string, string> | null;
+} | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const record = metadata as { fixture?: unknown; artistPresentation?: unknown };
+  if (record.fixture !== true || !record.artistPresentation || typeof record.artistPresentation !== "object") {
+    return null;
+  }
+  const value = record.artistPresentation as Record<string, unknown>;
+  const text = (field: unknown) => (typeof field === "string" && field.trim() ? field : null);
+  const links = value.socialLinks && typeof value.socialLinks === "object" && !Array.isArray(value.socialLinks)
+    ? Object.fromEntries(
+        Object.entries(value.socialLinks as Record<string, unknown>)
+          .filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^https:\/\//.test(entry[1])),
+      )
+    : null;
+  return {
+    imageUrl: text(value.imageUrl),
+    summary: text(value.summary),
+    socialLinks: links && Object.keys(links).length > 0 ? links : null,
+  };
 }
