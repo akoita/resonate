@@ -919,6 +919,65 @@ from the JWT, never the request body.
     prompt-only isolation leaks, more roles, an audio-conditioned part
     provider, and a separate "AI part" line in Usage & Billing (debits use the
     existing `remix_draft` meter kind with reason `remix_part`).
+- Pro mode, S6a (#1903, the first slice of S6 in epic #1896). S6 is
+  **partial**: S6a ships the Pro switch, the entitlement seam and per-stem EQ
+  and pan; the remaining slices (S6b dynamics, S6c grid correction, S6d cue
+  and loop points with a DJ export, S6e automation lanes, S6f stem export and
+  mashups) are listed on #1903.
+  - **Money.** Vision-neutral today: Pro is free for everyone and has no
+    price. The entitlement seam (`remix.pro`,
+    `backend/src/modules/remix/remix-entitlements.ts`, policy
+    `remix-pro-policy/v1`, rule "everyone") is ready for ADR-BM-6 line (2),
+    but any price must land in `docs/rfc/business-model.md` first. ADR-BM-4
+    is unaffected.
+  - **Entitlement.** Every project response carries
+    `entitlements.pro = { allowed, reason, policyVersion }`; the studio shows
+    the Pro switch only when `allowed`. A PATCH `effects` that SETS a Pro
+    field (a new or changed value) is refused with 403 `pro_required` when
+    the policy denies it. Keeping or removing saved Pro values never needs
+    the entitlement, and saved Pro fields always render: an entitlement never
+    silently changes stored audio.
+  - **Recipe `remix-fx/v3`.** Per stem: `eqLow` / `eqMid` / `eqHigh` (dB,
+    −12..12, step 0.5) and `pan` (−1..1, step 0.01), omitted at 0. v1 and v2
+    recipes read and normalize to v3 with the same values. The server rejects
+    out-of-range or non-numeric values with 400 and rounds to the step; the
+    client clamps and rounds. The v1 mapping keeps `remix-fx-dsp/v1`; the new
+    mapping is `remix-fx-pro-dsp/v1`, recorded as
+    `renderMetadata.effectsProDspVersion` (and in the conditioning and
+    publish lineage) whenever the recipe carries a Pro field. Lineage stays
+    `stem_audio`: Pro effects are deterministic DSP, not AI.
+  - **DSP.** Audio EQ Cookbook biquads exactly as the Web Audio
+    BiquadFilterNode defines them: a low shelf at 200 Hz (S = 1), a peaking
+    band at 1 kHz (linear Q 0.7071) and a high shelf at 4 kHz (S = 1). Pan is
+    the StereoPannerNode equal-power law for a stereo input; mono stems are
+    up-mixed to stereo at unity first (preview: a 2-channel "speakers"
+    GainNode; render: an explicit `pan=stereo|c0=c0|c1=c0` after an ffprobe
+    channel probe of panned stems only). The render uses ffmpeg
+    `lowshelf`/`equalizer`/`highshelf` (`t=s:w=1` / `t=q:w=0.7071`) and a
+    `pan=stereo|c0=a*c0+b*c1|c1=c*c0+d*c1` matrix with '=' (no
+    renormalization). Chain per source stem, in both engines: (varispeed) →
+    gain → EQ low → mid → high → pan → section gate → tone → echo → sends;
+    each Pro stage is inserted only when non-default, so renders and previews
+    without Pro fields are byte-identical. AI layers, the beat and AI parts
+    get no Pro stages. `remix-fx-pro-v1.parity.json` pins the coefficients
+    (8 gains × 3 bands at 48 and 44.1 kHz) and the pan gains for both
+    engines within 1e-12; an ffmpeg test measures the render's magnitude at
+    50 Hz–12 kHz against the analytic response (within 0.1 dB; measured
+    ≤ 0.001 dB).
+  - **Preview.** EQ gains and pan update live ("applied"). A band or pan
+    turned on while playing needs a node that the running graph does not
+    have, so it asks the transport to restart once, like effects appearing
+    on a preview started without any.
+  - **UI.** A "Pro" switch in the Session header ("Show engineer tools:
+    per-stem EQ and pan"), off by default, remembered per device, never
+    changing the recipe. With Pro on, a stem's FX row adds a Pro strip: Low
+    200 Hz, Mid 1 kHz, High 4 kHz (dB readouts) and Pan ("L 30" / "C" /
+    "R 30"); double-click resets a slider to 0; edits autosave through the
+    effects PATCH. With Pro off, a stem with Pro settings shows a "Pro"
+    badge ("Pro EQ/pan active — turn on Pro to edit"). Vibes keep the Pro
+    fields; "No effects" removes them with every other effect (Key and Keep
+    original pitch stay); "Reset to original" clears everything. The User
+    Guide has a "Pro mode" section.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

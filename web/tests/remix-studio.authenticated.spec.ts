@@ -56,6 +56,14 @@ function mockProject(stems: MockStem[]) {
     exportPolicy: null,
     policyVersion: "2026-07-03.v6",
     publishedReleaseId: null,
+    // Pro mode (#1903): free for everyone, decided by the server.
+    entitlements: {
+      pro: {
+        allowed: true,
+        reason: "free_for_everyone",
+        policyVersion: "remix-pro-policy/v1",
+      },
+    },
     createdAt: "2026-09-20T00:00:00.000Z",
     updatedAt: "2026-09-20T00:00:00.000Z",
     source: {
@@ -790,7 +798,7 @@ test.describe("Remix Studio session view (#1879)", () => {
           patches.some((patch) => {
             const effects = effectsOf(patch);
             return (
-              effects?.schemaVersion === "remix-fx/v2" &&
+              effects?.schemaVersion === "remix-fx/v3" &&
               effects.master?.keepPitch === true &&
               effects.master?.semitones === 2
             );
@@ -860,6 +868,85 @@ test.describe("Remix Studio session view (#1879)", () => {
       .toBe(true);
     await expect(keep).toHaveAttribute("aria-checked", "false");
     await expect(key.getByText("Original key")).toBeVisible();
+    expect(pageErrors).toEqual([]);
+  });
+
+  test("pro mode: per-stem EQ and pan autosave a remix-fx/v3 recipe; a badge shows them with Pro off (#1903)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+    const badge = page.getByTitle("Pro EQ/pan active — turn on Pro to edit");
+    await expect(badge).toHaveCount(0);
+
+    // The Pro switch is off by default and offered by the server.
+    const pro = page.getByRole("switch", { name: /^Pro/ });
+    await expect(pro).toHaveAttribute("aria-checked", "false");
+    await pro.click();
+    await expect(pro).toHaveAttribute("aria-checked", "true");
+
+    // Bass: EQ Low +3 dB and pan L 30 in the FX row's Pro strip.
+    await page.getByRole("button", { name: /^Effects for Bass/ }).click();
+    const strip = page.getByRole("group", { name: "Bass Pro channel strip" });
+    await expect(strip).toBeVisible();
+    const low = strip.getByRole("slider", { name: "Bass EQ Low 200 Hz" });
+    const pan = strip.getByRole("slider", { name: "Bass pan" });
+    await low.fill("3");
+    await pan.fill("-0.3");
+    await expect(low).toHaveAttribute("aria-valuetext", "+3 dB");
+    await expect(pan).toHaveAttribute("aria-valuetext", "L 30");
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const effects = patch.effects as
+              | {
+                  schemaVersion?: string;
+                  stems?: Record<string, { eqLow?: number; pan?: number }>;
+                }
+              | null
+              | undefined;
+            return (
+              effects?.schemaVersion === "remix-fx/v3" &&
+              effects.stems?.["stem-bass"]?.eqLow === 3 &&
+              effects.stems?.["stem-bass"]?.pan === -0.3
+            );
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+
+    // The Pro nodes play through the real WebAudio preview.
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-pro.png"),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // Pro off: the settings stay, flagged by a badge on the Bass lane.
+    await pro.click();
+    await expect(pro).toHaveAttribute("aria-checked", "false");
+    await expect(strip).toHaveCount(0);
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toBeVisible();
+
+    // The switch is remembered on this device; the badge survives a reload.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+    await expect(page.getByRole("switch", { name: /^Pro/ })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await expect(badge).toBeVisible();
     expect(pageErrors).toEqual([]);
   });
 

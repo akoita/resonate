@@ -23,10 +23,16 @@ import {
 } from "../../lib/remixParts";
 import {
   formatFxAmount,
+  formatFxEqGain,
+  formatFxPan,
   formatFxTone,
+  REMIX_FX_STEM_PRO_RANGES,
   REMIX_FX_STEM_RANGES,
+  stemFxHasPro,
   type RemixFxStem,
+  type RemixFxStemPro,
 } from "../../lib/remixFx";
+import { PRO_BADGE_LABEL } from "../../lib/remixProMode";
 import {
   isIdentityTimeline,
   moveBlock,
@@ -68,6 +74,8 @@ export type LaneStem = {
   peaks: number[] | null;
   /** Per-stem effects (#1897); absent = defaults. */
   fx?: RemixFxStem;
+  /** Per-stem Pro EQ and pan (#1903); absent = defaults. */
+  pro?: RemixFxStemPro;
 };
 
 /** The beat lane (#1902): shown under the stems only when a beat exists. */
@@ -138,6 +146,13 @@ export type RemixSessionLanesProps = {
   onLoopSection(index: number | null): void;
   /** Per-stem effects edits (#1897); absent = no FX toggle. */
   onFxChange?(stemId: string, key: keyof RemixFxStem, value: number): void;
+  /**
+   * Pro mode (#1903): the FX row adds the Pro channel strip (EQ, pan).
+   * Off: a stem with saved Pro settings shows a "Pro" badge instead.
+   */
+  proMode?: boolean;
+  /** Pro EQ/pan edits (#1903); needed for the Pro channel strip. */
+  onProChange?(stemId: string, key: keyof RemixFxStemPro, value: number): void;
   /**
    * Structure timeline (#1899): the columns are its blocks, sized by their
    * timeline duration. Absent/null = the grid's sections in order.
@@ -554,6 +569,8 @@ export function RemixSessionLanes({
   onSeek,
   onLoopSection,
   onFxChange,
+  proMode = false,
+  onProChange,
   timeline,
   structureState,
   onBlockAction,
@@ -1002,7 +1019,8 @@ export function RemixSessionLanes({
         {stems.map((stem, stemIndex) => {
           const dimmed = stem.muted || stem.soloedOut;
           const fxOpen = onFxChange !== undefined && openFx.has(stem.stemId);
-          const fxActive = laneHasFx(stem.fx);
+          const proActive = stemFxHasPro(stem.pro);
+          const fxActive = laneHasFx(stem.fx) || (proMode && proActive);
           const fxRowId = `${fxIdPrefix}-fx-${stemIndex}`;
           const gainDb = stem.gainDb ?? 0;
           const mask = grid ? sectionMask(stem.sections, blockCount) : [];
@@ -1056,6 +1074,16 @@ export function RemixSessionLanes({
                         />
                       )}
                     </button>
+                  )}
+                  {!proMode && proActive && (
+                    // Saved Pro settings stay audible with Pro off: say so.
+                    <span
+                      title={PRO_BADGE_LABEL}
+                      className="shrink-0 rounded border border-amber-400/50 bg-amber-500/15 px-1 text-[10px] font-semibold text-amber-200 remix-lane-pro-badge"
+                    >
+                      Pro
+                      <span className="sr-only"> — {PRO_BADGE_LABEL}</span>
+                    </span>
                   )}
                   {grid && (
                     <>
@@ -1145,6 +1173,7 @@ export function RemixSessionLanes({
                     stem={stem}
                     disabled={disabled}
                     onFxChange={onFxChange}
+                    onProChange={proMode ? onProChange : undefined}
                   />
                 )}
               </div>
@@ -1768,11 +1797,14 @@ export function LaneFxRow({
   stem,
   disabled,
   onFxChange,
+  onProChange,
 }: {
   id: string;
-  stem: Pick<LaneStem, "stemId" | "name" | "fx">;
+  stem: Pick<LaneStem, "stemId" | "name" | "fx" | "pro">;
   disabled: boolean;
   onFxChange(stemId: string, key: keyof RemixFxStem, value: number): void;
+  /** Pro mode on (#1903): adds the Pro channel strip. */
+  onProChange?(stemId: string, key: keyof RemixFxStemPro, value: number): void;
 }) {
   return (
     <div
@@ -1811,6 +1843,89 @@ export function LaneFxRow({
             />
             <span className="w-12 shrink-0 truncate text-right text-[10px] tabular-nums text-zinc-300">
               {control.short(value)}
+            </span>
+          </div>
+        );
+      })}
+      {onProChange && (
+        <LaneProStrip stem={stem} disabled={disabled} onProChange={onProChange} />
+      )}
+    </div>
+  );
+}
+
+type LaneProControl = {
+  key: keyof RemixFxStemPro;
+  label: string;
+  /** Accessible name suffix after the stem name. */
+  name: string;
+  format(value: number): string;
+};
+
+/** Pro channel strip controls (#1903), in chain order. */
+export const LANE_PRO_CONTROLS: readonly LaneProControl[] = [
+  { key: "eqLow", label: "Low 200 Hz", name: "EQ Low 200 Hz", format: formatFxEqGain },
+  { key: "eqMid", label: "Mid 1 kHz", name: "EQ Mid 1 kHz", format: formatFxEqGain },
+  { key: "eqHigh", label: "High 4 kHz", name: "EQ High 4 kHz", format: formatFxEqGain },
+  { key: "pan", label: "Pan", name: "pan", format: formatFxPan },
+];
+
+/**
+ * The compact Pro channel strip (#1903 S6a) inside a lane's FX row: a 3-band
+ * EQ (dB readouts) and a pan slider ("L 30" / "C" / "R 30"). Double-click a
+ * slider to reset it to 0; edits autosave like the other effects.
+ */
+export function LaneProStrip({
+  stem,
+  disabled,
+  onProChange,
+}: {
+  stem: Pick<LaneStem, "stemId" | "name" | "pro">;
+  disabled: boolean;
+  onProChange(stemId: string, key: keyof RemixFxStemPro, value: number): void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={`${stem.name} Pro channel strip`}
+      className="mt-1 flex flex-col gap-1 border-t border-purple-500/30 pt-1 remix-lane-pro"
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-purple-300">
+        Pro
+      </span>
+      {LANE_PRO_CONTROLS.map((control) => {
+        const range = REMIX_FX_STEM_PRO_RANGES[control.key];
+        const value = stem.pro?.[control.key] ?? range.default;
+        return (
+          <div
+            key={control.key}
+            className={`flex items-center gap-1.5 remix-lane-pro-${control.key}`}
+          >
+            <span className="w-16 shrink-0 whitespace-nowrap text-[10px] text-zinc-400">
+              {control.label}
+            </span>
+            <input
+              type="range"
+              min={range.min}
+              max={range.max}
+              step={range.step}
+              value={value}
+              disabled={disabled}
+              title="Double-click to reset"
+              aria-label={`${stem.name} ${control.name}`}
+              aria-valuetext={control.format(value)}
+              className="h-1 min-w-0 flex-1 cursor-pointer accent-purple-400 disabled:cursor-not-allowed disabled:opacity-50"
+              onChange={(event) =>
+                onProChange(stem.stemId, control.key, parseFloat(event.target.value))
+              }
+              onDoubleClick={() => {
+                if (!disabled && value !== range.default) {
+                  onProChange(stem.stemId, control.key, range.default);
+                }
+              }}
+            />
+            <span className="w-12 shrink-0 truncate text-right text-[10px] tabular-nums text-zinc-300">
+              {control.format(value)}
             </span>
           </div>
         );

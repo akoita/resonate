@@ -1,5 +1,5 @@
 /**
- * Remix Studio effects recipe `remix-fx/v2` (#1897, #1898): the pure math
+ * Remix Studio effects recipe `remix-fx/v3` (#1897, #1898, #1903): the pure math
  * shared by the WebAudio preview and (mirrored in the backend) the ffmpeg
  * render.
  *
@@ -12,16 +12,32 @@
  *
  * v2 (#1898) adds `master.keepPitch` (the speed becomes a time-stretch that
  * keeps the pitch) and `master.semitones` (an integer key shift −6..6), run by
- * the Signalsmith Stretch engine (`remixStretch.ts`). v1 recipes still read
- * and normalize to v2 with the same values.
+ * the Signalsmith Stretch engine (`remixStretch.ts`).
+ *
+ * v3 (#1903 S6a, Pro mode) adds per-stem `eqLow` / `eqMid` / `eqHigh` (a
+ * 3-band EQ in dB, −12..12 step 0.5) and `pan` (−1..1 step 0.01). Their
+ * mapping (`remix-fx-pro-dsp/v1`) is pinned by
+ * `backend/src/modules/remix/remix-fx-pro-v1.parity.json` (within 1e-12).
+ * v1 and v2 recipes still read and normalize to v3 with the same values.
  */
 
-export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v2" as const;
-/** The pre-#1898 recipe version: still read, normalized to v2. */
+export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v3" as const;
+/** The pre-#1903 recipe version: still read, normalized to v3. */
+export const REMIX_FX_V2_SCHEMA_VERSION = "remix-fx/v2" as const;
+/** The pre-#1898 recipe version: still read, normalized to v3. */
 export const REMIX_FX_V1_SCHEMA_VERSION = "remix-fx/v1" as const;
 export type RemixFxSchemaVersion =
   | typeof REMIX_FX_SCHEMA_VERSION
+  | typeof REMIX_FX_V2_SCHEMA_VERSION
   | typeof REMIX_FX_V1_SCHEMA_VERSION;
+/** The Pro EQ/pan mapping version (mirrors the backend). */
+export const REMIX_FX_PRO_DSP_VERSION = "remix-fx-pro-dsp/v1" as const;
+
+const READABLE_SCHEMA_VERSIONS: readonly unknown[] = [
+  REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V2_SCHEMA_VERSION,
+  REMIX_FX_V1_SCHEMA_VERSION,
+];
 
 /** Key shift range: whole semitones. */
 export const REMIX_FX_SEMITONES_RANGE = { min: -6, max: 6, default: 0 } as const;
@@ -58,12 +74,27 @@ export type RemixFxMasterPitch = {
   semitones?: number;
 };
 
+/**
+ * v3 Pro fields of a stem (#1903 S6a): kept apart from {@link RemixFxStem}
+ * so `keyof RemixFxStem` stays the FX row's sliders.
+ */
+export type RemixFxStemPro = {
+  /** Low shelf (200 Hz) gain in dB, −12..12 step 0.5, default 0. */
+  eqLow?: number;
+  /** Peaking (1 kHz) gain in dB, −12..12 step 0.5, default 0. */
+  eqMid?: number;
+  /** High shelf (4 kHz) gain in dB, −12..12 step 0.5, default 0. */
+  eqHigh?: number;
+  /** Stereo pan −1 (left) .. 1 (right), step 0.01, default 0. */
+  pan?: number;
+};
+
 export type RemixFxRecipe = {
-  /** Normalized recipes are always v2; v1 types stored/legacy shapes. */
+  /** Normalized recipes are always v3; v1/v2 type stored/legacy shapes. */
   schemaVersion: RemixFxSchemaVersion;
   master?: RemixFxMaster & RemixFxMasterPitch;
   /** Keyed by project stem id. */
-  stems?: Record<string, RemixFxStem>;
+  stems?: Record<string, RemixFxStem & RemixFxStemPro>;
 };
 
 type Range = { min: number; max: number; default: number };
@@ -81,8 +112,20 @@ export const REMIX_FX_STEM_RANGES: Record<keyof RemixFxStem, Range> = {
   tone: { min: -1, max: 1, default: 0 },
 };
 
+type SteppedRange = Range & { step: number };
+
+/** The Pro field ranges (#1903); the client clamps and rounds to the step. */
+export const REMIX_FX_STEM_PRO_RANGES: Record<keyof RemixFxStemPro, SteppedRange> = {
+  eqLow: { min: -12, max: 12, default: 0, step: 0.5 },
+  eqMid: { min: -12, max: 12, default: 0, step: 0.5 },
+  eqHigh: { min: -12, max: 12, default: 0, step: 0.5 },
+  pan: { min: -1, max: 1, default: 0, step: 0.01 },
+};
+
 const MASTER_KEYS = ["speed", "space", "tone", "warmth"] as const;
 const STEM_KEYS = ["space", "echo", "tone"] as const;
+/** The Pro fields in chain order: EQ low → mid → high → pan. */
+export const REMIX_FX_STEM_PRO_KEYS = ["eqLow", "eqMid", "eqHigh", "pan"] as const;
 
 /** Round to 2 decimals; -0 becomes 0. */
 function round2(value: number): number {
@@ -117,6 +160,28 @@ function normalizeGroup<K extends string>(
 }
 
 /**
+ * The Pro fields of one stem (#1903): clamped, rounded to the step (EQ
+ * 0.5 dB, pan 0.01), omitted at 0; null when none is left.
+ */
+function normalizeStemPro(raw: unknown): RemixFxStemPro | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const pro: RemixFxStemPro = {};
+  for (const key of REMIX_FX_STEM_PRO_KEYS) {
+    const value = source[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    const range = REMIX_FX_STEM_PRO_RANGES[key];
+    const clamped = Math.min(range.max, Math.max(range.min, value));
+    const rounded =
+      range.step === 0.01
+        ? round2(clamped)
+        : Math.round(clamped / range.step) * range.step;
+    if (rounded !== 0) pro[key] = rounded;
+  }
+  return Object.keys(pro).length > 0 ? pro : null;
+}
+
+/**
  * The v2 pitch fields, clamped like the levels: keepPitch only when exactly
  * `true`; semitones rounded to a whole number and clamped to −6..6, omitted
  * at 0; anything else is dropped.
@@ -136,7 +201,7 @@ function normalizePitch(raw: unknown): RemixFxMasterPitch | null {
 }
 
 /**
- * Normalize any stored or edited recipe (v1 or v2; always returns v2). The
+ * Normalize any stored or edited recipe (v1, v2 or v3; always returns v3). The
  * client clamps instead of rejecting (the backend rejects out-of-range
  * input); for valid input the output equals the backend normalization. A
  * recipe of another schema version normalizes to null. `projectStemIds`,
@@ -156,8 +221,7 @@ export function normalizeRemixFx(
   // Another recipe version is not ours to reinterpret (mirrors the backend).
   if (
     raw.schemaVersion !== undefined &&
-    raw.schemaVersion !== REMIX_FX_SCHEMA_VERSION &&
-    raw.schemaVersion !== REMIX_FX_V1_SCHEMA_VERSION
+    !READABLE_SCHEMA_VERSIONS.includes(raw.schemaVersion)
   ) {
     return null;
   }
@@ -166,7 +230,7 @@ export function normalizeRemixFx(
   const pitch = normalizePitch(raw.master);
   const master =
     levels || pitch ? { ...(levels ?? {}), ...(pitch ?? {}) } : null;
-  const stems: Record<string, RemixFxStem> = {};
+  const stems: Record<string, RemixFxStem & RemixFxStemPro> = {};
   if (raw.stems && typeof raw.stems === "object" && !Array.isArray(raw.stems)) {
     const entries = Object.entries(raw.stems as Record<string, unknown>).sort(
       ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
@@ -174,7 +238,8 @@ export function normalizeRemixFx(
     for (const [stemId, stemFx] of entries) {
       if (allowed && !allowed.has(stemId)) continue;
       const group = normalizeGroup(stemFx, STEM_KEYS, REMIX_FX_STEM_RANGES);
-      if (group) stems[stemId] = group;
+      const pro = normalizeStemPro(stemFx);
+      if (group || pro) stems[stemId] = { ...(group ?? {}), ...(pro ?? {}) };
     }
   }
   const hasStems = Object.keys(stems).length > 0;
@@ -276,7 +341,58 @@ export function remixFxStem(
   };
 }
 
-/** Whether a stem has any non-default fx. */
+/** Effective Pro values of a stem (#1903; defaults filled in). */
+export function remixFxStemPro(
+  recipe: RemixFxRecipe | null | undefined,
+  stemId: string,
+): Required<RemixFxStemPro> {
+  const stem = recipe?.stems?.[stemId] ?? {};
+  return {
+    eqLow: stem.eqLow ?? 0,
+    eqMid: stem.eqMid ?? 0,
+    eqHigh: stem.eqHigh ?? 0,
+    pan: stem.pan ?? 0,
+  };
+}
+
+/** Whether a stem entry carries any Pro field (#1903). */
+export function stemFxHasPro(stem: RemixFxStemPro | null | undefined): boolean {
+  if (!stem) return false;
+  return REMIX_FX_STEM_PRO_KEYS.some(
+    (key) => stem[key] !== undefined && stem[key] !== 0,
+  );
+}
+
+/** Whether a recipe's stem carries any Pro field (#1903). */
+export function stemHasPro(
+  recipe: RemixFxRecipe | null | undefined,
+  stemId: string,
+): boolean {
+  return stemFxHasPro(recipe?.stems?.[stemId]);
+}
+
+/** Whether any stem of a recipe carries a Pro field (#1903). */
+export function remixFxHasPro(recipe: RemixFxRecipe | null | undefined): boolean {
+  return Object.values(recipe?.stems ?? {}).some(stemFxHasPro);
+}
+
+/** Set one Pro value of a stem (#1903); returns the normalized recipe. */
+export function withStemProFx(
+  recipe: RemixFxRecipe | null,
+  stemId: string,
+  key: keyof RemixFxStemPro,
+  value: number,
+): RemixFxRecipe | null {
+  return normalizeRemixFx({
+    ...recipe,
+    stems: {
+      ...recipe?.stems,
+      [stemId]: { ...recipe?.stems?.[stemId], [key]: value },
+    },
+  });
+}
+
+/** Whether a stem has any non-default fx (Pro fields included). */
 export function stemHasFx(
   recipe: RemixFxRecipe | null | undefined,
   stemId: string,
@@ -357,6 +473,129 @@ export function toneFilter(tone: number): RemixToneFilter | null {
  */
 export function biquadQDb(linearQ: number): number {
   return 20 * Math.log10(linearQ);
+}
+
+// ---------------------------------------------------------------------------
+// Pro: per-stem 3-band EQ and pan (#1903 S6a, remix-fx-pro-dsp/v1). The
+// preview builds BiquadFilterNodes / a StereoPannerNode; the render builds the
+// ffmpeg filters computing the same transfer functions.
+
+export type RemixEqBandId = "low" | "mid" | "high";
+
+export type RemixEqBand = {
+  key: "eqLow" | "eqMid" | "eqHigh";
+  type: "lowshelf" | "peaking" | "highshelf";
+  frequencyHz: number;
+  /** Shelf slope S (shelves; WebAudio fixes S = 1 and ignores Q). */
+  slope?: number;
+  /** Linear Q (peaking; WebAudio's peaking Q is linear, unlike lowpass). */
+  q?: number;
+};
+
+export const REMIX_FX_EQ_BANDS: Readonly<Record<RemixEqBandId, RemixEqBand>> = {
+  low: { key: "eqLow", type: "lowshelf", frequencyHz: 200, slope: 1 },
+  mid: { key: "eqMid", type: "peaking", frequencyHz: 1000, q: 0.7071 },
+  high: { key: "eqHigh", type: "highshelf", frequencyHz: 4000, slope: 1 },
+};
+
+export const REMIX_FX_EQ_BAND_ORDER: readonly RemixEqBandId[] = ["low", "mid", "high"];
+
+export type RemixBiquadCoefficients = {
+  b0: number;
+  b1: number;
+  b2: number;
+  a1: number;
+  a2: number;
+};
+
+/**
+ * Audio EQ Cookbook coefficients normalized by a0, exactly as the Web Audio
+ * spec defines BiquadFilterNode (A = 10^(G/40), ω0 = 2π·f0/Fs; shelves
+ * α = sin ω0/2·√((A + 1/A)(1/S − 1) + 2) with S = 1; peaking α = sin ω0/(2Q)).
+ */
+export function eqBiquadCoefficients(
+  bandId: RemixEqBandId,
+  gainDb: number,
+  sampleRate: number,
+): RemixBiquadCoefficients {
+  const band = REMIX_FX_EQ_BANDS[bandId];
+  const A = Math.pow(10, gainDb / 40);
+  const w0 = (2 * Math.PI * band.frequencyHz) / sampleRate;
+  const cos = Math.cos(w0);
+  const sin = Math.sin(w0);
+  let b0: number;
+  let b1: number;
+  let b2: number;
+  let a0: number;
+  let a1: number;
+  let a2: number;
+  if (band.type === "peaking") {
+    const alpha = sin / (2 * (band.q ?? 1));
+    b0 = 1 + alpha * A;
+    b1 = -2 * cos;
+    b2 = 1 - alpha * A;
+    a0 = 1 + alpha / A;
+    a1 = -2 * cos;
+    a2 = 1 - alpha / A;
+  } else {
+    const S = band.slope ?? 1;
+    const alpha = (sin / 2) * Math.sqrt((A + 1 / A) * (1 / S - 1) + 2);
+    const k = 2 * Math.sqrt(A) * alpha;
+    if (band.type === "lowshelf") {
+      b0 = A * (A + 1 - (A - 1) * cos + k);
+      b1 = 2 * A * (A - 1 - (A + 1) * cos);
+      b2 = A * (A + 1 - (A - 1) * cos - k);
+      a0 = A + 1 + (A - 1) * cos + k;
+      a1 = -2 * (A - 1 + (A + 1) * cos);
+      a2 = A + 1 + (A - 1) * cos - k;
+    } else {
+      b0 = A * (A + 1 + (A - 1) * cos + k);
+      b1 = -2 * A * (A - 1 + (A + 1) * cos);
+      b2 = A * (A + 1 + (A - 1) * cos - k);
+      a0 = A + 1 - (A - 1) * cos + k;
+      a1 = 2 * (A - 1 - (A + 1) * cos);
+      a2 = A + 1 - (A - 1) * cos - k;
+    }
+  }
+  return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 };
+}
+
+/** The stem's EQ stages in chain order; a 0 dB band inserts nothing. */
+export function stemEqStages(
+  stem: RemixFxStemPro | null | undefined,
+): Array<{ band: RemixEqBandId; gainDb: number }> {
+  const stages: Array<{ band: RemixEqBandId; gainDb: number }> = [];
+  for (const band of REMIX_FX_EQ_BAND_ORDER) {
+    const gainDb = stem?.[REMIX_FX_EQ_BANDS[band].key] ?? 0;
+    if (Number.isFinite(gainDb) && gainDb !== 0) stages.push({ band, gainDb });
+  }
+  return stages;
+}
+
+export type RemixPanGains = {
+  x: number;
+  gL: number;
+  gR: number;
+  /** L' = ll·L + lr·R; R' = rl·L + rr·R. */
+  matrix: { ll: number; lr: number; rl: number; rr: number };
+};
+
+/**
+ * StereoPannerNode's equal-power law for a STEREO input (the preview
+ * up-mixes mono stems to stereo first): x = pan ≤ 0 ? pan + 1 : pan,
+ * gL = cos(x·π/2), gR = sin(x·π/2); pan ≤ 0: L' = L + R·gL, R' = R·gR;
+ * pan > 0: L' = L·gL, R' = R + L·gR. Null at 0 or out of range.
+ */
+export function panGains(pan: number): RemixPanGains | null {
+  if (!Number.isFinite(pan) || pan === 0 || pan < -1 || pan > 1) return null;
+  const x = pan <= 0 ? pan + 1 : pan;
+  const gL = Math.cos((x * Math.PI) / 2);
+  const gR = Math.sin((x * Math.PI) / 2);
+  const matrix =
+    pan <= 0
+      ? { ll: 1, lr: gL, rl: 0, rr: gR }
+      : { ll: gL, lr: 0, rl: gR, rr: 1 };
+  return { x, gL, gR, matrix };
 }
 
 export type RemixEchoTap = { delaySec: number; gain: number };
@@ -538,7 +777,8 @@ export const REMIX_VIBES: readonly RemixVibe[] = [
     // untouched full mix); this one removes every effect from the remix.
     id: "none",
     label: "No effects",
-    description: "Remove every effect (your Key and Keep original pitch settings stay).",
+    description:
+      "Remove every effect, Pro EQ and pan included (your Key and Keep original pitch settings stay).",
     master: null,
   },
 ];
@@ -555,7 +795,9 @@ function pitchFields(recipe: RemixFxRecipe | null | undefined): RemixFxMasterPit
 /**
  * Apply a vibe: replaces the master controls and sets only the vibe's
  * per-stem entries (merged into those stems' fx); other stems keep their fx.
- * "No effects" clears every effect. Either way the tempo/key choices (Keep
+ * "No effects" clears every effect, the Pro EQ and pan included (#1903):
+ * they are effects. Other vibes keep every stem's Pro fields. Either way the
+ * tempo/key choices (Keep
  * original pitch, Key; #1898) are kept: a vibe is a sound, not a key, so
  * "No effects" leaves a pitch-only recipe (or null without one).
  */
@@ -570,7 +812,9 @@ export function applyVibe(
   if (vibe.master === null) {
     return normalizeRemixFx({ schemaVersion: REMIX_FX_SCHEMA_VERSION, master: pitch });
   }
-  const nextStems: Record<string, RemixFxStem> = { ...current?.stems };
+  const nextStems: Record<string, RemixFxStem & RemixFxStemPro> = {
+    ...current?.stems,
+  };
   if (vibe.stemsByType) {
     const types = new Set(vibe.stemsByType.types);
     for (const stem of stems) {
@@ -640,6 +884,21 @@ export function formatFxKey(semitones: number): string {
   return semitones > 0
     ? `+${semitones} (higher)`
     : `\u2212${Math.abs(semitones)} (lower)`;
+}
+
+/** EQ gain as "0 dB", "+3 dB" or "−4.5 dB" (a real minus sign). */
+export function formatFxEqGain(gainDb: number): string {
+  if (gainDb === 0) return "0 dB";
+  const magnitude = Math.abs(gainDb);
+  const text = Number.isInteger(magnitude) ? String(magnitude) : magnitude.toFixed(1);
+  return `${gainDb > 0 ? "+" : "\u2212"}${text} dB`;
+}
+
+/** Pan as "C", "L 30" or "R 30". */
+export function formatFxPan(pan: number): string {
+  const amount = Math.round(Math.abs(pan) * 100);
+  if (amount === 0) return "C";
+  return `${pan < 0 ? "L" : "R"} ${amount}`;
 }
 
 /** Tone as "Neutral", "Darker 25%" or "Brighter 40%". */

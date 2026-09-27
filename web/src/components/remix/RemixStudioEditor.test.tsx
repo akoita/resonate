@@ -60,6 +60,7 @@ import {
   originalEdits,
   RESET_ORIGINAL_CONFIRM_MESSAGE,
   RESET_ORIGINAL_CONFIRM_TITLE,
+  ProModeSwitch,
 } from "./RemixStudioEditor";
 import type { RemixEligibilityResponse } from "../../lib/api";
 import {
@@ -67,6 +68,7 @@ import {
   REMIX_FX_SCHEMA_VERSION,
   withRemixFxPitch,
   withStemFx,
+  withStemProFx,
 } from "../../lib/remixFx";
 import {
   dbToLinearGain,
@@ -2775,14 +2777,14 @@ describe("tempo & key in the studio (#1898)", () => {
     expect(html).not.toContain("Preparing tempo");
   });
 
-  it("autosaves the pitch fields as a remix-fx/v2 recipe", () => {
+  it("autosaves the pitch fields as a remix-fx/v3 recipe", () => {
     const p = project();
     const edits = {
       ...initialEdits(p),
       effects: withRemixFxPitch(null, { keepPitch: true, semitones: 2 }),
     };
     expect(buildProjectPatch(p, edits).effects).toEqual({
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { keepPitch: true, semitones: 2 },
     });
   });
@@ -3076,5 +3078,63 @@ describe("AI part lanes in the editor (#1901)", () => {
     // The experimental disclosure opens with the saved intent selected.
     expect(html).toMatch(/aria-expanded="true"[^>]*remix-experimental-toggle/);
     expect(html).toMatch(/<input[^>]*checked=""[^>]*value="replace_stem"/);
+  });
+});
+
+describe("Pro mode (#1903 S6a)", () => {
+  const allowed = {
+    pro: { allowed: true, reason: "free_for_everyone", policyVersion: "remix-pro-policy/v1" },
+  };
+
+  it("offers the Pro switch, off by default, only when the server allows it", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ entitlements: allowed })} />,
+    );
+    expect(html).toMatch(/role="switch" aria-checked="false" title="Show engineer tools: per-stem EQ and pan"[^>]*remix-pro-switch/);
+    // Not offered: absent or denied entitlements (never hard-coded).
+    expect(renderToStaticMarkup(<RemixStudioEditor project={project()} />)).not.toContain(
+      "remix-pro-switch",
+    );
+    expect(
+      renderToStaticMarkup(
+        <RemixStudioEditor
+          project={project({
+            entitlements: {
+              pro: { allowed: false, reason: "not_subscribed", policyVersion: "x" },
+            },
+          })}
+        />,
+      ),
+    ).not.toContain("remix-pro-switch");
+  });
+
+  it("shows saved Pro settings as a lane badge while the switch is off", () => {
+    const p = project({
+      entitlements: allowed,
+      effects: {
+        schemaVersion: REMIX_FX_SCHEMA_VERSION,
+        stems: { [project().stems[0].stemId]: { eqLow: 3 } },
+      },
+    });
+    const html = renderToStaticMarkup(<RemixStudioEditor project={p} />);
+    expect(html).toContain("remix-lane-pro-badge");
+    expect(html).not.toContain("Pro channel strip");
+  });
+
+  it("renders the switch state", () => {
+    const on = renderToStaticMarkup(<ProModeSwitch on onToggle={() => undefined} />);
+    expect(on).toContain('aria-checked="true"');
+    expect(on).toContain(">Pro<");
+  });
+
+  it("autosaves Pro EQ and pan through the effects PATCH as remix-fx/v3", () => {
+    const p = project();
+    const stemId = p.stems[0].stemId;
+    const effects = withStemProFx(withStemProFx(null, stemId, "eqLow", 3), stemId, "pan", -0.3);
+    const edits = { ...initialEdits(p), effects };
+    expect(buildProjectPatch(p, edits).effects).toEqual({
+      schemaVersion: "remix-fx/v3",
+      stems: { [stemId]: { eqLow: 3, pan: -0.3 } },
+    });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Shared effects recipe remix-fx/v2 (#1897, #1898) — Integration Test (Testcontainers)
+ * Shared effects recipe remix-fx/v3 (#1897, #1898, #1903) — Integration Test (Testcontainers)
  *
  * Against real Postgres: PATCH persists/normalizes/clears/keeps the recipe and
  * rejects invalid payloads with 400 before any write; reads return it; renders
@@ -10,7 +10,7 @@
  * Run: npm run test:integration
  */
 
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
@@ -18,7 +18,23 @@ import {
   RemixProjectService,
   type RemixGenerationJobData,
 } from "../modules/remix/remix-project.service";
+import {
+  REMIX_PRO_POLICY,
+  RemixEntitlementsService,
+  type RemixEntitlementDecision,
+} from "../modules/remix/remix-entitlements";
 import { stubGenerationCredits } from "./e2e-helpers";
+
+/** A future paid policy that denies Pro (the seam's contract, #1903). */
+class DenyingEntitlements extends RemixEntitlementsService {
+  async pro(): Promise<RemixEntitlementDecision> {
+    return {
+      allowed: false,
+      reason: "not_subscribed",
+      policyVersion: "remix-pro-policy/test-deny",
+    };
+  }
+}
 
 const TEST_PREFIX = `remixfx_${Date.now()}_`;
 const OWNER_ID = `${TEST_PREFIX}owner`;
@@ -226,7 +242,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       },
     });
     const normalized = {
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { speed: 0.85, space: 0.45 },
       stems: { [VOCALS_STEM_ID]: { echo: 0.33 } },
     };
@@ -271,6 +287,157 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
     expect(await storedEffects(created.id)).toBeNull();
   });
 
+  describe("Pro EQ and pan (#1903 S6a)", () => {
+    function serviceWith(entitlements: RemixEntitlementsService) {
+      return new RemixProjectService(
+        eventBus,
+        new RemixEligibilityService(),
+        layerProvider as never,
+        stemMixRenderer as never,
+        storageProvider as never,
+        generationQueue as never,
+        stubGenerationCredits() as never,
+        layeredRenderer as never,
+        undefined,
+        entitlements,
+      );
+    }
+    const FREE = {
+      allowed: true,
+      reason: "free_for_everyone",
+      policyVersion: REMIX_PRO_POLICY.version,
+    };
+
+    it("exposes the free-for-everyone entitlement on every project response", async () => {
+      const created = await createProject("Pro DTO");
+      expect(created.entitlements).toEqual({ pro: FREE });
+      expect(
+        (await projectService.getProject(OWNER_ID, created.id)).entitlements,
+      ).toEqual({ pro: FREE });
+      const listed = await projectService.listProjects(OWNER_ID);
+      expect(
+        listed.find((project) => project.id === created.id)?.entitlements,
+      ).toEqual({ pro: FREE });
+      const updated = await projectService.updateProject(OWNER_ID, created.id, {
+        title: "Pro DTO renamed",
+      });
+      expect(updated.entitlements).toEqual({ pro: FREE });
+    });
+
+    it("PATCH persists Pro fields as v3 and renders them as stem audio", async () => {
+      const created = await createProject("Pro persist");
+      const saved = await projectService.updateProject(OWNER_ID, created.id, {
+        effects: {
+          schemaVersion: "remix-fx/v3",
+          stems: {
+            [VOCALS_STEM_ID]: { eqLow: 3.2, eqHigh: -1.5, pan: -0.304 },
+            [DRUMS_STEM_ID]: { eqMid: 0, pan: 0 },
+          },
+        },
+      });
+      const normalized = {
+        schemaVersion: "remix-fx/v3",
+        stems: { [VOCALS_STEM_ID]: { eqLow: 3, eqHigh: -1.5, pan: -0.3 } },
+      };
+      expect(saved.effects).toEqual(normalized);
+      expect(await storedEffects(created.id)).toEqual(normalized);
+
+      await projectService.generateDraft(OWNER_ID, created.id, {});
+      await processQueued();
+      const renderInput = stemMixRenderer.render.mock.calls.at(-1)?.[0];
+      expect(renderInput.fx).toEqual({ effects: normalized, bpm: 120 });
+      // Pro effects are deterministic DSP, not AI.
+      const completed = await projectService.getProject(OWNER_ID, created.id);
+      expect(completed.generationMetadata).toEqual(
+        expect.objectContaining({ status: "completed", grounding: "stem_audio" }),
+      );
+    });
+
+    it("PATCH rejects out-of-range Pro values with 400", async () => {
+      const created = await createProject("Pro invalid");
+      for (const stemFx of [{ eqLow: 13 }, { eqMid: "2" }, { pan: -1.5 }]) {
+        await expect(
+          projectService.updateProject(OWNER_ID, created.id, {
+            effects: { stems: { [VOCALS_STEM_ID]: stemFx } },
+          }),
+        ).rejects.toThrow(BadRequestException);
+      }
+      expect(await storedEffects(created.id)).toBeNull();
+    });
+
+    it("a denying policy refuses to SET Pro fields with 403 pro_required and writes nothing", async () => {
+      const created = await createProject("Pro denied");
+      const denied = serviceWith(new DenyingEntitlements());
+      const attempt = denied.updateProject(OWNER_ID, created.id, {
+        title: "should not persist",
+        effects: { stems: { [VOCALS_STEM_ID]: { echo: 0.3, eqMid: 2 } } },
+      });
+      await expect(attempt).rejects.toThrow(ForbiddenException);
+      await attempt.catch((error: ForbiddenException) => {
+        expect(error.getStatus()).toBe(403);
+        expect(error.getResponse()).toMatchObject({
+          code: "pro_required",
+          fields: [`stems.${VOCALS_STEM_ID}.eqMid`],
+          policyVersion: "remix-pro-policy/test-deny",
+        });
+      });
+      const unchanged = await projectService.getProject(OWNER_ID, created.id);
+      expect(unchanged.title).toBe("Pro denied");
+      expect(unchanged.effects).toBeNull();
+      // The DTO carries the denied decision, so the client hides Pro.
+      expect((await denied.getProject(OWNER_ID, created.id)).entitlements).toEqual({
+        pro: {
+          allowed: false,
+          reason: "not_subscribed",
+          policyVersion: "remix-pro-policy/test-deny",
+        },
+      });
+      // Non-Pro effects still save under the denying policy.
+      const plain = await denied.updateProject(OWNER_ID, created.id, {
+        effects: { stems: { [VOCALS_STEM_ID]: { echo: 0.3 } } },
+      });
+      expect(plain.effects).toEqual({
+        schemaVersion: "remix-fx/v3",
+        stems: { [VOCALS_STEM_ID]: { echo: 0.3 } },
+      });
+    });
+
+    it("a denying policy never changes saved Pro fields: keeping and removing them still save", async () => {
+      const created = await createProject("Pro saved");
+      await projectService.updateProject(OWNER_ID, created.id, {
+        effects: { stems: { [DRUMS_STEM_ID]: { eqLow: -6, pan: 0.5 } } },
+      });
+      const denied = serviceWith(new DenyingEntitlements());
+
+      // Other edits that echo the saved Pro values back are accepted.
+      const kept = await denied.updateProject(OWNER_ID, created.id, {
+        effects: {
+          master: { space: 0.2 },
+          stems: { [DRUMS_STEM_ID]: { eqLow: -6, pan: 0.5, echo: 0.1 } },
+        },
+      });
+      expect(kept.effects).toEqual({
+        schemaVersion: "remix-fx/v3",
+        master: { space: 0.2 },
+        stems: { [DRUMS_STEM_ID]: { eqLow: -6, pan: 0.5, echo: 0.1 } },
+      });
+      // Changing one is a set.
+      await expect(
+        denied.updateProject(OWNER_ID, created.id, {
+          effects: { stems: { [DRUMS_STEM_ID]: { eqLow: -5.5, pan: 0.5 } } },
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      // Removing them is always allowed.
+      const removed = await denied.updateProject(OWNER_ID, created.id, {
+        effects: { master: { space: 0.2 } },
+      });
+      expect(removed.effects).toEqual({
+        schemaVersion: "remix-fx/v3",
+        master: { space: 0.2 },
+      });
+    });
+  });
+
   it("PATCH rejects invalid effects with 400 and writes nothing", async () => {
     const created = await createProject("FX invalid");
     await projectService.updateProject(OWNER_ID, created.id, {
@@ -284,7 +451,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       { master: { pitch: 1 } },
       { stems: { "not-a-project-stem": { echo: 0.5 } } },
       { stems: { [VOCALS_STEM_ID]: { echo: -0.1 } } },
-      { schemaVersion: "remix-fx/v3" },
+      { schemaVersion: "remix-fx/v4" },
       { master: { semitones: 1.5 } },
       { master: { semitones: 7 } },
       { master: { keepPitch: "yes" } },
@@ -301,7 +468,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
     const unchanged = await projectService.getProject(OWNER_ID, created.id);
     expect(unchanged.title).toBe("FX invalid");
     expect(unchanged.effects).toEqual({
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { space: 0.2 },
     });
   });
@@ -315,7 +482,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       },
     });
     const normalized = {
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { speed: 0.85, keepPitch: true, semitones: -2 },
     };
     expect(saved.effects).toEqual(normalized);
@@ -329,17 +496,17 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       effects: { master: { speed: 0.85, keepPitch: false, semitones: 0 } },
     });
     expect(plain.effects).toEqual({
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { speed: 0.85 },
     });
 
-    // A stored v1 row (written before #1898) reads as v2 with the same values.
+    // A stored v1 row (written before #1898) reads as v3 with the same values.
     await prisma.remixProject.update({
       where: { id: created.id },
       data: { effects: { schemaVersion: "remix-fx/v1", master: { speed: 1.1 } } },
     });
     expect((await projectService.getProject(OWNER_ID, created.id)).effects).toEqual({
-      schemaVersion: "remix-fx/v2",
+      schemaVersion: "remix-fx/v3",
       master: { speed: 1.1 },
     });
   });
@@ -354,7 +521,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
     const renderInput = stemMixRenderer.render.mock.calls.at(-1)?.[0];
     expect(renderInput.fx).toEqual({
       effects: {
-        schemaVersion: "remix-fx/v2",
+        schemaVersion: "remix-fx/v3",
         master: { speed: 1.2, keepPitch: true, semitones: 3 },
       },
       bpm: 120,
@@ -390,7 +557,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
     const renderInput = stemMixRenderer.render.mock.calls.at(-1)?.[0];
     expect(renderInput.fx).toEqual({
       effects: {
-        schemaVersion: "remix-fx/v2",
+        schemaVersion: "remix-fx/v3",
         master: { speed: 0.85, space: 0.3 },
         stems: { [DRUMS_STEM_ID]: { echo: 0.5 } },
       },
@@ -435,7 +602,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       const renderInput = stemMixRenderer.render.mock.calls.at(-1)?.[0];
       expect(renderInput.fx).toEqual({
         effects: {
-          schemaVersion: "remix-fx/v2",
+          schemaVersion: "remix-fx/v3",
           stems: { [VOCALS_STEM_ID]: { echo: 0.4 } },
         },
         bpm: null,
@@ -484,7 +651,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
 
       const providerInput = layerProvider.createRemixDraft.mock.calls.at(-1)?.[0];
       expect(providerInput.renderFx).toEqual({
-        effects: { schemaVersion: "remix-fx/v2", master: { speed: 0.9, space: 0.2 } },
+        effects: { schemaVersion: "remix-fx/v3", master: { speed: 0.9, space: 0.2 } },
         bpm: 120,
       });
       // Not lyria: no layered render, the provider audio is the draft.
@@ -494,7 +661,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
       const metadata = completed.generationMetadata as Record<string, unknown>;
       expect(metadata.status).toBe("completed");
       expect(metadata.conditioningEffects).toEqual({
-        effects: { schemaVersion: "remix-fx/v2", master: { speed: 0.9, space: 0.2 } },
+        effects: { schemaVersion: "remix-fx/v3", master: { speed: 0.9, space: 0.2 } },
         effectsDspVersion: "remix-fx-dsp/v1",
       });
       expect("renderMetadata" in metadata).toBe(false);
@@ -513,7 +680,7 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
 
     const expectedFx = {
       effects: {
-        schemaVersion: "remix-fx/v2",
+        schemaVersion: "remix-fx/v3",
         master: { speed: 1.1, warmth: 0.25 },
       },
       bpm: 120,
