@@ -47,6 +47,8 @@ describe("sample show campaign fixture creation", () => {
       where: { id: { in: SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.campaign.id) } },
     });
     await prisma.release.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.communityRoom.deleteMany({ where: { artistId: { in: SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.artist.id) } } });
+    await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.artist.deleteMany({
       where: { id: { in: SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.artist.id) } },
@@ -142,5 +144,53 @@ describe("sample show campaign fixture creation", () => {
     expect(uploader).toMatchObject({ displayName: "Some Uploader", summary: null, imageUrl: null });
     const presentation = (campaign.metadata as { artistPresentation?: { summary?: string } }).artistPresentation;
     expect(presentation?.summary).toBe(fixture.artist.summary);
+  });
+
+  it("removes a visited stand-in whose auto-created rooms are untouched, and keeps one with real room activity", async () => {
+    const [visited, active] = ["sample-artist-sennarin", "sample-artist-felicia-farerre"].map(
+      (id) => SHOW_CAMPAIGN_FIXTURES.find((entry) => entry.artist.id === id)!,
+    );
+    const options = { assetDirectory, chainId: 31337, now: new Date("2026-06-21T12:00:00.000Z") };
+    // Seed while the catalog lacks both artists, so both stand-ins exist.
+    await applyShowCampaignFixtures(prisma, storage, options);
+
+    const room = (artistId: string, roomType: string) => prisma.communityRoom.create({
+      data: { roomType, ownerType: "artist", ownerId: artistId, artistId, title: `${roomType} room` },
+    });
+    // Opening a Community tab auto-creates these two rooms.
+    await room(visited.artist.id, "artist_public");
+    await room(visited.artist.id, "artist_holder");
+    const activeRoom = await room(active.artist.id, "artist_public");
+    const author = await prisma.user.create({ data: { id: `${TEST_PREFIX}author`, email: `${TEST_PREFIX}author@example.test` } });
+    await prisma.communityMessage.create({ data: { roomId: activeRoom.id, authorId: author.id, body: "hello" } });
+
+    // Both artists now exist in the catalog by name only.
+    const uploaderId = `${TEST_PREFIX}uploader-2`;
+    await prisma.artist.create({ data: { id: uploaderId, displayName: "Another Uploader", profileType: "artist" } });
+    for (const fixture of [visited, active]) {
+      await prisma.release.create({
+        data: {
+          id: `${TEST_PREFIX}release-${fixture.artist.id}`,
+          artistId: uploaderId,
+          title: `${fixture.artist.displayName} single`,
+          status: "published",
+          primaryArtist: fixture.artist.displayName,
+        },
+      });
+    }
+
+    await applyShowCampaignFixtures(prisma, storage, options);
+
+    expect(await prisma.artist.count({ where: { id: visited.artist.id } })).toBe(0);
+    expect(await prisma.communityRoom.count({ where: { artistId: visited.artist.id } })).toBe(0);
+    // Real activity is never deleted: the stand-in and its room stay.
+    expect(await prisma.artist.count({ where: { id: active.artist.id } })).toBe(1);
+    expect(await prisma.communityMessage.count({ where: { roomId: activeRoom.id } })).toBe(1);
+    // Either way the campaigns point at the catalog, not at a stand-in.
+    const campaigns = await prisma.showCampaign.findMany({
+      where: { id: { in: [visited.campaign.id, active.campaign.id] } },
+      select: { artistId: true },
+    });
+    expect(campaigns.every((campaign) => campaign.artistId === null)).toBe(true);
   });
 });

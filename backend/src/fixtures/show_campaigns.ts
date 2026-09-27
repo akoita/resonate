@@ -756,28 +756,52 @@ export async function applyShowCampaignFixtures(
   return { campaigns: SHOW_CAMPAIGN_FIXTURES.length, dryRun: false };
 }
 
+/** Rooms the app creates by itself when anyone opens an artist's Community tab. */
+const AUTO_CREATED_ARTIST_ROOM_TYPES = ["artist_public", "artist_holder"];
+
 /**
  * Drop a fixture stand-in profile left over from earlier seeds once its sample
- * campaign points at the real catalog artist. Only `fixture` profiles are
- * touched. A profile that anything still hangs off is kept: the relations that
- * would CASCADE (community rooms/benefits/bridges, claim requests, management
- * grants) are checked explicitly so a delete can never silently take them
- * along, and restrictive foreign keys (campaigns, credits, …) make the delete
- * fail, which is caught.
+ * campaign points at the real catalog artist or catalog credit page. Only
+ * `fixture` profiles are touched.
+ *
+ * Opening a profile's Community tab auto-creates its default rooms, so a
+ * visited stand-in always has two. Those are cleared first — but only while
+ * they are untouched (no members, messages or moderation reports). Anything
+ * else that hangs off the profile keeps it: the other relations that would
+ * CASCADE (non-default or used rooms, benefit rules, Discord bridge, claim
+ * requests, management grants) are checked explicitly, and restrictive
+ * foreign keys (campaigns, credits, …) make the delete fail, which is caught.
  */
 async function removeStaleFixtureArtist(prisma: PrismaClient, fixtureArtistId: string) {
+  const profile = await prisma.artist.findFirst({
+    where: { id: fixtureArtistId, profileType: "fixture" },
+    select: { id: true },
+  });
+  if (!profile) return;
+
   const where = { artistId: fixtureArtistId };
-  const dependents = await Promise.all([
+  const untouchedDefaultRoom = {
+    artistId: fixtureArtistId,
+    roomType: { in: AUTO_CREATED_ARTIST_ROOM_TYPES },
+    memberships: { none: {} },
+    messages: { none: {} },
+    reports: { none: {} },
+  };
+  const [otherRooms, ...dependents] = await Promise.all([
+    prisma.communityRoom.count({ where: { artistId: fixtureArtistId, NOT: untouchedDefaultRoom } }),
     prisma.communityBenefitRule.count({ where }),
-    prisma.communityRoom.count({ where }),
     prisma.communityDiscordBridge.count({ where }),
     prisma.artistClaimRequest.count({ where }),
     prisma.managementGrant.count({ where }),
   ]);
-  if (dependents.some((count) => count > 0)) return;
+  if (otherRooms > 0 || dependents.some((count) => count > 0)) return;
+
   try {
-    await prisma.artist.deleteMany({ where: { id: fixtureArtistId, profileType: "fixture" } });
+    await prisma.$transaction([
+      prisma.communityRoom.deleteMany({ where: untouchedDefaultRoom }),
+      prisma.artist.deleteMany({ where: { id: fixtureArtistId, profileType: "fixture" } }),
+    ]);
   } catch {
-    // Still referenced; keep it. It no longer backs the sample campaign.
+    // Still referenced (restrictive FK); keep it. It no longer backs the campaign.
   }
 }

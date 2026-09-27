@@ -62,6 +62,21 @@ export default function ArtistPage() {
                     listArtistReleases(artistId).catch(() => []),
                 ]);
 
+                // A sample-Shows stand-in profile (`profileType: "fixture"`) has
+                // no releases of its own. When the catalog has the artist, the
+                // real page is canonical: never render an empty duplicate.
+                if (profile?.profileType === "fixture" && profileReleases.length === 0) {
+                    const catalogReleases = await listPublishedReleases(100, profile.displayName).catch(() => []);
+                    const canonical = legacyArtistAliasDestination(
+                        profile.displayName,
+                        summarizeCreditedArtists(catalogReleases),
+                    );
+                    if (canonical) {
+                        router.replace(canonical);
+                        return;
+                    }
+                }
+
                 if (profile) {
                     setArtist(profile);
                     setReleases(profileReleases);

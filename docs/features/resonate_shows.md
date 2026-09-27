@@ -385,8 +385,14 @@ artist page next to the one the catalog already has:
   `profileType: "fixture"` stand-in profile created.
 
 The seed never writes fixture copy, portrait or links onto a real profile, and
-removes stand-in profiles left by earlier seeds when nothing depends on them
-(cascading relations are checked first). The sample "Meet the artist" bio,
+removes stand-in profiles left by earlier seeds when nothing depends on them.
+Opening a profile's Community tab auto-creates its default `artist_public` /
+`artist_holder` rooms, so those are cleared with the stand-in — but only while
+untouched (no members, messages or moderation reports); any real activity, and
+every other cascading relation, keeps the stand-in in place. As a last line,
+`/artist/<id>` for an empty `fixture` profile redirects to the artist's
+canonical page (single real profile, else the catalog credit page) whenever the
+catalog has the artist, so a stand-in URL never renders a duplicate page. The sample "Meet the artist" bio,
 portrait and links live in the campaign's fixture metadata
 (`metadata.artistPresentation`); the public campaign DTO uses them only for
 fixture campaigns and only where the linked profile has no value of its own.
