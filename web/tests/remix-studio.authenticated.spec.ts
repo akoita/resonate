@@ -159,6 +159,12 @@ async function mockRemixApi(
     },
   ];
   const patches: Array<Record<string, unknown>> = [];
+  // AI part takes (#1901): a generate adds pending takes; the next GET of
+  // the project finds them completed, like a worker that finished.
+  let partTakes: Array<Record<string, unknown>> = [];
+  let pendingTakes = false;
+  const partGenerates: Array<Record<string, unknown>> = [];
+  const takeDeletes: string[] = [];
   // Top-level fields the studio autosaves (mode, prompt, title), persisted
   // like the real PATCH so the echoed project matches the saved edits.
   let fields: Record<string, unknown> = { ...(options.project ?? {}) };
@@ -177,7 +183,70 @@ async function mockRemixApi(
         return change ? { ...stem, ...change } : stem;
       });
     }
-    await route.fulfill({ json: { ...mockProject(stems), ...fields } });
+    if (request.method() === "GET" && pendingTakes) {
+      pendingTakes = false;
+      partTakes = partTakes.map((take) =>
+        take.status === "pending"
+          ? {
+              ...take,
+              status: "completed",
+              mimeType: "audio/flac",
+              durationSec: 8,
+              completedAt: "2026-09-27T12:00:30.000Z",
+            }
+          : take,
+      );
+    }
+    await route.fulfill({ json: { ...mockProject(stems), ...fields, partTakes } });
+  });
+  await page.route(`**/remix/projects/${PROJECT_ID}/parts/generate`, async (route) => {
+    const body = route.request().postDataJSON() as {
+      role: string;
+      bars: number;
+      style?: string | null;
+      takes?: number;
+    };
+    partGenerates.push(body);
+    const batchId = `batch-${partGenerates.length}`;
+    const takes = Array.from({ length: body.takes ?? 3 }, (_, index) => ({
+      id: `take-${partGenerates.length}-${index + 1}`,
+      batchId,
+      role: body.role,
+      bars: body.bars,
+      style: body.style ?? null,
+      seed: index + 1,
+      status: "pending",
+      promptVersion: "remix-part-prompt/v1",
+      provider: null,
+      model: null,
+      grounding: "feature_conditioned",
+      aiGenerated: true,
+      costCents: 10,
+      mimeType: null,
+      durationSec: null,
+      conform: null,
+      errorCode: null,
+      createdAt: `2026-09-27T12:00:0${index}.000Z`,
+      startedAt: null,
+      completedAt: null,
+    }));
+    partTakes = [...takes, ...partTakes];
+    pendingTakes = true;
+    await route.fulfill({
+      status: 202,
+      json: { batchId, quoteCents: takes.length * 10, perTakeCents: 10, takes },
+    });
+  });
+  // A take is exactly 4 bars at 120 BPM: 8 s of tone.
+  await page.route(`**/remix/projects/${PROJECT_ID}/parts/takes/*/audio`, (route) =>
+    route.fulfill({ status: 200, contentType: "audio/wav", body: toneWav(165, 8) }),
+  );
+  await page.route(`**/remix/projects/${PROJECT_ID}/parts/takes/*`, async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    const takeId = route.request().url().split("/parts/takes/")[1] ?? "";
+    takeDeletes.push(takeId);
+    partTakes = partTakes.filter((take) => take.id !== takeId);
+    await route.fulfill({ json: { ...mockProject(stems), ...fields, partTakes } });
   });
   await page.route("**/credits/balance", (route) =>
     route.fulfill({
@@ -239,7 +308,7 @@ async function mockRemixApi(
     }
     await route.fulfill({ json: { ...mockProject(stems), ...fields } });
   });
-  return { patches, deletes };
+  return { patches, deletes, partGenerates, takeDeletes };
 }
 
 test.describe("Remix Studio session view (#1879)", () => {
@@ -334,13 +403,22 @@ test.describe("Remix Studio session view (#1879)", () => {
       )
       .toBe(true);
 
-    // Add AI shows the flat intents, with "Reimagine the track" selected.
+    // Add AI opens on "Add a part" (#1901); the whole-track intents sit
+    // under "Experimental", where picking one saves it.
     await create.getByRole("button", { name: "Add AI" }).click();
-    await expect(
-      page.getByRole("radiogroup", { name: "AI intent" }).getByRole("radio", {
-        name: /Reimagine the track/,
-      }),
-    ).toBeChecked();
+    await expect(page.getByRole("radiogroup", { name: "Instrument" })).toBeVisible();
+    await page
+      .getByRole("button", { name: "Experimental: change the whole track" })
+      .click();
+    const reimagine = page
+      .getByRole("radiogroup", { name: "AI intent" })
+      .getByRole("radio", { name: /Reimagine the track/ });
+    await expect(reimagine).not.toBeChecked();
+    await page
+      .getByRole("radiogroup", { name: "AI intent" })
+      .getByText("Reimagine the track")
+      .click();
+    await expect(reimagine).toBeChecked();
     await expect(page.getByText(/\$0\.10 per 30 s/)).toBeVisible();
     // The intent survives its own autosave round-trip (mode → variation).
     await expect
@@ -405,12 +483,15 @@ test.describe("Remix Studio session view (#1879)", () => {
     expect(sessionBox && draftsBox).toBeTruthy();
     expect(draftsBox!.y - (sessionBox!.y + sessionBox!.height)).toBeLessThan(64);
     expect(Math.abs(draftsBox!.x - sessionBox!.x)).toBeLessThan(4);
-    // … the sticky Create column never outgrows the viewport …
-    const createBox = await page
-      .locator("section", { has: page.getByRole("heading", { name: "Create" }) })
-      .first()
-      .boundingBox();
+    // … the sticky Create column never outgrows the viewport (the panel,
+    // taller since "Add a part" sits above the whole-track intents (#1901),
+    // scrolls inside it) …
+    const createColumn = page.locator(".remix-studio-create-column");
+    const createBox = await createColumn.boundingBox();
     expect(createBox!.height).toBeLessThanOrEqual(900);
+    await expect(
+      createColumn.getByRole("button", { name: "Experimental: change the whole track" }),
+    ).toHaveAttribute("aria-expanded", "true");
     // … and Publish is reachable, not stranded under a sticky column.
     const publish = page.getByRole("button", { name: "Publish on Resonate" });
     await publish.scrollIntoViewIfNeeded();
@@ -844,5 +925,107 @@ test.describe("Remix Studio session view (#1879)", () => {
       path: test.info().outputPath("remix-studio-polish.png"),
       fullPage: true,
     });
+  });
+
+  test("add an AI part: generate 3 takes, audition, use one, edit its lane, remove (#1901)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches, partGenerates } = await mockRemixApi(page);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    type PartsPatch = {
+      parts?: Array<{ id: string; role: string; takeId: string; blocks?: boolean[] }>;
+    } | null;
+    const partsOf = (patch: Record<string, unknown>) => patch.parts as PartsPatch | undefined;
+
+    // Add AI opens on "Add a part": pick Bass, 4 bars, see the price first.
+    await page
+      .getByRole("group", { name: "What to create" })
+      .getByRole("button", { name: "Add AI" })
+      .click();
+    const instruments = page.getByRole("radiogroup", { name: "Instrument" });
+    await instruments.getByText("Bass", { exact: true }).click();
+    await expect(instruments.getByRole("radio", { name: "Bass" })).toBeChecked();
+    await expect(
+      page.getByRole("radiogroup", { name: "Length" }).getByRole("radio", { name: "4 bars" }),
+    ).toBeChecked();
+    await expect(page.getByText("3 takes · 30¢ · you have $5.00")).toBeVisible();
+    // Switching sides never changed the saved (free) mix mode.
+    expect(patches.some((patch) => "mode" in patch)).toBe(false);
+
+    await page.getByRole("button", { name: "Generate 3 takes" }).click();
+    await expect.poll(() => partGenerates).toEqual([
+      { role: "bass", bars: 4, style: null, takes: 3 },
+    ]);
+    // The tray fills in as the takes finish.
+    const tray = page.locator(".remix-parts-tray");
+    await expect(tray.getByRole("heading", { name: "Bass takes" })).toBeVisible();
+    await expect(tray.locator(".remix-parts-take-ready")).toHaveCount(3, { timeout: 15_000 });
+    await expect(tray.getByText("3 takes ready.")).toBeVisible();
+
+    // Audition Take 2 over the arrangement.
+    const take2 = tray.locator(".remix-parts-take").nth(1);
+    await expect(take2.getByText("Take 2")).toBeVisible();
+    await take2.getByRole("button", { name: "Audition" }).click();
+    await expect(page.getByText("Auditioning Take 2 · AI Bass")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(take2.getByRole("button", { name: "Stop audition" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // Use it: an AI Bass lane joins the session, autosaved.
+    await take2.getByRole("button", { name: "Use this take" }).click();
+    await expect(page.getByRole("button", { name: "Mute AI Bass" })).toBeVisible();
+    await expect(page.getByText("Auditioning Take 2 · AI Bass")).toHaveCount(0);
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const parts = partsOf(patch);
+            return !!parts?.parts?.some(
+              (part) => part.role === "bass" && part.takeId === "take-1-2",
+            );
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(take2.getByRole("button", { name: "In use" })).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-ai-part.png"),
+      fullPage: true,
+    });
+
+    // Turn the part off on section 2.
+    await page.getByRole("button", { name: "AI Bass: section 2 on" }).click();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => partsOf(patch)?.parts?.[0]?.blocks?.[1] === false),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // Remove the lane (confirmed): the recipe is cleared.
+    await page.getByRole("button", { name: "Remove AI Bass" }).click();
+    await page.getByRole("button", { name: "Remove lane" }).click();
+    await expect
+      .poll(() => patches.some((patch) => "parts" in patch && patch.parts === null), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+    await expect(page.getByRole("button", { name: "Mute AI Bass" })).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
   });
 });

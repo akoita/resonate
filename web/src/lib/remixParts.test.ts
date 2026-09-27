@@ -24,6 +24,7 @@ import {
   type RemixParts,
 } from "./remixParts";
 import { REMIX_BEAT_LANE_ID, type RemixBeatGrid, type RemixBeatSegment } from "./remixBeat";
+import * as remixParts from "./remixParts";
 
 const FIXTURE_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -189,5 +190,42 @@ describe("edit helpers", () => {
     expect(withPartMuted(base, "keys-1", true)?.parts[0].muted).toBe(true);
     expect(withPartMuted(withPartMuted(base, "keys-1", true), "keys-1", false)?.parts[0]).toEqual(base.parts[0]);
     expect(withPartMuted(null, "keys-1", true)).toBeNull();
+  });
+});
+
+describe("part lane edits (#1901)", () => {
+  const recipe = (parts: unknown[]) =>
+    remixParts.normalizeRemixParts({ schemaVersion: "remix-parts/v1", parts });
+
+  it("picks the lowest free id for a role", () => {
+    expect(remixParts.nextPartId(null, "bass")).toBe("bass-1");
+    const two = recipe([
+      { id: "bass-1", role: "bass", takeId: "a" },
+      { id: "bass-3", role: "bass", takeId: "b" },
+    ]);
+    expect(remixParts.nextPartId(two, "bass")).toBe("bass-2");
+    expect(remixParts.nextPartId(two, "keys")).toBe("keys-1");
+    expect(remixParts.REMIX_PART_ID_PATTERN.test(remixParts.nextPartId(two, "strings"))).toBe(true);
+  });
+
+  it("round-trips part blocks through lane-id keyed structure masks", () => {
+    const parts = recipe([
+      { id: "bass-1", role: "bass", takeId: "a", blocks: [true, false, true] },
+      { id: "keys-1", role: "keys", takeId: "b", blocks: [false] },
+    ]);
+    expect(remixParts.partLaneMasks(parts, 3)).toEqual({
+      "remix-part:bass-1": [true, false, true],
+      // A stale list reads as every block.
+      "remix-part:keys-1": null,
+    });
+    const moved = remixParts.withPartLaneMasks(parts, {
+      "remix-part:bass-1": [true, false, false, true],
+      "remix-part:keys-1": null,
+    });
+    expect(moved?.parts.map((part) => part.blocks)).toEqual([
+      [true, false, false, true],
+      undefined,
+    ]);
+    expect(remixParts.withPartLaneMasks(null, {})).toBeNull();
   });
 });

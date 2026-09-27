@@ -129,3 +129,16 @@ describe("RemixTransportBar", () => {
     expect(html).toContain('aria-valuetext="Muted"');
   });
 });
+
+describe("RemixTransportBar — audition (#1901)", () => {
+  it("names the take being auditioned, with a one-click way back", () => {
+    expect(render()).not.toContain("remix-transport-audition");
+    const html = render({
+      auditionLabel: "Auditioning Take 2 · AI Bass",
+      onStopAudition: noop,
+    });
+    expect(html).toMatch(/role="status"[^>]*remix-transport-audition/);
+    expect(html).toContain("Auditioning Take 2 · AI Bass");
+    expect(html).toContain('aria-label="Stop auditioning"');
+  });
+});

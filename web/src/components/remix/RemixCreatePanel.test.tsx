@@ -40,6 +40,10 @@ import {
   REMIX_STUDIO_LOCKED_NOTE,
   RemixCreatePanel,
   STEM_MIX_FREE_NOTE,
+  EXPERIMENTAL_AI_LABEL,
+  EXPERIMENTAL_AI_NOTE,
+  PARTS_RENDER_NOTE,
+  switchCreateSide,
   KEEP_PITCH_HINT,
   KEY_HIGHEST_TITLE,
   KEY_LOWEST_TITLE,
@@ -123,20 +127,105 @@ describe("RemixCreatePanel — Mix stems", () => {
   });
 });
 
+describe("RemixCreatePanel — Add a part first (#1901)", () => {
+  const partsModel: NonNullable<RemixCreatePanelProps["parts"]> = {
+    role: "bass",
+    bars: 4,
+    style: "",
+    onRoleChange: noop,
+    onBarsChange: noop,
+    onStyleChange: noop,
+    bpm: 120,
+    credits: { balanceCents: 70, priceCentsPer30s: 10 },
+    creditRequest: "idle",
+    onRequestCredits: noop,
+    unavailableReason: null,
+    generating: false,
+    error: null,
+    onGenerate: noop,
+    takes: [],
+    parts: [],
+    inUseTakeIds: new Set(),
+    targetPartId: null,
+    onClearTarget: noop,
+    auditionTakeId: null,
+    auditionLoadingTakeId: null,
+    onAudition: noop,
+    onUseTake: noop,
+    onDeleteTake: noop,
+    takePeaks: () => null,
+  };
+  const withParts = (overrides: Partial<RemixCreatePanelProps> = {}) =>
+    render({ parts: partsModel, onAiSideChange: noop, aiSide: true, ...overrides });
+
+  it("opens the Add AI side on Add a part, with the whole-track intents folded away", () => {
+    const html = withParts();
+    expect(html).toMatch(/aria-pressed="true"[^>]*remix-create-switch-ai/);
+    expect(html).toContain("Add a part");
+    expect(html).toContain("Generate 3 takes");
+    expect(html).toContain("3 takes · 30¢ · you have 70¢");
+    expect(html).toContain(EXPERIMENTAL_AI_LABEL);
+    expect(html).toMatch(/aria-expanded="false"[^>]*remix-experimental-toggle/);
+    expect(html).not.toContain('aria-label="AI intent"');
+    // The free mix render (AI parts included) stays the panel's action.
+    expect(html).toContain(PARTS_RENDER_NOTE);
+    expect(html).toMatch(/remix-generate-btn[^>]*>Render mix</);
+  });
+
+  it("stays on Mix stems until the switch is pressed", () => {
+    const html = withParts({ aiSide: false });
+    expect(html).toMatch(/aria-pressed="true"[^>]*remix-create-switch-mix/);
+    expect(html).not.toContain("Generate 3 takes");
+  });
+
+  it("opens the disclosure with a saved whole-track intent selected", () => {
+    const html = withParts({
+      aiSide: false,
+      intent: "replace_stem",
+      primary: { label: "Generate AI draft", enabled: true, reason: null, busy: false, onClick: noop },
+    });
+    expect(html).toMatch(/aria-pressed="true"[^>]*remix-create-switch-ai/);
+    expect(html).toMatch(/aria-expanded="true"[^>]*remix-experimental-toggle/);
+    expect(html).toContain(EXPERIMENTAL_AI_NOTE);
+    expect(html).toMatch(/<input[^>]*checked=""[^>]*value="replace_stem"/);
+    // The whole-track Generate lives inside the disclosure.
+    const body = html.slice(html.indexOf("remix-experimental-body"));
+    expect(body).toContain("Generate AI draft");
+    expect(html.indexOf("Add a part")).toBeLessThan(html.indexOf("remix-experimental-body"));
+  });
+
+  it("switches sides without touching the saved mode, except to leave a whole-track intent", () => {
+    const onIntentChange = vi.fn();
+    const onAiSideChange = vi.fn();
+    switchCreateSide("ai", "mix", { onIntentChange, onAiSideChange });
+    expect(onAiSideChange).toHaveBeenLastCalledWith(true);
+    expect(onIntentChange).not.toHaveBeenCalled();
+    switchCreateSide("mix", "mix", { onIntentChange, onAiSideChange });
+    expect(onAiSideChange).toHaveBeenLastCalledWith(false);
+    expect(onIntentChange).not.toHaveBeenCalled();
+    switchCreateSide("mix", "extend", { onIntentChange, onAiSideChange });
+    expect(onIntentChange).toHaveBeenCalledWith("mix");
+    // Without the part flow, the switch picks an intent as before.
+    const legacy = vi.fn();
+    switchCreateSide("ai", "mix", { onIntentChange: legacy });
+    expect(legacy).toHaveBeenCalledWith("reimagine");
+  });
+});
+
 describe("RemixCreatePanel — Add AI", () => {
   it("renders the intents as a radio group with the active one checked", () => {
     const html = render({ intent: "add_part" });
     expect(html).toMatch(/aria-pressed="true"[^>]*remix-create-switch-ai/);
     expect(html).toContain('role="radiogroup"');
     expect(html).toContain("Reimagine the track");
-    expect(html).toContain("Add a new part");
+    expect(html).toContain("Add a layer to the whole track");
     expect(html).toContain("Replace a stem");
     expect(html).toContain("Extend the track");
     const checked = html.match(/<input[^>]*checked=""[^>]*>/g) ?? [];
     expect(checked).toHaveLength(1);
     expect(checked[0]).toContain('value="add_part"');
     expect(html).toContain(
-      "The AI generates one new part that sits on top of your arranged stems.",
+      "The AI generates one new layer across the whole song that sits on top of your arranged stems.",
     );
     expect(html).not.toContain(STEM_MIX_FREE_NOTE);
   });

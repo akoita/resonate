@@ -6,8 +6,10 @@ import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
   deleteRemixDraftVersion,
+  deleteRemixPartTake,
   exportRemixDraftBlob,
   generateRemixDraft,
+  generateRemixParts,
   getCreditsBalance,
   getRemixEligibility,
   getRemixProject,
@@ -18,6 +20,7 @@ import {
   type RemixEligibilityResponse,
   type RemixGenerationAttribution,
   type RemixGenerationMetadata,
+  type RemixPartTake,
   type RemixProject,
   type RemixProjectAvailableStem,
   type RemixProjectPatch,
@@ -66,6 +69,7 @@ import { applicableRecipes, applyRecipe } from "../../lib/remixRecipes";
 import {
   beatBlocksAfterStructureEdit,
   beatGridAvailable,
+  isBeatPickupSection,
   normalizeRemixBeat,
   REMIX_BEAT_KIT_LABELS,
   withBeatMuted,
@@ -77,7 +81,25 @@ import type {
   RemixDescribeContext,
   RemixDescribeEdits,
 } from "../../lib/remixDescribe";
-import { normalizeRemixParts } from "../../lib/remixParts";
+import {
+  nextPartId,
+  normalizeRemixParts,
+  partIdFromLaneId,
+  partLaneId,
+  partLaneMasks,
+  partLengthSeconds,
+  partPlacementSpans,
+  REMIX_PART_ROLES,
+  sameRemixParts,
+  withoutPart,
+  withPart,
+  withPartBlocks,
+  withPartGain,
+  withPartLaneMasks,
+  withPartMuted,
+  type RemixPartRole,
+  type RemixParts,
+} from "../../lib/remixParts";
 import {
   applyVibe,
   normalizeRemixFx,
@@ -110,8 +132,25 @@ import {
   sectionColumnLabels,
   type LaneBeat,
   type LaneBlockAction,
+  type LanePart,
   type LaneStem,
 } from "./RemixSessionLanes";
+import {
+  apiErrorCode,
+  DELETE_TAKE_CONFIRM_MESSAGE,
+  DELETE_TAKE_CONFIRM_TITLE,
+  PART_PICKUP_REASON,
+  PARTS_TRAY_ID,
+  partLaneName,
+  partsGenerateErrorMessage,
+  partTakeBatches,
+  partTakeNumber,
+  partTakesActive,
+  partUseTarget,
+  PART_TAKES_PER_BATCH,
+  type PartBars,
+  type RemixPartsModel,
+} from "./RemixPartsSection";
 import { RemixTransportBar } from "./RemixTransportBar";
 import {
   RemixCreatePanel,
@@ -179,6 +218,11 @@ export type ProjectEdits = {
    * count (a stale `blocks` list is null = every block); null = no beat.
    */
   beat: RemixBeatRecipe | null;
+  /**
+   * AI part lanes `remix-parts/v1` (#1901), normalized against the block
+   * count (a stale `blocks` list reads as every block); null = no parts.
+   */
+  parts: RemixParts | null;
 };
 
 export type AiTargetEdit = { kind: AiTargetKind; stemId: string | null };
@@ -263,6 +307,7 @@ export function initialEdits(project: RemixProject): ProjectEdits {
     ),
     structure,
     beat: normalizeRemixBeat(project.beat, blockCount > 0 ? blockCount : null),
+    parts: normalizeRemixParts(project.parts ?? null, blockCount > 0 ? blockCount : null),
   };
 }
 
@@ -391,6 +436,23 @@ export function buildProjectPatch(
     // A structure change clears a stale persisted beat mask, like a stem's.
     patch.beat = editBeat;
   }
+  // AI parts (#1901): the whole normalized recipe, or null to remove every
+  // part; blocks read like the beat's. A structure change sends the
+  // remapped blocks in the same PATCH.
+  const persistedParts = normalizeRemixParts(
+    project.parts ?? null,
+    beatCount(persistedBlockCount),
+  );
+  const editParts = normalizeRemixParts(edits.parts ?? null, beatCount(nextBlockCount));
+  if (JSON.stringify(persistedParts) !== JSON.stringify(editParts)) {
+    patch.parts = editParts;
+  } else if (
+    editParts &&
+    patch.structure !== undefined &&
+    (project.parts?.parts ?? []).some((part) => Array.isArray(part.blocks))
+  ) {
+    patch.parts = editParts;
+  }
   return patch;
 }
 
@@ -490,7 +552,8 @@ export function doublingReferenceStemIds(
 
 /**
  * "Reset to original" (#1910): the edits that sound like the source track —
- * no effects, the original song shape, no beat, and every separated stem
+ * no effects, the original song shape, no beat, no AI parts (#1901, the
+ * takes themselves are kept), and every separated stem
  * audible at 0 dB on every block. Full-mix reference stems stay exactly as
  * they are (muted, reference only). Title, prompt, mode and AI target are
  * not sound and are kept.
@@ -505,7 +568,7 @@ export function originalEdits(
       ? edit
       : { muted: false, gainDb: null, sections: null };
   }
-  return { ...edits, effects: null, structure: null, beat: null, stems };
+  return { ...edits, effects: null, structure: null, beat: null, parts: null, stems };
 }
 
 /**
@@ -517,7 +580,12 @@ export function editsAreOriginal(
   edits: ProjectEdits,
   referenceIds: ReadonlySet<string>,
 ): boolean {
-  if (edits.effects !== null || edits.structure !== null || edits.beat !== null) {
+  if (
+    edits.effects !== null ||
+    edits.structure !== null ||
+    edits.beat !== null ||
+    (edits.parts ?? null) !== null
+  ) {
     return false;
   }
   return Object.entries(edits.stems).every(
@@ -532,7 +600,11 @@ export function editsAreOriginal(
 /** Reset confirm copy (#1910). */
 export const RESET_ORIGINAL_CONFIRM_TITLE = "Reset to the original?";
 export const RESET_ORIGINAL_CONFIRM_MESSAGE =
-  "This clears your effects, song shape, beat and stem changes. Your drafts are kept.";
+  "This clears your effects, song shape, beat, AI parts and stem changes. Your drafts are kept.";
+
+/** Remove-lane confirm copy (#1901): the take stays in the tray. */
+export const REMOVE_PART_CONFIRM_MESSAGE =
+  "The lane leaves your remix. Its take stays in the takes list, so you can add it back.";
 
 /** "Reset to original" availability (#1910): locked, already there, or on. */
 export function describeResetAvailability(input: {
@@ -783,23 +855,6 @@ export function describeGenerateAvailability(input: {
   return { enabled: true, reason: null };
 }
 
-/**
- * The Mix → Add AI switch always asks for "reimagine" (the panel can't see
- * the saved target). Coming back from a stem mix, restore the saved variation
- * target instead (#1882), so "Add a new part" / "Replace a stem" survive a
- * detour through Mix stems. Any other request passes through unchanged.
- */
-export function intentReturningFromMix(
-  prevMode: string,
-  savedTarget: { kind: AiTargetKind },
-  requested: RemixIntent,
-): RemixIntent {
-  if (prevMode !== "stem_mix" || requested !== "reimagine") return requested;
-  if (savedTarget.kind === "add_layer") return "add_part";
-  if (savedTarget.kind === "replace_stem") return "replace_stem";
-  return requested;
-}
-
 /** Studio AI-target selection (#1316): whole track, new layer, or replace. */
 export type AiTargetKind = "whole" | "add_layer" | "replace_stem";
 
@@ -1027,6 +1082,8 @@ export function editsWithStructure(
   edits: ProjectEdits,
   result: RemixStructureEditResult,
   beatBlocks?: boolean[] | null,
+  /** The AI parts with their remapped blocks (#1901); absent = unchanged. */
+  parts?: RemixParts | null,
 ): ProjectEdits {
   const stems = { ...edits.stems };
   for (const [stemId, mask] of Object.entries(result.masks)) {
@@ -1037,29 +1094,45 @@ export function editsWithStructure(
     edits.beat && beatBlocks !== undefined
       ? { ...edits.beat, blocks: beatBlocks }
       : edits.beat;
-  return { ...edits, structure: result.structure, stems, beat };
+  return {
+    ...edits,
+    structure: result.structure,
+    stems,
+    beat,
+    parts: parts !== undefined ? parts : (edits.parts ?? null),
+  };
 }
 
 /**
  * Runs a structure op (#1899) on the current edits in one update: stem
- * masks and the beat's blocks (#1902) move with their blocks. The edits
- * are returned unchanged when the op refuses.
+ * masks, the beat's blocks (#1902) and every AI part's blocks (#1901) move
+ * with their blocks — the beat's rule, applied to each part in the same
+ * edit. The edits are returned unchanged when the op refuses.
  */
 export function editsAfterStructureOp(
   edits: ProjectEdits,
   grid: RemixSectionGrid,
   run: (state: RemixStructureEditState) => RemixStructureEditResult | null,
 ): ProjectEdits {
+  const state = structureEditStateFor(grid, edits);
+  const parts = edits.parts ?? null;
   const outcome = beatBlocksAfterStructureEdit(
-    structureEditStateFor(grid, edits),
+    { ...state, masks: { ...state.masks, ...partLaneMasks(parts, state.blocks.length) } },
     edits.beat?.blocks ?? null,
     run,
   );
   if (!outcome) return edits;
+  const stemMasks: RemixBlockMasks = {};
+  const partMasks: Record<string, boolean[] | null> = {};
+  for (const [laneId, mask] of Object.entries(outcome.result.masks)) {
+    if (partIdFromLaneId(laneId) !== null) partMasks[laneId] = mask;
+    else stemMasks[laneId] = mask;
+  }
   return editsWithStructure(
     edits,
-    outcome.result,
+    { ...outcome.result, masks: stemMasks },
     edits.beat ? outcome.blocks : undefined,
+    parts ? withPartLaneMasks(parts, partMasks) : undefined,
   );
 }
 
@@ -1082,23 +1155,22 @@ export function editsPreviewBeat(
 }
 
 /**
- * The saved AI parts (#1901) as the preview plays them: the project's
+ * The AI parts (#1901) as the preview plays them: the edited
  * `remix-parts/v1` recipe (normalized against the edited timeline's blocks —
  * a stale per-block list plays everywhere, like the render) with each
  * part's COMPLETED take of the same role from `partTakes`, placed on the
  * edited timeline. Null without parts, a bar grid with a tempo, or a
- * timeline. Parts are not edited locally yet (the lane arrives with the
- * generate flow), so the saved recipe is what plays.
+ * timeline.
  */
 export function projectPreviewParts(
-  project: Pick<RemixProject, "sectionGrid" | "parts" | "partTakes">,
-  edits: Pick<ProjectEdits, "structure">,
+  project: Pick<RemixProject, "sectionGrid" | "partTakes">,
+  edits: Pick<ProjectEdits, "structure" | "parts">,
 ): { parts: TransportPart[]; partTimeline: PreviewPartTimeline } | null {
   const grid = project.sectionGrid ?? null;
   if (!grid || !beatGridAvailable(grid)) return null;
   const timeline = editsTimeline(project, edits);
   if (!timeline || timeline.segments.length === 0) return null;
-  const recipe = normalizeRemixParts(project.parts ?? null, timeline.segments.length);
+  const recipe = normalizeRemixParts(edits.parts ?? null, timeline.segments.length);
   if (!recipe) return null;
   const takes = new Map(
     (project.partTakes ?? [])
@@ -1122,6 +1194,125 @@ export function projectPreviewParts(
   });
   if (parts.length === 0) return null;
   return { parts, partTimeline: { grid, segments: timeline.segments } };
+}
+
+/**
+ * An AI take being auditioned (#1901): played as a temporary part on every
+ * eligible block, in place of the lane "Use this take" would change. Never
+ * saved; stopping or picking a take ends it.
+ */
+export type PartAudition = {
+  takeId: string;
+  role: RemixPartRole;
+  bars: number;
+  /** The lane it stands in for, silenced meanwhile; null = an extra part. */
+  replacesPartId: string | null;
+  /** Transport copy, e.g. "Auditioning Take 2 · AI Bass". */
+  label: string;
+};
+
+/** Part id of the audition's temporary part (never a saved part id). */
+export const AUDITION_PART_ID = "audition";
+
+/**
+ * What the preview plays (#1901): the edited parts, plus the audition's
+ * take on every eligible block in place of the lane it stands in for (at
+ * that lane's level).
+ */
+export function previewPartsWithAudition(
+  project: Pick<RemixProject, "sectionGrid" | "partTakes">,
+  edits: Pick<ProjectEdits, "structure" | "parts">,
+  audition: PartAudition | null,
+): { parts: TransportPart[]; partTimeline: PreviewPartTimeline } | null {
+  const base = projectPreviewParts(project, edits);
+  if (!audition) return base;
+  const grid = project.sectionGrid ?? null;
+  if (!grid || !beatGridAvailable(grid) || !(audition.bars > 0)) return base;
+  const timeline = editsTimeline(project, edits);
+  if (!timeline || timeline.segments.length === 0) return base;
+  const replaced =
+    base?.parts.find((part) => part.partId === audition.replacesPartId) ?? null;
+  return {
+    parts: [
+      ...(base?.parts ?? []).filter((part) => part.partId !== audition.replacesPartId),
+      {
+        partId: AUDITION_PART_ID,
+        role: audition.role,
+        takeId: audition.takeId,
+        bars: audition.bars,
+        gainDb: replaced?.gainDb ?? 0,
+        muted: false,
+        blocks: null,
+      },
+    ],
+    partTimeline: base?.partTimeline ?? { grid, segments: timeline.segments },
+  };
+}
+
+/** The saved or edited takes lanes use (#1901): these can't be deleted. */
+export function partTakeIdsInUse(
+  project: Pick<RemixProject, "parts">,
+  edits: Pick<ProjectEdits, "parts">,
+): Set<string> {
+  return new Set(
+    [...(project.parts?.parts ?? []), ...(edits.parts?.parts ?? [])].map(
+      (part) => part.takeId,
+    ),
+  );
+}
+
+/**
+ * The AI part lanes (#1901) for the edited parts: AI-labelled names, the
+ * take ("Take 2 · 4 bars"), pickup cells that can't play (with the reason),
+ * and the spans the loop plays on the edited timeline. Empty without a bar
+ * grid with a tempo.
+ */
+export function lanePartsFor(
+  project: Pick<RemixProject, "sectionGrid" | "partTakes">,
+  edits: Pick<ProjectEdits, "structure" | "parts">,
+  view: { soloStemId: string | null; peaks: Record<string, number[]> },
+): LanePart[] {
+  const grid = project.sectionGrid ?? null;
+  if (!grid || !beatGridAvailable(grid) || !grid.bpm) return [];
+  const timeline = editsTimeline(project, edits);
+  if (!timeline || timeline.segments.length === 0) return [];
+  const recipe = normalizeRemixParts(edits.parts ?? null, timeline.segments.length);
+  if (!recipe) return [];
+  const takes = project.partTakes ?? [];
+  const cellNotes = timeline.segments.map((segment) =>
+    isBeatPickupSection(grid, segment.section) ? PART_PICKUP_REASON : null,
+  );
+  const bpm = grid.bpm;
+  return recipe.parts.map((part) => {
+    const take = takes.find(
+      (entry) =>
+        entry.id === part.takeId &&
+        entry.role === part.role &&
+        entry.status === "completed",
+    );
+    const number = take ? partTakeNumber(takes, take.id) : null;
+    const loopSec = take && take.bars > 0 ? partLengthSeconds(bpm, take.bars) : null;
+    const laneId = partLaneId(part.id);
+    return {
+      partId: part.id,
+      name: partLaneName(part.role),
+      takeLabel: take
+        ? `${number !== null ? `Take ${number}` : "Take"} · ${take.bars} bars`
+        : null,
+      muted: part.muted === true,
+      soloed: view.soloStemId === laneId,
+      soloedOut: view.soloStemId !== null && view.soloStemId !== laneId,
+      gainDb: part.gainDb ?? 0,
+      blocks: part.blocks ?? null,
+      cellNotes,
+      spans:
+        loopSec !== null
+          ? partPlacementSpans(part, grid, timeline.segments, loopSec)
+          : [],
+      loopSec,
+      peaks: take ? (view.peaks[take.id] ?? null) : null,
+    };
+  });
 }
 
 /**
@@ -1515,6 +1706,29 @@ export function RemixStudioEditor({
   const [failedSaveEdits, setFailedSaveEdits] = useState<ProjectEdits | null>(
     null,
   );
+  // "Add a part" (#1901): the Add AI side can show while the saved mode is
+  // still the free mix (parts render with the arrangement), plus the form,
+  // the request state and the tray's target lane. View state, never saved.
+  const [createAiSide, setCreateAiSide] = useState(false);
+  const [partsRole, setPartsRole] = useState<RemixPartRole>(REMIX_PART_ROLES[0]);
+  const [partsBars, setPartsBars] = useState<PartBars>(4);
+  const [partsStyle, setPartsStyle] = useState("");
+  const [partsGenerating, setPartsGenerating] = useState(false);
+  const [partsError, setPartsError] = useState<string | null>(null);
+  const [partsUnavailable, setPartsUnavailable] = useState<string | null>(null);
+  const [partsTargetId, setPartsTargetId] = useState<string | null>(null);
+  const [focusTrayRequest, setFocusTrayRequest] = useState(0);
+  // Audition (#1901): transient, never saved.
+  const [audition, setAudition] = useState<PartAudition | null>(null);
+  const [auditionLoadingTakeId, setAuditionLoadingTakeId] = useState<
+    string | null
+  >(null);
+  const [confirmRemovePartId, setConfirmRemovePartId] = useState<string | null>(
+    null,
+  );
+  const [confirmDeleteTakeId, setConfirmDeleteTakeId] = useState<string | null>(
+    null,
+  );
 
   // Funnel (#1143): one open event per mounted project. Compact payload —
   // ids, counts, and mode only.
@@ -1614,11 +1828,23 @@ export function RemixStudioEditor({
   const previewBeat = beatAvailable
     ? editsPreviewBeat(project, edits)
     : null;
-  // AI parts (#1901): the saved lanes play in the preview (no part UI yet).
-  const previewParts = projectPreviewParts(project, edits);
-  // A beat solo ends with the beat (removed, or no longer playable).
+  // AI parts (#1901): the edited lanes play in the preview, plus the take
+  // being auditioned.
+  const previewParts = previewPartsWithAudition(project, edits, audition);
+  // A beat or part solo ends with its lane (removed, or no longer playable).
+  const soloPartId = partIdFromLaneId(soloState);
   const soloStemId =
-    soloState === REMIX_BEAT_LANE_ID && !previewBeat ? null : soloState;
+    (soloState === REMIX_BEAT_LANE_ID && !previewBeat) ||
+    (soloPartId !== null &&
+      !(previewParts?.parts ?? []).some((part) => part.partId === soloPartId))
+      ? null
+      : soloState;
+  // The takes tray's waveforms: the newest ready takes of its instrument.
+  const trayWaveformTakeIds = partTakeBatches(project.partTakes ?? [], partsRole)
+    .flatMap((batch) => batch.takes.map((entry) => entry.take))
+    .filter((take) => take.status === "completed")
+    .slice(0, 3 * PART_TAKES_PER_BATCH)
+    .map((take) => take.id);
 
   // Studio transport (#1879): one owner for the arrangement preview, the
   // original full mix, and drafts — play/stop, seek, loop, source switch.
@@ -1645,6 +1871,7 @@ export function RemixStudioEditor({
     beat: previewBeat,
     parts: previewParts?.parts ?? null,
     partTimeline: previewParts?.partTimeline ?? null,
+    waveformTakeIds: trayWaveformTakeIds,
     outputGain: listeningGain(listeningVolume),
     onError: (kind) => {
       addToast(
@@ -1819,6 +2046,261 @@ export function RemixStudioEditor({
           null,
       }
     : null;
+  // AI parts (#1901): every lane edit is normalized against the block count
+  // and autosaved like the beat — mute included; solo is preview-only.
+  const updateParts = (change: (parts: RemixParts | null) => RemixParts | null) => {
+    if (published) return;
+    setEdits((prev) => {
+      const count = editBlockCount(
+        sectionGrid?.sections.length ?? 0,
+        prev.structure,
+      );
+      const parts = normalizeRemixParts(change(prev.parts ?? null), count > 0 ? count : null);
+      return sameRemixParts(parts, prev.parts ?? null) ? prev : { ...prev, parts };
+    });
+  };
+  function togglePartMute(partId: string) {
+    updateParts((parts) => {
+      const part = parts?.parts.find((entry) => entry.id === partId);
+      return part ? withPartMuted(parts, partId, part.muted !== true) : parts;
+    });
+  }
+  const laneParts: LanePart[] = lanePartsFor(project, edits, {
+    soloStemId,
+    peaks: transport.partTakePeaks,
+  });
+  const partTakes = project.partTakes ?? [];
+  const takesActive = partTakesActive(partTakes);
+  const settledTakeCount = partTakes.filter(
+    (take) => take.status === "completed" || take.status === "failed",
+  ).length;
+
+  const handleGenerateParts = async () => {
+    if (!token || partsGenerating || published) return;
+    setPartsGenerating(true);
+    setPartsError(null);
+    try {
+      const style = partsStyle.trim();
+      const result = await generateRemixParts(token, project.id, {
+        role: partsRole,
+        bars: partsBars,
+        style: style || null,
+        takes: PART_TAKES_PER_BATCH,
+      });
+      // The pending takes show at once; polling picks up their progress.
+      setProject((prev) => ({
+        ...prev,
+        partTakes: [
+          ...result.takes,
+          ...(prev.partTakes ?? []).filter(
+            (take) => !result.takes.some((fresh) => fresh.id === take.id),
+          ),
+        ],
+      }));
+    } catch (error) {
+      const mapped = partsGenerateErrorMessage(error);
+      setPartsError(mapped.message);
+      if (mapped.sticky) setPartsUnavailable(mapped.message);
+    } finally {
+      setPartsGenerating(false);
+    }
+  };
+
+  // Audition (#1901): pre-decode the take, then play the arrangement with it
+  // from the current position; pressing it again goes back in one click.
+  const auditionRequestRef = useRef(0);
+  const auditionPlayPendingRef = useRef(false);
+  const handleAudition = async (take: RemixPartTake) => {
+    const role = REMIX_PART_ROLES.find((entry) => entry === take.role);
+    if (!role) return;
+    if (audition?.takeId === take.id) {
+      auditionRequestRef.current += 1;
+      setAudition(null);
+      return;
+    }
+    const request = ++auditionRequestRef.current;
+    setAuditionLoadingTakeId(take.id);
+    const ok = await transport.preloadPartTake(take.id);
+    if (request !== auditionRequestRef.current) return;
+    setAuditionLoadingTakeId(null);
+    if (!ok) {
+      addToast({
+        type: "error",
+        title: "Couldn't play that take",
+        message: "Its audio could not be loaded. Please try again.",
+      });
+      return;
+    }
+    const target = partUseTarget(take, edits.parts?.parts ?? [], partsTargetId);
+    const number = partTakeNumber(partTakes, take.id);
+    setAudition({
+      takeId: take.id,
+      role,
+      bars: take.bars,
+      replacesPartId:
+        target.kind === "replace" || target.kind === "current" ? target.part.id : null,
+      label: `Auditioning ${number !== null ? `Take ${number}` : "a take"} · ${partLaneName(role)}`,
+    });
+    // A solo would hide the take; the arrangement is what it plays over.
+    setSoloStemId(null);
+    if (transport.source.kind !== "arrangement") {
+      transport.setSource({ kind: "arrangement" });
+    }
+    auditionPlayPendingRef.current = true;
+  };
+  const stopAudition = () => {
+    auditionRequestRef.current += 1;
+    setAuditionLoadingTakeId(null);
+    setAudition(null);
+  };
+  // Start playing once the audition is part of the preview's input.
+  const transportStatus = transport.status;
+  const playTransport = transport.play;
+  useEffect(() => {
+    if (!audition || !auditionPlayPendingRef.current) return;
+    auditionPlayPendingRef.current = false;
+    if (transportStatus === "idle") void playTransport();
+  }, [audition, playTransport, transportStatus]);
+  // Stopping ends the audition (it never outlives the playback it began).
+  const auditionHeardRef = useRef(false);
+  useEffect(() => {
+    if (!audition) {
+      auditionHeardRef.current = false;
+      return;
+    }
+    if (transportStatus !== "idle") {
+      auditionHeardRef.current = true;
+      return;
+    }
+    if (auditionHeardRef.current && !auditionPlayPendingRef.current) {
+      auditionHeardRef.current = false;
+      setAudition(null);
+    }
+  }, [audition, transportStatus]);
+
+  const handleUseTake = (take: RemixPartTake) => {
+    const role = REMIX_PART_ROLES.find((entry) => entry === take.role);
+    if (!role || published || take.status !== "completed") return;
+    const target = partUseTarget(take, edits.parts?.parts ?? [], partsTargetId);
+    if (target.kind === "full" || target.kind === "current") return;
+    stopAudition();
+    const number = partTakeNumber(partTakes, take.id);
+    const takeName = number !== null ? `Take ${number}` : "this take";
+    if (target.kind === "replace") {
+      updateParts((parts) => withPart(parts, { ...target.part, takeId: take.id }));
+      addToast({
+        type: "success",
+        title: "Take swapped",
+        message: `The ${partLaneName(role)} lane now plays ${takeName}.`,
+      });
+      return;
+    }
+    updateParts((parts) =>
+      withPart(parts, { id: nextPartId(parts, role), role, takeId: take.id }),
+    );
+    addToast({
+      type: "success",
+      title: `${partLaneName(role)} added`,
+      message: "It plays on every section. Turn sections off in its lane.",
+    });
+  };
+
+  const handleRemovePart = (partId: string) => {
+    setConfirmRemovePartId(null);
+    if (published) return;
+    if (audition?.replacesPartId === partId) stopAudition();
+    updateParts((parts) => withoutPart(parts, partId));
+    if (partsTargetId === partId) setPartsTargetId(null);
+    if (soloState === partLaneId(partId)) setSoloStemId(null);
+  };
+
+  // "Try other takes" on a lane: the tray for its instrument, aimed at it.
+  const handleTryOtherTakes = (partId: string) => {
+    const part = edits.parts?.parts.find((entry) => entry.id === partId);
+    if (!part) return;
+    setPartsRole(part.role);
+    setPartsTargetId(partId);
+    setPartsError(null);
+    setCreateAiSide(true);
+    setFocusTrayRequest((count) => count + 1);
+  };
+  useEffect(() => {
+    if (focusTrayRequest === 0) return;
+    const tray = document.getElementById(PARTS_TRAY_ID);
+    tray?.scrollIntoView({ block: "nearest" });
+    tray?.focus({ preventScroll: true });
+  }, [focusTrayRequest]);
+
+  const handleDeleteTake = async (takeId: string) => {
+    setConfirmDeleteTakeId(null);
+    if (!token || published) return;
+    if (audition?.takeId === takeId) stopAudition();
+    try {
+      const updated = await deleteRemixPartTake(token, project.id, takeId);
+      setProject((prev) => ({
+        ...updated,
+        availableStems: updated.availableStems ?? prev.availableStems,
+      }));
+    } catch (error) {
+      const { code } = apiErrorCode(error);
+      addToast({
+        type: "error",
+        title: "Couldn't delete the take",
+        message:
+          code === "take_in_use"
+            ? "Your saved remix still uses it. Remove its lane first."
+            : code === "take_processing"
+              ? "It is still being made."
+              : "Please try again.",
+      });
+    }
+  };
+
+  const partsModel: RemixPartsModel = {
+    role: partsRole,
+    bars: partsBars,
+    style: partsStyle,
+    onRoleChange: (role) => {
+      setPartsRole(role);
+      setPartsError(null);
+      // Another instrument's tray is not about the lane any more.
+      const target = edits.parts?.parts.find((part) => part.id === partsTargetId);
+      if (target && target.role !== role) setPartsTargetId(null);
+    },
+    onBarsChange: (bars) => {
+      setPartsBars(bars);
+      setPartsError(null);
+    },
+    onStyleChange: (style) => {
+      setPartsStyle(style);
+      setPartsError(null);
+    },
+    bpm: sectionGrid && beatGridAvailable(sectionGrid) ? sectionGrid.bpm ?? null : null,
+    credits: credits
+      ? {
+          balanceCents: credits.balanceCents,
+          priceCentsPer30s: credits.priceCentsPer30s,
+        }
+      : null,
+    creditRequest: creditRequestState,
+    onRequestCredits: () => void handleRequestCredits(),
+    unavailableReason: partsUnavailable,
+    generating: partsGenerating,
+    error: partsError,
+    onGenerate: () => void handleGenerateParts(),
+    takes: partTakes,
+    parts: edits.parts?.parts ?? [],
+    inUseTakeIds: partTakeIdsInUse(project, edits),
+    targetPartId: partsTargetId,
+    onClearTarget: () => setPartsTargetId(null),
+    auditionTakeId: audition?.takeId ?? null,
+    auditionLoadingTakeId,
+    onAudition: (take) => void handleAudition(take),
+    onUseTake: handleUseTake,
+    onDeleteTake: (take) => setConfirmDeleteTakeId(take.id),
+    takePeaks: (takeId) => transport.partTakePeaks[takeId] ?? null,
+  };
+
   const handleBlockAction = (index: number, action: LaneBlockAction) =>
     updateStructure((state) =>
       sectionGrid ? blockActionResult(state, index, action, sectionGrid) : null,
@@ -1829,6 +2311,11 @@ export function RemixStudioEditor({
     );
 
   const toggleStemMute = (stemId: string) => {
+    const partId = partIdFromLaneId(stemId);
+    if (partId !== null) {
+      togglePartMute(partId);
+      return;
+    }
     setEdits((prev) => {
       const current = prev.stems[stemId];
       if (!current) return prev;
@@ -1861,7 +2348,11 @@ export function RemixStudioEditor({
   const shortcutStateRef = useRef({
     published,
     dialogOpen:
-      confirmPublishOpen || confirmResetOpen || confirmDeleteJobId !== null,
+      confirmPublishOpen ||
+      confirmResetOpen ||
+      confirmDeleteJobId !== null ||
+      confirmRemovePartId !== null ||
+      confirmDeleteTakeId !== null,
     loopActive: transportLoop !== null,
     toggle: transport.toggle,
     clearLoop: () => transport.setLoop(null),
@@ -1872,7 +2363,11 @@ export function RemixStudioEditor({
     shortcutStateRef.current = {
       published,
       dialogOpen:
-      confirmPublishOpen || confirmResetOpen || confirmDeleteJobId !== null,
+        confirmPublishOpen ||
+        confirmResetOpen ||
+        confirmDeleteJobId !== null ||
+        confirmRemovePartId !== null ||
+        confirmDeleteTakeId !== null,
       loopActive: transportLoop !== null,
       toggle: transport.toggle,
       clearLoop: () => transport.setLoop(null),
@@ -1944,10 +2439,13 @@ export function RemixStudioEditor({
     return () => {
       cancelled = true;
     };
-  }, [token, generationStatus]);
+    // Part takes (#1901) are debited (or refunded) as they settle.
+  }, [token, generationStatus, settledTakeCount]);
 
+  // Polls while a draft or an AI part take (#1901) is being made.
+  const pollActive = generationActive || takesActive;
   useEffect(() => {
-    if (!token || !generationActive) return;
+    if (!token || !pollActive) return;
     let cancelled = false;
     const refreshProject = async () => {
       try {
@@ -1978,7 +2476,7 @@ export function RemixStudioEditor({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [dirty, generationActive, project.id, stopTransport, token]);
+  }, [dirty, pollActive, project.id, stopTransport, token]);
 
   // Publish + export gating (#1196/#1323): eligibility is re-checked
   // server-side at publish/export time, but the studio fetches it so the
@@ -2281,6 +2779,8 @@ export function RemixStudioEditor({
   const handleResetToOriginal = () => {
     setConfirmResetOpen(false);
     if (published) return;
+    stopAudition();
+    setPartsTargetId(null);
     setEdits((prev) => originalEdits(prev, referenceIds));
   };
 
@@ -2347,9 +2847,9 @@ export function RemixStudioEditor({
     // persists them. The AI target only applies to variations, so the mix
     // and extend intents keep a saved choice instead of clobbering it.
     setEdits((prev) => {
-      const state = stateForIntent(
-        intentReturningFromMix(prev.mode, prev.aiTarget, requested),
-      );
+      // The panel only asks for an intent the listener picked (#1901: the
+      // Add AI side opens on "Add a part" without changing the mode).
+      const state = stateForIntent(requested);
       const aiTarget =
         state.mode !== "variation"
           ? prev.aiTarget
@@ -2651,7 +3151,7 @@ export function RemixStudioEditor({
                     aria-disabled={!resetAvailability.enabled || undefined}
                     title={
                       resetAvailability.reason ??
-                      "Clear effects, song shape, beat and stem changes"
+                      "Clear effects, song shape, beat, AI parts and stem changes"
                     }
                     className={`ui-btn ui-btn-ghost ui-btn-sm remix-reset-original-btn ${
                       resetAvailability.enabled
@@ -2733,8 +3233,14 @@ export function RemixStudioEditor({
                     ) : null
                   }
                   onToggle={transport.toggle}
-                  onSourceChange={transport.setSource}
+                  onSourceChange={(next) => {
+                    // The audition plays over the arrangement only.
+                    if (next.kind !== "arrangement") stopAudition();
+                    transport.setSource(next);
+                  }}
                   onClearLoop={() => transport.setLoop(null)}
+                  auditionLabel={audition?.label ?? null}
+                  onStopAudition={stopAudition}
                   volume={{
                     value: listeningVolume,
                     onLevelChange: (level) =>
@@ -2778,6 +3284,17 @@ export function RemixStudioEditor({
                   onSetBeatBlocks={(blocks) =>
                     updateBeat((beat) => ({ ...beat, blocks }))
                   }
+                  parts={laneParts}
+                  onTogglePartMute={togglePartMute}
+                  onTogglePartSolo={(partId) => toggleStemSolo(partLaneId(partId))}
+                  onPartGainChange={(partId, gainDb) =>
+                    updateParts((parts) => withPartGain(parts, partId, gainDb))
+                  }
+                  onSetPartBlocks={(partId, blocks) =>
+                    updateParts((parts) => withPartBlocks(parts, partId, blocks))
+                  }
+                  onTryOtherTakes={handleTryOtherTakes}
+                  onRemovePart={(partId) => setConfirmRemovePartId(partId)}
                 />
               </div>
 
@@ -2854,6 +3371,9 @@ export function RemixStudioEditor({
             <RemixCreatePanel
               intent={intent}
               onIntentChange={handleIntentChange}
+              aiSide={createAiSide}
+              onAiSideChange={setCreateAiSide}
+              parts={partsModel}
               prompt={edits.prompt}
               onPromptChange={(prompt) =>
                 setEdits((prev) => ({ ...prev, prompt }))
@@ -2977,6 +3497,35 @@ export function RemixStudioEditor({
           if (confirmDeleteJobId) void handleDeleteVersion(confirmDeleteJobId);
         }}
         onCancel={() => setConfirmDeleteJobId(null)}
+      />
+      <ConfirmDialog
+        isOpen={confirmRemovePartId !== null}
+        title={`Remove the ${
+          partLaneName(
+            edits.parts?.parts.find((part) => part.id === confirmRemovePartId)?.role ??
+              "part",
+          )
+        } lane?`}
+        message={REMOVE_PART_CONFIRM_MESSAGE}
+        confirmLabel="Remove lane"
+        cancelLabel="Keep it"
+        variant="warning"
+        onConfirm={() => {
+          if (confirmRemovePartId) handleRemovePart(confirmRemovePartId);
+        }}
+        onCancel={() => setConfirmRemovePartId(null)}
+      />
+      <ConfirmDialog
+        isOpen={confirmDeleteTakeId !== null}
+        title={DELETE_TAKE_CONFIRM_TITLE}
+        message={DELETE_TAKE_CONFIRM_MESSAGE}
+        confirmLabel="Delete take"
+        cancelLabel="Keep it"
+        variant="danger"
+        onConfirm={() => {
+          if (confirmDeleteTakeId) void handleDeleteTake(confirmDeleteTakeId);
+        }}
+        onCancel={() => setConfirmDeleteTakeId(null)}
       />
     </div>
   );

@@ -86,9 +86,9 @@ export const REMIX_AI_INTENTS: ReadonlyArray<{
   },
   {
     intent: "add_part",
-    label: "Add a new part",
+    label: "Add a layer to the whole track",
     description:
-      "The AI generates one new part that sits on top of your arranged stems.",
+      "The AI generates one new layer across the whole song that sits on top of your arranged stems.",
   },
   {
     intent: "replace_stem",

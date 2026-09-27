@@ -17,6 +17,11 @@ import {
 import { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "../../lib/remixGain";
 import { REMIX_BEAT_LANE_ID } from "../../lib/remixBeat";
 import {
+  partIdFromLaneId,
+  partLaneId,
+  type RemixPartSpan,
+} from "../../lib/remixParts";
+import {
   formatFxAmount,
   formatFxTone,
   REMIX_FX_STEM_RANGES,
@@ -82,6 +87,36 @@ export type LaneBeat = {
   durationSec: number | null;
 };
 
+/**
+ * An AI part lane (#1901): one instrument playing one AI take, looped on
+ * the timeline blocks it is on. Shown under the beat, one per part.
+ */
+export type LanePart = {
+  partId: string;
+  /** Always AI-labelled: "AI Bass". */
+  name: string;
+  /** e.g. "Take 2 · 4 bars"; null when the take is unknown. */
+  takeLabel: string | null;
+  /** Saved mute (the render skips a muted part). */
+  muted: boolean;
+  soloed: boolean;
+  soloedOut: boolean;
+  gainDb: number;
+  /** Per-block on/off; null = every block on. */
+  blocks: boolean[] | null;
+  /**
+   * Per block: why the part can never play there (a pickup block), or
+   * null. Such cells are inert and say why.
+   */
+  cellNotes: (string | null)[];
+  /** Where the loop plays (timeline time), from `partPlacementSpans`. */
+  spans: RemixPartSpan[];
+  /** The take's loop length in seconds; null when unknown. */
+  loopSec: number | null;
+  /** 0..1 buckets across one loop of the take; null = still loading. */
+  peaks: number[] | null;
+};
+
 export type RemixSessionLanesProps = {
   stems: LaneStem[];
   /** null → lanes show the waveform only, no cells and no section ruler. */
@@ -121,6 +156,17 @@ export type RemixSessionLanesProps = {
   onBeatGainChange?(gainDb: number): void;
   /** Receives null when every block is on. */
   onSetBeatBlocks?(blocks: boolean[] | null): void;
+  /** AI part lanes (#1901), under the beat; absent/empty = none. */
+  parts?: LanePart[];
+  onTogglePartMute?(partId: string): void;
+  onTogglePartSolo?(partId: string): void;
+  onPartGainChange?(partId: string, gainDb: number): void;
+  /** Receives null when every block is on. */
+  onSetPartBlocks?(partId: string, blocks: boolean[] | null): void;
+  /** Opens the takes tray for that lane's instrument. */
+  onTryOtherTakes?(partId: string): void;
+  /** Asks to remove the lane (the editor confirms). */
+  onRemovePart?(partId: string): void;
 };
 
 /** Section-menu actions on one timeline block (#1899). */
@@ -398,6 +444,29 @@ export function peaksToSvgPath(
   ].join(" ");
 }
 
+/**
+ * Waveform buckets for a looped take drawn across one span (#1901): the
+ * loop's peaks repeated `spanSec / loopSec` times, cut where the span ends.
+ * At most `maxBuckets` buckets (the loop is subsampled to fit).
+ */
+export function tilePeaks(
+  peaks: readonly number[],
+  spanSec: number,
+  loopSec: number,
+  maxBuckets = 400,
+): number[] {
+  if (peaks.length === 0 || !(spanSec > 0) || !(loopSec > 0)) return [];
+  const exact = (peaks.length * spanSec) / loopSec;
+  const count = Math.max(1, Math.min(maxBuckets, Math.round(exact)));
+  const out = new Array<number>(count);
+  for (let index = 0; index < count; index += 1) {
+    const sec = ((index + 0.5) / count) * spanSec;
+    const phase = (sec % loopSec) / loopSec;
+    out[index] = peaks[Math.min(peaks.length - 1, Math.floor(phase * peaks.length))];
+  }
+  return out;
+}
+
 /** Normalized working mask: a copy of `sections`, or all-on when absent/stale. */
 export function sectionMask(
   sections: boolean[] | null,
@@ -493,6 +562,13 @@ export function RemixSessionLanes({
   onToggleBeatSolo,
   onBeatGainChange,
   onSetBeatBlocks,
+  parts,
+  onTogglePartMute,
+  onTogglePartSolo,
+  onPartGainChange,
+  onSetPartBlocks,
+  onTryOtherTakes,
+  onRemovePart,
 }: RemixSessionLanesProps) {
   const fxIdPrefix = useId();
   // Which stems show their FX row: view state only, never saved.
@@ -603,8 +679,11 @@ export function RemixSessionLanes({
   };
 
   // The beat lane's cells (#1902) paint like a stem's, into beat.blocks.
+  // AI part cells (#1901) too, into the part's blocks by lane id.
   const setSections = (stemId: string, sections: boolean[] | null) => {
+    const partId = partIdFromLaneId(stemId);
     if (stemId === REMIX_BEAT_LANE_ID) onSetBeatBlocks?.(sections);
+    else if (partId !== null) onSetPartBlocks?.(partId, sections);
     else onSetSections(stemId, sections);
   };
   const beatLaneStem: LaneStem | null = beat
@@ -709,12 +788,37 @@ export function RemixSessionLanes({
     );
   };
 
-  /** A lane's per-block on/off cells (stems and the beat). */
-  const cellButtons = (stem: LaneStem, mask: boolean[]) =>
+  /**
+   * A lane's per-block on/off cells (stems, the beat and AI parts). A cell
+   * with a note (an AI part's pickup block) is inert and says why.
+   */
+  const cellButtons = (
+    stem: LaneStem,
+    mask: boolean[],
+    notes?: readonly (string | null)[],
+  ) =>
     grid &&
     totalSec !== null &&
     columns.map((column, index) => {
       const on = mask[index];
+      const note = notes?.[index] ?? null;
+      if (note) {
+        return (
+          <button
+            key={index}
+            type="button"
+            aria-disabled="true"
+            aria-label={`${stem.name}: section ${index + 1} — ${note}`}
+            title={note}
+            className="remix-lane-cell remix-lane-cell-inert absolute inset-y-1 cursor-not-allowed rounded-sm border border-dashed border-zinc-700 bg-zinc-950/60 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
+            style={{
+              left: `calc(${percent(column.outStartSec, totalSec)} + 1px)`,
+              width: `calc(${fractionOf(column.outEndSec - column.outStartSec, totalSec) * 100}% - 2px)`,
+            }}
+            onClick={(event) => event.stopPropagation()}
+          />
+        );
+      }
       return (
         <button
           key={index}
@@ -1148,6 +1252,41 @@ export function RemixSessionLanes({
           />
         )}
 
+        {(parts ?? []).map((part) => {
+          const laneStem: LaneStem = {
+            stemId: partLaneId(part.partId),
+            name: part.name,
+            type: "ai part",
+            muted: part.muted,
+            soloed: part.soloed,
+            soloedOut: part.soloedOut,
+            gainDb: part.gainDb,
+            sections: part.blocks,
+            peaks: part.peaks,
+          };
+          return (
+            <PartLaneRow
+              key={part.partId}
+              part={part}
+              disabled={disabled}
+              timelineStyle={timelineStyle}
+              totalSec={totalSec}
+              onToggleMute={() => onTogglePartMute?.(part.partId)}
+              onToggleSolo={() => onTogglePartSolo?.(part.partId)}
+              onGainChange={(gainDb) => onPartGainChange?.(part.partId, gainDb)}
+              onTryOtherTakes={
+                onTryOtherTakes ? () => onTryOtherTakes(part.partId) : undefined
+              }
+              onRemove={onRemovePart ? () => onRemovePart(part.partId) : undefined}
+              cells={cellButtons(
+                laneStem,
+                grid ? sectionMask(part.blocks, blockCount) : [],
+                part.cellNotes,
+              )}
+            />
+          );
+        })}
+
         {/* Loop band + playhead overlay (spans ruler and lanes) */}
         <div
           aria-hidden="true"
@@ -1324,6 +1463,189 @@ function BeatLaneRow({
             />
           </svg>
         )}
+        {cells}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * An AI part's lane (#1901): a channel strip (the AI-labelled name, the
+ * take, mute, solo, level, "Try other takes" and Remove) next to the take's
+ * loop tiled over the spans it plays and the per-block cells.
+ */
+export function PartLaneRow({
+  part,
+  disabled,
+  timelineStyle,
+  totalSec,
+  onToggleMute,
+  onToggleSolo,
+  onGainChange,
+  onTryOtherTakes,
+  onRemove,
+  cells,
+}: {
+  part: LanePart;
+  disabled: boolean;
+  timelineStyle: CSSProperties | undefined;
+  totalSec: number | null;
+  onToggleMute(): void;
+  onToggleSolo(): void;
+  onGainChange(gainDb: number): void;
+  onTryOtherTakes?(): void;
+  onRemove?(): void;
+  cells: ReactNode;
+}) {
+  const dimmed = part.muted || part.soloedOut;
+  const { name } = part;
+  return (
+    <div
+      data-stem-id={partLaneId(part.partId)}
+      className={`remix-lane-row remix-lane-part flex border-t border-zinc-800 ${
+        dimmed ? "remix-lane-row-dimmed" : ""
+      }`}
+    >
+      <div
+        className={`sticky left-0 z-20 ${STRIP_WIDTH} shrink-0 bg-zinc-900 border-r border-zinc-800 px-2 py-2 flex flex-col gap-1`}
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={`truncate text-xs font-medium ${
+              dimmed ? "text-zinc-500" : "text-zinc-200"
+            }`}
+            title={name}
+          >
+            {name}
+          </span>
+          <span
+            className="shrink-0 rounded border border-sky-400/50 bg-sky-500/15 px-1 text-[9px] font-semibold text-sky-200 remix-lane-ai-badge"
+            title="AI-generated part"
+          >
+            AI
+          </span>
+        </div>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-[10px] text-zinc-500 flex-1 min-w-0 remix-lane-part-take">
+            {part.takeLabel ?? "Take unavailable"}
+            {part.soloedOut ? " · muted by solo" : ""}
+          </span>
+          {onTryOtherTakes && (
+            <button
+              type="button"
+              disabled={disabled}
+              title={
+                disabled
+                  ? "Published remixes are locked"
+                  : `Hear other takes for ${name}`
+              }
+              className="shrink-0 rounded border border-zinc-700 bg-transparent px-1.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-40 remix-lane-part-takes"
+              onClick={onTryOtherTakes}
+            >
+              Try other takes
+            </button>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={`Remove ${name}`}
+              title={disabled ? "Published remixes are locked" : `Remove ${name}`}
+              className="shrink-0 rounded border border-zinc-700 bg-transparent px-1.5 text-[10px] text-zinc-400 hover:border-red-500/60 hover:text-red-200 disabled:opacity-40 remix-lane-part-remove"
+              onClick={onRemove}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-pressed={part.muted}
+            aria-label={`Mute ${name}`}
+            title={part.muted ? "Unmute" : "Mute"}
+            disabled={disabled}
+            className={`h-5 w-5 shrink-0 rounded border text-[10px] font-semibold disabled:opacity-50 remix-lane-mute ${
+              part.muted
+                ? "bg-red-500/25 text-red-200 border-red-500/50"
+                : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-100"
+            }`}
+            onClick={onToggleMute}
+          >
+            M
+          </button>
+          <button
+            type="button"
+            aria-pressed={part.soloed}
+            aria-label={`Solo ${name}`}
+            title={part.soloed ? "Clear solo" : "Solo (preview only, not saved)"}
+            className={`h-5 w-5 shrink-0 rounded border text-[10px] font-semibold remix-lane-solo ${
+              part.soloed
+                ? "bg-purple-500/30 text-purple-100 border-purple-400/60"
+                : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-100"
+            }`}
+            onClick={onToggleSolo}
+          >
+            S
+          </button>
+          <input
+            type="range"
+            min={GAIN_DB_MIN}
+            max={GAIN_DB_MAX}
+            step={0.5}
+            value={part.gainDb}
+            disabled={disabled}
+            aria-label={`${name} level in decibels`}
+            className="h-1 min-w-0 flex-1 cursor-pointer accent-purple-400 disabled:cursor-not-allowed disabled:opacity-50 remix-lane-gain"
+            onChange={(event) =>
+              onGainChange(clampGainDb(parseFloat(event.target.value)))
+            }
+          />
+          <span className="w-12 shrink-0 text-right text-[10px] tabular-nums text-zinc-300">
+            {formatGainDb(part.gainDb)}
+          </span>
+        </div>
+      </div>
+      <div
+        className={`remix-lane relative flex-1 min-h-[4.5rem] select-none ${
+          dimmed ? "opacity-40" : ""
+        }`}
+        style={timelineStyle}
+      >
+        {totalSec !== null &&
+          part.spans.map((span, index) => {
+            const spanSec = span.outEndSec - span.outStartSec;
+            const style = {
+              left: percent(span.outStartSec, totalSec),
+              width: `${fractionOf(spanSec, totalSec) * 100}%`,
+            };
+            return part.peaks && part.loopSec ? (
+              <svg
+                key={index}
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 h-full remix-lane-waveform remix-lane-part-waveform"
+                style={style}
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                <path
+                  d={peaksToSvgPath(
+                    tilePeaks(part.peaks, spanSec, part.loopSec),
+                    100,
+                    100,
+                  )}
+                  className="fill-sky-200/70"
+                />
+              </svg>
+            ) : (
+              <div
+                key={index}
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-sky-400/25 remix-lane-part-span"
+                style={style}
+              />
+            );
+          })}
         {cells}
       </div>
     </div>
