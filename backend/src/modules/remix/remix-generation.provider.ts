@@ -4,6 +4,11 @@ import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
 import type { RemixRenderStructure, RemixStructure } from "./remix-structure";
 import type { RemixBeat, RemixRenderBeat } from "./remix-beat";
 import type { RemixStretchMetadata } from "./remix-stretch";
+import {
+  encodeStubWav,
+  parseStubPartPrompt,
+  synthesizeStubPartClip,
+} from "./remix-part-stub-clip";
 
 /**
  * Provider boundary for AI-assisted remix draft generation (#896, backlog D1).
@@ -564,6 +569,26 @@ export type RemixGenerationJob = {
   outputMetadata: RemixGenerationOutputMetadata;
 };
 
+/**
+ * One AI part clip request (#1901): the server-built `remix-part-prompt/v1`
+ * prompt (user style words are only a sanitized fragment of it), its
+ * role-specific exclusions and the take's stored seed (reproducible).
+ */
+export type RemixPartClipRequest = {
+  prompt: string;
+  negativePrompt: string;
+  seed: number;
+};
+
+/** One 30 s model generation, before conform. */
+export type RemixPartClip = {
+  audio: Buffer;
+  mimeType: string;
+  provider: string;
+  model: string;
+  estimatedCostUsd: number;
+};
+
 export interface RemixGenerationProvider {
   /**
    * @param authorization Worker-time render grant (#1214). Providers that
@@ -574,6 +599,11 @@ export interface RemixGenerationProvider {
     input: RemixGenerationInput,
     authorization: StemRenderAuthorization,
   ): Promise<RemixGenerationJob>;
+  /**
+   * Optional clip capability for AI parts (#1901): one prompt-only 30 s
+   * generation. Providers without it answer `parts_unsupported`.
+   */
+  createPartClip?(request: RemixPartClipRequest): Promise<RemixPartClip>;
 }
 
 type ProjectForGeneration = {
@@ -654,6 +684,45 @@ export function estimateRemixGenerationCostUsd(
 @Injectable()
 export class StubRemixGenerationProvider implements RemixGenerationProvider {
   static readonly PROVIDER_NAME = "remix-stub";
+  static readonly PART_MODEL = "remix-stub-part/v1";
+
+  /**
+   * Deterministic part clip (#1901): synthesized from the template's tempo,
+   * key and role at a seeded ±3 % tempo deviation and downbeat offset, so the
+   * conform has real work to do. Same master gate as drafts.
+   */
+  async createPartClip(request: RemixPartClipRequest): Promise<RemixPartClip> {
+    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+      throw new RemixGenerationProviderError(
+        "provider_disabled",
+        "AI remix generation is not enabled on this environment yet.",
+        false,
+      );
+    }
+    const parsed = parseStubPartPrompt(request.prompt);
+    if (parsed.bpm === null) {
+      throw new RemixGenerationProviderError(
+        "invalid_input",
+        "The part prompt carries no tempo.",
+        false,
+      );
+    }
+    const clip = synthesizeStubPartClip({
+      role: parsed.role,
+      bpm: parsed.bpm,
+      key: parsed.key,
+      seed: request.seed,
+    });
+    return {
+      audio: encodeStubWav(clip.channels, clip.sampleRate),
+      mimeType: "audio/wav",
+      provider: StubRemixGenerationProvider.PROVIDER_NAME,
+      model: StubRemixGenerationProvider.PART_MODEL,
+      estimatedCostUsd: estimateRemixGenerationCostUsd(
+        REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
+      ),
+    };
+  }
 
   async createRemixDraft(
     input: RemixGenerationInput,

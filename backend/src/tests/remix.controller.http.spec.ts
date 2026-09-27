@@ -61,6 +61,16 @@ const mockProjectService = {
     mimeType: 'audio/mpeg',
     filename: 'my-remix.mp3',
   }),
+  generatePartTakes: jest.fn().mockResolvedValue({
+    batchId: 'batch-1',
+    quoteCents: 30,
+    perTakeCents: 10,
+    takes: [{ id: 'take-1', status: 'pending' }],
+  }),
+  getPartTakeAudio: jest
+    .fn()
+    .mockResolvedValue({ data: Buffer.from('fLaC-take-audio'), mimeType: 'audio/flac' }),
+  deletePartTake: jest.fn().mockResolvedValue({ id: 'proj-1', partTakes: [] }),
   publishProject: jest.fn().mockResolvedValue({
     id: 'proj-1',
     status: 'published',
@@ -533,6 +543,107 @@ describe('RemixController (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(409);
     expect(res.body.code).toBe('project_published');
+  });
+
+  // ----- AI parts (#1901) -----
+
+  it.each([
+    ['post', '/remix/projects/proj-1/parts/generate'],
+    ['get', '/remix/projects/proj-1/parts/takes/take-1/audio'],
+    ['delete', '/remix/projects/proj-1/parts/takes/take-1'],
+  ] as const)('%s %s → 401 without JWT', async (method, path) => {
+    await request(app.getHttpServer())[method](path).send({}).expect(401);
+    expect(mockProjectService.generatePartTakes).not.toHaveBeenCalled();
+    expect(mockProjectService.getPartTakeAudio).not.toHaveBeenCalled();
+    expect(mockProjectService.deletePartTake).not.toHaveBeenCalled();
+  });
+
+  it('POST /remix/projects/:id/parts/generate → 202 with only the documented fields, owner from the JWT', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/parts/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ role: 'bass', bars: 8, style: 'funky', takes: 2, userId: 'attacker', costCents: 0 })
+      .expect(202);
+    expect(res.body.quoteCents).toBe(30);
+    expect(mockProjectService.generatePartTakes).toHaveBeenCalledWith('user-1', 'proj-1', {
+      role: 'bass',
+      bars: 8,
+      style: 'funky',
+      takes: 2,
+    });
+  });
+
+  it.each([
+    [{ bars: 4 }],
+    [{ role: 'vocals', bars: 4 }],
+    [{ role: 'keys', bars: 16 }],
+    [{ role: 'keys', bars: 4, takes: 0 }],
+    [{ role: 'keys', bars: 4, takes: 5 }],
+    [{ role: 'keys', bars: 4, takes: 1.5 }],
+    [{ role: 'keys', bars: 4, style: 12 }],
+    [{ role: 'keys', bars: 4, style: 'x'.repeat(201) }],
+  ])('POST /remix/projects/:id/parts/generate → 400 for %j', async (body) => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/parts/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body)
+      .expect(400);
+    expect(mockProjectService.generatePartTakes).not.toHaveBeenCalled();
+  });
+
+  it('POST /remix/projects/:id/parts/generate → 503 provider_disabled with the normalized contract', async () => {
+    mockProjectService.generatePartTakes.mockRejectedValueOnce(
+      new RemixGenerationProviderError('provider_disabled', 'AI remix generation is not enabled on this environment yet.', false),
+    );
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/parts/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ role: 'keys', bars: 4 })
+      .expect(503);
+    expect(res.body).toMatchObject({ code: 'provider_disabled', retryable: false });
+  });
+
+  it('POST /remix/projects/:id/parts/generate → 403 for non-owners', async () => {
+    mockProjectService.generatePartTakes.mockRejectedValueOnce(
+      new ForbiddenException('You do not have access to this remix project'),
+    );
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/parts/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ role: 'keys', bars: 4 })
+      .expect(403);
+  });
+
+  it('GET /remix/projects/:id/parts/takes/:takeId/audio → 200 full and 206 ranged FLAC for the JWT owner', async () => {
+    const full = await request(app.getHttpServer())
+      .get('/remix/projects/proj-1/parts/takes/take-1/audio')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(full.headers['content-type']).toContain('audio/flac');
+    expect(full.headers['cache-control']).toBe('private, no-store');
+    expect(mockProjectService.getPartTakeAudio).toHaveBeenCalledWith('user-1', 'proj-1', 'take-1');
+    const ranged = await request(app.getHttpServer())
+      .get('/remix/projects/proj-1/parts/takes/take-1/audio')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Range', 'bytes=0-3')
+      .expect(206);
+    expect(ranged.headers['content-range']).toBe('bytes 0-3/15');
+  });
+
+  it('DELETE /remix/projects/:id/parts/takes/:takeId → 200 for the JWT owner, 409 take_in_use', async () => {
+    await request(app.getHttpServer())
+      .delete('/remix/projects/proj-1/parts/takes/take-1')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(mockProjectService.deletePartTake).toHaveBeenCalledWith('user-1', 'proj-1', 'take-1');
+    mockProjectService.deletePartTake.mockRejectedValueOnce(
+      new ConflictException({ code: 'take_in_use', message: 'in use' }),
+    );
+    const res = await request(app.getHttpServer())
+      .delete('/remix/projects/proj-1/parts/takes/take-1')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(409);
+    expect(res.body.code).toBe('take_in_use');
   });
 
   // ----- Legacy compatibility -----
