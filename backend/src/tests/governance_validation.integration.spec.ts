@@ -303,9 +303,29 @@ describe("governance validation harness — erasure", () => {
   });
 
   it("cleans up the erasure fixtures, rotated ids included", async () => {
+    // On a shared environment a real listener can touch a fixture track, e.g.
+    // an AI DJ session that played it; that signal must not block cleanup.
+    const fixtureTrack = await prisma.track.findFirst({
+      where: { id: { startsWith: INVOCATION.erasurePrefix } },
+      select: { id: true },
+    });
+    const outsideListenerId = `outside_listener_${Date.now()}`;
+    if (fixtureTrack) {
+      await prisma.user.create({ data: { id: outsideListenerId, email: `${outsideListenerId}@example.test` } });
+      await prisma.agentSignal.create({
+        data: { userId: outsideListenerId, trackId: fixtureTrack.id, action: "play", weight: 1 },
+      });
+    }
+
     const warehouse = { ...successfulWarehouse, applyErasure: jest.fn(successfulWarehouse.applyErasure) };
     const summary = await cleanupAll(INVOCATION, warehouse);
     expect(summary.failures).toEqual([]);
+    expect(fixtureTrack).not.toBeNull();
+    expect(await prisma.track.count({ where: { id: { startsWith: INVOCATION.erasurePrefix } } })).toBe(0);
+    expect(await prisma.agentSignal.count({ where: { userId: outsideListenerId } })).toBe(0);
+    // The outside listener themself is not harness data and is left alone.
+    expect(await prisma.user.count({ where: { id: outsideListenerId } })).toBe(1);
+    await prisma.user.deleteMany({ where: { id: outsideListenerId } });
     expect(warehouse.applyErasure).toHaveBeenCalledWith(
       expect.objectContaining({
         deleteEventIds: expect.arrayContaining([

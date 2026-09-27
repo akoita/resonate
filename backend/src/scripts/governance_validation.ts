@@ -1315,6 +1315,19 @@ export async function cleanupErasure(
   await remove(removed, failures, "erasure.stemPurchase", () => prisma.stemPurchase.deleteMany({ where }));
   await remove(removed, failures, "erasure.stemListing", () => prisma.stemListing.deleteMany({ where }));
   await remove(removed, failures, "erasure.stem", () => prisma.stem.deleteMany({ where }));
+  // Rows that point at a harness track (or, for AI DJ signals, were written
+  // by a harness user) restrict the track/user delete. On a shared environment
+  // real listeners can create them — e.g. an AI DJ session that played the
+  // fixture — so they go first, the same set release deletion clears (#1911).
+  const trackRef = { trackId: { startsWith: prefix } };
+  await remove(removed, failures, "erasure.agentSignal", () =>
+    prisma.agentSignal.deleteMany({ where: { OR: [trackRef, { userId: { in: userIds } }] } }),
+  );
+  await remove(removed, failures, "erasure.dmcaReport", () => prisma.dmcaReport.deleteMany({ where: trackRef }));
+  await remove(removed, failures, "erasure.audioFingerprint", () =>
+    prisma.audioFingerprint.deleteMany({ where: trackRef }),
+  );
+  await remove(removed, failures, "erasure.license", () => prisma.license.deleteMany({ where: trackRef }));
   await remove(removed, failures, "erasure.track", () => prisma.track.deleteMany({ where }));
   await remove(removed, failures, "erasure.release", () => prisma.release.deleteMany({ where }));
   await remove(removed, failures, "erasure.creatorTrust", () =>
