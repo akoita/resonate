@@ -543,7 +543,8 @@ from the JWT, never the request body.
     - Create → Mix stems gains a **Vibe** section: one-click starters
       (Slowed + reverb, Sped up, Lo-fi, Dreamy, Club, and No effects to reset) and four
       plain-language master sliders (Speed, Space, Tone, Warmth).
-    - Each stem row has an **FX** toggle for its own Space / Echo / Tone.
+    - Each stem row has an **Effects** toggle (labelled "FX" until #1905)
+      for its own Space / Echo / Tone.
     - A vibe sets visible values the user can tweak.
     - Everything previews live and autosaves.
   - **Provenance.** Effects are not AI, so renders keep `stem_audio`
@@ -970,7 +971,7 @@ from the JWT, never the request body.
     on a preview started without any.
   - **UI.** A "Pro" switch in the Session header ("Show engineer tools:
     per-stem EQ and pan"), off by default, remembered per device, never
-    changing the recipe. With Pro on, a stem's FX row adds a Pro strip: Low
+    changing the recipe. With Pro on, a stem's Effects row adds a Pro strip: Low
     200 Hz, Mid 1 kHz, High 4 kHz (dB readouts) and Pan ("L 30" / "C" /
     "R 30"); double-click resets a slider to 0; edits autosave through the
     effects PATCH. With Pro off, a stem with Pro settings shows a "Pro"

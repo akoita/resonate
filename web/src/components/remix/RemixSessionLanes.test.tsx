@@ -284,6 +284,12 @@ describe("per-lane FX (#1897)", () => {
     expect(render()).not.toContain("remix-lane-fx-toggle");
   });
 
+  it('spells the toggle out as "Effects", never "FX" (#1905)', () => {
+    const html = render({ onFxChange: noop });
+    expect(html).toMatch(/aria-label="Effects for Drums"[^>]*>Effects<\/button>/);
+    expect(html).not.toMatch(/>FX</);
+  });
+
   it("marks a stem with non-default fx with a dot", () => {
     const html = render({
       onFxChange: noop,

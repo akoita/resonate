@@ -41,6 +41,21 @@ export type HelpCategoryId =
  */
 export type HelpStatus = "available" | "partial" | "coming-soon";
 
+/**
+ * Reader level for articles that offer a Beginner / Intermediate /
+ * Professional path (#1905). A section tagged with a level shows only on that
+ * level; untagged sections (a glossary, eligibility) show on every level.
+ */
+export type HelpLevel = "beginner" | "intermediate" | "pro";
+
+/** Per-article framing of one level, shown at the top of its panel. */
+export interface HelpLevelIntro {
+  /** Short promise, e.g. "Your first remix in 3 minutes". */
+  title: string;
+  /** One plain sentence on who the level is for and what it covers. */
+  summary: string;
+}
+
 /** A captioned screenshot or illustration. */
 export interface HelpFigureRef {
   /** Path under `web/public`, e.g. "/help/screenshots/discover-home.png". */
@@ -75,6 +90,11 @@ export interface HelpSection {
   id: string;
   heading: string;
   blocks: HelpBlock[];
+  /**
+   * Only show this section on one level of a levelled article (#1905).
+   * Omitted = shown on every level.
+   */
+  level?: HelpLevel;
 }
 
 /** A deep link from an article into the live app. */
@@ -98,6 +118,11 @@ export interface HelpArticle {
   /** Extra search terms (synonyms, jargon users might type). */
   keywords: string[];
   sections: HelpSection[];
+  /**
+   * Framing for each level. Required for every level a section uses; an
+   * article whose sections carry a `level` gets the level switch.
+   */
+  levelIntros?: Partial<Record<HelpLevel, HelpLevelIntro>>;
   appLinks?: HelpAppLink[];
   /** Slugs of related articles. */
   related?: string[];
@@ -112,4 +137,10 @@ export interface HelpIndexEntry {
   audiences: HelpAudience[];
   status: HelpStatus;
   keywords: string[];
+  /**
+   * Levelled articles only (#1905): the lowercased heading + body text of
+   * each level's own sections, so client search can match every level and
+   * open the level a match comes from.
+   */
+  levelText?: Partial<Record<HelpLevel, string>>;
 }

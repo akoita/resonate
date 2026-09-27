@@ -8,11 +8,15 @@ import {
   CATEGORIES,
   HELP_ARTICLES,
   allArticles,
+  articleLevels,
   articleSlugs,
   getArticle,
+  helpArticleHref,
   indexEntries,
+  matchedHelpLevel,
   relatedArticles,
   searchArticles,
+  sectionsForLevel,
   toIndexEntry,
   tokenize,
 } from "./index";
@@ -180,5 +184,77 @@ describe("help search", () => {
     const related = relatedArticles(article);
     expect(related.length).toBeGreaterThan(0);
     expect(related.every((a) => typeof a.title === "string")).toBe(true);
+  });
+});
+
+describe("help levels (#1905)", () => {
+  const remix = getArticle("remix-studio")!;
+
+  it("gives every levelled article an intro per level and sections on each level", () => {
+    for (const article of HELP_ARTICLES) {
+      const levels = articleLevels(article);
+      for (const level of levels) {
+        expect(article.levelIntros?.[level]?.title, `${article.slug}: ${level} intro`).toBeTruthy();
+        expect(sectionsForLevel(article.sections, level).some((s) => s.level === level)).toBe(true);
+      }
+    }
+  });
+
+  it("offers Remix Studio on all three levels, with a shared glossary", () => {
+    expect(articleLevels(remix)).toEqual(["beginner", "intermediate", "pro"]);
+    const glossary = remix.sections.find((s) => s.id === "glossary")!;
+    expect(glossary.level).toBeUndefined();
+    for (const level of ["beginner", "intermediate", "pro"] as const) {
+      expect(sectionsForLevel(remix.sections, level).map((s) => s.id)).toContain("glossary");
+    }
+    expect(sectionsForLevel(remix.sections, "beginner").map((s) => s.id)).not.toContain("signal-chain");
+  });
+
+  it("explains every studio control label in the glossary", () => {
+    const glossary = remix.sections.find((s) => s.id === "glossary")!;
+    const block = glossary.blocks.find((b) => b.kind === "definitions");
+    const terms = block && block.kind === "definitions" ? block.items.map((d) => d.term).join(" | ") : "";
+    for (const label of [
+      "Stem", "Section", "Block", "Pickup", "M / S", "All on / All off", "Effects", "Space", "Echo",
+      "Tone", "Warmth", "Speed", "Varispeed", "Keep original pitch", "semitone", "Vibe",
+      "Arrangement / Draft / Original", "Loop", "Volume", "Reset to original", "Pro", "EQ", "Pan",
+      "Beat", "take", "lane", "Audition", "Render", "Draft", "Grounding / provenance",
+      "Remix vs commercial license",
+    ]) {
+      expect(terms, label).toContain(label);
+    }
+    // The old lane label is still explained for readers who saw it.
+    expect(JSON.stringify(glossary)).toContain("FX");
+  });
+
+  it("illustrates the studio with at least 5 captured screenshots, including the annotated overview", () => {
+    const shots = JSON.stringify(remix).match(/\/help\/screenshots\/remix-studio-[a-z-]+\.png/g) ?? [];
+    expect(new Set(shots).size).toBeGreaterThanOrEqual(5);
+    expect(shots).toContain("/help/screenshots/remix-studio-overview.png");
+  });
+
+  it("keeps the render policy and Pro EQ numbers in line with the code", () => {
+    const pro = JSON.stringify(sectionsForLevel(remix.sections, "pro"));
+    for (const fact of ["−14 LUFS", "−1.5 dBTP", "320 kbps", "Low 200 Hz", "Mid 1 kHz", "High 4 kHz", "−12 to +12 dB", "8 bars", "16-second"]) {
+      expect(pro, fact).toContain(fact);
+    }
+    expect(pro).toContain("Planned, not available yet");
+  });
+
+  it("indexes level text so search finds a match in any level and opens that level", () => {
+    const entry = toIndexEntry(remix);
+    expect(Object.keys(entry.levelText ?? {})).toEqual(["beginner", "intermediate", "pro"]);
+    expect(searchArticles(indexEntries(), "lufs").map((e) => e.slug)).toContain("remix-studio");
+    expect(matchedHelpLevel(entry, "lufs")).toBe("pro");
+    expect(matchedHelpLevel(entry, "drag paint")).toBe("intermediate");
+    expect(matchedHelpLevel(entry, "vibe")).toBe("beginner");
+    expect(matchedHelpLevel(entry, "zzzznotaword")).toBeNull();
+    expect(helpArticleHref("remix-studio", matchedHelpLevel(entry, "lufs"))).toBe(
+      "/help/remix-studio?level=pro",
+    );
+    // Articles without levels keep a plain link and no extra payload.
+    const plain = toIndexEntry(getArticle("getting-started")!);
+    expect(plain.levelText).toBeUndefined();
+    expect(matchedHelpLevel(plain, "passkey")).toBeNull();
   });
 });

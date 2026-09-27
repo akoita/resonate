@@ -1,9 +1,10 @@
 import Link from "next/link";
 
-import { articleStatus, relatedArticles } from "../../lib/help";
+import { articleStatus, isLevelledArticle, relatedArticles } from "../../lib/help";
 import { STATUS_LABELS, audienceLabel, categoryMeta } from "../../lib/help/taxonomy";
 import type { HelpArticle } from "../../lib/help/types";
-import { HelpBlocks } from "./HelpBlocks";
+import { HelpLevelledBody } from "./HelpLevelledBody";
+import { HelpSectionView, HelpToc } from "./HelpSectionView";
 
 /**
  * Renders a full guide article. Server component — fully readable without
@@ -14,7 +15,7 @@ export function HelpArticleView({ article }: { article: HelpArticle }) {
   const category = categoryMeta(article.category);
   const status = articleStatus(article);
   const related = relatedArticles(article);
-  const showToc = article.sections.length > 1;
+  const levelled = isLevelledArticle(article);
 
   return (
     <article className="help-article">
@@ -42,37 +43,20 @@ export function HelpArticleView({ article }: { article: HelpArticle }) {
         </div>
       </header>
 
-      {showToc ? (
-        <nav className="help-toc" aria-label="On this page">
-          <p className="help-toc__title">On this page</p>
-          <ul>
+      {levelled ? (
+        // Beginner / Intermediate / Professional switch (#1905); the outline
+        // lives inside it and follows the selected level.
+        <HelpLevelledBody sections={article.sections} intros={article.levelIntros ?? {}} />
+      ) : (
+        <>
+          <HelpToc sections={article.sections} />
+          <div className="help-article__body">
             {article.sections.map((section) => (
-              <li key={section.id}>
-                <a href={`#${section.id}`}>{section.heading}</a>
-              </li>
+              <HelpSectionView key={section.id} section={section} />
             ))}
-          </ul>
-        </nav>
-      ) : null}
-
-      <div className="help-article__body">
-        {article.sections.map((section) => (
-          <section
-            key={section.id}
-            id={section.id}
-            className="help-section"
-            aria-labelledby={`${section.id}-h`}
-          >
-            <h2 id={`${section.id}-h`} className="help-section__heading">
-              <a className="help-anchor" href={`#${section.id}`} aria-label={`Link to “${section.heading}”`}>
-                #
-              </a>
-              {section.heading}
-            </h2>
-            <HelpBlocks blocks={section.blocks} />
-          </section>
-        ))}
-      </div>
+          </div>
+        </>
+      )}
 
       {article.appLinks && article.appLinks.length > 0 ? (
         <section className="help-applinks" aria-labelledby="help-applinks-h">
