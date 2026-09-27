@@ -40,7 +40,14 @@ import {
   REMIX_STUDIO_LOCKED_NOTE,
   RemixCreatePanel,
   STEM_MIX_FREE_NOTE,
+  KEEP_PITCH_HINT,
+  KEY_HIGHEST_TITLE,
+  KEY_LOWEST_TITLE,
+  TEMPO_KEY_FAILED_NOTE,
+  tempoKeyPreparingLabel,
+  TempoKeyView,
   type RemixCreatePanelProps,
+  type TempoKeyViewProps,
 } from "./RemixCreatePanel";
 
 const noop = () => undefined;
@@ -735,5 +742,138 @@ describe("RemixCreatePanel — Add a beat (#1902)", () => {
     const view = beatView({ available: false, beat: defaultBeat("trap") });
     expect(view.html).toContain(BEAT_NEEDS_TEMPO_NOTE.replaceAll("'", "&#x27;"));
     expect(view.elements.filter((element) => element.type === "button")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tempo & key (#1898)
+
+function tempoKeyView(overrides: Partial<TempoKeyViewProps> = {}) {
+  const onPitchChange = vi.fn();
+  const viewProps: TempoKeyViewProps = {
+    idPrefix: "t",
+    effects: null,
+    onPitchChange,
+    locked: false,
+    ...overrides,
+  };
+  const elements = hostElements(TempoKeyView(viewProps));
+  const button = (predicate: (element: HostElement) => boolean) =>
+    elements.find((element) => element.type === "button" && predicate(element));
+  const byLabel = (label: string) =>
+    button((element) => element.props["aria-label"] === label);
+  const keepSwitch = button((element) => element.props.role === "switch");
+  const html = renderToStaticMarkup(<TempoKeyView {...viewProps} />);
+  return { elements, byLabel, keepSwitch, onPitchChange, html };
+}
+
+const pitchFx = (master: NonNullable<RemixCreatePanelProps["effects"]>["master"]) => ({
+  schemaVersion: REMIX_FX_SCHEMA_VERSION,
+  master,
+});
+
+describe("RemixCreatePanel — Tempo & key (#1898)", () => {
+  it("sits directly under the Speed slider, only with onPitchChange", () => {
+    expect(render()).not.toContain("remix-tempo-key");
+    const html = render({ onPitchChange: noop });
+    const speed = html.indexOf("remix-vibe-control-speed");
+    const tempoKey = html.indexOf("remix-tempo-key");
+    const space = html.indexOf("remix-vibe-control-space");
+    expect(speed).toBeGreaterThan(-1);
+    expect(tempoKey).toBeGreaterThan(speed);
+    expect(tempoKey).toBeLessThan(space);
+  });
+
+  it("labels the switch and the key stepper in plain language", () => {
+    const { html, keepSwitch, byLabel } = tempoKeyView();
+    expect(html).toContain(">Keep original pitch<");
+    expect(html).toContain(KEEP_PITCH_HINT);
+    expect(html).toContain(">Key<");
+    expect(html).toContain(">Original key<");
+    expect(keepSwitch?.props["aria-checked"]).toBe(false);
+    // Labelled by the visible text and described by the hint.
+    expect(html).toMatch(/role="switch" aria-checked="false" aria-labelledby="t-keep" aria-describedby="t-keep-hint"/);
+    expect(byLabel("Lower the key")?.props.disabled).toBe(false);
+    expect(byLabel("Raise the key")?.props.disabled).toBe(false);
+    expect(byLabel("Lower the key")?.props.children).toBe("\u2212");
+  });
+
+  it("is always toggleable, even at the original speed", () => {
+    const { keepSwitch, onPitchChange } = tempoKeyView();
+    expect(keepSwitch?.props.disabled).toBe(false);
+    (keepSwitch?.props.onClick as () => void)();
+    expect(onPitchChange).toHaveBeenCalledWith({ keepPitch: true });
+    const on = tempoKeyView({ effects: pitchFx({ keepPitch: true }) });
+    expect(on.keepSwitch?.props["aria-checked"]).toBe(true);
+    (on.keepSwitch?.props.onClick as () => void)();
+    expect(on.onPitchChange).toHaveBeenCalledWith({ keepPitch: false });
+  });
+
+  it("steps the key by one semitone and shows higher/lower with a real minus", () => {
+    const up = tempoKeyView({ effects: pitchFx({ semitones: 2 }) });
+    expect(up.html).toContain("+2 (higher)");
+    (up.byLabel("Raise the key")?.props.onClick as () => void)();
+    expect(up.onPitchChange).toHaveBeenCalledWith({ semitones: 3 });
+    (up.byLabel("Lower the key")?.props.onClick as () => void)();
+    expect(up.onPitchChange).toHaveBeenCalledWith({ semitones: 1 });
+    const down = tempoKeyView({ effects: pitchFx({ semitones: -3 }) });
+    expect(down.html).toContain("\u22123 (lower)");
+  });
+
+  it("disables the stepper at its bounds with a title saying why", () => {
+    const top = tempoKeyView({ effects: pitchFx({ semitones: 6 }) });
+    expect(top.byLabel("Raise the key")?.props.disabled).toBe(true);
+    expect(top.byLabel("Raise the key")?.props.title).toBe(KEY_HIGHEST_TITLE);
+    expect(top.byLabel("Lower the key")?.props.disabled).toBe(false);
+    expect(top.byLabel("Lower the key")?.props.title).toBeUndefined();
+    const bottom = tempoKeyView({ effects: pitchFx({ semitones: -6 }) });
+    expect(bottom.byLabel("Lower the key")?.props.disabled).toBe(true);
+    expect(bottom.byLabel("Lower the key")?.props.title).toBe(KEY_LOWEST_TITLE);
+  });
+
+  it("locks with the rest of the studio", () => {
+    const { keepSwitch, byLabel } = tempoKeyView({ locked: true });
+    expect(keepSwitch?.props.disabled).toBe(true);
+    expect(byLabel("Raise the key")?.props.disabled).toBe(true);
+    expect(byLabel("Lower the key")?.props.disabled).toBe(true);
+  });
+
+  it("shows the preview's preparing line, and a failure with a working retry", () => {
+    expect(tempoKeyPreparingLabel(0.42)).toBe("Preparing tempo & key for the preview\u2026 42%");
+    const idle = tempoKeyView({
+      preview: { status: "ready", fraction: 1, onRetry: noop },
+    });
+    expect(idle.html).toContain('aria-live="polite"');
+    expect(idle.html).not.toContain("Preparing");
+    const preparing = tempoKeyView({
+      preview: { status: "preparing", fraction: 0.42, onRetry: noop },
+    });
+    expect(preparing.html).toContain("Preparing tempo &amp; key for the preview\u2026 42%");
+    const onRetry = vi.fn();
+    const failed = tempoKeyView({
+      preview: { status: "failed", fraction: 0, onRetry },
+    });
+    expect(failed.html).toContain(TEMPO_KEY_FAILED_NOTE.replaceAll("&", "&amp;").replaceAll("'", "&#x27;"));
+    const retry = failed.elements.find(
+      (element) => element.type === "button" && element.props.children === "Try again",
+    );
+    (retry?.props.onClick as () => void)();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("autosaves through the editor's pitch handler from the panel", () => {
+    const onPitchChange = vi.fn();
+    const html = render({
+      onPitchChange,
+      effects: pitchFx({ speed: 0.9, keepPitch: true, semitones: 2 }),
+      tempoKeyPreview: { status: "preparing", fraction: 0.5, onRetry: noop },
+    });
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain("+2 (higher)");
+    expect(html).toContain("50%");
+    // Pitch-only differences don't change the active vibe label.
+    expect(render({ effects: pitchFx({ semitones: 2 }) })).toMatch(
+      /aria-pressed="true"[^>]*remix-vibe-none/,
+    );
   });
 });

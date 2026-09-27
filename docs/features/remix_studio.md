@@ -687,9 +687,9 @@ from the JWT, never the request body.
       published release has its own catalog copy.
     - Archived outputs therefore persist until the owner deletes the version.
     - The Drafts panel offers a confirmed Delete on each previous version.
-- Keep-pitch tempo and key shift (#1898, slice S1b of epic #1896). **Status:
-  partial.** PR 1 ships the engine, the recipe and the server render. PR 2
-  adds the preview workers and the "Keep original pitch" / "Key" controls.
+- Keep-pitch tempo and key shift (#1898, slice S1b of epic #1896). PR 1
+  shipped the engine, the recipe and the server render; PR 2 ships the
+  preview workers and the "Keep original pitch" / "Key" controls.
   - **Engine.** Signalsmith Stretch (MIT; `signalsmith-stretch@1.3.2`'s
     WASM) is vendored as `backend/assets/wasm/` and
     `web/public/wasm/signalsmith-stretch-1.3.2.wasm`. Its sha256 is asserted
@@ -719,6 +719,29 @@ from the JWT, never the request body.
       containers), a 4 × 4-minute keep-pitch render peaks near 300 MB of
       temp files; container memory sizing belongs to the deployment
       configuration.
+  - **Preview.** The browser stretches each stem with the same driver in a
+    small pool of module Web Workers (`web/src/lib/remixStretchPool.ts`, at
+    most two, one per spare core), so the page and audio stay responsive.
+    - Each job gets a fresh engine, as the render does, and short stems use
+      the render's zero-pad/trim rule.
+    - Only the current plan's stretched stems are kept; changing the tempo
+      or key cancels the previous jobs and drops their buffers. The full-mix
+      reference is not stretched (it never plays in the arrangement).
+    - The stretched stems play at the varispeed rate with the timeline
+      untouched: source offsets, loops and block seeks move to stretched
+      time (÷ tempo), and the 10 ms join fades are measured in the stretched
+      file, as in the render. With keep-pitch the beat is synthesized in
+      output time and plays at rate 1.
+    - While stems are being prepared (debounced 400 ms after a change, with
+      a percentage in the panel), the preview plays the varispeed fallback
+      (correct timing, pitch pending) and restarts at the same position once
+      ready. A failed preparation says so and offers Try again; the render
+      is unaffected.
+  - **Controls.** Under Speed: a "Keep original pitch" switch (always
+    available; at speed 1 it has nothing to change yet) and a Key stepper
+    (−6..+6, "Original key", "+2 (higher)", "−3 (lower)"). Vibes, "No
+    effects" and Describe it keep both fields; "Reset to original" clears
+    them.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

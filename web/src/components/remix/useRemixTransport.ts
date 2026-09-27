@@ -9,11 +9,12 @@ import {
   loopEntryOffset,
   type PreviewBeat,
   type PreviewStemState,
+  type PreviewStretchPlan,
   type StemArrangementPreviewHandle,
   type StemPreviewEngine,
 } from "../../lib/remixAudioPreview";
 import { beatRenderKey } from "../../lib/remixBeat";
-import type { RemixFxRecipe } from "../../lib/remixFx";
+import { remixFxStretchPlan, type RemixFxRecipe } from "../../lib/remixFx";
 import {
   isIdentityTimeline,
   type RemixStructureSegment,
@@ -56,6 +57,12 @@ export type RemixTransportInput = {
   timelineSec: number | null;
   /** Effects recipe (#1897) the arrangement preview applies live. */
   effects?: RemixFxRecipe | null;
+  /**
+   * Stems the arrangement can make audible (#1898), time-stretched ahead of
+   * play when the effects need a tempo/key stage; absent = `stemIds`. A
+   * muted full-mix reference is left out: it never plays in the arrangement.
+   */
+  stretchStemIds?: string[];
   /** Bar-grid tempo (bars grids only) for tempo-synced echo. */
   bpm?: number | null;
   /**
@@ -113,6 +120,16 @@ export type RemixTransport = {
   seek: (sec: number) => void;
   setSource: (source: TransportSource) => void;
   setLoop: (loop: TransportLoop | null) => void;
+  /**
+   * Preparing the tempo/key change for the preview (#1898): "preparing"
+   * with the share done while the stems are stretched, "ready" once done,
+   * "failed" when a stretch failed (see `retryStretch`); "idle" when the
+   * effects need no stretch. Playback meanwhile uses the varispeed
+   * fallback and switches over by itself once ready.
+   */
+  stretch: StretchPreviewState;
+  /** Try a failed preparation again. */
+  retryStretch: () => void;
 };
 
 /**
@@ -339,6 +356,123 @@ type Playing =
   | { mode: "draft"; audio: HTMLAudioElement; key: string }
   | null;
 
+export type StretchPreviewStatus = "idle" | "preparing" | "ready" | "failed";
+export type StretchPreviewState = {
+  status: StretchPreviewStatus;
+  /** Share of the stems stretched, 0..1. */
+  fraction: number;
+};
+export const IDLE_STRETCH_STATE: StretchPreviewState = { status: "idle", fraction: 0 };
+
+/** Quiet time after a tempo/key edit (e.g. a Speed drag) before stretching. */
+export const STRETCH_PREPARE_DEBOUNCE_MS = 400;
+
+/**
+ * Prepares the stretched stems for the current tempo/key plan (#1898):
+ * `request` is called with every plan (and stem set); an unchanged request
+ * is a no-op, a null plan drops the stretched buffers right away, and any
+ * other waits `delayMs` without a newer request, then asks the engine
+ * (which stretches only what it doesn't have yet). A superseded
+ * preparation reports nothing; `onReady` runs when one completes.
+ */
+export function createStretchPreparer(input: {
+  prepare: StemPreviewEngine["prepareStretch"];
+  onState: (state: StretchPreviewState) => void;
+  onReady: () => void;
+  delayMs?: number;
+}): {
+  request: (plan: PreviewStretchPlan | null, stemIds: string[]) => void;
+  retry: () => void;
+  dispose: () => void;
+} {
+  let lastKey: string | null = null;
+  let last: { plan: PreviewStretchPlan | null; stemIds: string[] } | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let generation = 0;
+  let disposed = false;
+
+  const clearTimer = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
+
+  const run = () => {
+    timer = null;
+    if (disposed || !last?.plan) return;
+    const current = ++generation;
+    const { plan, stemIds } = last;
+    void input
+      .prepare(plan, stemIds, (fraction) => {
+        if (current === generation) input.onState({ status: "preparing", fraction });
+      })
+      .then(
+        (result) => {
+          if (disposed || current !== generation) return;
+          if (result === "ready") {
+            input.onState({ status: "ready", fraction: 1 });
+            input.onReady();
+          } else if (result === "failed") {
+            input.onState({ status: "failed", fraction: 0 });
+          }
+        },
+        () => {
+          if (!disposed && current === generation) {
+            input.onState({ status: "failed", fraction: 0 });
+          }
+        },
+      );
+  };
+
+  return {
+    request(plan, stemIds) {
+      if (disposed) return;
+      const ids = [...new Set(stemIds)].sort();
+      const key = JSON.stringify([plan, ids]);
+      if (key === lastKey) return;
+      lastKey = key;
+      last = { plan, stemIds: ids };
+      clearTimer();
+      generation += 1;
+      if (!plan) {
+        input.onState(IDLE_STRETCH_STATE);
+        void input.prepare(null, ids).catch(() => undefined);
+        return;
+      }
+      input.onState({ status: "preparing", fraction: 0 });
+      timer = setTimeout(run, input.delayMs ?? STRETCH_PREPARE_DEBOUNCE_MS);
+    },
+    retry() {
+      if (disposed || !last?.plan) return;
+      clearTimer();
+      input.onState({ status: "preparing", fraction: 0 });
+      run();
+    },
+    dispose() {
+      disposed = true;
+      clearTimer();
+      generation += 1;
+    },
+  };
+}
+
+/**
+ * Whether a playing preview should restart for a finished preparation
+ * (#1898): it started on the varispeed fallback, the stretch is ready, and
+ * this readiness hasn't already caused a restart (at most one per ready).
+ */
+export function stretchRestartDue(input: {
+  pending: boolean;
+  status: StretchPreviewStatus;
+  readyToken: number;
+  consumedToken: number;
+}): boolean {
+  return (
+    input.pending &&
+    input.status === "ready" &&
+    input.readyToken !== input.consumedToken
+  );
+}
+
 /**
  * Applies the listening volume (#1910) live: to the engine's output stage
  * (running or not, so the next play starts at it) and to a playing draft
@@ -383,6 +517,9 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   // Bumped when the idle cursor moves (seek/stop/end) so consumers re-render
   // and re-read getPositionSec; never bumped per frame.
   const [cursorRevision, setCursorRevision] = useState(0);
+  // Tempo/key preparation (#1898).
+  const [stretchState, setStretchState] =
+    useState<StretchPreviewState>(IDLE_STRETCH_STATE);
 
   // Latest inputs for callbacks that must stay stable across renders.
   const inputRef = useRef(input);
@@ -415,6 +552,13 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   const draftDownloadsRef = useRef(new Map<string, Promise<string | null>>());
   const draftPeaksDoneRef = useRef(new Set<string>());
   const unmountedRef = useRef(false);
+  const stretchStatusRef = useRef<StretchPreviewStatus>("idle");
+  const preparerRef = useRef<ReturnType<typeof createStretchPreparer> | null>(
+    null,
+  );
+  // Bumped per completed preparation; a restart for it consumes the token.
+  const stretchReadyTokenRef = useRef(0);
+  const stretchConsumedTokenRef = useRef(0);
 
   // Only one audio source at a time: studio audio pauses the site-wide
   // player, and the player starting stops studio audio. Null outside a
@@ -608,6 +752,8 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       playingRef.current = { mode: "engine", handle };
       setPreviewHandle(handle);
       updateStatus("playing");
+      // The preparation may have finished while this was loading.
+      restartForStretchRef.current();
     } catch {
       if (requestId !== requestRef.current) return;
       halt(offsetSec);
@@ -740,6 +886,47 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   // Stable identity for the public callbacks; always the latest closure.
   const startRef = useRef(start);
   startRef.current = start;
+
+  // Tempo/key (#1898): a preview started on the varispeed fallback restarts
+  // at the same position once the stretched stems are ready.
+  const restartForStretch = () => {
+    const playing = playingRef.current;
+    if (playing?.mode !== "engine") return;
+    const due = stretchRestartDue({
+      pending: playing.handle.stretchPending(),
+      status: stretchStatusRef.current,
+      readyToken: stretchReadyTokenRef.current,
+      consumedToken: stretchConsumedTokenRef.current,
+    });
+    if (!due) return;
+    stretchConsumedTokenRef.current = stretchReadyTokenRef.current;
+    void startRef.current(
+      sourceRef.current,
+      clampSeek(currentPosition(), durationRef.current),
+      loopRef.current,
+    );
+  };
+  const restartForStretchRef = useRef(restartForStretch);
+  restartForStretchRef.current = restartForStretch;
+
+  const preparer = useCallback(() => {
+    if (!preparerRef.current) {
+      preparerRef.current = createStretchPreparer({
+        prepare: (plan, stemIds, onProgress) =>
+          engine().prepareStretch(plan, stemIds, onProgress),
+        onState: (next) => {
+          if (unmountedRef.current) return;
+          stretchStatusRef.current = next.status;
+          setStretchState(next);
+        },
+        onReady: () => {
+          stretchReadyTokenRef.current += 1;
+          restartForStretchRef.current();
+        },
+      });
+    }
+    return preparerRef.current;
+  }, [engine]);
 
   const play = useCallback(async () => {
     const duration = durationRef.current;
@@ -886,6 +1073,24 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       cancelled = true;
     };
   }, [engine, stemIdsKey]);
+
+  // Tempo/key (#1898): stretch the arrangement's stems for the edited
+  // recipe's plan (debounced for slider drags), including stems added later.
+  const stretchPlan = remixFxStretchPlan(input.effects ?? null);
+  const stretchPlanKey = JSON.stringify(stretchPlan);
+  const stretchPlanRef = useRef(stretchPlan);
+  stretchPlanRef.current = stretchPlan;
+  const stretchIdsKey = useMemo(
+    () => [...new Set(input.stretchStemIds ?? input.stemIds)].sort().join("\n"),
+    [input.stemIds, input.stretchStemIds],
+  );
+  useEffect(() => {
+    preparer().request(
+      stretchPlanRef.current,
+      stretchIdsKey ? stretchIdsKey.split("\n") : [],
+    );
+  }, [preparer, stretchIdsKey, stretchPlanKey]);
+  const retryStretch = useCallback(() => preparer().retry(), [preparer]);
 
   // Live mixer edits while the engine plays: gains (and the arrangement ↔
   // original reference flip) apply on every change; section envelopes are
@@ -1058,6 +1263,9 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     return () => {
       // Nothing still loading may start after unmount.
       halt(null);
+      // Pending tempo/key work is cancelled with the engine below.
+      preparerRef.current?.dispose();
+      preparerRef.current = null;
       // Dispose stops any live preview, closes the AudioContext, and drops
       // the decoded-stem cache.
       engineRef.current?.dispose();
@@ -1089,5 +1297,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     seek,
     setSource,
     setLoop,
+    stretch: stretchState,
+    retryStretch,
   };
 }

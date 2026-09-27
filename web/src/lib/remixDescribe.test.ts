@@ -14,7 +14,12 @@ import {
   type RemixDescribeStem,
   type RemixIntentDirective,
 } from "./remixDescribe";
-import { REMIX_FX_SCHEMA_VERSION, remixFxMaster, type RemixFxRecipe } from "./remixFx";
+import {
+  REMIX_FX_SCHEMA_VERSION,
+  remixFxMaster,
+  remixFxPitch,
+  type RemixFxRecipe,
+} from "./remixFx";
 import {
   extendedMix,
   shortEdit,
@@ -633,5 +638,34 @@ describe("describeShapeLabel / sameDescribeEdits (#1900)", () => {
     const muted = { ...base, stems: { ...base.stems, vox: { ...base.stems.vox, muted: true } } };
     expect(sameDescribeEdits(base, muted)).toBe(false);
     expect(sameDescribeEdits(base, { ...base, effects: fx({ speed: 0.9 }) })).toBe(false);
+  });
+});
+
+describe("Describe it keeps the tempo/key choices (#1898)", () => {
+  const pitched = fx({ speed: 0.9, keepPitch: true, semitones: 2 });
+
+  it("applies a diff without touching Keep original pitch or the key", () => {
+    const result = describeRemix(
+      "slower and dreamy, echo on the vocals, no drums",
+      context({ effects: pitched }),
+    );
+    expect(result.changes.length).toBeGreaterThan(0);
+    expect(remixFxPitch(result.edits.effects)).toEqual({ keepPitch: true, semitones: 2 });
+    expect(result.edits.effects?.schemaVersion).toBe(REMIX_FX_SCHEMA_VERSION);
+    for (const text of ["club", "a bit faster", "warm and roomy", "lo-fi but brighter"]) {
+      expect(
+        remixFxPitch(describeRemix(text, context({ effects: pitched })).edits.effects),
+      ).toEqual({ keepPitch: true, semitones: 2 });
+    }
+  });
+
+  it('"no effects" clears the sound but keeps the pitch fields', () => {
+    const result = describeRemix("no effects", context({ effects: pitched }));
+    expect(result.edits.effects).toEqual(fx({ keepPitch: true, semitones: 2 }));
+    // A pitch-only recipe already has no effects: nothing to change.
+    const pitchOnly = context({ effects: fx({ semitones: -2 }) });
+    const nothing = describeRemix("no effects", pitchOnly);
+    expect(nothing.changes).toEqual([]);
+    expect(nothing.edits).toBe(pitchOnly.edits);
   });
 });

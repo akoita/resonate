@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createStretchEngine,
   fetchRemixStretchWasm,
+  minimumInputLength,
   REMIX_STRETCH_DRIVER,
   REMIX_STRETCH_ENGINE,
   REMIX_STRETCH_WASM_SHA256,
@@ -14,6 +15,14 @@ import {
   stretchOffline,
   stretchOutputLength,
 } from "./remixStretch";
+import {
+  createStretchModuleLoader,
+  runStretchJob,
+  STRETCH_ENGINE_LOAD_ERROR,
+  STRETCH_JOB_ERROR,
+  throttleProgress,
+  type StretchWorkerResponse,
+} from "./remixStretchProtocol";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WASM_PATH = path.resolve(HERE, "../../public", REMIX_STRETCH_WASM_URL.slice(1));
@@ -144,5 +153,163 @@ describe("time-stretch loader guards (#1898)", () => {
     expect(() =>
       stretchOffline(api, [new Float32Array(1000)], 48_000, { tempo: 0.85 }),
     ).toThrow(/too short/);
+  });
+});
+
+describe("padded driver for short stems (#1898)", () => {
+  const signal = makeTestSignal(48_000, 1);
+
+  it("equals the offline stretch of the zero-padded input, trimmed to round(len/tempo)", async () => {
+    const tempo = 0.85;
+    const probe = await createStretchEngine(wasmBytes);
+    const { outLat } = stretchOffline(probe, signal, 48_000, { tempo });
+    const minimum = minimumInputLength(outLat, tempo);
+    expect(stretchOutputLength(minimum, tempo)).toBeGreaterThanOrEqual(2 * outLat);
+    expect(stretchOutputLength(minimum - 1, tempo)).toBeLessThan(2 * outLat);
+
+    const short = signal.map((channel) => channel.slice(0, 1000));
+    const { out } = stretchOffline(
+      await createStretchEngine(wasmBytes),
+      short,
+      48_000,
+      { tempo, semitones: 2 },
+      { padToMinimum: true },
+    );
+    expect(out[0].length).toBe(Math.round(1000 / tempo));
+    const padded = short.map((channel) => {
+      const buffer = new Float32Array(minimum);
+      buffer.set(channel);
+      return buffer;
+    });
+    const reference = stretchOffline(await createStretchEngine(wasmBytes), padded, 48_000, {
+      tempo,
+      semitones: 2,
+    }).out.map((channel) => channel.slice(0, out[0].length));
+    expect(await channelsSha256(out)).toBe(await channelsSha256(reference));
+  });
+
+  it("leaves an input at the minimum unpadded", async () => {
+    const tempo = 1.2;
+    const probe = await createStretchEngine(wasmBytes);
+    const { outLat } = stretchOffline(probe, signal, 48_000, { tempo });
+    const input = signal.map((channel) =>
+      channel.slice(0, minimumInputLength(outLat, tempo)),
+    );
+    const plain = stretchOffline(await createStretchEngine(wasmBytes), input, 48_000, { tempo });
+    const padded = stretchOffline(
+      await createStretchEngine(wasmBytes),
+      input,
+      48_000,
+      { tempo },
+      { padToMinimum: true },
+    );
+    expect(await channelsSha256(padded.out)).toBe(await channelsSha256(plain.out));
+  });
+
+  it("keeps the parity output when padding is allowed", async () => {
+    const reference = fixture.cases[3];
+    const input = makeTestSignal(fixture.input.sampleRate, fixture.input.seconds);
+    const { out } = stretchOffline(
+      await createStretchEngine(wasmBytes),
+      input,
+      fixture.input.sampleRate,
+      reference,
+      { padToMinimum: true },
+    );
+    expect(await channelsSha256(out)).toBe(reference.sha256);
+  });
+});
+
+describe("stretch worker job (#1898)", () => {
+  const compiled = () => WebAssembly.compile(wasmBytes);
+
+  it("posts throttled progress, then the transferred result of the pinned driver", async () => {
+    const reference = fixture.cases[3];
+    const input = makeTestSignal(fixture.input.sampleRate, fixture.input.seconds);
+    const messages: StretchWorkerResponse[] = [];
+    const transfers: Transferable[][] = [];
+    await runStretchJob(
+      {
+        type: "stretch",
+        jobId: "job-1",
+        sampleRate: fixture.input.sampleRate,
+        tempo: reference.tempo,
+        semitones: reference.semitones,
+        channels: input,
+      },
+      compiled,
+      (message, transfer) => {
+        messages.push(message);
+        transfers.push(transfer ?? []);
+      },
+    );
+    const done = messages.at(-1);
+    expect(done?.type).toBe("done");
+    if (done?.type !== "done") return;
+    expect(done.jobId).toBe("job-1");
+    expect(await channelsSha256(done.channels)).toBe(reference.sha256);
+    expect(transfers.at(-1)).toEqual(done.channels.map((channel) => channel.buffer));
+    const progress = messages.filter((message) => message.type === "progress");
+    expect(progress.length).toBeGreaterThan(3);
+    expect(progress.length).toBeLessThanOrEqual(21);
+    expect(progress.at(-1)).toMatchObject({ fraction: 1 });
+  });
+
+  it("stretches a short stem zero-padded instead of failing", async () => {
+    const messages: StretchWorkerResponse[] = [];
+    await runStretchJob(
+      {
+        type: "stretch",
+        jobId: "short",
+        sampleRate: 48_000,
+        tempo: 0.85,
+        semitones: 0,
+        channels: [new Float32Array(1000)],
+      },
+      compiled,
+      (message) => messages.push(message),
+    );
+    const done = messages.at(-1);
+    expect(done?.type === "done" && done.channels[0].length).toBe(Math.round(1000 / 0.85));
+  });
+
+  it("reports plain-language errors", async () => {
+    const messages: StretchWorkerResponse[] = [];
+    await runStretchJob(
+      { type: "stretch", jobId: "a", sampleRate: 48_000, tempo: 1, semitones: 2, channels: [] },
+      async () => {
+        throw new Error("404");
+      },
+      (message) => messages.push(message),
+    );
+    await runStretchJob(
+      { type: "stretch", jobId: "b", sampleRate: 48_000, tempo: -1, semitones: 0, channels: [new Float32Array(48_000)] },
+      compiled,
+      (message) => messages.push(message),
+    );
+    expect(messages).toEqual([
+      { type: "error", jobId: "a", message: STRETCH_ENGINE_LOAD_ERROR },
+      { type: "error", jobId: "b", message: STRETCH_JOB_ERROR },
+    ]);
+  });
+
+  it("loads the engine once and retries a failed load", async () => {
+    const load = vi
+      .fn<() => Promise<ArrayBuffer>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(wasmBytes.slice().buffer);
+    const loader = createStretchModuleLoader(load);
+    await expect(loader()).rejects.toThrow("offline");
+    const first = await loader();
+    expect(await loader()).toBe(first);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("throttles progress to about every 5%", () => {
+    const seen: number[] = [];
+    const report = throttleProgress((fraction) => seen.push(fraction));
+    for (let i = 1; i <= 100; i += 1) report(i / 100);
+    expect(seen.length).toBe(20);
+    expect(seen.at(-1)).toBe(1);
   });
 });

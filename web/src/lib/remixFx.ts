@@ -538,15 +538,26 @@ export const REMIX_VIBES: readonly RemixVibe[] = [
     // untouched full mix); this one removes every effect from the remix.
     id: "none",
     label: "No effects",
-    description: "Remove every effect.",
+    description: "Remove every effect (your Key and Keep original pitch settings stay).",
     master: null,
   },
 ];
 
+/** Only the v2 tempo/key fields of a recipe's master group (#1898). */
+function pitchFields(recipe: RemixFxRecipe | null | undefined): RemixFxMasterPitch {
+  const master = recipe?.master;
+  return {
+    ...(master?.keepPitch === true ? { keepPitch: true as const } : {}),
+    ...(master?.semitones !== undefined ? { semitones: master.semitones } : {}),
+  };
+}
+
 /**
  * Apply a vibe: replaces the master controls and sets only the vibe's
  * per-stem entries (merged into those stems' fx); other stems keep their fx.
- * "No effects" clears everything (null).
+ * "No effects" clears every effect. Either way the tempo/key choices (Keep
+ * original pitch, Key; #1898) are kept: a vibe is a sound, not a key, so
+ * "No effects" leaves a pitch-only recipe (or null without one).
  */
 export function applyVibe(
   vibeId: RemixVibeId,
@@ -554,7 +565,11 @@ export function applyVibe(
   stems: Array<{ stemId: string; type: string }>,
 ): RemixFxRecipe | null {
   const vibe = REMIX_VIBES.find((entry) => entry.id === vibeId);
-  if (!vibe || vibe.master === null) return null;
+  if (!vibe) return null;
+  const pitch = pitchFields(current);
+  if (vibe.master === null) {
+    return normalizeRemixFx({ schemaVersion: REMIX_FX_SCHEMA_VERSION, master: pitch });
+  }
   const nextStems: Record<string, RemixFxStem> = { ...current?.stems };
   if (vibe.stemsByType) {
     const types = new Set(vibe.stemsByType.types);
@@ -568,20 +583,27 @@ export function applyVibe(
   }
   return normalizeRemixFx({
     schemaVersion: REMIX_FX_SCHEMA_VERSION,
-    master: { ...vibe.master },
+    master: { ...vibe.master, ...pitch },
     stems: nextStems,
   });
 }
 
 /**
  * The vibe the master controls match exactly, or null. "No effects" matches
- * only a recipe with no effects at all.
+ * only a recipe with no effects at all. The tempo/key fields (#1898) are
+ * ignored: vibes keep them, so a pitch-only recipe is "No effects".
  */
 export function activeVibeId(
   recipe: RemixFxRecipe | null | undefined,
 ): RemixVibeId | null {
   const normalized = normalizeRemixFx(recipe);
-  if (normalized === null) return "none";
+  const withoutPitch =
+    normalized &&
+    normalizeRemixFx({
+      ...normalized,
+      master: { ...normalized.master, keepPitch: undefined, semitones: undefined },
+    });
+  if (withoutPitch === null) return "none";
   const master = remixFxMaster(normalized);
   for (const vibe of REMIX_VIBES) {
     if (vibe.master === null) continue;
@@ -607,6 +629,17 @@ export function formatFxSpeed(speed: number): string {
 /** A 0..1 amount as a percentage, e.g. "45%". */
 export function formatFxAmount(amount: number): string {
   return `${Math.round(amount * 100)}%`;
+}
+
+/**
+ * Key shift as "Original key", "+2 (higher)" or "−3 (lower)" (a real minus
+ * sign, U+2212).
+ */
+export function formatFxKey(semitones: number): string {
+  if (semitones === 0) return "Original key";
+  return semitones > 0
+    ? `+${semitones} (higher)`
+    : `\u2212${Math.abs(semitones)} (lower)`;
 }
 
 /** Tone as "Neutral", "Darker 25%" or "Brighter 40%". */

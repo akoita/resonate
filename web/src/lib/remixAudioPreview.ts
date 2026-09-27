@@ -5,7 +5,10 @@ import {
   generateReverbImpulse,
   normalizeRemixFx,
   remixFxMaster,
+  remixFxPitch,
   remixFxStem,
+  remixFxStretchPlan,
+  remixFxVarispeedRate,
   REMIX_FX_ECHO_TAPS,
   REMIX_FX_REVERB_SECONDS,
   REMIX_FX_REVERB_SEEDS,
@@ -17,6 +20,7 @@ import {
 } from "./remixFx";
 import {
   beatRenderKey,
+  beatTimingAtSpeed,
   beatTrackLength,
   REMIX_BEAT_LANE_ID,
   renderBeatInto,
@@ -32,6 +36,11 @@ import {
   type RemixStructureSegment,
   type RemixStructureTimeline,
 } from "./remixStructure";
+import {
+  createStretchPool,
+  StretchCancelledError,
+  type StretchPool,
+} from "./remixStretchPool";
 
 export type RemixDraftOutputMetadata = {
   outputUri: string | null;
@@ -352,6 +361,90 @@ export function scheduleJoinFades(
   }
 }
 
+/** A time-stretch stage (#1898), as `remixFxStretchPlan` returns it. */
+export type PreviewStretchPlan = { tempo: number; semitones: number };
+
+/** Outcome of preparing stretched stems (#1898). */
+export type StretchPrepareResult = "ready" | "cancelled" | "failed";
+
+/**
+ * Store key of one stretched stem (#1898): `stemId | tempo | semitones |
+ * sampleRate`; everything that changes the stretched audio.
+ */
+export function stretchVariantKey(
+  stemId: string,
+  plan: PreviewStretchPlan,
+  sampleRate: number,
+): string {
+  return `${stemId}|${plan.tempo}|${plan.semitones}|${sampleRate}`;
+}
+
+/**
+ * Source time → the stretched buffer's time (#1898): a stem stretched by
+ * `tempo` holds source second t at t ÷ tempo (the render seeks its
+ * stretched files the same way).
+ */
+export function stretchedSourceSec(sec: number, tempo: number): number {
+  return tempo === 1 ? sec : sec / tempo;
+}
+
+/** A source span (loop range) in the stretched buffer's time (#1898). */
+export function stretchedSpan(
+  span: PreviewLoop,
+  tempo: number,
+): PreviewLoop {
+  return {
+    startSec: stretchedSourceSec(span.startSec, tempo),
+    endSec: stretchedSourceSec(span.endSec, tempo),
+  };
+}
+
+/**
+ * A block source plan on a stretched buffer (#1898): the buffer offset and
+ * duration move to stretched time; when it starts (context time) and its
+ * timeline segment don't change.
+ */
+export function stretchedBlockPlan(
+  plan: BlockSourcePlan,
+  tempo: number,
+): BlockSourcePlan {
+  if (tempo === 1) return plan;
+  return {
+    ...plan,
+    offsetSec: stretchedSourceSec(plan.offsetSec, tempo),
+    durationSec: stretchedSourceSec(plan.durationSec, tempo),
+  };
+}
+
+/**
+ * The join fade's length on the timeline for stretched blocks (#1898): the
+ * render fades 10 ms of the STRETCHED file, which is 10 ms × tempo of
+ * timeline (source) time.
+ */
+export function stretchedJoinFadeSeconds(
+  tempo: number,
+  fadeSeconds: number = REMIX_STRUCTURE_JOIN_FADE_SECONDS,
+): number {
+  return fadeSeconds * tempo;
+}
+
+/**
+ * How the beat track plays for a recipe (#1898). With keepPitch it is
+ * synthesized in OUTPUT time (`beatTimingAtSpeed`: timeline ÷ speed) and
+ * plays at rate 1 from timeline offset ÷ speed, never transposed, like the
+ * render; otherwise it is timeline-time audio at the varispeed rate.
+ */
+export function beatPlayback(effects: RemixFxRecipe | null | undefined): {
+  /** The speed the beat is synthesized at (1 = timeline time). */
+  timingSpeed: number;
+  /** Its source's playbackRate. */
+  rate: number;
+} {
+  const speed = remixFxMaster(effects).speed;
+  const timingSpeed = remixFxPitch(effects).keepPitch ? speed : 1;
+  return { timingSpeed, rate: speed / timingSpeed };
+}
+
 /**
  * Schedule the master fade ramps (#1899) from timeline position
  * `offsetSec`: pins the level at the offset at `startAt`, then each later
@@ -422,16 +515,24 @@ export type StemArrangementPreviewHandle = {
   updateSections(stems: PreviewStemState[]): void;
   /**
    * Live effects edits (#1897): tone, echo, space and warmth update in place
-   * and return "applied". A speed (or bpm) change, or effects appearing on a
-   * preview started without any, returns "restart": the caller restarts
-   * playback at the current source position — the simplest correct option,
-   * since the source rate, echo spacing and output-time envelopes all
+   * and return "applied". A speed (or bpm) change, a Keep original pitch or
+   * key change (#1898), or effects appearing on a preview started without
+   * any, returns "restart": the caller restarts playback at the current
+   * source position — the simplest correct option, since the source rate,
+   * the stretched buffers, echo spacing and output-time envelopes all
    * depend on it.
    */
   updateEffects(
     effects: RemixFxRecipe | null,
     bpm?: number | null,
   ): "applied" | "restart";
+  /**
+   * Tempo/key still pending (#1898): the recipe needs a time-stretch but
+   * some audible stem had no stretched buffer ready when this started, so
+   * everything plays the varispeed fallback (right timing, no key shift).
+   * The caller restarts once `prepareStretch` is done.
+   */
+  stretchPending(): boolean;
 };
 
 export type StemPreviewEngine = {
@@ -452,6 +553,14 @@ export type StemPreviewEngine = {
     /**
      * Effects recipe `remix-fx/v2` (#1897, #1898); null/absent keeps the plain
      * graph (source → gain → section gain → limiter), with no extra nodes.
+     * A recipe with a time-stretch stage (`remixFxStretchPlan`) plays the
+     * stems' stretched buffers (see `prepareStretch`) at the varispeed rate
+     * when every audible stem has one ready — source offsets, loop ranges
+     * and block spans move to stretched time (÷ tempo), while the timeline
+     * and everything scheduled on it (position, gates, echo, fades) is
+     * unchanged. A muted stem without one is left out. Otherwise it plays
+     * the varispeed path at `speed` without the key shift and the handle
+     * reports `stretchPending()`.
      */
     effects?: RemixFxRecipe | null;
     /** Bar-grid tempo for tempo-synced echo; null = the 0.375 s fallback. */
@@ -476,10 +585,28 @@ export type StemPreviewEngine = {
      * (level, mute, solo via `REMIX_BEAT_LANE_ID`; silent while a
      * reference plays) → the master (fade) chain; with effects, into the
      * master bus plus a reverb send of 0.7 × master space. It loops with
-     * the timeline loop.
+     * the timeline loop. With keepPitch (#1898) the track is synthesized in
+     * output time and plays at rate 1 (see `beatPlayback`).
      */
     beat?: PreviewBeat | null;
   }): Promise<StemArrangementPreviewHandle>;
+  /**
+   * Time-stretch the stems for a plan (#1898) in the worker pool, ahead of
+   * play. Keeps ONLY the current plan's stretched buffers: a new plan (or
+   * null) cancels the previous plan's jobs and drops its buffers. Idempotent
+   * for the same plan: stems already stretched or in flight are not redone.
+   * Decodes stems as needed (a stem that can't be decoded is skipped, as in
+   * preload). `onProgress` gets the share done across these stems (0..1).
+   * Resolves "cancelled" when superseded by another plan or disposed, and
+   * "failed" when a stretch failed (a later call retries it).
+   */
+  prepareStretch(
+    plan: PreviewStretchPlan | null,
+    stemIds: string[],
+    onProgress?: (fraction: number) => void,
+  ): Promise<StretchPrepareResult>;
+  /** Whether every stem in `stemIds` has its stretched buffer for `plan`. */
+  stretchReady(plan: PreviewStretchPlan | null, stemIds: string[]): boolean;
   /**
    * The beat track (#1902) as a mono AudioBuffer at the context's sample
    * rate, rendered with `renderBeatInto` and memoized by
@@ -617,6 +744,7 @@ const INERT_HANDLE: StemArrangementPreviewHandle = {
   duration: () => 0,
   updateSections: () => undefined,
   updateEffects: () => "applied",
+  stretchPending: () => false,
 };
 
 /** Shortest loop the engine will cycle; anything shorter plays unlooped. */
@@ -737,6 +865,8 @@ export function createStemPreviewEngine(input: {
   urlForStem: (stemId: string) => string;
   fetchImpl?: typeof fetch;
   audioContextFactory?: () => AudioContext;
+  /** Stretch worker pool (#1898), created on the first `prepareStretch`. */
+  stretchPoolFactory?: () => StretchPool;
 }): StemPreviewEngine {
   const doFetch: typeof fetch =
     input.fetchImpl ?? ((resource, init) => fetch(resource, init));
@@ -759,6 +889,20 @@ export function createStemPreviewEngine(input: {
   // Beat track (#1902): the last built buffer, by render key.
   let beatCache: { key: string; buffer: AudioBuffer; audibleSec: number } | null =
     null;
+  // Time-stretched stems (#1898): only the current plan's, by variant key,
+  // plus its in-flight jobs by stem id. Source buffers stay cached above.
+  let stretchPool: StretchPool | null = null;
+  let stretchPlanKey: string | null = null;
+  const stretchedBuffers = new Map<string, AudioBuffer>();
+  const stretchJobs = new Map<
+    string,
+    {
+      jobId: string;
+      listeners: Set<(fraction: number) => void>;
+      promise: Promise<StretchPrepareResult>;
+    }
+  >();
+  let stretchJobCount = 0;
   let current: StemArrangementPreviewHandle | null = null;
   let playGeneration = 0;
   let disposed = false;
@@ -874,17 +1018,23 @@ export function createStemPreviewEngine(input: {
   const beatEntry = (
     audioContext: AudioContext,
     beat: PreviewBeat,
+    // keepPitch (#1898): synthesized in output time at this speed.
+    timingSpeed = 1,
   ): { buffer: AudioBuffer; audibleSec: number } => {
     const rate = audioContext.sampleRate;
-    const key = `${rate}:${beatRenderKey(beat.recipe, beat.grid, beat.segments)}`;
-    if (beatCache?.key === key) return beatCache;
-    const length = Math.max(
-      1,
-      beatTrackLength(beat.recipe.kit, beat.segments, rate),
+    const { grid, segments } = beatTimingAtSpeed(
+      beat.grid,
+      beat.segments,
+      timingSpeed,
     );
+    // The timing speed is 1 without keepPitch (the beat doesn't depend on
+    // the speed then), the speed with it.
+    const key = `${rate}:${timingSpeed}:${beatRenderKey(beat.recipe, grid, segments)}`;
+    if (beatCache?.key === key) return beatCache;
+    const length = Math.max(1, beatTrackLength(beat.recipe.kit, segments, rate));
     const buffer = audioContext.createBuffer(1, length, rate);
     const data = buffer.getChannelData(0);
-    renderBeatInto(data, beat.recipe, beat.grid, beat.segments, rate);
+    renderBeatInto(data, beat.recipe, grid, segments, rate);
     // The source stops after the last hit has rung out, not after the
     // track's silent padding.
     let last = data.length - 1;
@@ -907,6 +1057,137 @@ export function createStemPreviewEngine(input: {
       throw new Error("Audio preview engine was disposed.");
     }
     return ensureContext().decodeAudioData(data);
+  };
+
+  const planKeyFor = (plan: PreviewStretchPlan, sampleRate: number) =>
+    stretchVariantKey("", plan, sampleRate);
+
+  /** Switch the store to a plan: another plan's jobs and buffers go. */
+  const switchStretchPlan = (planKey: string | null) => {
+    if (planKey === stretchPlanKey) return;
+    stretchPlanKey = planKey;
+    const inFlight = [...stretchJobs.values()].map((job) => job.jobId);
+    stretchJobs.clear();
+    stretchedBuffers.clear();
+    stretchPool?.cancel(inFlight);
+  };
+
+  const startStretchJob = (
+    audioContext: AudioContext,
+    stemId: string,
+    plan: PreviewStretchPlan,
+    planKey: string,
+  ) => {
+    const sampleRate = audioContext.sampleRate;
+    const jobId = `stretch-${(stretchJobCount += 1)}`;
+    const listeners = new Set<(fraction: number) => void>();
+    const current = () => !disposed && stretchPlanKey === planKey;
+    const promise = (async (): Promise<StretchPrepareResult> => {
+      try {
+        let source: AudioBuffer;
+        try {
+          source = await loadBuffer(audioContext, stemId);
+        } catch {
+          // Undecodable stems stay skipped, as in preload; play() reports.
+          return "ready";
+        }
+        if (!current()) return "cancelled";
+        stretchPool ??= (input.stretchPoolFactory ?? (() => createStretchPool()))();
+        const out = await stretchPool.run(
+          {
+            jobId,
+            sampleRate,
+            tempo: plan.tempo,
+            semitones: plan.semitones,
+            // Copied when a worker takes the job, then transferred to it.
+            channels: () =>
+              Array.from({ length: source.numberOfChannels }, (_, c) =>
+                source.getChannelData(c).slice(),
+              ),
+          },
+          (fraction) => listeners.forEach((listener) => listener(fraction)),
+        );
+        if (!current() || !context) return "cancelled";
+        const length = Math.max(1, out[0]?.length ?? 0);
+        const buffer = context.createBuffer(out.length, length, sampleRate);
+        out.forEach((channel, c) =>
+          buffer.copyToChannel(channel as Float32Array<ArrayBuffer>, c),
+        );
+        stretchedBuffers.set(stretchVariantKey(stemId, plan, sampleRate), buffer);
+        listeners.forEach((listener) => listener(1));
+        return "ready";
+      } catch (error) {
+        return error instanceof StretchCancelledError || !current()
+          ? "cancelled"
+          : "failed";
+      } finally {
+        if (stretchJobs.get(stemId)?.jobId === jobId) stretchJobs.delete(stemId);
+      }
+    })();
+    const job = { jobId, listeners, promise };
+    stretchJobs.set(stemId, job);
+    return job;
+  };
+
+  const prepareStretch: StemPreviewEngine["prepareStretch"] = async (
+    plan,
+    stemIds,
+    onProgress,
+  ) => {
+    if (disposed) return "cancelled";
+    if (!plan) {
+      switchStretchPlan(null);
+      return "ready";
+    }
+    let audioContext: AudioContext;
+    try {
+      audioContext = ensureContext();
+    } catch {
+      return "failed";
+    }
+    const sampleRate = audioContext.sampleRate;
+    const planKey = planKeyFor(plan, sampleRate);
+    switchStretchPlan(planKey);
+    const ids = [...new Set(stemIds)];
+    const done = new Map<string, number>();
+    const report = () => {
+      if (!onProgress || ids.length === 0) return;
+      let sum = 0;
+      for (const fraction of done.values()) sum += fraction;
+      onProgress(Math.min(1, sum / ids.length));
+    };
+    const tasks = ids.map((stemId) => {
+      if (stretchedBuffers.has(stretchVariantKey(stemId, plan, sampleRate))) {
+        done.set(stemId, 1);
+        return "ready" as const;
+      }
+      const job =
+        stretchJobs.get(stemId) ??
+        startStretchJob(audioContext, stemId, plan, planKey);
+      job.listeners.add((fraction) => {
+        done.set(stemId, fraction);
+        report();
+      });
+      return job.promise;
+    });
+    report();
+    const results = await Promise.all(tasks);
+    if (disposed || stretchPlanKey !== planKey || results.includes("cancelled")) {
+      return "cancelled";
+    }
+    return results.includes("failed") ? "failed" : "ready";
+  };
+
+  const stretchReady: StemPreviewEngine["stretchReady"] = (plan, stemIds) => {
+    if (!plan) return true;
+    if (!context) return false;
+    const sampleRate = context.sampleRate;
+    return (
+      stretchPlanKey === planKeyFor(plan, sampleRate) &&
+      stemIds.every((stemId) =>
+        stretchedBuffers.has(stretchVariantKey(stemId, plan, sampleRate)),
+      )
+    );
   };
 
   const play: StemPreviewEngine["play"] = async (request) => {
@@ -968,6 +1249,32 @@ export function createStemPreviewEngine(input: {
     // context second; pitch follows, like the render.
     const speed = remixFxMaster(effects).speed;
     const bpm = positiveBpm(request.bpm);
+    const pitch = remixFxPitch(effects);
+    // Tempo/key (#1898): the stretched buffers of this plan, when every
+    // audible stem has one; else the varispeed fallback (key shift pending).
+    // A muted stem without one is left out (it is silent anyway).
+    const stretchPlan = remixFxStretchPlan(effects);
+    let stretched: Array<AudioBuffer | null> | null = null;
+    if (stretchPlan) {
+      const sampleRate = audioContext.sampleRate;
+      const variants = request.stems.map((stem) =>
+        stretchPlanKey === planKeyFor(stretchPlan, sampleRate)
+          ? stretchedBuffers.get(
+              stretchVariantKey(stem.stemId, stretchPlan, sampleRate),
+            ) ?? null
+          : null,
+      );
+      if (request.stems.every((stem, index) => variants[index] || stem.muted)) {
+        stretched = variants;
+      }
+    }
+    const pendingStretch = stretchPlan !== null && stretched === null;
+    // Stretched buffers hold source time t at t ÷ tempo and play at the
+    // varispeed rate; the fallback plays the sources at `speed`.
+    const tempo = stretched && stretchPlan ? stretchPlan.tempo : 1;
+    const sourceRate = stretched ? remixFxVarispeedRate(effects) : speed;
+    const joinFadeSeconds = stretchedJoinFadeSeconds(tempo);
+    const beatTiming = beatPlayback(effects);
 
     const sources: AudioBufferSourceNode[] = [];
     const gains = new Map<string, GainNode>();
@@ -997,7 +1304,7 @@ export function createStemPreviewEngine(input: {
     const structureNodes: AudioNode[] = [];
     // Beat (#1902): one source + gain, only with an audible beat.
     const beat = request.beat
-      ? beatEntry(audioContext, request.beat)
+      ? beatEntry(audioContext, request.beat, beatTiming.timingSpeed)
       : null;
     const beatPlays = beat !== null && beat.audibleSec > 0;
     let beatState: PreviewBeat | null = request.beat ?? null;
@@ -1093,15 +1400,20 @@ export function createStemPreviewEngine(input: {
         if (stopped) return "applied";
         const normalized = normalizeRemixFx(nextEffects);
         if (!fx) return normalized === null ? "applied" : "restart";
+        const nextPitch = remixFxPitch(normalized);
         if (
           remixFxMaster(normalized).speed !== fx.speed ||
-          positiveBpm(nextBpm) !== fx.bpm
+          positiveBpm(nextBpm) !== fx.bpm ||
+          // Tempo/key (#1898) pick the buffers and the beat timing.
+          nextPitch.keepPitch !== pitch.keepPitch ||
+          nextPitch.semitones !== pitch.semitones
         ) {
           return "restart";
         }
         applyFxValues(fx, normalized);
         return "applied";
       },
+      stretchPending: () => pendingStretch,
     };
 
     // Effects graph (#1897), only when a recipe is set: per stem
@@ -1229,6 +1541,9 @@ export function createStemPreviewEngine(input: {
     const timing = { startAt, offsetSec: offset, speed };
 
     request.stems.forEach((stem, index) => {
+      const buffer = stretched ? stretched[index] : decoded[index];
+      // A muted stem without its stretched buffer sits this play out.
+      if (!buffer) return;
       if (structure) {
         // One buffer source per block (#1899): no audio copies, flat memory.
         const gain = audioContext.createGain();
@@ -1239,28 +1554,38 @@ export function createStemPreviewEngine(input: {
         if (structureLoop) {
           // A block loop cycles the block's source range on one source.
           const source = audioContext.createBufferSource();
-          source.buffer = decoded[index];
+          source.buffer = buffer;
           source.loop = true;
-          source.loopStart = structureLoop.srcLoopStartSec;
-          source.loopEnd = structureLoop.srcLoopEndSec;
-          if (speed !== 1) source.playbackRate.value = speed;
+          const range = stretchedSpan(
+            {
+              startSec: structureLoop.srcLoopStartSec,
+              endSec: structureLoop.srcLoopEndSec,
+            },
+            tempo,
+          );
+          source.loopStart = range.startSec;
+          source.loopEnd = range.endSec;
+          if (sourceRate !== 1) source.playbackRate.value = sourceRate;
           source.connect(gain);
           source.onended = onSourceEnded;
           sources.push(source);
-          const entry =
+          const entry = stretchedSourceSec(
             structureLoop.segment.srcStartSec +
-            (offset - structureLoop.segment.outStartSec);
+              (offset - structureLoop.segment.outStartSec),
+            tempo,
+          );
           starts.push(() => source.start(startAt, entry));
           return;
         }
-        for (const plan of planBlockSources(structure.segments, timing)) {
+        for (const block of planBlockSources(structure.segments, timing)) {
+          const plan = stretchedBlockPlan(block, tempo);
           const source = audioContext.createBufferSource();
-          source.buffer = decoded[index];
-          if (speed !== 1) source.playbackRate.value = speed;
+          source.buffer = buffer;
+          if (sourceRate !== 1) source.playbackRate.value = sourceRate;
           if (plan.fadeIn || plan.fadeOut) {
             // Click-free join: a small per-block gain, only where flagged.
             const joinGain = audioContext.createGain();
-            scheduleJoinFades(joinGain.gain, plan, timing);
+            scheduleJoinFades(joinGain.gain, plan, timing, joinFadeSeconds);
             source.connect(joinGain).connect(gain);
             structureNodes.push(joinGain);
           } else {
@@ -1279,40 +1604,44 @@ export function createStemPreviewEngine(input: {
       // Section envelope (#1314) lives on its own node so scheduled
       // automation and live manual-gain updates never conflict.
       const sectionGain = audioContext.createGain();
-      source.buffer = decoded[index];
+      source.buffer = buffer;
       if (loop) {
         // Stems of one separation share a length; a shorter stem would wrap
         // at its own end (the browser clamps loopEnd to the buffer).
+        const range = stretchedSpan(loop, tempo);
         source.loop = true;
-        source.loopStart = loop.startSec;
-        source.loopEnd = loop.endSec;
+        source.loopStart = range.startSec;
+        source.loopEnd = range.endSec;
       }
-      if (speed !== 1) source.playbackRate.value = speed;
+      if (sourceRate !== 1) source.playbackRate.value = sourceRate;
       source.connect(gain).connect(sectionGain).connect(stemInput(stem.stemId));
       source.onended = onSourceEnded;
       sources.push(source);
       gains.set(stem.stemId, gain);
       sectionGains.set(stem.stemId, sectionGain);
-      starts.push(() => source.start(startAt, offset));
+      starts.push(() => source.start(startAt, stretchedSourceSec(offset, tempo)));
     });
 
     if (beat && beatGain) {
-      // Already in timeline time: one source from the offset, never
-      // structure-scheduled; it loops with the timeline loop.
+      // Already in timeline time (output time with keepPitch, #1898): one
+      // source from the offset, never structure-scheduled; it loops with
+      // the timeline loop.
+      const { timingSpeed, rate } = beatTiming;
+      const beatSec = (sec: number) => sec / timingSpeed;
       const source = audioContext.createBufferSource();
       source.buffer = beat.buffer;
-      if (speed !== 1) source.playbackRate.value = speed;
+      if (rate !== 1) source.playbackRate.value = rate;
       source.connect(beatGain);
       source.onended = onSourceEnded;
       sources.push(source);
       if (loop) {
         source.loop = true;
-        source.loopStart = loop.startSec;
-        source.loopEnd = loop.endSec;
-        starts.push(() => source.start(startAt, offset));
+        source.loopStart = beatSec(loop.startSec);
+        source.loopEnd = beatSec(loop.endSec);
+        starts.push(() => source.start(startAt, beatSec(offset)));
       } else {
-        const remaining = Math.max(0, beat.audibleSec - offset);
-        starts.push(() => source.start(startAt, offset, remaining));
+        const remaining = Math.max(0, beat.audibleSec - beatSec(offset));
+        starts.push(() => source.start(startAt, beatSec(offset), remaining));
       }
     }
 
@@ -1351,6 +1680,11 @@ export function createStemPreviewEngine(input: {
     meterData = null;
     reverbImpulse = null;
     beatCache = null;
+    stretchPool?.dispose();
+    stretchPool = null;
+    stretchPlanKey = null;
+    stretchJobs.clear();
+    stretchedBuffers.clear();
     const closing = context;
     context = null;
     void closing?.close().catch(() => undefined);
@@ -1375,6 +1709,8 @@ export function createStemPreviewEngine(input: {
     bufferDuration,
     decode,
     beatBuffer,
+    prepareStretch,
+    stretchReady,
     setOutputVolume,
     dispose,
   };
