@@ -60,6 +60,7 @@ import type { RemixEligibilityResponse } from "../../lib/api";
 import {
   applyVibe,
   REMIX_FX_SCHEMA_VERSION,
+  withRemixFxPitch,
   withStemFx,
 } from "../../lib/remixFx";
 import {
@@ -2576,6 +2577,29 @@ describe("Reset to original (#1910)", () => {
     expect(edits.effects).not.toBeNull();
   });
 
+  it("clears Keep original pitch and the key too (#1898)", () => {
+    const p = remixed({
+      effects: {
+        schemaVersion: REMIX_FX_SCHEMA_VERSION,
+        master: { speed: 0.9, keepPitch: true, semitones: 2 },
+      },
+    });
+    const refs = referenceStemIds(p.stems);
+    const edits = initialEdits(p);
+    expect(edits.effects?.master).toMatchObject({ keepPitch: true, semitones: 2 });
+    expect(editsAreOriginal(edits, refs)).toBe(false);
+    const reset = originalEdits(edits, refs);
+    expect(reset.effects).toBeNull();
+    expect(buildProjectPatch(p, reset).effects).toBeNull();
+    // A pitch-only recipe is still a change from the original.
+    const pitchOnly = remixed({
+      effects: { schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { semitones: -1 } },
+      structure: null,
+      beat: null,
+    });
+    expect(initialEdits(pitchOnly).effects).not.toBeNull();
+  });
+
   it("saves as one patch that leaves the reference alone", () => {
     const p = remixed();
     const patch = buildProjectPatch(
@@ -2740,5 +2764,27 @@ describe("listening volume + draft deletes in the studio (#1910)", () => {
       />,
     );
     expect(html).not.toContain("remix-draft-version-delete");
+  });
+});
+
+describe("tempo & key in the studio (#1898)", () => {
+  it("renders Keep original pitch and Key under Speed, idle until needed", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).toContain(">Keep original pitch<");
+    expect(html).toContain('aria-label="Raise the key"');
+    expect(html).toContain(">Original key<");
+    expect(html).not.toContain("Preparing tempo");
+  });
+
+  it("autosaves the pitch fields as a remix-fx/v2 recipe", () => {
+    const p = project();
+    const edits = {
+      ...initialEdits(p),
+      effects: withRemixFxPitch(null, { keepPitch: true, semitones: 2 }),
+    };
+    expect(buildProjectPatch(p, edits).effects).toEqual({
+      schemaVersion: "remix-fx/v2",
+      master: { keepPitch: true, semitones: 2 },
+    });
   });
 });

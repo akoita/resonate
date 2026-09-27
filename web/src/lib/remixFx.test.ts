@@ -8,6 +8,7 @@ import {
   biquadQDb,
   echoTaps,
   formatFxAmount,
+  formatFxKey,
   formatFxSpeed,
   formatFxTone,
   generateReverbImpulse,
@@ -368,6 +369,68 @@ describe("vibe starters (#1897)", () => {
   });
 });
 
+describe("vibes keep the tempo/key choices (#1898)", () => {
+  const stems = [
+    { stemId: "vox", type: "vocals" },
+    { stemId: "drums", type: "drums" },
+  ];
+  const pitched: RemixFxRecipe = {
+    schemaVersion: REMIX_FX_SCHEMA_VERSION,
+    master: { speed: 0.9, warmth: 0.3, keepPitch: true, semitones: 2 },
+    stems: { drums: { space: 0.3 } },
+  };
+
+  it("a vibe replaces the sound but keeps Keep original pitch and the key", () => {
+    expect(applyVibe("lofi", pitched, stems)).toEqual({
+      schemaVersion: REMIX_FX_SCHEMA_VERSION,
+      master: {
+        speed: 0.95,
+        space: 0.15,
+        tone: -0.45,
+        warmth: 0.5,
+        keepPitch: true,
+        semitones: 2,
+      },
+      stems: { drums: { space: 0.3 } },
+    });
+    expect(remixFxPitch(applyVibe("sped_up", pitched, stems))).toEqual({
+      keepPitch: true,
+      semitones: 2,
+    });
+  });
+
+  it("No effects leaves only the pitch fields, or null without them", () => {
+    expect(applyVibe("none", pitched, stems)).toEqual({
+      schemaVersion: REMIX_FX_SCHEMA_VERSION,
+      master: { keepPitch: true, semitones: 2 },
+    });
+    expect(
+      applyVibe("none", withRemixFxPitch(null, { semitones: -3 }), stems),
+    ).toEqual({ schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { semitones: -3 } });
+    expect(
+      applyVibe("none", { schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { speed: 0.9 } }, stems),
+    ).toBeNull();
+  });
+
+  it("ignores the pitch fields when naming the active vibe", () => {
+    expect(activeVibeId(withRemixFxPitch(null, { keepPitch: true, semitones: 2 }))).toBe(
+      "none",
+    );
+    for (const vibe of REMIX_VIBES) {
+      expect(activeVibeId(applyVibe(vibe.id, pitched, []))).toBe(vibe.id);
+    }
+    expect(
+      activeVibeId(withMasterFx(withRemixFxPitch(null, { semitones: 1 }), "space", 0.2)),
+    ).toBeNull();
+  });
+
+  it("says honestly what No effects keeps", () => {
+    const none = REMIX_VIBES.find((vibe) => vibe.id === "none");
+    expect(none?.description).toMatch(/Key/);
+    expect(none?.description).toMatch(/Keep original pitch/);
+  });
+});
+
 describe("control labels (#1897)", () => {
   it("formats values in plain language", () => {
     expect(formatFxSpeed(0.85)).toBe("0.85×");
@@ -376,5 +439,12 @@ describe("control labels (#1897)", () => {
     expect(formatFxTone(0)).toBe("Neutral");
     expect(formatFxTone(-0.25)).toBe("Darker 25%");
     expect(formatFxTone(0.4)).toBe("Brighter 40%");
+  });
+
+  it("formats the key shift with a real minus sign (#1898)", () => {
+    expect(formatFxKey(0)).toBe("Original key");
+    expect(formatFxKey(2)).toBe("+2 (higher)");
+    expect(formatFxKey(-3)).toBe("\u22123 (lower)");
+    expect(formatFxKey(-3)).not.toContain("-");
   });
 });

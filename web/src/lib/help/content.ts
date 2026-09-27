@@ -892,7 +892,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch"],
     sections: [
       {
         id: "eligibility",
@@ -929,7 +929,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The \"Also on this track\" list shows the track's remaining stems: licensed ones join your session with one click, and the others link to their license page.",
               "In the Create panel, choose \"Mix stems\" to render your arrangement as it sounds \u2014 it's free. One-click arrangements (Acapella, Instrumental, Drums & bass, Breakdown \u2192 drop) set up a starting point you can keep editing.",
               "Not sure where to start? Type what you want in \"Describe it\" \u2014 like \"slower and dreamy, no drums, longer\". You'll see exactly what will change before anything happens; press Apply to use it (or Undo right after). It understands everyday words about speed, space, tone, warmth, parts of the song, and length.",
-              "Pick a vibe to transform the track in one click: Slowed + reverb, Sped up, Lo-fi, Dreamy, or Club. A vibe just sets the Speed, Space, Tone, and Warmth sliders, so you can fine-tune it, or pick No effects to start over. Everything plays back instantly, and none of it uses credits.",
+              "Pick a vibe to transform the track in one click: Slowed + reverb, Sped up, Lo-fi, Dreamy, or Club. A vibe just sets the Speed, Space, Tone, and Warmth sliders, so you can fine-tune it, or pick No effects to start over. To change the tempo without changing voices, or to move the song to another key, see Tempo & key below. Everything plays back instantly, and none of it uses credits.",
               "Open a stem's FX to give just that part its own space, echo, or tone \u2014 for example, an echo on the vocals only.",
               "Change the song's shape: open the \u22ef menu on any section to repeat it, remove it, move it earlier or later, or fade it in or out. Or pick a one-click structure \u2014 Extended mix (a longer intro and outro, handy for DJs) or Short edit (a shorter version that fades out). Original length puts everything back.",
               "Add a beat under your remix: in \"Add a beat\", pick a style like Four on the floor or Boom bap, choose a drum kit (Punchy, 808, or Lo-fi), and tap the steps in the grid to change the pattern. The Groove slider adds swing. The beat locks to the song's tempo, and you can switch it off in any section from its row in the Session.",
@@ -938,6 +938,30 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The first AI draft after a quiet period may take a few minutes while the generation service wakes up; later drafts are usually much faster.",
               "The Drafts panel shows your latest draft with its waveform, how it was made, and what it cost. Publish or export it from there. Regenerating keeps your previous versions \u2014 play any of them to compare before you publish. You can delete versions you don't want to keep.",
             ],
+          },
+        ],
+      },
+      {
+        id: "tempo-key",
+        heading: "Tempo & key",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Under the Speed slider in the Vibe section you'll find two extra controls for changing how the song moves and where it sits.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Keep original pitch: normally, slowing a song down also makes voices sound deeper, and speeding it up makes them higher \u2014 that's the classic \"slowed\" and \"sped up\" sound. Switch this on to change only the tempo, so voices keep their natural pitch. Use it when you want a calmer or more energetic version that still sounds like the original singer.",
+              "Key: use \u2212 and + to move the whole song lower or higher, one step (a semitone) at a time, up to 6 steps either way. \"Original key\" means no change. Lowering the key gives a darker, heavier feel; raising it makes the song brighter. Your beat is never shifted, so the drums stay punchy.",
+              "Picking a vibe or \"No effects\" keeps your Keep original pitch and Key choices. \"Reset to original\" clears them along with everything else.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "The preview takes a few seconds to catch up",
+            text: "After you change these, the studio prepares the new version of each part on your device, with a progress percentage under the controls. Until it's ready, the preview already plays at the new tempo, and the kept pitch or new key comes in by itself once preparation finishes, picking up at the same spot. If preparation fails, press Try again \u2014 the mix you render still gets the change either way.",
           },
         ],
       },

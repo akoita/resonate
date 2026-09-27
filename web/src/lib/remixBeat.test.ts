@@ -9,6 +9,7 @@ import {
   beatGridAvailable,
   beatHits,
   beatOneShot,
+  beatTimingAtSpeed,
   beatRenderKey,
   beatTrackLength,
   defaultBeat,
@@ -36,6 +37,7 @@ import {
   repeatBlock,
   resetStructure,
   structureEditState,
+  structureTimeline,
 } from "./remixStructure";
 
 const FIXTURE_PATH = path.resolve(
@@ -381,5 +383,86 @@ describe("beat mute (#1902)", () => {
     expect(beatRenderKey(muted, grid, segments)).toBe(
       beatRenderKey(defaultBeat("trap"), grid, segments),
     );
+  });
+});
+
+describe("beatTimingAtSpeed: keep-pitch beat in output time (#1898)", () => {
+  // The backend spec's grid (remix-stretch-render.spec.ts): a 6 s pickup,
+  // three 16 s bars sections and a 4 s tail at 120 BPM.
+  const GRID: RemixBeatGrid = {
+    sectionSeconds: 16,
+    bpm: 120,
+    sections: [
+      { startSec: 0, endSec: 6 },
+      { startSec: 6, endSec: 22 },
+      { startSec: 22, endSec: 38 },
+      { startSec: 38, endSec: 54 },
+      { startSec: 54, endSec: 58 },
+    ],
+  };
+  const recipe: RemixBeatRecipe = {
+    ...defaultBeat("four_on_the_floor"),
+    kit: "punchy",
+    pattern: {
+      ...defaultBeat("four_on_the_floor").pattern,
+      kick: Array.from({ length: 16 }, (_, step) => step % 4 === 0),
+      snare: Array.from({ length: 16 }, () => false),
+      clap: Array.from({ length: 16 }, () => false),
+      hat: Array.from({ length: 16 }, (_, step) => step % 2 === 1),
+      openHat: Array.from({ length: 16 }, () => false),
+    },
+    swing: 0.3,
+    blocks: null,
+  };
+  const segments: RemixBeatSegment[] = structureTimeline(GRID, [
+    { section: 0 },
+    { section: 2 },
+    { section: 1 },
+  ]).segments;
+
+  it("places every hit at its timeline time ÷ speed, pickup rule unchanged", () => {
+    const speed = 0.85;
+    const scaled = beatTimingAtSpeed(GRID, segments, speed);
+    const original = beatHits(recipe, GRID, segments);
+    const stretched = beatHits(recipe, scaled.grid, scaled.segments);
+    expect(original.length).toBeGreaterThan(0);
+    expect(stretched.map((hit) => hit.instrument)).toEqual(
+      original.map((hit) => hit.instrument),
+    );
+    stretched.forEach((hit, index) => {
+      expect(Math.abs(hit.timeSec - original[index].timeSec / speed)).toBeLessThan(2e-9);
+    });
+    // The 6 s pickup block (section 0) still gets no beat.
+    expect(original[0].timeSec).toBeCloseTo(6, 9);
+    expect(stretched[0].timeSec).toBeCloseTo(6 / speed, 9);
+    expect(scaled.grid.bpm).toBeCloseTo(120 * speed, 12);
+    expect(scaled.grid.sections).toBe(GRID.sections);
+  });
+
+  it("keeps the one-shots untouched: the track is the timeline ÷ speed plus the same decay room", () => {
+    const speed = 1.25;
+    const scaled = beatTimingAtSpeed(GRID, segments, speed);
+    const plain = renderBeatTrack(recipe, GRID, segments, 48_000);
+    const fast = renderBeatTrack(recipe, scaled.grid, scaled.segments, 48_000);
+    const timeline = segments[segments.length - 1].outEndSec;
+    const decay = plain.length - Math.ceil(timeline * 48_000);
+    expect(fast.length).toBe(Math.ceil((timeline / speed) * 48_000) + decay);
+    const start = Math.round((6 / speed) * 48_000);
+    const plainStart = Math.round(6 * 48_000);
+    for (let i = 0; i < 2000; i += 1) {
+      expect(fast[start + i]).toBe(plain[plainStart + i]);
+    }
+  });
+
+  it("is the identity at speed 1 (and for invalid speeds)", () => {
+    const same = beatTimingAtSpeed(GRID, segments, 1);
+    expect(same.grid).toBe(GRID);
+    expect(same.segments).toBe(segments);
+    expect(beatTimingAtSpeed(GRID, segments, 0).segments).toBe(segments);
+    expect(beatTimingAtSpeed(GRID, segments, Number.NaN).grid).toBe(GRID);
+  });
+
+  it("keeps a missing tempo missing", () => {
+    expect(beatTimingAtSpeed({ ...GRID, bpm: null }, segments, 0.9).grid.bpm).toBeNull();
   });
 });

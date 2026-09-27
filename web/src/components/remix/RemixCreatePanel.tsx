@@ -12,11 +12,14 @@ import type { RemixRecipe } from "../../lib/remixRecipes";
 import {
   activeVibeId,
   formatFxAmount,
+  formatFxKey,
   formatFxSpeed,
   formatFxTone,
   REMIX_FX_MASTER_RANGES,
+  REMIX_FX_SEMITONES_RANGE,
   REMIX_VIBES,
   remixFxMaster,
+  remixFxPitch,
   type RemixFxMaster,
   type RemixFxRecipe,
   type RemixVibeId,
@@ -60,6 +63,7 @@ import {
   type RemixStructureEditResult,
   type RemixStructureEditState,
 } from "../../lib/remixStructure";
+import type { StretchPreviewState } from "./useRemixTransport";
 
 export const REMIX_STUDIO_LOCKED_NOTE =
   "This remix is published — the studio is locked.";
@@ -94,6 +98,13 @@ export type RemixCreatePanelProps = {
   effects: RemixFxRecipe | null;
   onApplyVibe(id: RemixVibeId): void;
   onMasterFxChange(key: keyof RemixFxMaster, value: number): void;
+  /**
+   * Tempo & key (#1898): sets Keep original pitch and/or the key shift;
+   * absent = the pair is hidden.
+   */
+  onPitchChange?(pitch: { keepPitch?: boolean; semitones?: number }): void;
+  /** The preview's tempo & key preparation and its retry (#1898). */
+  tempoKeyPreview?: StretchPreviewState & { onRetry(): void };
   /**
    * One-click song length & shape options (#1899); absent/empty = the
    * section is hidden (no section grid).
@@ -834,18 +845,165 @@ export const VIBE_MASTER_CONTROLS: readonly MasterControl[] = [
   { key: "warmth", label: "Warmth", step: 0.01, low: "Clean", high: "Warm", format: formatFxAmount },
 ];
 
+export const KEEP_PITCH_HINT =
+  "Change the tempo without making voices sound higher or lower.";
+export const KEY_LOWEST_TITLE = "This is the lowest key (6 semitones down).";
+export const KEY_HIGHEST_TITLE = "This is the highest key (6 semitones up).";
+export const TEMPO_KEY_FAILED_NOTE =
+  "The preview couldn't apply the tempo & key change. Your saved remix still will.";
+
+/** The preview's preparing line, e.g. "Preparing tempo & key for the preview… 42%". */
+export function tempoKeyPreparingLabel(fraction: number): string {
+  const percent = Math.round(Math.min(1, Math.max(0, fraction)) * 100);
+  return `Preparing tempo & key for the preview\u2026 ${percent}%`;
+}
+
+export type TempoKeyViewProps = {
+  /** Prefix for the element ids (the section passes a `useId`). */
+  idPrefix: string;
+  effects: RemixFxRecipe | null;
+  onPitchChange(pitch: { keepPitch?: boolean; semitones?: number }): void;
+  preview?: StretchPreviewState & { onRetry(): void };
+  locked: boolean;
+};
+
+function TempoKeyControls(props: Omit<TempoKeyViewProps, "idPrefix">) {
+  return <TempoKeyView idPrefix={useId()} {...props} />;
+}
+
+/**
+ * Tempo & key (#1898), under the Speed slider: "Keep original pitch" (a
+ * switch; always available — at speed 1 it simply has nothing to change
+ * yet) and a whole-semitone Key stepper, plus the preview's honest
+ * preparing / failed line. Hook-free, so tests can walk it.
+ */
+export function TempoKeyView({
+  idPrefix: id,
+  effects,
+  onPitchChange,
+  preview,
+  locked,
+}: TempoKeyViewProps) {
+  const keepLabelId = `${id}-keep`;
+  const keepHintId = `${id}-keep-hint`;
+  const keyLabelId = `${id}-key`;
+  const { keepPitch, semitones } = remixFxPitch(effects);
+  const { min, max } = REMIX_FX_SEMITONES_RANGE;
+  const atLowest = semitones <= min;
+  const atHighest = semitones >= max;
+  const stepButton =
+    "flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950 text-sm text-zinc-200 transition-colors hover:border-purple-500/60 hover:bg-purple-500/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-zinc-700 disabled:hover:bg-zinc-950";
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-zinc-800 bg-zinc-950/60 p-2 remix-tempo-key">
+      <div>
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span id={keepLabelId} className="text-zinc-300">
+            Keep original pitch
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={keepPitch}
+            aria-labelledby={keepLabelId}
+            aria-describedby={keepHintId}
+            disabled={locked}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-50 remix-keep-pitch ${
+              keepPitch
+                ? "border-purple-400/70 bg-purple-500/60"
+                : "border-zinc-600 bg-zinc-800"
+            }`}
+            onClick={() => onPitchChange({ keepPitch: !keepPitch })}
+          >
+            <span
+              aria-hidden="true"
+              className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                keepPitch ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
+        <p id={keepHintId} className="mt-0.5 text-[11px] text-zinc-500">
+          {KEEP_PITCH_HINT}
+        </p>
+      </div>
+      <div
+        className="flex items-center justify-between gap-2 text-xs remix-key"
+        role="group"
+        aria-labelledby={keyLabelId}
+      >
+        <span id={keyLabelId} className="text-zinc-300">
+          Key
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Lower the key"
+            disabled={locked || atLowest}
+            title={atLowest ? KEY_LOWEST_TITLE : undefined}
+            className={`${stepButton} remix-key-lower`}
+            onClick={() => onPitchChange({ semitones: semitones - 1 })}
+          >
+            {"\u2212"}
+          </button>
+          <output
+            aria-live="polite"
+            className="min-w-[6.5rem] text-center tabular-nums text-zinc-300 remix-key-value"
+          >
+            {formatFxKey(semitones)}
+          </output>
+          <button
+            type="button"
+            aria-label="Raise the key"
+            disabled={locked || atHighest}
+            title={atHighest ? KEY_HIGHEST_TITLE : undefined}
+            className={`${stepButton} remix-key-raise`}
+            onClick={() => onPitchChange({ semitones: semitones + 1 })}
+          >
+            +
+          </button>
+        </div>
+      </div>
+      <div aria-live="polite" className="text-[11px] remix-tempo-key-status">
+        {preview?.status === "preparing" && (
+          <p className="text-zinc-400">{tempoKeyPreparingLabel(preview.fraction)}</p>
+        )}
+        {preview?.status === "failed" && (
+          <p className="flex flex-wrap items-center gap-2 text-amber-200">
+            <span>{TEMPO_KEY_FAILED_NOTE}</span>
+            <button
+              type="button"
+              className="rounded border border-amber-500/50 px-2 py-0.5 text-amber-100 hover:bg-amber-500/15 remix-tempo-key-retry"
+              onClick={preview.onRetry}
+            >
+              Try again
+            </button>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Vibe section (#1897): one-click vibe starters plus the four master
- * controls they set, so every vibe stays visible and tweakable.
+ * controls they set, so every vibe stays visible and tweakable. Tempo & key
+ * (#1898) sits under Speed.
  */
 function VibeSection({
   effects,
   onApplyVibe,
   onMasterFxChange,
+  onPitchChange,
+  tempoKeyPreview,
   locked,
 }: Pick<
   RemixCreatePanelProps,
-  "effects" | "onApplyVibe" | "onMasterFxChange" | "locked"
+  | "effects"
+  | "onApplyVibe"
+  | "onMasterFxChange"
+  | "onPitchChange"
+  | "tempoKeyPreview"
+  | "locked"
 >) {
   const id = useId();
   const labelId = `${id}-vibe`;
@@ -925,6 +1083,14 @@ function VibeSection({
                 <span className="text-center">{control.center ?? ""}</span>
                 <span className="text-right">{control.high}</span>
               </div>
+              {control.key === "speed" && onPitchChange && (
+                <TempoKeyControls
+                  effects={effects}
+                  onPitchChange={onPitchChange}
+                  preview={tempoKeyPreview}
+                  locked={locked}
+                />
+              )}
             </div>
           );
         })}
@@ -952,6 +1118,8 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     effects,
     onApplyVibe,
     onMasterFxChange,
+    onPitchChange,
+    tempoKeyPreview,
     structureOptions,
     onApplyStructure,
     describeContext,
@@ -1041,6 +1209,8 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
             effects={effects}
             onApplyVibe={onApplyVibe}
             onMasterFxChange={onMasterFxChange}
+            onPitchChange={onPitchChange}
+            tempoKeyPreview={tempoKeyPreview}
             locked={locked}
           />
           {structureOptions && structureOptions.length > 0 && onApplyStructure && (
