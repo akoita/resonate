@@ -662,6 +662,126 @@ test.describe("Remix Studio session view (#1879)", () => {
       .toBe(true);
   });
 
+  test("tempo & key: keep original pitch and a key change, prepared in workers (#1898)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    type PitchPatch = {
+      schemaVersion?: string;
+      master?: { keepPitch?: boolean; semitones?: number; warmth?: number };
+    } | null;
+    const effectsOf = (patch: Record<string, unknown>) =>
+      patch.effects as PitchPatch | undefined;
+
+    // Keep original pitch is a labelled switch, available at any speed.
+    const keep = page.getByRole("switch", { name: "Keep original pitch" });
+    await expect(keep).toHaveAttribute("aria-checked", "false");
+    await keep.click();
+    await expect(keep).toHaveAttribute("aria-checked", "true");
+
+    // Key +2 with the stepper.
+    const key = page.getByRole("group", { name: "Key", exact: true });
+    await expect(key.getByText("Original key")).toBeVisible();
+    await key.getByRole("button", { name: "Raise the key" }).click();
+    await key.getByRole("button", { name: "Raise the key" }).click();
+    await expect(key.getByText("+2 (higher)")).toBeVisible();
+
+    // The preview prepares the key change in the stretch workers (real WASM).
+    const preparing = page.getByText(/Preparing tempo & key for the preview/);
+    await expect(preparing).toBeVisible();
+    const started = Date.now();
+    await expect(preparing).toHaveCount(0, { timeout: 90_000 });
+    test.info().annotations.push({
+      type: "stretch-prepare-ms",
+      description: String(Date.now() - started),
+    });
+    await expect(page.getByText(/couldn't apply the tempo & key change/)).toHaveCount(0);
+
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const effects = effectsOf(patch);
+            return (
+              effects?.schemaVersion === "remix-fx/v2" &&
+              effects.master?.keepPitch === true &&
+              effects.master?.semitones === 2
+            );
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+
+    // The shifted arrangement plays through the preview engine.
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-tempo-key.png"),
+      fullPage: true,
+    });
+    // A/B compare while playing: Original (untouched, no effects) and back.
+    const original = page.getByRole("button", { name: "Original", exact: true });
+    const arrangement = page.getByRole("button", { name: "Arrangement", exact: true });
+    await original.click();
+    await expect(original).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await arrangement.click();
+    await expect(arrangement).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(keep).toBeEnabled();
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // A vibe changes the sound but keeps both choices (and slows the tempo,
+    // which the workers prepare again).
+    await page
+      .getByRole("group", { name: "Vibe" })
+      .getByRole("button", { name: "Lo-fi" })
+      .click();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const effects = effectsOf(patch);
+            return (
+              effects?.master?.warmth === 0.5 &&
+              effects.master.keepPitch === true &&
+              effects.master.semitones === 2
+            );
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(keep).toHaveAttribute("aria-checked", "true");
+    await expect(key.getByText("+2 (higher)")).toBeVisible();
+    await expect(preparing).toHaveCount(0, { timeout: 90_000 });
+    await expect(page.getByText(/couldn't apply the tempo & key change/)).toHaveCount(0);
+
+    // Reset to original clears them with everything else.
+    await page.getByRole("button", { name: /Reset to original/ }).click();
+    await page.getByRole("button", { name: /^Reset/ }).last().click();
+    await expect
+      .poll(() => patches.some((patch) => "effects" in patch && patch.effects === null), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+    await expect(keep).toHaveAttribute("aria-checked", "false");
+    await expect(key.getByText("Original key")).toBeVisible();
+    expect(pageErrors).toEqual([]);
+  });
+
   test("studio polish: listening volume, reset to original, delete a draft version (#1910)", async ({
     authenticatedPage: page,
   }) => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  beatPlayback,
   beatPreviewGain,
   blockLoopSource,
   clampOutputVolume,
@@ -15,8 +16,18 @@ import {
   scheduleSectionEnvelopeFrom,
   sectionGainAt,
   stemPreviewGain,
+  stretchedBlockPlan,
+  stretchedJoinFadeSeconds,
+  stretchedSourceSec,
+  stretchedSpan,
+  stretchVariantKey,
   wrapLoopPosition,
 } from "./remixAudioPreview";
+import {
+  StretchCancelledError,
+  type StretchJob,
+  type StretchPool,
+} from "./remixStretchPool";
 import {
   biquadQDb,
   REMIX_FX_SCHEMA_VERSION,
@@ -25,6 +36,8 @@ import {
 } from "./remixFx";
 import { structureTimeline, type RemixStructureBlock } from "./remixStructure";
 import {
+  beatTimingAtSpeed,
+  beatTrackLength,
   defaultBeat,
   REMIX_BEAT_LANE_ID,
   type RemixBeatRecipe,
@@ -1601,5 +1614,458 @@ describe("listening volume output stage (#1910)", () => {
     contexts[0].analyser!.samples = [0.4];
     expect(handle.level().peak).toBeCloseTo(0.4, 6);
     handle.stop();
+  });
+});
+
+describe("stretched-time helpers (#1898)", () => {
+  it("keys a stretched stem by everything that shapes its audio", () => {
+    expect(stretchVariantKey("vocals", { tempo: 0.85, semitones: 2 }, 48000)).toBe(
+      "vocals|0.85|2|48000",
+    );
+  });
+
+  it("maps source offsets and loop ranges into stretched time (÷ tempo)", () => {
+    expect(stretchedSourceSec(17, 0.85)).toBeCloseTo(20);
+    expect(stretchedSourceSec(12, 1)).toBe(12);
+    const span = stretchedSpan({ startSec: 8.5, endSec: 17 }, 0.85);
+    expect(span.startSec).toBeCloseTo(10);
+    expect(span.endSec).toBeCloseTo(20);
+  });
+
+  it("moves a block's buffer offset and duration, not when it plays", () => {
+    const [block] = planBlockSources(reorderRepeat.segments, {
+      startAt: 0.03,
+      offsetSec: 4,
+      speed: 0.8,
+    });
+    const stretched = stretchedBlockPlan(block, 0.8);
+    expect(stretched.whenSec).toBe(block.whenSec);
+    expect(stretched.segment).toBe(block.segment);
+    expect(stretched.offsetSec).toBeCloseTo(block.offsetSec / 0.8);
+    expect(stretched.durationSec).toBeCloseTo(block.durationSec / 0.8);
+    expect(stretchedBlockPlan(block, 1)).toBe(block);
+  });
+
+  it("keeps the 10 ms join fade in stretched time", () => {
+    expect(stretchedJoinFadeSeconds(1)).toBe(0.01);
+    expect(stretchedJoinFadeSeconds(0.8)).toBeCloseTo(0.008);
+  });
+
+  it("plays the keep-pitch beat in output time at rate 1", () => {
+    expect(beatPlayback(null)).toEqual({ timingSpeed: 1, rate: 1 });
+    expect(beatPlayback(fxRecipe({ master: { speed: 0.85 } }))).toEqual({
+      timingSpeed: 1,
+      rate: 0.85,
+    });
+    expect(beatPlayback(fxRecipe({ master: { speed: 0.85, semitones: 2 } }))).toEqual({
+      timingSpeed: 1,
+      rate: 0.85,
+    });
+    expect(beatPlayback(fxRecipe({ master: { speed: 0.85, keepPitch: true } }))).toEqual({
+      timingSpeed: 0.85,
+      rate: 1,
+    });
+  });
+});
+
+/** A fake stretch pool: jobs wait until the test resolves or fails them. */
+function fakeStretchPool() {
+  const runs: Array<{
+    job: StretchJob;
+    onProgress?: (fraction: number) => void;
+    resolve(channels: Float32Array[]): void;
+    reject(error: Error): void;
+  }> = [];
+  const pool = {
+    run: vi.fn(
+      (job: StretchJob, onProgress?: (fraction: number) => void) =>
+        new Promise<Float32Array[]>((resolve, reject) => {
+          runs.push({ job, onProgress, resolve, reject });
+        }),
+    ),
+    cancel: vi.fn<StretchPool["cancel"]>((jobIds) => {
+      const ids = new Set(jobIds);
+      for (const run of runs) {
+        if (ids.has(run.job.jobId)) run.reject(new StretchCancelledError());
+      }
+    }),
+    dispose: vi.fn<StretchPool["dispose"]>(),
+  } satisfies StretchPool;
+  /** Finish a run with `seconds` of stretched stereo at 48 kHz. */
+  const finish = (index: number, seconds = 1) =>
+    runs[index].resolve([
+      new Float32Array(Math.round(seconds * 48000)),
+      new Float32Array(Math.round(seconds * 48000)),
+    ]);
+  return { pool, runs, finish };
+}
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function stretchSetup() {
+  const contexts: FakeAudioContext[] = [];
+  const stretch = fakeStretchPool();
+  const engine = createStemPreviewEngine({
+    urlForStem: (stemId) => `/stems/${stemId}`,
+    fetchImpl: vi.fn(async () => okResponse()) as unknown as typeof fetch,
+    audioContextFactory: () => {
+      const context = new FakeAudioContext();
+      // Stereo stems (60 s at a tiny rate, to keep the copies small).
+      context.decodeAudioData = vi.fn(
+        async () => new FakeAudioBuffer(2, 6000, 100),
+      ) as unknown as FakeAudioContext["decodeAudioData"];
+      contexts.push(context);
+      return context as unknown as AudioContext;
+    },
+    stretchPoolFactory: () => stretch.pool,
+  });
+  return { engine, contexts, ...stretch };
+}
+
+describe("stretched-buffer store (#1898)", () => {
+  const plan = { tempo: 0.85, semitones: 2 };
+  const ids = ["vocals", "drums"];
+
+  it("stretches each stem once in the pool and keeps the result", async () => {
+    const { engine, runs, finish, pool } = stretchSetup();
+    const progress: number[] = [];
+    const pending = engine.prepareStretch(plan, ids, (fraction) => progress.push(fraction));
+    await tick();
+    expect(runs.map((run) => run.job)).toMatchObject([
+      { sampleRate: 48000, tempo: 0.85, semitones: 2 },
+      { sampleRate: 48000, tempo: 0.85, semitones: 2 },
+    ]);
+    // The channels are copied only when a worker takes the job.
+    const channels = runs[0].job.channels as () => Float32Array[];
+    expect(channels()).toHaveLength(2);
+    expect(engine.stretchReady(plan, ids)).toBe(false);
+    runs[0].onProgress?.(0.5);
+    expect(progress.at(-1)).toBeCloseTo(0.25);
+    finish(0);
+    finish(1);
+    await expect(pending).resolves.toBe("ready");
+    expect(progress.at(-1)).toBe(1);
+    expect(engine.stretchReady(plan, ids)).toBe(true);
+    expect(engine.stretchReady(plan, [...ids, "bass"])).toBe(false);
+    expect(engine.stretchReady(null, ids)).toBe(true);
+    // Idempotent: nothing is redone for the same plan.
+    await expect(engine.prepareStretch(plan, ids)).resolves.toBe("ready");
+    expect(pool.run).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares in-flight jobs and only stretches stems not yet stored", async () => {
+    const { engine, finish, pool } = stretchSetup();
+    const first = engine.prepareStretch(plan, ["vocals"]);
+    const second = engine.prepareStretch(plan, ["vocals", "drums"]);
+    await tick();
+    expect(pool.run).toHaveBeenCalledTimes(2);
+    finish(0);
+    await expect(first).resolves.toBe("ready");
+    finish(1);
+    await expect(second).resolves.toBe("ready");
+  });
+
+  it("a plan change cancels the old plan's jobs and drops its buffers", async () => {
+    const { engine, runs, finish, pool } = stretchSetup();
+    const ready = engine.prepareStretch(plan, ["vocals"]);
+    await tick();
+    finish(0);
+    await expect(ready).resolves.toBe("ready");
+    const slow = engine.prepareStretch(plan, ["drums"]);
+    await tick();
+    const next = { tempo: 1, semitones: -1 };
+    const replaced = engine.prepareStretch(next, ["vocals"]);
+    await expect(slow).resolves.toBe("cancelled");
+    expect(pool.cancel).toHaveBeenCalledWith([runs[1].job.jobId]);
+    expect(engine.stretchReady(plan, ["vocals"])).toBe(false);
+    await tick();
+    finish(2);
+    await expect(replaced).resolves.toBe("ready");
+    expect(engine.stretchReady(next, ["vocals"])).toBe(true);
+    // Turning the stretch off keeps nothing.
+    await expect(engine.prepareStretch(null, ids)).resolves.toBe("ready");
+    expect(engine.stretchReady(next, ["vocals"])).toBe(false);
+  });
+
+  it("reports a failed stretch, and a retry runs it again", async () => {
+    const { engine, runs, finish } = stretchSetup();
+    const failing = engine.prepareStretch(plan, ["vocals"]);
+    await tick();
+    runs[0].reject(new Error("The tempo & key change couldn't be applied."));
+    await expect(failing).resolves.toBe("failed");
+    expect(engine.stretchReady(plan, ["vocals"])).toBe(false);
+    const retry = engine.prepareStretch(plan, ["vocals"]);
+    await tick();
+    expect(runs).toHaveLength(2);
+    finish(1);
+    await expect(retry).resolves.toBe("ready");
+  });
+
+  it("skips stems that can't be decoded", async () => {
+    const fetchImpl = vi.fn(async (url: string) =>
+      url.endsWith("broken") ? ({ ok: false } as Response) : okResponse(),
+    );
+    const stretch = fakeStretchPool();
+    const engine = createStemPreviewEngine({
+      urlForStem: (stemId) => `/stems/${stemId}`,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      audioContextFactory: () => {
+        const context = new FakeAudioContext();
+        context.decodeAudioData = vi.fn(
+          async () => new FakeAudioBuffer(1, 6000, 100),
+        ) as unknown as FakeAudioContext["decodeAudioData"];
+        return context as unknown as AudioContext;
+      },
+      stretchPoolFactory: () => stretch.pool,
+    });
+    const pending = engine.prepareStretch(plan, ["vocals", "broken"]);
+    await tick();
+    expect(stretch.runs).toHaveLength(1);
+    stretch.finish(0);
+    await expect(pending).resolves.toBe("ready");
+    expect(engine.stretchReady(plan, ["vocals"])).toBe(true);
+  });
+
+  it("dispose cancels everything and disposes the pool", async () => {
+    const { engine, pool } = stretchSetup();
+    const pending = engine.prepareStretch(plan, ids);
+    await tick();
+    engine.dispose();
+    expect(pool.dispose).toHaveBeenCalledTimes(1);
+    await expect(engine.prepareStretch(plan, ids)).resolves.toBe("cancelled");
+    void pending;
+  });
+});
+
+describe("createStemPreviewEngine tempo & key (#1898)", () => {
+  const keepPitch = fxRecipe({ master: { speed: 0.8, keepPitch: true, semitones: 2 } });
+  const keepPlan = { tempo: 0.8, semitones: 2 };
+  const keyOnly = fxRecipe({ master: { speed: 0.8, semitones: -3 } });
+  const keyPlan = { tempo: 1, semitones: -3 };
+
+  async function prepared(plan: { tempo: number; semitones: number }, stemIds: string[]) {
+    const setup = stretchSetup();
+    const pending = setup.engine.prepareStretch(plan, stemIds);
+    await tick();
+    setup.runs.forEach((_, index) => setup.finish(index, 75));
+    await pending;
+    return setup;
+  }
+
+  it("plays the stretched buffers at rate 1 with keepPitch, offsets in stretched time", async () => {
+    const { engine, contexts } = await prepared(keepPlan, ["vocals", "drums"]);
+    const handle = await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 8,
+      effects: keepPitch,
+    });
+    const context = contexts[0];
+    expect(handle.stretchPending()).toBe(false);
+    const [vocals, drums] = context.sources;
+    expect((vocals.buffer as FakeAudioBuffer).length).toBe(75 * 48000);
+    expect(vocals.playbackRate.value).toBe(1);
+    expect(vocals.start).toHaveBeenCalledWith(0.03, 10);
+    expect(drums.start).toHaveBeenCalledWith(0.03, 10);
+    // The timeline is untouched: 10 context s = 8 source s at speed 0.8.
+    expect(handle.duration()).toBe(60);
+    context.currentTime = 0.03 + 10;
+    expect(handle.position()).toBeCloseTo(16);
+  });
+
+  it("plays key-only stretches at the varispeed rate", async () => {
+    const { engine, contexts } = await prepared(keyPlan, ["vocals", "drums"]);
+    const handle = await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 8,
+      loop: { startSec: 4, endSec: 12 },
+      effects: keyOnly,
+    });
+    expect(handle.stretchPending()).toBe(false);
+    const [vocals] = contexts[0].sources;
+    expect((vocals.buffer as FakeAudioBuffer).length).toBe(75 * 48000);
+    expect(vocals.playbackRate.value).toBe(0.8);
+    expect(vocals.loopStart).toBe(4);
+    expect(vocals.loopEnd).toBe(12);
+    expect(vocals.start).toHaveBeenCalledWith(0.03, 8);
+  });
+
+  it("maps loops into stretched time", async () => {
+    const { engine, contexts } = await prepared(keepPlan, ["vocals", "drums"]);
+    await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 8,
+      loop: { startSec: 4, endSec: 12 },
+      effects: keepPitch,
+    });
+    const [vocals] = contexts[0].sources;
+    expect(vocals.loop).toBe(true);
+    expect(vocals.loopStart).toBeCloseTo(5);
+    expect(vocals.loopEnd).toBeCloseTo(15);
+    expect(vocals.start).toHaveBeenCalledWith(0.03, 10);
+  });
+
+  it("falls back to varispeed without the key shift until every audible stem is ready", async () => {
+    const { engine, contexts } = await prepared(keepPlan, ["vocals"]);
+    const handle = await engine.play({ stems, soloStemId: null, effects: keepPitch });
+    expect(handle.stretchPending()).toBe(true);
+    const [vocals, drums] = contexts[0].sources;
+    // The decoded sources at speed: the timing is right, only the key waits.
+    expect((vocals.buffer as FakeAudioBuffer).length).toBe(6000);
+    expect(vocals.playbackRate.value).toBe(0.8);
+    expect(drums.playbackRate.value).toBe(0.8);
+  });
+
+  it("leaves a muted stem without a stretched buffer out", async () => {
+    const { engine, contexts } = await prepared(keepPlan, ["vocals"]);
+    const handle = await engine.play({
+      stems: [stems[0], { ...stems[1], muted: true }],
+      soloStemId: null,
+      effects: keepPitch,
+    });
+    expect(handle.stretchPending()).toBe(false);
+    expect(contexts[0].sources).toHaveLength(1);
+    expect((contexts[0].sources[0].buffer as FakeAudioBuffer).length).toBe(75 * 48000);
+    // Live updates for the missing stem are ignored, not an error.
+    handle.update([stems[0], stems[1]], null);
+  });
+
+  it("schedules structure blocks and join fades in stretched time", async () => {
+    const { engine, contexts } = await prepared(keepPlan, ["vocals"]);
+    const timeline = structureTimeline(structureGrid, sections(1, 2, 3));
+    await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      timeline,
+      effects: keepPitch,
+    });
+    const [first, middle] = contexts[0].sources;
+    // Block 0: src 6..22 → stretched 7.5..27.5; plays at t = 0.03.
+    expect(first.start.mock.calls[0][0]).toBe(0.03);
+    expect(first.start.mock.calls[0][1]).toBeCloseTo(7.5);
+    expect(first.start.mock.calls[0][2]).toBeCloseTo(20);
+    expect(middle.start.mock.calls[0][0]).toBeCloseTo(0.03 + 16 / 0.8);
+    expect(middle.start.mock.calls[0][1]).toBeCloseTo(27.5);
+    // The 10 ms join fade of the stretched file: 10 ms of output at rate 1.
+    const join = first.connections[0] as FakeGain;
+    expect(join.gain.events[0]).toEqual(["set", 0, 0.03]);
+    expect(join.gain.events[1][2]).toBeCloseTo(0.03 + 0.01);
+  });
+
+  it("cycles a block loop over its stretched range", async () => {
+    const { engine, contexts } = await prepared(keepPlan, ["vocals"]);
+    await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      timeline: reorderRepeat,
+      loop: { startSec: 16, endSec: 32 },
+      offsetSec: 20,
+      effects: keepPitch,
+    });
+    const [source] = contexts[0].sources;
+    // Block 1 = source 22..38 → stretched 27.5..47.5, entered 4 s in.
+    expect(source.loopStart).toBeCloseTo(27.5);
+    expect(source.loopEnd).toBeCloseTo(47.5);
+    expect(source.start.mock.calls[0][1]).toBeCloseTo(26 / 0.8);
+  });
+
+  it("restarts when Keep original pitch or the key changes", async () => {
+    const { engine } = await prepared(keepPlan, ["vocals", "drums"]);
+    const handle = await engine.play({ stems, soloStemId: null, effects: keepPitch });
+    expect(handle.updateEffects(fxRecipe({ master: { speed: 0.8, keepPitch: true, semitones: 2, space: 0.3 } }))).toBe(
+      "applied",
+    );
+    expect(handle.updateEffects(fxRecipe({ master: { speed: 0.8, keepPitch: true, semitones: 3 } }))).toBe(
+      "restart",
+    );
+    expect(handle.updateEffects(fxRecipe({ master: { speed: 0.8, semitones: 2 } }))).toBe("restart");
+  });
+
+  it("never reuses a stretched graph for the untouched Original (A/B compare)", async () => {
+    // The transport plays "Original" with no effects (engineEffects), so the
+    // switch from a stretched arrangement always restarts on the plain graph,
+    // where the muted reference (never stretched) has its own source.
+    const { engine, contexts } = await prepared(keepPlan, ["vocals"]);
+    const reference = { stemId: "original", gainDb: 0, muted: true };
+    const handle = await engine.play({
+      stems: [stems[0], reference],
+      soloStemId: null,
+      effects: keepPitch,
+    });
+    expect(handle.stretchPending()).toBe(false);
+    expect(contexts[0].sources).toHaveLength(1);
+    expect(handle.updateEffects(null)).toBe("restart");
+    const keyHandle = await (await prepared(keyPlan, ["vocals"])).engine.play({
+      stems: [stems[0], reference],
+      soloStemId: null,
+      effects: keyOnly,
+    });
+    expect(keyHandle.updateEffects(null)).toBe("restart");
+    const original = await engine.play({
+      stems: [stems[0], reference],
+      soloStemId: null,
+      referenceStemId: "original",
+      effects: null,
+    });
+    const [vocals, full] = contexts[0].sources.slice(-2);
+    expect((full.buffer as FakeAudioBuffer).length).toBe(6000);
+    expect(full.playbackRate.value).toBe(1);
+    expect((full.connections[0] as FakeGain).gain.value).toBe(1);
+    expect((vocals.connections[0] as FakeGain).gain.value).toBe(0);
+    expect(original.stretchPending()).toBe(false);
+  });
+
+  it("synthesizes the keep-pitch beat in output time and plays it at rate 1", async () => {
+    const beatGrid = {
+      bpm: 120,
+      sectionSeconds: 16,
+      sections: [
+        { startSec: 0, endSec: 16 },
+        { startSec: 16, endSec: 32 },
+      ],
+    };
+    const beatSegments = [
+      { section: 0, outStartSec: 0, outEndSec: 16 },
+      { section: 1, outStartSec: 16, outEndSec: 32 },
+    ];
+    const beat = {
+      recipe: defaultBeat("four_on_the_floor"),
+      grid: beatGrid,
+      segments: beatSegments,
+    };
+    const { engine, contexts } = await prepared(keepPlan, ["vocals", "drums"]);
+    await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 8,
+      loop: { startSec: 16, endSec: 32 },
+      beat,
+      effects: keepPitch,
+    });
+    const context = contexts[0];
+    const source = context.sources[context.sources.length - 1];
+    const scaled = beatTimingAtSpeed(beatGrid, beatSegments, 0.8);
+    expect((source.buffer as FakeAudioBuffer).length).toBe(
+      beatTrackLength(beat.recipe.kit, scaled.segments, 48000),
+    );
+    expect(source.playbackRate.value).toBe(1);
+    expect(source.loopStart).toBeCloseTo(20);
+    expect(source.loopEnd).toBeCloseTo(40);
+    expect(source.start.mock.calls[0][1]).toBeCloseTo(20);
+
+    // Without keepPitch the beat stays timeline audio at the varispeed rate.
+    await engine.play({
+      stems,
+      soloStemId: null,
+      beat,
+      effects: fxRecipe({ master: { speed: 0.8 } }),
+    });
+    const plain = context.sources[context.sources.length - 1];
+    expect((plain.buffer as FakeAudioBuffer).length).toBe(
+      beatTrackLength(beat.recipe.kit, beatSegments, 48000),
+    );
+    expect(plain.playbackRate.value).toBe(0.8);
   });
 });

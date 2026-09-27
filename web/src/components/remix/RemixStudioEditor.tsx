@@ -82,6 +82,7 @@ import {
   remixFxStem,
   sameRemixFx,
   withMasterFx,
+  withRemixFxPitch,
   withStemFx,
   type RemixFxMaster,
   type RemixFxRecipe,
@@ -1586,6 +1587,8 @@ export function RemixStudioEditor({
     currentDraftJobId: draftOutputUri ? project.generationJobId : null,
     timelineSec: project.sectionGrid?.durationSeconds ?? null,
     effects: edits.effects,
+    // Tempo/key (#1898) stretches only what the arrangement can make heard.
+    stretchStemIds: channelStems.map((stem) => stem.stemId),
     bpm: effectsBpm(project.sectionGrid),
     timeline,
     beat: previewBeat,
@@ -1718,6 +1721,9 @@ export function RemixStudioEditor({
   ) => updateEffects((effects) => withStemFx(effects, stemId, key, value));
   const handleApplyVibe = (vibeId: RemixVibeId) =>
     updateEffects((effects) => applyVibe(vibeId, effects, project.stems));
+  // Keep original pitch / Key (#1898): autosaved like the other controls.
+  const handlePitchChange = (pitch: { keepPitch?: boolean; semitones?: number }) =>
+    updateEffects((effects) => withRemixFxPitch(effects, pitch));
 
   // Structure edits (#1899) run through the shared ops so the masks move
   // with their blocks; a refused op changes nothing.
@@ -2809,6 +2815,11 @@ export function RemixStudioEditor({
               effects={edits.effects}
               onApplyVibe={handleApplyVibe}
               onMasterFxChange={handleMasterFxChange}
+              onPitchChange={handlePitchChange}
+              tempoKeyPreview={{
+                ...transport.stretch,
+                onRetry: transport.retryStretch,
+              }}
               structureOptions={structureOptions}
               onApplyStructure={handleApplyStructure}
               describeContext={describeContext}

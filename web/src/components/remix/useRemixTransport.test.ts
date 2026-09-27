@@ -3,6 +3,7 @@ import {
   applyListeningGain,
   dropStaleCurrentDraftKeys,
   clampSeek,
+  createStretchPreparer,
   draftLoopSeekTarget,
   engineEffects,
   enginePreviewStems,
@@ -12,6 +13,9 @@ import {
   previewSectionsKey,
   scheduleBeatPeaks,
   resolveDraftCacheKey,
+  STRETCH_PREPARE_DEBOUNCE_MS,
+  stretchRestartDue,
+  type StretchPreviewState,
   structureTimelineFor,
   structureTimelineKey,
   transportDurationSec,
@@ -329,5 +333,163 @@ describe("applyListeningGain (#1910)", () => {
       Number.NaN,
     );
     expect(audio.volume).toBe(1);
+  });
+});
+
+describe("tempo & key preparation (#1898)", () => {
+  const plan = { tempo: 0.85, semitones: 2 };
+
+  function setup() {
+    const states: StretchPreviewState[] = [];
+    const calls: Array<{ plan: unknown; stemIds: string[]; progress?: (f: number) => void }> = [];
+    const resolvers: Array<(result: "ready" | "cancelled" | "failed") => void> = [];
+    const onReady = vi.fn();
+    const prepare = vi.fn(
+      (
+        next: { tempo: number; semitones: number } | null,
+        stemIds: string[],
+        progress?: (fraction: number) => void,
+      ) => {
+        calls.push({ plan: next, stemIds, progress });
+        if (!next) return Promise.resolve("ready" as const);
+        return new Promise<"ready" | "cancelled" | "failed">((resolve) => {
+          resolvers.push(resolve);
+        });
+      },
+    );
+    const preparer = createStretchPreparer({
+      prepare,
+      onState: (state) => states.push(state),
+      onReady,
+    });
+    return { preparer, prepare, states, calls, resolvers, onReady };
+  }
+
+  it("debounces slider drags, reports progress, then ready (and asks for the restart)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { preparer, prepare, states, calls, resolvers, onReady } = setup();
+      preparer.request({ tempo: 0.9, semitones: 0 }, ["b", "a"]);
+      preparer.request(plan, ["a", "b"]);
+      expect(states.at(-1)).toEqual({ status: "preparing", fraction: 0 });
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS - 1);
+      expect(prepare).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      // Only the last plan is prepared.
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ plan, stemIds: ["a", "b"] });
+      calls[0].progress?.(0.42);
+      expect(states.at(-1)).toEqual({ status: "preparing", fraction: 0.42 });
+      resolvers[0]("ready");
+      await vi.runAllTimersAsync();
+      expect(states.at(-1)).toEqual({ status: "ready", fraction: 1 });
+      expect(onReady).toHaveBeenCalledTimes(1);
+      // The same request again changes nothing.
+      preparer.request(plan, ["b", "a"]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      expect(prepare).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("prepares stems added later", async () => {
+    vi.useFakeTimers();
+    try {
+      const { preparer, calls, resolvers } = setup();
+      preparer.request(plan, ["a"]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      resolvers[0]("ready");
+      await vi.runAllTimersAsync();
+      preparer.request(plan, ["a", "c"]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      expect(calls.at(-1)).toMatchObject({ plan, stemIds: ["a", "c"] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops the stretch at once when the plan goes away", () => {
+    const { preparer, calls, states } = setup();
+    preparer.request(null, ["a"]);
+    expect(calls).toEqual([{ plan: null, stemIds: ["a"], progress: undefined }]);
+    expect(states.at(-1)).toEqual({ status: "idle", fraction: 0 });
+  });
+
+  it("ignores a superseded preparation", async () => {
+    vi.useFakeTimers();
+    try {
+      const { preparer, states, resolvers, onReady } = setup();
+      preparer.request(plan, ["a"]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      preparer.request({ tempo: 1, semitones: 3 }, ["a"]);
+      resolvers[0]("ready");
+      await vi.runAllTimersAsync();
+      expect(onReady).not.toHaveBeenCalled();
+      expect(states.at(-1)?.status).toBe("preparing");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports a failure and prepares again on retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const { preparer, states, calls, resolvers, onReady } = setup();
+      preparer.retry(); // nothing to retry yet
+      expect(calls).toHaveLength(0);
+      preparer.request(plan, ["a"]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      resolvers[0]("failed");
+      await vi.runAllTimersAsync();
+      expect(states.at(-1)).toEqual({ status: "failed", fraction: 0 });
+      expect(onReady).not.toHaveBeenCalled();
+      preparer.retry();
+      expect(states.at(-1)).toEqual({ status: "preparing", fraction: 0 });
+      expect(calls).toHaveLength(2);
+      resolvers[1]("ready");
+      await vi.runAllTimersAsync();
+      expect(states.at(-1)).toEqual({ status: "ready", fraction: 1 });
+      expect(onReady).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does nothing after dispose", async () => {
+    vi.useFakeTimers();
+    try {
+      const { preparer, prepare, onReady, resolvers } = setup();
+      preparer.request(plan, ["a"]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      preparer.dispose();
+      resolvers[0]("ready");
+      await vi.runAllTimersAsync();
+      expect(onReady).not.toHaveBeenCalled();
+      preparer.request({ tempo: 1, semitones: 1 }, ["a"]);
+      vi.advanceTimersByTime(STRETCH_PREPARE_DEBOUNCE_MS);
+      expect(prepare).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restarts a fallback preview once per finished preparation", () => {
+    const due = (overrides: Partial<Parameters<typeof stretchRestartDue>[0]>) =>
+      stretchRestartDue({
+        pending: true,
+        status: "ready",
+        readyToken: 2,
+        consumedToken: 1,
+        ...overrides,
+      });
+    expect(due({})).toBe(true);
+    // Already on the stretched buffers.
+    expect(due({ pending: false })).toBe(false);
+    // Still preparing, or failed: keep the fallback.
+    expect(due({ status: "preparing" })).toBe(false);
+    expect(due({ status: "failed" })).toBe(false);
+    // This readiness already restarted once.
+    expect(due({ consumedToken: 2 })).toBe(false);
   });
 });

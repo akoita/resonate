@@ -203,16 +203,41 @@ export function stretchOutputLength(inputLength: number, tempo: number): number 
 }
 
 /**
+ * Smallest input length whose output reaches the engine minimum of twice the
+ * output latency: round(n / tempo) ≥ 2·outLat (mirrors the backend).
+ */
+export function minimumInputLength(outLat: number, tempo: number): number {
+  let n = Math.max(1, Math.ceil(2 * outLat * tempo) - 1);
+  while (stretchOutputLength(n, tempo) < 2 * outLat) n += 1;
+  return n;
+}
+
+export type StretchOfflineOptions = {
+  /**
+   * Input shorter than the engine minimum runs zero-padded to
+   * {@link minimumInputLength} and the output is trimmed back to
+   * round(input / tempo), like the server render's `padToMinimum`; inputs at
+   * or above the minimum are unaffected. Without it they throw.
+   */
+  padToMinimum?: boolean;
+  /** Called after each output chunk with the fraction done (0..1]. */
+  onProgress?: (fraction: number) => void;
+};
+
+/**
  * Whole-buffer offline stretch, equivalent to C++ SignalsmithStretch::exact()
  * and byte-identical to the server driver: output length = round(input /
  * tempo), latency compensated, the start folded back, the tail flushed; fixed
- * 4096-sample output chunks. `channels` share one length.
+ * 4096-sample output chunks. `channels` share one length. The output is
+ * staged in place (one full-length array per channel), so peak memory is the
+ * input plus the output.
  */
 export function stretchOffline(
   api: StretchApi,
   channels: Float32Array[],
   sampleRate: number,
   params: StretchParams = {},
+  options: StretchOfflineOptions = {},
 ): { out: Float32Array[]; inLat: number; outLat: number } {
   const tempo = params.tempo ?? 1;
   const semitones = params.semitones ?? 0;
@@ -222,17 +247,23 @@ export function stretchOffline(
   if (!Number.isFinite(semitones)) throw new RangeError("semitones must be finite");
   const { chunk, tonalityHz } = REMIX_STRETCH_DRIVER;
   const nCh = channels.length;
-  const inLen = channels[0].length;
-  const outLen = stretchOutputLength(inLen, tempo);
+  const sourceLen = channels[0].length;
   api.presetDefault(nCh, sampleRate);
   api.setTransposeSemitones(semitones, tonalityHz / sampleRate);
   api.setFormantSemitones(0, 0);
   api.setFormantBase(0);
   const inLat = api.inputLatency();
   const outLat = api.outputLatency();
-  if (outLen < outLat * 2) {
-    throw new RangeError(`Audio too short to time-stretch (${inLen} samples).`);
+  // The engine runs on `inLen` samples: the source, or (padToMinimum) the
+  // source zero-padded to the engine minimum; reads past the source are 0.
+  let inLen = sourceLen;
+  if (stretchOutputLength(sourceLen, tempo) < outLat * 2) {
+    if (!options.padToMinimum) {
+      throw new RangeError(`Audio too short to time-stretch (${sourceLen} samples).`);
+    }
+    inLen = minimumInputLength(outLat, tempo);
   }
+  const outLen = stretchOutputLength(inLen, tempo);
   const maxIn = Math.ceil(chunk * tempo) + 2;
   const bufLen = Math.max(
     maxIn,
@@ -250,7 +281,7 @@ export function stretchOffline(
     const src = channels[c];
     dst.fill(0);
     const s = Math.max(0, start);
-    const e = Math.min(inLen, start + n);
+    const e = Math.min(sourceLen, start + n);
     if (e > s) dst.set(src.subarray(s, e), s - start);
   };
   const out = channels.map(() => new Float32Array(outLen));
@@ -259,26 +290,31 @@ export function stretchOffline(
   api.seek(inLat, inLen / outLen);
   let inPos = 0;
   let outPos = 0;
-  const staged = channels.map(() => new Float32Array(outLen));
   while (outPos < outLen) {
     const nOut = Math.min(chunk, outLen - outPos);
     const inEnd = Math.round(((outPos + nOut) * inLen) / outLen);
     const nIn = inEnd - inPos;
     for (let c = 0; c < nCh; c += 1) readPadded(c, inPos + inLat, nIn, inView(c, nIn));
     api.process(nIn, nOut);
-    for (let c = 0; c < nCh; c += 1) staged[c].set(outView(c, nOut), outPos);
+    for (let c = 0; c < nCh; c += 1) out[c].set(outView(c, nOut), outPos);
     inPos = inEnd;
     outPos += nOut;
+    options.onProgress?.(outPos / outLen);
   }
   for (let c = 0; c < nCh; c += 1) {
-    const ch = staged[c];
-    // Fold the first outLat samples back onto themselves (as exact()).
+    const ch = out[c];
+    // Fold the first outLat samples back onto themselves (as exact()): the
+    // reads stay below outLat and the writes at or above it, so in place is
+    // exact. Then drop the latency.
     for (let i = 0; i < Math.min(outLen - outLat, outLat); i += 1) {
       ch[i + outLat] -= ch[outLat - 1 - i];
     }
-    out[c].set(ch.subarray(outLat), 0);
+    ch.copyWithin(0, outLat, outLen);
   }
   api.flush(outLat);
   for (let c = 0; c < nCh; c += 1) out[c].set(outView(c, outLat), outLen - outLat);
-  return { out, inLat, outLat };
+  if (inLen === sourceLen) return { out, inLat, outLat };
+  // Padded: trim to what the source alone would give.
+  const trimmed = stretchOutputLength(sourceLen, tempo);
+  return { out: out.map((ch) => ch.slice(0, trimmed)), inLat, outLat };
 }
