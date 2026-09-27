@@ -371,6 +371,15 @@ The command validates every asset, uploads through the configured
 Re-running it refreshes future dates and replaces only fixture-owned children.
 Shared environments require `ALLOW_SAMPLE_SHOW_FIXTURES=true` explicitly.
 
+**Artist linkage.** When the catalog already has the campaign's artist — exactly
+one non-fixture profile with a main/primary, non-ambiguous credit on a ready or
+published release under that name — the sample campaign links to that real
+profile, so the campaign page, artist page, releases and campaign banner all
+connect. The seed never writes fixture copy, portrait or links onto a real
+profile, and it removes the fixture stand-in profile left by earlier seeds when
+nothing else depends on it. Only artists the catalog does not have get a
+`profileType: "fixture"` stand-in profile.
+
 ## Production Beta Requirements
 
 These production surfaces are built and validated on test/staging (see

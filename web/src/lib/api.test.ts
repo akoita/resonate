@@ -369,6 +369,27 @@ describe('API Client', () => {
     });
   });
 
+  describe('getArtistPublic', () => {
+    const profile = (imageUrl: string | null) => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 'artist-1', displayName: 'Artist', imageUrl }),
+    });
+
+    it('resolves an API-relative profile image against the API origin', async () => {
+      mockFetch.mockResolvedValueOnce(profile('/shows/campaigns/c1/visuals/portrait'));
+      const artist = await api.getArtistPublic('artist-1');
+      expect(artist.imageUrl).toBe('http://test-api:3000/shows/campaigns/c1/visuals/portrait');
+    });
+
+    it('keeps absolute images and a missing image as-is', async () => {
+      mockFetch.mockResolvedValueOnce(profile('https://cdn.example/a.jpg'));
+      expect((await api.getArtistPublic('artist-1')).imageUrl).toBe('https://cdn.example/a.jpg');
+      mockFetch.mockResolvedValueOnce(profile(null));
+      expect((await api.getArtistPublic('artist-1')).imageUrl).toBeNull();
+    });
+  });
+
   describe('getPlayerTrackActions', () => {
     it('fetches player action availability with recommendation reasons', async () => {
       mockFetch.mockResolvedValueOnce({
