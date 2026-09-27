@@ -1,4 +1,5 @@
 import { HELP_ARTICLES } from "./content";
+import { levelTextFor } from "./levels";
 import { CATEGORIES } from "./taxonomy";
 import type {
   HelpArticle,
@@ -11,6 +12,7 @@ import type {
 export * from "./types";
 export * from "./taxonomy";
 export * from "./search";
+export * from "./levels";
 export { HELP_ARTICLES } from "./content";
 
 const BY_SLUG = new Map(HELP_ARTICLES.map((a) => [a.slug, a]));
@@ -33,6 +35,7 @@ export function articleStatus(article: HelpArticle): HelpStatus {
 
 /** The lightweight projection passed to the client search/browse island. */
 export function toIndexEntry(article: HelpArticle): HelpIndexEntry {
+  const levelText = levelTextFor(article);
   return {
     slug: article.slug,
     title: article.title,
@@ -41,6 +44,7 @@ export function toIndexEntry(article: HelpArticle): HelpIndexEntry {
     audiences: article.audiences,
     status: articleStatus(article),
     keywords: article.keywords,
+    ...(levelText ? { levelText } : {}),
   };
 }
 

@@ -14,6 +14,11 @@
  *   - SEEDED OWNER pass: data-heavy owner views (Artist Analytics, Managed
  *     Catalog, and Community) against a seeded local backend. This pass logs
  *     in through the local development endpoint and never enables mock auth.
+ *   - REMIX STUDIO pass (#1905, opt-in): the Remix Studio guide images from a
+ *     fully mocked studio — the same mock the Playwright studio flows use
+ *     (web/tests/fixtures/remix-studio-mock.mjs), so no backend or staging
+ *     data is needed and every run draws the same pictures. The overview is
+ *     annotated with numbered callouts drawn into the image.
  *
  * Usage:
  *   # Public pass against staging (default):
@@ -33,6 +38,10 @@
  *     BASE_URL=http://localhost:3001 API_BASE_URL=http://localhost:3000 \
  *     node scripts/capture-help-screenshots.mjs
  *
+ *   # Remix Studio pass (a local dev server with mock auth is enough):
+ *   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_REMIX=true \
+ *     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+ *
  * Requirements: a Chromium browser for Playwright
  *   npx playwright install chromium
  *
@@ -43,12 +52,14 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { chromium } from "@playwright/test";
+import { PROJECT_ID as REMIX_PROJECT_ID, mockRemixApi } from "../tests/fixtures/remix-studio-mock.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "https://staging.resonate.pydes.xyz";
 const API_BASE_URL = (process.env.API_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const CAPTURE_PUBLIC = process.env.CAPTURE_PUBLIC !== "false";
 const CAPTURE_AUTH = process.env.CAPTURE_AUTH !== "false";
 const CAPTURE_OWNER = process.env.CAPTURE_OWNER === "true";
+const CAPTURE_REMIX = process.env.CAPTURE_REMIX === "true";
 const OWNER_USER_ID = "e2e-user-00000000-0000-0000-0000-000000000001";
 const OWNER_WALLET_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const OUT_DIR = path.resolve(
@@ -377,6 +388,197 @@ async function loginSeededOwner(page) {
   return { token: body.accessToken, address: OWNER_WALLET_ADDRESS };
 }
 
+
+// ── Remix Studio pass (#1905) ────────────────────────────────────────────
+// A project with a rendered draft and one earlier version, for the overview
+// and the Drafts panel. Fixed dates older than a day render as absolute
+// times, and the pass pins locale and time zone, so the text never drifts.
+const REMIX_WITH_DRAFTS = {
+  generationJobId: "job-current",
+  generationProvider: "stem-mix-render",
+  generationMetadata: {
+    status: "completed",
+    grounding: "stem_audio",
+    estimatedCostUsd: 0,
+    completedAt: "2026-09-20T13:36:00.000Z",
+    output: { outputUri: "/storage/remix-drafts/job-current.mp3" },
+    previousDrafts: [
+      {
+        jobId: "job-older",
+        provider: "stem-mix-render",
+        grounding: "stem_audio",
+        estimatedCostUsd: 0,
+        completedAt: "2026-09-19T10:00:00.000Z",
+        outputUri: "/storage/remix-drafts/job-older.mp3",
+      },
+    ],
+  },
+};
+
+/** Numbered callouts for the overview; keep in sync with the guide's legend. */
+const REMIX_OVERVIEW_CALLOUTS = [
+  { selector: ".remix-session", label: "Session" },
+  { selector: ".remix-transport-bar", label: "Transport" },
+  { selector: ".remix-studio-create-column", label: "Create" },
+  { selector: "section[aria-label='Drafts']", label: "Drafts" },
+];
+
+/** Draws numbered outlines + labels over elements, in document coordinates. */
+async function drawCallouts(page, callouts) {
+  await page.evaluate((marks) => {
+    const layer = document.createElement("div");
+    layer.setAttribute("aria-hidden", "true");
+    layer.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none";
+    document.body.appendChild(layer);
+    marks.forEach(({ selector, label }, index) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`callout target missing: ${selector}`);
+      const r = element.getBoundingClientRect();
+      const x = r.left + window.scrollX;
+      const y = r.top + window.scrollY;
+      const box = document.createElement("div");
+      box.style.cssText = `position:absolute;left:${x - 4}px;top:${y - 4}px;width:${r.width + 8}px;height:${r.height + 8}px;border:3px solid #facc15;border-radius:16px;box-sizing:border-box`;
+      const tag = document.createElement("div");
+      tag.textContent = `${index + 1}  ${label}`;
+      tag.style.cssText = `position:absolute;left:${x - 14}px;top:${y - 18}px;padding:0 12px;height:32px;border-radius:16px;background:#facc15;color:#111;font:800 16px/32px system-ui,sans-serif;white-space:pre;box-shadow:0 2px 10px rgba(0,0,0,.55)`;
+      layer.append(box, tag);
+    });
+  }, callouts);
+}
+
+/** A box around several elements plus padding, for page.screenshot's clip. */
+async function unionClip(page, locators, pad = 12) {
+  const boxes = [];
+  for (const locator of locators) boxes.push(await locator.boundingBox());
+  const left = Math.max(0, Math.min(...boxes.map((b) => b.x)) - pad);
+  const top = Math.max(0, Math.min(...boxes.map((b) => b.y)) - pad);
+  const right = Math.max(...boxes.map((b) => b.x + b.width)) + pad;
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height)) + pad;
+  return { x: Math.round(left), y: Math.round(top), width: Math.round(right - left), height: Math.round(bottom - top) };
+}
+
+// file -> { viewportHeight, project, prepare(page) => { locator } | { clip } | {} }
+const REMIX_TARGETS = [
+  {
+    file: "remix-studio-overview.png",
+    viewportHeight: 1280,
+    project: REMIX_WITH_DRAFTS,
+    prepare: async (page) => {
+      await drawCallouts(page, REMIX_OVERVIEW_CALLOUTS);
+      return {};
+    },
+  },
+  {
+    file: "remix-studio-sections.png",
+    prepare: async (page) => {
+      await page.getByRole("button", { name: "Drums: section 2 on" }).click();
+      await page.getByRole("button", { name: "Drums: section 2 off" }).waitFor();
+      await page.getByText("All changes saved").waitFor();
+      return { locator: page.locator(".remix-session") };
+    },
+  },
+  {
+    file: "remix-studio-loop.png",
+    prepare: async (page) => {
+      await page.getByRole("button", { name: /Loop section 3/ }).click();
+      await page.getByText("Looping bar 17").waitFor();
+      return {
+        clip: await unionClip(page, [
+          page.locator(".remix-transport-bar"),
+          page.getByRole("button", { name: /Loop section 3/ }),
+          page.getByRole("button", { name: "Mute Vocals" }),
+        ]),
+      };
+    },
+  },
+  {
+    file: "remix-studio-vibe.png",
+    viewportHeight: 1400,
+    prepare: async (page) => {
+      await page.getByRole("group", { name: "Vibe" }).getByRole("button", { name: "Slowed + reverb" }).click();
+      await page.getByText("All changes saved").waitFor();
+      return { clip: await unionClip(page, [page.locator(".remix-vibe")]) };
+    },
+  },
+  {
+    file: "remix-studio-effects.png",
+    prepare: async (page) => {
+      await page.getByRole("switch", { name: /^Pro/ }).click();
+      await page.getByRole("button", { name: /^Effects for Vocals/ }).click();
+      const row = page.getByRole("group", { name: "Vocals effects" });
+      await row.getByRole("slider", { name: /Vocals echo/ }).fill("0.35");
+      await row.getByRole("slider", { name: "Vocals EQ High 4 kHz" }).fill("2");
+      await row.getByRole("slider", { name: "Vocals pan" }).fill("-0.2");
+      await page.getByText("All changes saved").waitFor();
+      return { locator: page.locator(".remix-session-lanes") };
+    },
+  },
+  {
+    file: "remix-studio-drafts.png",
+    project: REMIX_WITH_DRAFTS,
+    prepare: async (page) => {
+      await page.getByRole("button", { name: /^Delete version from/ }).waitFor();
+      return { locator: page.locator("section[aria-label='Drafts']") };
+    },
+  },
+  {
+    file: "remix-studio-ai-part.png",
+    viewportHeight: 1200,
+    prepare: async (page) => {
+      await page.getByRole("group", { name: "What to create" }).getByRole("button", { name: "Add AI" }).click();
+      await page.getByRole("radiogroup", { name: "Instrument" }).getByText("Bass", { exact: true }).click();
+      await page.getByRole("button", { name: "Generate 3 takes" }).click();
+      const tray = page.locator(".remix-parts-tray");
+      await tray.locator(".remix-parts-take-ready").nth(2).waitFor({ timeout: 15000 });
+      await tray.getByText("3 takes ready.").waitFor();
+      await tray.scrollIntoViewIfNeeded();
+      return {
+        clip: await unionClip(page, [page.getByText("Add a part", { exact: true }), tray]),
+      };
+    },
+  },
+];
+
+async function captureRemix(browser) {
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    deviceScaleFactor: 1,
+    locale: "en-US",
+    timezoneId: "UTC",
+    reducedMotion: "reduce",
+  });
+  await ctx.addInitScript((auth) => {
+    localStorage.setItem("resonate.token", auth.token);
+    localStorage.setItem("resonate.address", auth.address);
+    localStorage.setItem("resonate.mock_auth", "true");
+    // Pro mode starts off on every run (the switch is remembered per device).
+    localStorage.removeItem("resonate.remixStudio.proMode");
+  }, MOCK_AUTH);
+  for (const target of REMIX_TARGETS) {
+    if (process.env.CAPTURE_ONLY && target.file !== process.env.CAPTURE_ONLY) continue;
+    // A fresh page per target: routes and studio state never leak between shots.
+    const page = await ctx.newPage();
+    await mockRemixApi(page, { project: target.project });
+    await page.setViewportSize({ width: 1440, height: target.viewportHeight ?? 1000 });
+    await page.goto(`${BASE_URL}/remix/studio/${REMIX_PROJECT_ID}`, { waitUntil: "networkidle", timeout: 90000 });
+    await page.getByRole("heading", { name: "Session" }).waitFor({ timeout: 90000 });
+    // Waveforms appear once every stem preview is decoded.
+    await page.locator(".remix-session-lanes svg path").first().waitFor({ timeout: 45000 });
+    await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+    const shot = await target.prepare(page);
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(1500);
+    const out = path.join(OUT_DIR, target.file);
+    if (shot.locator) await shot.locator.screenshot({ path: out });
+    else if (shot.clip) await page.screenshot({ path: out, clip: shot.clip });
+    else await page.screenshot({ path: out });
+    console.log(`✓ [remix] ${target.file}`);
+    await page.close();
+  }
+  await ctx.close();
+}
+
 async function main() {
   const browser = await chromium.launch();
   try {
@@ -419,6 +621,8 @@ async function main() {
       await capture(ownerPage, OWNER_TARGETS, "seeded-owner");
       await ownerCtx.close();
     }
+
+    if (CAPTURE_REMIX) await captureRemix(browser);
   } finally {
     await browser.close();
   }

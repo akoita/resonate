@@ -29,6 +29,11 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
 - Each article has an "On this page" outline, illustrative screenshots, and
   **Open in the app** deep links straight to the relevant screen, plus related
   guides.
+- Some articles (Remix Studio first, #1905) offer a **Beginner /
+  Intermediate / Professional** switch. Beginner is the default; the choice is
+  kept in the URL (`/help/remix-studio?level=pro`) so it can be shared, and
+  remembered on the device. Each level ends with a "Ready for more?" link to
+  the next one, and a search match in a deeper level opens that level.
 
 ### As a developer
 
@@ -44,6 +49,15 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
   screenshot file exists on disk** (so a broken image fails CI, not users).
 - **Update an article in the same PR as the feature it documents** (see the
   Feature Catalog rules in `CLAUDE.md`).
+- **Levels.** Tag a section with `level: "beginner" | "intermediate" | "pro"`
+  to show it only on that level; untagged sections (a glossary, eligibility)
+  show on every level. An article whose sections use levels gets the switch
+  automatically and needs a `levelIntros` entry per level (the tests enforce
+  it). The rules live in `web/src/lib/help/levels.ts`; the switch is
+  `web/src/components/help/HelpLevelledBody.tsx` (a WAI-ARIA tablist: arrow
+  keys, Home/End, `?level=` deep links, a `#section` anchor opens its level,
+  and the URL wins over the stored choice). Remix Studio slices (epic #1896)
+  update the matching level's section in the same PR.
 
 ## Accessibility & ergonomics
 
@@ -58,7 +72,7 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
 ## Screenshots
 
 Illustrations live in `web/public/help/screenshots/` and are captured with
-`web/scripts/capture-help-screenshots.mjs` in three passes:
+`web/scripts/capture-help-screenshots.mjs` in four passes:
 
 - **Public pass** (normally from staging; a local public preview is acceptable
   before a new route is first deployed): Discover, Catalog, Shows, a Shows
@@ -86,6 +100,26 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
     node scripts/capture-help-screenshots.mjs
   ```
 
+- **Remix Studio pass** (#1905, opt-in, from a local dev server with mock
+  auth): the Remix Studio guide images (`remix-studio-*.png`: the annotated
+  overview, section on/off, loop, vibe, per-stem effects with the Pro strip,
+  drafts, and the AI part takes). The studio API is fully mocked with the same
+  module the Playwright studio flows use
+  (`web/tests/fixtures/remix-studio-mock.mjs`), and the pass pins locale, time
+  zone, and dates, so the images are deterministic and need no backend or
+  staging data. The overview's numbered callouts (1 Session, 2 Transport,
+  3 Create, 4 Drafts) are drawn into the image; keep them in sync with the
+  legend in the article. From `web/`, with `next dev -p 3001` running:
+
+  ```sh
+  CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_REMIX=true \
+    BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+  ```
+
+  Add `CAPTURE_ONLY=remix-studio-vibe.png` to refresh one image. Most shots are
+  element crops, so update the figure `width`/`height` in `content.ts` if a
+  layout change resizes them, and look at every image before committing.
+
 ## Surfaces
 
 - **UI routes:** `/help`, `/help/[slug]`
@@ -93,9 +127,12 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
   About dialog identifies non-production environments and links support/help;
   it does not publish maintainer identity or exact build provenance.
 - **Code:** `web/src/app/help/`, `web/src/components/help/`,
+  `web/tests/fixtures/remix-studio-mock.mjs` (shared studio mock),
   `web/src/lib/help/`, `web/src/styles/help.css`
 - **Assets:** `web/public/help/screenshots/`
-- **Tests:** `web/src/lib/help/help.test.ts`
+- **Tests:** `web/src/lib/help/help.test.ts`,
+  `web/src/components/help/HelpLevelledBody.test.tsx`,
+  `web/tests/help-levels.spec.ts`
 
 ## Coverage notes
 

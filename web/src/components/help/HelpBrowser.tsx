@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useMemo, useState } from "react";
 
+import { helpArticleHref, matchedHelpLevel } from "../../lib/help/levels";
 import { searchArticles } from "../../lib/help/search";
 import { STATUS_LABELS, type AudienceMeta, type CategoryMeta } from "../../lib/help/taxonomy";
 import type { HelpAudience, HelpIndexEntry } from "../../lib/help/types";
@@ -124,7 +125,7 @@ export function HelpBrowser({ entries, categories, audiences }: Props) {
           </h2>
           <ul className="help-cardgrid">
             {results.map((entry) => (
-              <HelpCard key={entry.slug} entry={entry} />
+              <HelpCard key={entry.slug} entry={entry} query={trimmedQuery} />
             ))}
           </ul>
         </section>
@@ -153,10 +154,18 @@ export function HelpBrowser({ entries, categories, audiences }: Props) {
   );
 }
 
-function HelpCard({ entry }: { entry: HelpIndexEntry }) {
+/**
+ * A guide card. With a search query, a levelled article opens the level the
+ * match comes from (#1905), e.g. "LUFS" opens Remix Studio on Professional.
+ */
+export function helpCardHref(entry: HelpIndexEntry, query = ""): string {
+  return helpArticleHref(entry.slug, matchedHelpLevel(entry, query));
+}
+
+function HelpCard({ entry, query }: { entry: HelpIndexEntry; query?: string }) {
   return (
     <li className="help-card">
-      <Link href={`/help/${entry.slug}`} className="help-card__link">
+      <Link href={helpCardHref(entry, query)} className="help-card__link">
         <h3 className="help-card__title">{entry.title}</h3>
         <p className="help-card__summary">{entry.summary}</p>
         {entry.status !== "available" ? (

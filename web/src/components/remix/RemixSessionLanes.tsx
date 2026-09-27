@@ -1066,7 +1066,8 @@ export function RemixSessionLanes({
                       }`}
                       onClick={() => toggleFx(stem.stemId)}
                     >
-                      FX
+                      {/* Spelled out (#1905): staging readers didn't know "FX". */}
+                      Effects
                       {fxActive && (
                         <span
                           aria-hidden="true"

@@ -1,4 +1,4 @@
-import type { HelpArticle, HelpBlock, HelpIndexEntry } from "./types";
+import type { HelpArticle, HelpBlock, HelpIndexEntry, HelpSection } from "./types";
 
 /**
  * Deterministic, dependency-free relevance search over the guide.
@@ -35,6 +35,11 @@ function blockText(block: HelpBlock): string {
   }
 }
 
+/** A section's heading and body text, for search indexes. */
+export function sectionText(section: HelpSection): string {
+  return `${section.heading} ${section.blocks.map(blockText).join(" ")}`;
+}
+
 interface Indexed {
   title: string;
   keywords: string;
@@ -50,9 +55,11 @@ function indexArticle(a: HelpArticle | HelpIndexEntry): Indexed {
     keywords: a.keywords.join(" ").toLowerCase(),
     summary: a.summary.toLowerCase(),
     headings: isFull ? a.sections.map((s) => s.heading).join(" ").toLowerCase() : "",
+    // Index entries carry no body, except a levelled article's level text
+    // (#1905), so a match in any level still finds the article.
     body: isFull
       ? a.sections.flatMap((s) => s.blocks.map(blockText)).join(" ").toLowerCase()
-      : "",
+      : Object.values(a.levelText ?? {}).join(" "),
   };
 }
 

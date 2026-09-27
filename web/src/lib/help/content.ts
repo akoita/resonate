@@ -888,11 +888,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "remix-studio",
     title: "Remix Studio",
     summary:
-      "Turn stems you're licensed to remix into something new — mix the source parts, add AI-generated layers, and publish a credited remix.",
+      "Turn a song you're licensed to remix into your own version: change its vibe, arrange its parts, add a beat or an AI musician, and publish a credited remix. Pick your level: Beginner, Intermediate, or Professional.",
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "beginner", "intermediate", "professional", "glossary"],
+    levelIntros: {
+      beginner: {
+        title: "Your first remix in 3 minutes",
+        summary: "New to remixing? Start here. No music skills needed: you'll pick a vibe, listen, compare with the original, and save your version.",
+      },
+      intermediate: {
+        title: "Shape your own version",
+        summary: "For hobbyists who want more control: arrange parts section by section, give each part its own effects, change the song's length, add a beat or an AI part, and manage your versions and rights.",
+      },
+      pro: {
+        title: "Under the hood",
+        summary: "For sound engineers and DJs: the exact processing order, loudness targets, the section grid, tempo and key shifting, Pro EQ and pan, shortcuts, and how your remix stays reproducible.",
+      },
+    },
     sections: [
       {
         id: "eligibility",
@@ -900,86 +914,232 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Remix Studio opens for a stem only when you have the right to remix it. In practice that means you bought the stem at the remix license tier (or settled a remix-tier listing), the source is in good standing, and the artist allows remixing.",
+            text: "Remix Studio opens for a song only when you have the right to remix it. In practice that means you bought the stem at the remix license tier (or settled a remix-tier listing), the song is in good standing, and the artist allows remixing.",
           },
           {
             kind: "callout",
             tone: "tip",
             title: "If the Remix button is greyed out",
-            text: "It will tell you why — usually that a remix license is required. Collect the stem at the remix tier in the Marketplace to unlock it.",
+            text: "It tells you why, usually that a remix license is required. Collect the stem at the remix tier in the Marketplace to unlock it.",
           },
         ],
       },
+
+      // ─────────────── Beginner: your first remix in 3 minutes ───────────────
       {
-        id: "studio",
-        heading: "Working in the studio",
+        id: "stems-explained",
+        level: "beginner",
+        heading: "What is a remix here?",
         blocks: [
           {
-            kind: "list",
+            kind: "paragraph",
+            text: "Every song on Resonate is split into its parts, called stems: usually the vocals, the drums, the bass, and the other instruments. A remix is your own version of the song, made by changing how those parts sound and when they play. You never change the artist's original; your remix is a new version that credits them.",
+          },
+          {
+            kind: "paragraph",
+            text: "When you open the studio, you see four areas. The numbers match the picture below.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-overview.png`,
+              alt: "The Remix Studio with four numbered callouts: 1 Session, the stem rows with waveforms; 2 Transport, the play button, time, Arrangement/Draft/Original switch and volume; 3 Create, the side panel with Describe it, vibes and sliders; 4 Drafts, the rendered mix with Publish on Resonate and Export audio.",
+              caption: "The studio at a glance: 1 Session, 2 Transport, 3 Create, 4 Drafts.",
+              width: 1440,
+              height: 1280,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "definitions",
             items: [
-              "Your session opens with every stem of the track you're licensed for — the one you started from plays, and the rest wait muted until you bring them in.",
-              "Each stem gets one row in the Session view: mute, solo, and level on the left, and its waveform across the song on the right. The track's measured tempo and key show once, next to the title.",
-              "Switch a stem on or off per section of the song by clicking the cells over its waveform \u2014 or drag across several cells to paint them at once. Drop the drums out for a verse, bring them back for the chorus.",
-              "Use the transport bar to play and stop, click the timeline to jump, and click a section's number to loop it while you work on it. Your changes are heard right away.",
-              "The transport's source switch plays your Arrangement, your latest Draft, or the Original track, so you can compare them at the same point in the song.",
-              "If the track's full original mix is in your session, it stays out of the mix (it already contains every part) and is used only for that comparison.",
-              "Your edits save automatically. The preview runs through a limiter so stacking many stems doesn't distort, and starting it pauses the main player.",
-              "The Volume slider in the transport only changes how loud things play on your device \u2014 it doesn't change your remix. Want to start over? \"Reset to original\" clears your effects, song shape, beat, AI parts, and stem changes (your drafts and AI takes are kept).",
-              "Shortcuts: Space plays or stops, M and S mute or solo the row you're on, and Esc clears a loop.",
-              "The \"Also on this track\" list shows the track's remaining stems: licensed ones join your session with one click, and the others link to their license page.",
-              "In the Create panel, choose \"Mix stems\" to render your arrangement as it sounds \u2014 it's free. One-click arrangements (Acapella, Instrumental, Drums & bass, Breakdown \u2192 drop) set up a starting point you can keep editing.",
-              "Not sure where to start? Type what you want in \"Describe it\" \u2014 like \"slower and dreamy, no drums, longer\". You'll see exactly what will change before anything happens; press Apply to use it (or Undo right after). It understands everyday words about speed, space, tone, warmth, parts of the song, and length.",
-              "Pick a vibe to transform the track in one click: Slowed + reverb, Sped up, Lo-fi, Dreamy, or Club. A vibe just sets the Speed, Space, Tone, and Warmth sliders, so you can fine-tune it, or pick No effects to start over. To change the tempo without changing voices, or to move the song to another key, see Tempo & key below. Everything plays back instantly, and none of it uses credits.",
-              "Open a stem's FX to give just that part its own space, echo, or tone \u2014 for example, an echo on the vocals only.",
-              "Change the song's shape: open the \u22ef menu on any section to repeat it, remove it, move it earlier or later, or fade it in or out. Or pick a one-click structure \u2014 Extended mix (a longer intro and outro, handy for DJs) or Short edit (a shorter version that fades out). Original length puts everything back.",
-              "Add a beat under your remix: in \"Add a beat\", pick a style like Four on the floor or Boom bap, choose a drum kit (Punchy, 808, or Lo-fi), and tap the steps in the grid to change the pattern. The Groove slider adds swing. The beat locks to the song's tempo, and you can switch it off in any section from its row in the Session.",
-              "Choose \"Add AI\" to add an AI part \u2014 one instrument that plays along with your remix (see Add an AI part below). Rendering your mix with its AI parts is free.",
-              "AI drafts and AI parts are clearly labelled as AI-assisted. They use generation credits; the panel shows the price and your balance before you spend anything.",
-              "The first AI draft after a quiet period may take a few minutes while the generation service wakes up; later drafts are usually much faster.",
-              "The Drafts panel shows your latest draft with its waveform, how it was made, and what it cost. Publish or export it from there. Regenerating keeps your previous versions \u2014 play any of them to compare before you publish. You can delete versions you don't want to keep.",
+              { term: "1 · Session", description: "One row per stem, with its sound drawn as a wave across the song. This is where you hear and arrange the parts." },
+              { term: "2 · Transport", description: "Play and stop, the time, the switch between your version and the Original, and a Volume slider for your device." },
+              { term: "3 · Create", description: "Where you change the sound: describe what you want, pick a vibe, or add AI." },
+              { term: "4 · Drafts", description: "The finished mixes you've made, ready to play, publish, or export." },
             ],
           },
         ],
       },
       {
-        id: "ai-part",
-        heading: "Add an AI part",
+        id: "first-remix",
+        level: "beginner",
+        heading: "Your first remix, step by step",
         blocks: [
           {
-            kind: "paragraph",
-            text: "\"Add a part\" asks an AI musician to play one instrument over your remix \u2014 drums, bass, keys, a pad, strings, or guitar. It plays a short loop of 4 or 8 bars, locked to the song's tempo (and to its key for everything except drums). You get 3 takes to choose from, then keep the one you like as its own row in the Session.",
+            kind: "steps",
+            items: [
+              "In the Create panel, keep \"Mix stems\" selected and pick a vibe under Vibe: Slowed + reverb, Sped up, Lo-fi, Dreamy, or Club.",
+              "Press Play (the round button in the transport). Your changes play right away.",
+              "Press Original in the transport to hear the song as released, then Arrangement to come back to yours. Compare at the same point in the song.",
+              "Happy with it? Press \"Render mix\" at the bottom of the Create panel. Your mix appears in the Drafts panel after a short wait.",
+              "In Drafts, press Play to check it, then \"Publish on Resonate\" to share it as a remix release in your catalog.",
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-vibe.png`,
+              alt: "The Vibe section with Slowed + reverb selected: speed at 0.85×, Space at 45%, and Tone slightly darker, plus the Keep original pitch switch and the Key control.",
+              caption: "A vibe sets the sliders below it for you. Here, Slowed + reverb.",
+              width: 334,
+              height: 512,
+              source: LOCAL,
+            },
           },
           {
             kind: "list",
             items: [
-              "Open \"Add AI\" in the Create panel, pick one instrument and a length, and, if you like, add a few style words such as \"warm, funky, 80s\".",
-              "Each take costs the same as 30 seconds of AI generation. The panel shows the price for all 3 takes and your balance before you press \"Generate 3 takes\". A take that doesn't work is refunded (or never charged).",
-              "Press Audition on a take to hear your arrangement with it playing along, from where you are in the song. Press it again, or the \u00d7 next to \"Auditioning\" in the transport, to go back to your remix as it is. Stopping playback ends the audition too.",
-              "Press \"Use this take\" to add it as an \"AI\" row in the Session. Like the beat, it has mute, solo, and a level, and you switch it on or off per section with the cells over its waveform. It never plays in a short lead-in before the first full bar.",
-              "\"Try other takes\" on the row brings back its takes, so you can audition more and swap the one it plays. \"Remove\" takes the row out of your remix; its takes stay in the list.",
-              "A remix holds up to 4 AI parts. You can delete takes you don't need; a take a row is using can't be deleted until you remove the row or swap the take.",
+              "A vibe is a starting point. It moves the Speed, Space, Tone, and Warmth sliders, and you can nudge any of them after.",
+              "No effects takes every effect off again.",
+              "Your changes save by themselves. \"All changes saved\" at the top tells you so.",
+              "The Volume slider in the transport only changes how loud the studio plays on your device. It doesn't change your remix.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "free-or-credits",
+        level: "beginner",
+        heading: "What's free and what uses credits",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Free: vibes, effects, arranging, changing the song's length, tempo and key, the beat maker, Pro mode, and \"Render mix\". Rendering a mix that includes AI parts you already made is free too.",
+              "Uses credits: anything the AI makes for you, meaning AI parts (\"Add a part\") and the experimental whole-track AI options. The panel always shows the price and your balance before you spend anything.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "something-wrong",
+        level: "beginner",
+        heading: "If something sounds wrong",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Too much effect? Pick No effects under Vibe to take every effect off.",
+              "A part is missing? Look for a highlighted M on its row. That part is muted: press M again to bring it back. S (solo) plays one part alone; press it again to hear everything.",
+              "The same few seconds keep repeating? A loop is on. Press the × next to \"Looping bar …\" in the transport, or press Esc.",
+              "Want to start over completely? \"Reset to original\" at the top of the Session clears your effects, song shape, beat, AI parts, and stem changes. Your drafts are kept.",
+              "The studio plays quieter than your final mix. That's normal: the final mix is made louder and more even when you render it.",
+            ],
+          },
+        ],
+      },
+
+      // ─────────────── Intermediate: shape your own version ───────────────
+      {
+        id: "arrange",
+        level: "intermediate",
+        heading: "Arrange the song, section by section",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The song is cut into sections, shown as the numbered boxes along the top of the Session (the numbers are bars: 1, 9, 17…). Each stem's wave is split into the same sections, so you can switch a part on or off for part of the song.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-sections.png`,
+              alt: "The Session with Vocals, Drums and Bass rows. The Drums section starting at bar 9 is switched off and shown greyed and striped.",
+              caption: "The drums are switched off for the section at bar 9, then come back.",
+              width: 703,
+              height: 476,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "list",
+            items: [
+              "Click a section of a stem's wave to switch it off or on. Drag across several to paint them in one go. \"All on\" and \"All off\" on the row do the whole song.",
+              "Drop the drums out for a verse and bring them back for the chorus: that's the whole trick of a good arrangement.",
+              "Each row also has M (mute), S (solo), and a level slider in decibels (−24 dB to +6 dB). Solo only changes what you hear; it isn't saved.",
+              "\"Also on this track\" lists the song's other stems. Licensed ones join your session in one click; the others link to their license page. Stems you add start muted.",
             ],
           },
           {
-            kind: "callout",
-            tone: "tip",
-            title: "Tips for a good part",
-            text: "Pick one instrument the song is missing, and try style words to steer it. Audition all 3 takes before you choose \u2014 they really differ. Then turn the part off in sections where it crowds the vocals, for example a quiet verse.",
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-loop.png`,
+              alt: "The transport showing a Looping bar 17 chip with a close button, and the section starting at bar 17 highlighted in the ruler.",
+              caption: "Click a section's number to loop it while you work on it.",
+              width: 675,
+              height: 178,
+              source: LOCAL,
+            },
           },
           {
-            kind: "callout",
-            tone: "note",
-            title: "AI parts are labelled",
-            text: "When you publish a remix with an AI part in it, the release is marked as AI-assisted, with the instruments the AI played.",
+            kind: "list",
+            items: [
+              "Click a section's number in the ruler to loop it, so you can tweak it while it repeats. The transport shows \"Looping bar …\"; its × (or Esc) clears the loop.",
+              "Click anywhere on the thin strip under the ruler to jump there.",
+              "A/B test: the transport's Arrangement, Draft, and Original buttons switch what you hear at the same point in the song. Draft appears once you've rendered one.",
+            ],
           },
+        ],
+      },
+      {
+        id: "stem-effects",
+        level: "intermediate",
+        heading: "Effects on one part",
+        blocks: [
           {
             kind: "paragraph",
-            text: "Experimental: change the whole track. Under \"Add a part\" you'll find the older options that re-generate the whole song with AI in one go: reimagine the track, add a layer to the whole track, replace a single stem, or extend the track. Write a prompt (or start from a preset) to steer them. They take longer, cost more, and are harder to steer than adding a part. Your choice is remembered the next time you open the project.",
+            text: "Every stem row has an Effects button. It opens three sliders just for that part: Space (from Dry to Roomy, a reverb), Echo (from None to Lots, repeats in time with the song), and Tone (from Darker to Brighter). A small dot on the button means that part has effects on.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Echo on the vocals only: open Effects on Vocals and raise Echo. The rest of the song stays dry.",
+              "Darker drums: open Effects on Drums and move Tone towards Darker to soften the cymbals.",
+              "Vibes and part effects combine. A vibe sets the whole-song sliders; Dreamy also adds a soft echo on the vocals. Your other part effects stay as they are.",
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-effects.png`,
+              alt: "The Vocals row with its Effects row open: Space 0%, Echo 35%, Tone Neutral, and with Pro mode on, a Pro strip with Low 200 Hz, Mid 1 kHz, High 4 kHz and Pan sliders.",
+              caption: "Vocals with their own echo. With Pro mode on, the Pro strip (EQ and pan) appears underneath.",
+              width: 651,
+              height: 404,
+              source: LOCAL,
+            },
+          },
+        ],
+      },
+      {
+        id: "arrangements-and-shape",
+        level: "intermediate",
+        heading: "One-click arrangements and the song's length",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "One-click arrangements, at the bottom of the Create panel: Acapella (only the vocals), Instrumental (everything except the vocals), Drums & bass, and Breakdown → drop (drums, bass and percussion drop out for the first half, then come back). They set mutes and sections you can keep editing, and they work with any vibe.",
+              "Song length & shape: Original length (as released), Extended mix (a longer intro and outro, handy for DJs), or Short edit (about a third shorter, fading out). Each shows the length change, like \"1:04 → 1:36\".",
+              "Open the ⋯ menu on any section in the ruler to Repeat this section, Remove it, Move earlier, Move later, Fade in, or Fade out.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "describe-it",
+        level: "intermediate",
+        heading: "Describe it",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Type what you want in \"Describe the remix you want\", like \"slower and dreamy, no drums, longer\", and press \"Preview changes\". You see exactly what will change before anything happens. Press Apply to use it, or Undo right after to go back. It understands everyday words about speed, space, tone, warmth, parts of the song, and length. It runs on your device: nothing is sent.",
           },
         ],
       },
       {
         id: "tempo-key",
+        level: "intermediate",
         heading: "Tempo & key",
         blocks: [
           {
@@ -989,90 +1149,346 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "list",
             items: [
-              "Keep original pitch: normally, slowing a song down also makes voices sound deeper, and speeding it up makes them higher \u2014 that's the classic \"slowed\" and \"sped up\" sound. Switch this on to change only the tempo, so voices keep their natural pitch. Use it when you want a calmer or more energetic version that still sounds like the original singer.",
-              "Key: use \u2212 and + to move the whole song lower or higher, one step (a semitone) at a time, up to 6 steps either way. \"Original key\" means no change. Lowering the key gives a darker, heavier feel; raising it makes the song brighter. Your beat is never shifted, so the drums stay punchy.",
-              "Picking a vibe or \"No effects\" keeps your Keep original pitch and Key choices. \"Reset to original\" clears them along with everything else.",
+              "Keep original pitch: normally, slowing a song down also makes voices sound deeper, and speeding it up makes them higher. That's the classic \"slowed\" and \"sped up\" sound. Switch this on to change only the tempo, so voices keep their natural pitch.",
+              "Key: use − and + to move the whole song lower or higher, one semitone at a time, up to 6 either way. \"Original key\" means no change. Lower feels darker and heavier; higher feels brighter. Your beat is never shifted, so the drums stay punchy.",
+              "Picking a vibe or No effects keeps your Keep original pitch and Key choices. \"Reset to original\" clears them along with everything else.",
             ],
           },
           {
             kind: "callout",
             tone: "tip",
             title: "The preview takes a few seconds to catch up",
-            text: "After you change these, the studio prepares the new version of each part on your device, with a progress percentage under the controls. Until it's ready, the preview already plays at the new tempo, and the kept pitch or new key comes in by itself once preparation finishes, picking up at the same spot. If preparation fails, press Try again \u2014 the mix you render still gets the change either way.",
+            text: "After you change these, the studio prepares the new version of each part on your device, with a progress percentage under the controls. Until it's ready, the preview already plays at the new tempo, and the kept pitch or new key comes in by itself once preparation finishes. If preparation fails, press Try again. The mix you render gets the change either way.",
           },
         ],
       },
       {
-        id: "pro-mode",
-        heading: "Pro mode",
+        id: "beat-maker",
+        level: "intermediate",
+        heading: "Add a beat",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "In \"Add a beat\", pick a pattern: Four on the floor, Boom bap, Trap, Breakbeat, or Half-time. A Beat row joins the Session.",
+              "Choose a drum kit (Punchy, 808, or Lo-fi) and tap the steps in the grid (Kick, Snare, Clap, Hat, Open hat, 16 steps a bar) to change the pattern. Groove goes from Straight to Swung.",
+              "The beat locks to the song's tempo. Switch it off in any section from its row, like a stem. \"Remove beat\" takes it out.",
+              "The beat maker needs a measured tempo; the studio tells you when a song doesn't have one yet.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "ai-part",
+        level: "intermediate",
+        heading: "Add an AI part",
         blocks: [
           {
             kind: "paragraph",
-            text: "The Pro switch at the top of the Session adds engineer tools to each stem. Turn it on, open a stem's FX row, and you'll find a Pro strip under Space, Echo and Tone. Your device remembers the switch; it never changes your remix by itself.",
+            text: "\"Add a part\" asks an AI musician to play one instrument over your remix: Drums, Bass, Keys, Pad, Strings, or Guitar. It plays a loop of 4 or 8 bars, locked to the song's tempo (and to its key for everything except drums). You get 3 takes to choose from, then keep the one you like as its own row in the Session.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-ai-part.png`,
+              alt: "The Add a part panel with Bass and 4 bars selected, the price line 3 takes · 30¢ · you have $5.00, and three ready Bass takes, each with Audition and Use this take buttons.",
+              caption: "Three bass takes, ready to audition. The price and your balance show before you generate.",
+              width: 334,
+              height: 768,
+              source: LOCAL,
+            },
           },
           {
             kind: "list",
             items: [
-              "EQ: three sliders shape a stem's sound. Low (200 Hz) adds or removes weight and rumble, Mid (1 kHz) brings a part forward or pushes it back, and High (4 kHz) adds or removes brightness and air. Each goes from \u221212 dB to +12 dB.",
-              "Pan: places the stem from left (L 100) through the center (C) to right (R 100), so parts can sit side by side instead of on top of each other.",
-              "Double-click a slider to put it back to 0. Your changes save automatically, and the preview and the mix you render sound the same.",
-              "With Pro off, your EQ and pan still play and render. A small \"Pro\" badge on a stem's row tells you it has Pro settings \u2014 turn Pro on to edit them.",
-              "Vibes keep your Pro settings. \"No effects\" removes them along with every other effect (your Key and Keep original pitch stay), and \"Reset to original\" clears everything.",
+              "Choose \"Add AI\" at the top of the Create panel, pick an instrument and a length, and, if you like, add Style words such as \"warm, funky, 80s\".",
+              "Each take costs the same as 30 seconds of AI generation. The panel shows the price for all 3 takes and your balance before you press \"Generate 3 takes\". A take that doesn't work is refunded (or never charged).",
+              "Press Audition on a take to hear your remix with it playing along. Press it again, or the × next to \"Auditioning\" in the transport, to go back.",
+              "Press \"Use this take\" to add it as an AI row in the Session. Like the beat, it has mute, solo, a level, and sections you switch on and off. It never plays in the short lead-in before the first full bar.",
+              "\"Try other takes\" on the row brings its takes back so you can swap. \"Remove\" takes the row out; its takes stay in the list.",
+              "A remix holds up to 4 AI parts. You can delete takes you don't need, except one a row is using.",
             ],
           },
           {
             kind: "callout",
             tone: "tip",
-            title: "Pro is free for now",
-            text: "Pro mode costs nothing and uses no credits. More engineer tools will join it over time.",
+            title: "Tips for a good part",
+            text: "Pick one instrument the song is missing, and audition all 3 takes: they really differ. Then switch the part off where it crowds the vocals, like a quiet verse.",
           },
         ],
       },
       {
-        id: "publish",
-        heading: "Publishing a remix",
+        id: "experimental-ai",
+        level: "intermediate",
+        heading: "Experimental: change the whole track",
         blocks: [
           {
             kind: "paragraph",
-            text: "When a draft is ready, publish it as a remix release in your catalog. Resonate re-checks your rights at publish time and attaches the source lineage (which tracks and stems it came from) plus the AI-provenance label to the new release.",
-          },
-        ],
-      },
-      {
-        id: "sell",
-        heading: "Listing your remix for sale",
-        blocks: [
-          {
-            kind: "paragraph",
-            text: "A published remix can become a sellable item in the Marketplace, so the remix you created can earn — you keep the artist's share, just like any other sale. On the \"Published\" panel in the studio, use \"List this remix for sale\" to jump to your release page, where you protect the release and then mint and list it as an ownership item other people can buy.",
+            text: "Under \"Add a part\", the \"Experimental: change the whole track\" options re-generate the whole song with AI in one go: Reimagine the track, Add a layer to the whole track, Replace a stem, or Extend the track. Write a prompt, or start from a preset, then press \"Generate AI draft\".",
           },
           {
             kind: "callout",
-            tone: "tip",
-            title: "If “List this remix for sale” is locked",
-            text: "Selling a remix needs the commercial license tier on every source stem you used (or you own the source artist). The button tells you when a commercial license is what's missing — collect those stems at the commercial tier in the Marketplace to unlock it.",
+            tone: "note",
+            title: "Honest expectations",
+            text: "These take longer, cost more, and are harder to steer than adding a part. The result is a draft, not a finished master. The first AI draft after a quiet period may take a few minutes while the service wakes up.",
           },
         ],
       },
       {
-        id: "export",
-        heading: "Exporting your remix",
+        id: "drafts",
+        level: "intermediate",
+        heading: "Drafts and versions",
         blocks: [
           {
-            kind: "paragraph",
-            text: "Once a draft is finished and saved, you can download it as an audio file to use off Resonate. Export needs the commercial license tier on the stems you're remixing — a remix license lets you make private drafts and publish inside Resonate, and the commercial tier adds the right to download and use the audio elsewhere.",
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-drafts.png`,
+              alt: "The Drafts panel: the current Stem mix render with a Your stems only chip, its date, a waveform, Play, Publish on Resonate and Export audio buttons, and a previous version below with Play and a delete button.",
+              caption: "Your latest draft on top, earlier versions below.",
+              width: 703,
+              height: 386,
+              source: LOCAL,
+            },
           },
           {
-            kind: "callout",
-            tone: "tip",
-            title: "If the Export button is locked",
-            text: "It will tell you why — usually that a commercial license is required. Collect the stems at the commercial tier in the Marketplace to unlock downloading.",
+            kind: "list",
+            items: [
+              "\"Render mix\" (or \"Re-render mix\") makes a new draft of what you hear. Earlier drafts move to \"Previous versions\", where you can play them to compare.",
+              "Delete a version you don't want with its bin button. It asks first, because it can't be undone. Your current draft can't be deleted; render again instead.",
+              "\"How this draft was made\" explains where the sound came from.",
+            ],
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "Your stems only", description: "Made from the song's own stems, with your arrangement and effects. No AI." },
+              { term: "Your stems + your beat", description: "The song's stems plus the studio's beat. Still no AI." },
+              { term: "Your stems + AI layer", description: "The song's stems plus sound an AI made, such as an AI part." },
+              { term: "AI · heard your stems", description: "An AI draft made by a model that listened to your arranged stems." },
+              { term: "AI · tempo/key matched", description: "An AI draft made from your prompt, matched to the song's measured tempo and key. The model didn't hear the audio." },
+              { term: "AI · prompt only", description: "An AI draft made from your prompt alone." },
+            ],
+          },
+        ],
+      },
+      {
+        id: "rights",
+        level: "intermediate",
+        heading: "Rights, publishing, and selling",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Remix license: lets you make private drafts and publish your remix on Resonate.",
+              "Commercial license: also lets you download your remix with \"Export audio\" and use it elsewhere, and sell it. The Export button tells you when a commercial license is what's missing.",
+              "Publishing: \"Publish on Resonate\" asks you to confirm, then makes your remix a public release that credits the original song and artist. Resonate checks your rights again at that moment. After publishing, the studio is locked so the release stays as published.",
+              "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it in the Marketplace. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
+            ],
           },
           {
             kind: "callout",
             tone: "note",
             title: "What's still rolling out",
-            text: "In-app remixing, publishing, commercial-licensed export, and listing a published remix for sale are all live. Recursive royalties that also pay the original artist when your remix resells are on the way; voice or likeness cloning is intentionally not supported.",
+            text: "Royalties that also pay the original artist when your remix resells are on the way. Voice or likeness cloning is intentionally not supported.",
+          },
+        ],
+      },
+
+      // ─────────────── Professional: under the hood ───────────────
+      {
+        id: "signal-chain",
+        level: "pro",
+        heading: "Signal chain",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Each source stem runs through the same fixed order in the browser preview and in the final render:",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Tempo & key pre-stage (only with Keep original pitch at a speed other than 1.00×, or a key shift): a time-stretch and pitch-shift of the whole stem, done ahead of time.",
+              "Varispeed: resampling at the Speed value (0.75× to 1.25×), so pitch follows tempo. Skipped when Keep original pitch already changed the tempo.",
+              "Gain: the row's level, −24 dB to +6 dB.",
+              "Pro EQ: low shelf, then mid peak, then high shelf (only bands you moved).",
+              "Pro pan (only when not centred).",
+              "Section gate: your on/off sections, with 50 ms fades at each edge so switches never click.",
+              "Tone: a low-pass (Darker, down to 800 Hz) or high-pass (Brighter, up to 1.2 kHz) filter.",
+              "Echo: four repeats a dotted eighth apart at the song's tempo, each quieter than the last.",
+              "Reverb send: the stem's Space combined with the song's Space, into one shared reverb (a 2.8-second room).",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Then the master: everything is summed (stems, beat, AI parts, and the reverb), fades from your song shape apply, then the master Tone, then Warmth (a soft saturation), then the loudness stage. The beat and AI parts skip the per-stem effects and gate (their on/off is built into their track) but get varispeed, their level, and a reverb send from the song's Space.",
+          },
+        ],
+      },
+      {
+        id: "render-policy",
+        level: "pro",
+        heading: "Render and preview: loudness",
+        blocks: [
+          {
+            kind: "definitions",
+            items: [
+              { term: "Render", description: "Loudness-normalized to −14 LUFS integrated, with an 11 LU loudness range and a −1.5 dBTP true-peak ceiling. Output: MP3, 320 kbps, 48 kHz, stereo." },
+              { term: "Preview", description: "Unmastered. A limiter (threshold −3 dB, ratio 20:1, 3 ms attack, 250 ms release) only stops the summed stems from clipping, so the preview is quieter and less even than the render. The transport meter shows the level after that limiter." },
+              { term: "Volume", description: "The transport's Volume slider sits after everything, on your device only. Renders never hear it." },
+            ],
+          },
+        ],
+      },
+      {
+        id: "section-grid",
+        level: "pro",
+        heading: "The section grid",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Sections are 8 bars of 4/4 at the tempo measured from the stem audio (the Session header shows, for example, \"8-bar sections · measured 120 BPM\"). The grid anchors to the measured first beat, so section lines fall on downbeats.",
+              "Pickup: when the first section is shorter than three quarters of a full one, it's the short lead-in before the first full bar. The ruler labels it Pickup, counts bars from the first full section, and Extended mix drops it. AI parts never play in it.",
+              "Without a measured tempo, the grid falls back to 16-second sections labelled by time (\"16-second sections · tempo not measured\"), and the beat maker and AI parts are unavailable.",
+              "The tempo is an automatic measurement: songs with tempo changes, rubato, or a weak beat can get a grid that drifts. Time signatures other than 4/4 aren't detected yet.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "pitch-and-parts",
+        level: "pro",
+        heading: "Varispeed, keep pitch, and AI part conform",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Varispeed (the default) is a resample: 0.85× lowers the pitch by about 2.8 semitones along with the tempo, the classic slowed sound.",
+              "Keep original pitch time-stretches instead, and Key shifts by whole semitones (−6 to +6). Both use the same stretch engine in the preview (in background workers on your device) and in the render, so they match.",
+              "The beat is never key-shifted. It follows the speed like everything else.",
+              "AI takes are conformed to the song before you hear them: their tempo is measured and stretched to exactly 4 or 8 bars at the song's tempo, the first downbeat is found and aligned, the key is detected and shifted to the song's (except drums, and only when both keys are measured confidently), and the loop edges get short fades so it repeats without a click. Each take is saved losslessly for sample-accurate loops.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "pro-mode",
+        level: "pro",
+        heading: "Pro mode: EQ and pan",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The Pro switch at the top of the Session (\"Show engineer tools: per-stem EQ and pan\") adds a Pro strip under Space, Echo, and Tone in each stem's Effects row. Your device remembers the switch; turning it on or off never changes your remix.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "Low 200 Hz", description: "Low shelf, −12 to +12 dB in 0.5 dB steps. Weight and rumble." },
+              { term: "Mid 1 kHz", description: "Peaking band (Q 0.707), −12 to +12 dB. Pushes a part forward or back." },
+              { term: "High 4 kHz", description: "High shelf, −12 to +12 dB. Brightness and air." },
+              { term: "Pan", description: "L 100 to C to R 100, an equal-power (sine/cosine) law. Mono stems are spread to both sides at full level first." },
+            ],
+          },
+          {
+            kind: "list",
+            items: [
+              "Double-click a slider to reset it to 0. Edits save automatically, and the preview and render use the same filters.",
+              "With Pro off, your EQ and pan still play and render; a \"Pro\" badge on the row (\"Pro EQ/pan active — turn on Pro to edit\") says so.",
+              "Vibes keep Pro settings. No effects removes them with every other effect (Key and Keep original pitch stay). \"Reset to original\" clears everything.",
+              "Pro mode is free for now and uses no credits.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "shortcuts",
+        level: "pro",
+        heading: "Keyboard shortcuts",
+        blocks: [
+          {
+            kind: "definitions",
+            items: [
+              { term: "Space", description: "Play or stop." },
+              { term: "M", description: "Mute or unmute the row you're on." },
+              { term: "S", description: "Solo the row you're on (preview only)." },
+              { term: "Esc", description: "Clear the loop." },
+              { term: "↑ / ↓", description: "In a section's ⋯ menu, move between entries; Esc closes it." },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Shortcuts don't fire while you type in a text field or while a confirmation is open.",
+          },
+        ],
+      },
+      {
+        id: "reproducibility",
+        level: "pro",
+        heading: "Reproducibility, lineage, and AI disclosure",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Your remix is saved as a recipe, not as audio: arrangement, effects, song shape, beat, and AI parts, each with a version number. The same recipe always renders the same mix, and the version you rendered is recorded with each draft.",
+              "The preview and the render are checked against each other by reference tests for effects, Pro EQ and pan, tempo and key, song shape, the beat, and AI part placement, so what you hear is what you get (apart from the preview limiter).",
+              "On publish, the release records its lineage (the song and stems it came from) and an AI label derived from how it was made. A remix with AI parts is marked AI-assisted, with the instruments the AI played.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "coming-next",
+        level: "pro",
+        heading: "Planned for Pro mode",
+        blocks: [
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Planned, not available yet",
+            text: "More engineer and DJ tools are planned for Pro mode: a per-stem compressor, tap-tempo and downbeat correction for the section grid, cue and loop points with a DJ extended export, automation lanes, and stem export and mashups where licenses allow.",
+          },
+        ],
+      },
+
+      // ─────────────── Every level ───────────────
+      {
+        id: "glossary",
+        heading: "Glossary",
+        blocks: [
+          {
+            kind: "definitions",
+            items: [
+              { term: "Stem", description: "One part of a song on its own, like the vocals, drums, or bass." },
+              { term: "Section", description: "A slice of the song (usually 8 bars) you can switch a part on or off in." },
+              { term: "Block", description: "One section in your song shape. Repeating a section adds a block." },
+              { term: "Pickup", description: "A short lead-in before the first full bar." },
+              { term: "M / S", description: "Mute a row, or Solo it (hear it alone; not saved)." },
+              { term: "All on / All off", description: "Switch every section of a row on or off." },
+              { term: "Effects", description: "The row button (once labelled \"FX\") that opens Space, Echo, and Tone for one part." },
+              { term: "Space", description: "Reverb: how big the room sounds, from Dry to Roomy." },
+              { term: "Echo", description: "Repeats of the sound, in time with the song." },
+              { term: "Tone", description: "Darker (softer highs) to Brighter (thinner lows)." },
+              { term: "Warmth", description: "Gentle saturation that makes the sound thicker, from Clean to Warm." },
+              { term: "Speed", description: "Slowed to Sped up. On its own, pitch follows speed." },
+              { term: "Varispeed", description: "Changing speed and pitch together, like a record played faster or slower." },
+              { term: "Keep original pitch", description: "Change the tempo without making voices higher or lower." },
+              { term: "Key / semitone", description: "The song's musical home. A semitone is the smallest step up or down." },
+              { term: "Vibe", description: "A one-click setting of the Speed, Space, Tone, and Warmth sliders." },
+              { term: "Arrangement / Draft / Original", description: "What the transport plays: your live remix, your latest render, or the song as released." },
+              { term: "Loop", description: "One section repeating while you work on it." },
+              { term: "Volume", description: "How loud the studio plays on your device. Not saved to your remix." },
+              { term: "Reset to original", description: "Clear every change except your drafts." },
+              { term: "Pro", description: "The switch that shows per-stem EQ and pan." },
+              { term: "EQ", description: "Turning low, middle, or high frequencies up or down." },
+              { term: "Pan", description: "Where a part sits between left and right." },
+              { term: "Beat", description: "A drum pattern made in the studio, locked to the song's tempo." },
+              { term: "AI part / take / lane", description: "One instrument an AI plays; each attempt is a take; the one you keep gets its own row (lane)." },
+              { term: "Audition", description: "Hear a take playing along before you keep it." },
+              { term: "Render", description: "Turning your remix into one finished audio file (a draft)." },
+              { term: "Draft", description: "A rendered version of your remix." },
+              { term: "Grounding / provenance", description: "Where a draft's sound came from, shown as a chip like \"Your stems only\"." },
+              { term: "Remix vs commercial license", description: "Remix: drafts and publishing on Resonate. Commercial: also download, use elsewhere, and sell." },
+            ],
           },
         ],
       },
