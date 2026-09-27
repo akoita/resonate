@@ -273,3 +273,68 @@ describe("buildRemixGenerationInput mode guard (#1162 review prereq)", () => {
     ).toThrow(RemixGenerationProviderError);
   });
 });
+
+describe("AI part clips (#1901)", () => {
+  const previous = process.env.REMIX_GENERATION_ENABLED;
+  afterEach(() => {
+    if (previous === undefined) delete process.env.REMIX_GENERATION_ENABLED;
+    else process.env.REMIX_GENERATION_ENABLED = previous;
+  });
+  const request = {
+    prompt: "deep groovy bass line, solo bass, isolated instrument, 98 BPM, A minor",
+    negativePrompt: "drums, percussion, vocals, full mix, other instruments",
+    seed: 1234,
+  };
+
+  it("Lyria generates one seeded 30 s clip and never stores it itself", async () => {
+    process.env.REMIX_GENERATION_ENABLED = "true";
+    const { provider, generate, upload } = buildProvider();
+    await expect(provider.createPartClip(request)).resolves.toEqual({
+      audio: Buffer.from("audio"),
+      mimeType: "audio/wav",
+      provider: "lyria",
+      model: "lyria-002",
+      estimatedCostUsd: 0.06,
+    });
+    expect(generate).toHaveBeenCalledWith({ ...request, durationSeconds: 30 });
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("Lyria part clips honour the master gate and normalize vendor errors", async () => {
+    delete process.env.REMIX_GENERATION_ENABLED;
+    const { provider, generate } = buildProvider();
+    await expect(provider.createPartClip(request)).rejects.toMatchObject({
+      code: "provider_disabled",
+    });
+    expect(generate).not.toHaveBeenCalled();
+
+    process.env.REMIX_GENERATION_ENABLED = "true";
+    const failing = buildProvider({
+      generate: jest.fn().mockRejectedValue(new Error("Lyria prompt was blocked: SAFETY")),
+    });
+    await expect(failing.provider.createPartClip(request)).rejects.toMatchObject({
+      code: "provider_rejected",
+    });
+  });
+
+  it("the stub synthesizes a deterministic 30 s WAV from the template", async () => {
+    const { StubRemixGenerationProvider } = await import(
+      "../modules/remix/remix-generation.provider"
+    );
+    const stub = new StubRemixGenerationProvider();
+    delete process.env.REMIX_GENERATION_ENABLED;
+    await expect(stub.createPartClip(request)).rejects.toMatchObject({
+      code: "provider_disabled",
+    });
+    process.env.REMIX_GENERATION_ENABLED = "true";
+    const a = await stub.createPartClip(request);
+    const b = await stub.createPartClip(request);
+    expect(a.audio.subarray(0, 4).toString("ascii")).toBe("RIFF");
+    expect(a.audio.length).toBe(44 + 30 * 48000 * 2 * 2);
+    expect(a.audio.equals(b.audio)).toBe(true);
+    expect(a).toMatchObject({ mimeType: "audio/wav", provider: "remix-stub", model: "remix-stub-part/v1" });
+    await expect(
+      stub.createPartClip({ ...request, prompt: "solo bass, no tempo here" }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+});

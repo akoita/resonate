@@ -53,6 +53,7 @@ model User {
   showPledges                 ShowPledge[]
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
+  remixPartTakes              RemixPartTake[]
   reputationFeedbackSubmitted AgentReputationFeedback[]     @relation("AgentReputationFeedbackSubmitter")
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
@@ -1214,6 +1215,9 @@ model RemixProject {
   // Beat maker (#1902): remix-beat/v1 { schemaVersion, kit, pattern, swing,
   // gainDb, blocks }; null means no beat.
   beat               Json?
+  // AI part lanes (#1901): remix-parts/v1 { schemaVersion, parts: [{ id,
+  // role, takeId, gainDb?, muted?, blocks? }] }; null means no parts.
+  parts              Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())
@@ -1222,9 +1226,46 @@ model RemixProject {
   sourceTrack        Track              @relation(fields: [sourceTrackId], references: [id])
   publishedRelease   Release?           @relation("RemixProjectPublishedRelease", fields: [publishedReleaseId], references: [id])
   stems              RemixProjectStem[]
+  partTakes          RemixPartTake[]
 
   @@index([creatorUserId, createdAt])
   @@index([sourceTrackId])
+}
+
+// AI part takes (#1901): one generated, conformed clip per row (one 30 s
+// model generation, charged at the canonical per-30 s generation price).
+// At most 24 per project; unreferenced completed/failed takes are evicted
+// oldest first when a new batch is created.
+model RemixPartTake {
+  id            String       @id @default(cuid())
+  projectId     String
+  userId        String
+  batchId       String
+  role          String // drums, bass, keys, pad, strings, guitar
+  bars          Int // 4 | 8
+  // Sanitized style words (a prompt fragment only), at most 80 chars.
+  style         String?      @db.VarChar(80)
+  seed          Int
+  status        String       @default("pending") // pending, processing, completed, failed
+  promptVersion String
+  provider      String?
+  model         String?
+  grounding     String
+  costCents     Int
+  storageUri    String?
+  mimeType      String?
+  durationSec   Float?
+  // remix-part-conform/v1 parameters (ratio, phase, key shift or skip reason).
+  conform       Json?
+  errorCode     String?
+  createdAt     DateTime     @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+  project       RemixProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user          User         @relation(fields: [userId], references: [id])
+
+  @@index([projectId, createdAt])
+  @@index([userId])
 }
 
 model RemixProjectStem {

@@ -528,6 +528,15 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     matchOn: "creatorUserId",
   },
   {
+    model: "RemixPartTake",
+    disposition: "anonymize",
+    reason:
+      "An AI part take is paid generation output tied to the retained RemixProject and to the "
+      + "credit ledger by its id, so the row stays; the style words are the person's writing.",
+    scrub: ["style"],
+    matchOn: "userId",
+  },
+  {
     model: "LibraryTrack",
     disposition: "anonymize",
     reason:

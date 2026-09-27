@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { LyriaClient } from "../generation/lyria.client";
 import { StorageProvider } from "../storage/storage_provider";
+import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 import {
   estimateRemixGenerationCostUsd,
   REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
@@ -9,6 +10,8 @@ import {
   type RemixGenerationInput,
   type RemixGenerationJob,
   type RemixGenerationProvider,
+  type RemixPartClip,
+  type RemixPartClipRequest,
   type StemRenderAuthorization,
   stemTransformPromptLead,
   type RemixStemTransform,
@@ -32,6 +35,49 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
     private readonly lyriaClient: LyriaClient,
     private readonly storageProvider: StorageProvider,
   ) {}
+
+  /**
+   * AI part clip (#1901): one 30 s Lyria generation (Lyria 2 on Vertex) of
+   * the server-built part prompt, seeded with the take's stored seed. The
+   * bytes are conformed and stored by the caller, never here.
+   */
+  async createPartClip(request: RemixPartClipRequest): Promise<RemixPartClip> {
+    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+      throw new RemixGenerationProviderError(
+        "provider_disabled",
+        "AI remix generation is not enabled on this environment yet.",
+        false,
+      );
+    }
+    let result;
+    try {
+      result = await this.lyriaClient.generate({
+        prompt: request.prompt,
+        negativePrompt: request.negativePrompt,
+        seed: request.seed,
+        durationSeconds: REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
+      });
+    } catch (error) {
+      throw normalizeLyriaError(error);
+    }
+    if (!result.audioBytes?.length) {
+      throw new RemixGenerationProviderError(
+        "provider_unavailable",
+        "The generation provider returned no audio. Please try again.",
+        true,
+      );
+    }
+    return {
+      audio: result.audioBytes,
+      mimeType: result.mimeType,
+      provider: "lyria",
+      model: result.provider,
+      estimatedCostUsd: estimateGenerationCostUsd(
+        result.provider,
+        REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
+      ),
+    };
+  }
 
   async createRemixDraft(
     input: RemixGenerationInput,

@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Headers,
+  HttpCode,
   HttpException,
   Param,
   Patch,
@@ -29,6 +30,7 @@ import {
   type RemixGenerationConstraints,
   type RemixGenerationErrorCode,
 } from "./remix-generation.provider";
+import { GeneratePartsDto } from "./remix-parts.dto";
 
 const GENERATION_ERROR_STATUS: Record<RemixGenerationErrorCode, number> = {
   provider_disabled: 503,
@@ -161,6 +163,8 @@ export class RemixController {
       structure?: unknown;
       /** Beat maker remix-beat/v1 (#1902); validated in the service. */
       beat?: unknown;
+      /** AI part lanes remix-parts/v1 (#1901); validated in the service. */
+      parts?: unknown;
     },
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);
@@ -223,6 +227,78 @@ export class RemixController {
       }
       throw error;
     }
+  }
+
+  /**
+   * Starts a batch of AI part takes (#1901): 202 with the pending takes and
+   * `{ quoteCents }` (takes × the canonical per-30 s generation price).
+   * Owner-only (identity from the JWT). Refusals happen before any work:
+   * 400 invalid_input / parts_unsupported / part_too_long, 402 insufficient
+   * credits, 403 eligibility, 409 no_tempo_grid / take_limit_reached /
+   * project_published, 422 prompt_rejected, 429 rate limit, 503
+   * provider_disabled.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("projects/:id/parts/generate")
+  @HttpCode(202)
+  async generateParts(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() body: GeneratePartsDto,
+  ) {
+    try {
+      // Only the documented fields pass through.
+      return await this.projectService.generatePartTakes(req.user.userId, id, {
+        role: body?.role,
+        bars: body?.bars,
+        style: body?.style,
+        takes: body?.takes,
+      });
+    } catch (error) {
+      if (error instanceof RemixGenerationProviderError) {
+        throw new HttpException(
+          {
+            code: error.code,
+            message: error.message,
+            retryable: error.retryable,
+          },
+          GENERATION_ERROR_STATUS[error.code],
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** Streams a completed take's conformed FLAC with range support (#1901). */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("projects/:id/parts/takes/:takeId/audio")
+  async getPartTakeAudio(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Param("takeId") takeId: string,
+    @Headers("range") range: string,
+    @Res() res: Response,
+  ) {
+    const audio = await this.projectService.getPartTakeAudio(
+      req.user.userId,
+      id,
+      takeId,
+    );
+    this.sendAudioResponse(audio, range, res);
+  }
+
+  /**
+   * Deletes a take and its audio (#1901). Owner-only; 409 take_in_use when a
+   * part names it, 409 take_processing while it is generating.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("projects/:id/parts/takes/:takeId")
+  deletePartTake(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Param("takeId") takeId: string,
+  ) {
+    return this.projectService.deletePartTake(req.user.userId, id, takeId);
   }
 
   /**
