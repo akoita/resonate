@@ -157,7 +157,10 @@ export class RemixController {
       addStemIds?: string[];
       /** Persisted variation AI target (#1882); validated in the service. */
       aiTarget?: { kind: string; stemId?: string | null } | null;
-      /** Shared effects recipe remix-fx/v1 (#1897); validated in the service. */
+      /**
+       * Shared effects recipe remix-fx/v3 (#1897, #1903); validated in the
+       * service (Pro fields need the `remix.pro` entitlement).
+       */
       effects?: unknown;
       /** Structure blocks remix-structure/v1 (#1899); validated in the service. */
       structure?: unknown;

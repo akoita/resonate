@@ -92,6 +92,9 @@ class FakeNode {
 
 class FakeGain extends FakeNode {
   gain = new FakeParam();
+  channelCount = 2;
+  channelCountMode = "max";
+  channelInterpretation = "speakers";
 }
 
 class FakeSource extends FakeNode {
@@ -129,6 +132,19 @@ class FakeBiquad extends FakeNode {
   type = "lowpass";
   frequency = new FakeParam();
   Q = new FakeParam();
+  gain = new FakeParam();
+  constructor() {
+    super();
+    this.gain.value = 0; // WebAudio's default biquad gain
+  }
+}
+
+class FakeStereoPanner extends FakeNode {
+  pan = new FakeParam();
+  constructor() {
+    super();
+    this.pan.value = 0;
+  }
 }
 
 class FakeDelay extends FakeNode {
@@ -172,6 +188,7 @@ class FakeAudioContext {
   currentTime = 0;
   sampleRate = 48000;
   biquads: FakeBiquad[] = [];
+  panners: FakeStereoPanner[] = [];
   delays: FakeDelay[] = [];
   convolvers: FakeConvolver[] = [];
   shapers: FakeWaveShaper[] = [];
@@ -179,6 +196,11 @@ class FakeAudioContext {
   createBiquadFilter() {
     const node = new FakeBiquad();
     this.biquads.push(node);
+    return node;
+  }
+  createStereoPanner() {
+    const node = new FakeStereoPanner();
+    this.panners.push(node);
     return node;
   }
   createDelay(maxDelayTime: number) {
@@ -947,6 +969,112 @@ describe("createStemPreviewEngine effects (#1897)", () => {
       effects: fxRecipe({ master: { tone: 0.3 } }),
     });
     expect(fxHandle.updateEffects(null)).toBe("applied");
+  });
+});
+
+describe("createStemPreviewEngine Pro EQ and pan (#1903)", () => {
+  it("adds no Pro node for recipes without Pro fields", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems,
+      soloStemId: null,
+      effects: fxRecipe({ master: { tone: 0.5 }, stems: { vocals: { tone: -0.5, echo: 0.3 } } }),
+    });
+    const context = contexts[0];
+    // Only tone-stage biquads (master, vocals, drums).
+    expect(context.biquads.every((biquad) => biquad.type !== "lowshelf" && biquad.type !== "peaking" && biquad.type !== "highshelf")).toBe(true);
+    expect(context.panners).toHaveLength(0);
+    // gain → section gain directly.
+    const manual = context.sources[0].connections[0] as FakeGain;
+    expect(manual.connections).toHaveLength(1);
+    expect(manual.connections[0]).toBeInstanceOf(FakeGain);
+  });
+
+  it("wires gain → EQ low → mid → high → 2-channel up-mix → pan → section gain", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems,
+      soloStemId: null,
+      effects: fxRecipe({
+        stems: { vocals: { eqLow: 3, eqMid: -4.5, eqHigh: 6, pan: -0.3 } },
+      }),
+    });
+    const context = contexts[0];
+    const manual = context.sources[0].connections[0] as FakeGain;
+    const low = manual.connections[0] as FakeBiquad;
+    expect(low).toBeInstanceOf(FakeBiquad);
+    expect(low.type).toBe("lowshelf");
+    expect(low.frequency.value).toBe(200);
+    expect(low.gain.value).toBe(3);
+    const mid = low.connections[0] as FakeBiquad;
+    expect(mid.type).toBe("peaking");
+    expect(mid.frequency.value).toBe(1000);
+    expect(mid.gain.value).toBe(-4.5);
+    // WebAudio's peaking Q is LINEAR (unlike lowpass/highpass, in dB).
+    expect(mid.Q.value).toBe(0.7071);
+    const high = mid.connections[0] as FakeBiquad;
+    expect(high.type).toBe("highshelf");
+    expect(high.frequency.value).toBe(4000);
+    expect(high.gain.value).toBe(6);
+    // Shelves ignore Q: left at its default.
+    expect(low.Q.value).toBe(1);
+    expect(high.Q.value).toBe(1);
+    const upmix = high.connections[0] as FakeGain;
+    expect(upmix).toBeInstanceOf(FakeGain);
+    expect(upmix.channelCount).toBe(2);
+    expect(upmix.channelCountMode).toBe("explicit");
+    expect(upmix.channelInterpretation).toBe("speakers");
+    expect(upmix.gain.value).toBe(1);
+    const panner = upmix.connections[0] as FakeStereoPanner;
+    expect(panner).toBeInstanceOf(FakeStereoPanner);
+    expect(panner.pan.value).toBe(-0.3);
+    const sectionGain = panner.connections[0] as FakeGain;
+    expect(sectionGain).toBeInstanceOf(FakeGain);
+    // The drums (no Pro fields) keep gain → section gain.
+    const drumsManual = context.sources[1].connections[0] as FakeGain;
+    expect(drumsManual.connections[0]).toBeInstanceOf(FakeGain);
+    expect(context.panners).toHaveLength(1);
+  });
+
+  it("inserts only the non-default stages", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      effects: fxRecipe({ stems: { vocals: { eqMid: 2 } } }),
+    });
+    const context = contexts[0];
+    const manual = context.sources[0].connections[0] as FakeGain;
+    const mid = manual.connections[0] as FakeBiquad;
+    expect(mid.type).toBe("peaking");
+    expect(mid.connections[0]).toBeInstanceOf(FakeGain); // → section gain
+    expect(context.panners).toHaveLength(0);
+  });
+
+  it("updates EQ gains and pan live; a new band or pan restarts", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      effects: fxRecipe({ stems: { vocals: { eqLow: 3, pan: 0.2 } } }),
+    });
+    const context = contexts[0];
+    const created = context.gains.length + context.biquads.length;
+    expect(
+      handle.updateEffects(fxRecipe({ stems: { vocals: { eqLow: -6, pan: -0.5, echo: 0.2 } } })),
+    ).toBe("applied");
+    expect(context.gains.length + context.biquads.length).toBe(created);
+    const low = context.biquads.find((biquad) => biquad.type === "lowshelf")!;
+    expect(low.gain.value).toBe(-6);
+    expect(context.panners[0].pan.value).toBe(-0.5);
+    // Back to neutral in place.
+    expect(handle.updateEffects(fxRecipe({ stems: { vocals: { echo: 0.2 } } }))).toBe("applied");
+    expect(low.gain.value).toBe(0);
+    expect(context.panners[0].pan.value).toBe(0);
+    // A band that has no node yet needs a restart (built on the next play).
+    expect(
+      handle.updateEffects(fxRecipe({ stems: { vocals: { eqLow: 3, eqHigh: 2 } } })),
+    ).toBe("restart");
   });
 });
 

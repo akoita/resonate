@@ -10,6 +10,7 @@ import { StorageProvider } from "../storage/storage_provider";
 import { RemixController } from "./remix.controller";
 import { RemixService } from "./remix.service";
 import { RemixEligibilityService } from "./remix-eligibility.service";
+import { RemixEntitlementsService } from "./remix-entitlements";
 import {
   REMIX_GENERATION_QUEUE,
   RemixProjectService,
@@ -57,6 +58,8 @@ import {
   providers: [
     RemixService,
     RemixEligibilityService,
+    // Entitlement seam (#1903): Remix Studio Pro mode, free for everyone.
+    RemixEntitlementsService,
     RemixProjectService,
     RemixGenerationProcessor,
     RemixWorkerPrewarmService,

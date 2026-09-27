@@ -23,11 +23,16 @@ import {
 } from "./remix-arrangement";
 import {
   echoTaps,
+  panGains,
   REMIX_FX_DSP_VERSION,
+  REMIX_FX_EQ_BANDS,
   REMIX_FX_FILTER_Q,
   REMIX_FX_IMPULSE,
+  REMIX_FX_PRO_DSP_VERSION,
   REMIX_FX_SCHEMA_VERSION,
   remixFxSpeed,
+  remixFxUsesPro,
+  stemEqStages,
   remixFxStretchPlan,
   remixFxVarispeedRate,
   reverbWet,
@@ -180,6 +185,12 @@ export type StemMixFfmpegInput = {
   activeIntervals?: SectionInterval[] | null;
   /** Project stem id keying this input's per-stem fx (#1897). */
   fxStemId?: string;
+  /**
+   * The input file's channel count, probed only for a source stem with a Pro
+   * pan (#1903): 1 inserts the explicit unity mono → stereo up-mix before
+   * the pan. Absent = stereo.
+   */
+  channels?: number;
   /**
    * AI-generated layer input (#1209): varispeed applies, per-stem fx do not,
    * and it sends `master.space` to the reverb bus (#1897).
@@ -358,6 +369,41 @@ function fxToneFilter(tone: number | undefined): string | null {
   const filter = toneFilter(tone ?? 0);
   if (!filter) return null;
   return `${filter.type}=f=${fxNum(filter.frequencyHz)}:width_type=q:width=${fxNum(REMIX_FX_FILTER_Q)}`;
+}
+
+/**
+ * Pro stages of one source stem (#1903 S6a, remix-fx-pro-dsp/v1), in chain
+ * order: EQ low → mid → high → pan. Each is inserted only when its value is
+ * non-default, so a stem without Pro fields gets none. The biquads are the
+ * Audio EQ Cookbook filters the preview's BiquadFilterNodes compute (shelves
+ * with slope 1, the peaking band with a linear Q). The pan applies the
+ * StereoPannerNode stereo law as an explicit matrix with '=' (no
+ * renormalization); a mono input is first duplicated to both channels at
+ * unity, like the preview's explicit 2-channel "speakers" up-mix (ffmpeg's
+ * automatic mono up-mix would be −3 dB).
+ */
+export function stemProFilters(
+  stemFx: RemixFxStem,
+  channels?: number,
+): string[] {
+  const filters = stemEqStages(stemFx).map(({ band, gainDb }) => {
+    const spec = REMIX_FX_EQ_BANDS[band];
+    const g = fxNum(gainDb);
+    const f = fxNum(spec.frequencyHz);
+    if (spec.type === "peaking") {
+      return `equalizer=f=${f}:t=q:w=${fxNum(spec.q!)}:g=${g}`;
+    }
+    return `${spec.type}=f=${f}:t=s:w=${fxNum(spec.slope!)}:g=${g}`;
+  });
+  const pan = panGains(stemFx.pan ?? 0);
+  if (pan) {
+    if (channels === 1) filters.push("pan=stereo|c0=c0|c1=c0");
+    const { ll, lr, rl, rr } = pan.matrix;
+    filters.push(
+      `pan=stereo|c0=${fxNum(ll)}*c0+${fxNum(lr)}*c1|c1=${fxNum(rl)}*c0+${fxNum(rr)}*c1`,
+    );
+  }
+  return filters;
 }
 
 function stemFxFor(
@@ -579,11 +625,13 @@ function structureFrontEnd(
 }
 
 /**
- * remix-fx/v1 render graph (#1897), in the contract order:
+ * remix-fx render graph (#1897, #1903), in the contract order:
  *  - per input: aresample=48000 (float) → varispeed (asetrate=48000·s,
- *    aresample=48000) → gain dB → section gate with intervals ÷ s (output
- *    time) → [stems only] tone → echo (aecho, feed-forward taps) → asplit into
- *    dry + a reverb send scaled by its wet level;
+ *    aresample=48000) → gain dB → [source stems only, v3 Pro, each only when
+ *    non-default] EQ low → EQ mid → EQ high → pan ({@link stemProFilters}) →
+ *    section gate with intervals ÷ s (output time) → [stems only] tone → echo
+ *    (aecho, feed-forward taps) → asplit into dry + a reverb send scaled by
+ *    its wet level;
  *  - reverb bus: amix(sends) → apad by the IR length → afir with the
  *    energy-normalized stereo IR and afir's own IR auto-gain disabled (plain
  *    convolution). afir stops at its input's EOF, so the pad sits BEFORE it:
@@ -663,6 +711,9 @@ export function buildFxStemMixFilter(
       chain.push(`asetrate=${480 * rateHundredths}`, "aresample=48000");
     }
     chain.push(`volume=${normalizeRemixStemGainDb(input.gainDb)}dB`);
+    // Pro EQ + pan (#1903): source stems only (stemFxFor is empty for AI
+    // layers, the beat and parts), each stage only when non-default.
+    chain.push(...stemProFilters(stemFx, input.channels));
     // The beat's (and a part's) block on/off is baked into its track: never
     // gated.
     if (
@@ -736,6 +787,35 @@ export function buildFxStemMixFilter(
   );
   graph.push(`[sum]${masterChain.join(",")}[mix]`);
   return { filter: graph.join(";"), needsImpulse };
+}
+
+/** ffprobe args reading the first audio stream's channel count. */
+export function buildChannelProbeArgs(inputPath: string): string[] {
+  return [
+    "-v",
+    "error",
+    "-select_streams",
+    "a:0",
+    "-show_entries",
+    "stream=channels",
+    "-of",
+    "csv=p=0",
+    inputPath,
+  ];
+}
+
+/** The first audio stream's channel count (#1903); throws when unreadable. */
+export async function probeAudioChannels(inputPath: string): Promise<number> {
+  const { stdout } = await execFileAsync(
+    "ffprobe",
+    buildChannelProbeArgs(inputPath),
+    { timeout: 30_000 },
+  );
+  const channels = Number.parseInt(String(stdout).trim(), 10);
+  if (!Number.isInteger(channels) || channels < 1) {
+    throw new Error("ffprobe reported no audio channels");
+  }
+  return channels;
 }
 
 let afirOptionsProbe: Promise<string> | null = null;
@@ -941,7 +1021,15 @@ function renderMetadata(
     activeStemCount,
     // #1897: the exact recipe + DSP version this artifact was rendered with.
     ...(fx
-      ? { effects: fx.effects, effectsDspVersion: REMIX_FX_DSP_VERSION }
+      ? {
+          effects: fx.effects,
+          effectsDspVersion: REMIX_FX_DSP_VERSION,
+          // #1903: the Pro EQ/pan mapping, whenever the recipe carries a Pro
+          // field.
+          ...(remixFxUsesPro(fx.effects)
+            ? { effectsProDspVersion: REMIX_FX_PRO_DSP_VERSION }
+            : {}),
+        }
       : {}),
     // #1898: the time-stretch engine build + stage parameters.
     ...(stretchPlan ? { stretch: remixStretchMetadata(stretchPlan) } : {}),
@@ -1147,6 +1235,12 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           `[mix] ${label}: time-stretched ${stretched} inputs (tempo ${stretchPlan.tempo}, ${stretchPlan.semitones} st) in ${Date.now() - stretchStarted}ms`,
         );
       }
+      if (fx) {
+        // #1903: a Pro pan needs to know a mono stem (explicit unity
+        // up-mix); only such stems are probed, after any stretch replaced
+        // the file.
+        await this.probePannedStemChannels(ffmpegInputs, fx.effects, label);
+      }
       if (beat) {
         // #1902: the beat is synthesized over the (structured) timeline at
         // 48 kHz and streamed to a WAV in this render's temp dir. With
@@ -1252,6 +1346,36 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           }`,
         );
       });
+    }
+  }
+
+  /**
+   * Pro pan (#1903): records the channel count of every source stem input
+   * whose recipe pans it, so a mono stem gets the explicit unity up-mix. A
+   * probe failure fails the render (retryable) rather than guessing.
+   */
+  private async probePannedStemChannels(
+    ffmpegInputs: StemMixFfmpegInput[],
+    effects: RemixFxRecipe,
+    label: string,
+  ): Promise<void> {
+    for (const input of ffmpegInputs) {
+      if (input.aiLayer || input.beat || input.part || !input.fxStemId) {
+        continue;
+      }
+      if (!panGains(effects.stems?.[input.fxStemId]?.pan ?? 0)) continue;
+      try {
+        input.channels = await probeAudioChannels(input.path);
+      } catch (error) {
+        this.logger.error(
+          `${label}: channel probe failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        throw new RemixGenerationProviderError(
+          "provider_unavailable",
+          "The stems could not be mixed. Please try again later.",
+          true,
+        );
+      }
     }
   }
 

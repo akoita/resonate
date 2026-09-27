@@ -70,9 +70,14 @@ import {
   normalizeRemixFxInput,
   readStoredRemixFx,
   REMIX_FX_DSP_VERSION,
+  remixFxProFieldsSet,
   type RemixFxRecipe,
   type RemixRenderFx,
 } from "./remix-fx";
+import {
+  RemixEntitlementsService,
+  type RemixProjectEntitlements,
+} from "./remix-entitlements";
 import {
   gateIntervalsForBlocks,
   exceedsTimelineCap,
@@ -527,7 +532,18 @@ export class RemixProjectService {
     private readonly layeredRenderer?: LayeredRemixRenderer,
     @Optional()
     private readonly promptModeration?: PromptModerationService,
+    // Entitlement seam (#1903): optional so positional test constructions
+    // keep working; the default policy allows everyone.
+    @Optional()
+    private readonly entitlements: RemixEntitlementsService = new RemixEntitlementsService(),
   ) {}
+
+  /** The project DTO's entitlements for `userId` (#1903). */
+  private projectEntitlements(
+    userId: string,
+  ): Promise<RemixProjectEntitlements> {
+    return this.entitlements.forProject(userId);
+  }
 
   /**
    * Per-user sliding-window limit. 429 (not the catalog's 400) so agent
@@ -713,7 +729,11 @@ export class RemixProjectService {
       policyVersion: eligibility.policyVersion,
     });
 
-    return this.toResponse(project, eligibility);
+    return this.toResponse(
+      project,
+      eligibility,
+      await this.projectEntitlements(input.userId),
+    );
   }
 
   async getProject(userId: string, projectId: string) {
@@ -725,7 +745,11 @@ export class RemixProjectService {
       project = (await loadProject(project.id)) ?? project;
     }
     const response = {
-      ...this.toResponse(project),
+      ...this.toResponse(
+        project,
+        undefined,
+        await this.projectEntitlements(userId),
+      ),
       // Sell-rights bridge (#1413): additive/backward-compatible — lets the
       // studio show/hide a "List this remix for sale" CTA without a second
       // round-trip.
@@ -827,7 +851,10 @@ export class RemixProjectService {
       include: PROJECT_INCLUDE,
       orderBy: { createdAt: "desc" },
     });
-    return projects.map((project) => this.toResponse(project));
+    const entitlements = await this.projectEntitlements(userId);
+    return projects.map((project) =>
+      this.toResponse(project, undefined, entitlements),
+    );
   }
 
   async updateProject(
@@ -852,8 +879,10 @@ export class RemixProjectService {
        */
       aiTarget?: { kind: string; stemId?: string | null } | null;
       /**
-       * Shared effects recipe remix-fx/v2 (#1897, #1898; v1 accepted): undefined leaves it
-       * unchanged, null clears it, an all-default recipe normalizes to null.
+       * Shared effects recipe remix-fx/v3 (#1897, #1898, #1903; v1/v2
+       * accepted): undefined leaves it unchanged, null clears it, an
+       * all-default recipe normalizes to null. Setting a Pro field (EQ, pan)
+       * needs the `remix.pro` entitlement (403 `pro_required`).
        */
       effects?: unknown;
       /**
@@ -931,6 +960,25 @@ export class RemixProjectService {
         throw new BadRequestException(normalized.error);
       }
       effects = normalized.value;
+      // Pro fields (#1903): setting a new or changed EQ/pan value needs the
+      // `remix.pro` entitlement. Keeping or removing saved values never
+      // does, so a saved Pro recipe keeps rendering whatever the policy.
+      const proFields = remixFxProFieldsSet(
+        effects,
+        readStoredRemixFx(project.effects),
+      );
+      if (proFields.length > 0) {
+        const decision = await this.entitlements.pro(userId);
+        if (!decision.allowed) {
+          throw new ForbiddenException({
+            code: "pro_required",
+            message:
+              "Per-stem EQ and pan are Pro tools, which this account can't use right now.",
+            fields: proFields,
+            policyVersion: decision.policyVersion,
+          });
+        }
+      }
     }
 
     const stemUpdates = patch.stems ?? [];
@@ -1198,7 +1246,11 @@ export class RemixProjectService {
       });
     });
 
-    return this.toResponse(updated);
+    return this.toResponse(
+      updated,
+      undefined,
+      await this.projectEntitlements(userId),
+    );
   }
 
   /**
@@ -1480,7 +1532,11 @@ export class RemixProjectService {
       policyVersion: eligibility.policyVersion,
     });
 
-    return this.toResponse(updated);
+    return this.toResponse(
+      updated,
+      undefined,
+      await this.projectEntitlements(userId),
+    );
   }
 
   async processGenerationJob(data: RemixGenerationJobData) {
@@ -3078,6 +3134,13 @@ export class RemixProjectService {
               typeof renderMetadataRecord.effectsDspVersion === "string"
                 ? renderMetadataRecord.effectsDspVersion
                 : REMIX_FX_DSP_VERSION,
+            // #1903: the Pro EQ/pan mapping, when the render recorded one.
+            ...(typeof renderMetadataRecord.effectsProDspVersion === "string"
+              ? {
+                  effectsProDspVersion:
+                    renderMetadataRecord.effectsProDspVersion,
+                }
+              : {}),
             ...(renderedStretch ? { stretch: renderedStretch } : {}),
           }
         : {}),
@@ -3091,6 +3154,12 @@ export class RemixProjectService {
                 typeof conditioningRecord.effectsDspVersion === "string"
                   ? conditioningRecord.effectsDspVersion
                   : REMIX_FX_DSP_VERSION,
+              ...(typeof conditioningRecord.effectsProDspVersion === "string"
+                ? {
+                    effectsProDspVersion:
+                      conditioningRecord.effectsProDspVersion,
+                  }
+                : {}),
               ...(conditioningStretch ? { stretch: conditioningStretch } : {}),
             },
           }
@@ -3296,7 +3365,11 @@ export class RemixProjectService {
 
     const updated = (await loadProject(project.id))!;
     return {
-      ...this.toResponse(updated),
+      ...this.toResponse(
+        updated,
+        undefined,
+        await this.projectEntitlements(userId),
+      ),
       publishedRelease: { releaseId: release.id, trackId },
     };
   }
@@ -3740,6 +3813,7 @@ export class RemixProjectService {
   private toResponse(
     project: RemixProjectWithStems,
     eligibility?: RemixEligibilityResult,
+    entitlements?: RemixProjectEntitlements,
   ) {
     const sectionGrid = deriveSectionGrid(
       project.stems.map((stem) => ({
@@ -3830,6 +3904,9 @@ export class RemixProjectService {
         ? structureTimeline(sectionGrid, structure?.blocks ?? null)
         : null,
       ...(eligibility ? { eligibility } : {}),
+      // Entitlements (#1903): Remix Studio Pro mode, decided server-side so
+      // the client never hard-codes it.
+      ...(entitlements ? { entitlements } : {}),
     };
   }
 }

@@ -6074,8 +6074,16 @@ export type RemixProject = {
   eligibility?: RemixEligibilityResponse;
   /** Saved Studio AI intent (#1882); null/absent = whole track. */
   aiTarget?: RemixAiTarget | null;
-  /** Effects recipe `remix-fx/v2` (#1897, #1898; stored v1 reads as v2); null/absent = untouched. */
+  /**
+   * Effects recipe `remix-fx/v3` (#1897, #1898, #1903; stored v1/v2 read as
+   * v3); null/absent = untouched.
+   */
   effects?: RemixFxRecipe | null;
+  /**
+   * Server-decided entitlements (#1903): `pro` offers the studio's Pro mode
+   * (free for everyone for now). Absent = not offered.
+   */
+  entitlements?: RemixProjectEntitlements;
   /** Structure recipe `remix-structure/v1` (#1899); null/absent = original order. */
   structure?: RemixStructure | null;
   /**
@@ -6094,6 +6102,17 @@ export type RemixProject = {
   parts?: RemixParts | null;
   /** Generated AI part takes (#1901), newest first (at most 24). */
   partTakes?: RemixPartTake[];
+};
+
+/** One entitlement decision (#1903), e.g. Remix Studio Pro mode. */
+export type RemixEntitlementDecision = {
+  allowed: boolean;
+  reason: string;
+  policyVersion: string;
+};
+
+export type RemixProjectEntitlements = {
+  pro?: RemixEntitlementDecision;
 };
 
 /** Studio AI target (#1882): whole track, a new layer, or a stem replacement. */
@@ -6139,7 +6158,10 @@ export type RemixProjectPatch = {
   addStemIds?: string[];
   /** Saved Studio AI intent (#1882); null (or kind "whole") clears it. */
   aiTarget?: { kind: RemixAiTargetKind; stemId?: string | null } | null;
-  /** Effects recipe `remix-fx/v2` (#1897, #1898; v1 accepted); null clears it. */
+  /**
+   * Effects recipe `remix-fx/v3` (#1897, #1898, #1903; v1/v2 accepted); null
+   * clears it. Setting a Pro field (EQ, pan) needs the `pro` entitlement.
+   */
   effects?: RemixFxRecipe | null;
   /**
    * Structure recipe `remix-structure/v1` (#1899); null = original order.

@@ -1,5 +1,5 @@
 /**
- * Shared Remix Studio effects recipe `remix-fx/v2` (#1897, #1898).
+ * Shared Remix Studio effects recipe `remix-fx/v3` (#1897, #1898, #1903).
  *
  * One versioned recipe is persisted on `RemixProject.effects` and executed by
  * both engines: the server ffmpeg render (stem-audio-mixer.ts) and the browser
@@ -13,23 +13,46 @@
  * shift), executed by the Signalsmith Stretch engine (remix-stretch.ts). The
  * v1 DSP numbers are unchanged; v1 recipes still read and are rewritten as v2.
  *
+ * v3 (#1903 S6a, Pro mode) adds per-stem `eqLow` / `eqMid` / `eqHigh` (a
+ * 3-band EQ, gain in dB) and `pan`. Their mapping is versioned separately as
+ * {@link REMIX_FX_PRO_DSP_VERSION} and pinned by `remix-fx-pro-v1.parity.json`
+ * (within 1e-12). v1 and v2 recipes still read and are rewritten as v3 with
+ * the same values. Whether a user may SET Pro fields is decided by the
+ * entitlement seam (remix-entitlements.ts), never here: saved Pro fields
+ * always render.
+ *
  * Effects are deterministic DSP, not AI: they never change a render's
  * grounding, cost nothing, and never interpolate user strings into a graph.
  */
 
 import { writeFile } from "fs/promises";
 
-export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v2";
-/** The pre-#1898 recipe version: still read, rewritten as v2. */
+export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v3";
+/** The pre-#1903 recipe version: still read, rewritten as v3. */
+export const REMIX_FX_V2_SCHEMA_VERSION = "remix-fx/v2";
+/** The pre-#1898 recipe version: still read, rewritten as v3. */
 export const REMIX_FX_V1_SCHEMA_VERSION = "remix-fx/v1";
+/** The v1 mapping (tone, echo, space, warmth); unchanged by v2 and v3. */
 export const REMIX_FX_DSP_VERSION = "remix-fx-dsp/v1";
+/**
+ * The Pro mapping (#1903 S6a): per-stem EQ and pan. Recorded in render
+ * metadata whenever a rendered recipe carries a Pro field.
+ */
+export const REMIX_FX_PRO_DSP_VERSION = "remix-fx-pro-dsp/v1";
 /** Key shift bounds (integer semitones). */
 export const REMIX_FX_SEMITONES_MIN = -6;
 export const REMIX_FX_SEMITONES_MAX = 6;
 
 export type RemixFxSchemaVersion =
   | typeof REMIX_FX_SCHEMA_VERSION
+  | typeof REMIX_FX_V2_SCHEMA_VERSION
   | typeof REMIX_FX_V1_SCHEMA_VERSION;
+
+const READABLE_SCHEMA_VERSIONS: readonly string[] = [
+  REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V2_SCHEMA_VERSION,
+  REMIX_FX_V1_SCHEMA_VERSION,
+];
 
 export type RemixFxMaster = {
   /**
@@ -59,10 +82,27 @@ export type RemixFxStem = {
   space?: number;
   echo?: number;
   tone?: number;
+  /** v3 Pro (#1903): low-shelf gain in dB, −12..12 step 0.5; default 0. */
+  eqLow?: number;
+  /** v3 Pro (#1903): peaking (1 kHz) gain in dB, −12..12 step 0.5; default 0. */
+  eqMid?: number;
+  /** v3 Pro (#1903): high-shelf gain in dB, −12..12 step 0.5; default 0. */
+  eqHigh?: number;
+  /** v3 Pro (#1903): stereo pan −1 (left) .. 1 (right), step 0.01; default 0. */
+  pan?: number;
 };
 
+/** The v3 Pro fields of a stem (#1903 S6a), in chain order. */
+export const REMIX_FX_PRO_STEM_KEYS = [
+  "eqLow",
+  "eqMid",
+  "eqHigh",
+  "pan",
+] as const;
+export type RemixFxProStemKey = (typeof REMIX_FX_PRO_STEM_KEYS)[number];
+
 export type RemixFxRecipe = {
-  /** Normalized recipes are always v2; the v1 literal types stored shapes. */
+  /** Normalized recipes are always v3; v1/v2 literals type stored shapes. */
   schemaVersion: RemixFxSchemaVersion;
   master?: RemixFxMaster;
   /** Keyed by project stem id (the `stemId` of a RemixProjectStem row). */
@@ -76,7 +116,16 @@ export type RemixRenderFx = {
   bpm: number | null;
 };
 
-type FieldSpec = { min: number; max: number; defaultValue: number };
+type FieldSpec = {
+  min: number;
+  max: number;
+  defaultValue: number;
+  /** Rounding step; default 0.01 (2 decimals). */
+  step?: number;
+};
+
+/** EQ gain bounds in dB and step (#1903). */
+export const REMIX_FX_EQ_GAIN_DB = Object.freeze({ min: -12, max: 12, step: 0.5 });
 
 const MASTER_FIELDS: Record<keyof RemixFxMasterLevels, FieldSpec> = {
   speed: { min: 0.75, max: 1.25, defaultValue: 1 },
@@ -85,15 +134,33 @@ const MASTER_FIELDS: Record<keyof RemixFxMasterLevels, FieldSpec> = {
   warmth: { min: 0, max: 1, defaultValue: 0 },
 };
 
+const EQ_FIELD: FieldSpec = {
+  min: REMIX_FX_EQ_GAIN_DB.min,
+  max: REMIX_FX_EQ_GAIN_DB.max,
+  defaultValue: 0,
+  step: REMIX_FX_EQ_GAIN_DB.step,
+};
+
 const STEM_FIELDS: Record<keyof RemixFxStem, FieldSpec> = {
   space: { min: 0, max: 1, defaultValue: 0 },
   echo: { min: 0, max: 1, defaultValue: 0 },
   tone: { min: -1, max: 1, defaultValue: 0 },
+  eqLow: EQ_FIELD,
+  eqMid: EQ_FIELD,
+  eqHigh: EQ_FIELD,
+  pan: { min: -1, max: 1, defaultValue: 0 },
 };
 
 /** Round to 2 decimals; −0 collapses to 0 so it reads as the default. */
 function round2(value: number): number {
   const rounded = Math.round(value * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
+}
+
+/** Round to a field's step (0.01 by default); −0 collapses to 0. */
+function roundToStep(value: number, step: number | undefined): number {
+  if (step === undefined) return round2(value);
+  const rounded = Math.round(value / step) * step;
   return rounded === 0 ? 0 : rounded;
 }
 
@@ -130,7 +197,7 @@ function normalizeFields<T extends Record<string, number | undefined>>(
         error: `${path}.${key} must be between ${spec.min} and ${spec.max}`,
       };
     }
-    const rounded = round2(raw);
+    const rounded = roundToStep(raw, spec.step);
     if (rounded !== spec.defaultValue) out[key] = rounded;
   }
   return { value: Object.keys(out).length > 0 ? (out as T) : null };
@@ -186,8 +253,8 @@ function normalizeMaster(
 }
 
 /**
- * Validate + normalize a PATCH `effects` payload. Accepts a v1 or v2 recipe
- * (or none) and always writes v2. Values round to 2 decimals, defaults are
+ * Validate + normalize a PATCH `effects` payload. Accepts a v1, v2 or v3
+ * recipe (or none) and always writes v3. EQ gains round to 0.5 dB. Values round to 2 decimals, defaults are
  * omitted, stems left with no non-default value are dropped, and an
  * all-default recipe normalizes to null (untouched). Callers must skip this
  * for `undefined` (field absent = unchanged).
@@ -212,11 +279,10 @@ export function normalizeRemixFxInput(
   }
   if (
     value.schemaVersion !== undefined &&
-    value.schemaVersion !== REMIX_FX_SCHEMA_VERSION &&
-    value.schemaVersion !== REMIX_FX_V1_SCHEMA_VERSION
+    !READABLE_SCHEMA_VERSIONS.includes(value.schemaVersion as string)
   ) {
     return {
-      error: `effects.schemaVersion must be "${REMIX_FX_SCHEMA_VERSION}" or "${REMIX_FX_V1_SCHEMA_VERSION}"`,
+      error: `effects.schemaVersion must be "${REMIX_FX_SCHEMA_VERSION}", "${REMIX_FX_V2_SCHEMA_VERSION}" or "${REMIX_FX_V1_SCHEMA_VERSION}"`,
     };
   }
 
@@ -266,10 +332,7 @@ export function normalizeRemixFxInput(
  */
 export function readStoredRemixFx(stored: unknown): RemixFxRecipe | null {
   if (!isPlainObject(stored)) return null;
-  if (
-    stored.schemaVersion !== REMIX_FX_SCHEMA_VERSION &&
-    stored.schemaVersion !== REMIX_FX_V1_SCHEMA_VERSION
-  ) {
+  if (!READABLE_SCHEMA_VERSIONS.includes(stored.schemaVersion as string)) {
     return null;
   }
   const normalized = normalizeRemixFxInput(stored, null);
@@ -387,6 +450,207 @@ export function warmthCurve(w: number, x: number): number {
   if (!(w > 0)) return x;
   const k = warmthK(w);
   return Math.tanh(k * x) / Math.tanh(k);
+}
+
+// --- Pro: per-stem EQ and pan (v3, #1903 S6a; remix-fx-pro-dsp/v1) ----------
+
+/** Whether a stem entry carries any Pro field. */
+export function stemUsesPro(stem: RemixFxStem | null | undefined): boolean {
+  if (!stem) return false;
+  return REMIX_FX_PRO_STEM_KEYS.some(
+    (key) => stem[key] !== undefined && stem[key] !== 0,
+  );
+}
+
+/** Whether any stem of a recipe carries a Pro field. */
+export function remixFxUsesPro(
+  effects: RemixFxRecipe | null | undefined,
+): boolean {
+  return Object.values(effects?.stems ?? {}).some(stemUsesPro);
+}
+
+/**
+ * The Pro fields a normalized `next` recipe SETS relative to the `stored`
+ * one: every `stems.<id>.<key>` whose value is present and differs from the
+ * stored value. Keeping or removing saved Pro values sets nothing, so an
+ * entitlement check on this list never forces a change to stored audio.
+ */
+export function remixFxProFieldsSet(
+  next: RemixFxRecipe | null | undefined,
+  stored: RemixFxRecipe | null | undefined,
+): string[] {
+  const set: string[] = [];
+  for (const [stemId, stem] of Object.entries(next?.stems ?? {})) {
+    const before = stored?.stems?.[stemId];
+    for (const key of REMIX_FX_PRO_STEM_KEYS) {
+      const value = stem[key];
+      if (value !== undefined && value !== before?.[key]) {
+        set.push(`stems.${stemId}.${key}`);
+      }
+    }
+  }
+  return set;
+}
+
+export type RemixFxEqBandId = "low" | "mid" | "high";
+
+export type RemixFxEqBand = {
+  /** The recipe field holding this band's gain. */
+  key: "eqLow" | "eqMid" | "eqHigh";
+  /** WebAudio BiquadFilterNode type; ffmpeg lowshelf / equalizer / highshelf. */
+  type: "lowshelf" | "peaking" | "highshelf";
+  frequencyHz: number;
+  /** Shelf slope S (shelves only; WebAudio fixes S = 1 and ignores Q). */
+  slope?: number;
+  /** Linear Q (peaking only; WebAudio's peaking Q is linear). */
+  q?: number;
+};
+
+/**
+ * The 3 bands, in chain order: Audio EQ Cookbook biquads exactly as the Web
+ * Audio spec defines BiquadFilterNode (A = 10^(G/40), ω0 = 2π·f0/Fs).
+ */
+export const REMIX_FX_EQ_BANDS: Readonly<Record<RemixFxEqBandId, RemixFxEqBand>> =
+  Object.freeze({
+    low: { key: "eqLow", type: "lowshelf", frequencyHz: 200, slope: 1 },
+    mid: { key: "eqMid", type: "peaking", frequencyHz: 1000, q: 0.7071 },
+    high: { key: "eqHigh", type: "highshelf", frequencyHz: 4000, slope: 1 },
+  });
+
+export const REMIX_FX_EQ_BAND_ORDER: readonly RemixFxEqBandId[] = [
+  "low",
+  "mid",
+  "high",
+];
+
+/** Biquad coefficients normalized by a0: y = b0·x + b1·x1 + b2·x2 − a1·y1 − a2·y2. */
+export type RemixFxBiquadCoefficients = {
+  b0: number;
+  b1: number;
+  b2: number;
+  a1: number;
+  a2: number;
+};
+
+/**
+ * The Audio EQ Cookbook coefficients for one band at `gainDb` and
+ * `sampleRate`, normalized by a0 — the transfer function both engines
+ * implement (WebAudio BiquadFilterNode; ffmpeg lowshelf/equalizer/highshelf
+ * with t=s:w=1 / t=q:w=0.7071).
+ *   shelves: α = sin ω0 / 2 · √((A + 1/A)(1/S − 1) + 2), S = 1
+ *   peaking: α = sin ω0 / (2Q), Q linear
+ */
+export function eqBiquadCoefficients(
+  bandId: RemixFxEqBandId,
+  gainDb: number,
+  sampleRate: number,
+): RemixFxBiquadCoefficients {
+  const band = REMIX_FX_EQ_BANDS[bandId];
+  const A = Math.pow(10, gainDb / 40);
+  const w0 = (2 * Math.PI * band.frequencyHz) / sampleRate;
+  const cos = Math.cos(w0);
+  const sin = Math.sin(w0);
+  let b0: number;
+  let b1: number;
+  let b2: number;
+  let a0: number;
+  let a1: number;
+  let a2: number;
+  if (band.type === "peaking") {
+    const alpha = sin / (2 * band.q!);
+    b0 = 1 + alpha * A;
+    b1 = -2 * cos;
+    b2 = 1 - alpha * A;
+    a0 = 1 + alpha / A;
+    a1 = -2 * cos;
+    a2 = 1 - alpha / A;
+  } else {
+    const S = band.slope!;
+    const alpha = (sin / 2) * Math.sqrt((A + 1 / A) * (1 / S - 1) + 2);
+    const k = 2 * Math.sqrt(A) * alpha;
+    if (band.type === "lowshelf") {
+      b0 = A * (A + 1 - (A - 1) * cos + k);
+      b1 = 2 * A * (A - 1 - (A + 1) * cos);
+      b2 = A * (A + 1 - (A - 1) * cos - k);
+      a0 = A + 1 + (A - 1) * cos + k;
+      a1 = -2 * (A - 1 + (A + 1) * cos);
+      a2 = A + 1 + (A - 1) * cos - k;
+    } else {
+      b0 = A * (A + 1 + (A - 1) * cos + k);
+      b1 = -2 * A * (A - 1 + (A + 1) * cos);
+      b2 = A * (A + 1 + (A - 1) * cos - k);
+      a0 = A + 1 - (A - 1) * cos + k;
+      a1 = 2 * (A - 1 - (A + 1) * cos);
+      a2 = A + 1 - (A - 1) * cos - k;
+    }
+  }
+  return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 };
+}
+
+/** |H(e^jω)| in dB of normalized biquad coefficients at `frequencyHz`. */
+export function biquadMagnitudeDb(
+  c: RemixFxBiquadCoefficients,
+  frequencyHz: number,
+  sampleRate: number,
+): number {
+  const w = (2 * Math.PI * frequencyHz) / sampleRate;
+  const re = (x0: number, x1: number, x2: number) =>
+    x0 + x1 * Math.cos(w) + x2 * Math.cos(2 * w);
+  const im = (x1: number, x2: number) => -(x1 * Math.sin(w) + x2 * Math.sin(2 * w));
+  const numRe = re(c.b0, c.b1, c.b2);
+  const numIm = im(c.b1, c.b2);
+  const denRe = re(1, c.a1, c.a2);
+  const denIm = im(c.a1, c.a2);
+  return (
+    10 *
+    Math.log10(
+      (numRe * numRe + numIm * numIm) / (denRe * denRe + denIm * denIm),
+    )
+  );
+}
+
+/**
+ * The stem's EQ stages in chain order: one per band whose gain is non-zero
+ * (a 0 dB band inserts nothing).
+ */
+export function stemEqStages(
+  stem: RemixFxStem | null | undefined,
+): Array<{ band: RemixFxEqBandId; gainDb: number }> {
+  const stages: Array<{ band: RemixFxEqBandId; gainDb: number }> = [];
+  for (const band of REMIX_FX_EQ_BAND_ORDER) {
+    const gainDb = stem?.[REMIX_FX_EQ_BANDS[band].key] ?? 0;
+    if (Number.isFinite(gainDb) && gainDb !== 0) stages.push({ band, gainDb });
+  }
+  return stages;
+}
+
+export type RemixFxPanGains = {
+  /** x = pan ≤ 0 ? pan + 1 : pan. */
+  x: number;
+  /** cos(x·π/2). */
+  gL: number;
+  /** sin(x·π/2). */
+  gR: number;
+  /** The stereo matrix: L' = ll·L + lr·R; R' = rl·L + rr·R. */
+  matrix: { ll: number; lr: number; rl: number; rr: number };
+};
+
+/**
+ * The StereoPannerNode equal-power law for a STEREO input (mono stems are
+ * up-mixed to stereo at unity first, in both engines):
+ *   pan ≤ 0: L' = L + R·gL, R' = R·gR;  pan > 0: L' = L·gL, R' = R + L·gR.
+ * Null at pan 0 (no stage), for a non-finite pan, or outside −1..1.
+ */
+export function panGains(pan: number): RemixFxPanGains | null {
+  if (!Number.isFinite(pan) || pan === 0 || pan < -1 || pan > 1) return null;
+  const x = pan <= 0 ? pan + 1 : pan;
+  const gL = Math.cos((x * Math.PI) / 2);
+  const gR = Math.sin((x * Math.PI) / 2);
+  const matrix =
+    pan <= 0
+      ? { ll: 1, lr: gL, rl: 0, rr: gR }
+      : { ll: gL, lr: 0, rl: gR, rr: 1 };
+  return { x, gL, gR, matrix };
 }
 
 // --- Reverb impulse response -------------------------------------------------

@@ -7,7 +7,10 @@ import {
   remixFxMaster,
   remixFxPitch,
   remixFxStem,
+  remixFxStemPro,
   remixFxStretchPlan,
+  REMIX_FX_EQ_BANDS,
+  REMIX_FX_EQ_BAND_ORDER,
   remixFxVarispeedRate,
   REMIX_FX_ECHO_TAPS,
   REMIX_FX_REVERB_SECONDS,
@@ -16,6 +19,7 @@ import {
   reverbWet,
   toneFilter,
   warmthCurve,
+  type RemixEqBandId,
   type RemixFxRecipe,
 } from "./remixFx";
 import {
@@ -1000,6 +1004,100 @@ function createToneStage(context: AudioContext, input: AudioNode, nodes: AudioNo
   return { output, filter, dry, wet, set };
 }
 
+/**
+ * Pro stages of one source stem (#1903 S6a), in chain order EQ low → mid →
+ * high → (2-channel up-mix) → pan, between the stem's gain and its section
+ * gain. Each node exists only when its value was non-default at play: a stem
+ * without Pro fields gets none, so such previews stay byte-identical.
+ */
+export type StemProStage = {
+  input: AudioNode;
+  output: AudioNode;
+  eq: Partial<Record<RemixEqBandId, BiquadFilterNode>>;
+  panner: StereoPannerNode | null;
+};
+
+/**
+ * Builds a stem's Pro stage for `effects`, or null when it has no Pro
+ * field. Biquads follow the Web Audio spec (shelves ignore Q; the peaking
+ * band's Q is linear); a 2-channel "speakers" GainNode up-mixes a mono stem
+ * at unity before the StereoPannerNode so its stereo law applies, like the
+ * render's explicit up-mix.
+ */
+export function createStemProStage(
+  context: BaseAudioContext,
+  effects: RemixFxRecipe | null,
+  stemId: string,
+  nodes: AudioNode[],
+): StemProStage | null {
+  const pro = remixFxStemPro(effects, stemId);
+  const chain: AudioNode[] = [];
+  const eq: StemProStage["eq"] = {};
+  for (const band of REMIX_FX_EQ_BAND_ORDER) {
+    const spec = REMIX_FX_EQ_BANDS[band];
+    if (pro[spec.key] === 0) continue;
+    const filter = context.createBiquadFilter();
+    filter.type = spec.type;
+    filter.frequency.value = spec.frequencyHz;
+    if (spec.q !== undefined) filter.Q.value = spec.q;
+    eq[band] = filter;
+    chain.push(filter);
+  }
+  let panner: StereoPannerNode | null = null;
+  if (pro.pan !== 0) {
+    const upmix = context.createGain();
+    upmix.channelCount = 2;
+    upmix.channelCountMode = "explicit";
+    upmix.channelInterpretation = "speakers";
+    panner = context.createStereoPanner();
+    chain.push(upmix, panner);
+  }
+  if (chain.length === 0) return null;
+  for (let index = 1; index < chain.length; index += 1) {
+    chain[index - 1].connect(chain[index]);
+  }
+  nodes.push(...chain);
+  const stage: StemProStage = {
+    input: chain[0],
+    output: chain[chain.length - 1],
+    eq,
+    panner,
+  };
+  applyStemProValues(stage, effects, stemId);
+  return stage;
+}
+
+/** Live EQ gains and pan on a built Pro stage (0 = neutral). */
+export function applyStemProValues(
+  stage: StemProStage,
+  effects: RemixFxRecipe | null,
+  stemId: string,
+): void {
+  const pro = remixFxStemPro(effects, stemId);
+  for (const band of REMIX_FX_EQ_BAND_ORDER) {
+    const filter = stage.eq[band];
+    if (filter) filter.gain.value = pro[REMIX_FX_EQ_BANDS[band].key];
+  }
+  if (stage.panner) stage.panner.pan.value = pro.pan;
+}
+
+/**
+ * Whether a built stage can play `effects` live: every non-default Pro
+ * value needs its node. A missing node (a band or pan turned on after the
+ * play started) needs a restart.
+ */
+export function stemProStageCovers(
+  stage: StemProStage | undefined,
+  effects: RemixFxRecipe | null,
+  stemId: string,
+): boolean {
+  const pro = remixFxStemPro(effects, stemId);
+  for (const band of REMIX_FX_EQ_BAND_ORDER) {
+    if (pro[REMIX_FX_EQ_BANDS[band].key] !== 0 && !stage?.eq[band]) return false;
+  }
+  return pro.pan === 0 || !!stage?.panner;
+}
+
 type StemFxChain = {
   tone: ReturnType<typeof createToneStage>;
   tapGains: GainNode[];
@@ -1008,6 +1106,8 @@ type StemFxChain = {
 
 type FxGraph = {
   stems: Map<string, StemFxChain>;
+  /** Pro stages by stem id (#1903); only stems with Pro fields at play. */
+  pro: Map<string, StemProStage>;
   /** The beat's reverb send (#1902); null without a beat. */
   beatSend: GainNode | null;
   /** The AI parts' reverb sends (#1901). */
@@ -1030,6 +1130,9 @@ type FxGraph = {
 /** Apply tone / echo / space / warmth values to a built graph, in place. */
 function applyFxValues(graph: FxGraph, effects: RemixFxRecipe | null): void {
   const master = remixFxMaster(effects);
+  for (const [stemId, stage] of graph.pro) {
+    applyStemProValues(stage, effects, stemId);
+  }
   let tail = 0;
   for (const [stemId, chain] of graph.stems) {
     const stemFx = remixFxStem(effects, stemId);
@@ -1766,12 +1869,18 @@ export function createStemPreviewEngine(input: {
         const normalized = normalizeRemixFx(nextEffects);
         if (!fx) return normalized === null ? "applied" : "restart";
         const nextPitch = remixFxPitch(normalized);
+        const graph = fx;
         if (
           remixFxMaster(normalized).speed !== fx.speed ||
           positiveBpm(nextBpm) !== fx.bpm ||
           // Tempo/key (#1898) pick the buffers and the beat timing.
           nextPitch.keepPitch !== pitch.keepPitch ||
-          nextPitch.semitones !== pitch.semitones
+          nextPitch.semitones !== pitch.semitones ||
+          // Pro (#1903): a band or pan turned on needs its node.
+          [...fx.stems.keys()].some(
+            (stemId) =>
+              !stemProStageCovers(graph.pro.get(stemId), normalized, stemId),
+          )
         ) {
           return "restart";
         }
@@ -1828,6 +1937,13 @@ export function createStemPreviewEngine(input: {
       const spacing = echoTapSpacing(bpm, speed);
       const stemChains = new Map<string, StemFxChain>();
       const stemInputs = new Map<string, AudioNode>();
+      // Pro stages (#1903): only for stems with Pro fields at play.
+      const proStages = new Map<string, StemProStage>();
+      for (const stem of request.stems) {
+        if (proStages.has(stem.stemId)) continue;
+        const stage = createStemProStage(audioContext, effects, stem.stemId, nodes);
+        if (stage) proStages.set(stem.stemId, stage);
+      }
       for (const stem of request.stems) {
         if (stemChains.has(stem.stemId)) continue;
         const input = audioContext.createGain();
@@ -1870,6 +1986,7 @@ export function createStemPreviewEngine(input: {
       }
       fx = {
         stems: stemChains,
+        pro: proStages,
         beatSend,
         partSends,
         masterTone,
@@ -1888,6 +2005,22 @@ export function createStemPreviewEngine(input: {
       for (const gain of partGains.values()) gain.connect(masterFade ?? output);
     }
 
+    // Pro (#1903): gain → [EQ → up-mix → pan] → section gain, so the Pro
+    // stages sit where the render puts them (before the section gate).
+    const connectThroughPro = (
+      stemId: string,
+      gain: GainNode,
+      sectionGain: GainNode,
+    ): GainNode => {
+      const stage = fx?.pro.get(stemId);
+      if (stage) {
+        gain.connect(stage.input);
+        stage.output.connect(sectionGain);
+      } else {
+        gain.connect(sectionGain);
+      }
+      return sectionGain;
+    };
     const onSourceEnded = () => {
       endedCount += 1;
       // A looping preview only ends through stop().
@@ -1924,7 +2057,9 @@ export function createStemPreviewEngine(input: {
         // One buffer source per block (#1899): no audio copies, flat memory.
         const gain = audioContext.createGain();
         const sectionGain = audioContext.createGain();
-        gain.connect(sectionGain).connect(stemInput(stem.stemId));
+        connectThroughPro(stem.stemId, gain, sectionGain).connect(
+          stemInput(stem.stemId),
+        );
         gains.set(stem.stemId, gain);
         sectionGains.set(stem.stemId, sectionGain);
         if (structureLoop) {
@@ -1990,7 +2125,10 @@ export function createStemPreviewEngine(input: {
         source.loopEnd = range.endSec;
       }
       if (sourceRate !== 1) source.playbackRate.value = sourceRate;
-      source.connect(gain).connect(sectionGain).connect(stemInput(stem.stemId));
+      source.connect(gain);
+      connectThroughPro(stem.stemId, gain, sectionGain).connect(
+        stemInput(stem.stemId),
+      );
       source.onended = onSourceEnded;
       sources.push(source);
       gains.set(stem.stemId, gain);

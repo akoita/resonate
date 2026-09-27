@@ -104,15 +104,24 @@ import {
   applyVibe,
   normalizeRemixFx,
   remixFxStem,
+  remixFxStemPro,
   sameRemixFx,
   withMasterFx,
   withRemixFxPitch,
   withStemFx,
+  withStemProFx,
   type RemixFxMaster,
   type RemixFxRecipe,
   type RemixFxStem,
+  type RemixFxStemPro,
   type RemixVibeId,
 } from "../../lib/remixFx";
+import {
+  PRO_MODE_TOOLTIP,
+  proModeAllowed,
+  readProMode,
+  writeProMode,
+} from "../../lib/remixProMode";
 import {
   gateIntervalsForBlocks,
   normalizeRemixStructure,
@@ -1647,6 +1656,44 @@ export function PreviewLevelMeter({
   );
 }
 
+/**
+ * The studio's Pro switch (#1903 S6a): shows the engineer tools (per-stem
+ * EQ and pan) on this device. Hook-free so tests can render it.
+ */
+export function ProModeSwitch({
+  on,
+  onToggle,
+}: {
+  on: boolean;
+  onToggle(): void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      title={PRO_MODE_TOOLTIP}
+      className="inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-1 text-xs text-zinc-300 hover:text-zinc-100 remix-pro-switch"
+      onClick={onToggle}
+    >
+      <span>Pro</span>
+      <span
+        aria-hidden="true"
+        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors ${
+          on ? "border-purple-400/70 bg-purple-500/60" : "border-zinc-600 bg-zinc-800"
+        }`}
+      >
+        <span
+          className={`inline-block h-2.5 w-2.5 rounded-full bg-white transition-transform ${
+            on ? "translate-x-3.5" : "translate-x-0.5"
+          }`}
+        />
+      </span>
+      <span className="sr-only"> — {PRO_MODE_TOOLTIP}</span>
+    </button>
+  );
+}
+
 export function RemixStudioEditor({
   project: persistedProject,
 }: {
@@ -1686,10 +1733,19 @@ export function RemixStudioEditor({
   const [listeningVolume, setListeningVolume] = useState<ListeningVolume>(
     DEFAULT_LISTENING_VOLUME,
   );
+  // Pro mode (#1903): this device's view preference, off by default; it
+  // never changes the recipe. Offered only when the server allows it.
+  const [proMode, setProMode] = useState(false);
   useEffect(() => {
     // Hydrate from localStorage after mount (SSR renders the default).
     setListeningVolume(readListeningVolume());
+    setProMode(readProMode());
   }, []);
+  const toggleProMode = () =>
+    setProMode((on) => {
+      writeProMode(!on);
+      return !on;
+    });
   const updateListeningVolume = (
     change: (volume: ListeningVolume) => ListeningVolume,
   ) => {
@@ -1758,6 +1814,7 @@ export function RemixStudioEditor({
       ? project.sectionGrid
       : null;
   const rights = describeSourceRights(project.source);
+  const proAllowed = proModeAllowed(project);
   const musicalSummary = projectMusicalSummary(project);
   const musicalSummaryLabel = [
     musicalSummary.bpm !== null ? `${musicalSummary.bpm} BPM` : null,
@@ -1978,6 +2035,7 @@ export function RemixStudioEditor({
       sections: edit?.sections ?? null,
       peaks: transport.peaks[stem.stemId] ?? null,
       fx: remixFxStem(edits.effects, stem.stemId),
+      pro: remixFxStemPro(edits.effects, stem.stemId),
     };
   });
 
@@ -1999,6 +2057,12 @@ export function RemixStudioEditor({
     key: keyof RemixFxStem,
     value: number,
   ) => updateEffects((effects) => withStemFx(effects, stemId, key, value));
+  // Pro EQ / pan (#1903): autosaved through the same effects PATCH.
+  const handleStemProChange = (
+    stemId: string,
+    key: keyof RemixFxStemPro,
+    value: number,
+  ) => updateEffects((effects) => withStemProFx(effects, stemId, key, value));
   const handleApplyVibe = (vibeId: RemixVibeId) =>
     updateEffects((effects) => applyVibe(vibeId, effects, project.stems));
   // Keep original pitch / Key (#1898): autosaved like the other controls.
@@ -3136,6 +3200,9 @@ export function RemixStudioEditor({
                   )}
                 </div>
                 <div className="flex items-center gap-3">
+                  {proAllowed && (
+                    <ProModeSwitch on={proMode} onToggle={toggleProMode} />
+                  )}
                   {soloStemId && (
                     <button
                       type="button"
@@ -3268,6 +3335,8 @@ export function RemixStudioEditor({
                     updateStemEdit(stemId, { sections })
                   }
                   onFxChange={handleStemFxChange}
+                  proMode={proAllowed && proMode}
+                  onProChange={handleStemProChange}
                   onSeek={transport.seek}
                   onLoopSection={loopSection}
                   timeline={sectionGrid ? timeline : null}
