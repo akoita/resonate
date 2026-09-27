@@ -193,4 +193,41 @@ describe("sample show campaign fixture creation", () => {
     });
     expect(campaigns.every((campaign) => campaign.artistId === null)).toBe(true);
   });
+
+  it("re-points the campaign's own rooms so a re-linked stand-in can be removed", async () => {
+    const fixture = SHOW_CAMPAIGN_FIXTURES.find((entry) => entry.artist.id === "sample-artist-leona-lewis")!;
+    const options = { assetDirectory, chainId: 31337, now: new Date("2026-06-21T12:00:00.000Z") };
+    await applyShowCampaignFixtures(prisma, storage, options);
+    // A campaign supporter room created while the campaign pointed at the stand-in.
+    await prisma.communityRoom.create({
+      data: {
+        roomType: "show_campaign_supporter",
+        ownerType: "show_campaign",
+        ownerId: fixture.campaign.id,
+        artistId: fixture.artist.id,
+        title: "Supporters",
+      },
+    });
+
+    const uploaderId = `${TEST_PREFIX}uploader-3`;
+    await prisma.artist.create({ data: { id: uploaderId, displayName: "Third Uploader", profileType: "artist" } });
+    await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}release-leona`,
+        artistId: uploaderId,
+        title: "Leona single",
+        status: "published",
+        primaryArtist: fixture.artist.displayName,
+      },
+    });
+
+    await applyShowCampaignFixtures(prisma, storage, options);
+
+    expect(await prisma.artist.count({ where: { id: fixture.artist.id } })).toBe(0);
+    const room = await prisma.communityRoom.findFirstOrThrow({
+      where: { ownerType: "show_campaign", ownerId: fixture.campaign.id },
+    });
+    expect(room.artistId).toBeNull();
+    await prisma.communityRoom.deleteMany({ where: { ownerType: "show_campaign", ownerId: fixture.campaign.id } });
+  });
 });

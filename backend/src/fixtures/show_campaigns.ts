@@ -699,6 +699,14 @@ export async function applyShowCampaignFixtures(
       create: { id: fixture.campaign.id, ...campaignData },
     });
 
+    // The campaign's own community rooms (city demand, supporters) record the
+    // campaign's artist; keep them on the artist the campaign now points at,
+    // so a re-link never leaves a room tying the old stand-in down.
+    await prisma.communityRoom.updateMany({
+      where: { ownerType: "show_campaign", ownerId: fixture.campaign.id },
+      data: { artistId: campaignArtistId },
+    });
+
     if (catalogArtist) await removeStaleFixtureArtist(prisma, fixture.artist.id);
 
     await prisma.showCampaignTier.deleteMany({ where: { campaignId: fixture.campaign.id } });
