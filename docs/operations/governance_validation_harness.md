@@ -66,8 +66,13 @@ Everything the harness writes is named `govval_<runId>_…`:
 - `govval_<runId>_era_…` — the erasure fixtures
 
 Cleanup filters on `startsWith(prefix)` and on a user-id list derived from rows
-that already matched that prefix. There is no path in it that can reach a row
-the harness did not create. The wallet addresses, private keys, transaction
+that already matched that prefix. The one widening is rows that *reference* a
+harness track: on a shared environment a real listener can create them (an AI
+DJ session that played a fixture), and they restrict the track delete, so
+cleanup removes AI DJ signals, DMCA reports, audio fingerprints and licenses
+whose `trackId` carries the prefix — the same set release deletion clears — plus
+AI DJ signals written by a harness user. It never deletes a non-harness user,
+artist, release or track. The wallet addresses, private keys, transaction
 hashes and listing ids are derived by hash from the prefix, so a second run with
 a different `--run-id` cannot collide with the first on any unique column.
 
