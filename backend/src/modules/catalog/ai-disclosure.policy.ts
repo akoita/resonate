@@ -225,7 +225,31 @@ export function isPromotionEligible(level: unknown): boolean {
   return typeof level !== "string" || level.trim().toUpperCase() !== "ALL";
 }
 
-export function deriveRemixAiDisclosure(grounding: string): {
+/**
+ * AI disclosure of a published remix from its draft grounding. `aiParts`
+ * (#1901): the render mixed at least one AI-generated instrument part, so
+ * the remix declares AI at least PARTLY with the `instruments` facet, even
+ * when its grounding alone would say NONE.
+ */
+export function deriveRemixAiDisclosure(
+  grounding: string,
+  options: { aiParts?: boolean } = {},
+): {
+  level: Exclude<AiDisclosureLevel, "UNDECLARED">;
+  facets: AiContributionFacet[];
+} {
+  const base = remixGroundingDisclosure(grounding);
+  if (!options.aiParts) return base;
+  if (base.level === "NONE") return { level: "PARTLY", facets: ["instruments"] };
+  return {
+    level: base.level,
+    facets: base.facets.includes("instruments")
+      ? base.facets
+      : [...base.facets, "instruments"],
+  };
+}
+
+function remixGroundingDisclosure(grounding: string): {
   level: Exclude<AiDisclosureLevel, "UNDECLARED">;
   facets: AiContributionFacet[];
 } {

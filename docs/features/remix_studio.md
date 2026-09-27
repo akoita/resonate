@@ -743,10 +743,11 @@ from the JWT, never the request body.
     effects" and Describe it keep both fields; "Reset to original" clears
     them.
 - AI parts (#1901, slice S4 of epic #1896). **Status: partial** — PR 1
-  (backend) shipped; PR 2 (render and preview placement of the chosen take,
-  lineage and AI disclosure for drafts with parts) and PR 3 (UI, help,
-  Playwright, whole-track generation moved under "Experimental") remain
-  tracked on #1901.
+  (backend) and PR 2 (render and preview placement, lineage and AI
+  disclosure for drafts with parts) shipped; PR 3 (UI, help, Playwright,
+  whole-track generation moved under "Experimental") remains tracked on
+  #1901. Until then parts are set through `PATCH parts`; the studio has no
+  part lane yet but plays saved parts in the preview.
   - **Idea.** "Add an AI part": pick one role (drums, bass, keys, pad,
     strings, guitar), 4 or 8 bars and optional style words. The studio
     generates takes (3 by default, 1–4), each locked to the song, the user
@@ -818,6 +819,53 @@ from the JWT, never the request body.
   - **Provenance.** Takes are `feature_conditioned` (the prompt is
     conditioned on the measured tempo and key and the result is conformed)
     and AI-generated.
+  - **Placement** (`remix-parts-dsp/v1`, PR 2). Both engines place a part
+    with `partPlacementSpans` (backend `remix-parts.ts`, web
+    `lib/remixParts.ts`), pinned by the committed fixture
+    `remix-parts-v1.parity.json` (8 cases: plain, reordered/repeated/removed
+    and off blocks, a pickup, truncation, 4 and 8 bars at 120/93/100 BPM):
+    one span per timeline block that is on for the part and is not a pickup
+    block (the beat's rule); in a span the take's loop restarts at phase 0
+    and repeats to the block's end; a span that is not a whole number of
+    loops (within 1e-6 s) gets a 10 ms fade-out ending at the block end.
+    The loop length is `bars × 240 / bpm`.
+  - **Render.** At render time the worker reads `parts` tolerantly against
+    the resolved timeline. Every unmuted part whose take is a COMPLETED take
+    of the same project and role is mixed; the others are recorded in
+    `renderMetadata.partsSkipped` with `take_missing` (no such take in this
+    project, or another role) or `take_not_ready` — never an error. Parts
+    are part of the arrangement: they are mixed in the stem mix, the Lyria
+    layered render and the audio-conditioned conditioning mix
+    (`conditioningParts`). Each take's FLAC is fetched through the storage
+    provider into the render's temp dir, decoded to 48 kHz stereo, laid out
+    on the timeline and streamed to a float WAV (memory: one loop plus a 1 s
+    chunk), then mixed like an AI layer: its lane gain (stem gain rules), no
+    section gating, no per-stem effects, a `master.space` reverb send, and
+    the varispeed rate. With a tempo/key stage (#1898) parts are stretched
+    like stems with a per-input plan: pitched parts take the tempo and key,
+    drum parts the tempo only (skipped when that is the identity); the beat
+    stays out of the stretch stage. Renders without parts are unchanged
+    byte for byte.
+  - **Lineage and disclosure.** `renderMetadata.parts` lists `{ partId,
+    role, takeId, provider, model, promptVersion, conformVersion, bars,
+    gainDb }` with `partsDspVersion`, and `addedParts` includes `"ai_part"`.
+    A draft whose render mixed at least one part is AI-assisted: a
+    `stem_audio` draft becomes `stem_plus_ai` with `aiGenerated: true` (so
+    the drafts panel shows the AI chip), even in `stem_mix` mode. Publishing
+    carries `parts` / `conditioningParts` into the release lineage and
+    declares AI at least PARTLY with the `instruments` facet. Rendering a
+    draft with parts is free: the takes were already paid for, and a
+    `stem_mix` render is never debited.
+  - **Preview.** The studio plays the saved parts: take audio is fetched
+    from the owner-only route and decoded on demand (an LRU of 8 takes per
+    engine); each span is one looping buffer source started at the span's
+    time from loop phase 0 (mid-loop when play starts inside it) and stopped
+    at its end, with the 10 ms fade-out where flagged; part gain → the
+    master (fade) chain plus the reverb send; live level/mute/solo on lane
+    ids `remix-part:{partId}`; silent while the original plays; a timeline
+    loop cycles the part's audio over that loop. With tempo/key the part
+    takes are stretched in the worker pool with their own plans and count
+    toward readiness like stems (varispeed fallback until ready).
   - **Deferred** (tracked on #1901): Demucs isolation of a take if
     prompt-only isolation leaks, more roles, an audio-conditioned part
     provider, and a separate "AI part" line in Usage & Billing (debits use the

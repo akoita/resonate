@@ -29,6 +29,14 @@ import {
   type RemixBeatSegment,
 } from "./remixBeat";
 import {
+  partLaneId,
+  partLengthSeconds,
+  partPlacementSpans,
+  partStretchPlan,
+  REMIX_PART_SPAN_FADE_SECONDS,
+  type RemixPartSpan,
+} from "./remixParts";
+import {
   isIdentityTimeline,
   masterFadeValueAt,
   REMIX_STRUCTURE_JOIN_FADE_SECONDS,
@@ -76,6 +84,149 @@ export type PreviewBeat = {
   grid: RemixBeatGrid;
   segments: RemixBeatSegment[];
 };
+
+/**
+ * One AI part (#1901) as the preview plays it: a decoded take (the loop,
+ * exactly `bars` bars at the song's tempo, decoded on the engine context
+ * with `partTakeBuffer`) placed on the timeline blocks it is on, like the
+ * render. Level and mute apply live through `update`.
+ */
+export type PreviewPart = {
+  partId: string;
+  role: string;
+  takeId: string;
+  buffer: AudioBuffer;
+  /** Take length in bars: the loop length the placement reads (shared with the render). */
+  bars: number;
+  gainDb: number;
+  muted: boolean;
+  /** Per-timeline-block on/off; null = on everywhere. */
+  blocks: boolean[] | null;
+};
+
+/** Live level/mute of a playing part (#1901), by part id. */
+export type PreviewPartState = Pick<PreviewPart, "partId" | "gainDb" | "muted">;
+
+/** The bar grid + timeline blocks the parts are placed on (#1901). */
+export type PreviewPartTimeline = {
+  grid: RemixBeatGrid;
+  segments: RemixBeatSegment[];
+};
+
+/** A part take to time-stretch ahead of play (#1898, #1901). */
+export type PreviewStretchPart = {
+  takeId: string;
+  role: string;
+  buffer: AudioBuffer;
+};
+
+/** Store id of a part take in the stretched-buffer store (#1901). */
+export function partStretchItemId(takeId: string): string {
+  return `part:${takeId}`;
+}
+
+/**
+ * One scheduled part source (#1901) for a span: it starts at `whenSec`
+ * (context time) at `phaseSec` into the loop (buffer time; 0 unless play
+ * starts inside the span), loops the whole buffer and stops at `stopSec`.
+ * `fade` is the 10 ms fade-out (context times) where the span cuts the loop.
+ */
+export type PartSourcePlan = {
+  span: RemixPartSpan;
+  whenSec: number;
+  phaseSec: number;
+  stopSec: number;
+  fade: { startSec: number; endSec: number } | null;
+};
+
+/**
+ * Part span sources for a play (#1901): timeline position T plays at
+ * `startAt + (T − offset)/speed`; spans already over at the offset are
+ * skipped, one under way starts mid-loop (the loop phase in buffer time is
+ * the time into the span ÷ `tempo` modulo the loop's buffer length). The
+ * fade-out is 10 ms of TIMELINE time, like the render's part track.
+ */
+export function planPartSources(
+  spans: RemixPartSpan[],
+  input: {
+    startAt: number;
+    offsetSec: number;
+    speed: number;
+    /** Stretch tempo of the buffer (1 = timeline time). */
+    tempo: number;
+    /** The loop's length in buffer time (the buffer's duration). */
+    loopBufferSec: number;
+  },
+): PartSourcePlan[] {
+  const { startAt, offsetSec, speed, tempo, loopBufferSec } = input;
+  const toContext = (sec: number) => startAt + (sec - offsetSec) / speed;
+  const plans: PartSourcePlan[] = [];
+  for (const span of spans) {
+    if (span.outEndSec <= offsetSec) continue;
+    const into = Math.max(0, offsetSec - span.outStartSec);
+    const phase = loopBufferSec > 0 ? (into / tempo) % loopBufferSec : 0;
+    const fadeStart = Math.max(
+      span.outEndSec - REMIX_PART_SPAN_FADE_SECONDS,
+      span.outStartSec,
+      offsetSec,
+    );
+    plans.push({
+      span,
+      whenSec: startAt + Math.max(0, span.outStartSec - offsetSec) / speed,
+      phaseSec: phase,
+      stopSec: toContext(span.outEndSec),
+      fade: span.fadeOut
+        ? { startSec: toContext(fadeStart), endSec: toContext(span.outEndSec) }
+        : null,
+    });
+  }
+  return plans;
+}
+
+/**
+ * A part's audio over one timeline loop (#1901), for looped playback: the
+ * loop range [startSec, endSec) of the part's track, in BUFFER time (÷
+ * `tempo`), as channel data one looping source can cycle. Frames follow the
+ * render's rules — the loop restarts at phase 0 at each span start and a
+ * cut span fades out over its last 10 ms (÷ tempo). Memory: one timeline
+ * loop (a loop lies within one block). Null when no span overlaps it.
+ */
+export function partLoopChannels(
+  source: Float32Array[],
+  sampleRate: number,
+  spans: RemixPartSpan[],
+  loop: PreviewLoop,
+  tempo: number,
+): Float32Array[] | null {
+  const loopFrames = source[0]?.length ?? 0;
+  if (loopFrames === 0) return null;
+  const frame = (sec: number) => Math.round((sec / tempo) * sampleRate);
+  const a0 = frame(loop.startSec);
+  const a1 = frame(loop.endSec);
+  if (a1 <= a0) return null;
+  const overlapping = spans.filter(
+    (span) => frame(span.outStartSec) < a1 && frame(span.outEndSec) > a0,
+  );
+  if (overlapping.length === 0) return null;
+  const out = source.map(() => new Float32Array(a1 - a0));
+  const fadeLength = frame(REMIX_PART_SPAN_FADE_SECONDS);
+  for (const span of overlapping) {
+    const s0 = frame(span.outStartSec);
+    const s1 = frame(span.outEndSec);
+    const fadeFrames = span.fadeOut ? Math.min(fadeLength, s1 - s0) : 0;
+    for (let f = Math.max(s0, a0); f < Math.min(s1, a1); f += 1) {
+      const phase = (f - s0) % loopFrames;
+      const gain = fadeFrames > 0 && f >= s1 - fadeFrames ? (s1 - f) / fadeFrames : 1;
+      source.forEach((channel, c) => {
+        out[c][f - a0] = channel[phase] * gain;
+      });
+    }
+  }
+  return out;
+}
+
+/** Take buffers kept decoded by the engine (#1901), least recently used out. */
+export const PREVIEW_PART_TAKE_CACHE_SIZE = 8;
 
 /** Matches the server render's section edge fade (SECTION_FADE_SECONDS). */
 export const PREVIEW_SECTION_FADE_SECONDS = 0.05;
@@ -493,6 +644,11 @@ export type StemArrangementPreviewHandle = {
      * that appears or changes its audio needs a restart (new play()).
      */
     beat?: PreviewBeat | null,
+    /**
+     * Live AI part levels/mutes (#1901) by part id; absent = the last known.
+     * Parts appearing or changing what they play need a restart.
+     */
+    parts?: PreviewPartState[] | null,
   ): void;
   stop(): void;
   level(): PreviewLevel;
@@ -589,6 +745,22 @@ export type StemPreviewEngine = {
      * output time and plays at rate 1 (see `beatPlayback`).
      */
     beat?: PreviewBeat | null;
+    /**
+     * AI parts `remix-parts/v1` (#1901) with their decoded takes, placed on
+     * `partTimeline` (bar grid + timeline blocks) exactly like the render
+     * (`partPlacementSpans`). Null/absent (or no timeline) keeps the graph
+     * unchanged. Per span, one looping buffer source starts at the span's
+     * context time from loop phase 0 (mid-loop when play starts inside it)
+     * and stops at its end, with the 10 ms fade-out gain where flagged →
+     * a part gain (level, mute, solo via `partLaneId`; silent while a
+     * reference plays) → the master (fade) chain; with effects, into the
+     * master bus plus a 0.7 × master space reverb send. A timeline loop
+     * cycles the part's audio over that loop. Tempo/key: parts play their
+     * stretched buffers (per-item plan: drums tempo only) in the stretched
+     * path and count toward its readiness like stems.
+     */
+    parts?: PreviewPart[] | null;
+    partTimeline?: PreviewPartTimeline | null;
   }): Promise<StemArrangementPreviewHandle>;
   /**
    * Time-stretch the stems for a plan (#1898) in the worker pool, ahead of
@@ -604,9 +776,31 @@ export type StemPreviewEngine = {
     plan: PreviewStretchPlan | null,
     stemIds: string[],
     onProgress?: (fraction: number) => void,
+    /**
+     * AI part takes (#1901) stretched alongside, each with its own plan
+     * (`partStretchPlan`: drums tempo only; an identity plan needs nothing).
+     */
+    parts?: PreviewStretchPart[],
   ): Promise<StretchPrepareResult>;
-  /** Whether every stem in `stemIds` has its stretched buffer for `plan`. */
-  stretchReady(plan: PreviewStretchPlan | null, stemIds: string[]): boolean;
+  /**
+   * Whether every stem in `stemIds` (and every part take in `parts`) has its
+   * stretched buffer for `plan`.
+   */
+  stretchReady(
+    plan: PreviewStretchPlan | null,
+    stemIds: string[],
+    parts?: Array<Pick<PreviewStretchPart, "takeId" | "role">>,
+  ): boolean;
+  /**
+   * A part take (#1901) decoded on the engine's context, created lazily and
+   * never resumed here: `load` fetches the bytes on a miss. The last
+   * {@link PREVIEW_PART_TAKE_CACHE_SIZE} takes stay cached (LRU); a failed
+   * load is not cached. Rejects once disposed.
+   */
+  partTakeBuffer(
+    takeId: string,
+    load: () => Promise<ArrayBuffer>,
+  ): Promise<AudioBuffer>;
   /**
    * The beat track (#1902) as a mono AudioBuffer at the context's sample
    * rate, rendered with `renderBeatInto` and memoized by
@@ -685,6 +879,21 @@ export function stemPreviewGain(
   if (stem.muted) return 0;
   if (soloStemId && soloStemId !== stem.stemId) return 0;
   return dbToLinearGain(stem.gainDb);
+}
+
+/**
+ * Live gain for an AI part (#1901): silent while a reference plays, when
+ * muted, or while any other lane is soloed; its level otherwise (soloing the
+ * part — `partLaneId` — silences the stems and the beat).
+ */
+export function partPreviewGain(
+  part: PreviewPartState | null | undefined,
+  soloStemId: string | null,
+  referenceStemId: string | null = null,
+): number {
+  if (!part || referenceStemId || part.muted) return 0;
+  if (soloStemId && soloStemId !== partLaneId(part.partId)) return 0;
+  return dbToLinearGain(part.gainDb);
 }
 
 /**
@@ -801,6 +1010,8 @@ type FxGraph = {
   stems: Map<string, StemFxChain>;
   /** The beat's reverb send (#1902); null without a beat. */
   beatSend: GainNode | null;
+  /** The AI parts' reverb sends (#1901). */
+  partSends: GainNode[];
   masterTone: ReturnType<typeof createToneStage>;
   warmthDry: GainNode;
   warmthWet: GainNode;
@@ -836,6 +1047,11 @@ function applyFxValues(graph: FxGraph, effects: RemixFxRecipe | null): void {
   if (graph.beatSend) {
     const wet = reverbWet(0, master.space);
     graph.beatSend.gain.value = wet;
+    if (wet > 0) tail = Math.max(tail, REMIX_FX_REVERB_SECONDS);
+  }
+  for (const send of graph.partSends) {
+    const wet = reverbWet(0, master.space);
+    send.gain.value = wet;
     if (wet > 0) tail = Math.max(tail, REMIX_FX_REVERB_SECONDS);
   }
   graph.tailSeconds = tail;
@@ -903,6 +1119,8 @@ export function createStemPreviewEngine(input: {
     }
   >();
   let stretchJobCount = 0;
+  // AI part takes (#1901): decoded on this context, LRU by take id.
+  const partTakes = new Map<string, Promise<AudioBuffer>>();
   let current: StemArrangementPreviewHandle | null = null;
   let playGeneration = 0;
   let disposed = false;
@@ -1072,11 +1290,16 @@ export function createStemPreviewEngine(input: {
     stretchPool?.cancel(inFlight);
   };
 
+  /**
+   * Stretch one store item (a stem, or a part take `part:{takeId}`, #1901)
+   * with its own plan; `loadSource` gives its unstretched buffer.
+   */
   const startStretchJob = (
     audioContext: AudioContext,
     stemId: string,
     plan: PreviewStretchPlan,
     planKey: string,
+    loadSource: () => Promise<AudioBuffer> = () => loadBuffer(audioContext, stemId),
   ) => {
     const sampleRate = audioContext.sampleRate;
     const jobId = `stretch-${(stretchJobCount += 1)}`;
@@ -1086,7 +1309,7 @@ export function createStemPreviewEngine(input: {
       try {
         let source: AudioBuffer;
         try {
-          source = await loadBuffer(audioContext, stemId);
+          source = await loadSource();
         } catch {
           // Undecodable stems stay skipped, as in preload; play() reports.
           return "ready";
@@ -1133,6 +1356,7 @@ export function createStemPreviewEngine(input: {
     plan,
     stemIds,
     onProgress,
+    parts = [],
   ) => {
     if (disposed) return "cancelled";
     if (!plan) {
@@ -1148,7 +1372,23 @@ export function createStemPreviewEngine(input: {
     const sampleRate = audioContext.sampleRate;
     const planKey = planKeyFor(plan, sampleRate);
     switchStretchPlan(planKey);
-    const ids = [...new Set(stemIds)];
+    // Every store item with its own plan: stems take the recipe plan, part
+    // takes (#1901) their per-role plan; an identity part plan needs nothing.
+    const items = new Map<
+      string,
+      { plan: PreviewStretchPlan; load?: () => Promise<AudioBuffer> }
+    >();
+    for (const stemId of stemIds) items.set(stemId, { plan });
+    for (const part of parts) {
+      const itemPlan = partStretchPlan(part.role, plan);
+      if (!itemPlan) continue;
+      const buffer = part.buffer;
+      items.set(partStretchItemId(part.takeId), {
+        plan: itemPlan,
+        load: async () => buffer,
+      });
+    }
+    const ids = [...items.keys()];
     const done = new Map<string, number>();
     const report = () => {
       if (!onProgress || ids.length === 0) return;
@@ -1156,16 +1396,17 @@ export function createStemPreviewEngine(input: {
       for (const fraction of done.values()) sum += fraction;
       onProgress(Math.min(1, sum / ids.length));
     };
-    const tasks = ids.map((stemId) => {
-      if (stretchedBuffers.has(stretchVariantKey(stemId, plan, sampleRate))) {
-        done.set(stemId, 1);
+    const tasks = ids.map((itemId) => {
+      const item = items.get(itemId)!;
+      if (stretchedBuffers.has(stretchVariantKey(itemId, item.plan, sampleRate))) {
+        done.set(itemId, 1);
         return "ready" as const;
       }
       const job =
-        stretchJobs.get(stemId) ??
-        startStretchJob(audioContext, stemId, plan, planKey);
+        stretchJobs.get(itemId) ??
+        startStretchJob(audioContext, itemId, item.plan, planKey, item.load);
       job.listeners.add((fraction) => {
-        done.set(stemId, fraction);
+        done.set(itemId, fraction);
         report();
       });
       return job.promise;
@@ -1178,7 +1419,11 @@ export function createStemPreviewEngine(input: {
     return results.includes("failed") ? "failed" : "ready";
   };
 
-  const stretchReady: StemPreviewEngine["stretchReady"] = (plan, stemIds) => {
+  const stretchReady: StemPreviewEngine["stretchReady"] = (
+    plan,
+    stemIds,
+    parts = [],
+  ) => {
     if (!plan) return true;
     if (!context) return false;
     const sampleRate = context.sampleRate;
@@ -1186,8 +1431,47 @@ export function createStemPreviewEngine(input: {
       stretchPlanKey === planKeyFor(plan, sampleRate) &&
       stemIds.every((stemId) =>
         stretchedBuffers.has(stretchVariantKey(stemId, plan, sampleRate)),
-      )
+      ) &&
+      parts.every((part) => {
+        const itemPlan = partStretchPlan(part.role, plan);
+        return (
+          !itemPlan ||
+          stretchedBuffers.has(
+            stretchVariantKey(partStretchItemId(part.takeId), itemPlan, sampleRate),
+          )
+        );
+      })
     );
+  };
+
+  const partTakeBuffer: StemPreviewEngine["partTakeBuffer"] = (takeId, load) => {
+    if (disposed) {
+      return Promise.reject(new Error("Audio preview engine was disposed."));
+    }
+    const cached = partTakes.get(takeId);
+    if (cached) {
+      // Most recently used goes last.
+      partTakes.delete(takeId);
+      partTakes.set(takeId, cached);
+      return cached;
+    }
+    let audioContext: AudioContext;
+    try {
+      audioContext = ensureContext();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const pending = (async () => audioContext.decodeAudioData(await load()))();
+    partTakes.set(takeId, pending);
+    while (partTakes.size > PREVIEW_PART_TAKE_CACHE_SIZE) {
+      const oldest = partTakes.keys().next().value as string;
+      partTakes.delete(oldest);
+    }
+    // A failed fetch/decode is not cached: the next call retries.
+    pending.catch(() => {
+      if (partTakes.get(takeId) === pending) partTakes.delete(takeId);
+    });
+    return pending;
   };
 
   const play: StemPreviewEngine["play"] = async (request) => {
@@ -1254,18 +1538,47 @@ export function createStemPreviewEngine(input: {
     // audible stem has one; else the varispeed fallback (key shift pending).
     // A muted stem without one is left out (it is silent anyway).
     const stretchPlan = remixFxStretchPlan(effects);
+    // AI parts (#1901): placed on the part timeline like the render.
+    const partTimeline = request.partTimeline ?? null;
+    const requestedParts =
+      partTimeline && positiveBpm(partTimeline.grid.bpm) ? request.parts ?? [] : [];
     let stretched: Array<AudioBuffer | null> | null = null;
+    // Per part: its buffer and stretch tempo in the stretched path (drums
+    // take the tempo only; an identity plan plays the take as is).
+    let stretchedParts: Array<{ buffer: AudioBuffer | null; tempo: number }> | null =
+      null;
     if (stretchPlan) {
       const sampleRate = audioContext.sampleRate;
+      const planReady = stretchPlanKey === planKeyFor(stretchPlan, sampleRate);
       const variants = request.stems.map((stem) =>
-        stretchPlanKey === planKeyFor(stretchPlan, sampleRate)
+        planReady
           ? stretchedBuffers.get(
               stretchVariantKey(stem.stemId, stretchPlan, sampleRate),
             ) ?? null
           : null,
       );
-      if (request.stems.every((stem, index) => variants[index] || stem.muted)) {
+      const partVariants = requestedParts.map((part) => {
+        const itemPlan = partStretchPlan(part.role, stretchPlan);
+        if (!itemPlan) return { buffer: part.buffer, tempo: 1 };
+        return {
+          buffer: planReady
+            ? stretchedBuffers.get(
+                stretchVariantKey(
+                  partStretchItemId(part.takeId),
+                  itemPlan,
+                  sampleRate,
+                ),
+              ) ?? null
+            : null,
+          tempo: itemPlan.tempo,
+        };
+      });
+      if (
+        request.stems.every((stem, index) => variants[index] || stem.muted) &&
+        requestedParts.every((part, index) => partVariants[index].buffer || part.muted)
+      ) {
         stretched = variants;
+        stretchedParts = partVariants;
       }
     }
     const pendingStretch = stretchPlan !== null && stretched === null;
@@ -1310,6 +1623,40 @@ export function createStemPreviewEngine(input: {
     let beatState: PreviewBeat | null = request.beat ?? null;
     const beatGain = beatPlays ? audioContext.createGain() : null;
 
+    // AI parts (#1901): what each part plays — its (stretched) buffer, the
+    // tempo that buffer is stretched by, its source rate and its spans.
+    // A muted part without its stretched buffer sits this play out.
+    const partStates = new Map<string, PreviewPartState>(
+      requestedParts.map((part) => [
+        part.partId,
+        { partId: part.partId, gainDb: part.gainDb, muted: part.muted },
+      ]),
+    );
+    const partPlays = requestedParts.flatMap((part, index) => {
+      const variant = stretchedParts ? stretchedParts[index] : null;
+      const buffer = variant ? variant.buffer : part.buffer;
+      if (!buffer || !partTimeline) return [];
+      const spans = partPlacementSpans(
+        part,
+        partTimeline.grid,
+        partTimeline.segments,
+        partLengthSeconds(partTimeline.grid.bpm as number, part.bars),
+      );
+      if (spans.length === 0) return [];
+      return [
+        {
+          part,
+          buffer,
+          tempo: variant ? variant.tempo : 1,
+          rate: stretchedParts ? sourceRate : speed,
+          spans,
+          gain: audioContext.createGain(),
+        },
+      ];
+    });
+    const partGains = new Map(partPlays.map((play) => [play.part.partId, play.gain]));
+    const partNodes: AudioNode[] = [];
+
     const releaseNodes = () => {
       for (const source of sources) source.disconnect();
       for (const gain of gains.values()) gain.disconnect();
@@ -1317,6 +1664,8 @@ export function createStemPreviewEngine(input: {
       for (const node of fx?.nodes ?? []) node.disconnect();
       for (const node of structureNodes) node.disconnect();
       beatGain?.disconnect();
+      for (const gain of partGains.values()) gain.disconnect();
+      for (const node of partNodes) node.disconnect();
     };
 
     const scheduleSections = (stems: PreviewStemState[], now: number) => {
@@ -1354,7 +1703,7 @@ export function createStemPreviewEngine(input: {
     };
 
     const handle: StemArrangementPreviewHandle = {
-      update(stems, soloStemId, referenceStemId = null, nextBeat) {
+      update(stems, soloStemId, referenceStemId = null, nextBeat, nextParts) {
         for (const stem of stems) {
           const gain = gains.get(stem.stemId);
           if (gain) {
@@ -1365,6 +1714,22 @@ export function createStemPreviewEngine(input: {
         if (beatGain) {
           beatGain.gain.value = beatPreviewGain(
             beatState,
+            soloStemId,
+            referenceStemId,
+          );
+        }
+        for (const next of nextParts ?? []) {
+          if (partStates.has(next.partId)) {
+            partStates.set(next.partId, {
+              partId: next.partId,
+              gainDb: next.gainDb,
+              muted: next.muted,
+            });
+          }
+        }
+        for (const [partId, gain] of partGains) {
+          gain.gain.value = partPreviewGain(
+            partStates.get(partId),
             soloStemId,
             referenceStemId,
           );
@@ -1494,9 +1859,19 @@ export function createStemPreviewEngine(input: {
         beatGain.connect(beatSend).connect(convolver);
         nodes.push(beatSend);
       }
+      // AI parts (#1901) join the master bus with their own reverb sends.
+      const partSends: GainNode[] = [];
+      for (const gain of partGains.values()) {
+        const send = audioContext.createGain();
+        gain.connect(masterBus);
+        gain.connect(send).connect(convolver);
+        partSends.push(send);
+        nodes.push(send);
+      }
       fx = {
         stems: stemChains,
         beatSend,
+        partSends,
         masterTone,
         warmthDry,
         warmthWet,
@@ -1508,8 +1883,9 @@ export function createStemPreviewEngine(input: {
       };
       applyFxValues(fx, effects);
       stemInput = (stemId) => stemInputs.get(stemId) ?? masterBus;
-    } else if (beatGain) {
-      beatGain.connect(masterFade ?? output);
+    } else {
+      beatGain?.connect(masterFade ?? output);
+      for (const gain of partGains.values()) gain.connect(masterFade ?? output);
     }
 
     const onSourceEnded = () => {
@@ -1645,6 +2021,73 @@ export function createStemPreviewEngine(input: {
       }
     }
 
+    for (const play of partPlays) {
+      if (loop) {
+        // A timeline loop cycles the part's audio over that loop: its
+        // frames (one loop, within one block) on one looping source.
+        const channels = partLoopChannels(
+          Array.from({ length: play.buffer.numberOfChannels }, (_, c) =>
+            play.buffer.getChannelData(c),
+          ),
+          play.buffer.sampleRate,
+          play.spans,
+          loop,
+          play.tempo,
+        );
+        if (!channels) continue;
+        const loopBuffer = audioContext.createBuffer(
+          channels.length,
+          channels[0].length,
+          play.buffer.sampleRate,
+        );
+        channels.forEach((channel, c) =>
+          loopBuffer.copyToChannel(channel as Float32Array<ArrayBuffer>, c),
+        );
+        const source = audioContext.createBufferSource();
+        source.buffer = loopBuffer;
+        source.loop = true;
+        source.loopStart = 0;
+        source.loopEnd = loopBuffer.duration;
+        if (play.rate !== 1) source.playbackRate.value = play.rate;
+        source.connect(play.gain);
+        source.onended = onSourceEnded;
+        sources.push(source);
+        starts.push(() =>
+          source.start(startAt, (offset - loop.startSec) / play.tempo),
+        );
+        continue;
+      }
+      const plans = planPartSources(play.spans, {
+        ...timing,
+        tempo: play.tempo,
+        loopBufferSec: play.buffer.duration,
+      });
+      for (const plan of plans) {
+        // One looping source per span, from loop phase 0 at the span start.
+        const source = audioContext.createBufferSource();
+        source.buffer = play.buffer;
+        source.loop = true;
+        source.loopStart = 0;
+        source.loopEnd = play.buffer.duration;
+        if (play.rate !== 1) source.playbackRate.value = play.rate;
+        if (plan.fade) {
+          const fadeGain = audioContext.createGain();
+          fadeGain.gain.setValueAtTime(1, plan.fade.startSec);
+          fadeGain.gain.linearRampToValueAtTime(0, plan.fade.endSec);
+          source.connect(fadeGain).connect(play.gain);
+          partNodes.push(fadeGain);
+        } else {
+          source.connect(play.gain);
+        }
+        source.onended = onSourceEnded;
+        sources.push(source);
+        starts.push(() => {
+          source.start(plan.whenSec, plan.phaseSec);
+          source.stop(plan.stopSec);
+        });
+      }
+    }
+
     handle.update(
       request.stems,
       request.soloStemId,
@@ -1685,6 +2128,7 @@ export function createStemPreviewEngine(input: {
     stretchPlanKey = null;
     stretchJobs.clear();
     stretchedBuffers.clear();
+    partTakes.clear();
     const closing = context;
     context = null;
     void closing?.close().catch(() => undefined);
@@ -1711,6 +2155,7 @@ export function createStemPreviewEngine(input: {
     beatBuffer,
     prepareStretch,
     stretchReady,
+    partTakeBuffer,
     setOutputVolume,
     dispose,
   };

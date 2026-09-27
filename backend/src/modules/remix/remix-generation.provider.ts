@@ -3,6 +3,11 @@ import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
 import type { RemixRenderStructure, RemixStructure } from "./remix-structure";
 import type { RemixBeat, RemixRenderBeat } from "./remix-beat";
+import type {
+  PartSkippedReason,
+  RemixRenderedPart,
+  RemixRenderParts,
+} from "./remix-parts";
 import type { RemixStretchMetadata } from "./remix-stretch";
 import {
   encodeStubWav,
@@ -474,12 +479,28 @@ export type RemixRenderMetadata = {
   structureVersion?: string;
   /**
    * Beat maker recipe (#1902) mixed into the artifact, plus the synthesis
-   * rules version, and `addedParts: ["beat"]` (a synthesized part that is
-   * neither AI nor source audio). Absent when the project had no beat.
+   * rules version (a synthesized part that is neither AI nor source audio).
+   * Absent when the project had no beat.
    */
   beat?: RemixBeat;
   beatDspVersion?: string;
-  addedParts?: Array<"beat">;
+  /**
+   * AI parts (#1901) mixed into the artifact (generated audio — the draft is
+   * AI-assisted), the saved parts left out with a reason, and the placement
+   * rules version. Absent when the project had no parts to render.
+   */
+  parts?: RemixRenderedPart[];
+  partsSkipped?: Array<{
+    partId: string;
+    takeId: string;
+    reason: PartSkippedReason;
+  }>;
+  partsDspVersion?: string;
+  /**
+   * What the studio added on top of the stems: "beat" (#1902, synthesized)
+   * and "ai_part" (#1901, at least one audible AI part). Absent when none.
+   */
+  addedParts?: Array<"beat" | "ai_part">;
 };
 
 export type RemixConditioningEffects = {
@@ -497,6 +518,11 @@ export type RemixConditioningStructure = {
 export type RemixConditioningBeat = {
   beat: RemixBeat;
   beatDspVersion: string;
+};
+
+export type RemixConditioningParts = {
+  parts: RemixRenderedPart[];
+  partsDspVersion: string;
 };
 
 export type RemixGenerationInput = {
@@ -537,6 +563,12 @@ export type RemixGenerationInput = {
    * no beat (or no bar grid); prompt-only providers ignore it.
    */
   renderBeat?: RemixRenderBeat;
+  /**
+   * The project's AI parts (#1901) + bar grid and timeline at process time,
+   * mixed wherever the arranged stems are mixed. Absent when the project has
+   * no parts to render; prompt-only providers ignore it.
+   */
+  renderParts?: RemixRenderParts;
   /** Targeted per-stem operation (#1316); absent = whole-track behavior. */
   stemTransform?: RemixStemTransform;
   provenance: RemixGenerationProvenance;
@@ -565,6 +597,11 @@ export type RemixGenerationJob = {
    * {@link conditioningEffects}. Present only when a beat applied.
    */
   conditioningBeat?: RemixConditioningBeat;
+  /**
+   * AI parts (#1901) mixed into the conditioning audio, the sibling of
+   * {@link conditioningBeat}. Present only when at least one part was mixed.
+   */
+  conditioningParts?: RemixConditioningParts;
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
   outputMetadata: RemixGenerationOutputMetadata;
 };

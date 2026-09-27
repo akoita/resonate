@@ -107,14 +107,18 @@ import {
   partLengthSeconds,
   PARTS_NEED_TEMPO_ERROR,
   quotePartTakesCents,
+  readRenderedParts,
   readStoredRemixParts,
   referencedTakeIds,
   REMIX_PART_PROMPT_VERSION,
   REMIX_PART_TAKE_JOB,
+  REMIX_PARTS_DSP_VERSION,
   toPartTakeResponse,
   type PartRole,
   type PartTakeErrorCode,
   type RemixParts,
+  type RemixRenderPart,
+  type RemixRenderParts,
 } from "./remix-parts";
 import {
   conformPartClip,
@@ -287,6 +291,38 @@ export function draftGroundingFromMetadata(
 
 function groundingAiGenerated(grounding: RemixDraftGrounding): boolean {
   return grounding !== "stem_audio";
+}
+
+/**
+ * Whether a completed render mixed at least one AI part (#1901): in the
+ * final render or in the audio a provider conditioned on.
+ */
+export function renderIncludesAiParts(input: {
+  renderMetadata?: unknown;
+  conditioningParts?: unknown;
+}): boolean {
+  const render = input.renderMetadata as { parts?: unknown } | null | undefined;
+  const conditioning = input.conditioningParts as
+    | { parts?: unknown }
+    | null
+    | undefined;
+  return (
+    readRenderedParts(render?.parts).length > 0 ||
+    readRenderedParts(conditioning?.parts).length > 0
+  );
+}
+
+/**
+ * Grounding of a draft whose render includes AI parts (#1901): the stems
+ * are preserved and generated instrument parts are layered on top, so a
+ * stem_audio render becomes stem_plus_ai (AI-assisted) even in stem_mix
+ * mode. Every other grounding is already AI and more specific: unchanged.
+ */
+export function groundingWithAiParts(
+  grounding: RemixDraftGrounding,
+  aiParts: boolean,
+): RemixDraftGrounding {
+  return aiParts && grounding === "stem_audio" ? "stem_plus_ai" : grounding;
 }
 
 /** Archived draft versions kept when a project regenerates (#1320). */
@@ -1589,6 +1625,16 @@ export class RemixProjectService {
           `Remix project ${project.id}: stored beat has no bar grid to play on; rendering without it`,
         );
       }
+      // AI parts (#1901), read live and tolerantly like the beat: audible
+      // parts with a completed take of THIS project (and role) are mixed;
+      // the others are recorded with a reason, never an error. Rendering
+      // them is free — the takes were already paid for.
+      const renderParts = await this.resolveRenderParts(
+        project,
+        sectionGrid,
+        projectStructure,
+        renderStructure,
+      );
       // Per-stem transform (#1316): replace_stem conditions and renders on the
       // BED — every stem except the target — so the generated layer takes the
       // target's place instead of doubling it. add_layer keeps the full bed.
@@ -1697,6 +1743,7 @@ export class RemixProjectService {
               ...(renderFx ? { fx: renderFx } : {}),
               ...(renderStructure ? { structure: renderStructure } : {}),
               ...(renderBeat ? { beat: renderBeat } : {}),
+              ...(renderParts ? { parts: renderParts } : {}),
             })
           : await this.maybeRenderStemPlusAiLayer({
               projectId: project.id,
@@ -1706,10 +1753,32 @@ export class RemixProjectService {
               ...(renderFx ? { fx: renderFx } : {}),
               ...(renderStructure ? { structure: renderStructure } : {}),
               ...(renderBeat ? { beat: renderBeat } : {}),
+              ...(renderParts ? { parts: renderParts } : {}),
             });
       const completedAt = new Date().toISOString();
+      // #1901: a render that mixed at least one AI part is AI-assisted — a
+      // stem_audio draft becomes stem_plus_ai with aiGenerated true.
+      const aiPartsRendered = renderIncludesAiParts({
+        renderMetadata: providerJob.renderMetadata,
+        conditioningParts: providerJob.conditioningParts,
+      });
+      const completedGrounding = groundingWithAiParts(
+        draftGroundingFromMetadata(currentMetadata) ??
+          selectRemixDraftGrounding({
+            mode: data.generationInput.mode,
+            sourceFeatureHints: data.generationInput.sourceFeatureHints,
+            providerKind: process.env.REMIX_GENERATION_PROVIDER_KIND,
+          }),
+        aiPartsRendered,
+      );
       const completedMetadata = {
         ...currentMetadata,
+        ...(aiPartsRendered
+          ? {
+              grounding: completedGrounding,
+              aiGenerated: groundingAiGenerated(completedGrounding),
+            }
+          : {}),
         status: "completed",
         providerJobId: providerJob.jobId,
         estimatedCostUsd: providerJob.estimatedCostUsd ?? null,
@@ -1732,6 +1801,9 @@ export class RemixProjectService {
         ...(providerJob.conditioningBeat
           ? { conditioningBeat: providerJob.conditioningBeat }
           : {}),
+        ...(providerJob.conditioningParts
+          ? { conditioningParts: providerJob.conditioningParts }
+          : {}),
         completedAt,
         failedAt: null,
         errorCode: null,
@@ -1750,13 +1822,6 @@ export class RemixProjectService {
         // tracks. Drop it without publishing a completion event.
         return { skipped: true, reason: "stale_job" };
       }
-      const completedGrounding =
-        draftGroundingFromMetadata(currentMetadata) ??
-        selectRemixDraftGrounding({
-          mode: data.generationInput.mode,
-          sourceFeatureHints: data.generationInput.sourceFeatureHints,
-          providerKind: process.env.REMIX_GENERATION_PROVIDER_KIND,
-        });
       this.eventBus.publish({
         eventName: "remix.generation_completed",
         eventVersion: 1,
@@ -2609,6 +2674,106 @@ export class RemixProjectService {
     });
   }
 
+  /**
+   * Render-time AI parts (#1901), read tolerantly from the owned project's
+   * stored `remix-parts/v1` against the resolved timeline (a stale per-block
+   * list fails open to on-everywhere, like the beat). Muted parts are left
+   * out silently; a part whose take is not a take of THIS project with the
+   * same role is skipped as `take_missing`, one that is not completed (or
+   * has no stored audio) as `take_not_ready`. Parts need a bar grid with a
+   * tempo; without one they are skipped (logged). Undefined when there is
+   * nothing to render or record.
+   */
+  private async resolveRenderParts(
+    project: RemixProjectWithStems,
+    sectionGrid: ReturnType<typeof deriveSectionGrid>,
+    projectStructure: RemixStructure | null,
+    renderStructure: RemixRenderStructure | undefined,
+  ): Promise<RemixRenderParts | undefined> {
+    if (!project.parts) return undefined;
+    const stored = readStoredRemixParts(
+      project.parts,
+      sectionGrid ? structureBlockCount(sectionGrid, projectStructure) : null,
+    );
+    const unmuted = stored?.parts.filter((part) => !part.muted) ?? [];
+    if (unmuted.length === 0) return undefined;
+    if (
+      !sectionGrid ||
+      sectionGrid.kind !== "bars" ||
+      !sectionGrid.bpm ||
+      !(sectionGrid.bpm > 0)
+    ) {
+      this.logger.warn(
+        `Remix project ${project.id}: stored AI parts have no bar grid to play on; rendering without them`,
+      );
+      return undefined;
+    }
+    // Owner-only: takes are looked up within this (owned) project only.
+    const takes = await prisma.remixPartTake.findMany({
+      where: {
+        projectId: project.id,
+        id: { in: unmuted.map((part) => part.takeId) },
+      },
+      select: {
+        id: true,
+        role: true,
+        bars: true,
+        status: true,
+        storageUri: true,
+        provider: true,
+        model: true,
+        promptVersion: true,
+        conform: true,
+      },
+    });
+    const takeById = new Map(takes.map((take) => [take.id, take]));
+    const parts: RemixRenderPart[] = [];
+    const skipped: RemixRenderParts["skipped"] = [];
+    for (const part of unmuted) {
+      const take = takeById.get(part.takeId);
+      if (!take || take.role !== part.role) {
+        skipped.push({
+          partId: part.id,
+          takeId: part.takeId,
+          reason: "take_missing",
+        });
+        continue;
+      }
+      if (take.status !== "completed" || !take.storageUri) {
+        skipped.push({
+          partId: part.id,
+          takeId: part.takeId,
+          reason: "take_not_ready",
+        });
+        continue;
+      }
+      const conform = normalizeMetadataObject(take.conform);
+      parts.push({
+        partId: part.id,
+        role: part.role,
+        takeId: take.id,
+        gainDb: part.gainDb ?? 0,
+        blocks: part.blocks ?? null,
+        bars: take.bars,
+        storageUri: take.storageUri,
+        provider: take.provider,
+        model: take.model,
+        promptVersion: take.promptVersion,
+        conformVersion:
+          typeof conform.conformVersion === "string"
+            ? conform.conformVersion
+            : null,
+      });
+    }
+    return {
+      parts,
+      skipped,
+      grid: sectionGrid,
+      segments:
+        renderStructure?.segments ?? structureTimeline(sectionGrid, null),
+    };
+  }
+
   private async maybeRenderStemPlusAiLayer(input: {
     projectId: string;
     generationInput: RemixGenerationJobData["generationInput"];
@@ -2620,6 +2785,8 @@ export class RemixProjectService {
     structure?: RemixRenderStructure;
     /** Beat maker recipe + bar grid + timeline (#1902); absent = no beat. */
     beat?: RemixRenderBeat;
+    /** AI parts + bar grid + timeline (#1901); absent = no parts. */
+    parts?: RemixRenderParts;
   }) {
     const layerJob = await this.generationProvider.createRemixDraft(
       {
@@ -2631,6 +2798,7 @@ export class RemixProjectService {
         ...(input.fx ? { renderFx: input.fx } : {}),
         ...(input.structure ? { renderStructure: input.structure } : {}),
         ...(input.beat ? { renderBeat: input.beat } : {}),
+        ...(input.parts ? { renderParts: input.parts } : {}),
       },
       input.authorization,
     );
@@ -2652,6 +2820,7 @@ export class RemixProjectService {
       ...(input.fx ? { fx: input.fx } : {}),
       ...(input.structure ? { structure: input.structure } : {}),
       ...(input.beat ? { beat: input.beat } : {}),
+      ...(input.parts ? { parts: input.parts } : {}),
       layer: {
         provider: layerJob.provider,
         jobId: layerJob.jobId,
@@ -2835,15 +3004,32 @@ export class RemixProjectService {
       conditioningBeatRecord.beat,
       null,
     );
+    // #1901: the AI parts the render mixed in / the conditioning audio
+    // carried (recorded lineage, not the possibly-edited live project).
+    const renderedParts = readRenderedParts(renderMetadataRecord.parts);
+    const conditioningPartsRecord = normalizeMetadataObject(
+      metadata.conditioningParts,
+    );
+    const conditioningParts = readRenderedParts(conditioningPartsRecord.parts);
+    const aiParts = renderedParts.length > 0 || conditioningParts.length > 0;
     const mimeType =
       draftMimeTypeFromMetadata(project.generationMetadata) ??
       draftMimeTypeFromUri(outputUri);
-    const grounding =
-      draftGroundingFromMetadata(project.generationMetadata) ?? "prompt_only";
+    // A draft with AI parts is AI-assisted (#1901), even if its recorded
+    // grounding predates that rule.
+    const grounding = groundingWithAiParts(
+      draftGroundingFromMetadata(project.generationMetadata) ?? "prompt_only",
+      aiParts,
+    );
     // AI integrity (#1164): stem_audio renders contain the licensed source
     // audio itself; everything else is generated and must be disclosed.
     const aiGenerated = groundingAiGenerated(grounding);
-    const aiDisclosure = deriveRemixAiDisclosure(grounding);
+    // AI parts (#1901) declare the instruments facet, at least PARTLY.
+    const aiDisclosure = deriveRemixAiDisclosure(grounding, { aiParts });
+    const addedParts = [
+      ...(renderedBeat ? ["beat"] : []),
+      ...(renderedParts.length > 0 ? ["ai_part"] : []),
+    ];
 
     // Copy the draft audio into a catalog-owned object so the published
     // release never depends on the draft's working URI.
@@ -2940,9 +3126,20 @@ export class RemixProjectService {
               typeof renderMetadataRecord.beatDspVersion === "string"
                 ? renderMetadataRecord.beatDspVersion
                 : REMIX_BEAT_DSP_VERSION,
-            addedParts: ["beat"],
           }
         : {}),
+      // #1901: the AI parts (generated takes) the published draft was
+      // rendered with — provider, model, prompt and conform versions.
+      ...(renderedParts.length > 0
+        ? {
+            parts: renderedParts,
+            partsDspVersion:
+              typeof renderMetadataRecord.partsDspVersion === "string"
+                ? renderMetadataRecord.partsDspVersion
+                : REMIX_PARTS_DSP_VERSION,
+          }
+        : {}),
+      ...(addedParts.length > 0 ? { addedParts } : {}),
       ...(conditioningBeat
         ? {
             conditioningBeat: {
@@ -2951,6 +3148,17 @@ export class RemixProjectService {
                 typeof conditioningBeatRecord.beatDspVersion === "string"
                   ? conditioningBeatRecord.beatDspVersion
                   : REMIX_BEAT_DSP_VERSION,
+            },
+          }
+        : {}),
+      ...(conditioningParts.length > 0
+        ? {
+            conditioningParts: {
+              parts: conditioningParts,
+              partsDspVersion:
+                typeof conditioningPartsRecord.partsDspVersion === "string"
+                  ? conditioningPartsRecord.partsDspVersion
+                  : REMIX_PARTS_DSP_VERSION,
             },
           }
         : {}),

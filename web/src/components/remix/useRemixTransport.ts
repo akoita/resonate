@@ -1,14 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getRemixDraftAudioBlob, getStemPreviewUrl } from "../../lib/api";
+import {
+  fetchRemixPartTakeAudio,
+  getRemixDraftAudioBlob,
+  getStemPreviewUrl,
+} from "../../lib/api";
 import { useOptionalPlayer } from "../../lib/playerContext";
 import {
   clampOutputVolume,
   createStemPreviewEngine,
   loopEntryOffset,
   type PreviewBeat,
+  type PreviewPart,
+  type PreviewPartTimeline,
   type PreviewStemState,
+  type PreviewStretchPart,
   type PreviewStretchPlan,
   type StemArrangementPreviewHandle,
   type StemPreviewEngine,
@@ -81,6 +88,15 @@ export type RemixTransportInput = {
    */
   beat?: PreviewBeat | null;
   /**
+   * Saved AI parts (#1901) with their take's role and length, and the bar
+   * grid + timeline they are placed on. Take audio is fetched (owner-only)
+   * and decoded on demand; a part plays once its take has decoded. Level
+   * and mute apply live; a change to what a part plays (take, blocks, the
+   * timeline, a take finishing decoding) restarts at the same position.
+   */
+  parts?: TransportPart[] | null;
+  partTimeline?: PreviewPartTimeline | null;
+  /**
    * Listening volume (#1910): linear gain 0..1 for this device only — the
    * engine's final output stage and the draft element's `volume`. Applied
    * live, never restarting playback; absent = unity.
@@ -88,6 +104,53 @@ export type RemixTransportInput = {
   outputGain?: number;
   onError: (kind: "preview" | "draft") => void;
 };
+
+/** A saved AI part as the transport gets it (#1901): no audio yet. */
+export type TransportPart = Omit<PreviewPart, "buffer">;
+
+/**
+ * Parts ready to play (#1901): those whose take has decoded, with their
+ * buffer. Order kept.
+ */
+export function previewPartsFor(
+  parts: TransportPart[] | null | undefined,
+  buffers: ReadonlyMap<string, AudioBuffer>,
+): PreviewPart[] {
+  return (parts ?? []).flatMap((part) => {
+    const buffer = buffers.get(part.takeId);
+    return buffer ? [{ ...part, buffer }] : [];
+  });
+}
+
+/**
+ * Signature of what the parts play (#1901): "" without any. Level and mute
+ * are left out — they apply live.
+ */
+export function previewPartsKey(
+  parts: TransportPart[] | null | undefined,
+  partTimeline: PreviewPartTimeline | null | undefined,
+  loadedTakeIds: ReadonlySet<string>,
+): string {
+  if (!parts || parts.length === 0 || !partTimeline) return "";
+  return JSON.stringify([
+    parts.map((part) => [
+      part.partId,
+      part.role,
+      part.takeId,
+      part.bars,
+      part.blocks,
+      loadedTakeIds.has(part.takeId),
+    ]),
+    partTimeline.grid.bpm,
+    partTimeline.grid.sectionSeconds,
+    partTimeline.grid.sections.map((section) => [section.startSec, section.endSec]),
+    partTimeline.segments.map((segment) => [
+      segment.section,
+      segment.outStartSec,
+      segment.outEndSec,
+    ]),
+  ]);
+}
 
 export type RemixTransport = {
   status: TransportStatus;
@@ -381,12 +444,21 @@ export function createStretchPreparer(input: {
   onReady: () => void;
   delayMs?: number;
 }): {
-  request: (plan: PreviewStretchPlan | null, stemIds: string[]) => void;
+  request: (
+    plan: PreviewStretchPlan | null,
+    stemIds: string[],
+    /** AI part takes (#1901) to stretch alongside (per-role plans). */
+    parts?: PreviewStretchPart[],
+  ) => void;
   retry: () => void;
   dispose: () => void;
 } {
   let lastKey: string | null = null;
-  let last: { plan: PreviewStretchPlan | null; stemIds: string[] } | null = null;
+  let last: {
+    plan: PreviewStretchPlan | null;
+    stemIds: string[];
+    parts: PreviewStretchPart[];
+  } | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let generation = 0;
   let disposed = false;
@@ -400,11 +472,14 @@ export function createStretchPreparer(input: {
     timer = null;
     if (disposed || !last?.plan) return;
     const current = ++generation;
-    const { plan, stemIds } = last;
-    void input
-      .prepare(plan, stemIds, (fraction) => {
-        if (current === generation) input.onState({ status: "preparing", fraction });
-      })
+    const { plan, stemIds, parts } = last;
+    const onProgress = (fraction: number) => {
+      if (current === generation) input.onState({ status: "preparing", fraction });
+    };
+    void (parts.length > 0
+      ? input.prepare(plan, stemIds, onProgress, parts)
+      : input.prepare(plan, stemIds, onProgress)
+    )
       .then(
         (result) => {
           if (disposed || current !== generation) return;
@@ -424,13 +499,16 @@ export function createStretchPreparer(input: {
   };
 
   return {
-    request(plan, stemIds) {
+    request(plan, stemIds, parts = []) {
       if (disposed) return;
       const ids = [...new Set(stemIds)].sort();
-      const key = JSON.stringify([plan, ids]);
+      const partIds = parts.map((part) => [part.takeId, part.role]).sort();
+      const key = JSON.stringify(
+        partIds.length > 0 ? [plan, ids, partIds] : [plan, ids],
+      );
       if (key === lastKey) return;
       lastKey = key;
-      last = { plan, stemIds: ids };
+      last = { plan, stemIds: ids, parts };
       clearTimer();
       generation += 1;
       if (!plan) {
@@ -520,6 +598,9 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   // Tempo/key preparation (#1898).
   const [stretchState, setStretchState] =
     useState<StretchPreviewState>(IDLE_STRETCH_STATE);
+  // AI part takes decoded so far (#1901), by take id; bumps re-render.
+  const partBuffersRef = useRef(new Map<string, AudioBuffer>());
+  const [partBuffersRevision, setPartBuffersRevision] = useState(0);
 
   // Latest inputs for callbacks that must stay stable across renders.
   const inputRef = useRef(input);
@@ -738,6 +819,8 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
         bpm: latest.bpm ?? null,
         timeline: structureTimelineFor(latest.timeline),
         beat: latest.beat ?? null,
+        parts: previewPartsFor(latest.parts, partBuffersRef.current),
+        partTimeline: latest.partTimeline ?? null,
         onEnded: () => {
           if (requestId !== requestRef.current) return;
           halt(0);
@@ -912,8 +995,10 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   const preparer = useCallback(() => {
     if (!preparerRef.current) {
       preparerRef.current = createStretchPreparer({
-        prepare: (plan, stemIds, onProgress) =>
-          engine().prepareStretch(plan, stemIds, onProgress),
+        prepare: (plan, stemIds, onProgress, parts) =>
+          parts && parts.length > 0
+            ? engine().prepareStretch(plan, stemIds, onProgress, parts)
+            : engine().prepareStretch(plan, stemIds, onProgress),
         onState: (next) => {
           if (unmountedRef.current) return;
           stretchStatusRef.current = next.status;
@@ -1084,12 +1169,63 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     () => [...new Set(input.stretchStemIds ?? input.stemIds)].sort().join("\n"),
     [input.stemIds, input.stretchStemIds],
   );
+  // AI part takes (#1901): fetched (owner-only) and decoded on demand; the
+  // engine keeps the last few decoded, this keeps the current parts' ones.
+  const partTakeIdsKey = useMemo(
+    () => [...new Set((input.parts ?? []).map((part) => part.takeId))].sort().join("\n"),
+    [input.parts],
+  );
   useEffect(() => {
+    const takeIds = partTakeIdsKey ? partTakeIdsKey.split("\n") : [];
+    const known = partBuffersRef.current;
+    for (const takeId of [...known.keys()]) {
+      if (!takeIds.includes(takeId)) known.delete(takeId);
+    }
+    const { token, projectId } = inputRef.current;
+    if (!token || takeIds.length === 0) return;
+    let cancelled = false;
+    for (const takeId of takeIds) {
+      if (known.has(takeId)) continue;
+      engine()
+        .partTakeBuffer(takeId, () =>
+          fetchRemixPartTakeAudio(token, projectId, takeId),
+        )
+        .then(
+          (buffer) => {
+            if (cancelled || unmountedRef.current) return;
+            partBuffersRef.current.set(takeId, buffer);
+            setPartBuffersRevision((revision) => revision + 1);
+          },
+          () => undefined, // Silent: that part just doesn't play.
+        );
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [engine, input.token, partTakeIdsKey]);
+  const loadedTakeIds = useMemo(
+    () => new Set(partBuffersRef.current.keys()),
+    // Recomputed when a take finishes decoding.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [partBuffersRevision, partTakeIdsKey],
+  );
+  const stretchPartsKey = JSON.stringify(
+    (input.parts ?? [])
+      .filter((part) => loadedTakeIds.has(part.takeId))
+      .map((part) => [part.takeId, part.role]),
+  );
+
+  useEffect(() => {
+    const parts: PreviewStretchPart[] = previewPartsFor(
+      inputRef.current.parts,
+      partBuffersRef.current,
+    ).map((part) => ({ takeId: part.takeId, role: part.role, buffer: part.buffer }));
     preparer().request(
       stretchPlanRef.current,
       stretchIdsKey ? stretchIdsKey.split("\n") : [],
+      parts,
     );
-  }, [preparer, stretchIdsKey, stretchPlanKey]);
+  }, [preparer, stretchIdsKey, stretchPlanKey, stretchPartsKey]);
   const retryStretch = useCallback(() => preparer().retry(), [preparer]);
 
   // Live mixer edits while the engine plays: gains (and the arrangement ↔
@@ -1112,10 +1248,16 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       inputRef.current.soloStemId,
       engineReference,
       inputRef.current.beat ?? null,
+      (inputRef.current.parts ?? []).map((part) => ({
+        partId: part.partId,
+        gainDb: part.gainDb,
+        muted: part.muted,
+      })),
     );
   }, [
     engineReference,
     input.beat,
+    input.parts,
     input.previewStems,
     input.soloStemId,
     previewHandle,
@@ -1190,6 +1332,23 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       loopRef.current,
     );
   }, [beatKey, currentPosition]);
+
+  // AI part edits (#1901): a change to what a part plays — or a take
+  // finishing decoding — restarts the engine at the same position; level
+  // and mute apply live above.
+  const partsKey = previewPartsKey(input.parts, input.partTimeline, loadedTakeIds);
+  const partsKeyRef = useRef(partsKey);
+  useEffect(() => {
+    if (partsKeyRef.current === partsKey) return;
+    partsKeyRef.current = partsKey;
+    if (statusRef.current === "idle") return;
+    if (!isEngineSource(sourceRef.current)) return;
+    void startRef.current(
+      sourceRef.current,
+      clampSeek(currentPosition(), durationRef.current),
+      loopRef.current,
+    );
+  }, [currentPosition, partsKey]);
 
   // The beat's waveform (#1902): rebuilt once per beat key, debounced so a
   // burst of step toggles renders once (the engine keeps the last buffer by

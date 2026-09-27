@@ -18,6 +18,7 @@ import { REMIX_FX_DSP_VERSION, remixFxStretchPlan } from "./remix-fx";
 import { remixStretchMetadata } from "./remix-stretch";
 import { REMIX_STRUCTURE_DSP_VERSION } from "./remix-structure";
 import { REMIX_BEAT_DSP_VERSION } from "./remix-beat";
+import { REMIX_PARTS_DSP_VERSION } from "./remix-parts";
 
 /**
  * Audio-conditioned remix provider (#1182 slice 4) — the first provider that
@@ -101,8 +102,18 @@ export class AudioConditionedRemixGenerationProvider
     // Effects (#1897) shape the conditioning mix exactly as the user hears
     // them in the studio; omitted entirely when the project has none.
     // Structure blocks (#1899) likewise: the model conditions on the
-    // restructured arrangement the user hears. The beat (#1902) too.
-    const mixed = input.renderBeat
+    // restructured arrangement the user hears. The beat (#1902) and the AI
+    // parts (#1901) too: they are part of the arrangement.
+    const mixed = input.renderParts
+      ? await this.mixer.mixUnmutedStems(
+          input.stemArrangement,
+          authorization,
+          input.renderFx,
+          input.renderStructure,
+          input.renderBeat,
+          input.renderParts,
+        )
+      : input.renderBeat
       ? await this.mixer.mixUnmutedStems(
           input.stemArrangement,
           authorization,
@@ -201,6 +212,16 @@ export class AudioConditionedRemixGenerationProvider
             conditioningBeat: {
               beat: input.renderBeat.beat,
               beatDspVersion: REMIX_BEAT_DSP_VERSION,
+            },
+          }
+        : {}),
+      // #1901 provenance: the AI parts mixed into the conditioning audio
+      // (the draft is AI-assisted either way; the lineage names the takes).
+      ...(mixed.renderMetadata?.parts && mixed.renderMetadata.parts.length > 0
+        ? {
+            conditioningParts: {
+              parts: mixed.renderMetadata.parts,
+              partsDspVersion: REMIX_PARTS_DSP_VERSION,
             },
           }
         : {}),
