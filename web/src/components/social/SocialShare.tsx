@@ -11,9 +11,14 @@ import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 type SocialShareProps = {
   track: ShareableTrack;
+  /** The share link is still being resolved: render the row, inert. */
+  pending?: boolean;
 };
 
-export default function SocialShare({ track }: SocialShareProps) {
+/** The icon row's height, so the "not shareable" note never resizes the panel. */
+const SHARE_ROW_MIN_HEIGHT = 36;
+
+export default function SocialShare({ track, pending = false }: SocialShareProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -49,9 +54,12 @@ export default function SocialShare({ track }: SocialShareProps) {
     });
   };
 
-  if (!isShareable) {
+  if (!isShareable && !pending) {
     return (
-      <div className="share-actions-container">
+      <div
+        className="share-actions-container"
+        style={{ minHeight: SHARE_ROW_MIN_HEIGHT, display: "flex", alignItems: "center" }}
+      >
         <p style={{ margin: 0, fontSize: "12px", color: "var(--color-muted)" }}>
           Sharing is available for tracks with a public Resonate release.
         </p>
@@ -87,8 +95,12 @@ export default function SocialShare({ track }: SocialShareProps) {
   };
 
   return (
-    <div className="share-actions-container">
-      <div className="share-action-row">
+    <div className="share-actions-container" aria-busy={pending || undefined}>
+      <div
+        className="share-action-row"
+        style={pending ? { opacity: 0.45, pointerEvents: "none", minHeight: SHARE_ROW_MIN_HEIGHT } : { minHeight: SHARE_ROW_MIN_HEIGHT }}
+        inert={pending || undefined}
+      >
         {/* Native Share / General Share Icon */}
         <button type="button" className="share-icon-btn" onClick={nativeShare} title="Share" aria-label="Share">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

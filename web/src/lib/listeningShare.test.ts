@@ -283,3 +283,13 @@ describe("releaseShareDescription", () => {
     expect(allLong).toContain("85% of every sale");
   });
 });
+
+describe("releaseIdFromStreamUrl", () => {
+  it("recovers the release id from public and owner-scoped stream URLs", async () => {
+    const { releaseIdFromStreamUrl } = await import("./listeningShare");
+    expect(releaseIdFromStreamUrl("https://api.example/catalog/releases/rel_1/tracks/trk_1/stream")).toBe("rel_1");
+    expect(releaseIdFromStreamUrl("/catalog/me/releases/rel%202/tracks/t/stream")).toBe("rel 2");
+    expect(releaseIdFromStreamUrl("blob:https://x/abc")).toBeNull();
+    expect(releaseIdFromStreamUrl(undefined)).toBeNull();
+  });
+});
