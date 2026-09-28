@@ -4,7 +4,7 @@ import { ListeningControls } from "../../components/player/ListeningControls";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SocialShare from "../../components/social/SocialShare";
-import { hasMixerStems, type ShareableTrack } from "../../lib/listeningShare";
+import { hasMixerStems, releaseIdFromStreamUrl, type ShareableTrack } from "../../lib/listeningShare";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { deleteLibraryTrackAPI, getTrack, getRelease, getPlayerTrackActions, type PlayerTrackAction, type PlayerTrackActionsResponse } from "../../lib/api";
@@ -168,9 +168,11 @@ function PlayerContent() {
     return {
       title: currentTrack.title,
       artist: currentTrack.artist || visibleTrackActions?.track.artistName,
-      // A playing catalog track can lack its release id (e.g. an older queue
-      // entry); the actions response always carries it.
-      releaseId: currentTrack.releaseId || visibleTrackActions?.track.releaseId,
+      // A playing catalog track can lack its release id (an older saved
+      // entry): recover it from its stream URL, else from the actions response.
+      releaseId: currentTrack.releaseId
+        || releaseIdFromStreamUrl(currentTrack.remoteUrl)
+        || visibleTrackActions?.track.releaseId,
       catalogTrackId: currentTrack.catalogTrackId,
       trackId: currentTrack.id,
       hasStems: hasMixerStems(currentTrack.stems),
@@ -604,7 +606,9 @@ function PlayerContent() {
             actionState={panelTrackActions}
             loading={actionPanelLoading}
             stale={actionPanelStale || launchingRemix}
-            saved={Boolean(visibleTrackActions?.library?.saved)}
+            // While the next track's actions load, keep showing the (inert)
+            // previous state rather than flashing "Save".
+            saved={Boolean((visibleTrackActions ?? panelTrackActions)?.library?.saved)}
             saving={savingTrack}
             onAction={handlePlayerAction}
           />
@@ -673,7 +677,13 @@ function PlayerContent() {
 
         <div className="player-share-section" style={{ marginTop: "auto", paddingTop: "var(--space-2)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Broadcast Signal</div>
-          <SocialShare track={shareTrack} />
+          <SocialShare
+            track={shareTrack}
+            // A catalog track whose release id arrives with its actions: keep
+            // the share row in place (inert) instead of flashing the
+            // "not shareable" note, which would resize the console.
+            pending={!shareTrack.releaseId && Boolean(actionTrackId) && !visibleTrackActions && !actionsFailed}
+          />
         </div>
       </aside>
 

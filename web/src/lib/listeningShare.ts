@@ -58,6 +58,16 @@ export function hasMixerStems(stems?: ReadonlyArray<{ type?: string | null }> | 
 }
 
 /**
+ * The release id embedded in a catalog stream URL
+ * (`…/catalog[/me]/releases/<releaseId>/tracks/<trackId>/stream`), for older
+ * saved tracks that were stored without a `releaseId`.
+ */
+export function releaseIdFromStreamUrl(url?: string | null): string | null {
+  const match = url?.match(/\/catalog\/(?:me\/)?releases\/([^/?#]+)\/tracks\//);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
  * Public, attributable link to the track's release page, or null when the
  * track has no public page (local or private files).
  */
