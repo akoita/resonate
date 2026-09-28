@@ -73,6 +73,11 @@ describe("canonical artist and album destinations (#1820)", () => {
       { name: "Aya Lune", artistId: "profile-1" },
       { name: "Aya Lune", artistId: "profile-2" },
     ])).toBe("/catalog/artists/Aya%20Lune");
+    // A name-only artist goes to the catalog page for the matched credit name,
+    // not to a page named after the alias slug.
+    expect(legacyArtistAliasDestination("sample-artist-sennarin", [
+      { name: "SennaRin", artistId: null },
+    ])).toBe("/catalog/artists/SennaRin");
     expect(legacyArtistAliasDestination("Missing", [
       { name: "Aya Lune", artistId: "profile-1" },
     ])).toBeNull();

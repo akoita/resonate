@@ -511,6 +511,44 @@ export async function addTracksToPlaylist(
     return playlist;
 }
 
+/** A track as a playlist sees it: its own id plus its catalog id, if any. */
+export type PlaylistTrackRef = { id: string; catalogTrackId?: string | null };
+
+/**
+ * The refs not already in `existingIds`. A saved catalog track has two ids —
+ * its library id and its catalog id — and a playlist may hold either, so a
+ * track counts as present when either one is. Duplicates within `refs` are
+ * dropped too.
+ */
+export function newPlaylistTrackRefs(existingIds: readonly string[], refs: readonly PlaylistTrackRef[]) {
+    const seen = new Set(existingIds);
+    const fresh: PlaylistTrackRef[] = [];
+    for (const ref of refs) {
+        const keys = [ref.id, ref.catalogTrackId].filter((key): key is string => Boolean(key));
+        if (keys.some((key) => seen.has(key))) continue;
+        for (const key of keys) seen.add(key);
+        fresh.push(ref);
+    }
+    return fresh;
+}
+
+/**
+ * Add tracks, skipping any the playlist already holds under either of the
+ * track's ids. Returns the playlist and how many tracks were actually added.
+ */
+export async function addTrackRefsToPlaylist(
+    playlistId: string,
+    refs: readonly PlaylistTrackRef[],
+    index?: number
+): Promise<{ playlist: Playlist; added: number } | null> {
+    const playlist = await getPlaylist(playlistId);
+    if (!playlist) return null;
+    const fresh = newPlaylistTrackRefs(playlist.trackIds, refs);
+    if (fresh.length === 0) return { playlist, added: 0 };
+    const updated = await addTracksToPlaylist(playlistId, fresh.map((ref) => ref.id), index);
+    return updated ? { playlist: updated, added: fresh.length } : null;
+}
+
 /**
  * Remove a track from a playlist
  */

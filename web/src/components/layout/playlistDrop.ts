@@ -5,9 +5,8 @@
  */
 import { getTrack } from "../../lib/localLibrary";
 import {
-  addTrackToPlaylist,
+  addTrackRefsToPlaylist,
   addTracksByCriteria,
-  addTracksToPlaylist,
   getPlaylist,
   type Playlist,
 } from "../../lib/playlistStore";
@@ -53,10 +52,23 @@ export function playlistSourceType(playlistId: string): string {
 
 export type PlaylistDropRequest =
   | { kind: "reorder"; playlistId: string | null; trackId: string | null; index: number }
-  | { kind: "tracks"; trackIds: string[]; title?: string }
+  | {
+      kind: "tracks";
+      trackIds: string[];
+      title?: string;
+      /** Catalog id per track id, when the dragged track has one (dedupe across ids). */
+      catalogTrackIds?: Record<string, string>;
+    }
   | { kind: "criteria"; criteria: { album?: string; artist?: string }; title: string };
 
-type TrackLike = { id?: unknown; title?: unknown };
+type TrackLike = { id?: unknown; title?: unknown; catalogTrackId?: unknown };
+
+function catalogIdsOf(tracks: TrackLike[]): Record<string, string> | undefined {
+  const entries = tracks
+    .filter((track) => typeof track?.id === "string" && typeof track.catalogTrackId === "string" && track.catalogTrackId)
+    .map((track) => [track.id as string, track.catalogTrackId as string] as const);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
 
 function trackIdsOf(tracks: unknown): string[] {
   if (!Array.isArray(tracks)) return [];
@@ -95,7 +107,12 @@ export function parsePlaylistDropPayload(raw: string | null | undefined): Playli
     }
     case "track":
       return typeof data.id === "string"
-        ? { kind: "tracks", trackIds: [data.id], title: text(data.title) }
+        ? {
+            kind: "tracks",
+            trackIds: [data.id],
+            title: text(data.title),
+            catalogTrackIds: catalogIdsOf([data as TrackLike]),
+          }
         : null;
     case "release-track": {
       const track = data.track as TrackLike | undefined;
@@ -112,6 +129,7 @@ export function parsePlaylistDropPayload(raw: string | null | undefined): Playli
           kind: "tracks",
           trackIds,
           title: trackIds.length === 1 ? undefined : text(data.name) ?? text(data.title),
+          catalogTrackIds: catalogIdsOf(data.tracks as TrackLike[]),
         };
       }
       // Legacy album payloads without a track list resolve from the library.
@@ -194,12 +212,10 @@ export async function applyPlaylistDrop(
   if (request.kind === "tracks") {
     requested = request.trackIds.length;
     title = request.title;
-    if (requested === 1) {
-      if (!title) title = (await getTrack(request.trackIds[0]))?.title;
-      result = await addTrackToPlaylist(playlistId, request.trackIds[0], index);
-    } else {
-      result = await addTracksToPlaylist(playlistId, request.trackIds, index);
-    }
+    if (requested === 1 && !title) title = (await getTrack(request.trackIds[0]))?.title;
+    // A saved catalog track may already be in the playlist under its other id.
+    const refs = request.trackIds.map((id) => ({ id, catalogTrackId: request.catalogTrackIds?.[id] ?? null }));
+    result = (await addTrackRefsToPlaylist(playlistId, refs, index))?.playlist ?? null;
   } else {
     title = request.title;
     result = await addTracksByCriteria(playlistId, request.criteria);

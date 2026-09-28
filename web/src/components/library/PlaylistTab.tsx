@@ -447,6 +447,9 @@ export function PlaylistTab({
                             >
                                 <div className="playlist-card-artwork playlist-card-cover">
                                     <PlaylistCoverThumb name={playlist.name} covers={getPlaylistCovers(playlist)} />
+                                    {playlist.visibility === "public" && (
+                                        <span className="pl-card-badge pl-card-badge--on-cover is-public">Public</span>
+                                    )}
                                 </div>
                                 {editingId === playlist.id ? (
                                     <input
@@ -469,9 +472,6 @@ export function PlaylistTab({
                                 <div className="playlist-card-meta">
                                     {trackCount} track{trackCount !== 1 ? "s" : ""}
                                 </div>
-                                {playlist.visibility === "public" && (
-                                    <span className="pl-card-badge is-public">Public</span>
-                                )}
                                 <button
                                     className="playlist-play-hover-btn"
                                     onClick={(e) => handlePlayPlaylist(e, playlist)}

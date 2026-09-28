@@ -70,10 +70,15 @@ deduplication, and selection ingestion were verified on 2026-09-06; see
 [Sprint 20 evidence](../sprints/2026-09-06-vision-sprint-20-player-action-telemetry.md#staging-outcome).
 
 The player UI keeps album art, title, artist, and stem mixer access in the hero.
-Immediately usable actions render in the right console near progress, volume,
-and queue context. Disabled or future actions render as a compact
-`Unavailable / Coming soon` list with safe reasons, so unavailable capabilities
-are visible without behaving like conversion buttons.
+Actions render in the right console near progress, volume, and queue context,
+in **fixed slots**: a 2×2 grid of main actions (Save, Add to playlist, Inspect
+stems, Remix) and one row of small pills (Buy or license, Support a show,
+Artist room, Collect). An action that is unavailable for the current track stays
+in its slot, dimmed, with its safe reason as a tooltip, and pressing it explains
+why instead of navigating; available pills take the accent colour. Because the
+slots never depend on availability, switching tracks never changes the panel's
+height, and while the next track's actions load the previous layout stays in
+place, inert, so the queue below does not move.
 
 Queue actions are available for individual tracks, selected release tracks,
 albums, and playlists. Additions keep their source order, skip track IDs already
