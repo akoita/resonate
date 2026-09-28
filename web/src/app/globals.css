@@ -8308,6 +8308,7 @@ a.listener-cohort-detail__action:focus-visible {
 .playlist-card-cover {
   display: block;
   overflow: hidden;
+  position: relative;
 }
 
 .playlist-card-title {

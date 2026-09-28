@@ -5,7 +5,7 @@ import { Button } from "../ui/Button";
 import {
     Playlist,
     listPlaylists,
-    addTrackToPlaylist,
+    addTrackRefsToPlaylist,
     addTracksToPlaylist,
     createPlaylist,
     createFolder,
@@ -47,18 +47,29 @@ export function AddToPlaylistModal({ tracks, onClose }: AddToPlaylistModalProps)
         setLoading(playlistId);
         try {
 
-            const trackIds = tracks.map(t => t.id);
-            const result = await (trackIds.length === 1
-                ? addTrackToPlaylist(playlistId, trackIds[0])
-                : addTracksToPlaylist(playlistId, trackIds));
+            // Skips tracks the playlist already holds under either id (a saved
+            // catalog track has a library id and a catalog id).
+            const result = await addTrackRefsToPlaylist(playlistId, tracks);
 
             if (result) {
-                addToast({
-                    type: "success",
-                    title: "Added",
-                    message: `${tracks.length} track${tracks.length > 1 ? "s" : ""} added to ${result.name}`,
-                });
+                const { playlist, added } = result;
+                const skipped = tracks.length - added;
+                addToast(added === 0
+                    ? {
+                        type: "info",
+                        title: "Already in playlist",
+                        message: tracks.length === 1
+                            ? `"${tracks[0].title}" is already in ${playlist.name}.`
+                            : `Those tracks are already in ${playlist.name}.`,
+                    }
+                    : {
+                        type: "success",
+                        title: "Added",
+                        message: `${added} track${added > 1 ? "s" : ""} added to ${playlist.name}${skipped > 0 ? ` (${skipped} already there)` : ""}`,
+                    });
                 onClose();
+            } else {
+                addToast({ type: "error", title: "Error", message: "Couldn't find that playlist. Sync your playlists and try again." });
             }
         } catch (error) {
             console.error("Failed to add to playlist:", error);

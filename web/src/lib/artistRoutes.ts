@@ -99,9 +99,11 @@ export function legacyArtistAliasDestination(
   const profileIds = [...new Set(
     matches.map((artist) => artist.artistId).filter((id): id is string => Boolean(id)),
   )];
+  // Name-only (or ambiguous) artists land on the catalog page for the credited
+  // name the alias matched — never on the raw alias slug.
   return profileIds.length === 1
     ? artistProfileHref(profileIds[0])
-    : catalogArtistHref(alias);
+    : catalogArtistHref(matches[0].name.trim());
 }
 
 /**

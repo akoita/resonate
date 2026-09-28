@@ -451,6 +451,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Save the track to your library or add it to a playlist.",
+              "Every track shows the same actions in the same places. One that isn't available for the current track stays in its spot, dimmed — select it to see why.",
               "Inspect stems opens the release page with every stem of the track, so you can hear the individual parts.",
               "Remix opens Remix Studio straight away when you are allowed to remix the track; when a remix license is needed, it takes you to the license instead.",
               "Check the AI-contribution badge without leaving the player.",

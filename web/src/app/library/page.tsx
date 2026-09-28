@@ -708,6 +708,7 @@ export default function LibraryPage() {
                                 const payload = JSON.stringify({
                                     type: "track",
                                     id: track.id,
+                                    catalogTrackId: track.catalogTrackId ?? null,
                                     title: track.title,
                                     artist: track.artist
                                 });

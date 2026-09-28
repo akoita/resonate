@@ -71,6 +71,13 @@
   z-index: 2;
 }
 .pl-card-badge.is-public { color: var(--color-accent); background: rgba(124, 92, 255, 0.16); border-color: rgba(124, 92, 255, 0.4); }
+/* Inset on the cover art: always inside the image, legible over any artwork. */
+.pl-card-badge--on-cover {
+  top: 0.5rem;
+  left: 0.5rem;
+  backdrop-filter: blur(6px);
+}
+.pl-card-badge--on-cover.is-public { color: #ede9fe; background: rgba(14, 10, 28, 0.78); border-color: rgba(124, 92, 255, 0.55); }
 
 /* Share control (owner) */
 .pl-share { position: relative; display: inline-block; }

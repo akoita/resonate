@@ -640,10 +640,12 @@ button:focus-visible,
   text-overflow: ellipsis;
 }
 
-/* Primary actions → compact icon+label pills on one wrapping row. */
+/* Primary actions → four fixed slots in a 2×2 grid. The grid (not a wrapping
+ * flex row) keeps the panel's height independent of which actions a track has,
+ * so switching tracks never moves the queue below. */
 .player-action-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 .player-action-chip {
@@ -663,7 +665,22 @@ button:focus-visible,
   transition: transform 0.16s var(--r-ease-out), border-color 0.16s ease,
     background 0.16s ease, box-shadow 0.16s ease;
 }
+.player-action-chip { min-width: 0; }
 .player-action-chip svg { opacity: 0.85; flex: 0 0 auto; }
+.player-action-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A slot whose action is unavailable for this track: stays put, reads quiet,
+ * and still explains itself when pressed. */
+.player-action-chip.is-unavailable {
+  color: var(--r-on-surface-muted);
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: help;
+}
+.player-action-chip.is-unavailable svg { opacity: 0.45; }
 .player-action-chip-copy {
   display: flex;
   flex-direction: column;
@@ -696,16 +713,14 @@ button:focus-visible,
 .player-action-chip.is-loading {
   cursor: progress;
   opacity: 0.5;
-  width: 44px;
-  padding: 0;
   justify-content: center;
 }
 
 /* Unavailable / coming-soon → quiet pills (label only; reason in tooltip),
  * one wrapped row instead of five verbose rows. */
 .player-action-locked {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin-top: 10px;
 }
@@ -719,8 +734,29 @@ button:focus-visible,
   border-radius: 999px;
   padding: 4px 11px;
   cursor: help;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-family: inherit;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
+/* An available commerce/community action in the small row: same footprint,
+ * accent colour, and a pointer — it goes somewhere. */
+.player-action-lockchip--available {
+  cursor: pointer;
+  color: #ede9fe;
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.14);
+}
+.player-action-lockchip--available:hover {
+  color: #fff;
+  border-color: rgba(124, 92, 255, 0.7);
+  background: rgba(124, 92, 255, 0.24);
+}
+.player-action-lockchip__detail { color: var(--r-secondary); font-weight: 500; }
+.player-action-lockchip:disabled { cursor: progress; }
 .player-action-lockchip:hover {
   color: var(--r-secondary);
   border-color: rgba(196, 181, 253, 0.25);

@@ -6,18 +6,32 @@ import type {
   PlayerTrackActionsResponse,
 } from "../../lib/api";
 
-const PRIMARY_ACTION_KEYS: PlayerTrackActionKey[] = [
+/*
+ * Fixed slots (#1913 follow-up): every track shows the same actions in the
+ * same places. An action that is not available stays in its slot, dimmed, and
+ * explains itself when pressed — it never jumps rows. Availability changing
+ * from one track to the next therefore never changes the panel's shape, so the
+ * console below it does not move when the listener switches tracks.
+ */
+export const PRIMARY_ACTION_SLOTS: PlayerTrackActionKey[] = [
   "save",
   "add_to_playlist",
   "inspect_stems",
-  "buy_license",
-  "shows_campaign",
   "remix",
 ];
 
+export const SECONDARY_ACTION_SLOTS: PlayerTrackActionKey[] = [
+  "buy_license",
+  "shows_campaign",
+  "artist_room",
+  "collect_drop",
+];
+
 export type GroupedPlayerActions = {
+  /** The four main actions, always in slot order, whatever their status. */
   primaryActions: PlayerTrackAction[];
-  unavailableActions: PlayerTrackAction[];
+  /** Commerce/community actions, always in slot order, then any unknown keys. */
+  secondaryActions: PlayerTrackAction[];
 };
 
 export function groupPlayerActions(
@@ -25,40 +39,34 @@ export function groupPlayerActions(
   saved = false,
 ): GroupedPlayerActions {
   if (!actionState) {
-    return { primaryActions: [], unavailableActions: [] };
+    return { primaryActions: [], secondaryActions: [] };
   }
 
-  const primaryActions: PlayerTrackAction[] = [];
-  const unavailableActions: PlayerTrackAction[] = [];
-  const actionOrder = new Map(actionState.actions.map((action, index) => [action.key, index]));
-
-  for (const action of actionState.actions) {
-    const isAvailable = action.status === "available";
-
-    if (isAvailable) {
-      primaryActions.push(
-        action.key === "save" && saved
-          ? { ...action, label: "Saved", reason: "In your library" }
-          : action,
-      );
-      continue;
-    }
-
-    unavailableActions.push(action);
-  }
-
-  primaryActions.sort(
-    (a, b) => {
-      const aPriority = PRIMARY_ACTION_KEYS.indexOf(a.key);
-      const bPriority = PRIMARY_ACTION_KEYS.indexOf(b.key);
-      if (aPriority !== -1 || bPriority !== -1) {
-        return (aPriority === -1 ? 99 : aPriority) - (bPriority === -1 ? 99 : bPriority);
-      }
-      return (actionOrder.get(a.key) ?? 0) - (actionOrder.get(b.key) ?? 0);
-    },
+  const byKey = new Map(
+    actionState.actions.map((action) => [
+      action.key,
+      action.key === "save" && saved && action.status === "available"
+        ? { ...action, label: "Saved", reason: "In your library" }
+        : action,
+    ]),
   );
+  const pick = (keys: PlayerTrackActionKey[]) =>
+    keys.map((key) => byKey.get(key)).filter((action): action is PlayerTrackAction => Boolean(action));
+  const slotted = new Set<string>([...PRIMARY_ACTION_SLOTS, ...SECONDARY_ACTION_SLOTS]);
 
-  return { primaryActions, unavailableActions };
+  return {
+    primaryActions: pick(PRIMARY_ACTION_SLOTS),
+    secondaryActions: [
+      ...pick(SECONDARY_ACTION_SLOTS),
+      ...actionState.actions.filter((action) => !slotted.has(action.key)),
+    ],
+  };
+}
+
+/** Short progress suffix for the one-line secondary pill ("53% funded"). */
+function getActionProgress(action: PlayerTrackAction) {
+  if (action.key !== "shows_campaign" || action.status !== "available") return null;
+  return typeof action.metadata?.progressPct === "number" ? `${action.metadata.progressPct}% funded` : null;
 }
 
 function getActionDetail(action: PlayerTrackAction) {
@@ -134,27 +142,23 @@ export function PlayerActionPanel({
   onAction: (action: PlayerTrackAction) => void;
 }) {
   if (loading && !actionState) {
-    // Reserve the loaded panel's footprint (kicker row, primary row, locked
-    // row) so the queue below does not jump when the actions arrive.
+    // Same slots and grid as the loaded panel, so nothing below moves when
+    // the actions arrive.
     return (
       <section className="player-action-panel is-loading" aria-label="Now Playing actions" aria-busy="true">
         <div className="player-action-kicker-row">
           <div className="studio-label player-action-kicker">Now Playing Actions</div>
         </div>
-        <div className="player-action-row">
-          {["save", "add_to_playlist", "inspect_stems", "buy_license"].map((k) => (
-            <button key={k} className="player-action-chip is-loading" type="button" disabled aria-hidden="true" tabIndex={-1}>
+        <div className="player-action-row" aria-hidden="true">
+          {PRIMARY_ACTION_SLOTS.map((k) => (
+            <span key={k} className="player-action-chip is-loading">
               <ActionIcon k={k} />
-            </button>
+            </span>
           ))}
         </div>
         <div className="player-action-locked" aria-hidden="true">
-          {[72, 88, 64].map((width) => (
-            <span
-              key={width}
-              className="player-action-lockchip player-action-lockchip--loading"
-              style={{ width, opacity: 0.4 }}
-            >
+          {SECONDARY_ACTION_SLOTS.map((k) => (
+            <span key={k} className="player-action-lockchip player-action-lockchip--loading">
               {"\u00a0"}
             </span>
           ))}
@@ -167,8 +171,12 @@ export function PlayerActionPanel({
     return null;
   }
 
-  const { primaryActions, unavailableActions } = groupPlayerActions(actionState, saved);
+  const { primaryActions, secondaryActions } = groupPlayerActions(actionState, saved);
   const inert = stale || loading;
+  const press = (action: PlayerTrackAction) => {
+    // Unavailable actions are pressable too: the page explains why.
+    if (!inert) onAction(action);
+  };
 
   return (
     <section
@@ -186,58 +194,67 @@ export function PlayerActionPanel({
         )}
       </div>
 
-      {primaryActions.length > 0 && (
-        <div className="player-action-row" aria-label="Available actions">
-          {primaryActions.map((action) => {
-            const isSavedAction = action.key === "save" && saved;
-            const isBusy = saving && action.key === "save";
-            const disabled = isBusy || inert;
+      <div className="player-action-row" aria-label="Track actions">
+        {primaryActions.map((action) => {
+          const available = action.status === "available";
+          const isSavedAction = action.key === "save" && saved && available;
+          const isBusy = saving && action.key === "save";
+          const disabled = isBusy || inert;
+          const hint = available ? action.reason : action.reason || "Not available for this track yet.";
+          return (
+            <button
+              key={action.key}
+              className={`player-action-chip${available && !inert ? " player-action-chip--available" : ""}${available ? "" : " is-unavailable"}${isSavedAction ? " is-saved" : ""}${isBusy ? " is-busy" : ""}`}
+              type="button"
+              onClick={() => press(action)}
+              disabled={disabled}
+              style={inert ? { cursor: "progress" } : undefined}
+              aria-disabled={!available || undefined}
+              aria-pressed={isSavedAction || undefined}
+              aria-busy={isBusy || undefined}
+              /* The accessible name has to contain the visible label
+               * (WCAG 2.5.3), so the saved chip extends "Saved" rather than
+               * replacing it with an unrelated "Remove from library". */
+              aria-label={isSavedAction ? `${action.label} — remove from library` : undefined}
+              title={isSavedAction
+                ? `${action.label} — remove from library`
+                : hint ? `${action.label} — ${hint}` : action.label}
+            >
+              {isBusy
+                ? <span className="player-action-chip__spinner" aria-hidden="true" />
+                : <ActionIcon k={action.key} />}
+              <span className="player-action-chip-copy">
+                <span className="player-action-chip-label">{action.label}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {secondaryActions.length > 0 && (
+        <div className="player-action-locked" aria-label="More actions">
+          {secondaryActions.map((action) => {
+            const available = action.status === "available";
             const detail = getActionDetail(action);
-            const hint = detail || action.reason;
+            const progress = getActionProgress(action);
+            const hint = available
+              ? detail || action.reason
+              : action.reason || "Not available for this track yet.";
             return (
               <button
                 key={action.key}
-                className={`player-action-chip ${inert ? "" : "player-action-chip--available"} ${isSavedAction ? "is-saved" : ""} ${isBusy ? "is-busy" : ""}`}
                 type="button"
-                onClick={() => {
-                  if (!disabled) onAction(action);
-                }}
-                disabled={disabled}
-                style={inert ? { cursor: "progress" } : undefined}
-                aria-pressed={isSavedAction || undefined}
-                aria-busy={isBusy || undefined}
-                /* The accessible name has to contain the visible label
-                 * (WCAG 2.5.3), so the saved chip extends "Saved" rather than
-                 * replacing it with an unrelated "Remove from library". */
-                aria-label={isSavedAction ? `${action.label} — remove from library` : undefined}
-                title={isSavedAction
-                  ? `${action.label} — remove from library`
-                  : hint ? `${action.label} — ${hint}` : action.label}
+                className={`player-action-lockchip player-action-lockchip--${available ? "available" : action.status}`}
+                onClick={() => press(action)}
+                disabled={inert}
+                aria-disabled={!available || undefined}
+                title={hint ? `${action.label} — ${hint}` : action.label}
               >
-                {isBusy
-                  ? <span className="player-action-chip__spinner" aria-hidden="true" />
-                  : <ActionIcon k={action.key} />}
-                <span className="player-action-chip-copy">
-                  <span>{action.label}</span>
-                  {detail && <small>{detail}</small>}
-                </span>
+                {action.label}
+                {progress ? <span className="player-action-lockchip__detail">{` \u00b7 ${progress}`}</span> : null}
               </button>
             );
           })}
-        </div>
-      )}
-
-      {unavailableActions.length > 0 && (
-        <div className="player-action-locked" aria-label="Unavailable and coming soon actions">
-          {unavailableActions.map((action) => (
-            <span
-              key={action.key}
-              className={`player-action-lockchip player-action-lockchip--${action.status}`}
-              title={action.reason || "Not available for this track yet."}
-            >
-              {action.label}
-            </span>
-          ))}
         </div>
       )}
     </section>

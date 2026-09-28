@@ -62,37 +62,48 @@ const actionState: PlayerTrackActionsResponse = {
 };
 
 describe("PlayerActionPanel", () => {
-  it("groups available actions as primary buttons and keeps disabled/planned actions locked", () => {
+  it("puts every action in a fixed slot, whatever its status", () => {
     const grouped = groupPlayerActions(actionState);
 
+    // Same four main slots and same small row for every track, so switching
+    // tracks never reshapes the panel (the console "shake").
     expect(grouped.primaryActions.map((action) => action.key)).toEqual([
       "save",
       "add_to_playlist",
       "inspect_stems",
-    ]);
-    expect(grouped.unavailableActions.map((action) => action.key)).toEqual([
       "remix",
-      "collect_drop",
-      "shows_campaign",
+    ]);
+    expect(grouped.secondaryActions.map((action) => action.key)).toEqual([
       "buy_license",
+      "shows_campaign",
+      "collect_drop",
     ]);
   });
 
-  it("promotes buy/license only when the action is available", () => {
-    const grouped = groupPlayerActions({
+  it("keeps the same slots when availability changes between tracks", () => {
+    const everythingAvailable = groupPlayerActions({
       ...actionState,
-      actions: actionState.actions.map((action) =>
-        action.key === "buy_license"
-          ? { ...action, status: "available" as const, href: "/marketplace/listing-1" }
-          : action,
-      ),
+      actions: actionState.actions.map((action) => ({ ...action, status: "available" as const })),
     });
+    const baseline = groupPlayerActions(actionState);
 
-    expect(grouped.primaryActions.map((action) => action.key)).toContain("buy_license");
-    expect(grouped.unavailableActions.map((action) => action.key)).not.toContain("buy_license");
+    expect(everythingAvailable.primaryActions.map((a) => a.key)).toEqual(baseline.primaryActions.map((a) => a.key));
+    expect(everythingAvailable.secondaryActions.map((a) => a.key)).toEqual(baseline.secondaryActions.map((a) => a.key));
   });
 
-  it("renders an available Support a show action as an enabled chip with campaign detail", () => {
+  it("renders an unavailable main action in its slot, dimmed but still explaining itself", () => {
+    const onAction = vi.fn();
+    const html = renderToStaticMarkup(
+      <PlayerActionPanel actionState={actionState} loading={false} onAction={onAction} />,
+    );
+
+    expect(html).toMatch(/class="player-action-chip is-unavailable"[^>]*aria-disabled="true"/);
+    expect(html).toContain("Remix — Remix rights are not available for this track.");
+    // Pressable (the page shows the reason), not a dead disabled button.
+    expect(html).not.toMatch(/is-unavailable"[^>]*disabled=""/);
+  });
+
+  it("renders an available Support a show action as an accent pill with its progress", () => {
     const onAction = vi.fn();
     const showActionState: PlayerTrackActionsResponse = {
       ...actionState,
@@ -115,16 +126,14 @@ describe("PlayerActionPanel", () => {
       ),
     };
 
-    const grouped = groupPlayerActions(showActionState);
     const html = renderToStaticMarkup(
       <PlayerActionPanel actionState={showActionState} loading={false} onAction={onAction} />,
     );
 
-    expect(grouped.primaryActions.map((action) => action.key)).toContain("shows_campaign");
-    expect(grouped.unavailableActions.map((action) => action.key)).not.toContain("shows_campaign");
+    expect(html).toContain("player-action-lockchip--available");
     expect(html).toContain("Support a show");
+    expect(html).toContain("78% funded");
     expect(html).toContain("Ada Mix in Montreal \u00b7 78% funded");
-    expect(html).not.toContain("player-action-lockchip--available");
   });
 
   it("does not double the location when the campaign title already names one", () => {
@@ -158,14 +167,13 @@ describe("PlayerActionPanel", () => {
     expect(html).not.toContain("in Brooklyn in New York");
   });
 
-  it("renders unavailable actions as compact lock-chips with reasons in tooltips", () => {
+  it("keeps the reasons of unavailable actions as tooltips", () => {
     const html = renderToStaticMarkup(
       <PlayerActionPanel actionState={actionState} loading={false} onAction={vi.fn()} />,
     );
 
-    // Compact chip container instead of the old verbose stacked list.
     expect(html).toContain("player-action-locked");
-    // Labels render as chips...
+    // Labels render in their slots...
     expect(html).toContain("Remix");
     expect(html).toContain("Collect");
     // ...and the reasons are preserved as tooltips (title attributes).
