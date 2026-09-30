@@ -2,7 +2,7 @@
 
 **Status:** Planned 2026-09-30, starts after Sprint 28 closes (indicative
 2026-10-15 to 2026-10-28).
-**Milestone:** _to be linked when created_.
+**Milestone:** [31](https://github.com/akoita/resonate/milestone/31).
 **Goal:** Ranking and search know what every track sounds like (measured tempo,
 key and energy) and what it is close to (real embeddings), and a ranking change
 is promoted only on a measured win.

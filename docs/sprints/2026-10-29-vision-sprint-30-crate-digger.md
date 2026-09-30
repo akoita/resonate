@@ -2,7 +2,7 @@
 
 **Status:** Planned 2026-09-30, starts after Sprint 29 closes (indicative
 2026-10-29 to 2026-11-18).
-**Milestone:** _to be linked when created_.
+**Milestone:** [32](https://github.com/akoita/resonate/milestone/32).
 **Goal:** A DJ describes what their set needs and gets a quoted, rights-clear
 crate they can buy with one signature.
 

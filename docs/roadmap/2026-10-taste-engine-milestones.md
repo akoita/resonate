@@ -175,14 +175,14 @@ only when its gate is met.
 ## Sprint artifacts
 
 Approved by the owner on 2026-09-30. Following recent sprints, issues carry the
-milestone (linked from each sprint doc) and no `sprint:` label.
+milestone and no `sprint:` label. The milestones were created on 2026-09-30.
 
-| Sprint | Sprint doc | Issues |
-| --- | --- | --- |
-| Vision Sprint 28: Refocus the AI DJ | [doc](../sprints/2026-10-01-vision-sprint-28-refocus-ai-dj.md) | [#1954](https://github.com/akoita/resonate/issues/1954), [#1955](https://github.com/akoita/resonate/issues/1955), [#1956](https://github.com/akoita/resonate/issues/1956), [#1456](https://github.com/akoita/resonate/issues/1456), [#1957](https://github.com/akoita/resonate/issues/1957), [#1958](https://github.com/akoita/resonate/issues/1958) |
-| Vision Sprint 29: Audio-aware discovery foundations | [doc](../sprints/2026-10-15-vision-sprint-29-audio-aware-discovery.md) | [#1959](https://github.com/akoita/resonate/issues/1959), [#1960](https://github.com/akoita/resonate/issues/1960), [#1452](https://github.com/akoita/resonate/issues/1452), [#1455](https://github.com/akoita/resonate/issues/1455), [#1961](https://github.com/akoita/resonate/issues/1961) |
-| Vision Sprint 30: Crate Digger v1 | [doc](../sprints/2026-10-29-vision-sprint-30-crate-digger.md) | [#1962](https://github.com/akoita/resonate/issues/1962), [#1963](https://github.com/akoita/resonate/issues/1963), [#1964](https://github.com/akoita/resonate/issues/1964), [#1965](https://github.com/akoita/resonate/issues/1965), [#1966](https://github.com/akoita/resonate/issues/1966), [#1967](https://github.com/akoita/resonate/issues/1967) |
-| Vision Sprint 31: Scene Scout v1 | [doc](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) | [#1968](https://github.com/akoita/resonate/issues/1968), [#1969](https://github.com/akoita/resonate/issues/1969), [#1970](https://github.com/akoita/resonate/issues/1970), [#1450](https://github.com/akoita/resonate/issues/1450) |
+| Sprint | Sprint doc | Milestone | Issues |
+| --- | --- | --- | --- |
+| Vision Sprint 28: Refocus the AI DJ | [doc](../sprints/2026-10-01-vision-sprint-28-refocus-ai-dj.md) | [30](https://github.com/akoita/resonate/milestone/30) | [#1954](https://github.com/akoita/resonate/issues/1954), [#1955](https://github.com/akoita/resonate/issues/1955), [#1956](https://github.com/akoita/resonate/issues/1956), [#1456](https://github.com/akoita/resonate/issues/1456), [#1957](https://github.com/akoita/resonate/issues/1957), [#1958](https://github.com/akoita/resonate/issues/1958) |
+| Vision Sprint 29: Audio-aware discovery foundations | [doc](../sprints/2026-10-15-vision-sprint-29-audio-aware-discovery.md) | [31](https://github.com/akoita/resonate/milestone/31) | [#1959](https://github.com/akoita/resonate/issues/1959), [#1960](https://github.com/akoita/resonate/issues/1960), [#1452](https://github.com/akoita/resonate/issues/1452), [#1455](https://github.com/akoita/resonate/issues/1455), [#1961](https://github.com/akoita/resonate/issues/1961) |
+| Vision Sprint 30: Crate Digger v1 | [doc](../sprints/2026-10-29-vision-sprint-30-crate-digger.md) | [32](https://github.com/akoita/resonate/milestone/32) | [#1962](https://github.com/akoita/resonate/issues/1962), [#1963](https://github.com/akoita/resonate/issues/1963), [#1964](https://github.com/akoita/resonate/issues/1964), [#1965](https://github.com/akoita/resonate/issues/1965), [#1966](https://github.com/akoita/resonate/issues/1966), [#1967](https://github.com/akoita/resonate/issues/1967) |
+| Vision Sprint 31: Scene Scout v1 | [doc](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) | [33](https://github.com/akoita/resonate/milestone/33) | [#1968](https://github.com/akoita/resonate/issues/1968), [#1969](https://github.com/akoita/resonate/issues/1969), [#1970](https://github.com/akoita/resonate/issues/1970), [#1450](https://github.com/akoita/resonate/issues/1450) |
 
 The "Later" items keep no milestone until their gate is met.
 

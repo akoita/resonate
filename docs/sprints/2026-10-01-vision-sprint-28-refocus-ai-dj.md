@@ -1,7 +1,7 @@
 # Vision Sprint 28: Refocus the AI DJ
 
 **Status:** Planned 2026-09-30, starts 2026-10-01 (indicative end 2026-10-14).
-**Milestone:** _to be linked when created_.
+**Milestone:** [30](https://github.com/akoita/resonate/milestone/30).
 **Goal:** The AI DJ never spends or generates on its own, and Sonic Radar shows
 what resonated with the listener, not what the agent bought.
 

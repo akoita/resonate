@@ -2,7 +2,7 @@
 
 **Status:** Planned 2026-09-30, starts after Sprint 30 closes (indicative
 2026-11-19 to 2026-12-09).
-**Milestone:** _to be linked when created_.
+**Milestone:** [33](https://github.com/akoita/resonate/milestone/33).
 **Goal:** An artist sees where real demand for a release is and gets one
 concrete next action for it.
 
