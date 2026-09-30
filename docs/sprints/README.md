@@ -47,9 +47,9 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest: [Vision Sprint 27 — Trustworthy artist profile enrichment](2026-09-23-vision-sprint-27-artist-enrichment.md),
-closed with staging release evidence. The next sprint has not yet been approved;
-a proposed sequence for Vision Sprints 28 to 31 is in the
+Latest closed: [Vision Sprint 27 — Trustworthy artist profile enrichment](2026-09-23-vision-sprint-27-artist-enrichment.md),
+closed with staging release evidence. Next: [Vision Sprint 28 — Refocus the AI DJ](2026-10-01-vision-sprint-28-refocus-ai-dj.md),
+the first of four planned taste engine sprints (28 to 31) sequenced in the
 [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md).
 
 | Sprint | Theme | Outcome |
@@ -82,3 +82,7 @@ a proposed sequence for Vision Sprints 28 to 31 is in the
 | [2026-09-23](2026-09-23-vision-sprint-25-artist-management.md) | Vision Sprint 25 — artist management with reliable catalog status | ✅ Closed 2026-09-23 — 3/3; catalog status refresh, scoped artist management, and listener library removal |
 | [2026-09-23](2026-09-23-vision-sprint-26-safer-artist-claims.md) | Vision Sprint 26 — safer artist profile claims | ✅ Closed 2026-09-23 — #1856 merged, release evidence recorded, milestone changelog published |
 | [2026-09-23](2026-09-23-vision-sprint-27-artist-enrichment.md) | Vision Sprint 27 — trustworthy artist profile enrichment | ✅ Closed 2026-09-23 — #1763 merged, staging deployment verified, milestone changelog published |
+| [2026-10-01](2026-10-01-vision-sprint-28-refocus-ai-dj.md) | Vision Sprint 28 — refocus the AI DJ (no autonomous spend or generation; Sonic Radar as a discovery journal) | 🗓 Planned 2026-09-30 |
+| [2026-10-15](2026-10-15-vision-sprint-29-audio-aware-discovery.md) | Vision Sprint 29 — audio-aware discovery foundations (full-mix features, embeddings, measurement) | 🗓 Planned 2026-09-30 |
+| [2026-10-29](2026-10-29-vision-sprint-30-crate-digger.md) | Vision Sprint 30 — Crate Digger v1 (quoted, rights-clear crates for DJs) | 🗓 Planned 2026-09-30 |
+| [2026-11-19](2026-11-19-vision-sprint-31-scene-scout.md) | Vision Sprint 31 — Scene Scout v1 (qualified demand and next actions for artists) | 🗓 Planned 2026-09-30 |

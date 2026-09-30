@@ -1,10 +1,10 @@
 # RFC: Taste Engine — one recommendation framework, three faces (Session DJ, Crate Digger, Scene Scout)
 
-- **Status:** proposed
+- **Status:** accepted 2026-09-30 (ADR-TE-1…6 accepted on [#1953](https://github.com/akoita/resonate/issues/1953))
 - **Date:** 2026-09-30
 - **Owner:** @akoita
 - **Tracking epic:** [#1952](https://github.com/akoita/resonate/issues/1952)
-- **Decisions:** [ADR-TE-1…6](../strategy/taste-engine-decisions.md) (decision issue [#1953](https://github.com/akoita/resonate/issues/1953))
+- **Decisions:** [ADR-TE-1…7](../strategy/taste-engine-decisions.md) (ADR-TE-1…6 accepted on [#1953](https://github.com/akoita/resonate/issues/1953); ADR-TE-7 proposed in [#1976](https://github.com/akoita/resonate/issues/1976))
 - **Strategy:** [AI DJ Rethink and Taste Engine](../strategy/ai-dj-taste-engine-2026-09.md)
 - **Sequencing:** [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md)
 - **Extends:** [RFC: Discovery Intelligence](discovery-intelligence.md) (epic

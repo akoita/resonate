@@ -50,25 +50,29 @@
 
 ## 🌟 Overview
 
-Resonate is an AI-native music platform that uses AI, agent interfaces, and blockchain rails as product primitives, not afterthoughts. Artists upload releases, split songs into stems, and sell licensed assets in stablecoin. Listeners get a full music app with an AI DJ, marketplace, and wallet-native purchases. AI agents discover, quote, and buy stems over HTTP with x402. No account, no OAuth, just `curl` + USDC + a signed receipt.
+Resonate is a music platform for independent artists and the professionals who work with their music: DJs, producers and creators. Artists release music, sell licenses to use it, and fund shows with their fans. Professionals find rights-clear music and license it in one step. Listeners get a full music app whose recommendations are never for sale. AI agents reach the same catalog over MCP and x402, always through a priced quote and a signed receipt.
 
-The human studio, storefront API, x402 payment flow, and MCP interface are peers over the same on-chain catalog. Three audiences, one catalog:
+The human studio, storefront API, x402 payment flow, and MCP interface are peers over the same on-chain catalog. Four audiences, one catalog:
 
-- **Artists**: upload releases, mint stems as NFTs, price per-license type (personal / remix / commercial), earn royalties via on-chain payment splitter.
-- **Listeners**: full music app: player, library, playlists, marketplace, AI DJ, curator-resolved disputes. Wallet-native purchases. You own what you buy.
+- **Artists**: upload releases, price each license tier (personal / remix / commercial), run escrow-backed Shows campaigns with their fans, and keep at least 85% of every sale.
+- **DJs, producers and creators**: license stems and tracks with clear terms, remix in Remix Studio, and export what they licensed.
+- **Listeners**: player, library, playlists, discovery with readable reasons, Shows and collectibles. Wallet-native purchases. You own what you buy.
 - **Agents**: storefront endpoints, licensing-aware quotes, x402 HTTP payments, machine-readable purchase receipts. No account required.
+
+The direction is set by the [business model review](docs/strategy/business-model-review-2026-07.md) and the [taste engine decisions](docs/strategy/taste-engine-decisions.md).
 
 ---
 
 ## ⚡ Key Capabilities
 
-- **Programmable stems**: AI-separated 6-stem assets (vocals, drums, bass, guitar, piano, other) as the core monetizable unit · [Upload flow](docs/features/artist_upload_flow_mvp.md)
-- **x402 commerce**: machine-to-machine stem purchases over HTTP with USDC settlement and structured receipts · [x402 payments](docs/architecture/x402_payments.md)
-- **MCP tools**: `catalog.search`, `stem.quote`, `stem.download` over Streamable HTTP at `/mcp` · [MCP server](docs/architecture/mcp_server.md)
 - **Resonate Shows**: escrow-backed fan campaigns that turn city-level demand into booking signals · [Shows](docs/features/resonate_shows.md)
-- **AI DJ**: taste-constrained agent runtime with commerce-aware recommendations · [Agent commerce](docs/features/agent-commerce-runtime.md)
+- **Licensed stems**: every track split into six stems (vocals, drums, bass, guitar, piano, other) and sold as personal, remix or commercial licenses; official artist stems are proposed in [ADR-TE-7](docs/strategy/taste-engine-decisions.md) · [Upload flow](docs/features/artist_upload_flow_mvp.md)
+- **Marketplace**: on-chain license sales with stablecoin settlement · [Contracts](docs/smart-contracts/core_contracts.md)
+- **Remix Studio**: licensed remixing, with AI parts billed in credits · [Remix Studio](docs/features/remix_studio.md)
+- **Taste engine**: one recommendation framework behind the listener AI DJ, the planned Crate Digger for DJs and Scene Scout for artists, with public rules enforced from Vision Sprint 28: no paid ranking, and no agent spends without an approved quote · [Taste intelligence](docs/features/agent_taste_intelligence.md)
+- **x402 commerce**: machine-to-machine license purchases over HTTP with USDC settlement and structured receipts · [x402 payments](docs/architecture/x402_payments.md)
+- **MCP tools**: `catalog.search`, `stem.quote`, `stem.download` over Streamable HTTP at `/mcp` · [MCP server](docs/architecture/mcp_server.md)
 - **Smart accounts**: ERC-4337 Kernel accounts with session keys for gasless UX · [Account abstraction](docs/account-abstraction/account-abstraction.md)
-- **Marketplace**: on-chain stem trading with licensing tiers and stablecoin settlement · [Contracts](docs/smart-contracts/core_contracts.md)
 - **Community curation**: dispute flows and curator-resolved content quality signals · [Curation](docs/features/community_curation_disputes.md)
 
 See the [feature catalog](docs/features/README.md) for the full index of implemented, partial, planned, and retired capabilities.
