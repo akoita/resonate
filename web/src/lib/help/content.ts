@@ -484,7 +484,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "ai-dj",
     title: "AI DJ & Sonic Radar",
     summary:
-      "Let an AI DJ build a continuous session around a mood or goal, and use Sonic Radar to surface fresh, AI-curated discoveries.",
+      "Let an AI DJ build a continuous session around a mood or goal, and use Sonic Radar to look back at the tracks that resonated with you.",
     category: "discover",
     audiences: ["listener"],
     status: "partial",
@@ -583,7 +583,65 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
       { label: "Sonic Radar", href: "/sonic-radar", description: "Your resonant discoveries." },
     ],
-    related: ["discover-music", "playing-music", "settings-privacy"],
+    related: ["discover-music", "playing-music", "settings-privacy", "how-recommendations-work"],
+  },
+  {
+    slug: "how-recommendations-work",
+    title: "How recommendations work",
+    summary:
+      "The six rules every Resonate recommendation follows — on Home and in the AI DJ — for listeners and for artists.",
+    category: "discover",
+    audiences: ["listener", "artist"],
+    keywords: ["recommendations", "ranking", "algorithm", "why this track", "explanation", "discovery", "exploration", "new artists", "ai-generated", "diversity", "fairness", "paid placement", "payola", "hide", "less of this", "taste", "ai dj", "home feed"],
+    sections: [
+      {
+        id: "the-rules",
+        heading: "The six rules",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Home and the AI DJ pick music with one shared recommendation engine. Whatever it suggests passes through the same six rules before you see it.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "1. What you say comes first", description: "If you hide a genre, a mood or an artist, it stays hidden, whatever else the engine thinks. Things you asked to see less of are ranked lower." },
+              { term: "2. No fully AI-generated tracks unless you ask", description: "Music that is entirely AI-generated is left out of your recommendations unless you explicitly asked for AI music. Tracks with some AI assistance keep their disclosure label." },
+              { term: "3. Room for new artists", description: "About one pick in five (and at least one per page or session) is reserved for a verified human artist you have never played, chosen because they sound close to your taste. These picks say \"Discovery pick\"." },
+              { term: "4. Variety", description: "You get at most two tracks by the same artist per page, or per ten tracks in an AI DJ session." },
+              { term: "5. Every pick says why", description: "Each recommendation carries a short reason, such as a vibe you chose, your learned taste, or a discovery pick. Reasons describe your taste in general and never list another listener's history." },
+              { term: "6. Ranking is never for sale", description: "Nobody can pay to move a track up. Having stems for sale, a promotion or a partnership never changes where a track appears in your recommendations." },
+            ],
+          },
+        ],
+      },
+      {
+        id: "for-artists",
+        heading: "What this means for artists",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Your music reaches listeners because it fits their taste, not because of what you sell. Listing stems in the Marketplace does not raise your tracks in recommendations. If you are a verified human artist, new listeners whose taste is close to yours can meet your music through discovery picks.",
+          },
+        ],
+      },
+      {
+        id: "your-controls",
+        heading: "Your controls",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "You can hide or downrank genres, moods and artists, choose whether AI DJ playback trains your taste, and reset your taste at any time from Settings. See Settings & privacy controls.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Discover", href: "/", description: "Your personalized Home feed." },
+      { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
+      { label: "Settings", href: "/settings", description: "Hide, downrank or reset your taste." },
+    ],
+    related: ["discover-music", "ai-dj", "settings-privacy"],
   },
   {
     slug: "library-playlists",
