@@ -5238,8 +5238,8 @@ export type AgentNextPickResponse = {
     explanation?: string[];
     signals?: AgentRecommendationSignal[];
   }>;
-  generationsUsed?: number;
-  generationSpendUsd?: number;
+  /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
+  shortfall?: number;
 };
 
 export async function getAgentHistory(token: string): Promise<AgentSession[]> {

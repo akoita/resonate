@@ -78,7 +78,7 @@ Resonate is not a green field — it is roughly **55% agent-complete** with a cl
 
 - **Agent runtime** — Google ADK (`@google/adk`) + Vertex/Gemini fallback, deterministic orchestrator as last line of defense ([backend/src/modules/agents/agent_runtime.service.ts](../../backend/src/modules/agents/agent_runtime.service.ts), [runtime/adk_adapter.ts](../../backend/src/modules/agents/runtime/adk_adapter.ts)).
 - **Three-role orchestration** — Selector / Mixer / Negotiator services, each with its own seam.
-- **Tool registry** — `catalog.search`, `pricing.quote`, `analytics.signal` (mocked), `embeddings.similarity`, `generation.create`, `generation.complementary` ([tools/tool_registry.ts](../../backend/src/modules/agents/tools/tool_registry.ts)).
+- **Tool registry** — `catalog.search`, `pricing.quote`, `analytics.signal` (mocked), `embeddings.similarity`; the `generation.create` and `generation.complementary` tools were removed by ADR-TE-4 ([tools/tool_registry.ts](../../backend/src/modules/agents/tools/tool_registry.ts)).
 - **Agent wallet** — self-custodial ECDSA keypair, AES-256-GCM at rest (or GCP KMS), ZeroDev Kernel v3 smart account + session keys, USDC budget enforcement ([agent_wallet.service.ts](../../backend/src/modules/agents/agent_wallet.service.ts), [agent_purchase.service.ts](../../backend/src/modules/agents/agent_purchase.service.ts)).
 - **Lyria generation** — `@google/genai` live-music, SynthID watermark verification, BullMQ queue, $0.06 per 30s clip.
 - **x402 paywall** — middleware + `/api/stems/:id/x402` + `x-payment-info` in OpenAPI (PR #403, #533).

@@ -7,10 +7,6 @@ const TEST_PREFIX = `agcs_${Date.now()}_`;
 const MATCH_GENRE = `${TEST_PREFIX}HipHop`;
 const MISS_GENRE = `${TEST_PREFIX}Reggaeton`;
 
-const mockGenerationService = {
-  createGeneration: jest.fn().mockResolvedValue({ jobId: "gen-mock-1" }),
-} as any;
-
 describe("agent catalog search tool (integration)", () => {
   let tools: ToolRegistry;
 
@@ -175,7 +171,7 @@ describe("agent catalog search tool (integration)", () => {
   });
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
   });
 
   it("returns genre matches without pulling unrelated recent tracks", async () => {

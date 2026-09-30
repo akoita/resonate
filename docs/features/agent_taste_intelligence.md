@@ -103,6 +103,17 @@ The selector never performs an unbounded warehouse scan during recommendation.
 It queries only the current `userId` and the candidate `trackIds` already found
 by catalog search.
 
+Agents never generate audio to fill a sparse selection
+([ADR-TE-4](../strategy/taste-engine-decisions.md)). Every candidate comes from
+the existing catalog, and AI-generated tracks stay out of this promotional
+surface (ADR-BM-5.3). When the catalog cannot fill the requested track count, the
+orchestrator returns fewer tracks with an explicit `shortfall` (requested minus
+returned) and records the unmet intent (`genres`, `mood`, `energy`) on the
+`agent.decision_made` event instead of padding with generated tracks. The
+`agent.generation_triggered` analytics event is retired: nothing emits it.
+Remix Studio generation is unaffected and stays credit-billed. Details:
+[Agent Commerce Runtime](agent-commerce-runtime.md#no-generation-from-agents-adr-te-4).
+
 Listener governance controls live in
 [Listener Taste Memory Controls](listener_taste_memory_controls.md). Hidden and
 downranked signals are applied before recommendation reasons are returned, reset

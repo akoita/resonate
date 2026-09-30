@@ -3,19 +3,13 @@ import { EventBus } from "../shared/event_bus";
 import { AgentMixerService } from "./agent_mixer.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentRecommendationService } from "./agent_recommendation.service";
-import { GenerationService } from "../generation/generation.service";
 import { getAgentTrackLimit } from "./agent_runtime.config";
-
-const COST_PER_GENERATION = 0.06;
-const SPARSE_CATALOG_THRESHOLD = 3; // trigger generation if fewer than this many matches
 
 export interface AgentOrchestratorInput {
   sessionId: string;
   userId: string;
   recentTrackIds: string[];
   budgetRemainingUsd: number;
-  /** Budget for AI generation ($0.06/clip). Defaults to $1.00. */
-  generationBudgetUsd?: number;
   preferences: {
     mood?: string;
     energy?: "low" | "medium" | "high";
@@ -31,10 +25,17 @@ export interface OrchestratedTrack {
   trackId: string;
   mixPlan: any;
   negotiation: any;
-  /** True if this track was AI-generated (not from catalog) */
-  generated?: boolean;
-  /** Generation job ID for AI-generated tracks */
-  generationJobId?: string;
+}
+
+/**
+ * What the listener asked for, recorded when the catalog could not fill the
+ * requested track count. Agents never generate audio to fill a shortfall
+ * (ADR-TE-4); the unmet intent is the signal instead.
+ */
+export interface AgentUnmetIntent {
+  genres?: string[];
+  mood?: string;
+  energy?: string;
 }
 
 @Injectable()
@@ -45,75 +46,30 @@ export class AgentOrchestratorService {
     private readonly recommendations: AgentRecommendationService,
     private readonly mixer: AgentMixerService,
     private readonly negotiator: AgentNegotiatorService,
-    private readonly eventBus: EventBus,
-    private readonly generationService: GenerationService
+    private readonly eventBus: EventBus
   ) { }
 
   async orchestrate(input: AgentOrchestratorInput): Promise<{
     status: string;
     tracks: OrchestratedTrack[];
-    generationsUsed?: number;
-    generationSpendUsd?: number;
+    /** Tracks requested minus tracks returned. Never filled by generation. */
+    shortfall: number;
   }> {
+    const requestedLimit = getAgentTrackLimit();
     const selection = await this.recommendations.recommend({
       sessionId: input.sessionId,
       userId: input.userId,
       recentTrackIds: input.recentTrackIds,
       budgetRemainingUsd: input.budgetRemainingUsd,
       preferences: input.preferences,
-      limit: getAgentTrackLimit(),
+      limit: requestedLimit,
     });
 
     const selectedCount = selection.selected?.length ?? 0;
-    let generationBudgetLeft = input.generationBudgetUsd ?? 1.0;
-    let generationsUsed = 0;
-    let generationSpendUsd = 0;
 
-    // If catalog is sparse and generation budget is available, generate filler
-    if (selectedCount < SPARSE_CATALOG_THRESHOLD && generationBudgetLeft >= COST_PER_GENERATION) {
-      const fillCount = Math.min(
-        SPARSE_CATALOG_THRESHOLD - selectedCount,
-        Math.floor(generationBudgetLeft / COST_PER_GENERATION)
-      );
-
-      this.logger.log(
-        `Catalog sparse (${selectedCount} tracks). Generating ${fillCount} fill track(s).`
-      );
-
-      for (let i = 0; i < fillCount; i++) {
-        try {
-          const genPrompt = this.buildGenerationPrompt(input.preferences, i);
-          const result = await this.generationService.createGeneration(
-            {
-              prompt: genPrompt,
-              negativePrompt: "silence, noise, harsh distortion",
-              artistId: process.env.AGENT_ARTIST_ID ?? "agent",
-            },
-            input.userId
-          );
-
-          generationsUsed++;
-          generationSpendUsd += COST_PER_GENERATION;
-          generationBudgetLeft -= COST_PER_GENERATION;
-
-          this.eventBus.publish({
-            eventName: "agent.generation_triggered",
-            eventVersion: 1,
-            occurredAt: new Date().toISOString(),
-            sessionId: input.sessionId,
-            jobId: result.jobId,
-            prompt: genPrompt,
-            costUsd: COST_PER_GENERATION,
-            reason: "sparse_catalog",
-          });
-        } catch (err: any) {
-          this.logger.warn(`Generation fill failed: ${err.message}`);
-          break; // Stop generating on failure (likely rate limited)
-        }
-      }
-    }
-
-    if (selectedCount === 0 && generationsUsed === 0) {
+    if (selectedCount === 0) {
+      const shortfall = requestedLimit;
+      this.logger.log(`Catalog returned no tracks; shortfall ${shortfall}.`);
       this.eventBus.publish({
         eventName: "agent.decision_made",
         eventVersion: 1,
@@ -121,8 +77,10 @@ export class AgentOrchestratorService {
         sessionId: input.sessionId,
         trackId: "",
         reason: "no_tracks",
+        shortfall,
+        unmetIntent: buildUnmetIntent(input.preferences),
       });
-      return { status: "no_tracks", tracks: [], generationsUsed: 0, generationSpendUsd: 0 };
+      return { status: "no_tracks", tracks: [], shortfall };
     }
 
     if (selectedCount > 0) {
@@ -198,7 +156,10 @@ export class AgentOrchestratorService {
       if (budgetLeft <= 0) break;
     }
 
-    // Final decision event
+    // Final decision event. A sparse or budget-limited selection returns fewer
+    // tracks with an explicit shortfall; audio is never generated to fill it.
+    const shortfall = Math.max(0, requestedLimit - tracks.length);
+    const status = tracks.length > 0 ? "approved" : "all_rejected";
     this.eventBus.publish({
       eventName: "agent.decision_made",
       eventVersion: 1,
@@ -206,41 +167,24 @@ export class AgentOrchestratorService {
       sessionId: input.sessionId,
       trackCount: tracks.length,
       totalSpend: tracks.reduce((sum, t) => sum + t.negotiation.priceUsd, 0),
-      generationsUsed,
-      generationSpendUsd,
-      reason: tracks.length > 0 || generationsUsed > 0 ? "approved" : "all_rejected",
+      reason: status,
+      ...(shortfall > 0
+        ? { shortfall, unmetIntent: buildUnmetIntent(input.preferences) }
+        : {}),
     });
 
-    return {
-      status: tracks.length > 0 || generationsUsed > 0 ? "approved" : "all_rejected",
-      tracks,
-      generationsUsed,
-      generationSpendUsd,
-    };
+    return { status, tracks, shortfall };
   }
+}
 
-  private buildGenerationPrompt(
-    prefs: AgentOrchestratorInput["preferences"],
-    index: number
-  ): string {
-    const parts: string[] = [];
-
-    if (prefs.genres?.length) {
-      parts.push(prefs.genres[index % prefs.genres.length]);
-    }
-    if (prefs.mood) {
-      parts.push(`${prefs.mood} mood`);
-    }
-    if (prefs.energy) {
-      parts.push(`${prefs.energy} energy`);
-    }
-
-    if (parts.length === 0) {
-      return "Generate an atmospheric ambient track with warm pads";
-    }
-
-    return `Generate a 30-second track: ${parts.join(", ")}`;
-  }
+function buildUnmetIntent(
+  prefs: AgentOrchestratorInput["preferences"],
+): AgentUnmetIntent {
+  return {
+    ...(prefs.genres?.length ? { genres: [...prefs.genres] } : {}),
+    ...(prefs.mood ? { mood: prefs.mood } : {}),
+    ...(prefs.energy ? { energy: prefs.energy } : {}),
+  };
 }
 
 function cohortInfluenceFromRecommendations(selected: Array<{ agentRecommendation?: { signals?: Array<{ label: string; reason: string }> } }>) {

@@ -30,10 +30,6 @@ import { EmbeddingStore } from '../modules/embeddings/embedding.store';
 
 const TEST_PREFIX = `agrt_${Date.now()}_`;
 
-const mockGenerationService = {
-  createGeneration: jest.fn().mockResolvedValue({ jobId: 'gen-mock-1' }),
-} as any;
-
 function makeInput(overrides: Record<string, any> = {}) {
   return {
     sessionId: 'session-1',
@@ -69,7 +65,7 @@ describe('AgentRuntimeExecutorService (integration)', () => {
   });
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
   });
 
   it('falls back to orchestrator when mode is local', async () => {
@@ -156,7 +152,7 @@ describe('VertexAiAdapter (integration)', () => {
   let tools: ToolRegistry;
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
   });
 
   it('throws when GOOGLE_AI_API_KEY is not set', async () => {
@@ -170,7 +166,7 @@ describe('AdkAdapter (integration)', () => {
   let tools: ToolRegistry;
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
   });
 
   it('throws when GOOGLE_AI_API_KEY is not set', async () => {

@@ -277,8 +277,7 @@ export class SessionsService {
         status: result.status,
         tracks: [],
         reason: result.reason,
-        generationsUsed: result.generationsUsed,
-        generationSpendUsd: result.generationSpendUsd,
+        shortfall: result.shortfall,
       };
     }
 
@@ -355,8 +354,7 @@ export class SessionsService {
         explanation: item.explanation,
         signals: item.signals,
       })),
-      generationsUsed: result.generationsUsed,
-      generationSpendUsd: result.generationSpendUsd,
+      shortfall: result.shortfall,
     };
   }
 

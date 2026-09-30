@@ -19,15 +19,37 @@ import { DeterministicRecommendationAdapter } from '../modules/agents/determinis
 import { ToolRegistry } from '../modules/agents/tools/tool_registry';
 import { EmbeddingService } from '../modules/embeddings/embedding.service';
 import { EmbeddingStore } from '../modules/embeddings/embedding.store';
+import type { AgentDecisionMadeEvent } from '../events/event_types';
 
 const TEST_PREFIX = `agorc_${Date.now()}_`;
 
-const mockGenerationService = {
-  createGeneration: jest.fn().mockResolvedValue({ jobId: 'gen-mock-1' }),
-} as any;
+const SPARSE_GENRE = `${TEST_PREFIX}SparseGenre`;
+const UNMATCHED_GENRE = `${TEST_PREFIX}NoSuchGenre`;
+
+function buildOrchestrator(eventBus = new EventBus()) {
+  const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+  const selector = new AgentSelectorService(tools, new DiscoveryRankingService());
+  return new AgentOrchestratorService(
+    new AgentRecommendationService(new DeterministicRecommendationAdapter(selector)),
+    new AgentMixerService(),
+    new AgentNegotiatorService(tools),
+    eventBus,
+  );
+}
+
+function captureDecisionEvents(eventBus: EventBus) {
+  const events: AgentDecisionMadeEvent[] = [];
+  eventBus.subscribe<AgentDecisionMadeEvent>('agent.decision_made', (event) => {
+    events.push(event);
+  });
+  return events;
+}
 
 describe('AgentOrchestratorService (integration)', () => {
+  const originalTrackLimit = process.env.AGENT_TRACK_LIMIT;
+
   beforeAll(async () => {
+    process.env.AGENT_TRACK_LIMIT = '5';
     await prisma.user.create({ data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}@test.resonate` } });
     await prisma.artist.create({
       data: { id: `${TEST_PREFIX}artist`, userId: `${TEST_PREFIX}user`, displayName: 'Orch Artist', payoutAddress: '0x' + 'A'.repeat(40) },
@@ -41,9 +63,25 @@ describe('AgentOrchestratorService (integration)', () => {
         { id: `${TEST_PREFIX}track2`, title: 'Glow', releaseId: `${TEST_PREFIX}release`, position: 2 },
       ],
     });
+    await prisma.release.create({
+      data: { id: `${TEST_PREFIX}sparse_release`, title: 'Sparse Release', genre: SPARSE_GENRE, artistId: `${TEST_PREFIX}artist`, status: 'published' },
+    });
+    await prisma.track.createMany({
+      data: [
+        { id: `${TEST_PREFIX}sparse1`, title: 'Sparse One', releaseId: `${TEST_PREFIX}sparse_release`, position: 1 },
+        { id: `${TEST_PREFIX}sparse2`, title: 'Sparse Two', releaseId: `${TEST_PREFIX}sparse_release`, position: 2 },
+      ],
+    });
   });
 
   afterAll(async () => {
+    if (originalTrackLimit === undefined) {
+      delete process.env.AGENT_TRACK_LIMIT;
+    } else {
+      process.env.AGENT_TRACK_LIMIT = originalTrackLimit;
+    }
+    await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}sparse_release` } }).catch(() => {});
+    await prisma.release.delete({ where: { id: `${TEST_PREFIX}sparse_release` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
@@ -51,15 +89,7 @@ describe('AgentOrchestratorService (integration)', () => {
   });
 
   it('orchestrates selection, mix, negotiation', async () => {
-    const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
-    const selector = new AgentSelectorService(tools, new DiscoveryRankingService());
-    const orchestrator = new AgentOrchestratorService(
-      new AgentRecommendationService(new DeterministicRecommendationAdapter(selector)),
-      new AgentMixerService(mockGenerationService),
-      new AgentNegotiatorService(tools),
-      new EventBus(),
-      mockGenerationService,
-    );
+    const orchestrator = buildOrchestrator();
     const result = await orchestrator.orchestrate({
       sessionId: 'session-1',
       userId: 'user-1',
@@ -71,5 +101,92 @@ describe('AgentOrchestratorService (integration)', () => {
     expect(result.status).toBe('approved');
     expect(result.tracks.length).toBeGreaterThan(0);
     expect(result.tracks[0].mixPlan?.transition).toBeDefined();
+    expect(result.shortfall).toBe(Math.max(0, 5 - result.tracks.length));
+  });
+
+  it('returns fewer tracks with an explicit shortfall on a sparse catalog, never generated fills', async () => {
+    const eventBus = new EventBus();
+    const decisions = captureDecisionEvents(eventBus);
+    const orchestrator = buildOrchestrator(eventBus);
+
+    const result = await orchestrator.orchestrate({
+      sessionId: 'session-sparse',
+      userId: 'user-1',
+      recentTrackIds: [],
+      budgetRemainingUsd: 10,
+      preferences: { genres: [SPARSE_GENRE], mood: 'calm', energy: 'low' },
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.tracks.map((t) => t.trackId).sort()).toEqual([
+      `${TEST_PREFIX}sparse1`,
+      `${TEST_PREFIX}sparse2`,
+    ]);
+    expect(result.shortfall).toBe(3);
+    for (const track of result.tracks) {
+      expect(track).not.toHaveProperty('generated');
+      expect(track).not.toHaveProperty('generationJobId');
+    }
+    expect(result).not.toHaveProperty('generationsUsed');
+
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toEqual(
+      expect.objectContaining({
+        reason: 'approved',
+        trackCount: 2,
+        shortfall: 3,
+        unmetIntent: { genres: [SPARSE_GENRE], mood: 'calm', energy: 'low' },
+      }),
+    );
+    expect(decisions[0]).not.toHaveProperty('generationsUsed');
+  });
+
+  it('records the unmet intent when nothing in the catalog matches', async () => {
+    const eventBus = new EventBus();
+    const decisions = captureDecisionEvents(eventBus);
+    const orchestrator = buildOrchestrator(eventBus);
+
+    const result = await orchestrator.orchestrate({
+      sessionId: 'session-empty',
+      userId: 'user-1',
+      recentTrackIds: [],
+      budgetRemainingUsd: 10,
+      preferences: { genres: [UNMATCHED_GENRE] },
+    });
+
+    expect(result).toEqual({ status: 'no_tracks', tracks: [], shortfall: 5 });
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toEqual(
+      expect.objectContaining({
+        reason: 'no_tracks',
+        shortfall: 5,
+        unmetIntent: { genres: [UNMATCHED_GENRE] },
+      }),
+    );
+  });
+
+  it('omits shortfall and unmetIntent from the decision event when the limit is met', async () => {
+    process.env.AGENT_TRACK_LIMIT = '2';
+    try {
+      const eventBus = new EventBus();
+      const decisions = captureDecisionEvents(eventBus);
+
+      const result = await buildOrchestrator(eventBus).orchestrate({
+        sessionId: 'session-full',
+        userId: 'user-1',
+        recentTrackIds: [],
+        budgetRemainingUsd: 10,
+        preferences: { genres: [SPARSE_GENRE] },
+      });
+
+      expect(result.status).toBe('approved');
+      expect(result.tracks).toHaveLength(2);
+      expect(result.shortfall).toBe(0);
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0].shortfall).toBeUndefined();
+      expect(decisions[0].unmetIntent).toBeUndefined();
+    } finally {
+      process.env.AGENT_TRACK_LIMIT = '5';
+    }
   });
 });

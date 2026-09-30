@@ -271,7 +271,6 @@ export class AgentConfigController {
             });
 
             // Kick off orchestration — route through LLM when AGENT_RUNTIME is set
-            const generationBudgetUsd = parseFloat(process.env.AGENT_GENERATION_BUDGET ?? "1.00");
             const tasteProfilePromise = this.learningService.computeTasteProfile(req.user.userId, config.vibes).catch((error) => {
                 this.logger.warn(`Failed to compute learned taste profile: ${error}`);
                 return null;
@@ -281,7 +280,6 @@ export class AgentConfigController {
                 userId: req.user.userId,
                 recentTrackIds: [] as string[],
                 budgetRemainingUsd: config.monthlyCapUsd,
-                generationBudgetUsd,
                 preferences: {
                     genres: sessionPreferences.genres,
                     stemTypes: config.stemTypes,

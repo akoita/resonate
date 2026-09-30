@@ -6,8 +6,7 @@ export type AgentLicenseType = "personal" | "remix" | "commercial";
 export type AgentRuntimeOrchestratorResult = {
   status: string;
   tracks: OrchestratedTrack[];
-  generationsUsed?: number;
-  generationSpendUsd?: number;
+  shortfall?: number;
 };
 
 export type AgentRuntimeRunResult =
@@ -40,8 +39,8 @@ export interface AgentRuntimeCommerceResult {
   reason?: string;
   reasoning?: string;
   latencyMs?: number;
-  generationsUsed?: number;
-  generationSpendUsd?: number;
+  /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
+  shortfall?: number;
 }
 
 function normalizeStatus(status: string): AgentRuntimeCommerceStatus {
@@ -96,8 +95,7 @@ export function normalizeAgentRuntimeResult(
       status: normalizeStatus(result.status),
       tracks,
       primaryTrack: tracks[0],
-      generationsUsed: result.generationsUsed,
-      generationSpendUsd: result.generationSpendUsd,
+      shortfall: result.shortfall,
     };
   }
 
@@ -127,7 +125,5 @@ export function normalizeAgentRuntimeResult(
     reason: result.reason,
     reasoning: result.reasoning,
     latencyMs: result.latencyMs,
-    generationsUsed: result.generationsUsed,
-    generationSpendUsd: result.generationSpendUsd,
   };
 }

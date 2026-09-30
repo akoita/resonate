@@ -15,10 +15,6 @@ import { EmbeddingStore } from '../modules/embeddings/embedding.store';
 
 const TEST_PREFIX = `td_${Date.now()}_`;
 
-const mockGenerationService = {
-  createGeneration: jest.fn().mockResolvedValue({ jobId: 'gen-mock-1' }),
-} as any;
-
 describe('tool declarations (integration)', () => {
   beforeAll(async () => {
     await prisma.user.create({ data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}@test.resonate` } });
@@ -64,7 +60,7 @@ describe('tool declarations (integration)', () => {
   });
 
   it('executeTool dispatches catalog_search to catalog.search', async () => {
-    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
     const result = await executeTool(registry, {
       name: 'catalog_search',
       args: { query: 'electronic', limit: 5 },
@@ -74,7 +70,7 @@ describe('tool declarations (integration)', () => {
   });
 
   it('executeTool dispatches pricing_quote to pricing.quote', async () => {
-    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
     const result = await executeTool(registry, {
       name: 'pricing_quote',
       args: { licenseType: 'personal' },
@@ -84,7 +80,7 @@ describe('tool declarations (integration)', () => {
   });
 
   it('executeTool returns unknown_tool for an undeclared tool', async () => {
-    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
     await expect(
       executeTool(registry, { name: 'nonexistent_tool', args: {} }, { userId: `${TEST_PREFIX}user` }),
     ).resolves.toEqual({ error: 'unknown_tool' });
