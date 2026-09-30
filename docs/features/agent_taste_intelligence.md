@@ -264,8 +264,9 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   (exploration share) is not enforced on LLM picks, only on the deterministic and
   Home paths and, for the LLM, through the catalog it can search. The model-assisted
   strategy reranks the deterministic shortlist, which already ran the policy.
-  The Home feed's other rails (`new_from_artists`, trending, exploration) are
-  composed outside `getRecommendations` and are not yet routed through it.
+  The Home feed's other rails (`new_from_artists`, trending, exploration,
+  catalog signal) are composed outside `getRecommendations` and pass the same
+  policy in their own order (see Home Feed v2 below).
 
 Tests: `backend/src/tests/agent_selector_unification.spec.ts` (policy, session
 intent, shared profile/served history on the selector),
@@ -328,12 +329,26 @@ never itemized listening history), max 2 items per artist per rail, each
 track appears in at most one rail, previously-served items sink to the rail
 tail and rendered ids re-enter the served history (impression rotation), and
 the old "first 4 catalog releases" fallback is gone — an empty feed says so.
+
+Every rail passes the ADR-TE-2 policy stage (`applyDiscoveryPolicy`, #1456)
+through `applyRailPolicy`, keeping the rail's own order: an artist, genre or
+mood the listener hid never appears on any rail, fully AI-generated tracks are
+removed, and each item carries a `reasonCode` and vocabulary `explanations`
+beside its legacy `reasons`. Ranked items keep the ranking core's reason;
+`new_from_artists` items are `listening_pattern`, and trending, fresh and
+catalog-signal items are `catalog`, since their rail title already says why.
+These rails reserve no exploration slot and never label an item a discovery
+pick: rule 3 runs in the ranked rail, and the `exploration` rail is the feed's
+dedicated fresh-track slice. Taste memory is read once per render and fails
+open (no hides applied) when it is unavailable.
 The frontend (`web/src/components/home/HomeFeedRails.tsx`) is presentation
 only and emits one `recommendation.served` per rail plus
 `recommendation.clicked` per action (#1449 measurement base).
 
 Tests: `backend/src/tests/home-feed.integration.spec.ts` (rails, caps,
-rotation, cold/warm), `recommendations.controller.http.spec.ts` (routing,
+rotation, cold/warm, hidden artist removed from every rail),
+`home_feed_rail_policy.spec.ts` (rail policy rules),
+`recommendations.controller.http.spec.ts` (routing,
 guard, shape), `web/src/components/home/HomeFeedRails.test.tsx`.
 
 ## Recommendation Explanations
