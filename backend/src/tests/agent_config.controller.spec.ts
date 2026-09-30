@@ -5,7 +5,6 @@ const updateSession = jest.fn();
 const findFirstWallet = jest.fn();
 const updateWallet = jest.fn();
 const createLicense = jest.fn();
-const findUniqueSession = jest.fn();
 
 jest.mock("../db/prisma", () => ({
   prisma: {
@@ -16,7 +15,6 @@ jest.mock("../db/prisma", () => ({
     session: {
       create: (...args: unknown[]) => createSession(...args),
       update: (...args: unknown[]) => updateSession(...args),
-      findUnique: (...args: unknown[]) => findUniqueSession(...args),
     },
     wallet: {
       findFirst: (...args: unknown[]) => findFirstWallet(...args),
@@ -30,79 +28,38 @@ jest.mock("../db/prisma", () => ({
 
 import { AgentConfigController } from "../modules/agents/agent_config.controller";
 
-const DEFAULT_RUN_RESULT = {
-  status: "no_pick",
-  reason: "empty_catalog",
-  latencyMs: 12,
-  picks: [],
-};
-
-function makeController(
-  overrides: {
-    runResult?: unknown;
-    paymentRouter?: unknown;
-    negotiatorService?: unknown;
-    learningService?: unknown;
-  } = {},
-) {
+function makeController(overrides: { runResult?: unknown; paymentRouter?: unknown; negotiator?: unknown; identity?: unknown; learningService?: unknown } = {}) {
   return new AgentConfigController(
     {} as any,
     {
-      run: jest.fn().mockResolvedValue(overrides.runResult ?? DEFAULT_RUN_RESULT),
+      run: jest.fn().mockResolvedValue(
+        overrides.runResult ?? {
+          status: "no_pick",
+          reason: "empty_catalog",
+          latencyMs: 12,
+          picks: [],
+        },
+      ),
     } as any,
     (overrides.paymentRouter ?? {}) as any,
-    (overrides.negotiatorService ?? {}) as any,
-    {
-      enrichConfig: jest.fn().mockImplementation(async (config: unknown) => config),
-    } as any,
+    (overrides.negotiator ?? {}) as any,
+    (overrides.identity ?? {}) as any,
     (overrides.learningService ?? {
       resolveTasteProfile: jest.fn().mockResolvedValue(null),
       mergeLearnedGenres: jest.fn(),
       recordSignal: jest.fn(),
     }) as any,
-    { recordValidation: jest.fn() } as any,
+    {} as any,
     { publish: jest.fn() } as any,
   );
 }
 
-const BUY_MODE_ENV = "AGENT_SESSION_BUY_MODE_ENABLED";
-
-const LISTING = {
-  listingId: 1n,
-  tokenId: 2n,
-  stemId: null,
-  pricePerUnit: "100",
-  chainId: 31337,
-  stemType: "vocals",
-};
-
-const ORCHESTRATOR_RESULT = {
-  tracks: [
-    {
-      trackId: "track_1",
-      negotiation: {
-        licenseType: "remix",
-        priceUsd: 1,
-        allowed: true,
-        reason: "within_budget",
-        listings: [LISTING],
-      },
-    },
-  ],
-};
-
-const LLM_RESULT = {
-  status: "picked",
-  reason: "matches_mood",
-  latencyMs: 20,
-  picks: [{ trackId: "track_1", licenseType: "remix", priceUsd: 1 }],
-};
+const ENV_KEY = "AGENT_SESSION_BUY_MODE_ENABLED";
+const originalFlag = process.env[ENV_KEY];
 
 describe("AgentConfigController", () => {
-  const originalBuyModeFlag = process.env[BUY_MODE_ENV];
-
   beforeEach(() => {
-    delete process.env[BUY_MODE_ENV];
+    delete process.env[ENV_KEY];
     jest.useFakeTimers();
     jest.clearAllMocks();
     findUniqueAgentConfig.mockResolvedValue({
@@ -120,16 +77,12 @@ describe("AgentConfigController", () => {
     findFirstWallet.mockResolvedValue(null);
     updateWallet.mockResolvedValue({});
     createLicense.mockResolvedValue({});
-    findUniqueSession.mockResolvedValue({ budgetCapUsd: 10, spentUsd: 0 });
   });
 
   afterEach(() => {
     jest.useRealTimers();
-    if (originalBuyModeFlag === undefined) {
-      delete process.env[BUY_MODE_ENV];
-    } else {
-      process.env[BUY_MODE_ENV] = originalBuyModeFlag;
-    }
+    if (originalFlag === undefined) delete process.env[ENV_KEY];
+    else process.env[ENV_KEY] = originalFlag;
   });
 
   it("starts a session with intent preferences and forwards them to events and runtime", async () => {
@@ -193,10 +146,24 @@ describe("AgentConfigController", () => {
       }),
     );
   });
-  describe("session mode (ADR-TE-1)", () => {
+  describe("buy mode gating (#1954)", () => {
     const req = { user: { userId: "user_1" } };
+    const negotiation = {
+      allowed: true,
+      licenseType: "personal",
+      priceUsd: 2,
+      reason: "ok",
+      listings: [{ listingId: 1n, tokenId: 1n, pricePerUnit: 1n, stemType: "drums" }],
+    };
+    const orchestratorResult = { tracks: [{ trackId: "track_1", negotiation }] };
+    const llmResult = {
+      status: "picked",
+      reason: "llm",
+      latencyMs: 5,
+      picks: [{ trackId: "track_1", licenseType: "personal", priceUsd: 2 }],
+    };
 
-    function storeBuyMode() {
+    function buyConfig() {
       findUniqueAgentConfig.mockResolvedValue({
         id: "agent_1",
         userId: "user_1",
@@ -208,61 +175,13 @@ describe("AgentConfigController", () => {
       });
     }
 
-    function makePaymentRouter() {
-      return {
-        purchase: jest.fn().mockResolvedValue({ success: true, txHash: "0xabc", remaining: 9 }),
-      };
-    }
-
-    function makeNegotiator(allowed = true) {
-      return {
-        negotiate: jest.fn().mockResolvedValue({
-          licenseType: "remix",
-          priceUsd: 1,
-          allowed,
-          reason: allowed ? "within_budget" : "over_budget",
-          listings: allowed ? [LISTING] : [],
-        }),
-      };
-    }
-
     async function runSession(ctrl: AgentConfigController) {
       await ctrl.startSession(req, {});
       await jest.advanceTimersByTimeAsync(500);
       await jest.advanceTimersByTimeAsync(0);
     }
 
-    it("does not purchase in orchestrator mode with a stored buy mode and the flag off", async () => {
-      storeBuyMode();
-      const paymentRouter = makePaymentRouter();
-      const ctrl = makeController({ runResult: ORCHESTRATOR_RESULT, paymentRouter });
-
-      await runSession(ctrl);
-
-      expect(createLicense).toHaveBeenCalledTimes(1);
-      expect(paymentRouter.purchase).not.toHaveBeenCalled();
-      expect(updateSession).not.toHaveBeenCalled();
-    });
-
-    it("purchases in orchestrator mode when the buy flag is on", async () => {
-      process.env[BUY_MODE_ENV] = "true";
-      storeBuyMode();
-      const paymentRouter = makePaymentRouter();
-      const ctrl = makeController({ runResult: ORCHESTRATOR_RESULT, paymentRouter });
-
-      await runSession(ctrl);
-
-      expect(paymentRouter.purchase).toHaveBeenCalledTimes(1);
-      expect(paymentRouter.purchase).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: "session_1", listingId: 1n, tokenId: 2n }),
-      );
-      expect(updateSession).toHaveBeenCalledWith({
-        where: { id: "session_1" },
-        data: { spentUsd: 1 },
-      });
-    });
-
-    it("records the policy step's reasonCode on the LLM pick's accept signal", async () => {
+    it("records the policy step's reasonCode on the LLM pick's accept signal (#1456)", async () => {
       const learningService = {
         resolveTasteProfile: jest.fn().mockResolvedValue(null),
         mergeLearnedGenres: jest.fn(),
@@ -271,7 +190,7 @@ describe("AgentConfigController", () => {
       const ctrl = makeController({
         learningService,
         runResult: {
-          ...LLM_RESULT,
+          ...llmResult,
           picks: [
             {
               trackId: "track_1",
@@ -301,106 +220,120 @@ describe("AgentConfigController", () => {
       );
     });
 
-    it("does not negotiate or purchase in LLM mode with a stored buy mode and the flag off", async () => {
-      storeBuyMode();
-      const paymentRouter = makePaymentRouter();
-      const negotiatorService = makeNegotiator();
-      const ctrl = makeController({ runResult: LLM_RESULT, paymentRouter, negotiatorService });
+    it("does not purchase or record spend for stored buy mode when the flag is off (orchestrator path)", async () => {
+      buyConfig();
+      const paymentRouter = { purchase: jest.fn() };
+      const ctrl = makeController({ runResult: orchestratorResult, paymentRouter });
+      const spy = jest.spyOn(ctrl as any, "recordPurchase").mockResolvedValue(undefined);
 
       await runSession(ctrl);
 
       expect(createLicense).toHaveBeenCalledTimes(1);
-      expect(negotiatorService.negotiate).not.toHaveBeenCalled();
+      expect(spy).not.toHaveBeenCalled();
       expect(paymentRouter.purchase).not.toHaveBeenCalled();
       expect(updateSession).not.toHaveBeenCalled();
     });
 
-    it("negotiates and purchases in LLM mode when the buy flag is on", async () => {
-      process.env[BUY_MODE_ENV] = "1";
-      storeBuyMode();
-      const paymentRouter = makePaymentRouter();
-      const negotiatorService = makeNegotiator(true);
-      const ctrl = makeController({ runResult: LLM_RESULT, paymentRouter, negotiatorService });
+    it("still purchases and records spend in buy mode when the flag is on (orchestrator path)", async () => {
+      process.env[ENV_KEY] = "true";
+      buyConfig();
+      const ctrl = makeController({ runResult: orchestratorResult });
+      const spy = jest.spyOn(ctrl as any, "recordPurchase").mockResolvedValue(undefined);
 
       await runSession(ctrl);
 
-      expect(negotiatorService.negotiate).toHaveBeenCalledWith(
-        expect.objectContaining({ trackId: "track_1", licenseType: "remix" }),
-      );
-      expect(paymentRouter.purchase).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith("session_1", "user_1", "track_1", negotiation);
       expect(updateSession).toHaveBeenCalledWith({
         where: { id: "session_1" },
-        data: { spentUsd: 1 },
+        data: { spentUsd: 2 },
       });
     });
 
-    it("does not purchase in LLM mode with the flag on when negotiation is not allowed", async () => {
-      process.env[BUY_MODE_ENV] = "true";
-      storeBuyMode();
-      const paymentRouter = makePaymentRouter();
-      const negotiatorService = makeNegotiator(false);
-      const ctrl = makeController({ runResult: LLM_RESULT, paymentRouter, negotiatorService });
+    it("does not negotiate, purchase or record spend when the flag is off (LLM path)", async () => {
+      buyConfig();
+      const negotiator = { negotiate: jest.fn() };
+      const paymentRouter = { purchase: jest.fn() };
+      const ctrl = makeController({ runResult: llmResult, negotiator, paymentRouter });
 
       await runSession(ctrl);
 
-      expect(negotiatorService.negotiate).toHaveBeenCalledTimes(1);
+      expect(createLicense).toHaveBeenCalledTimes(1);
+      expect(negotiator.negotiate).not.toHaveBeenCalled();
       expect(paymentRouter.purchase).not.toHaveBeenCalled();
+      expect(updateSession).not.toHaveBeenCalled();
+      expect((ctrl as any).eventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: "agent.decision_made", priceUsd: 0 }),
+      );
     });
 
-    it("never purchases for a curate config even when the buy flag is on", async () => {
-      process.env[BUY_MODE_ENV] = "true";
-      const paymentRouter = makePaymentRouter();
-      const negotiatorService = makeNegotiator();
-      const ctrl = makeController({ runResult: LLM_RESULT, paymentRouter, negotiatorService });
+    it("still negotiates, purchases and records spend when the flag is on (LLM path)", async () => {
+      process.env[ENV_KEY] = "true";
+      buyConfig();
+      const negotiator = { negotiate: jest.fn().mockResolvedValue(negotiation) };
+      const ctrl = makeController({ runResult: llmResult, negotiator });
+      const spy = jest.spyOn(ctrl as any, "recordPurchase").mockResolvedValue(undefined);
 
       await runSession(ctrl);
 
-      expect(negotiatorService.negotiate).not.toHaveBeenCalled();
-      expect(paymentRouter.purchase).not.toHaveBeenCalled();
+      expect(negotiator.negotiate).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(updateSession).toHaveBeenCalledWith({
+        where: { id: "session_1" },
+        data: { spentUsd: 2 },
+      });
+      expect((ctrl as any).eventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: "agent.decision_made", priceUsd: 2 }),
+      );
     });
 
-    it("rejects PATCH sessionMode=buy with 400 when the flag is off", async () => {
-      const ctrl = makeController();
+    describe("PATCH /agents/config", () => {
+      const identity = { enrichConfig: jest.fn(async (c: any) => ({ ...c, enriched: true })) };
 
-      await expect(ctrl.update(req, { sessionMode: "buy" })).rejects.toMatchObject({
-        status: 400,
-        response: { reason: "session_buy_mode_disabled" },
+      async function expectReason(promise: Promise<unknown>, reason: string) {
+        await expect(promise).rejects.toMatchObject({
+          status: 400,
+          response: { reason },
+        });
+      }
+
+      it("rejects buy with 400 buy_mode_disabled when the flag is off", async () => {
+        const ctrl = makeController({ identity });
+        await expectReason(ctrl.update(req, { sessionMode: "buy" }), "buy_mode_disabled");
+        expect(updateAgentConfig).not.toHaveBeenCalled();
       });
-      expect(updateAgentConfig).not.toHaveBeenCalled();
-    });
 
-    it("accepts PATCH sessionMode=buy when the flag is on", async () => {
-      process.env[BUY_MODE_ENV] = "true";
-      const ctrl = makeController();
-
-      await ctrl.update(req, { sessionMode: "buy" });
-
-      expect(updateAgentConfig).toHaveBeenCalledWith({
-        where: { userId: "user_1" },
-        data: { sessionMode: "buy" },
+      it("rejects an unknown mode with 400 invalid_session_mode", async () => {
+        process.env[ENV_KEY] = "true";
+        const ctrl = makeController({ identity });
+        await expectReason(ctrl.update(req, { sessionMode: "auto" }), "invalid_session_mode");
+        expect(updateAgentConfig).not.toHaveBeenCalled();
       });
-    });
 
-    it("accepts PATCH sessionMode=curate regardless of the flag", async () => {
-      const ctrl = makeController();
-
-      await ctrl.update(req, { sessionMode: "curate" });
-
-      expect(updateAgentConfig).toHaveBeenCalledWith({
-        where: { userId: "user_1" },
-        data: { sessionMode: "curate" },
+      it("accepts curate with the flag off and reports buyModeEnabled=false", async () => {
+        updateAgentConfig.mockResolvedValue({ id: "agent_1", sessionMode: "curate" });
+        const ctrl = makeController({ identity });
+        const result = await ctrl.update(req, { sessionMode: "curate" });
+        expect(updateAgentConfig).toHaveBeenCalledWith({
+          where: { userId: "user_1" },
+          data: { sessionMode: "curate" },
+        });
+        expect(result).toMatchObject({ sessionMode: "curate", buyModeEnabled: false });
       });
-    });
 
-    it("rejects PATCH with an unknown sessionMode", async () => {
-      process.env[BUY_MODE_ENV] = "true";
-      const ctrl = makeController();
-
-      await expect(ctrl.update(req, { sessionMode: "spend" })).rejects.toMatchObject({
-        status: 400,
-        response: { reason: "invalid_session_mode" },
+      it("accepts buy when the flag is on and reports buyModeEnabled=true", async () => {
+        process.env[ENV_KEY] = "true";
+        updateAgentConfig.mockResolvedValue({ id: "agent_1", sessionMode: "buy" });
+        const ctrl = makeController({ identity });
+        const result = await ctrl.update(req, { sessionMode: "buy" });
+        expect(result).toMatchObject({ sessionMode: "buy", buyModeEnabled: true });
       });
-      expect(updateAgentConfig).not.toHaveBeenCalled();
+
+      it("includes buyModeEnabled on GET and keeps null when unconfigured", async () => {
+        const ctrl = makeController({ identity });
+        await expect(ctrl.get(req)).resolves.toMatchObject({ enriched: true, buyModeEnabled: false });
+        findUniqueAgentConfig.mockResolvedValue(null);
+        await expect(ctrl.get(req)).resolves.toBeNull();
+      });
     });
   });
 });

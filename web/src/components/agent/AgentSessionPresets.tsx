@@ -105,8 +105,8 @@ export default function AgentSessionPresets({
           <div>
             <h2>Tell the DJ what this session is for.</h2>
             <p>
-              Pick an intent to tune mood, tempo, and queue style. Analytics can
-              compare the chosen intent with skips, saves, and replays.
+              Pick an intent to tune mood, tempo, and queue style. Analytics can compare the chosen intent with skips,
+              saves, replays, and purchases.
             </p>
           </div>
           {showOpenLink ? (

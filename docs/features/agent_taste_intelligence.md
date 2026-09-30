@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989, 1456, 1957]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958]
 ---
 
 # Agent Taste Intelligence
@@ -14,6 +14,12 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1456, 1957]
 > [Taste Engine RFC](../rfc/taste-engine.md). This page describes current
 > behavior; it changes as the slices in the
 > [milestone plan](../roadmap/2026-10-taste-engine-milestones.md) ship.
+>
+> **Shipped in Vision Sprint 28:** AI DJ sessions no longer buy stems by
+> default ([#1954](https://github.com/akoita/resonate/issues/1954)). No listener
+> preset selects buy mode, and a stored buy mode is honored only behind the
+> operator flag `AGENT_SESSION_BUY_MODE_ENABLED` (off by default). See
+> [Agent Commerce Runtime](agent-commerce-runtime.md).
 
 > **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. The listener taste score and tier described here are learned taste and stay; the flags gate only on-chain identity and reputation, and the agent dashboard hides identity mint and attest controls while `ERC8004_ENABLED` is off. Stem quality ratings from #322 stay as data, for the future Crate Digger quality filter; only their on-chain publishing is frozen. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
 
@@ -64,7 +70,7 @@ measurement.
 | Audience | Use |
 | --- | --- |
 | Listeners | Receive AI DJ recommendations that better reflect repeated listening, saves, skips, and purchases. |
-| Agents | Score candidate tracks with collaborative taste fit before deciding what to recommend or buy. |
+| Agents | Score candidate tracks with collaborative taste fit before deciding what to recommend (buying only when the operator enables buy mode). |
 | Backend developers | Add warehouse-derived taste signals without replacing the runtime selector contract. |
 | Data/ML developers | Materialize recommendation scores into a serving table consumed by the backend. |
 

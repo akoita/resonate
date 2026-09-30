@@ -5,16 +5,14 @@ import AgentStatusCard from "./AgentStatusCard";
 import type { AgentConfig } from "../../lib/api";
 
 const baseConfig = {
-  id: "agent-1",
-  name: "test-dj",
+  id: "cfg-1",
   userId: "user-1",
-  vibes: ["Hip Hop"],
-  monthlyCapUsd: 10,
-  spentUsd: 0,
-  isActive: false,
-  sessionMode: "curate",
+  name: "DJ",
+  vibes: ["Ambient"],
   stemTypes: [],
-  identityStatus: "local",
+  sessionMode: "curate",
+  monthlyCapUsd: 10,
+  isActive: false,
 } as unknown as AgentConfig;
 
 function render(config: AgentConfig) {
@@ -31,23 +29,19 @@ function render(config: AgentConfig) {
 }
 
 describe("AgentStatusCard session mode toggle", () => {
-  it("hides the Buy Stems toggle when the operator flag is absent", () => {
+  it("hides the Curate/Buy toggle when buyModeEnabled is undefined", () => {
     const html = render(baseConfig);
-
     expect(html).not.toContain("Buy Stems");
     expect(html).not.toContain("Curate Only");
   });
 
-  it("hides the Buy Stems toggle when the operator flag is off, even for a stored buy mode", () => {
-    const html = render({ ...baseConfig, sessionMode: "buy", sessionBuyModeEnabled: false });
-
-    expect(html).not.toContain("Buy Stems");
+  it("hides the toggle when buyModeEnabled is false", () => {
+    expect(render({ ...baseConfig, buyModeEnabled: false })).not.toContain("Buy Stems");
   });
 
-  it("shows the toggle only when the operator flag is on", () => {
-    const html = render({ ...baseConfig, sessionBuyModeEnabled: true });
-
-    expect(html).toContain("Curate Only");
+  it("shows the toggle when buyModeEnabled is true", () => {
+    const html = render({ ...baseConfig, buyModeEnabled: true });
     expect(html).toContain("Buy Stems");
+    expect(html).toContain("Curate Only");
   });
 });

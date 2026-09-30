@@ -83,8 +83,8 @@ export default function AgentDashboard({
                     </div>
                 </div>
 
-                {/* Mode toggle: autonomous buying is operator-gated (ADR-TE-1) */}
-                {config.sessionBuyModeEnabled === true ? (
+                {/* Mode toggle */}
+                {config.buyModeEnabled === true ? (
                     <div className="aid-command-mode">
                         <span className="aid-mode-label">Mode</span>
                         <div className="aid-mode-seg">

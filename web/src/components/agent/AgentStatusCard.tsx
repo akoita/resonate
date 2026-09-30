@@ -42,8 +42,8 @@ export default function AgentStatusCard({ config, onToggle, onModeChange, sessio
                 ))}
             </div>
 
-            {/* Session mode toggle: autonomous buying is operator-gated (ADR-TE-1) */}
-            {config.sessionBuyModeEnabled === true ? (
+            {/* Session mode toggle */}
+            {config.buyModeEnabled === true ? (
                 <div className="aid-sc-mode">
                     <span className="aid-mode-label">Mode</span>
                     <div className="aid-mode-seg">

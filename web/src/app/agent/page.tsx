@@ -112,11 +112,7 @@ export default function AgentPage() {
             try {
                 if (preset) {
                     setIsStartingPreset(true);
-                    await updateConfig({
-                        vibes: preset.searchVibes,
-                        // Presets are always listening-only (ADR-TE-1).
-                        sessionMode: "curate",
-                    });
+                    await updateConfig({ vibes: preset.searchVibes });
                 }
                 const result = await startSession(preferences ? { preferences } : undefined);
                 if (result?.sessionId) {
@@ -134,7 +130,6 @@ export default function AgentPage() {
                         mood: preset?.preferences.mood,
                         licenseType: preset?.preferences.licenseType,
                         queueStyle: preset?.queueStyle,
-                        commercePosture: "curate",
                     },
                 });
                 addToast({
@@ -168,7 +163,6 @@ export default function AgentPage() {
                 mood: preset.preferences.mood,
                 licenseType: preset.preferences.licenseType,
                 queueStyle: preset.queueStyle,
-                commercePosture: "curate",
             },
         });
     };
@@ -265,7 +259,7 @@ export default function AgentPage() {
                     <div className="aid-empty">
                         <div className="aid-empty-icon">🤖</div>
                         <h2>Set Up Your AI DJ</h2>
-                        <p>Deploy a personal AI agent to scan the catalog and match your mood.</p>
+                        <p>Deploy a personal AI agent to scan the catalog, match your mood, and negotiate micro-payments.</p>
                         <button className="aid-primary-btn" onClick={() => setShowWizard(true)}>
                             Get Started
                         </button>
@@ -284,7 +278,7 @@ export default function AgentPage() {
                                 </span>
                             </div>
                             <div className="aid-command-actions">
-                                {config.sessionBuyModeEnabled === true ? (
+                                {config.buyModeEnabled === true ? (
                                     <div className="aid-mode-seg">
                                         <button
                                             className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
