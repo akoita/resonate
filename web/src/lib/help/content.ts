@@ -544,8 +544,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/sonic-radar.png`,
-              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, and a 'Your journal is quiet' empty state with a 'Start a session' button.",
-              caption: "Sonic Radar before anything has resonated — start a session to begin.",
+              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, two headline numbers (resonant discoveries this week and new artists this week), and yesterday's resonant tracks grouped under 'Yesterday' with an Add to Playlist button.",
+              caption: "Sonic Radar: this week's resonant discoveries and new artists, grouped by day or session.",
               width: 1440,
               height: 900,
               source: LOCAL,
