@@ -206,7 +206,7 @@ taste-memory policy) and receive weighted signals + human explanations.
 
 ## One Core, One Profile, One Policy (#1456 WS-9, #1957)
 
-Status: `partial`. The AI DJ and Home are now two callers of the same stack
+Status: `implemented`. The AI DJ and Home are now two callers of the same stack
 (`backend/src/modules/recommendations/`): score with `DiscoveryRankingService`,
 then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
 [Taste Engine RFC §3.4](../rfc/taste-engine.md)).
@@ -257,7 +257,7 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   `release.moods` so DJ candidates can be exploration picks and intent matches.
 - **LLM runtime picks.** The default runtime (`AGENT_RUNTIME=adk`, and `vertex`)
   lets the model call `catalog_search` and pick tracks itself. Those picks now
-  pass a filter-only policy step, `AgentRuntimePolicyService`, applied in
+  pass the policy step, `AgentRuntimePolicyService`, applied in
   `AgentRuntimeService.run`: the one choke point that
   `AgentConfigController.startSession` and `SessionsService.agentNext` both
   reach, in-process or via the remote worker (the backend applies it to the
@@ -267,13 +267,20 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   fallback runs the same policy stage. It loads the picked tracks'
   metadata in one batched query, scores them with the shared ranking core in the
   same context the DJ selector builds, then enforces rule 1 (hidden), rule 2
-  (fully AI-generated), rule 4 (two per artist, session mode) and rule 5 (a
-  `reasonCode` plus vocabulary sentences on every pick, carried into the accept
-  signal's `metadata.recommendation`). The model's order is kept. Invented track
-  ids are dropped, and if nothing survives the result is the existing no-pick
-  shape with reason `no_policy_eligible_picks`. Known limitation: rule 3
-  (exploration share) is not enforced on LLM picks, only on the deterministic and
-  Home paths and, for the LLM, through the catalog it can search. The model-assisted
+  (fully AI-generated), rule 3 (exploration share, session mode, with the same
+  lookups and prior discovery count as the selector), rule 4 (two per artist,
+  session mode) and rule 5 (a `reasonCode` plus vocabulary sentences on every
+  pick, carried into the accept signal's `metadata.recommendation`). The model's
+  order is kept. A model pick by a verified human artist the listener never
+  played is labeled `discovery_pick` in place. When rule 3 reserves a discovery
+  slot and no model pick qualifies, the model's last pick is swapped for the
+  deterministic selector's discovery pick for the same listener, session and
+  preferences (skipped if it repeats a pick or breaks the artist cap; price 0,
+  the pick's license type kept). A one-track call whose prior discovery count is
+  unknown never swaps, so single next-pick calls are not always discovery picks.
+  `policy.exploration` on the result reports `reserved`, `served` and
+  `injected`. Invented track ids are dropped, and if nothing survives the result
+  is the existing no-pick shape with reason `no_policy_eligible_picks`. The model-assisted
   strategy reranks the deterministic shortlist, which already ran the policy.
   The Home feed's other rails (`new_from_artists`, trending, exploration,
   catalog signal) are composed outside `getRecommendations` and pass the same

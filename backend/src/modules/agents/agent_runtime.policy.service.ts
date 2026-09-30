@@ -1,6 +1,10 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { CommunityCohortService } from "../community/community_cohort.service";
-import { applyDiscoveryPolicy, discoveryArtistKey } from "../recommendations/discovery-policy";
+import {
+  applyDiscoveryPolicy,
+  DISCOVERY_POLICY_DEFAULTS,
+  discoveryArtistKey,
+} from "../recommendations/discovery-policy";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import {
   DiscoveryCandidate,
@@ -12,7 +16,7 @@ import { TasteMemoryService } from "../recommendations/taste_memory.service";
 import { AgentLearningService } from "./agent_learning.service";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import { buildAgentRecommendationQueries } from "./deterministic_recommendation.adapter";
-import { isHiddenTasteQuery } from "./agent_selector.service";
+import { AgentSelectorService, isHiddenTasteQuery } from "./agent_selector.service";
 import type {
   AgentRuntimeInput,
   AgentRuntimeResult,
@@ -20,7 +24,7 @@ import type {
 } from "./runtime/agent_runtime.adapter";
 
 /**
- * Filter-only policy step for LLM runtime picks (#1456 WS-9, ADR-TE-2,
+ * Policy step for LLM runtime picks (#1456 WS-9, ADR-TE-2,
  * docs/rfc/taste-engine.md §3.4).
  *
  * The deterministic selector and Home run the shared policy stage in their own
@@ -35,12 +39,19 @@ import type {
  *     context the selector builds (shared taste profile, taste policy, session
  *     intent and mood, recent and served tracks), so each pick carries the same
  *     `signals`, `explanation` and `reasonCode` Home gives that track;
- *  3. applies rule 1 (hidden), rule 2 (fully AI-generated), rule 4 (diversity
- *     cap, session mode) and rule 5 (a categorical reason on every pick).
+ *  3. applies rule 1 (hidden), rule 2 (fully AI-generated), rule 3
+ *     (exploration share, session mode), rule 4 (diversity cap, session mode)
+ *     and rule 5 (a categorical reason on every pick);
+ *  4. when rule 3 reserves a discovery slot that none of the model's picks can
+ *     fill, swaps the model's last pick for the deterministic selector's
+ *     discovery pick for the same listener and session (ADR-TE-2 rule 3 on
+ *     every surface). This is the only pick the step ever adds.
  *
- * It never reorders the model's picks and reserves no exploration slot: rule 3
- * is enforced on the deterministic and Home paths, and on LLM paths only
- * through the catalog the model can search (a known limitation).
+ * It never reorders the model's picks. A model pick that qualifies as a
+ * discovery pick (verified human artist the listener never played) is
+ * labeled one in place. A one-track call with no known session history never
+ * swaps: its reserve is only the "at least one" floor, so it would replace
+ * every single-track pick.
  *
  * Fail-open: when the ranking core or metadata lookup is unavailable, the
  * result passes through unchanged (the model's own picks, as before).
@@ -56,6 +67,8 @@ export class AgentRuntimePolicyService {
     @Optional() private readonly learning?: AgentLearningService,
     @Optional() private readonly recommendations?: RecommendationsService,
     @Optional() private readonly cohorts?: CommunityCohortService,
+    // Source of the discovery pick when the model's picks have none.
+    @Optional() private readonly selector?: AgentSelectorService,
   ) {}
 
   async apply(
@@ -161,25 +174,53 @@ export class AgentRuntimePolicyService {
         discoveryArtistKey({ id, artistId: sessionArtists.get(id) ?? null }),
       );
 
-    // No verified-human set is passed on purpose: no exploration slot is
-    // reserved for model picks, and nothing is relabeled a discovery pick.
+    const exploration = await this.loadExplorationContext(input, known, candidatesById);
     const policyResult = applyDiscoveryPolicy(inModelOrder, {
       limit: inModelOrder.length,
       tastePolicy: taste,
       priorSessionArtistKeys,
+      verifiedHumanArtistIds: exploration.verifiedHumanArtistIds,
+      playedArtistIds: exploration.playedArtistIds,
+      priorExplorationCount: exploration.priorExplorationCount,
     });
 
     const pickById = new Map(known.map((pick) => [pick.trackId, pick]));
-    const surviving: LlmTrackPick[] = policyResult.items.map((entry) => ({
+    let surviving: LlmTrackPick[] = policyResult.items.map((entry) => ({
       ...pickById.get(entry.id)!,
       score: entry.score,
       explanation: entry.explanation,
       reasonCode: entry.reasonCode,
       signals: entry.signals,
     }));
+
+    const { reserved, served } = policyResult.exploration;
+    let injected = false;
+    if (
+      surviving.length > 0 &&
+      served < reserved &&
+      canSwapForDiscovery(surviving.length, exploration.priorExplorationCount)
+    ) {
+      const artistKeyOf = (trackId: string) =>
+        discoveryArtistKey(
+          candidatesById.get(trackId) ?? { id: trackId, artistId: null },
+        );
+      const swapped = await this.swapInDiscoveryPick(input, surviving, [
+        ...priorSessionArtistKeys.slice(-(DISCOVERY_POLICY_DEFAULTS.sessionWindow - 1)),
+        ...surviving.slice(0, -1).map((entry) => artistKeyOf(entry.trackId)),
+      ]);
+      if (swapped) {
+        surviving = swapped;
+        injected = true;
+      }
+    }
     const dropped = {
       ...policyResult.dropped,
       unknown: ordered.length - known.length,
+    };
+    const explorationAccounting = {
+      reserved,
+      served: served + (injected ? 1 : 0),
+      injected,
     };
 
     if (surviving.length === 0) {
@@ -188,7 +229,7 @@ export class AgentRuntimePolicyService {
         reason: "no_policy_eligible_picks",
         reasoning: result.reasoning,
         latencyMs: result.latencyMs,
-        policy: { dropped },
+        policy: { dropped, exploration: explorationAccounting },
       };
     }
 
@@ -199,8 +240,115 @@ export class AgentRuntimePolicyService {
       licenseType: first.licenseType,
       priceUsd: first.priceUsd,
       picks: surviving,
-      policy: { dropped },
+      policy: { dropped, exploration: explorationAccounting },
     };
+  }
+
+  /**
+   * Rule 3 lookups for the model's picks: verified-human and played artists,
+   * and how many of the session's prior tracks were discovery picks. Fails
+   * open like the selector: a lookup error only disables exploration.
+   */
+  private async loadExplorationContext(
+    input: AgentRuntimeInput,
+    known: LlmTrackPick[],
+    candidatesById: Map<string, DiscoveryCandidate>,
+  ): Promise<{
+    verifiedHumanArtistIds?: ReadonlySet<string>;
+    playedArtistIds?: ReadonlySet<string>;
+    priorExplorationCount?: number;
+  }> {
+    const policyContext = this.policyContext!;
+    const artistIds = known
+      .map((pick) => candidatesById.get(pick.trackId)?.artistId)
+      .filter((id): id is string => !!id);
+    let verifiedHumanArtistIds: ReadonlySet<string> | undefined;
+    let playedArtistIds: ReadonlySet<string> | undefined;
+    let priorExplorationCount: number | undefined;
+    try {
+      const context = await policyContext.loadContext(input.userId, artistIds);
+      verifiedHumanArtistIds = context.verifiedHumanArtistIds;
+      playedArtistIds = context.playedArtistIds;
+    } catch (error) {
+      this.logger.warn(`Discovery policy context unavailable: ${String(error)}`);
+    }
+    // Unknown (undefined) on failure, never 0: see `priorExplorationCount`.
+    try {
+      if (input.userId) {
+        priorExplorationCount = await policyContext.countDiscoveryPicks(
+          input.userId,
+          input.recentTrackIds.slice(0, DISCOVERY_POLICY_DEFAULTS.sessionWindow - 1),
+        );
+      }
+    } catch (error) {
+      this.logger.warn(`Prior discovery picks unavailable: ${String(error)}`);
+    }
+    return { verifiedHumanArtistIds, playedArtistIds, priorExplorationCount };
+  }
+
+  /**
+   * Replaces the model's last pick with the deterministic selector's discovery
+   * pick for the same listener, session and preferences, or returns undefined
+   * when the selector has none that fits (not already picked, within the
+   * artist cap given `otherArtistKeys`). Fails open.
+   */
+  private async swapInDiscoveryPick(
+    input: AgentRuntimeInput,
+    surviving: LlmTrackPick[],
+    otherArtistKeys: string[],
+  ): Promise<LlmTrackPick[] | undefined> {
+    if (!this.selector) return undefined;
+    try {
+      const queries = buildAgentRecommendationQueries(input.preferences);
+      const selection = await this.selector.select({
+        userId: input.userId,
+        queries,
+        recentTrackIds: input.recentTrackIds,
+        allowExplicit: input.preferences.allowExplicit,
+        useEmbeddings: queries.length > 0,
+        // Same page size, so the selector reserves the same exploration share.
+        limit: surviving.length,
+        energy: input.preferences.energy,
+        learnedGenreWeights: input.preferences.learnedGenreWeights,
+        sessionIntent: input.preferences.sessionIntent,
+        mood: input.preferences.mood,
+        queueStyle: input.preferences.queueStyle,
+      });
+      const pickedIds = new Set(surviving.map((entry) => entry.trackId));
+      const artistCounts = new Map<string, number>();
+      for (const key of otherArtistKeys) {
+        artistCounts.set(key, (artistCounts.get(key) ?? 0) + 1);
+      }
+      const discovery = selection.selected.find((track: any) => {
+        if (track.agentRecommendation?.reasonCode !== "discovery_pick") return false;
+        if (pickedIds.has(track.id)) return false;
+        const key = discoveryArtistKey({
+          id: track.id,
+          artistId: track.release?.artistId ?? null,
+        });
+        return (artistCounts.get(key) ?? 0) < DISCOVERY_POLICY_DEFAULTS.maxPerArtist;
+      });
+      if (!discovery) return undefined;
+
+      const replaced = surviving[surviving.length - 1];
+      const recommendation = discovery.agentRecommendation!;
+      return [
+        ...surviving.slice(0, -1),
+        {
+          trackId: discovery.id,
+          licenseType: replaced.licenseType,
+          // Not a model-negotiated price; buy mode negotiates it separately.
+          priceUsd: 0,
+          score: recommendation.score,
+          explanation: recommendation.explanation,
+          reasonCode: recommendation.reasonCode,
+          signals: recommendation.signals,
+        },
+      ];
+    } catch (error) {
+      this.logger.warn(`Discovery pick unavailable for LLM picks: ${String(error)}`);
+      return undefined;
+    }
   }
 
   /** The shared profile's weights, else the caller's (same rule as the DJ selector). */
@@ -233,6 +381,17 @@ export class AgentRuntimePolicyService {
       return [];
     }
   }
+}
+
+/**
+ * A swap is allowed when the page's own share earns a discovery slot, or the
+ * session's prior discovery count is known (then the policy paces it to about
+ * one in five session tracks). A one-track call with an unknown count only
+ * reaches the "at least one" floor and must not always be a discovery pick.
+ */
+function canSwapForDiscovery(pageSize: number, priorExplorationCount?: number) {
+  if (priorExplorationCount !== undefined) return true;
+  return Math.round(pageSize * DISCOVERY_POLICY_DEFAULTS.explorationShare) >= 1;
 }
 
 /** The picks of an adapter result; legacy single-track results included. */

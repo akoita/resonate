@@ -107,14 +107,16 @@ The learned profile is not DJ-private. The AI DJ selector and the Home feed
    `metadata.recommendation.reasonCode`, validated against that vocabulary.
 
 The LLM runtimes (`AGENT_RUNTIME=adk|vertex`) still choose their own tracks
-through `catalog_search`, but their picks now pass a filter-only policy step at
+through `catalog_search`, but their picks now pass the policy step at
 the single runtime choke point, `AgentRuntimeService.run`
 (`AgentRuntimePolicyService`): the picks are scored with the shared core and the
 same context as the selector (step 2's profile, intent and served history), then
 rules 1 (hidden), 2 (fully AI) and 4 (diversity cap, session mode) filter them
 and rule 5 attaches `reasonCode` and vocabulary sentences, which reach the accept
-signal. The model's order is kept, and rule 3 (exploration share) is not applied
-to LLM picks (a known limitation). The deterministic fallback and the
+signal. The model's order is kept. Rule 3 (exploration share) labels a
+qualifying model pick a discovery pick in place; when the session is due one and
+no model pick qualifies, the model's last pick is swapped for the deterministic
+selector's discovery pick. The deterministic fallback and the
 model-assisted reranker run the full policy in the selector.
 
 ## Session Intent Feedback
