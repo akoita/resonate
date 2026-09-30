@@ -237,6 +237,30 @@ These decisions sit under the accepted business-model decisions
   ([#1896](https://github.com/akoita/resonate/issues/1896)), not the listening
   app, and neither is pitched as a differentiator of the listening app until
   usage shows it.
+- **Amendment under discussion (proposed 2026-09-30): the value test for
+  every charge.** Asking a customer to pay is a sensitive decision. Before any
+  price ships, Resonate must be able to answer four questions, first for itself
+  and then in plain words on the page where the customer pays:
+  1. **What does the customer get that they cannot get free elsewhere?**
+  2. **Who receives the money?** The artist's share is shown on the quote.
+  3. **What free alternative does it beat, and how?**
+  4. **What evidence shows people want it at this price?** Until there is
+     evidence, the feature ships free behind an entitlement seam, as the
+     `crate.pro` seam does (#1966).
+
+  Applied to today's charges and options:
+
+  | Charge | Answer to question 1 | Verdict |
+  | --- | --- | --- |
+  | Remix or commercial license | The right to publish or monetize a remix, an edit or a video, which ripping or local separation does not give | Justified; stays per track |
+  | Personal license on a separated stem | Almost nothing: DJ software separates the same track locally for free | Weak; review whether personal use of separated stems should be free with the stream |
+  | Official lossless stems | The artist's own parts, not available anywhere else | Justified if the artist uploads them |
+  | Pro tier for DJs and producers (Crate Digger, Remix Studio Pro, exports) | Time saved finding rights-clear music, and exports to DJ software | Plausible; stays free until beta usage shows it |
+  | Monthly license credits bundled in the pro tier | Only valuable to people who license several tracks a month | Deferred: without repeat license buying, credits are paying for nothing |
+  | Listener Pro | Plays that pay the artists you play, HiFi, the Session DJ | Gated on the Listener Pro WAU threshold (ADR-BM-6) |
+
+  Any price change this implies goes through `docs/rfc/business-model.md`
+  (canonical fees and prices); this amendment changes none.
 
 ---
 
