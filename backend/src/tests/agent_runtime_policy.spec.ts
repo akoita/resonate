@@ -1,5 +1,5 @@
 /**
- * #1456 WS-9: the filter-only policy step for LLM runtime picks
+ * #1456 WS-9: the policy step for LLM runtime picks
  * (`AgentRuntimePolicyService`, reached through `AgentRuntimeService.run`).
  * Pure unit tests: the track-metadata lookup is stubbed (its Prisma query is
  * covered in agent_runtime_policy.integration.spec.ts).
@@ -78,6 +78,12 @@ function serviceFor(
     policy?: TasteMemoryPolicy;
     sessionArtists?: Record<string, string>;
     profileWeights?: Record<string, number>;
+    verifiedArtists?: string[];
+    playedArtists?: string[];
+    /** Prior discovery picks in the session; an Error makes the count unknown. */
+    priorDiscoveryPicks?: number | Error;
+    /** What the deterministic selector returns as its shortlist. */
+    selectorPicks?: Array<{ id: string; artistId: string; reasonCode: string }>;
   } = {},
 ) {
   const policyContext = {
@@ -87,6 +93,29 @@ function serviceFor(
     artistIdsForTracks: jest
       .fn()
       .mockResolvedValue(new Map(Object.entries(options.sessionArtists ?? {}))),
+    loadContext: jest.fn().mockResolvedValue({
+      verifiedHumanArtistIds: new Set(options.verifiedArtists ?? []),
+      playedArtistIds: new Set(options.playedArtists ?? []),
+    }),
+    countDiscoveryPicks:
+      options.priorDiscoveryPicks instanceof Error
+        ? jest.fn().mockRejectedValue(options.priorDiscoveryPicks)
+        : jest.fn().mockResolvedValue(options.priorDiscoveryPicks ?? 0),
+  };
+  const selector = {
+    select: jest.fn().mockResolvedValue({
+      selected: (options.selectorPicks ?? []).map((entry) => ({
+        id: entry.id,
+        release: { artistId: entry.artistId },
+        agentRecommendation: {
+          score: 30,
+          matchedQueries: [],
+          signals: [],
+          explanation: [DISCOVERY_EXPLANATIONS.discovery_pick],
+          reasonCode: entry.reasonCode,
+        },
+      })),
+    }),
   };
   const tasteMemory = {
     getPolicy: jest.fn().mockResolvedValue(options.policy),
@@ -106,8 +135,11 @@ function serviceFor(
     policyContext as any,
     tasteMemory as any,
     learning as any,
+    undefined,
+    undefined,
+    selector as any,
   );
-  return { service, policyContext, ranking };
+  return { service, policyContext, ranking, selector };
 }
 
 const ids = (result: { picks?: Array<{ trackId: string }> }) =>
@@ -225,7 +257,7 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
     expect(second.explanation).toEqual([DISCOVERY_EXPLANATIONS.catalog]);
   });
 
-  it("never labels a model pick a discovery pick (no exploration slot for LLM picks)", async () => {
+  it("never labels a pick a discovery pick when its artist is not a verified human", async () => {
     const { service } = serviceFor([track("fresh", { artistId: "new-artist" })]);
     const result = await service.apply(baseInput(), {
       status: "approved",
@@ -250,7 +282,10 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
       reason: "no_policy_eligible_picks",
       reasoning: "because",
       latencyMs: 9,
-      policy: { dropped: { hidden: 0, aiGenerated: 1, diversity: 0, unknown: 0 } },
+      policy: {
+        dropped: { hidden: 0, aiGenerated: 1, diversity: 0, unknown: 0 },
+        exploration: { reserved: 1, served: 0, injected: false },
+      },
     });
   });
 
@@ -290,6 +325,171 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
     const service = new AgentRuntimePolicyService();
     const original = { status: "approved" as const, picks: [pick("x")] };
     expect(await service.apply(baseInput(), original)).toBe(original);
+  });
+});
+
+describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", () => {
+  it("labels a qualifying model pick a discovery pick in place, without a swap", async () => {
+    const { service, selector } = serviceFor(
+      [track("known"), track("fresh", { artistId: "verified-new" })],
+      { verifiedArtists: ["verified-new"] },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("known"), pick("fresh")],
+    });
+    expect(ids(result)).toEqual(["known", "fresh"]);
+    expect(result.picks?.[1].reasonCode).toBe("discovery_pick");
+    expect(result.picks?.[1].explanation?.[0]).toBe(DISCOVERY_EXPLANATIONS.discovery_pick);
+    expect(result.policy?.exploration).toEqual({ reserved: 1, served: 1, injected: false });
+    expect(selector.select).not.toHaveBeenCalled();
+  });
+
+  it("does not label a pick from an artist the listener already played", async () => {
+    const { service } = serviceFor([track("known"), track("fresh", { artistId: "v" })], {
+      verifiedArtists: ["v"],
+      playedArtists: ["v"],
+    });
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("known"), pick("fresh")],
+    });
+    expect(result.picks?.map((entry) => entry.reasonCode)).not.toContain("discovery_pick");
+  });
+
+  it("swaps the model's last pick for the selector's discovery pick when none qualifies", async () => {
+    const { service, selector } = serviceFor([track("first"), track("second")], {
+      selectorPicks: [
+        { id: "ranked", artistId: "x", reasonCode: "taste_match" },
+        { id: "discover", artistId: "verified-new", reasonCode: "discovery_pick" },
+      ],
+    });
+    const input = baseInput({
+      recentTrackIds: ["s-1"],
+      preferences: { genres: ["House"], mood: "Calm", sessionIntent: "focus", energy: "low" },
+    });
+    const result = await service.apply(input, {
+      status: "approved",
+      picks: [pick("first"), { ...pick("second"), licenseType: "remix" }],
+    });
+
+    expect(ids(result)).toEqual(["first", "discover"]);
+    expect(result.picks?.[1]).toEqual(
+      expect.objectContaining({
+        trackId: "discover",
+        licenseType: "remix",
+        priceUsd: 0,
+        reasonCode: "discovery_pick",
+        explanation: [DISCOVERY_EXPLANATIONS.discovery_pick],
+      }),
+    );
+    // The model's lead pick stays the primary track.
+    expect(result.trackId).toBe("first");
+    expect(result.policy?.exploration).toEqual({ reserved: 1, served: 1, injected: true });
+    expect(selector.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "u1",
+        queries: ["House", "Calm"],
+        recentTrackIds: ["s-1"],
+        limit: 2,
+        sessionIntent: "focus",
+        mood: "Calm",
+        energy: "low",
+      }),
+    );
+  });
+
+  it("does not swap once the session already had its share of discovery picks", async () => {
+    const { service, selector } = serviceFor([track("a"), track("b")], {
+      sessionArtists: { "s-1": "p", "s-2": "q" },
+      priorDiscoveryPicks: 1,
+      selectorPicks: [{ id: "discover", artistId: "v", reasonCode: "discovery_pick" }],
+    });
+    const result = await service.apply(baseInput({ recentTrackIds: ["s-1", "s-2"] }), {
+      status: "approved",
+      picks: [pick("a"), pick("b")],
+    });
+    expect(ids(result)).toEqual(["a", "b"]);
+    expect(result.policy?.exploration).toEqual({ reserved: 0, served: 0, injected: false });
+    expect(selector.select).not.toHaveBeenCalled();
+  });
+
+  it("never swaps a single pick when the session's discovery count is unknown", async () => {
+    const { service, selector } = serviceFor([track("only")], {
+      priorDiscoveryPicks: new Error("db down"),
+      selectorPicks: [{ id: "discover", artistId: "v", reasonCode: "discovery_pick" }],
+    });
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("only")],
+    });
+    expect(ids(result)).toEqual(["only"]);
+    expect(selector.select).not.toHaveBeenCalled();
+  });
+
+  it("swaps a single pick when the session's discovery count is known and due", async () => {
+    const { service } = serviceFor([track("only")], {
+      priorDiscoveryPicks: 0,
+      selectorPicks: [{ id: "discover", artistId: "v", reasonCode: "discovery_pick" }],
+    });
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("only")],
+    });
+    expect(ids(result)).toEqual(["discover"]);
+    expect(result.trackId).toBe("discover");
+  });
+
+  it("skips a selector discovery pick that would break the artist cap or repeat a pick", async () => {
+    const { service } = serviceFor(
+      [track("a1", { artistId: "A" }), track("a2", { artistId: "A" }), track("b1", { artistId: "B" })],
+      {
+        sessionArtists: { "s-1": "V" },
+        selectorPicks: [
+          { id: "a1", artistId: "A", reasonCode: "discovery_pick" },
+          { id: "v2", artistId: "A", reasonCode: "discovery_pick" },
+        ],
+      },
+    );
+    const result = await service.apply(baseInput({ recentTrackIds: ["s-1"] }), {
+      status: "approved",
+      picks: [pick("a1"), pick("a2"), pick("b1")],
+    });
+    // a1 is already picked; v2's artist already has a1 and a2 in the batch.
+    expect(ids(result)).toEqual(["a1", "a2", "b1"]);
+    expect(result.policy?.exploration?.injected).toBe(false);
+  });
+
+  it("keeps the model's picks when the selector has no discovery pick or fails", async () => {
+    const none = serviceFor([track("a"), track("b")], {
+      selectorPicks: [{ id: "c", artistId: "c", reasonCode: "taste_match" }],
+    });
+    const kept = await none.service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("a"), pick("b")],
+    });
+    expect(ids(kept)).toEqual(["a", "b"]);
+    expect(kept.policy?.exploration).toEqual({ reserved: 1, served: 0, injected: false });
+
+    const failing = serviceFor([track("a"), track("b")]);
+    failing.selector.select.mockRejectedValue(new Error("catalog down"));
+    const passed = await failing.service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("a"), pick("b")],
+    });
+    expect(ids(passed)).toEqual(["a", "b"]);
+  });
+
+  it("disables only exploration when its lookups fail", async () => {
+    const { service, policyContext, selector } = serviceFor([track("a"), track("ai", { ai: "ALL" })]);
+    policyContext.loadContext.mockRejectedValue(new Error("db down"));
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("a"), pick("ai")],
+    });
+    expect(ids(result)).toEqual(["a"]);
+    expect(result.policy?.dropped.aiGenerated).toBe(1);
+    expect(selector.select).toHaveBeenCalled();
   });
 });
 

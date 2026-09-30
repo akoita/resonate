@@ -26,6 +26,8 @@ const HIDDEN_GENRE = `${P}Polka`;
 const LISTENER = `${P}listener`;
 const A_CROWD = `${P}artist_crowd`;
 const A_OTHER = `${P}artist_other`;
+const A_VERIFIED = `${P}artist_verified`;
+const VERIFIED_OWNER = `${P}verified_owner`;
 const tid = (name: string) => `${P}track_${name}`;
 
 describe("LLM runtime picks through the policy step (integration)", () => {
@@ -102,9 +104,24 @@ describe("LLM runtime picks through the policy step (integration)", () => {
     await prisma.user.create({ data: { id: LISTENER, email: `${LISTENER}@test.resonate` } });
     await prisma.artist.create({ data: { id: A_CROWD, displayName: "Crowd" } });
     await prisma.artist.create({ data: { id: A_OTHER, displayName: "Other" } });
+    // A verified human artist the listener never played: a discovery pick.
+    await prisma.user.create({
+      data: { id: VERIFIED_OWNER, email: `${VERIFIED_OWNER}@test.resonate` },
+    });
+    await prisma.artist.create({
+      data: { id: A_VERIFIED, displayName: "Verified", userId: VERIFIED_OWNER },
+    });
+    await prisma.curatorReputation.create({
+      data: {
+        walletAddress: VERIFIED_OWNER.toLowerCase(),
+        humanVerificationStatus: "human_verified",
+        humanVerifiedAt: new Date(),
+      },
+    });
     for (const name of ["c1", "c2", "c3"]) await seedTrack(name, A_CROWD, GENRE);
     await seedTrack("o1", A_OTHER, GENRE, { artist: "Credited Name" });
     await seedTrack("polka", A_OTHER, HIDDEN_GENRE);
+    await seedTrack("v1", A_VERIFIED, GENRE);
     await seedTrack("ai", A_OTHER, GENRE, {
       aiDisclosureLevel: "ALL",
       aiDisclosureSource: "artist",
@@ -148,6 +165,9 @@ describe("LLM runtime picks through the policy step (integration)", () => {
     await prisma.track.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.release.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.artist.deleteMany({ where: { id: { startsWith: P } } });
+    await prisma.curatorReputation.deleteMany({
+      where: { walletAddress: VERIFIED_OWNER.toLowerCase() },
+    });
     await prisma.user.deleteMany({ where: { id: { startsWith: P } } });
   });
 
@@ -210,6 +230,15 @@ describe("LLM runtime picks through the policy step (integration)", () => {
     expect(result.picks.map((entry: any) => entry.trackId)).toEqual([tid("o1")]);
   });
 
+  it("labels a model pick by a verified human artist the listener never played a discovery pick (rule 3)", async () => {
+    // Before Home runs: a served track is not new, so never a discovery pick.
+    const result: any = await runtime(llmPicks("c1", "v1")).run(input);
+    expect(result.picks.map((entry: any) => entry.trackId)).toEqual([tid("c1"), tid("v1")]);
+    expect(result.picks[1].reasonCode).toBe("discovery_pick");
+    expect(result.picks[0].reasonCode).not.toBe("discovery_pick");
+    expect(result.policy.exploration).toEqual({ reserved: 1, served: 1, injected: false });
+  });
+
   it("gives a pick the same score, explanation and reasonCode Home gives the same track", async () => {
     // Before Home runs (it records served history and would demote tracks).
     const result: any = await runtime(llmPicks("o1", "c1", "c2")).run(input);
@@ -227,7 +256,7 @@ describe("LLM runtime picks through the policy step (integration)", () => {
       // taste_match 40 + learned_preference 8 from the shared profile.
       expect(entry.score).toBe(48);
     }
-    // The LLM path never relabels a pick as an exploration pick.
+    // None of these artists is a verified human, so none is a discovery pick.
     expect(result.picks.map((entry: any) => entry.reasonCode)).not.toContain("discovery_pick");
   });
 });

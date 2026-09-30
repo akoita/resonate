@@ -45,8 +45,12 @@ export interface AgentRuntimeResult {
   latencyMs?: number;
   /** Multiple track picks from the LLM */
   picks?: LlmTrackPick[];
-  /** Runtime policy step accounting (rules 1, 2, 4), when it ran. */
-  policy?: { dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number } };
+  /** Runtime policy step accounting (rules 1 to 4), when it ran. */
+  policy?: {
+    dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number };
+    /** Rule 3; `injected` when the selector's discovery pick replaced the last model pick. */
+    exploration?: { reserved: number; served: number; injected: boolean };
+  };
 }
 
 export interface AgentRuntimeAdapter {
