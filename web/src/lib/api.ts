@@ -5009,6 +5009,8 @@ export type AgentConfig = {
   vibes: string[];
   stemTypes: string[];
   sessionMode: "curate" | "buy";
+  /** True only when the operator has enabled buy mode; hide the Curate/Buy toggle otherwise. */
+  buyModeEnabled?: boolean;
   monthlyCapUsd: number;
   isActive: boolean;
   identityStatus: AgentIdentityStatus;

@@ -34,7 +34,18 @@ describe("AgentSessionPresets", () => {
 
     expect(html).toContain("agent-session-card selected");
     expect(html).toContain("Start with this");
-    expect(html).toContain("Buy-ready stems");
+    expect(html).not.toContain("Buy-ready stems");
     expect(html).not.toContain("Open AI DJ");
+  });
+
+  it("never exposes stem buying on any preset", () => {
+    const html = renderToStaticMarkup(<AgentSessionPresets />);
+
+    expect(html).not.toContain("Buy-ready");
+    expect(html).not.toContain("Licensing posture");
+    for (const preset of SESSION_PRESETS) {
+      expect(preset).not.toHaveProperty("commercePosture");
+      expect(JSON.stringify(preset)).not.toMatch(/"buy"/i);
+    }
   });
 });
