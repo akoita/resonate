@@ -34,7 +34,20 @@ describe("AgentSessionPresets", () => {
 
     expect(html).toContain("agent-session-card selected");
     expect(html).toContain("Start with this");
-    expect(html).toContain("Buy-ready stems");
+    expect(html).not.toContain("Buy-ready stems");
+    expect(html).not.toContain("Licensing posture");
     expect(html).not.toContain("Open AI DJ");
+  });
+
+  it("keeps every preset listening-only (ADR-TE-1)", () => {
+    expect(SESSION_PRESETS.length).toBeGreaterThan(0);
+    for (const preset of SESSION_PRESETS) {
+      expect("commercePosture" in preset).toBe(false);
+    }
+
+    const html = renderToStaticMarkup(<AgentSessionPresets compact />);
+    expect(html).not.toMatch(/buy/i);
+    expect(html).not.toMatch(/licensing posture/i);
+    expect(html).not.toMatch(/purchases/i);
   });
 });

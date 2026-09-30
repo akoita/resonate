@@ -49,7 +49,7 @@ Available now:
 - The listener purchase modal defaults to the stablecoin x402 rail only when it can execute contract-backed marketplace settlement for the selected listing. It shows the backend-authored platform fee as included in the unchanged total, validates the exact decimal amount, asset, and payout destination before enabling payment, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail, displays the listing payment asset, and uses a tested approval-plus-buy transaction plan for ERC-20 stablecoin listings.
 - Marketplace listings carry an enforced `licenseType`. The listener buy modal switches to the selected tier's active listing ID before quoting or buying, disables tiers without an active listing, and persists the enforced tier onto `StemPurchase` records. The browser x402 checkout remains limited to the personal tier until the x402 stem endpoint accepts tier-specific resources.
 - Listing notifications persist the selected payment token and reconcile already-indexed listing rows. Listing reads also backfill native-token fallback rows from stored listing intents, so marketplace cards display the configured stablecoin asset instead of falling back to native ETH when the indexer wins the race.
-- The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
+- The listener AI DJ curates by default and never buys stems on its own ([ADR-TE-1](../strategy/taste-engine-decisions.md)). The legacy autonomous marketplace buy path (routed through `PaymentRouterService` before the ERC-4337 purchase rail) runs only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED` is on; it is off by default. See [Listener session mode](#listener-session-mode-adr-te-1).
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
 Phase 1 is complete for the in-backend runtime-commerce boundary tracked by
@@ -58,6 +58,20 @@ the public storefront x402/MCP surfaces, while `PaymentRouterService` remains a
 trusted backend boundary rather than a generic public command endpoint.
 
 Standalone runtime extraction remains a separate Phase 2 follow-up in #424.
+
+## Listener Session Mode (ADR-TE-1)
+
+The listener AI DJ is listening-only by default. Stem purchases without a quote
+the listener approved are not part of the listener product.
+
+- `AgentConfig.sessionMode` is `curate` or `buy`. `PATCH /agents/config` rejects any other value with `invalid_session_mode`.
+- `buy` is honored only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED` is `true` (or `1`). The flag defaults to off, and `PATCH /agents/config` rejects `sessionMode: "buy"` with `session_buy_mode_disabled` while it is off.
+- With the flag off, a stored `buy` config is treated as `curate` when a session starts: no negotiation, no `PaymentRouterService` purchase, and no spend is recorded. The backend logs the downgrade with the session id.
+- `GET /agents/config` reports `sessionBuyModeEnabled`, and the web app shows the "Curate Only / Buy Stems" toggle only when it is `true`.
+- The session intent presets (Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift, Static Calm) are listening-only. Starting one always writes `sessionMode: "curate"`; presets no longer carry a licensing posture.
+- With the flag on, `buy` behaves as it did before this change. It is an operator-only path for exercising legacy autonomous purchases until the Crate Digger quote flow replaces it.
+
+Variable reference: [Environment variables](../deployment/environment.md).
 
 ## End-User Flow
 
@@ -473,6 +487,7 @@ npm run test
 ## Related Docs
 
 - [Feature catalog](README.md)
+- [Taste Engine decisions (ADR-TE-1)](../strategy/taste-engine-decisions.md)
 - [Agent Platform Refactor RFC](../rfc/agent-platform-refactor.md)
 - [Agent Platform Refactor Backlog](agent-platform-refactor-backlog.md)
 - [Agent Runtime Worker](../architecture/agent-runtime-worker.md)

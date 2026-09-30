@@ -61,7 +61,6 @@ export default function AgentPage() {
         name: string;
         vibes: string[];
         monthlyCapUsd: number;
-        enableWallet: boolean;
     }) => {
         await createConfig(data);
         void recordProductAnalytics(token, "onboarding.completed", {
@@ -70,34 +69,10 @@ export default function AgentPage() {
             payload: {
                 flow: "agent",
                 vibeCount: data.vibes.length,
-                walletEnabled: data.enableWallet,
+                walletEnabled: false,
                 monthlyCapUsd: data.monthlyCapUsd,
             },
         });
-        void recordProductAnalytics(token, "wallet.budget_set", {
-            source: "agent_setup",
-            subjectType: "agent_config",
-            payload: {
-                surface: "agent",
-                monthlyCapUsd: data.monthlyCapUsd,
-            },
-        });
-        if (data.enableWallet) {
-            try {
-                await wallet.enable();
-                addToast({
-                    type: "success",
-                    title: "Smart Wallet Enabled",
-                    message: "Your DJ can now purchase stems autonomously.",
-                });
-            } catch {
-                addToast({
-                    type: "info",
-                    title: "Wallet Setup Skipped",
-                    message: "You can enable the smart wallet from the dashboard.",
-                });
-            }
-        }
         addToast({
             type: "success",
             title: "DJ Activated",
@@ -139,7 +114,8 @@ export default function AgentPage() {
                     setIsStartingPreset(true);
                     await updateConfig({
                         vibes: preset.searchVibes,
-                        sessionMode: preset.commercePosture,
+                        // Presets are always listening-only (ADR-TE-1).
+                        sessionMode: "curate",
                     });
                 }
                 const result = await startSession(preferences ? { preferences } : undefined);
@@ -158,7 +134,7 @@ export default function AgentPage() {
                         mood: preset?.preferences.mood,
                         licenseType: preset?.preferences.licenseType,
                         queueStyle: preset?.queueStyle,
-                        commercePosture: preset?.commercePosture,
+                        commercePosture: "curate",
                     },
                 });
                 addToast({
@@ -192,7 +168,7 @@ export default function AgentPage() {
                 mood: preset.preferences.mood,
                 licenseType: preset.preferences.licenseType,
                 queueStyle: preset.queueStyle,
-                commercePosture: preset.commercePosture,
+                commercePosture: "curate",
             },
         });
     };
@@ -289,7 +265,7 @@ export default function AgentPage() {
                     <div className="aid-empty">
                         <div className="aid-empty-icon">🤖</div>
                         <h2>Set Up Your AI DJ</h2>
-                        <p>Deploy a personal AI agent to scan the catalog, match your mood, and negotiate micro-payments.</p>
+                        <p>Deploy a personal AI agent to scan the catalog and match your mood.</p>
                         <button className="aid-primary-btn" onClick={() => setShowWizard(true)}>
                             Get Started
                         </button>
@@ -308,20 +284,22 @@ export default function AgentPage() {
                                 </span>
                             </div>
                             <div className="aid-command-actions">
-                                <div className="aid-mode-seg">
-                                    <button
-                                        className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
-                                        onClick={() => updateConfig({ sessionMode: "curate" })}
-                                    >
-                                        Curate Only
-                                    </button>
-                                    <button
-                                        className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
-                                        onClick={() => updateConfig({ sessionMode: "buy" })}
-                                    >
-                                        Buy Stems
-                                    </button>
-                                </div>
+                                {config.sessionBuyModeEnabled === true ? (
+                                    <div className="aid-mode-seg">
+                                        <button
+                                            className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
+                                            onClick={() => updateConfig({ sessionMode: "curate" })}
+                                        >
+                                            Curate Only
+                                        </button>
+                                        <button
+                                            className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
+                                            onClick={() => updateConfig({ sessionMode: "buy" })}
+                                        >
+                                            Buy Stems
+                                        </button>
+                                    </div>
+                                ) : null}
                                 <button
                                     className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
                                     onClick={() => handleToggle()}

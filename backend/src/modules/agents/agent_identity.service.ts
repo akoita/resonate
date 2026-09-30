@@ -23,6 +23,7 @@ import {
   type IndependentValidationSummary,
 } from "./agent_reputation_feedback.service";
 import { AgentWalletService } from "./agent_wallet.service";
+import { isAgentSessionBuyModeEnabled } from "./agent_runtime.config";
 import {
   ERC8004_IDENTITY_ABI,
   buildAgentRegistrationFile,
@@ -65,6 +66,10 @@ export type AgentIdentityCredential = Prisma.InputJsonObject;
 export type EnrichedAgentConfig = Omit<AgentConfig, "identityCredential" | "reputationSnapshot"> & {
   reputationSnapshot: AgentReputationSnapshot;
   identityCredential: AgentIdentityCredential;
+  /** Operator flag AGENT_SESSION_BUY_MODE_ENABLED (ADR-TE-1); the UI hides the mode toggle while false. */
+  sessionBuyModeEnabled: boolean;
+  /** Operator flag ERC8004_ENABLED; identity and reputation publishing are frozen (ADR-TE-6) and hidden while false. */
+  erc8004Enabled: boolean;
 };
 
 export type AgentIdentityOnchainResult = {
@@ -361,6 +366,8 @@ export class AgentIdentityService {
       reputationScore: reputationSnapshot.score,
       reputationSnapshot,
       identityCredential,
+      sessionBuyModeEnabled: isAgentSessionBuyModeEnabled(),
+      erc8004Enabled: this.configService.get<string>("ERC8004_ENABLED") === "true",
     };
   }
 

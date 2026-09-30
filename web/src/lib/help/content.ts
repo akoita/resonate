@@ -510,6 +510,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "callout",
             tone: "note",
+            title: "The AI DJ never buys for you",
+            text: "The AI DJ only curates and plays music. It never buys stems or licenses on your behalf, and it never spends from your wallet. A purchase happens only when you choose to make one yourself, for example from the Marketplace.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
             title: "What the AI DJ promotes",
             text: "The AI DJ can recommend human-made and AI-assisted tracks. Tracks declared fully AI-generated stay available for direct listening but are not selected as promoted AI DJ picks.",
           },

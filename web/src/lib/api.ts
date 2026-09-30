@@ -5009,6 +5009,10 @@ export type AgentConfig = {
   vibes: string[];
   stemTypes: string[];
   sessionMode: "curate" | "buy";
+  /** Operator flag: `buy` sessions are honored only when true (ADR-TE-1). */
+  sessionBuyModeEnabled?: boolean;
+  /** Operator flag: ERC-8004 identity and reputation publishing (frozen, ADR-TE-6). */
+  erc8004Enabled?: boolean;
   monthlyCapUsd: number;
   isActive: boolean;
   identityStatus: AgentIdentityStatus;

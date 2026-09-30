@@ -42,26 +42,28 @@ export default function AgentStatusCard({ config, onToggle, onModeChange, sessio
                 ))}
             </div>
 
-            {/* Session mode toggle */}
-            <div className="aid-sc-mode">
-                <span className="aid-mode-label">Mode</span>
-                <div className="aid-mode-seg">
-                    <button
-                        className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
-                        onClick={() => onModeChange("curate")}
-                    >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-                        Curate Only
-                    </button>
-                    <button
-                        className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
-                        onClick={() => onModeChange("buy")}
-                    >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
-                        Buy Stems
-                    </button>
+            {/* Session mode toggle: autonomous buying is operator-gated (ADR-TE-1) */}
+            {config.sessionBuyModeEnabled === true ? (
+                <div className="aid-sc-mode">
+                    <span className="aid-mode-label">Mode</span>
+                    <div className="aid-mode-seg">
+                        <button
+                            className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
+                            onClick={() => onModeChange("curate")}
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                            Curate Only
+                        </button>
+                        <button
+                            className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
+                            onClick={() => onModeChange("buy")}
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                            Buy Stems
+                        </button>
+                    </div>
                 </div>
-            </div>
+            ) : null}
 
             {/* Stats */}
             <div className="aid-sc-stats">

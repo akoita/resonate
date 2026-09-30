@@ -14,6 +14,7 @@ import {
 } from "./agent_learning.service";
 import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { EventBus } from "../shared/event_bus";
+import { isAgentSessionBuyModeEnabled, resolveAgentSessionMode } from "./agent_runtime.config";
 import type { NegotiationResult } from "./agent_negotiator.service";
 
 @Controller("agents/config")
@@ -82,6 +83,16 @@ export class AgentConfigController {
         @Req() req: any,
         @Body() body: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: string; monthlyCapUsd?: number; isActive?: boolean }
     ) {
+        if (body.sessionMode !== undefined) {
+            if (body.sessionMode !== "curate" && body.sessionMode !== "buy") {
+                throw new BadRequestException({ reason: "invalid_session_mode" });
+            }
+            // ADR-TE-1: the listener AI DJ never buys unless the operator flag is on.
+            if (body.sessionMode === "buy" && !isAgentSessionBuyModeEnabled()) {
+                throw new BadRequestException({ reason: "session_buy_mode_disabled" });
+            }
+        }
+
         const allowedData: {
             name?: string;
             vibes?: string[];
@@ -197,6 +208,7 @@ export class AgentConfigController {
         if (!config) {
             return { status: "not_configured" };
         }
+        const resolvedMode = resolveAgentSessionMode(config.sessionMode);
         const sessionPreferences = {
             genres: body?.preferences?.genres ?? config.vibes,
             stemTypes: config.stemTypes,
@@ -236,6 +248,12 @@ export class AgentConfigController {
                     balanceUsd: Math.max(0, config.monthlyCapUsd - wallet.spentUsd),
                 },
             });
+        }
+
+        if (resolvedMode.downgraded) {
+            this.logger.log(
+                `[Agent] Session ${session.id}: stored "buy" session mode is treated as "curate" because AGENT_SESSION_BUY_MODE_ENABLED is off (ADR-TE-1)`,
+            );
         }
 
         // Delay orchestration slightly to let the WebSocket client connect
@@ -321,8 +339,8 @@ export class AgentConfigController {
                                         outcome: { type: "first_pick_accept", firstPick: true },
                                     }),
                                 });
-                                this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${config.sessionMode}`);
-                                if (config.sessionMode === "buy") {
+                                this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${resolvedMode.mode}`);
+                                if (resolvedMode.mode === "buy") {
                                     await this.recordPurchase(
                                         session.id,
                                         req.user.userId,
@@ -330,16 +348,19 @@ export class AgentConfigController {
                                         track.negotiation,
                                     );
                                 } else {
-                                    this.logger.log(`[Agent] Skipping purchase for ${track.trackId} (mode: ${config.sessionMode})`);
+                                    this.logger.log(`[Agent] Skipping purchase for ${track.trackId} (mode: ${resolvedMode.mode})`);
                                 }
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${track.trackId}:`, err);
                             }
                         }
-                        const totalSpend = result.tracks.reduce(
-                            (sum, t) => sum + t.negotiation.priceUsd,
-                            0
-                        );
+                        // Curate mode buys nothing, so no spend accrues.
+                        const totalSpend = resolvedMode.mode === "buy"
+                            ? result.tracks.reduce(
+                                (sum, t) => sum + t.negotiation.priceUsd,
+                                0
+                            )
+                            : 0;
                         if (totalSpend > 0) {
                             await prisma.session.update({
                                 where: { id: session.id },
@@ -389,7 +410,7 @@ export class AgentConfigController {
                                         outcome: { type: "first_pick_accept", firstPick: true },
                                     }),
                                 });
-                                if (config.sessionMode === "buy") {
+                                if (resolvedMode.mode === "buy") {
                                     // Fetch actual listings to ensure we can buy
                                     const negotiation = await this.negotiatorService.negotiate({
                                         trackId: pick.trackId,
@@ -409,7 +430,9 @@ export class AgentConfigController {
                                         this.logger.warn(`[Agent] LLM picked track ${pick.trackId} but negotiation failed: ${negotiation.reason}`);
                                     }
                                 }
-                                totalSpend += pick.priceUsd;
+                                if (resolvedMode.mode === "buy") {
+                                    totalSpend += pick.priceUsd;
+                                }
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${pick.trackId}:`, err);
                             }

@@ -8,8 +8,13 @@ const PRESET_VIBES = [
     "Afrobeats", "Reggaeton", "Techno", "Indie", "Pop", "Rock",
 ];
 
+// The DJ is listening-only (ADR-TE-1), so setup no longer asks for a budget.
+// The backend contract still requires a monthly cap, so the default is submitted.
+const DEFAULT_MONTHLY_CAP_USD = 10;
+const LAST_STEP = 1;
+
 type WizardProps = {
-    onComplete: (data: { name: string; vibes: string[]; monthlyCapUsd: number; enableWallet: boolean }) => Promise<void>;
+    onComplete: (data: { name: string; vibes: string[]; monthlyCapUsd: number }) => Promise<void>;
     onClose: () => void;
 };
 
@@ -17,10 +22,8 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
     const [step, setStep] = useState(0);
     const [name, setName] = useState("");
     const [selectedVibes, setSelectedVibes] = useState<string[]>(["Focus"]);
-    const [budget, setBudget] = useState(10);
     const [submitting, setSubmitting] = useState(false);
     const [customInput, setCustomInput] = useState("");
-    const [enableWallet, setEnableWallet] = useState(true);
 
     const toggleVibe = (vibe: string) => {
         setSelectedVibes((prev) =>
@@ -49,8 +52,7 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
             await onComplete({
                 name: name || "My DJ",
                 vibes: selectedVibes.length > 0 ? selectedVibes : ["Focus"],
-                monthlyCapUsd: budget,
-                enableWallet,
+                monthlyCapUsd: DEFAULT_MONTHLY_CAP_USD,
             });
         } finally {
             setSubmitting(false);
@@ -65,7 +67,7 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
             <div className="agent-wizard" onClick={(e) => e.stopPropagation()}>
                 {/* Progress dots */}
                 <div className="agent-wizard-dots">
-                    {[0, 1, 2, 3].map((i) => (
+                    {[0, 1].map((i) => (
                         <div key={i} className={`agent-wizard-dot ${i === step ? "active" : ""} ${i < step ? "done" : ""}`} />
                     ))}
                 </div>
@@ -75,7 +77,7 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                         <div className="agent-wizard-emoji">🤖</div>
                         <h2 className="agent-wizard-title">Name Your DJ</h2>
                         <p className="agent-wizard-desc">
-                            Your AI DJ agent will curate, negotiate, and remix tracks for you in real-time.
+                            Your AI DJ agent will curate and play tracks for you in real-time.
                         </p>
                         <input
                             className="agent-wizard-input"
@@ -136,68 +138,13 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                     </div>
                 )}
 
-                {step === 2 && (
-                    <div className="agent-wizard-step fade-in-up">
-                        <div className="agent-wizard-emoji">💰</div>
-                        <h2 className="agent-wizard-title">Set Monthly Budget</h2>
-                        <p className="agent-wizard-desc">
-                            How much should your DJ spend per month on licensing tracks?
-                        </p>
-                        <div className="agent-wizard-budget">
-                            <input
-                                type="range"
-                                min={1}
-                                max={50}
-                                value={budget}
-                                onChange={(e) => setBudget(Number(e.target.value))}
-                                className="agent-budget-slider"
-                            />
-                            <div className="agent-budget-value">${budget}/mo</div>
-                        </div>
-                    </div>
-                )}
-
-                {step === 3 && (
-                    <div className="agent-wizard-step fade-in-up">
-                        <div className="agent-wizard-emoji">🔐</div>
-                        <h2 className="agent-wizard-title">Smart Wallet</h2>
-                        <p className="agent-wizard-desc">
-                            Let your DJ autonomously purchase stems on-chain, within your budget. Uses account abstraction — no manual approvals needed.
-                        </p>
-                        <div className="agent-wallet-opt-in">
-                            <button
-                                className={`agent-wallet-opt-btn ${enableWallet ? "selected" : ""}`}
-                                onClick={() => setEnableWallet(true)}
-                            >
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                </svg>
-                                <span className="agent-wallet-opt-label">Enable</span>
-                                <span className="agent-wallet-opt-desc">Auto-buy stems within budget</span>
-                            </button>
-                            <button
-                                className={`agent-wallet-opt-btn ${!enableWallet ? "selected" : ""}`}
-                                onClick={() => setEnableWallet(false)}
-                            >
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <line x1="15" y1="9" x2="9" y2="15" />
-                                    <line x1="9" y1="9" x2="15" y2="15" />
-                                </svg>
-                                <span className="agent-wallet-opt-label">Skip</span>
-                                <span className="agent-wallet-opt-desc">Enable later from dashboard</span>
-                            </button>
-                        </div>
-                    </div>
-                )}
-
                 <div className="agent-wizard-actions">
                     {step > 0 && (
                         <button className="ui-btn ui-btn-ghost" onClick={() => setStep(step - 1)}>
                             Back
                         </button>
                     )}
-                    {step < 3 ? (
+                    {step < LAST_STEP ? (
                         <button
                             className="ui-btn ui-btn-primary"
                             onClick={() => setStep(step + 1)}
