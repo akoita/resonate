@@ -1,17 +1,25 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ToolRegistry } from "./tools/tool_registry";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import { AgentAudioFeatureService, AgentAudioFeatures } from "./agent_audio_feature.service";
 import { AgentBigQueryTasteSignalService, AgentTasteScore } from "./agent_bigquery_taste_signal.service";
 import { CommunityCohortService } from "../community/community_cohort.service";
+import {
+  applyDiscoveryPolicy,
+  discoveryArtistKey,
+} from "../recommendations/discovery-policy";
+import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import { DiscoveryRankingService } from "../recommendations/discovery-ranking.service";
+import { RecommendationsService } from "../recommendations/recommendations.service";
 import {
   hasSignal,
   TasteMemoryPolicy,
   TasteMemoryService,
 } from "../recommendations/taste_memory.service";
+import type { DiscoveryReasonCode } from "../recommendations/discovery-explanations";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
+import { AgentLearningService } from "./agent_learning.service";
 
 export interface AgentSelectorInput {
   userId?: string;
@@ -21,7 +29,17 @@ export interface AgentSelectorInput {
   useEmbeddings?: boolean;
   limit?: number;
   energy?: "low" | "medium" | "high";
+  /**
+   * Learned genre weights from the caller. The selector prefers the shared
+   * resolver's weights for `userId` (one taste profile for Home and the DJ,
+   * #1456) and uses these only when no stored profile resolves.
+   */
   learnedGenreWeights?: Record<string, number>;
+  /** Session intent (preset) as ranking context; never stored as taste. */
+  sessionIntent?: string;
+  /** Requested mood; matched like the intent when it is not already a query. */
+  mood?: string;
+  queueStyle?: string;
 }
 
 export interface AgentSelectionSignal {
@@ -34,12 +52,19 @@ export interface AgentCandidateTrack {
   id: string;
   title?: string | null;
   hasListing?: boolean;
-  release?: { genre?: string | null; title?: string | null };
+  release?: {
+    genre?: string | null;
+    title?: string | null;
+    moods?: string[] | null;
+    artistId?: string | null;
+  };
   agentRecommendation?: {
     score: number;
     matchedQueries: string[];
     signals: AgentSelectionSignal[];
     explanation: string[];
+    /** Primary categorical reason from the shared discovery vocabulary. */
+    reasonCode?: DiscoveryReasonCode;
     audioFeatures?: AgentAudioFeatures;
     trace?: Record<string, unknown>;
   };
@@ -47,6 +72,8 @@ export interface AgentCandidateTrack {
 
 @Injectable()
 export class AgentSelectorService {
+  private readonly logger = new Logger(AgentSelectorService.name);
+
   constructor(
     private readonly tools: ToolRegistry,
     // The unified scoring core (#1448 WS-1) shared with the Home feed.
@@ -59,6 +86,16 @@ export class AgentSelectorService {
     private readonly tasteMemoryService?: TasteMemoryService,
     @Optional()
     private readonly communityCohortService?: CommunityCohortService,
+    // Policy-stage lookups (verified humans, played artists, session artists).
+    // Absent in lightweight unit wiring: the policy then runs with empty sets.
+    @Optional()
+    private readonly policyContext?: DiscoveryPolicyContextService,
+    // Shared taste profile resolver (same one Home uses).
+    @Optional()
+    private readonly learning?: AgentLearningService,
+    // Shared served-history source (same one Home reads and writes).
+    @Optional()
+    private readonly recommendations?: RecommendationsService,
   ) { }
 
   async select(input: AgentSelectorInput) {
@@ -161,12 +198,25 @@ export class AgentSelectorService {
       );
     }
 
+    // One taste profile and one served-history source for the DJ and Home
+    // (#1456 WS-9). Both fail open: a read error contributes nothing.
+    const learnedGenreWeights = await this.resolveLearnedGenreWeights(
+      input,
+      policy,
+    );
+    const servedHistory = await this.resolveServedHistory(input.userId);
+    const sessionIntent = buildSessionIntent(input);
+
     const ranked = await this.rankingService.rank(
       allCandidates.map((track: any) => ({
         id: track.id,
         title: track.title,
         artist: track.artist ?? null,
         hasListing: track.hasListing,
+        // Artist identity + AI disclosure feed the policy stage: without an
+        // artistId no DJ candidate can be an exploration pick.
+        artistId: track.release?.artistId ?? null,
+        aiDisclosureLevel: aiDisclosureLevelOf(track),
         release: {
           genre: track.release?.genre ?? null,
           title: track.release?.title ?? null,
@@ -186,19 +236,24 @@ export class AgentSelectorService {
       {
         originalQueries,
         expandedQueries: queries,
-        learnedGenreWeights: input.learnedGenreWeights ?? {},
+        learnedGenreWeights,
         similarityScores,
         bigQueryTasteScores,
         cohortContext,
-        recentTrackIds: input.recentTrackIds,
+        // Tracks the listener was already served (Home impressions) are
+        // demoted like recent plays, but only this session's own tracks are
+        // hard-excluded below.
+        recentTrackIds: [...new Set([...input.recentTrackIds, ...servedHistory])],
         energy: input.energy,
+        sessionIntent,
         tastePolicy: policy,
         audioFeaturesByTrack,
       },
     );
 
     const byId2 = new Map(allCandidates.map((track) => [track.id, track]));
-    const scored = ranked.map((entry) => {
+    const sessionTrackIds = new Set(input.recentTrackIds);
+    const toAgentTrack = (entry: (typeof ranked)[number]) => {
       const track = byId2.get(entry.id)!;
       return {
         ...track,
@@ -207,35 +262,146 @@ export class AgentSelectorService {
           matchedQueries: track.matchedQueries,
           signals: entry.signals,
           explanation: entry.explanation,
+          reasonCode: entry.reasonCode,
           ...(entry.audioFeatures ? { audioFeatures: entry.audioFeatures } : {}),
           ...(entry.trace ? { trace: entry.trace } : {}),
         },
       };
-    });
+    };
 
-    const rejected = scored
-      .filter((track) => input.recentTrackIds.includes(track.id))
-      .map((track) => ({
-        trackId: track.id,
+    const rejected = ranked
+      .filter((entry) => sessionTrackIds.has(entry.id))
+      .map((entry) => ({
+        trackId: entry.id,
         reason: "recently_played",
       }));
 
-    const fresh = scored.filter(
-      (track) => !input.recentTrackIds.includes(track.id)
-    );
-    const selected = fresh.slice(0, limit);
+    // The policy stage (ADR-TE-2, docs/rfc/taste-engine.md §3.4) runs after
+    // scoring on every surface: hidden taste, AI, exploration share, diversity
+    // cap (per 10 session tracks), categorical reason.
+    const fresh = ranked.filter((entry) => !sessionTrackIds.has(entry.id));
+    const policyContext = await this.loadPolicyContext(input, fresh);
+    const policyResult = applyDiscoveryPolicy(fresh, {
+      limit,
+      tastePolicy: policy,
+      verifiedHumanArtistIds: policyContext.verifiedHumanArtistIds,
+      playedArtistIds: policyContext.playedArtistIds,
+      priorSessionArtistKeys: policyContext.priorSessionArtistKeys,
+    });
+    const selected = policyResult.items.map(toAgentTrack);
+    const scored = ranked.map(toAgentTrack);
 
     return {
       candidates: scored.map((track) => track.id),
       selected,
       rejected,
-      reason: selected.length > 0 ? "ranked_shortlist" : "all_candidates_recently_played",
+      reason:
+        selected.length > 0
+          ? "ranked_shortlist"
+          : fresh.length > 0
+            ? "no_policy_eligible_candidates"
+            : "all_candidates_recently_played",
+      policy: {
+        dropped: policyResult.dropped,
+        exploration: policyResult.exploration,
+      },
     };
+  }
+
+  /**
+   * The shared learned genre weights for this listener: the same persisted
+   * `AgentConfig.learnedTasteProfile` Home ranks with. The caller-provided
+   * weights are the fallback when no stored profile resolves (or no resolver
+   * is wired), so the deterministic path never depends on this read.
+   */
+  private async resolveLearnedGenreWeights(
+    input: AgentSelectorInput,
+    policy: TasteMemoryPolicy | undefined,
+  ): Promise<Record<string, number>> {
+    if (input.userId && this.learning) {
+      try {
+        const profile = await this.learning.resolveTasteProfile(
+          input.userId,
+          [],
+          policy,
+        );
+        if (Object.keys(profile.genreWeights).length > 0) {
+          return profile.genreWeights;
+        }
+      } catch (error) {
+        this.logger.warn(`Shared taste profile unavailable: ${String(error)}`);
+      }
+    }
+    return input.learnedGenreWeights ?? {};
+  }
+
+  /** Home's served-history (`RecommendationProfile.servedTrackIds`). */
+  private async resolveServedHistory(userId?: string): Promise<string[]> {
+    if (!userId || !this.recommendations) return [];
+    try {
+      return await this.recommendations.getServedHistory(userId);
+    } catch (error) {
+      this.logger.warn(`Served history unavailable: ${String(error)}`);
+      return [];
+    }
+  }
+
+  /**
+   * Policy lookups for the fresh candidates plus the artist keys of the
+   * session so far (oldest first, as `applyDiscoveryPolicy` expects). Fails
+   * open: a lookup error leaves the sets empty, which only disables
+   * exploration; AI, hidden and diversity rules do not depend on it.
+   */
+  private async loadPolicyContext(
+    input: AgentSelectorInput,
+    fresh: Array<Parameters<typeof discoveryArtistKey>[0]>,
+  ) {
+    let verifiedHumanArtistIds: ReadonlySet<string> = new Set<string>();
+    let playedArtistIds: ReadonlySet<string> = new Set<string>();
+    let sessionArtists = new Map<string, string>();
+    if (this.policyContext) {
+      try {
+        const artistIds = fresh
+          .map((entry) => entry.artistId)
+          .filter((id): id is string => !!id);
+        const [context, artistsByTrack] = await Promise.all([
+          this.policyContext.loadContext(input.userId, artistIds),
+          this.policyContext.artistIdsForTracks(input.recentTrackIds),
+        ]);
+        verifiedHumanArtistIds = context.verifiedHumanArtistIds;
+        playedArtistIds = context.playedArtistIds;
+        sessionArtists = artistsByTrack;
+      } catch (error) {
+        this.logger.warn(`Discovery policy context unavailable: ${String(error)}`);
+      }
+    }
+    // recentTrackIds is newest-first; the policy wants chronological order.
+    const priorSessionArtistKeys = [...input.recentTrackIds]
+      .reverse()
+      .map((id) =>
+        discoveryArtistKey({ id, artistId: sessionArtists.get(id) ?? null }),
+      );
+    return { verifiedHumanArtistIds, playedArtistIds, priorSessionArtistKeys };
   }
 
 }
 
-function isHiddenTasteQuery(policy: TasteMemoryPolicy | undefined, query: string) {
+function buildSessionIntent(input: AgentSelectorInput) {
+  const { sessionIntent: intent, mood, queueStyle } = input;
+  if (!intent?.trim() && !mood?.trim() && !queueStyle?.trim()) return undefined;
+  return { intent, mood, queueStyle };
+}
+
+/** Upper-case disclosure level from either catalog.search shape. */
+function aiDisclosureLevelOf(item: {
+  aiDisclosureLevel?: unknown;
+  aiDisclosure?: { level?: unknown };
+}): string | null {
+  const level = item.aiDisclosureLevel ?? item.aiDisclosure?.level;
+  return typeof level === "string" ? level.toUpperCase() : null;
+}
+
+export function isHiddenTasteQuery(policy: TasteMemoryPolicy | undefined, query: string) {
   return hasSignal(policy?.hidden ?? new Map(), "genre", query)
     || hasSignal(policy?.hidden ?? new Map(), "mood", query)
     || hasSignal(policy?.hidden ?? new Map(), "intent", query)

@@ -237,6 +237,7 @@ export class ModelAssistedRecommendationAdapter implements AgentRecommendationAd
           },
         ],
         explanation,
+        ...(existing?.reasonCode ? { reasonCode: existing.reasonCode } : {}),
         ...(existing?.audioFeatures ? { audioFeatures: existing.audioFeatures } : {}),
         trace: {
           model: modelName,
@@ -302,7 +303,7 @@ export class ModelAssistedRecommendationAdapter implements AgentRecommendationAd
       "Select only candidates that match the listener taste exactly or semantically.",
       "Reject unrelated candidates even when no better choice exists.",
       "Never invent track IDs; use only IDs from the candidate list.",
-      "Prefer listed tracks when taste relevance is comparable.",
+      "Rank only by taste relevance; hasListing is purchase availability data, never a reason to prefer or avoid a track.",
       "Use no-match by rejecting every candidate when the catalog does not fit.",
     ].join("\n");
   }

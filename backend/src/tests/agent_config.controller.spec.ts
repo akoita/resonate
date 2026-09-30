@@ -42,6 +42,7 @@ function makeController(
     runResult?: unknown;
     paymentRouter?: unknown;
     negotiatorService?: unknown;
+    learningService?: unknown;
   } = {},
 ) {
   return new AgentConfigController(
@@ -54,11 +55,11 @@ function makeController(
     {
       enrichConfig: jest.fn().mockImplementation(async (config: unknown) => config),
     } as any,
-    {
-      computeTasteProfile: jest.fn().mockResolvedValue(null),
+    (overrides.learningService ?? {
+      resolveTasteProfile: jest.fn().mockResolvedValue(null),
       mergeLearnedGenres: jest.fn(),
       recordSignal: jest.fn(),
-    } as any,
+    }) as any,
     { recordValidation: jest.fn() } as any,
     { publish: jest.fn() } as any,
   );
@@ -259,6 +260,45 @@ describe("AgentConfigController", () => {
         where: { id: "session_1" },
         data: { spentUsd: 1 },
       });
+    });
+
+    it("records the policy step's reasonCode on the LLM pick's accept signal", async () => {
+      const learningService = {
+        resolveTasteProfile: jest.fn().mockResolvedValue(null),
+        mergeLearnedGenres: jest.fn(),
+        recordSignal: jest.fn(),
+      };
+      const ctrl = makeController({
+        learningService,
+        runResult: {
+          ...LLM_RESULT,
+          picks: [
+            {
+              trackId: "track_1",
+              licenseType: "remix",
+              priceUsd: 1,
+              score: 48,
+              explanation: ["Selected vibe match"],
+              reasonCode: "taste_match",
+            },
+          ],
+        },
+      });
+
+      await runSession(ctrl);
+
+      expect(learningService.recordSignal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            runtime: "llm",
+            recommendation: {
+              score: 48,
+              explanation: ["Selected vibe match"],
+              reasonCode: "taste_match",
+            },
+          }),
+        }),
+      );
     });
 
     it("does not negotiate or purchase in LLM mode with a stored buy mode and the flag off", async () => {

@@ -16,8 +16,8 @@ export function getToolDeclarations(): FunctionDeclaration[] {
       description:
         "Search the music catalog for tracks matching a query. " +
         "Returns a list of track objects with id, title, genre, artwork, and hasListing (boolean). " +
-        "Tracks with hasListing=true are available for on-chain purchase. " +
-        "Prefer tracks where hasListing is true.",
+        "hasListing=true means a stem of the track is listed for sale; it says nothing about how well " +
+        "the track fits the listener, so never use it to rank or choose tracks.",
       parameters: {
         type: SchemaType.OBJECT,
         properties: {

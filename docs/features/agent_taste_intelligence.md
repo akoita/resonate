@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1456, 1957]
 ---
 
 # Agent Taste Intelligence
@@ -27,7 +27,7 @@ signals, and the analytics Dataflow output has a repeatable baseline
 materialization path for warehouse scores.
 The existing deterministic selector remains the default behavior: when BigQuery
 taste signals are disabled, unavailable, or missing for a candidate track,
-recommendations fall back to catalog, learned genre, listing, embedding, and
+recommendations fall back to catalog, learned genre, embedding, and
 metadata-derived audio-feature signals. When a listener has joined eligible
 cohorts, the selector can also use safe cohort hints from transactional
 membership state; this path does not require BigQuery or Dataflow.
@@ -198,6 +198,77 @@ taste-memory policy) and receive weighted signals + human explanations.
   (durability across instances, wide-pool, deterministic fallback) plus the
   pre-existing recommendation/agent suites.
 
+## One Core, One Profile, One Policy (#1456 WS-9, #1957)
+
+Status: `partial`. The AI DJ and Home are now two callers of the same stack
+(`backend/src/modules/recommendations/`): score with `DiscoveryRankingService`,
+then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
+[Taste Engine RFC §3.4](../rfc/taste-engine.md)).
+
+- **One taste profile.** Both surfaces rank with the learned genre weights in
+  the persisted `AgentConfig.learnedTasteProfile`, through one resolver,
+  `resolveAgentTasteProfile` (`agents/agent_learning.service.ts`): the stored
+  profile (kept current by `recordSignal`, cleared by a taste-memory reset), else
+  a profile computed from the listener's `AgentSignal` history with the same
+  reset and hide/downrank rules. Read-only; it never writes the profile. The
+  same listener therefore gets the same score for the same track on Home and in
+  the DJ. Home previously passed no learned weights.
+- **One served history.** Home reads and writes `RecommendationProfile.
+  servedTrackIds`; the DJ selector reads the same list (through
+  `RecommendationsService.getServedHistory`) and demotes those tracks like a
+  recent play. They stay available at the tail, so a small catalog never runs
+  dry. Only the session's own tracks (`recentTrackIds`) are excluded outright,
+  as before. The DJ does not write to the served history.
+- **Policy on both surfaces.** Hidden taste, fully AI-generated tracks, the 20%
+  exploration share for verified human artists the listener has never played,
+  and the two-per-artist cap (per page on Home, per 10 session tracks in the DJ)
+  run after scoring. Every item carries a categorical `reasonCode`
+  (`DISCOVERY_REASON_CODES`) and vocabulary sentences. Home items expose
+  `reasonCode` beside the existing `reasons` and `explanations`; DJ picks carry
+  it on `agentRecommendation.reasonCode`, and the next-pick response and the
+  accept signal's `metadata.recommendation` keep it (whitelisted against the
+  vocabulary, which the Sonic Radar journal reads back). The policy lookups come
+  from `DiscoveryPolicyContextService`; when they are unavailable the DJ and Home
+  run the policy with empty sets, which only removes exploration slots.
+- **Session intent is context, not taste.** The DJ passes the session's intent
+  and mood (`sessionIntent`, `mood`, `queueStyle`) to the ranking core as
+  request context. A candidate whose moods, genre or titles match earns a
+  `session_intent_fit` signal (+12, "Fits this session intent", `reasonCode`
+  `session_fit`), smaller than any taste match. It is never stored as taste.
+  `queueStyle` is carried for sequencing and is not matched against metadata.
+- **No listing in listener ranking (rule 6).** `catalog.search` returns
+  `hasListing` as data only; it no longer sorts listed tracks first, and the
+  ADK, Vertex and model-assisted prompts no longer tell the model to prefer them.
+  The recommendation eval still reports `listingCoverage` but neither scores nor
+  gates on it. `catalog.search` now also returns `release.artistId` and
+  `release.moods` so DJ candidates can be exploration picks and intent matches.
+- **LLM runtime picks.** The default runtime (`AGENT_RUNTIME=adk`, and `vertex`)
+  lets the model call `catalog_search` and pick tracks itself. Those picks now
+  pass a filter-only policy step, `AgentRuntimePolicyService`, applied in
+  `AgentRuntimeService.run`: the one choke point that
+  `AgentConfigController.startSession` and `SessionsService.agentNext` both
+  reach, in-process or via the remote worker. It loads the picked tracks'
+  metadata in one batched query, scores them with the shared ranking core in the
+  same context the DJ selector builds, then enforces rule 1 (hidden), rule 2
+  (fully AI-generated), rule 4 (two per artist, session mode) and rule 5 (a
+  `reasonCode` plus vocabulary sentences on every pick, carried into the accept
+  signal's `metadata.recommendation`). The model's order is kept. Invented track
+  ids are dropped, and if nothing survives the result is the existing no-pick
+  shape with reason `no_policy_eligible_picks`. Known limitation: rule 3
+  (exploration share) is not enforced on LLM picks, only on the deterministic and
+  Home paths and, for the LLM, through the catalog it can search. The model-assisted
+  strategy reranks the deterministic shortlist, which already ran the policy.
+  The Home feed's other rails (`new_from_artists`, trending, exploration) are
+  composed outside `getRecommendations` and are not yet routed through it.
+
+Tests: `backend/src/tests/agent_selector_unification.spec.ts` (policy, session
+intent, shared profile/served history on the selector),
+`agent_listing_not_a_preference.spec.ts` (rule 6 on prompts and eval),
+`agent_runtime_policy.spec.ts` and `agent_runtime_policy.integration.spec.ts`
+(policy step for LLM picks, batched metadata load, parity with Home),
+`discovery_unification.integration.spec.ts` (Home and the DJ for one seeded
+listener) and `agent_catalog_search.integration.spec.ts`.
+
 ## True Trending & Top Artists (#1451 WS-4)
 
 Home's "Trending Now" and "Top Artists" rails rank by **measured engagement**,
@@ -269,7 +340,7 @@ them before use and translates them into listener-safe reason categories:
 | Taste fit | The track matches learned listening patterns. |
 | Session intent fit | The track fits the current mood, vibe, or Session Intent. |
 | Novelty/replay fit | The track is fresh enough for the current session based on replay/skip signals. |
-| Commerce/listing fit | Saves, playlist adds, purchases, or purchasable stems increase confidence. |
+| Library/purchase fit | The listener's own saves, playlist adds, or purchases increase confidence. A stem being for sale never does (ADR-TE-2 rule 6). |
 
 Explanations must not expose raw event history, user ids, session ids, wallet
 addresses, emails, URLs, exact private counts, or model internals. If warehouse

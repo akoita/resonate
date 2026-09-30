@@ -169,10 +169,11 @@ Recommendation explanations are returned on commerce-aware picks when available:
 ```json
 {
   "score": 72,
-  "explanation": ["Nearby vibe match", "Purchasable stem available"],
+  "explanation": ["Nearby vibe match", "Fits this session intent"],
+  "reasonCode": "nearby_taste",
   "signals": [
     { "label": "expanded_taste_match", "weight": 28, "reason": "matches nearby taste rap" },
-    { "label": "listed", "weight": 14, "reason": "has active stem listing" }
+    { "label": "session_intent_fit", "weight": 12, "reason": "fits session intent Hype" }
   ],
   "audioFeatures": {
     "source": "metadata_inferred",
@@ -466,7 +467,7 @@ Important metrics:
 
 - `precision`: selected candidates marked exact or semantic divided by selected candidates with known relevance.
 - `refusalCorrectness`: strict no-match cases that correctly selected zero tracks.
-- `listingCoverage`: selected candidates with known active listing availability.
+- `listingCoverage`: selected candidates with known active listing availability. Informational only: it is reported, never scored and never a pass/fail or promotion gate (ADR-TE-2 rule 6).
 - `noveltyCoverage`: selected candidates that were not recently played.
 - `explanationCoverage`: selected candidates with explanation text or top scoring signals.
 

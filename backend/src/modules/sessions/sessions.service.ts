@@ -314,6 +314,7 @@ export class SessionsService {
           recommendation: {
             score: selected.score,
             explanation: selected.explanation,
+            reasonCode: selected.reasonCode,
           },
           reason: selected.reason ?? result.reason,
           outcome: { type: "next_pick_accept" },
@@ -342,6 +343,7 @@ export class SessionsService {
       priceUsd: selected.priceUsd,
       score: selected.score,
       explanation: selected.explanation,
+      reasonCode: selected.reasonCode,
       signals: selected.signals,
       audioFeatures: selected.audioFeatures,
       runtimeStatus: result.status,
@@ -352,6 +354,7 @@ export class SessionsService {
         reason: item.reason,
         score: item.score,
         explanation: item.explanation,
+        reasonCode: item.reasonCode,
         signals: item.signals,
       })),
       shortfall: result.shortfall,

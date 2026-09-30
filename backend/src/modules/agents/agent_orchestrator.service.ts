@@ -18,6 +18,10 @@ export interface AgentOrchestratorInput {
     learnedGenreWeights?: Record<string, number>;
     allowExplicit?: boolean;
     licenseType?: "personal" | "remix" | "commercial";
+    /** Session intent context for ranking (#1456 WS-9). */
+    sessionIntent?: string;
+    sessionIntentName?: string;
+    queueStyle?: string;
   };
 }
 

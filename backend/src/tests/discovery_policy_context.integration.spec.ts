@@ -159,4 +159,19 @@ describe("DiscoveryPolicyContextService (ADR-TE-2)", () => {
     const dupes = await service.loadContext(LISTENER, [A_PLAYED, A_PLAYED, ""]);
     expect([...dupes.playedArtistIds]).toEqual([A_PLAYED]);
   });
+
+  it("maps track ids to artist ids in one batch, skipping unknown tracks", async () => {
+    const map = await service.artistIdsForTracks([
+      trackOf(A_VERIFIED),
+      trackOf(A_PLAYED),
+      trackOf(A_VERIFIED),
+      `${TEST_PREFIX}no_such_track`,
+      "",
+    ]);
+    expect(Object.fromEntries(map)).toEqual({
+      [trackOf(A_VERIFIED)]: A_VERIFIED,
+      [trackOf(A_PLAYED)]: A_PLAYED,
+    });
+    expect((await service.artistIdsForTracks([])).size).toBe(0);
+  });
 });

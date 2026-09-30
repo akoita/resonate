@@ -72,6 +72,25 @@ export interface DiscoveryCandidate {
   matchedQueries?: string[];
 }
 
+/**
+ * The listener's stated intent for THIS session (AI DJ session presets, next
+ * pick preferences). Request context, never taste: it only tilts the ranking
+ * of the current request and is not stored or learned from (docs/rfc/
+ * taste-engine.md §4.2, "the shared ranker scores candidates with the intent
+ * as context").
+ */
+export interface DiscoverySessionIntent {
+  /** Preset intent, e.g. "Focus", "Hype", "Chill". */
+  intent?: string;
+  /** Requested mood; often mirrors the intent. */
+  mood?: string;
+  /**
+   * Pacing style ("Stable pacing", "Fast cuts"). Carried for sequencing
+   * (taste-engine RFC §4), not matched against track metadata.
+   */
+  queueStyle?: string;
+}
+
 export interface DiscoveryRankingContext {
   /** The user's own selected taste queries (pre-hidden-filtering). */
   originalQueries: string[];
@@ -85,6 +104,8 @@ export interface DiscoveryRankingContext {
   cohortContext?: CommunityCohortDiscoveryContext[];
   recentTrackIds?: string[];
   energy?: "low" | "medium" | "high";
+  /** Session intent as request context (DJ). Never stored as taste. */
+  sessionIntent?: DiscoverySessionIntent;
   tastePolicy?: TasteMemoryPolicy;
   /**
    * Caller-prefetched audio features per track id (the DJ provides these;
@@ -105,6 +126,9 @@ export interface RankedDiscoveryCandidate extends DiscoveryCandidate {
   trace?: Record<string, unknown>;
   recentlyPlayed: boolean;
 }
+
+/** Weight of the session-intent signal: a tilt, below any taste match. */
+export const SESSION_INTENT_FIT_WEIGHT = 12;
 
 @Injectable()
 export class DiscoveryRankingService {
@@ -250,6 +274,16 @@ export class DiscoveryRankingService {
       explanation.push(cohort.explanation);
     }
 
+    const intentMatch = sessionIntentMatch(candidate, context.sessionIntent);
+    if (intentMatch) {
+      signals.push({
+        label: "session_intent_fit",
+        weight: SESSION_INTENT_FIT_WEIGHT,
+        reason: `fits session intent ${intentMatch}`,
+      });
+      explanation.push(DISCOVERY_EXPLANATIONS.session_fit);
+    }
+
     const audioFeatures = context.audioFeaturesByTrack?.get(candidate.id);
     {
       if (audioFeatures) {
@@ -314,6 +348,33 @@ export function matchingCohortContexts(
     .toLowerCase();
   return cohorts.filter((cohort) =>
     cohort.queryHints.some((hint) => haystack.includes(hint.toLowerCase())),
+  );
+}
+
+/**
+ * The first session-intent term (intent, then mood) found in the candidate's
+ * title, release title, genre or moods. Same case-insensitive substring
+ * semantics as the Home mood match, so both surfaces read a term the same way.
+ * At most one signal fires per candidate even when intent and mood coincide.
+ */
+function sessionIntentMatch(
+  candidate: DiscoveryCandidate,
+  sessionIntent?: DiscoverySessionIntent,
+): string | null {
+  const terms = [sessionIntent?.intent, sessionIntent?.mood]
+    .map((term) => term?.trim())
+    .filter((term): term is string => !!term);
+  if (terms.length === 0) return null;
+  const haystack = [
+    candidate.title ?? "",
+    candidate.release?.title ?? "",
+    candidate.release?.genre ?? "",
+    ...(candidate.release?.moods ?? []),
+  ].map((value) => value.toLowerCase());
+  return (
+    terms.find((term) =>
+      haystack.some((value) => value.includes(term.toLowerCase())),
+    ) ?? null
   );
 }
 

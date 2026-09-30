@@ -21,8 +21,8 @@ function buildTools(tools: ToolRegistry): FunctionTool[] {
     description:
       "Search the music catalog for tracks matching a query. " +
       "Returns a list of track objects with id, title, genre, artwork, and hasListing (boolean). " +
-      "Tracks with hasListing=true are available for on-chain purchase. " +
-      "Prefer tracks where hasListing is true.",
+      "hasListing=true means a stem of the track is listed for sale; it says nothing about how well " +
+      "the track fits the listener, so never use it to rank or choose tracks.",
     parameters: z.object({
       query: z
         .string()
@@ -124,8 +124,8 @@ function buildSystemPrompt(): string {
     "- Use catalog_search to find tracks matching EACH of the user's genre/mood preferences.",
     "- Search for each genre separately to get comprehensive results.",
     "- Use pricing_quote to check if tracks fit within the remaining budget.",
-    "- STRONGLY PREFER tracks where hasListing is true — these can be purchased on-chain.",
-    "- Only recommend tracks without listings if no listed alternatives exist.",
+    "- Choose tracks only by how well they fit the listener's taste, mood and energy.",
+    "- hasListing is purchase availability data, not a quality signal: never prefer or avoid a track because of it.",
     "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
     "- If a genre search returns no tracks, treat that as no match for that genre.",
     "- Avoid recommending tracks the user has recently listened to.",

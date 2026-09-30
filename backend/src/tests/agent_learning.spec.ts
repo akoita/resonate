@@ -63,6 +63,41 @@ describe("agent learning loop", () => {
     });
   });
 
+  it("keeps a recommendation reasonCode only when it is in the shared vocabulary", () => {
+    const valid = buildAgentSignalMetadata({
+      source: "agent_next_pick",
+      recommendation: {
+        score: 52,
+        explanation: ["Fits this session intent"],
+        reasonCode: "session_fit",
+        signals: [{ label: "session_intent_fit", weight: 12, reason: "raw" }],
+      },
+    });
+    expect(valid.recommendation).toEqual({
+      score: 52,
+      explanation: ["Fits this session intent"],
+      reasonCode: "session_fit",
+    });
+
+    // A reasonCode alone is enough to keep the recommendation block.
+    expect(
+      buildAgentSignalMetadata({ recommendation: { reasonCode: "discovery_pick" } })
+        .recommendation,
+    ).toEqual({ reasonCode: "discovery_pick" });
+
+    // Anything outside DISCOVERY_REASON_CODES (free text, other types) is dropped.
+    for (const reasonCode of ["because you listened to Alice", "purchasable", 7, null, {}]) {
+      const metadata = buildAgentSignalMetadata({
+        recommendation: { score: 10, reasonCode },
+      });
+      expect(metadata.recommendation).toEqual({ score: 10 });
+    }
+    expect(
+      buildAgentSignalMetadata({ recommendation: { reasonCode: "not_a_code" } })
+        .recommendation,
+    ).toBeUndefined();
+  });
+
   it("rejects over-limit scalar metadata and bounds arrays before mapping", () => {
     const genres = Array.from({ length: 9 }, (_, index) => `genre-${index}`);
     Object.defineProperty(genres, 8, {

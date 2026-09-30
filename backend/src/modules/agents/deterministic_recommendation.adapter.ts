@@ -36,6 +36,10 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       limit: input.limit,
       energy: input.preferences.energy,
       learnedGenreWeights: input.preferences.learnedGenreWeights,
+      // Session intent is ranking context for this request (WS-9), not taste.
+      sessionIntent: input.preferences.sessionIntent,
+      mood: input.preferences.mood,
+      queueStyle: input.preferences.queueStyle,
     });
 
     return {

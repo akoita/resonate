@@ -12,6 +12,9 @@ import {
   matchingCohortContexts,
   RankedDiscoveryCandidate,
 } from "./discovery-ranking.service";
+import { applyDiscoveryPolicy } from "./discovery-policy";
+import { DiscoveryPolicyContextService } from "./discovery-policy-context.service";
+import { resolveAgentTasteProfile } from "../agents/agent_learning.service";
 import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
@@ -78,6 +81,9 @@ export class RecommendationsService {
     @Optional() private readonly tasteMemoryService?: TasteMemoryService,
     @Optional() private readonly communityCohortService?: CommunityCohortService,
     @Optional() private readonly redisCache?: RedisCacheService,
+    // Policy-stage lookups (ADR-TE-2). Absent in lightweight unit wiring: the
+    // policy then runs with empty verified/played sets (no exploration slot).
+    @Optional() private readonly policyContext?: DiscoveryPolicyContextService,
   ) { }
 
   // ---------------------------------------------------------------------------
@@ -265,6 +271,27 @@ export class RecommendationsService {
   // Ranking (delegated to the shared DiscoveryRankingService)
   // ---------------------------------------------------------------------------
 
+  /** Verified-human and played artist sets for the policy stage; fails open. */
+  private async loadPolicyContext(
+    userId: string,
+    artistIds: Array<string | null | undefined>,
+  ) {
+    const empty = {
+      verifiedHumanArtistIds: new Set<string>() as ReadonlySet<string>,
+      playedArtistIds: new Set<string>() as ReadonlySet<string>,
+    };
+    if (!this.policyContext) return empty;
+    try {
+      return await this.policyContext.loadContext(
+        userId,
+        artistIds.filter((id): id is string => !!id),
+      );
+    } catch {
+      // Only disables exploration; hidden, AI and diversity rules stand.
+      return empty;
+    }
+  }
+
   async getRecommendations(userId: string, limit = 10, preferenceOverrides?: UserPreferences) {
     const policy = await this.tasteMemoryService?.getPolicy(userId);
     const profile = await this.loadProfile(userId);
@@ -317,6 +344,9 @@ export class RecommendationsService {
         id: track.id,
         title: track.title,
         artist: track.artist,
+        // Artist identity + AI disclosure feed the policy stage.
+        artistId: track.release.artistId,
+        aiDisclosureLevel: track.aiDisclosureLevel,
         release: {
           genre: track.release.genre,
           title: track.release.title,
@@ -345,11 +375,19 @@ export class RecommendationsService {
         )
       : undefined;
 
+    // The same persisted taste profile the AI DJ ranks with (#1456 WS-9), so
+    // one listener has one set of learned genre weights on both surfaces.
+    // Fails open: no profile contributes no learned weights.
+    const learnedGenreWeights = await resolveAgentTasteProfile(userId, { policy })
+      .then((profile) => profile.genreWeights)
+      .catch(() => ({}) as Record<string, number>);
+
     const ranked = await this.rankingService.rank(
       enriched.map((entry) => entry.candidate),
       {
         originalQueries,
         expandedQueries: originalQueries,
+        learnedGenreWeights,
         cohortContext,
         recentTrackIds: recent,
         tastePolicy: policy,
@@ -393,13 +431,34 @@ export class RecommendationsService {
     const freshFallback = withLegacy.filter(
       (item) => !recent.includes(item.entry.id),
     );
-    const selected = (
-      preferenceMatches.length
-        ? preferenceMatches
-        : freshFallback.length
-          ? freshFallback
-          : withLegacy
-    ).slice(0, limit);
+    const preferenceOrdered = preferenceMatches.length
+      ? preferenceMatches
+      : freshFallback.length
+        ? freshFallback
+        : withLegacy;
+
+    // The policy stage (ADR-TE-2, docs/rfc/taste-engine.md §3.4) runs on the
+    // preference-ordered list before the page is cut: hidden taste, AI,
+    // exploration share, diversity cap, categorical reason. The same stage
+    // the AI DJ applies to its shortlist.
+    const policyContext = await this.loadPolicyContext(
+      userId,
+      preferenceOrdered.map((item) => item.entry.artistId),
+    );
+    const policyResult = applyDiscoveryPolicy(
+      preferenceOrdered.map((item) => item.entry),
+      {
+        limit,
+        tastePolicy: policy,
+        verifiedHumanArtistIds: policyContext.verifiedHumanArtistIds,
+        playedArtistIds: policyContext.playedArtistIds,
+      },
+    );
+    const legacyById = new Map(preferenceOrdered.map((item) => [item.entry.id, item]));
+    const selected = policyResult.items.map((entry) => ({
+      ...legacyById.get(entry.id)!,
+      entry,
+    }));
 
     await this.recordServed(
       userId,
@@ -449,6 +508,8 @@ export class RecommendationsService {
         reasons,
         /** New in WS-1: the unified core's human explanations (additive). */
         explanations: entry.explanation,
+        /** #1456: primary reason from the shared vocabulary, same as the DJ. */
+        reasonCode: entry.reasonCode,
       })),
     };
   }

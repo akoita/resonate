@@ -60,9 +60,10 @@
 - **On-chain purchase integration**: Negotiator looks up active `StemListing`
   records and routes purchases through `AgentPurchaseService` for real UserOps.
   Falls back to off-chain tracking for unlisted tracks (no marketplace listing).
-- **Listing-aware track selection**: `catalog.search` annotates results with
-  `hasListing` flag; the selector and ADK system prompt both prioritize
-  tracks with active marketplace listings.
+- **Listing is data, not a ranking input**: `catalog.search` annotates results
+  with a `hasListing` flag so the negotiator and storefront filters can use it,
+  but it never orders results, and neither the selector nor the ADK/Vertex
+  prompts prefer listed tracks (ADR-TE-2 rule 6, #1456).
 - **Self-healing listing lookup**: `recordPurchase` performs a fallback
   `StemListing` query when the upstream runtime (e.g. ADK adapter) doesn't
   provide listing data.

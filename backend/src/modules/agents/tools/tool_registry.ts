@@ -59,7 +59,17 @@ export class ToolRegistry {
               : {}),
           },
           include: {
-            release: { select: { title: true, genre: true, artworkUrl: true } },
+            // `artistId` and `moods` feed the shared discovery policy stage
+            // (exploration + diversity) and intent matching in the selector.
+            release: {
+              select: {
+                title: true,
+                genre: true,
+                moods: true,
+                artistId: true,
+                artworkUrl: true,
+              },
+            },
             stems: {
               where: { isCurrent: true },
               select: {
@@ -79,7 +89,9 @@ export class ToolRegistry {
           take,
         });
 
-        // Annotate and sort: listed tracks first
+        // Annotate only. `hasListing` is data for the caller's own filter; it
+        // never orders, boosts or demotes results (ADR-TE-2 rule 6), so the
+        // order stays newest-first exactly as queried.
         const annotated = items.map((t) => {
           const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
           const {
@@ -98,7 +110,6 @@ export class ToolRegistry {
             hasListing,
           };
         });
-        annotated.sort((a, b) => (a.hasListing === b.hasListing ? 0 : a.hasListing ? -1 : 1));
 
         return { items: annotated };
       },

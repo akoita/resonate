@@ -22,6 +22,15 @@ export interface LlmTrackPick {
   trackId: string;
   licenseType: "personal" | "remix" | "commercial";
   priceUsd: number;
+  /**
+   * Set by the runtime policy step (`AgentRuntimePolicyService`), never by the
+   * model: the shared ranking core's view of the picked track.
+   */
+  score?: number;
+  explanation?: string[];
+  /** Primary categorical reason from the shared discovery vocabulary. */
+  reasonCode?: string;
+  signals?: Array<{ label: string; weight: number; reason: string }>;
 }
 
 export interface AgentRuntimeResult {
@@ -36,6 +45,8 @@ export interface AgentRuntimeResult {
   latencyMs?: number;
   /** Multiple track picks from the LLM */
   picks?: LlmTrackPick[];
+  /** Runtime policy step accounting (rules 1, 2, 4), when it ran. */
+  policy?: { dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number } };
 }
 
 export interface AgentRuntimeAdapter {

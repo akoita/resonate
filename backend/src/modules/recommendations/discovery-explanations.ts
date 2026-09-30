@@ -133,6 +133,7 @@ const LABEL_PRIORITY = [
   "expanded_taste_match",
   "learned_preference",
   "bigquery_taste_score",
+  "session_intent_fit",
   "energy_match",
   "cohort_context",
   "semantic_similarity",
@@ -149,6 +150,7 @@ function codeForSignal(signal: ReasonSignal): DiscoveryReasonCode | null {
     case "semantic_similarity":
       return "similar_sound";
     case "energy_match":
+    case "session_intent_fit":
       return "session_fit";
     case "cohort_context":
       return "scene";

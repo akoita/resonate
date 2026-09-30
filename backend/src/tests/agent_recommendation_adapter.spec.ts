@@ -109,6 +109,8 @@ describe("agent recommendation adapters", () => {
       limit: 5,
       energy: "medium",
       learnedGenreWeights: { "Hip Hop": 3 },
+      // Session context for the ranking core (WS-9): mood doubles as intent.
+      mood: "Focus",
     });
     expect(result).toEqual(expect.objectContaining({
       strategy: "deterministic",

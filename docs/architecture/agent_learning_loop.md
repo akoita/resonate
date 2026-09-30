@@ -58,8 +58,9 @@ sequenceDiagram
   Learn->>Learn: aggregate weighted genre profile
   Learn->>API: persisted taste profile
   API->>UI: updated config/profile
-  API->>Selector: genres + learnedGenreWeights
-  Selector->>Selector: rank listed tracks, then learned genre fit
+  API->>Selector: genres + session intent (context)
+  Selector->>Learn: resolveTasteProfile() (persisted profile)
+  Selector->>Selector: shared ranking core, then the policy stage
   Identity->>Learn: computeTasteProfile()
   Identity->>Identity: reputation snapshot + credential export
 ```
@@ -75,6 +76,46 @@ Taste score is deterministic:
 
 The score is local and off-chain today. Later ERC-8004 work can attest the
 profile or a hash of it without changing the signal collection contract.
+
+## One Core, One Profile, One Policy (#1456, #1957)
+
+The learned profile is not DJ-private. The AI DJ selector and the Home feed
+(`GET /recommendations/:userId`) consume it the same way:
+
+1. **One ranking core.** Both score candidates with `DiscoveryRankingService`.
+   Nothing about payment, placement or stems for sale is an input (ADR-TE-2
+   rule 6), so a listing never changes a listener's ranking on either surface.
+2. **One taste profile.** `resolveAgentTasteProfile` returns the persisted
+   `AgentConfig.learnedTasteProfile` (written by `recordSignal`, cleared by a
+   taste-memory reset) or, when none is stored, computes it from `AgentSignal`
+   history. The DJ and Home pass the same `genreWeights` to the core, so one
+   listener gets one set of learned genre weights. Session start in
+   `AgentConfigController` resolves it the same way, then merges `favoredGenres`
+   into the session's queries as before.
+3. **One served history.** Home writes `RecommendationProfile.servedTrackIds`;
+   the DJ reads it and demotes already-served tracks (not an exclusion).
+4. **Session intent is context.** Intent, mood and queue style travel with the
+   request into the core as `sessionIntent`. A match earns a
+   `session_intent_fit` signal for this request only. Signal metadata still
+   records the intent as session context for the journal, but the intent itself
+   is never folded into `learnedTasteProfile`.
+5. **One policy stage.** After scoring, `applyDiscoveryPolicy` removes hidden
+   and fully AI-generated tracks, reserves an exploration share for verified
+   human artists the listener has not played, caps two tracks per artist (per
+   10 session tracks in the DJ), and guarantees a categorical `reasonCode` plus
+   vocabulary sentences (`discovery-explanations.ts`). The accept signal keeps
+   `metadata.recommendation.reasonCode`, validated against that vocabulary.
+
+The LLM runtimes (`AGENT_RUNTIME=adk|vertex`) still choose their own tracks
+through `catalog_search`, but their picks now pass a filter-only policy step at
+the single runtime choke point, `AgentRuntimeService.run`
+(`AgentRuntimePolicyService`): the picks are scored with the shared core and the
+same context as the selector (step 2's profile, intent and served history), then
+rules 1 (hidden), 2 (fully AI) and 4 (diversity cap, session mode) filter them
+and rule 5 attaches `reasonCode` and vocabulary sentences, which reach the accept
+signal. The model's order is kept, and rule 3 (exploration share) is not applied
+to LLM picks (a known limitation). The deterministic fallback and the
+model-assisted reranker run the full policy in the selector.
 
 ## Session Intent Feedback
 

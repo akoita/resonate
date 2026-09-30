@@ -26,6 +26,8 @@ export interface AgentRuntimeCommerceTrack {
   reason?: string;
   score?: number;
   explanation?: string[];
+  /** Primary categorical reason from the shared discovery vocabulary. */
+  reasonCode?: string;
   signals?: Array<{ label: string; weight: number; reason: string }>;
   audioFeatures?: unknown;
   mixPlan?: unknown;
@@ -72,6 +74,7 @@ export function normalizeAgentRuntimeResult(
           recommendation?: {
             score?: number;
             explanation?: string[];
+            reasonCode?: string;
             signals?: Array<{ label: string; weight: number; reason: string }>;
             audioFeatures?: unknown;
           };
@@ -84,6 +87,7 @@ export function normalizeAgentRuntimeResult(
         reason: negotiation?.reason,
         score: negotiation?.recommendation?.score,
         explanation: negotiation?.recommendation?.explanation,
+        reasonCode: negotiation?.recommendation?.reasonCode,
         signals: negotiation?.recommendation?.signals,
         audioFeatures: negotiation?.recommendation?.audioFeatures,
         mixPlan: track.mixPlan,
@@ -116,6 +120,12 @@ export function normalizeAgentRuntimeResult(
     licenseType: normalizeLicenseType(pick.licenseType),
     priceUsd: normalizePriceUsd(pick.priceUsd),
     reason: result.reason,
+    // Present once the runtime policy step has scored the pick (same shape as
+    // the deterministic path's recommendation).
+    ...(pick.score !== undefined ? { score: pick.score } : {}),
+    ...(pick.explanation ? { explanation: pick.explanation } : {}),
+    ...(pick.reasonCode ? { reasonCode: pick.reasonCode } : {}),
+    ...(pick.signals ? { signals: pick.signals } : {}),
   }));
 
   return {
