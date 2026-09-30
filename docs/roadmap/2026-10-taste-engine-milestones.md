@@ -1,8 +1,10 @@
 # Roadmap — Taste engine: refocused AI DJ, Crate Digger, Scene Scout (2026-10-01 → 2026-12-09)
 
-**Status:** proposed, not committed scope. No GitHub milestone or sprint label
-exists for these sprints until the owner approves each one, per
-`CLAUDE.md` and [`docs/sprints/README.md`](../sprints/README.md).
+**Status:** planned. The owner approved Vision Sprints 28 to 31 on 2026-09-30;
+each has a sprint doc under [`docs/sprints/`](../sprints/README.md) and one
+GitHub milestone. ADR-TE-1…6 are still proposed in
+[#1953](https://github.com/akoita/resonate/issues/1953); the sprints follow them
+as written, and a changed decision re-scopes the affected sprint in its doc.
 **Owner:** [@akoita](https://github.com/akoita) (solo + AI-assisted)
 **Direction:** [AI DJ Rethink and Taste Engine](../strategy/ai-dj-taste-engine-2026-09.md) ·
 [ADR-TE-1…6](../strategy/taste-engine-decisions.md) ·
@@ -30,7 +32,9 @@ dates.
 
 ---
 
-## Vision Sprint 28 — Refocus the AI DJ (proposed, Oct 1–14)
+## Vision Sprint 28 — Refocus the AI DJ (planned, Oct 1–14)
+
+**Sprint doc:** [Vision Sprint 28](../sprints/2026-10-01-vision-sprint-28-refocus-ai-dj.md)
 
 **Goal:** the AI DJ never spends or generates on its own, and Sonic Radar
 shows what resonated with you, not what the agent bought.
@@ -58,7 +62,9 @@ shows what resonated with you, not what the agent bought.
 **Revenue line:** vision-neutral trust and quality; removes latent unbilled
 GPU paths. No fee, split or payout change.
 
-## Vision Sprint 29 — Audio-aware discovery foundations (proposed, Oct 15–28)
+## Vision Sprint 29 — Audio-aware discovery foundations (planned, Oct 15–28)
+
+**Sprint doc:** [Vision Sprint 29](../sprints/2026-10-15-vision-sprint-29-audio-aware-discovery.md)
 
 **Goal:** ranking and search know what every track sounds like (measured
 tempo, key, energy) and what it is close to (real embeddings), and a ranking
@@ -91,7 +97,9 @@ track-level measurement is new work ([RFC §3.2](../rfc/taste-engine.md)).
 infrastructure for lines 3 and 4. Embedding calls are metered and bounded to
 backfill plus on-ingest.
 
-## Vision Sprint 30 — Crate Digger v1 (proposed, Oct 29–Nov 18)
+## Vision Sprint 30 — Crate Digger v1 (planned, Oct 29–Nov 18)
+
+**Sprint doc:** [Vision Sprint 30](../sprints/2026-10-29-vision-sprint-30-crate-digger.md)
 
 **Goal:** a DJ describes what their set needs and gets a quoted, rights-clear
 crate they can buy with one signature.
@@ -116,7 +124,9 @@ crate they can buy with one signature.
 **Revenue line:** line 3, marketplace take-rate 10%, phase 2. Artist share
 stays at least 85%; purchases are voluntary and quoted (ADR-BM-4).
 
-## Vision Sprint 31 — Scene Scout v1 (proposed, Nov 19–Dec 9)
+## Vision Sprint 31 — Scene Scout v1 (planned, Nov 19–Dec 9)
+
+**Sprint doc:** [Vision Sprint 31](../sprints/2026-11-19-vision-sprint-31-scene-scout.md)
 
 **Goal:** an artist sees where real demand for a release is and gets one
 concrete next action for it.
@@ -162,16 +172,19 @@ only when its gate is met.
 | [#977](https://github.com/akoita/resonate/issues/977) AI DJ taste intelligence | All six children shipped; its remaining direction moves to the umbrella | Closed as completed 2026-09-30, with a pointer |
 | [#1121](https://github.com/akoita/resonate/issues/1121) Artist action cockpit | Shipped with 15 deterministic card types; hosts the Scene Scout cards | Keep; linked |
 
-## Approval steps
+## Sprint artifacts
 
-On the owner's approval of Vision Sprint 28, and only then:
+Approved by the owner on 2026-09-30. Following recent sprints, issues carry the
+milestone (linked from each sprint doc) and no `sprint:` label.
 
-1. Create milestone 30 with the Sprint 28 issues plus #1456, and the
-   `sprint:vision-28` label.
-2. Add the sprint doc `docs/sprints/2026-10-01-vision-sprint-28-refocus-ai-dj.md`
-   and a row in the sprint index, on a branch with a PR.
+| Sprint | Sprint doc | Issues |
+| --- | --- | --- |
+| Vision Sprint 28: Refocus the AI DJ | [doc](../sprints/2026-10-01-vision-sprint-28-refocus-ai-dj.md) | [#1954](https://github.com/akoita/resonate/issues/1954), [#1955](https://github.com/akoita/resonate/issues/1955), [#1956](https://github.com/akoita/resonate/issues/1956), [#1456](https://github.com/akoita/resonate/issues/1456), [#1957](https://github.com/akoita/resonate/issues/1957), [#1958](https://github.com/akoita/resonate/issues/1958) |
+| Vision Sprint 29: Audio-aware discovery foundations | [doc](../sprints/2026-10-15-vision-sprint-29-audio-aware-discovery.md) | [#1959](https://github.com/akoita/resonate/issues/1959), [#1960](https://github.com/akoita/resonate/issues/1960), [#1452](https://github.com/akoita/resonate/issues/1452), [#1455](https://github.com/akoita/resonate/issues/1455), [#1961](https://github.com/akoita/resonate/issues/1961) |
+| Vision Sprint 30: Crate Digger v1 | [doc](../sprints/2026-10-29-vision-sprint-30-crate-digger.md) | [#1962](https://github.com/akoita/resonate/issues/1962), [#1963](https://github.com/akoita/resonate/issues/1963), [#1964](https://github.com/akoita/resonate/issues/1964), [#1965](https://github.com/akoita/resonate/issues/1965), [#1966](https://github.com/akoita/resonate/issues/1966), [#1967](https://github.com/akoita/resonate/issues/1967) |
+| Vision Sprint 31: Scene Scout v1 | [doc](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) | [#1968](https://github.com/akoita/resonate/issues/1968), [#1969](https://github.com/akoita/resonate/issues/1969), [#1970](https://github.com/akoita/resonate/issues/1970), [#1450](https://github.com/akoita/resonate/issues/1450) |
 
-Sprints 29 to 31 follow the same step when each comes up for approval.
+The "Later" items keep no milestone until their gate is met.
 
 ## Assumptions and risks
 
