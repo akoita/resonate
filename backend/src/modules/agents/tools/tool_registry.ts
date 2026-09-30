@@ -3,11 +3,15 @@ import { prisma } from "../../../db/prisma";
 import { calculatePrice, PricingInput } from "../../../pricing/pricing";
 import { EmbeddingService } from "../../embeddings/embedding.service";
 import { EmbeddingStore } from "../../embeddings/embedding.store";
+import { TrackEmbeddingService } from "../../embeddings/track_embedding.service";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
 } from "../../catalog/ai-disclosure.policy";
 import { AgentObservabilityService } from "../agent_observability.service";
+
+/** Upper bound on candidates lazily embedded / ranked per tool call. */
+const EMBEDDINGS_SIMILARITY_MAX_CANDIDATES = 100;
 
 export interface ToolInput {
   [key: string]: unknown;
@@ -30,8 +34,13 @@ export class ToolRegistry {
     private readonly embeddingService: EmbeddingService,
     private readonly embeddingStore: EmbeddingStore,
     @Optional()
-    private readonly observability?: AgentObservabilityService
+    private readonly observability?: AgentObservabilityService,
+    @Optional()
+    trackEmbeddings?: TrackEmbeddingService,
   ) {
+    const trackEmbeddingService =
+      trackEmbeddings ??
+      new TrackEmbeddingService(this.embeddingService, this.embeddingStore);
     this.register({
       name: "catalog.search",
       run: async (input) => {
@@ -147,23 +156,30 @@ export class ToolRegistry {
       name: "embeddings.similarity",
       run: async (input) => {
         const query = String(input.query ?? "");
-        const candidateIds = (input.candidates as string[]) ?? [];
-        const queryVector = this.embeddingService.embed(query);
-        for (const trackId of candidateIds) {
-          if (await this.embeddingStore.get(trackId)) {
-            continue;
-          }
-          const track = await prisma.track.findUnique({
-            where: { id: trackId },
-            include: { release: true }
-          });
-          const text = `${track?.title ?? ""} ${track?.release?.genre ?? ""}`.trim();
-          if (text) {
-            await this.embeddingStore.upsert(trackId, this.embeddingService.embed(text));
-          }
+        const candidateIds = ((input.candidates as string[]) ?? []).slice(
+          0,
+          EMBEDDINGS_SIMILARITY_MAX_CANDIDATES,
+        );
+        // Provider disabled or failing: an empty ranking tells the selector to
+        // keep its deterministic order (#1452). Never throws.
+        const model = this.embeddingService.modelId;
+        if (!model) {
+          return { ranked: [], status: "unavailable" };
         }
+        const queryVector = await this.embeddingService.embedQuery(query);
+        if (!queryVector) {
+          return { ranked: [], status: "unavailable" };
+        }
+        // Lazily embed candidates that have no current vector (idempotent:
+        // unchanged tracks are skipped without a model call).
+        await trackEmbeddingService.embedTracks(candidateIds);
         return {
-          ranked: await this.embeddingStore.similarity(queryVector, candidateIds),
+          ranked: await this.embeddingStore.similarity(
+            queryVector,
+            candidateIds,
+            model,
+          ),
+          status: "ok",
         };
       },
     });

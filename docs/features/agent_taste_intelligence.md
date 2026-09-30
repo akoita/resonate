@@ -188,8 +188,9 @@ taste-memory policy) and receive weighted signals + human explanations.
 - `GET /recommendations/:userId` now routes through the core: candidates come
   from a UNION of sources (newest-50, catalog-wide preference matches with no
   recency bias, cohort query hints) instead of "50 newest" — older tracks are
-  recommendable. WS-3 popularity marts / WS-5 embeddings / WS-6 CF slot in as
-  further sources.
+  recommendable. WS-3 popularity marts / WS-6 CF slot in as further sources;
+  the WS-5 embedding source (`similarTracks`, below) is built but not yet wired
+  in.
 - User preferences and served-history are durable (`RecommendationProfile`
   Prisma model), fronted by a fail-open Redis cache
   (`shared/redis_cache.service.ts`) — they survive restarts and are coherent
@@ -203,6 +204,78 @@ taste-memory policy) and receive weighted signals + human explanations.
 - Tests: `backend/src/tests/discovery-ranking.integration.spec.ts`
   (durability across instances, wide-pool, deterministic fallback) plus the
   pre-existing recommendation/agent suites.
+
+## Track Embeddings (#1452 WS-5)
+
+Status: `partial`. The 16-dim hashed bag-of-words placeholder is replaced by
+real text embeddings over track metadata, stored in pgvector and searched
+through an HNSW index. ADR-BM-6: vision-neutral infrastructure for Line 4
+discovery quality; it changes no price, fee or payout.
+
+- **Model and dimension.** Vertex AI `text-multilingual-embedding-002` by
+  default (override with `TRACK_EMBEDDING_MODEL`), 768 dimensions
+  (`TRACK_EMBEDDING_DIMENSION`, matching `TrackEmbedding.vector(768)`). Documents
+  are embedded with `task_type: RETRIEVAL_DOCUMENT`, queries with
+  `RETRIEVAL_QUERY`, `autoTruncate: true`, at most 16 instances per request and
+  a 15 s timeout. Auth is Application Default Credentials over REST, the same
+  pattern as the SynthID client.
+- **What is embedded.** `trackEmbeddingText`: title, credited artist, featured
+  artists, release title, genre and moods. No listener, play or commercial data.
+  `TrackEmbedding.contentHash` = sha256(model + text), so re-embedding is skipped
+  when metadata and model are unchanged. Only publicly listable tracks (release
+  `ready`/`published`, public or unassigned rights route, track not quarantined or
+  removed) get a vector.
+- **Provider modes** (`TRACK_EMBEDDING_PROVIDER`): `vertex` (opt-in, since calls
+  are metered; needs a GCP project), `hash` (explicit offline fallback: the old hash
+  embedder widened to 768 dims, stored as model `hash-v1`; lexical, for local
+  work and tests) or `disabled` (the default). Every stored vector
+  records its `model`; similarity and nearest-neighbour queries only compare
+  vectors of the same model, so hash and real vectors never mix and a model
+  change re-embeds lazily.
+- **Index.** `TrackEmbedding_vector_hnsw_idx` (`USING hnsw (vector
+  vector_cosine_ops)`, created in the migration as raw SQL because Prisma cannot
+  express it) plus an index on `model`. `EmbeddingStore.nearest` uses
+  `ORDER BY vector <=> $q LIMIT k` (k clamped to 1..100) so the planner can use it.
+- **Embed on ingest.** `TrackEmbeddingService` subscribes to
+  `catalog.release_ready` (and `catalog.updated` when it carries a `trackId`) and
+  embeds that release's tracks fire-and-forget: a provider failure is logged and
+  never blocks or fails the publisher. Tracks missed this way are picked up by
+  the backfill.
+- **Backfill.** `POST /admin/embeddings/backfill` (admin JWT), body
+  `{ "limit": 1..200 }` (default 50). Oldest tracks lacking a current-model vector
+  first; leftover capacity re-verifies the least recently verified vectors
+  against their content hash and re-embeds only those that changed. Returns
+  `{ status, model, scanned, embedded, skipped, failed, remaining }`; re-run until
+  `remaining` is 0. The application procedure only; scheduling and platform
+  wiring live in the private deployment repository.
+- **Similar tracks.** `TrackEmbeddingService.similarTracks(seedTrackId, { limit,
+  allowExplicit })` returns `{ source, model, results: [{ trackId, score }] }`.
+  With a current-model vector for the seed it returns its nearest neighbours
+  (`source: "embedding"`), restricted to publicly listable, non-explicit (unless
+  allowed), not fully AI-generated tracks (ADR-BM-5). It reads stored vectors
+  only: no model call, no play data, so a track nobody has played yet is reachable
+  (cold start) and it keeps working when Vertex is down. Otherwise it falls back
+  deterministically (`source: "metadata_fallback"`): same release genre first,
+  then same artist, newest first, seed excluded. Scores are only comparable within
+  one source.
+- **`embeddings.similarity` tool (AI DJ).** Embeds the combined query once
+  (`RETRIEVAL_QUERY`), lazily embeds candidates that lack a current vector, then
+  ranks by cosine similarity. When the provider is unavailable it returns
+  `{ ranked: [], status: "unavailable" }` and the selector keeps its deterministic
+  order; candidates without a vector are kept after the ranked ones.
+- **Cost bound.** Embedding calls happen only in backfill runs (at most `limit`
+  tracks), on ingest (one release's tracks), lazily for DJ candidates that have no
+  current vector, and once per DJ similarity call for the query.
+  `similarTracks` makes none.
+- **Remaining for #1452.** `RecommendationsService.gatherCandidates` does not yet
+  use `similarTracks` as a candidate source: it has no per-listener
+  positive-engagement seed input (and that data is consent-gated by the taste
+  memory controls), so wiring it needs a separate, deliberate slice. Audio-feature
+  vectors are also later.
+- Tests: `embeddings.spec.ts`, `vertex_embedding.client.spec.ts`,
+  `agent_selector_embeddings.spec.ts`, `embeddings_module.spec.ts`,
+  `embeddings.integration.spec.ts`, `track_embedding.integration.spec.ts`,
+  `maintenance.controller.http.spec.ts`.
 
 ## One Core, One Profile, One Policy (#1456 WS-9, #1957)
 

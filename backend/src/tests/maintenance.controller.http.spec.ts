@@ -4,6 +4,7 @@ import { RolesGuard } from "../modules/auth/roles.guard";
 import { MaintenanceController } from "../modules/maintenance/maintenance.controller";
 import { StemFeatureBackfillService } from "../modules/ingestion/stem-feature-backfill.service";
 import { MaintenanceService } from "../modules/maintenance/maintenance.service";
+import { TrackEmbeddingService } from "../modules/embeddings/track_embedding.service";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
 
 const maintenanceService = {
@@ -25,6 +26,18 @@ const stemFeatureBackfillService = {
     .mockResolvedValue({ scanned: 2, updated: 2, skipped: [], remaining: 0 }),
 };
 
+const trackEmbeddingService = {
+  backfill: jest.fn().mockResolvedValue({
+    status: "ok",
+    model: "text-multilingual-embedding-002",
+    scanned: 3,
+    embedded: 3,
+    skipped: 0,
+    failed: 0,
+    remaining: 0,
+  }),
+};
+
 describe("MaintenanceController (HTTP)", () => {
   let app: INestApplication;
 
@@ -33,6 +46,7 @@ describe("MaintenanceController (HTTP)", () => {
       RolesGuard,
       { provide: MaintenanceService, useValue: maintenanceService },
       { provide: StemFeatureBackfillService, useValue: stemFeatureBackfillService },
+      { provide: TrackEmbeddingService, useValue: trackEmbeddingService },
     ]);
   });
 
@@ -179,6 +193,38 @@ describe("MaintenanceController (HTTP)", () => {
       limit: 5,
       types: ["original"],
     });
+  });
+
+  it("POST /admin/embeddings/backfill requires admin role and delegates (#1452)", async () => {
+    await request(app.getHttpServer())
+      .post("/admin/embeddings/backfill")
+      .send({ limit: 25 })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post("/admin/embeddings/backfill")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ limit: 25 })
+      .expect(403);
+    expect(trackEmbeddingService.backfill).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .post("/admin/embeddings/backfill")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ limit: 25 })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.remaining).toBe(0);
+        expect(body.model).toBe("text-multilingual-embedding-002");
+      });
+    expect(trackEmbeddingService.backfill).toHaveBeenCalledWith({ limit: 25 });
+
+    // An empty body runs with the service defaults.
+    await request(app.getHttpServer())
+      .post("/admin/embeddings/backfill")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(201);
+    expect(trackEmbeddingService.backfill).toHaveBeenLastCalledWith({});
   });
 
   it("POST /admin/community/cohorts/generate requires admin role and runs cohort generation", async () => {

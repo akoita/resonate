@@ -42,7 +42,7 @@ The AI DJ (`backend/src/modules/agents/*`) is genuinely implemented:
 But:
 
 - The home feed **does not use any of it** — two disconnected code paths share only the taste-memory hide/downrank multipliers.
-- The selector's best inputs are **dormant by default**: BigQuery taste scores only when `ANALYTICS_REPORT_SOURCE=bigquery`; the "embeddings" are a **16-dim hashed bag-of-words placeholder** (`embeddings/embedding.service.ts:4-31`), not a learned model; the Gemini reranker is opt-in and off.
+- The selector's best inputs are **dormant by default**: BigQuery taste scores only when `ANALYTICS_REPORT_SOURCE=bigquery`; the "embeddings" were a **16-dim hashed bag-of-words placeholder** (replaced by real text embeddings in #1452 WS-5; see the status note under WS-5), not a learned model; the Gemini reranker is opt-in and off.
 - Signal capture has holes: **no explicit skip event** (skip is derived as completionRatio < 0.3); analytics auto-mirrors only `library.saved` and `playlist.track_added` into `AgentSignal` (`analytics_instrumentation.service.ts:253-256`) — plays/completions/skips reach the learning loop only if a client explicitly POSTs them; home recommendation impressions/clicks are not captured at all.
 
 ### 1.4 Why this matters
@@ -66,7 +66,7 @@ The #977 epic delivered an end-to-end path that this RFC lights up and extends:
 | Feature/scores marts | Dataform `track_intelligence_features`, `user_track_signal_training`, `user_track_recommendation_scores` + assertions; **BQML matrix-factorization template** (`user_track_recommendation_scores_bqml` + eval) | **Built, template-stage** |
 | Serving read | `AgentBigQueryTasteSignalService` reads `user_track_recommendation_scores` (bounded, consent-gated) | **Built, off by default** |
 | Behavioral store | `AgentSignal` (weighted actions) + `learnedTasteProfile` | **Live** |
-| Vector store | pgvector installed, `TrackEmbedding vector(16)` | **Placeholder embeddings** |
+| Vector store | pgvector; `TrackEmbedding vector(768)` with HNSW cosine index, Vertex text embeddings (#1452, first slice; was a 16-dim hash placeholder) | **Built; not yet a Home candidate source** |
 | Cache | Memorystore Redis (allkeys-lru) | **Provisioned, unused for discovery** |
 | ML platform | `roles/aiplatform.user` already granted to the Cloud Run SA (Vertex/Gemini callable); no Vertex resources provisioned | **Greenfield** |
 | Quality metrics | Agent recommendation quality dashboard (`GET /analytics/agent/quality`) | **Live (DJ only)** |
@@ -174,7 +174,7 @@ are product surface and measurement; WS-9 unifies the DJ.
 - **WS-2 — Signal completeness.** Explicit `playback.skipped` event; auto-mirror playback started/completed/skip into `AgentSignal` (today only save/playlist-add mirror); emit `recommendation.served` / `recommendation.clicked` impressions for home surfaces; consent-gated as today.
 - **WS-3 — Popularity & engagement marts.** Dataform models `track_popularity` and `artist_engagement` (completion-weighted plays, unique listeners, saves, purchases; 24h/7d/30d windows; time-decay; genre dimension) + assertions; bounded export job to Postgres serving tables with Redis cache.
 - **WS-4 — True Trending + Top Artists by category.** `GET /catalog/top-artists?genre&window` and trending endpoints backed by WS-3; replace the recency-based home rails; per-genre top artists using the existing chip row; honest empty/low-data states (thresholds before a chart position is claimed).
-- **WS-5 — Real content embeddings.** Replace the 16-dim hash with a proper embedding model (Vertex/Gemini text embeddings over title/genre/mood/artist metadata first; audio-feature vectors later), pgvector HNSW index, backfill + on-ingest embedding; powers similar-tracks, cold-start, and the ranker's semantic signal.
+- **WS-5 — Real content embeddings.** Replace the 16-dim hash with a proper embedding model (Vertex/Gemini text embeddings over title/genre/mood/artist metadata first; audio-feature vectors later), pgvector HNSW index, backfill + on-ingest embedding; powers similar-tracks, cold-start, and the ranker's semantic signal. *Status (first slice shipped): text embeddings, HNSW index, backfill route, embed-on-ingest and `similarTracks` exist; wiring `similarTracks` into `gatherCandidates` and audio-feature vectors remain.*
 - **WS-6 — Activate collaborative filtering.** Productionize the existing BQML matrix-factorization path in staging: scheduled Dataform+BQML runs, the #978 eval gate as a standing promotion check, scores exported to serving; home + DJ consume them by default (with fallback). Cost-bounded cadence (staging daily, prod per ADR cost discipline).
 - **WS-7 — Home discovery UX v2.** Multi-rail personalized home ("Because you saved X", "Trending in <genre>", "New from artists you play"), real explanations from ranking reasons, exploration slice, impression rotation; design bar per approved home-hero reference.
 - **WS-8 — Measurement & experimentation.** Offline recall@k/NDCG on `user_track_signal_training`; online skip/save/completion per surface; extend the agent quality dashboard to home surfaces; a minimal holdout/A-B mechanism to compare ranker variants before promotion.

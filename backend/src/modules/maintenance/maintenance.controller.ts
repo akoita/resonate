@@ -8,6 +8,10 @@ import {
   StemFeatureBackfillRequest,
   StemFeatureBackfillService,
 } from "../ingestion/stem-feature-backfill.service";
+import {
+  EmbeddingBackfillRequest,
+  TrackEmbeddingService,
+} from "../embeddings/track_embedding.service";
 import { MaintenanceService } from "./maintenance.service";
 
 @Controller("admin")
@@ -15,6 +19,7 @@ export class MaintenanceController {
   constructor(
     private readonly maintenanceService: MaintenanceService,
     private readonly stemFeatureBackfillService: StemFeatureBackfillService,
+    private readonly trackEmbeddingService: TrackEmbeddingService,
   ) {}
 
   /**
@@ -26,6 +31,19 @@ export class MaintenanceController {
   @Post("stems/backfill-audio-features")
   async backfillStemAudioFeatures(@Body() body: StemFeatureBackfillRequest) {
     return this.stemFeatureBackfillService.backfill(body ?? {});
+  }
+
+  /**
+   * Backfills track text embeddings (#1452, WS-5) for tracks published before
+   * embed-on-ingest shipped, and re-verifies stale ones. Batch-bounded
+   * (1-200 per run, default 50); re-run until remaining=0. Each run makes
+   * metered embedding-model calls only for tracks that need a vector.
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Post("embeddings/backfill")
+  async backfillTrackEmbeddings(@Body() body: EmbeddingBackfillRequest) {
+    return this.trackEmbeddingService.backfill(body ?? {});
   }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)

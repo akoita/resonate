@@ -21,6 +21,7 @@ import { PaymentsModule } from "../payments/payments.module";
 import { SharedModule } from "../shared/shared.module";
 import { RecommendationsModule } from "../recommendations/recommendations.module";
 import { CommunityModule } from "../community/community.module";
+import { EmbeddingsModule } from "../embeddings/embeddings.module";
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { CommunityModule } from "../community/community.module";
     PaymentsModule,
     RecommendationsModule,
     CommunityModule,
+    EmbeddingsModule,
   ],
   controllers: [
     AgentsController,
