@@ -18,6 +18,7 @@ import {
   StemsUploadedEvent,
 } from "../../events/event_types";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
+import { withPublicAudioFeatures } from "./track-audio-features";
 import {
   compareRouteSeverity,
   getUploadRightsActions,
@@ -1461,6 +1462,7 @@ export class CatalogService implements OnModuleInit {
                 isEncrypted: true,
                 encryptionMetadata: true,
                 // Exclude data and mimeType (huge blobs)
+                audioFeatures: true, // #1960: reduced to track-level measured features
               }
             }
           }
@@ -1480,7 +1482,12 @@ export class CatalogService implements OnModuleInit {
       return this.listPublished(limit, primaryArtist);
     }
 
-    return releases.map(withReleaseAiDisclosure);
+    return releases
+      .map((release) => ({
+        ...release,
+        tracks: release.tracks.map(withPublicAudioFeatures),
+      }))
+      .map(withReleaseAiDisclosure);
   }
 
   async createRelease(input: {
@@ -1735,6 +1742,7 @@ export class CatalogService implements OnModuleInit {
             isEncrypted: true,
             encryptionMetadata: true,
             // Exclude data
+            audioFeatures: true, // #1960: reduced to track-level measured features
           }
         },
         release: {
@@ -1769,7 +1777,7 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    return withNormalizedAiDisclosure(track);
+    return withNormalizedAiDisclosure(withPublicAudioFeatures(track));
   }
 
   async getPlayerTrackActions(
@@ -2110,6 +2118,7 @@ export class CatalogService implements OnModuleInit {
                 encryptionMetadata: true,
                 storageProvider: true,
                 // Exclude data
+                audioFeatures: true, // #1960: reduced to track-level measured features
               }
             }
           }
@@ -2191,6 +2200,7 @@ export class CatalogService implements OnModuleInit {
                     isEncrypted: true,
                     encryptionMetadata: true,
                     storageProvider: true,
+                    audioFeatures: true,
                   }
                 }
               }
@@ -2216,7 +2226,9 @@ export class CatalogService implements OnModuleInit {
     const { tracks, ...rest } = release;
     const safeRelease = {
       ...rest,
-      tracks: tracks.map(({ generationMetadata: _omit, ...track }) => track),
+      tracks: tracks.map(({ generationMetadata: _omit, ...track }) =>
+        withPublicAudioFeatures(track),
+      ),
     };
     return {
       ...withReleaseAiDisclosure(safeRelease),

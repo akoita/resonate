@@ -290,7 +290,7 @@ export class DiscoveryRankingService {
         signals.push({
           label: "audio_features",
           weight: Math.round(audioFeatures.confidence * 10),
-          reason: `${audioFeatures.energyBand} energy, ${audioFeatures.tempoBpm} BPM`,
+          reason: audioFeatureReason(audioFeatures),
         });
         if (context.energy && audioFeatures.energyBand === context.energy) {
           signals.push({
@@ -328,6 +328,18 @@ export class DiscoveryRankingService {
       ...(tasteScore ? { trace: { bigQueryTasteScore: tasteScore } } : {}),
     };
   }
+}
+
+/**
+ * Reason string for the audio-features signal (#1960). A BPM is printed only
+ * when it was measured; the inferred tempo is a metadata hash, so showing it
+ * would present a fabricated number as fact.
+ */
+export function audioFeatureReason(features: AgentAudioFeatures): string {
+  if (features.featureSources?.tempo === "measured") {
+    return `${Math.round(features.tempoBpm)} BPM, ${features.energyBand} energy`;
+  }
+  return `${features.energyBand} energy`;
 }
 
 /** Cohort matching shared by both surfaces (moved from the two copies). */

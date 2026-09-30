@@ -12,8 +12,8 @@ issues:
 
 Resonate measures tempo, key and energy for uploaded music and stores the
 result on `Stem.audioFeatures` (JSON, nullable) using the versioned
-`stem-audio-features/v1` schema. The measurements feed remix grounding and,
-later, discovery.
+`stem-audio-features/v1` schema. The measurements feed remix grounding, discovery
+ranking and the public catalog track API.
 
 **Vision alignment (ADR-BM-6):** vision-neutral infrastructure. It prepares
 data for Line 3 and Line 4 surfaces but changes no money, rights, payouts, or
@@ -88,8 +88,38 @@ page holds no environment URLs or schedules.
 - Backend integration (Docker):
   `npm run test:integration -- --testPathPattern='stem-feature-backfill|stem-result-original-features'`
 
-## Follow-ups
+## Where the measurements are used (#1960)
 
-Using tempo, key and Camelot in ranking and discovery is tracked in
-[#1960](https://github.com/akoita/resonate/issues/1960) and is not part of this
-feature.
+- Ranking and explanations: `AgentAudioFeatureService` overlays measured tempo,
+  key, Camelot and energy from the current `original` stem on its
+  metadata-inferred features, field by field. The AI DJ and Home ranking core
+  score with them and print a BPM only when it was measured. Thresholds, the
+  energy formula and the cache key are in
+  [Agent Taste Intelligence](agent_taste_intelligence.md#measured-vs-inferred-audio-features-1960).
+- Public catalog API: track responses carry a track-level `audioFeatures` field
+  on `GET /catalog/tracks/:trackId`, `GET /catalog/releases/:releaseId` and
+  `GET /catalog/published` (each track):
+
+  ```json
+  {
+    "tempoBpm": 124.5,
+    "tempoConfidence": 0.8,
+    "key": { "tonic": "A", "mode": "minor", "confidence": 0.4 },
+    "camelot": "8A",
+    "energy": 0.5,
+    "source": "measured_full_mix"
+  }
+  ```
+
+  Only measured values appear. A tempo needs confidence of at least 0.5 and a
+  key at least 0.1; anything not measured is `null`, and the whole field is
+  `null` when nothing is measured (for example before ingestion or the backfill
+  reached the track). The metadata-inferred tempo is never exposed, and the raw
+  per-stem `audioFeatures` JSON, stem data and URIs are not added by this
+  field. `energy` is the 0..1 composite of loudness and onset density, not the
+  raw RMS.
+
+## AI DJ card
+
+The AI DJ next-pick card shows a BPM only when `featureSources.tempo` is
+`measured`; an inferred tempo is never displayed as a number (#1960).
