@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { Injectable, Optional } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { DiscoveryPopularityService } from "../catalog/discovery-popularity.service";
 import { RecommendationsService } from "./recommendations.service";
@@ -9,6 +9,13 @@ import {
   toAiDisclosureRecord,
   type AiDisclosureRecord,
 } from "../catalog/ai-disclosure.policy";
+import {
+  DISCOVERY_EXPLANATIONS,
+  type DiscoveryReasonCode,
+} from "./discovery-explanations";
+import { applyDiscoveryPolicy } from "./discovery-policy";
+import type { RankedDiscoveryCandidate } from "./discovery-ranking.service";
+import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
 
 /**
  * Home feed v2 composition (#1454 WS-7).
@@ -36,6 +43,14 @@ import {
  * rail, each track appears in at most one rail, previously-served tracks sink
  * to the tail of each rail, and every rendered id is recorded back into the
  * served history so repeat visits rotate.
+ *
+ * Policy stage (ADR-TE-2, docs/rfc/taste-engine.md §3.4, #1456): every rail,
+ * not only the ranked `because_genre` one, passes `applyDiscoveryPolicy` in
+ * its own order: hidden taste (rule 1), fully AI-generated tracks (rule 2),
+ * two per artist (rule 4) and a categorical `reasonCode` plus vocabulary
+ * sentence on every item (rule 5). The rails reserve no exploration slot of
+ * their own: rule 3 runs in the ranked rail, and the `exploration` rail is
+ * the feed's dedicated fresh-track slice.
  */
 
 export type HomeFeedRailKind =
@@ -58,6 +73,10 @@ export interface HomeFeedItem {
   artworkRevision: number;
   aiDisclosure: AiDisclosureRecord;
   reasons: string[];
+  /** Primary reason from the shared vocabulary (same codes as the DJ). */
+  reasonCode: DiscoveryReasonCode;
+  /** Vocabulary sentences; categorical, never itemized history. */
+  explanations: string[];
 }
 
 export interface HomeFeedRail {
@@ -77,25 +96,126 @@ function explorationCount(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 4;
 }
 
-interface RawItem extends Omit<HomeFeedItem, "artworkMimeType" | "artworkRevision"> {
+export interface RawItem
+  extends Omit<
+    HomeFeedItem,
+    "artworkMimeType" | "artworkRevision" | "reasonCode" | "explanations"
+  > {
   artworkMimeType?: string | null;
   artworkRevision?: number;
+  /** Set when the item comes from the ranking core (already categorical). */
+  reasonCode?: DiscoveryReasonCode;
+  explanations?: string[];
+}
+
+/**
+ * Reason for items of rails composed outside the ranking core. Kept honest:
+ * only the artists rail is a listening-pattern fit; trending, fresh and
+ * catalog-signal items are catalog candidates, and the rail's own title and
+ * explanation say why they are there.
+ */
+const RAIL_REASON_CODE: Record<HomeFeedRailKind, DiscoveryReasonCode> = {
+  because_genre: "taste_match",
+  new_from_artists: "listening_pattern",
+  trending_genre: "catalog",
+  exploration: "catalog",
+  catalog_signal: "catalog",
+};
+
+type PolicyCandidate = RankedDiscoveryCandidate & { item: RawItem };
+
+type RailCaps = (
+  kind: HomeFeedRailKind,
+  items: RawItem[],
+  used: Set<string>,
+  size?: number,
+) => HomeFeedItem[];
+
+/**
+ * Feed-wide dedupe, then the shared policy stage in the rail's own order:
+ * hidden taste, fully AI-generated tracks, max N items per artist per rail,
+ * and a categorical reason on every item. Adds the returned ids to `used`.
+ */
+export function applyRailPolicy(
+  kind: HomeFeedRailKind,
+  items: RawItem[],
+  used: Set<string>,
+  tastePolicy: TasteMemoryPolicy | undefined,
+  size = RAIL_SIZE,
+): HomeFeedItem[] {
+  const seen = new Set<string>();
+  const candidates: PolicyCandidate[] = [];
+  for (const item of items) {
+    if (used.has(item.id) || seen.has(item.id)) continue;
+    seen.add(item.id);
+    const reasonCode = item.reasonCode ?? RAIL_REASON_CODE[kind];
+    const explanation = item.explanations?.length
+      ? item.explanations
+      : [DISCOVERY_EXPLANATIONS[reasonCode]];
+    candidates.push({
+      id: item.id,
+      title: item.title,
+      artist: item.artist,
+      artistId: item.artistId,
+      aiDisclosureLevel: item.aiDisclosure?.level ?? null,
+      release: {
+        genre: item.genre,
+        title: item.releaseTitle,
+        moods: item.moods,
+        artistDisplayName: item.artist,
+      },
+      // Rail order is the ranking here; the policy keeps input order.
+      score: 0,
+      signals: [],
+      explanation,
+      reasonCode,
+      recentlyPlayed: false,
+      item,
+    });
+  }
+  // No verified-human set: nothing here is relabeled a discovery pick.
+  const { items: policed } = applyDiscoveryPolicy(candidates, {
+    limit: size,
+    tastePolicy,
+    maxPerArtist: ARTIST_CAP_PER_RAIL,
+  });
+  return policed.map((entry) => {
+    used.add(entry.id);
+    return {
+      ...entry.item,
+      artworkMimeType: entry.item.artworkMimeType ?? null,
+      artworkRevision: entry.item.artworkRevision ?? 1,
+      reasonCode: entry.reasonCode,
+      explanations: entry.explanation,
+    };
+  });
 }
 
 @Injectable()
 export class HomeFeedService {
+  private readonly logger = new Logger(HomeFeedService.name);
+
   constructor(
     private readonly recommendationsService: RecommendationsService,
     @Optional() private readonly discoveryPopularity?: DiscoveryPopularityService,
+    @Optional() private readonly tasteMemory?: TasteMemoryService,
   ) {}
 
   async getHomeFeed(userId: string) {
     const requestId = randomUUID();
-    const [preferences, served, playedArtistIds] = await Promise.all([
+    const [preferences, served, playedArtistIds, tastePolicy] = await Promise.all([
       this.recommendationsService.getPreferences(userId),
       this.recommendationsService.getServedHistory(userId),
       this.artistsThePlayerPlays(userId),
+      this.loadTastePolicy(userId),
     ]);
+    // Every rail passes the policy stage with the same taste policy.
+    const applyCaps = (
+      kind: HomeFeedRailKind,
+      items: RawItem[],
+      used: Set<string>,
+      size = RAIL_SIZE,
+    ) => applyRailPolicy(kind, items, used, tastePolicy, size);
 
     const hasPreferences = Boolean(
       preferences.genres?.length || preferences.mood?.trim(),
@@ -108,7 +228,7 @@ export class HomeFeedService {
     if (cold) {
       // RFC §8: "Catalog signal" only for genuinely cold users — and labeled
       // as exactly that, not disguised as personalization.
-      const catalogRail = await this.catalogSignalRail(usedTrackIds);
+      const catalogRail = await this.catalogSignalRail(usedTrackIds, applyCaps);
       if (catalogRail) rails.push(catalogRail);
     } else {
       const recommendations = await this.recommendationsService.getRecommendations(
@@ -125,23 +245,26 @@ export class HomeFeedService {
         dominantGenre,
         recommendations.items,
         usedTrackIds,
+        applyCaps,
       );
       if (becauseRail) rails.push(becauseRail);
 
       const artistsRail = await this.newFromArtistsRail(
         playedArtistIds,
         usedTrackIds,
+        applyCaps,
       );
       if (artistsRail) rails.push(artistsRail);
 
       const trendingRail = await this.trendingGenreRail(
         dominantGenre,
         usedTrackIds,
+        applyCaps,
       );
       if (trendingRail) rails.push(trendingRail);
     }
 
-    const explorationRail = await this.explorationRail(usedTrackIds);
+    const explorationRail = await this.explorationRail(usedTrackIds, applyCaps);
     if (explorationRail) rails.push(explorationRail);
 
     // Impression rotation: previously-served items sink to the tail of each
@@ -168,6 +291,7 @@ export class HomeFeedService {
     dominantGenre: string | null,
     items: Awaited<ReturnType<RecommendationsService["getRecommendations"]>>["items"],
     used: Set<string>,
+    applyCaps: RailCaps,
   ): HomeFeedRail | null {
     if (!dominantGenre) return null;
     const needle = dominantGenre.toLowerCase();
@@ -189,8 +313,11 @@ export class HomeFeedService {
         moods: item.moods ?? [],
         aiDisclosure: item.aiDisclosure,
         reasons: item.reasons,
+        reasonCode: item.reasonCode,
+        explanations: item.explanations,
       }));
-    const selected = this.applyCaps(matching, used);
+    const selected = applyCaps(
+      "because_genre",matching, used);
     if (!selected.length) return null;
     return {
       id: "because_genre",
@@ -204,6 +331,7 @@ export class HomeFeedService {
   private async newFromArtistsRail(
     playedArtistIds: string[],
     used: Set<string>,
+    applyCaps: RailCaps,
   ): Promise<HomeFeedRail | null> {
     if (!playedArtistIds.length) return null;
     const tracks = await prisma.track.findMany({
@@ -233,7 +361,8 @@ export class HomeFeedService {
       orderBy: { createdAt: "desc" },
       take: RAIL_SIZE * 3,
     });
-    const selected = this.applyCaps(
+    const selected = applyCaps(
+      "new_from_artists",
       tracks.map((track) => ({
         id: track.id,
         title: track.title,
@@ -268,6 +397,7 @@ export class HomeFeedService {
   private async trendingGenreRail(
     dominantGenre: string | null,
     used: Set<string>,
+    applyCaps: RailCaps,
   ): Promise<HomeFeedRail | null> {
     if (!dominantGenre || !this.discoveryPopularity) return null;
     const trending = (await this.discoveryPopularity.getTrendingTracks({
@@ -275,7 +405,8 @@ export class HomeFeedService {
       genre: dominantGenre,
       limit: RAIL_SIZE * 2,
     })) as { items: Array<Record<string, any>> };
-    const selected = this.applyCaps(
+    const selected = applyCaps(
+      "trending_genre",
       trending.items.map((item) => ({
         id: item.trackId as string,
         title: item.title as string,
@@ -302,7 +433,10 @@ export class HomeFeedService {
     };
   }
 
-  private async explorationRail(used: Set<string>): Promise<HomeFeedRail | null> {
+  private async explorationRail(
+    used: Set<string>,
+    applyCaps: RailCaps,
+  ): Promise<HomeFeedRail | null> {
     const count = explorationCount();
     if (!count) return null;
     // Fresh AND low-data: newest public tracks with no popularity row yet —
@@ -340,7 +474,8 @@ export class HomeFeedService {
         })
       ).map((row) => row.trackId),
     );
-    const selected = this.applyCaps(
+    const selected = applyCaps(
+      "exploration",
       fresh
         .filter((track) => !popular.has(track.id))
         .map((track) => ({
@@ -375,7 +510,10 @@ export class HomeFeedService {
     };
   }
 
-  private async catalogSignalRail(used: Set<string>): Promise<HomeFeedRail | null> {
+  private async catalogSignalRail(
+    used: Set<string>,
+    applyCaps: RailCaps,
+  ): Promise<HomeFeedRail | null> {
     // Cold users: overall trending when the data supports it, labeled as a
     // catalog-wide signal — never presented as personalization.
     const trending = this.discoveryPopularity
@@ -384,7 +522,8 @@ export class HomeFeedService {
           limit: RAIL_SIZE * 2,
         })) as { items: Array<Record<string, any>> })
       : { items: [] };
-    const selected = this.applyCaps(
+    const selected = applyCaps(
+      "catalog_signal",
       trending.items.map((item) => ({
         id: item.trackId as string,
         title: item.title as string,
@@ -416,24 +555,17 @@ export class HomeFeedService {
   // Helpers
   // -------------------------------------------------------------------------
 
-  /** Feed-wide dedupe + max N items per artist per rail. */
-  private applyCaps(items: RawItem[], used: Set<string>, size = RAIL_SIZE): HomeFeedItem[] {
-    const perArtist = new Map<string, number>();
-    const selected: HomeFeedItem[] = [];
-    for (const item of items) {
-      if (selected.length >= size) break;
-      if (used.has(item.id)) continue;
-      const artistCount = perArtist.get(item.artistId) ?? 0;
-      if (artistCount >= ARTIST_CAP_PER_RAIL) continue;
-      perArtist.set(item.artistId, artistCount + 1);
-      used.add(item.id);
-      selected.push({
-        ...item,
-        artworkMimeType: item.artworkMimeType ?? null,
-        artworkRevision: item.artworkRevision ?? 1,
-      });
+  /** Fails open: without taste memory, rule 1 has nothing to hide. */
+  private async loadTastePolicy(
+    userId: string,
+  ): Promise<TasteMemoryPolicy | undefined> {
+    if (!this.tasteMemory) return undefined;
+    try {
+      return await this.tasteMemory.getPolicy(userId);
+    } catch (error) {
+      this.logger.warn(`Taste memory unavailable for Home rails: ${String(error)}`);
+      return undefined;
     }
-    return selected;
   }
 
   /** Preference genres first, else the most frequent reason genre/mood. */

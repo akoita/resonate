@@ -36,7 +36,7 @@ and can land at any point.
 | #1957 | `implemented` | `discovery-policy.ts` and the shared explanation vocabulary; `listed` boost removed; "How recommendations work" User Guide article |
 | #1956 | `implemented` | Orchestrator, mixer, tool registry and ADK curation agent no longer generate; sparse selections return a `shortfall` and record the unmet intent |
 | #1955 | `implemented` | `GET /agents/discoveries` and the Sonic Radar journal; the "follow" next action waits on an artist-follow feature, which does not exist yet |
-| #1456 | `partial` | Home, the deterministic DJ and the LLM runtime share one ranking core, one taste profile and the policy stage. Remaining: Home's other shelves (new from artists you play, trending, fresh drops in `home-feed.service.ts`) do not pass the policy stage yet; LLM picks get rules 1, 2, 4 and 5 but no exploration share |
+| #1456 | `partial` | Home, the deterministic DJ and the LLM runtime share one ranking core, one taste profile and the policy stage. Every Home rail, including new from artists you play, trending and fresh drops, passes the policy stage. Remaining: LLM picks get rules 1, 2, 4 and 5 but no exploration share |
 
 The staging exit checks (no purchase or generation without a person, Sonic
 Radar lists only listened tracks) are verified after deployment.

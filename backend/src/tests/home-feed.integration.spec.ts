@@ -13,6 +13,9 @@
  *       render sinks previously-served items to the rail tail
  *   (f) a genuinely COLD user gets the explicit "Catalog signal" rail (or an
  *       honest empty feed) — never disguised personalization
+ *   (g) every rail passes the policy stage (#1456, ADR-TE-2): an artist the
+ *       listener hid leaves "New from artists you play", and every item
+ *       carries a vocabulary reasonCode
  *
  * Run: npx jest --runInBand --forceExit --config jest.integration.config.js \
  *        --testPathPattern='home-feed'
@@ -22,8 +25,10 @@ import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { DiscoveryPopularityService } from "../modules/catalog/discovery-popularity.service";
 import { DiscoveryRankingService } from "../modules/recommendations/discovery-ranking.service";
+import { DISCOVERY_REASON_CODES } from "../modules/recommendations/discovery-explanations";
 import { HomeFeedService } from "../modules/recommendations/home-feed.service";
 import { RecommendationsService } from "../modules/recommendations/recommendations.service";
+import { TasteMemoryService } from "../modules/recommendations/taste_memory.service";
 
 const TEST_PREFIX = `homefeed_${Date.now()}_`;
 const GENRE = `${TEST_PREFIX}amapiano`; // unique genre isolates from parallel suites
@@ -34,13 +39,18 @@ const PLAYED_ARTIST = `${TEST_PREFIX}played_artist`; // artist the warm user pla
 const FRESH_ARTIST = `${TEST_PREFIX}fresh_artist`; // low-data exploration source
 
 function newService() {
+  const eventBus = new EventBus();
   const recommendations = new RecommendationsService(
-    new EventBus(),
+    eventBus,
     new DiscoveryRankingService(),
   );
   return {
     recommendations,
-    homeFeed: new HomeFeedService(recommendations, new DiscoveryPopularityService()),
+    homeFeed: new HomeFeedService(
+      recommendations,
+      new DiscoveryPopularityService(),
+      new TasteMemoryService(eventBus),
+    ),
   };
 }
 
@@ -146,6 +156,9 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
   });
 
   afterAll(async () => {
+    await prisma.listenerTasteSignalControl.deleteMany({
+      where: { userId: { startsWith: TEST_PREFIX } },
+    });
     await prisma.recommendationProfile.deleteMany({
       where: { userId: { startsWith: TEST_PREFIX } },
     });
@@ -266,6 +279,49 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
     // only the exploration slice (fresh finds) may remain.
     for (const kind of kinds) {
       expect(["catalog_signal", "exploration"]).toContain(kind);
+    }
+  });
+
+  it("every rail passes the policy stage: hidden artists leave, every item has a reason", async () => {
+    await prisma.recommendationProfile.update({
+      where: { userId: WARM_USER },
+      data: { servedTrackIds: [] },
+    });
+    const { homeFeed } = newService();
+
+    const before = await homeFeed.getHomeFeed(WARM_USER);
+    const artistsRail = before.rails.find((rail) => rail.kind === "new_from_artists")!;
+    expect(artistsRail.items.every((item) => item.artistId === PLAYED_ARTIST)).toBe(true);
+    for (const rail of before.rails) {
+      for (const item of rail.items) {
+        expect(DISCOVERY_REASON_CODES).toContain(item.reasonCode);
+        expect(item.explanations.length).toBeGreaterThan(0);
+      }
+    }
+    expect(artistsRail.items[0].reasonCode).toBe("listening_pattern");
+
+    // The listener hides the artist they play: no rail may show it anymore.
+    await prisma.listenerTasteSignalControl.create({
+      data: {
+        userId: WARM_USER,
+        signalType: "artist",
+        value: PLAYED_ARTIST,
+        action: "hidden",
+      },
+    });
+    try {
+      await prisma.recommendationProfile.update({
+        where: { userId: WARM_USER },
+        data: { servedTrackIds: [] },
+      });
+      const after = await homeFeed.getHomeFeed(WARM_USER);
+      expect(after.rails.map((rail) => rail.kind)).not.toContain("new_from_artists");
+      const shown = after.rails.flatMap((rail) => rail.items);
+      expect(shown.some((item) => item.artistId === PLAYED_ARTIST)).toBe(false);
+    } finally {
+      await prisma.listenerTasteSignalControl.deleteMany({
+        where: { userId: WARM_USER },
+      });
     }
   });
 });
