@@ -73,7 +73,11 @@ export interface DiscoveryPolicyOptions {
   /**
    * Session mode. How many of those prior tracks were exploration picks, so
    * the exploration share is per session, not per call (a one-track "next
-   * pick" call must not always be a discovery pick). Default 0.
+   * pick" call must not always be a discovery pick). When `undefined` the
+   * prior count is unknown, so the target falls back to the page alone
+   * (`limit` only, not the session window): an unknown count must never
+   * inflate the reserve by treating every prior track as a missed exploration
+   * slot (9 prior + limit 5 would otherwise reserve 3 of 5 instead of 1).
    */
   priorExplorationCount?: number;
 }
@@ -140,13 +144,21 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
   const counts = new Map<string, number>();
   for (const key of priorKeys) counts.set(key, (counts.get(key) ?? 0) + 1);
 
-  // Rule 3: number of reserved exploration slots.
-  const windowSize = sessionMode ? priorKeys.length + limit : limit;
+  // Rule 3: number of reserved exploration slots. The session window only
+  // applies when the prior exploration count is known; otherwise the share is
+  // taken over this page alone.
+  const knownPriorExploration =
+    sessionMode && options.priorExplorationCount !== undefined;
+  const windowSize = knownPriorExploration ? priorKeys.length + limit : limit;
   const target = Math.max(1, Math.round(windowSize * share));
-  const alreadyExplored = sessionMode
+  const alreadyExplored = knownPriorExploration
     ? Math.max(0, Math.floor(options.priorExplorationCount ?? 0))
     : 0;
-  const reserved = Math.min(limit, Math.max(0, target - alreadyExplored));
+  // Never catch up in a burst: one call reserves at most its own page share,
+  // so a session that fell behind on discovery stays near "one in five"
+  // instead of turning a whole page into discovery picks.
+  const pageShare = Math.max(1, Math.round(limit * share));
+  const reserved = Math.min(limit, pageShare, Math.max(0, target - alreadyExplored));
 
   const chosen = new Set<T>();
   const explorationPicks = new Set<T>();

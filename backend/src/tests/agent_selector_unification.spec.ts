@@ -70,6 +70,8 @@ function selectorWith(
     verified?: string[];
     played?: string[];
     sessionArtists?: Record<string, string>;
+    /** Prior discovery picks; `"error"` makes the count lookup throw. */
+    priorDiscoveryPicks?: number | "error";
     profileWeights?: Record<string, number>;
     served?: string[];
   } = {},
@@ -90,6 +92,10 @@ function selectorWith(
         artistIdsForTracks: jest
           .fn()
           .mockResolvedValue(new Map(Object.entries(options.sessionArtists ?? {}))),
+        countDiscoveryPicks:
+          options.priorDiscoveryPicks === "error"
+            ? jest.fn().mockRejectedValue(new Error("db down"))
+            : jest.fn().mockResolvedValue(options.priorDiscoveryPicks ?? 0),
       }
     : undefined;
   const learning = options.profileWeights
@@ -210,6 +216,75 @@ describe("AI DJ selector on the shared core (#1456 WS-9)", () => {
         DISCOVERY_EXPLANATIONS.discovery_pick,
       );
       expect(result.policy?.exploration).toEqual({ reserved: 1, served: 1 });
+    });
+
+    describe("exploration share late in a session", () => {
+      const recent = Array.from({ length: 12 }, (_, i) => `s-${i + 1}`); // newest first
+      const catalog = () => [
+        item("loved-1", {}, { artistId: "loved1", genre: "House" }),
+        item("loved-2", {}, { artistId: "loved2", genre: "House" }),
+        item("loved-3", {}, { artistId: "loved3", genre: "House" }),
+        item("fresh-1", {}, { artistId: "fresh1", genre: "House" }),
+        item("fresh-2", {}, { artistId: "fresh2", genre: "House" }),
+        item("fresh-3", {}, { artistId: "fresh3", genre: "House" }),
+        item("fresh-4", {}, { artistId: "fresh4", genre: "House" }),
+      ];
+      const run = (options: Parameters<typeof selectorWith>[1]) => {
+        const built = selectorWith(catalog(), {
+          verified: ["fresh1", "fresh2", "fresh3", "fresh4"],
+          ...options,
+        });
+        return {
+          ...built,
+          result: built.selector.select({
+            userId: "u1",
+            queries: ["House"],
+            recentTrackIds: recent,
+            limit: 5,
+          }),
+        };
+      };
+
+      it("counts discovery picks over the same last-9 window the diversity cap uses", async () => {
+        const { policyContext, result } = run({ priorDiscoveryPicks: 2 });
+        const out = await result;
+        expect(policyContext?.countDiscoveryPicks).toHaveBeenCalledWith(
+          "u1",
+          recent.slice(0, 9),
+        );
+        // 9 prior + 5 = 14 -> 3 target, 2 already served -> 1 reserved (not 3).
+        expect(out.policy?.exploration.reserved).toBe(1);
+        expect(
+          out.selected.filter(
+            (track: any) => track.agentRecommendation.reasonCode === "discovery_pick",
+          ),
+        ).toHaveLength(1);
+      });
+
+      it("reserves nothing when the session already met its share", async () => {
+        const { result } = run({ priorDiscoveryPicks: 3 });
+        expect((await result).policy?.exploration.reserved).toBe(0);
+      });
+
+      it("does not over-reserve when the count is unavailable (fail-safe to unknown, not 0)", async () => {
+        const { result } = run({ priorDiscoveryPicks: "error" });
+        const out = await result;
+        expect(out.policy?.exploration.reserved).toBe(1);
+        expect(out.selected).toHaveLength(5);
+      });
+
+      it("skips the count for an anonymous caller and keeps the per-page reserve", async () => {
+        const built = selectorWith(catalog(), {
+          verified: ["fresh1", "fresh2", "fresh3", "fresh4"],
+        });
+        const out = await built.selector.select({
+          queries: ["House"],
+          recentTrackIds: recent,
+          limit: 5,
+        });
+        expect(built.policyContext?.countDiscoveryPicks).not.toHaveBeenCalled();
+        expect(out.policy?.exploration.reserved).toBe(1);
+      });
     });
 
     it("without policy lookups nothing is labeled discovery (deterministic fallback)", async () => {

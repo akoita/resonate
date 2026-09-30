@@ -235,7 +235,14 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   accept signal's `metadata.recommendation` keep it (whitelisted against the
   vocabulary, which the Sonic Radar journal reads back). The policy lookups come
   from `DiscoveryPolicyContextService`; when they are unavailable the DJ and Home
-  run the policy with empty sets, which only removes exploration slots.
+  run the policy with empty sets, which only removes exploration slots. In the
+  DJ the session exploration share counts the discovery picks among the last 9
+  session tracks (accepted picks whose `metadata.recommendation.reasonCode` is
+  `discovery_pick`), so late in a session only the remaining share is reserved;
+  when that count is unavailable the share is taken over the page alone, never
+  over the whole session window. One call never reserves more than its own
+  page share, so a session that fell behind catches up gradually, not in a
+  burst.
 - **Session intent is context, not taste.** The DJ passes the session's intent
   and mood (`sessionIntent`, `mood`, `queueStyle`) to the ranking core as
   request context. A candidate whose moods, genre or titles match earns a
