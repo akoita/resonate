@@ -74,7 +74,7 @@
     "desktop": {
       "lockfile": "desktop/package-lock.json",
       "packageLifecycles": {
-        "node_modules/electron@41.10.3": {
+        "node_modules/electron@41.10.6": {
           "disposition": "execute",
           "rationale": "Electron installs the pinned runtime binary required to run and package the desktop application."
         },
