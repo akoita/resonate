@@ -1,5 +1,7 @@
 # Agent Learning Loop
 
+> **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. The learning loop and taste score are not frozen; only attesting them on-chain is. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
+
 Issue: [#290](https://github.com/akoita/resonate/issues/290)
 
 The agent learning loop turns user and agent behavior into a durable taste

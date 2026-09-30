@@ -66,6 +66,8 @@ Resonate builds on established Ethereum standards:
 
 ## 4. Agent Trust & Identity (ERC-8004)
 
+> **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. Stem quality ratings from #322 stay as data, for the future Crate Digger quality filter; only their on-chain publishing is frozen. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
+
 To enable a truly open "Agentic Economy," Resonate adopts **ERC-8004 (Trustless Agents)**. This standard, now live on Ethereum Mainnet, complements the execution layer (ERC-4337) by providing a portable identity and reputation layer for AI agents.
 
 ### Why ERC-8004?

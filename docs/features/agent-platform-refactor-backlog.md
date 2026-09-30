@@ -1,5 +1,7 @@
 # Agent Platform Refactor Backlog
 
+> **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
+
 ## Goal
 
 Deliver a unified, policy-bounded commerce agent backend that can route
@@ -125,5 +127,5 @@ Acceptance:
 
 - frontend redesign of `/agent`
 - LangGraph adoption
-- ERC-8004 identity/reputation expansion
+- ERC-8004 identity/reputation expansion (frozen, ADR-TE-6: no new work without a new ADR)
 - multiple named agent product variants

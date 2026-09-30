@@ -183,6 +183,8 @@ You can run the helpers directly if needed:
 
 ## ERC-8004 Identity Mint
 
+> **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. This section stays as a runbook for the shipped code only. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
+
 Issue #261 uses the public ERC-8004 Identity Registry instead of deploying a
 Resonate-owned registry. The backend defaults to the official mainnet or
 testnet registry address for supported public chain IDs, and

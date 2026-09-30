@@ -1,5 +1,7 @@
 # Agent Identity And Reputation
 
+> **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. Stem quality ratings from #322 stay as data, for the future Crate Digger quality filter; only their on-chain publishing is frozen. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
+
 ## Scope
 
 Issues #291 and #261 start the ERC-8004 identity path by making every agent
@@ -167,7 +169,9 @@ Official defaults are centralized in
 - mainnets: `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`
 - testnets: `0x8004A818BFB912233c491871b3d84c89A494BD9e`
 
-## ERC-8004 Follow-Up
+## ERC-8004 Follow-Up (frozen)
+
+> Frozen by ADR-TE-6: the items below are not scheduled and get no work without a new ADR naming a user and a revenue line.
 
 Follow-up work should update the existing fields instead of introducing a
 parallel model:
