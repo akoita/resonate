@@ -6,11 +6,29 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { StorageProvider } from "../storage/storage_provider";
 import { resolveContainedPath } from "../storage/path_containment";
-import { sanitizeStemAudioFeatures } from "./stem-audio-features";
+import { sanitizeStemAudioFeatures, withCamelot } from "./stem-audio-features";
+
+/** Stem types that exist in the catalog; `original` is the full mix (#1959). */
+export const BACKFILL_STEM_TYPES = [
+  "original",
+  "master",
+  "vocals",
+  "drums",
+  "bass",
+  "other",
+  "piano",
+  "guitar",
+] as const;
 
 export type StemFeatureBackfillRequest = {
   /** Stems analyzed per run; 1–100, default 25. Re-run until remaining=0. */
   limit?: number;
+  /**
+   * Restrict the run to these stem types (e.g. `["original"]` to target full
+   * mixes first, #1959). Unknown values are dropped; an empty or absent list
+   * means every type.
+   */
+  types?: string[];
 };
 
 export type StemFeatureBackfillResult = {
@@ -19,7 +37,22 @@ export type StemFeatureBackfillResult = {
   skipped: Array<{ stemId: string; reason: string }>;
   /** Unprocessed stems still lacking features after this run. */
   remaining: number;
+  /** Stems still lacking features per type, across ALL types (ignores `types`). */
+  remainingByType: Record<string, number>;
 };
+
+function sanitizeTypes(types: unknown): string[] | null {
+  if (!Array.isArray(types)) return null;
+  const allowed = new Set<string>(BACKFILL_STEM_TYPES);
+  const kept = Array.from(
+    new Set(
+      types.filter(
+        (type): type is string => typeof type === "string" && allowed.has(type),
+      ),
+    ),
+  );
+  return kept.length > 0 ? kept : null;
+}
 
 /**
  * Backfills `Stem.audioFeatures` (#1184) for stems ingested before feature
@@ -42,11 +75,16 @@ export class StemFeatureBackfillService {
     const workerBaseUrl =
       process.env.DEMUCS_WORKER_URL || "http://localhost:8000";
 
+    const types = sanitizeTypes(request.types);
+
     // AnyNull: the column is nullable JSON, so match DB null and JSON null.
-    const where: Prisma.StemWhereInput = {
+    const pendingWhere: Prisma.StemWhereInput = {
       audioFeatures: { equals: Prisma.AnyNull },
       isEncrypted: false,
     };
+    const where: Prisma.StemWhereInput = types
+      ? { ...pendingWhere, type: { in: types } }
+      : pendingWhere;
     const stems = await prisma.stem.findMany({
       where,
       select: {
@@ -81,7 +119,9 @@ export class StemFeatureBackfillService {
 
         await prisma.stem.update({
           where: { id: stem.id },
-          data: { audioFeatures: sanitized as Prisma.InputJsonValue },
+          data: {
+            audioFeatures: withCamelot(sanitized) as Prisma.InputJsonValue,
+          },
         });
         updated++;
       } catch (error) {
@@ -95,10 +135,25 @@ export class StemFeatureBackfillService {
     }
 
     const remaining = await prisma.stem.count({ where });
+    const grouped = await prisma.stem.groupBy({
+      by: ["type"],
+      where: pendingWhere,
+      _count: { _all: true },
+    });
+    const remainingByType: Record<string, number> = {};
+    for (const row of grouped) {
+      remainingByType[row.type] = row._count._all;
+    }
     this.logger.log(
-      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${remaining}`,
+      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${remaining} types=${types ? types.join(",") : "all"}`,
     );
-    return { scanned: stems.length, updated, skipped, remaining };
+    return {
+      scanned: stems.length,
+      updated,
+      skipped,
+      remaining,
+      remainingByType,
+    };
   }
 
   private async analyze(

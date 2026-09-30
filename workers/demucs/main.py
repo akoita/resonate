@@ -430,6 +430,8 @@ async def run_demucs_separation(
 
     Both maps are keyed by stem type. Feature extraction failure for one
     stem records None for that stem and never fails separation (#1184).
+    `stem_features` also carries an `original` entry measured on the full-mix
+    input file (#1959); `original` is never added to the stem URI map.
     """
     release_id = validate_output_path_segment(release_id, "releaseId")
     track_id = validate_output_path_segment(track_id, "trackId")
@@ -540,6 +542,21 @@ async def run_demucs_separation(
                 logger.warning(f"FFmpeg failed or MP3 missing for {stem}")
         else:
             logger.warning(f"Stem {stem} not found in output")
+
+    # Full-mix features (#1959): tempo/key/energy are most reliable on the
+    # complete mix. Failure degrades to None and never fails separation.
+    try:
+        feature_start = time.monotonic()
+        stem_features["original"] = extract_stem_features(input_path)
+        logger.info(
+            f"[features] original extracted in "
+            f"{time.monotonic() - feature_start:.2f}s"
+        )
+    except Exception as feature_error:
+        logger.warning(
+            f"[features] extraction failed for original: {feature_error}"
+        )
+        stem_features["original"] = None
 
     return results, stem_features
 

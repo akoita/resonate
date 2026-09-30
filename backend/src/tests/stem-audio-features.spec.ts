@@ -1,5 +1,8 @@
 import {
+  CAMELOT_MIN_KEY_CONFIDENCE,
+  camelotCode,
   sanitizeStemAudioFeatures,
+  withCamelot,
   STEM_AUDIO_FEATURES_SCHEMA_VERSION,
 } from "../modules/ingestion/stem-audio-features";
 
@@ -97,5 +100,107 @@ describe("sanitizeStemAudioFeatures (#1184)", () => {
       beatCount: 15.9,
     });
     expect(result?.beatCount).toBe(15);
+  });
+});
+
+describe("camelotCode / withCamelot (#1959)", () => {
+  const majorTable: Array<[string, string]> = [
+    ["C", "8B"],
+    ["G", "9B"],
+    ["D", "10B"],
+    ["A", "11B"],
+    ["E", "12B"],
+    ["B", "1B"],
+    ["F#", "2B"],
+    ["C#", "3B"],
+    ["G#", "4B"],
+    ["D#", "5B"],
+    ["A#", "6B"],
+    ["F", "7B"],
+  ];
+  const minorTable: Array<[string, string]> = [
+    ["A", "8A"],
+    ["E", "9A"],
+    ["B", "10A"],
+    ["F#", "11A"],
+    ["C#", "12A"],
+    ["G#", "1A"],
+    ["D#", "2A"],
+    ["A#", "3A"],
+    ["F", "4A"],
+    ["C", "5A"],
+    ["G", "6A"],
+    ["D", "7A"],
+  ];
+
+  it.each(majorTable)("maps %s major to %s", (tonic, code) => {
+    expect(camelotCode({ tonic, mode: "major", confidence: 0.8 })).toBe(code);
+  });
+
+  it.each(minorTable)("maps %s minor to %s", (tonic, code) => {
+    expect(camelotCode({ tonic, mode: "minor", confidence: 0.8 })).toBe(code);
+  });
+
+  it("covers all 24 keys with distinct codes", () => {
+    const codes = new Set([
+      ...majorTable.map(([tonic]) =>
+        camelotCode({ tonic, mode: "major", confidence: 0.5 }),
+      ),
+      ...minorTable.map(([tonic]) =>
+        camelotCode({ tonic, mode: "minor", confidence: 0.5 }),
+      ),
+    ]);
+    expect(codes.size).toBe(24);
+    expect(codes.has(null)).toBe(false);
+  });
+
+  it("accepts flat spellings as their sharp equivalents", () => {
+    const cases: Array<[string, "major" | "minor", string]> = [
+      ["Db", "major", "3B"],
+      ["Eb", "major", "5B"],
+      ["Gb", "major", "2B"],
+      ["Ab", "major", "4B"],
+      ["Bb", "major", "6B"],
+      ["Eb", "minor", "2A"],
+      ["Bb", "minor", "3A"],
+    ];
+    for (const [tonic, mode, code] of cases) {
+      expect(camelotCode({ tonic, mode, confidence: 0.5 })).toBe(code);
+    }
+  });
+
+  it("returns null for a null key or an unknown tonic", () => {
+    expect(camelotCode(null)).toBeNull();
+    expect(
+      camelotCode({ tonic: "H", mode: "major", confidence: 0.9 }),
+    ).toBeNull();
+  });
+
+  it("returns null when key confidence is missing or below the threshold", () => {
+    expect(
+      camelotCode({ tonic: "C", mode: "major", confidence: null }),
+    ).toBeNull();
+    expect(
+      camelotCode({
+        tonic: "C",
+        mode: "major",
+        confidence: CAMELOT_MIN_KEY_CONFIDENCE - 0.01,
+      }),
+    ).toBeNull();
+    expect(
+      camelotCode({
+        tonic: "C",
+        mode: "major",
+        confidence: CAMELOT_MIN_KEY_CONFIDENCE,
+      }),
+    ).toBe("8B");
+  });
+
+  it("withCamelot adds the code without changing other fields", () => {
+    const sanitized = sanitizeStemAudioFeatures(validFeatures)!;
+    expect(withCamelot(sanitized)).toEqual({ ...sanitized, camelot: "8B" });
+    expect(
+      withCamelot({ ...sanitized, key: null }),
+    ).toEqual({ ...sanitized, key: null, camelot: null });
   });
 });

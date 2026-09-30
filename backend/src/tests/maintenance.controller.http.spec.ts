@@ -168,6 +168,19 @@ describe("MaintenanceController (HTTP)", () => {
     expect(stemFeatureBackfillService.backfill).toHaveBeenCalledWith({ limit: 10 });
   });
 
+  it("POST /admin/stems/backfill-audio-features passes the stem type filter through (#1959)", async () => {
+    await request(app.getHttpServer())
+      .post("/admin/stems/backfill-audio-features")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ limit: 5, types: ["original"] })
+      .expect(201);
+
+    expect(stemFeatureBackfillService.backfill).toHaveBeenCalledWith({
+      limit: 5,
+      types: ["original"],
+    });
+  });
+
   it("POST /admin/community/cohorts/generate requires admin role and runs cohort generation", async () => {
     await request(app.getHttpServer())
       .post("/admin/community/cohorts/generate")

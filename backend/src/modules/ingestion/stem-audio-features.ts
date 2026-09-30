@@ -100,3 +100,86 @@ export function sanitizeStemAudioFeatures(
     onsetDensity: nonNegative(input.onsetDensity),
   };
 }
+
+/**
+ * Minimum key confidence for a Camelot code. The extractor's confidence is a
+ * best-vs-runner-up correlation margin, so low values mean an ambiguous key.
+ */
+export const CAMELOT_MIN_KEY_CONFIDENCE = 0.1;
+
+export type StoredStemAudioFeatures = SanitizedStemAudioFeatures & {
+  camelot: string | null;
+};
+
+// Pitch class -> Camelot number. Majors use the "B" ring, minors the "A" ring.
+const CAMELOT_MAJOR: Record<string, number> = {
+  C: 8,
+  G: 9,
+  D: 10,
+  A: 11,
+  E: 12,
+  B: 1,
+  "F#": 2,
+  "C#": 3,
+  "G#": 4,
+  "D#": 5,
+  "A#": 6,
+  F: 7,
+};
+const CAMELOT_MINOR: Record<string, number> = {
+  A: 8,
+  E: 9,
+  B: 10,
+  "F#": 11,
+  "C#": 12,
+  "G#": 1,
+  "D#": 2,
+  "A#": 3,
+  F: 4,
+  C: 5,
+  G: 6,
+  D: 7,
+};
+const FLAT_TO_SHARP: Record<string, string> = {
+  DB: "C#",
+  EB: "D#",
+  GB: "F#",
+  AB: "G#",
+  BB: "A#",
+};
+
+function normalizeTonic(tonic: string): string {
+  const trimmed = tonic.trim().toUpperCase().replace("♯", "#").replace("♭", "B");
+  return FLAT_TO_SHARP[trimmed] ?? trimmed;
+}
+
+/**
+ * Camelot wheel code for a detected key (e.g. "8B" for C major, "8A" for A
+ * minor), or null when the key is missing, the tonic is unrecognized, or the
+ * key confidence is absent or below CAMELOT_MIN_KEY_CONFIDENCE.
+ */
+export function camelotCode(
+  key: SanitizedStemAudioFeatures["key"],
+): string | null {
+  if (!key) return null;
+  if (
+    key.confidence === null ||
+    key.confidence < CAMELOT_MIN_KEY_CONFIDENCE
+  ) {
+    return null;
+  }
+  const tonic = normalizeTonic(key.tonic);
+  if (key.mode === "major") {
+    const n = CAMELOT_MAJOR[tonic];
+    return n ? `${n}B` : null;
+  }
+  const n = CAMELOT_MINOR[tonic];
+  return n ? `${n}A` : null;
+}
+
+/** Adds the derived Camelot code to sanitized features before persistence. */
+export function withCamelot(
+  features: SanitizedStemAudioFeatures,
+): StoredStemAudioFeatures {
+  return { ...features, camelot: camelotCode(features.key) };
+}

@@ -135,6 +135,7 @@ describe("StemFeatureBackfillService (integration)", () => {
         schemaVersion: "stem-audio-features/v1",
         tempoBpm: 110.2,
         key: expect.objectContaining({ tonic: "D", mode: "major" }),
+        camelot: "10B",
       }),
     );
 
@@ -180,5 +181,65 @@ describe("StemFeatureBackfillService (integration)", () => {
       select: { audioFeatures: true },
     });
     expect(row?.audioFeatures).toBeNull();
+  });
+
+  it("targets full mixes first with types=[original] and reports remaining per type (#1959)", async () => {
+    const originalId = `${TEST_PREFIX}stem_original`;
+    const separatedId = `${TEST_PREFIX}stem_guitar`;
+    await prisma.stem.createMany({
+      data: [
+        {
+          id: originalId,
+          trackId: TRACK_ID,
+          type: "original",
+          uri: "db://bytes",
+          data: Buffer.from("fake-full-mix"),
+        },
+        {
+          id: separatedId,
+          trackId: TRACK_ID,
+          type: "guitar",
+          uri: "db://bytes",
+          data: Buffer.from("fake-audio"),
+        },
+      ],
+    });
+
+    const result = await service.backfill({
+      limit: 100,
+      // Unknown values are dropped by the allowlist.
+      types: ["original", "not-a-type", 42 as unknown as string],
+    });
+
+    const original = await prisma.stem.findUnique({
+      where: { id: originalId },
+      select: { audioFeatures: true },
+    });
+    expect(original?.audioFeatures).toEqual(
+      expect.objectContaining({
+        schemaVersion: "stem-audio-features/v1",
+        tempoBpm: 110.2,
+        camelot: "10B",
+      }),
+    );
+
+    // The separated stem was neither analyzed nor updated.
+    const separated = await prisma.stem.findUnique({
+      where: { id: separatedId },
+      select: { audioFeatures: true },
+    });
+    expect(separated?.audioFeatures).toBeNull();
+    const analyzedFiles = fetchSpy.mock.calls
+      .filter(([url]) => String(url).endsWith("/analyze"))
+      .map(([, init]) => ((init as RequestInit).body as FormData).get("file"))
+      .map((file) => (file as File).name);
+    expect(analyzedFiles).toContain(`${originalId}.audio`);
+    expect(analyzedFiles).not.toContain(`${separatedId}.audio`);
+
+    // `remaining` follows the requested filter; `remainingByType` shows every
+    // type so the operator sees the whole picture.
+    expect(result.remainingByType.guitar).toBeGreaterThanOrEqual(1);
+    expect(result.remainingByType.vocals).toBeGreaterThanOrEqual(1);
+    expect(result.remaining).toBe(result.remainingByType.original ?? 0);
   });
 });
