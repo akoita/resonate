@@ -27,6 +27,20 @@ so the unification cannot switch the generation paths on, then #1957 on the
 shared core, then #1955, which reads the resonance signals. #1958 is docs-only
 and can land at any point.
 
+## Delivery status (2026-09-30)
+
+| Issue | Status | Where |
+| --- | --- | --- |
+| #1954 | `implemented` | Merged in #1982; the listening-only setup wizard (no budget or auto-buy wallet step) lands with the sprint PR |
+| #1958 | `implemented` | Freeze notes in every planning doc; identity mint/attest UI hidden while `ERC8004_ENABLED` is off |
+| #1957 | `implemented` | `discovery-policy.ts` and the shared explanation vocabulary; `listed` boost removed; "How recommendations work" User Guide article |
+| #1956 | `implemented` | Orchestrator, mixer, tool registry and ADK curation agent no longer generate; sparse selections return a `shortfall` and record the unmet intent |
+| #1955 | `implemented` | `GET /agents/discoveries` and the Sonic Radar journal; the "follow" next action waits on an artist-follow feature, which does not exist yet |
+| #1456 | `partial` | Home, the deterministic DJ and the LLM runtime share one ranking core, one taste profile and the policy stage. Remaining: Home's other shelves (new from artists you play, trending, fresh drops in `home-feed.service.ts`) do not pass the policy stage yet; LLM picks get rules 1, 2, 4 and 5 but no exploration share; `AgentWorkerModule` cannot resolve `DiscoveryRankingService`, so the standalone worker skips the LLM policy step (fail-open) |
+
+The staging exit checks (no purchase or generation without a person, Sonic
+Radar lists only listened tracks) are verified after deployment.
+
 ## Exit criteria
 
 - No agent session on staging produces a purchase or a generation job unless a
