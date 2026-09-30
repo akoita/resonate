@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "discovery", "next pick", "ai-generated", "ai disclosure"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying"],
     sections: [
       {
         id: "sessions",
@@ -512,6 +512,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "What the AI DJ promotes",
             text: "The AI DJ can recommend human-made and AI-assisted tracks. Tracks declared fully AI-generated stay available for direct listening but are not selected as promoted AI DJ picks.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "The AI DJ never buys for you",
+            text: "The AI DJ picks and plays music. It never buys anything on your behalf. A purchase only happens when you choose to buy something yourself, for example from the Marketplace.",
           },
           {
             kind: "figure",
@@ -558,7 +564,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
       { label: "Sonic Radar", href: "/sonic-radar", description: "AI-curated discoveries." },
     ],
-    related: ["discover-music", "playing-music", "settings-privacy"],
+    related: ["discover-music", "playing-music", "marketplace-buy", "settings-privacy"],
   },
   {
     slug: "library-playlists",

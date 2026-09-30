@@ -2,7 +2,7 @@
 title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
-issues: [356, 805, 812, 841, 846]
+issues: [356, 805, 812, 841, 846, 1954]
 introduced_by: [808, 810, 811, 821, 823, 824]
 ---
 
@@ -49,7 +49,8 @@ Available now:
 - The listener purchase modal defaults to the stablecoin x402 rail only when it can execute contract-backed marketplace settlement for the selected listing. It shows the backend-authored platform fee as included in the unchanged total, validates the exact decimal amount, asset, and payout destination before enabling payment, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail, displays the listing payment asset, and uses a tested approval-plus-buy transaction plan for ERC-20 stablecoin listings.
 - Marketplace listings carry an enforced `licenseType`. The listener buy modal switches to the selected tier's active listing ID before quoting or buying, disables tiers without an active listing, and persists the enforced tier onto `StemPurchase` records. The browser x402 checkout remains limited to the personal tier until the x402 stem endpoint accepts tier-specific resources.
 - Listing notifications persist the selected payment token and reconcile already-indexed listing rows. Listing reads also backfill native-token fallback rows from stored listing intents, so marketplace cards display the configured stablecoin asset instead of falling back to native ETH when the indexer wins the race.
-- The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
+- AI DJ sessions curate only by default (ADR-TE-1, #1954): no listener preset selects buy mode, and a stored `sessionMode: "buy"` is honored only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED=true` is set. With the flag off, the session runs as `curate`, logs the downgrade, records no purchase and no session spend, `PATCH /agents/config` rejects `buy` with `buy_mode_disabled`, and the config response carries `buyModeEnabled: false` so the web hides the Curate/Buy toggle.
+- When buy mode is enabled, the AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail. The path stays in place for the Crate Digger quote flow.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
 Phase 1 is complete for the in-backend runtime-commerce boundary tracked by

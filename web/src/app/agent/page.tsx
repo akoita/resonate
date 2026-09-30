@@ -137,10 +137,7 @@ export default function AgentPage() {
             try {
                 if (preset) {
                     setIsStartingPreset(true);
-                    await updateConfig({
-                        vibes: preset.searchVibes,
-                        sessionMode: preset.commercePosture,
-                    });
+                    await updateConfig({ vibes: preset.searchVibes });
                 }
                 const result = await startSession(preferences ? { preferences } : undefined);
                 if (result?.sessionId) {
@@ -158,7 +155,6 @@ export default function AgentPage() {
                         mood: preset?.preferences.mood,
                         licenseType: preset?.preferences.licenseType,
                         queueStyle: preset?.queueStyle,
-                        commercePosture: preset?.commercePosture,
                     },
                 });
                 addToast({
@@ -192,7 +188,6 @@ export default function AgentPage() {
                 mood: preset.preferences.mood,
                 licenseType: preset.preferences.licenseType,
                 queueStyle: preset.queueStyle,
-                commercePosture: preset.commercePosture,
             },
         });
     };
@@ -308,20 +303,22 @@ export default function AgentPage() {
                                 </span>
                             </div>
                             <div className="aid-command-actions">
-                                <div className="aid-mode-seg">
-                                    <button
-                                        className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
-                                        onClick={() => updateConfig({ sessionMode: "curate" })}
-                                    >
-                                        Curate Only
-                                    </button>
-                                    <button
-                                        className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
-                                        onClick={() => updateConfig({ sessionMode: "buy" })}
-                                    >
-                                        Buy Stems
-                                    </button>
-                                </div>
+                                {config.buyModeEnabled === true ? (
+                                    <div className="aid-mode-seg">
+                                        <button
+                                            className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
+                                            onClick={() => updateConfig({ sessionMode: "curate" })}
+                                        >
+                                            Curate Only
+                                        </button>
+                                        <button
+                                            className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
+                                            onClick={() => updateConfig({ sessionMode: "buy" })}
+                                        >
+                                            Buy Stems
+                                        </button>
+                                    </div>
+                                ) : null}
                                 <button
                                     className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
                                     onClick={() => handleToggle()}

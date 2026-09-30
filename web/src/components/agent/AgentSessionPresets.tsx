@@ -15,7 +15,6 @@ export type SessionPreset = {
   preferences: AgentNextPreferences;
   searchVibes: string[];
   queueStyle: string;
-  commercePosture: "curate" | "buy";
 };
 
 export const SESSION_PRESETS: SessionPreset[] = [
@@ -30,7 +29,6 @@ export const SESSION_PRESETS: SessionPreset[] = [
     preferences: { mood: "Focus", energy: "medium", genres: ["Ambient", "Lo-fi", "Electronic"], licenseType: "personal" },
     searchVibes: ["Ambient", "Lo-fi", "Electronic"],
     queueStyle: "Stable pacing",
-    commercePosture: "curate",
   },
   {
     intent: "Hype",
@@ -43,7 +41,6 @@ export const SESSION_PRESETS: SessionPreset[] = [
     preferences: { mood: "Hype", energy: "high", genres: ["Bass", "Club", "Trap"], licenseType: "remix" },
     searchVibes: ["Bass", "Club", "Trap"],
     queueStyle: "Fast cuts",
-    commercePosture: "buy",
   },
   {
     intent: "Chill",
@@ -56,7 +53,6 @@ export const SESSION_PRESETS: SessionPreset[] = [
     preferences: { mood: "Chill", energy: "low", genres: ["Soul", "Jazz", "Downtempo"], licenseType: "personal" },
     searchVibes: ["Soul", "Jazz", "Downtempo"],
     queueStyle: "Soft transitions",
-    commercePosture: "curate",
   },
   {
     intent: "Dark",
@@ -69,7 +65,6 @@ export const SESSION_PRESETS: SessionPreset[] = [
     preferences: { mood: "Dark", energy: "high", genres: ["Industrial", "Drill", "Electronic"], licenseType: "remix" },
     searchVibes: ["Industrial", "Drill", "Electronic"],
     queueStyle: "Tension build",
-    commercePosture: "buy",
   },
   {
     intent: "Zen",
@@ -82,7 +77,6 @@ export const SESSION_PRESETS: SessionPreset[] = [
     preferences: { mood: "Zen", energy: "low", genres: ["Drone", "Piano", "Ambient"], licenseType: "personal" },
     searchVibes: ["Drone", "Piano", "Ambient"],
     queueStyle: "Long blends",
-    commercePosture: "curate",
   },
 ];
 
@@ -111,8 +105,7 @@ export default function AgentSessionPresets({
           <div>
             <h2>Tell the DJ what this session is for.</h2>
             <p>
-              Pick an intent to tune mood, tempo, queue style, and licensing
-              posture. Analytics can compare the chosen intent with skips,
+              Pick an intent to tune mood, tempo, and queue style. Analytics can compare the chosen intent with skips,
               saves, replays, and purchases.
             </p>
           </div>
@@ -152,10 +145,6 @@ export default function AgentSessionPresets({
                 <div>
                   <dt>Queue style</dt>
                   <dd>{preset.queueStyle}</dd>
-                </div>
-                <div>
-                  <dt>Licensing posture</dt>
-                  <dd>{preset.commercePosture === "buy" ? "Buy-ready stems" : "Curate first"}</dd>
                 </div>
               </dl>
               <p className="agent-session-hints">{preset.input}</p>
@@ -357,7 +346,7 @@ export default function AgentSessionPresets({
 
         .agent-session-details {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 8px;
           margin: 14px 0 0;
           padding: 12px 0 0;
