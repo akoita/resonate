@@ -34,39 +34,44 @@ related:
 Decisions: [Taste Engine Decisions (ADR-TE-1…6)](taste-engine-decisions.md).
 Design: [RFC: Taste Engine](../rfc/taste-engine.md).
 Sequencing: [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md).
+Tracking: epic [#1952](https://github.com/akoita/resonate/issues/1952), decision issue [#1953](https://github.com/akoita/resonate/issues/1953).
 
 ---
 
 ## 1. Findings: a fine machine with no job
 
 Today's AI DJ mixes three roles with different customers: a session curator,
-an autonomous stem buyer, and a "mixer" that generates transitions. Only the
-first serves a listener, and it already shares its ranking with Home.
+an autonomous stem buyer, and a generative "mixer" and filler path that no
+listener route uses yet. Only the first serves a listener, and it already
+shares its ranking with Home.
 
 | Component | Verified state (2026-09-30) | Verdict |
 | --- | --- | --- |
-| Shared Home + DJ ranking (`DiscoveryRankingService`, #1448) | Shipped; the DJ selector is not yet routed through it (#1456) | Keep — the foundation |
+| Shared Home + DJ ranking (`DiscoveryRankingService`, #1448) | Shipped; the DJ selector is not yet routed through it (#1456); tracks with an active stem listing get a +14 `listed` boost | Keep — the foundation; drop the listing boost from listener ranking (ADR-TE-2) |
 | `AgentSignal` learning loop (accept 1, skip −1, complete 1.5, save 3, replay 2, playlist add 3, purchase 5) | Shipped, full implicit signals (#1449) | Keep; extend with commitment signals |
 | Taste memory controls (hide, downrank, reset, #1009) | Shipped in `/settings` | Basis of the listener-owned profile |
 | Measured audio features (BPM, key, energy, onset density, #1184) | Measured on **separated stems only** (`workers/demucs/main.py`); ranking still uses metadata-inferred features (`agent_audio_feature.service.ts`, `source: metadata_inferred`) | Untapped; full-mix measurement is new work |
 | Embeddings | 16-dim hashed placeholder (#1452 open) | Replace |
-| Negotiator + ERC-4337 purchase + session keys + USDC caps | Shipped; buys stems without a human request | Redirect to a quoted cart |
-| `AgentMixerService`: Lyria-generated transitions and fills | Shipped | Remove — unbilled GPU cost, no real mixing |
-| Orchestrator generates AI tracks when the catalog is sparse (`SPARSE_CATALOG_THRESHOLD = 3`) | Shipped | Remove — contradicts ADR-BM-5.3 |
+| Negotiator + ERC-4337 purchase + session keys + USDC caps | Shipped; `AgentConfig.sessionMode` defaults to `curate`, but two of the five listener presets (Hype, Dark) switch the session to `buy`, so picking a mood starts remix-license stem purchases with no quote | Redirect to a quoted cart |
+| `AgentMixerService.generate`: Lyria-generated transitions and fills | Implemented but called by no route; the orchestrator uses the metadata-only `plan` | Remove the dormant path — unbilled GPU cost, no real mixing |
+| Orchestrator generates AI tracks when the catalog is sparse (`SPARSE_CATALOG_THRESHOLD = 3`) | Reachable through the admin-only `POST /agents/run`, `/agents/orchestrate` and `/agents/runtime` routes and the evaluation harness; listener sessions do not use the orchestrator | Remove before any listener path adopts it — contradicts ADR-BM-5.3 |
 | Sonic Radar ("every track your DJ found, negotiated, and secured") | Shipped; a log of per-track personal licenses bought by the agent | Reframe as a discovery journal |
 | ERC-8004 identity/reputation, on-chain curator agents | Slices shipped | Technical showcase — freeze |
+| Artist action cockpit (#1121) | Shipped with 15 deterministic card types, including a Shows card from explicit city-interest joins | Host for Scene Scout's listening-demand cards |
 
 **Why autonomous buying does not hold up.** A listener does not want to own
 stems; they want to listen and support. A DJ wants to choose what they pay
 for. Nobody has a reason to hand an AI a budget to buy for them, and every
 "surprise" purchase erodes the trust Resonate sells.
 
-**Two inconsistencies to fix regardless.** The orchestrator inserts fully
-AI-generated tracks into sessions that promote artists, while ADR-BM-5.3
-excludes that content from human-artist promotional surfaces. And each Lyria
-transition costs money (about $0.06 per 30 seconds of generated audio, the
-internal estimate) without being billed, which ADR-BM-3 forbids ("never
-unmetered access"). Both are removed (ADR-TE-4).
+**Two latent inconsistencies to remove.** The orchestrator, which serves
+admin and evaluation routes today, pads a sparse selection with fully
+AI-generated tracks, while ADR-BM-5.3 excludes that content from human-artist
+promotional surfaces. And the mixer's unused generative path would bill nobody
+for each Lyria transition (about $0.06 per 30 seconds of generated audio, the
+internal estimate), which ADR-BM-3 forbids ("never unmetered access").
+Neither reaches listeners today, but both would the moment a listener path
+adopted them, so they are removed rather than left dormant (ADR-TE-4).
 
 **Why stems are not the listener headline.** Stems were a strong technical
 learning subject early on. For listeners they add little: listeners want the
@@ -187,7 +192,7 @@ spent" (ADR-TE-5). For DJs, purchases live in the Crate Digger's crate history.
 ### 4.4 For the operator
 
 - Each face strengthens a revenue line already decided; no new line.
-- Unbilled Lyria generations in the DJ disappear.
+- No unbilled generation path is left for a listener surface to adopt.
 - No surprise purchases, so no agent-related disputes or refunds.
 - A simple public story: "your taste pays your artists, and nobody can buy
   their place in your recommendations."
@@ -229,7 +234,8 @@ entitlement seams, free for now, following the Remix Studio Pro mode pattern
 | Stem quality ratings (#322) | Quality filter in crates |
 | Cohorts, popularity (#1451), quality dashboard (#982) | Scene Scout demand data |
 | Playback intents (#1007), MCP server, x402 | External agents |
-| Lyria transitions, AI filler tracks, ERC-8004 reputation publishing | Frozen (ADR-TE-6) |
+| Lyria transitions, AI filler tracks | Removed (ADR-TE-4) |
+| ERC-8004 reputation publishing, on-chain curator agents | Frozen (ADR-TE-6) |
 
 ## 8. Risks and open questions
 

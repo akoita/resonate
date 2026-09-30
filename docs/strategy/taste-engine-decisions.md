@@ -46,8 +46,10 @@ These decisions sit under the accepted business-model decisions
      saved crate, under a per-item and monthly cap, with the existing session
      keys) is allowed because the person wrote the rule and the cap. It is off
      by default and every purchase produces a receipt and a notification.
-  4. Autonomous stem buying by the listener AI DJ is turned off by default
-     behind a flag, then removed once the Crate Digger quote flow ships.
+  4. Autonomous stem buying by the listener AI DJ stops: no listener preset
+     selects `buy` mode (today the Hype and Dark presets do), and `buy` mode
+     sits behind an operator flag that defaults off until it is removed once
+     the Crate Digger quote flow ships.
 - **Why:** listeners want to listen and support, not to own stems; DJs want to
   choose what they pay for. A purchase nobody asked for is a support ticket, a
   refund and a trust loss. The quote-first rule also makes every agent money
@@ -66,7 +68,9 @@ These decisions sit under the accepted business-model decisions
   1. **No paid ranking.** No artist, label or partner can pay, accept a lower
      rate, or trade a benefit to rank higher in recommendations, sessions,
      charts or crates. Paid placements, if they ever exist, are labeled as ads
-     and live outside recommendation surfaces.
+     and live outside recommendation surfaces. Commercial status is not a
+     lever either: having stems for sale never raises a track in listener
+     recommendations; it is a filter DJs choose in the Crate Digger.
   2. **Guaranteed exploration.** Every listener session and every
      recommendation page reserves an exploration share for verified human
      artists the listener has never played.
@@ -126,17 +130,20 @@ These decisions sit under the accepted business-model decisions
      catalog. When the catalog cannot fill an intent, the session says so
      honestly ("12 minutes found of 40") and the gap is recorded as demand for
      Scene Scout.
-  2. Lyria-generated transitions and fills are removed from listening
-     sessions. Transitions are deterministic DSP (tempo-synced crossfade,
-     EQ blend, filter sweep) with no GPU cost.
+  2. Session transitions are never generated. The unused Lyria transition
+     and fill path is removed; transitions are deterministic DSP
+     (tempo-synced crossfade, EQ blend, filter sweep) with no GPU cost.
   3. Any AI generation that remains in a product surface is billed in credits
      under ADR-BM-3.
-- **Why:** the orchestrator inserts generated tracks into sessions that
-  promote artists, which contradicts ADR-BM-5.3, and each Lyria transition
-  costs money that nobody pays, which ADR-BM-3 forbids ("never unmetered
-  access").
+- **Why:** the orchestrator, which serves admin and evaluation routes today,
+  pads a sparse selection with generated tracks, which would contradict
+  ADR-BM-5.3 on any listener surface, and the mixer carries an unused path
+  that would generate Lyria transitions nobody pays for, which ADR-BM-3
+  forbids ("never unmetered access"). Neither reaches listeners today; they
+  are removed so that routing the DJ through shared code (#1456) cannot
+  switch them on.
 - **Consequences:** remove the sparse-catalog generation path and the mixer's
-  Lyria calls; keep generation where it is billed (Remix Studio credits).
+  `generate` path; keep generation where it is billed (Remix Studio credits).
 
 ## ADR-TE-5 — Taste is weighted by commitment and owned by the listener
 
@@ -187,8 +194,19 @@ These decisions sit under the accepted business-model decisions
 
 | Decision | Issue | Status |
 | --- | --- | --- |
-| Umbrella epic | _to be filed_ | open |
-| ADR-TE-1…6 | _to be filed_ | proposed |
+| Umbrella epic | [#1952](https://github.com/akoita/resonate/issues/1952) | open |
+| ADR-TE-1…6 | [#1953](https://github.com/akoita/resonate/issues/1953) | proposed |
+
+Implementation issues per decision:
+
+| Decision | Issues |
+| --- | --- |
+| ADR-TE-1 — Quote before spend | [#1954](https://github.com/akoita/resonate/issues/1954), [#1964](https://github.com/akoita/resonate/issues/1964), [#1967](https://github.com/akoita/resonate/issues/1967), [#1972](https://github.com/akoita/resonate/issues/1972), [#1974](https://github.com/akoita/resonate/issues/1974) |
+| ADR-TE-2 — No ranking for sale | [#1957](https://github.com/akoita/resonate/issues/1957), [#1970](https://github.com/akoita/resonate/issues/1970) |
+| ADR-TE-3 — Stems are a pro asset | [#1959](https://github.com/akoita/resonate/issues/1959), [#1960](https://github.com/akoita/resonate/issues/1960), [#1971](https://github.com/akoita/resonate/issues/1971) |
+| ADR-TE-4 — No generated filler | [#1956](https://github.com/akoita/resonate/issues/1956) |
+| ADR-TE-5 — Commitment-weighted, listener-owned taste | [#1955](https://github.com/akoita/resonate/issues/1955), [#1961](https://github.com/akoita/resonate/issues/1961), [#1973](https://github.com/akoita/resonate/issues/1973), [#1455](https://github.com/akoita/resonate/issues/1455) |
+| ADR-TE-6 — Freeze showcase work | [#1958](https://github.com/akoita/resonate/issues/1958) |
 
 Accepting a decision: the owner comments on the decision issue with the
 decisions accepted (all, or a subset with changes), and the status lines above

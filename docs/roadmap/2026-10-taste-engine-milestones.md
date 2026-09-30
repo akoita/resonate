@@ -7,7 +7,7 @@ exists for these sprints until the owner approves each one, per
 **Direction:** [AI DJ Rethink and Taste Engine](../strategy/ai-dj-taste-engine-2026-09.md) ·
 [ADR-TE-1…6](../strategy/taste-engine-decisions.md) ·
 [RFC: Taste Engine](../rfc/taste-engine.md)
-**Umbrella epic:** _to be filed_
+**Umbrella epic:** [#1952](https://github.com/akoita/resonate/issues/1952) · **Decision issue:** [#1953](https://github.com/akoita/resonate/issues/1953)
 
 Four sprints, Vision Sprints 28 to 31, deliver the pro tools inside ADR-BM-6
 phase 2 (Oct–Dec 2026). The Session DJ stays tracked but without a milestone
@@ -37,12 +37,12 @@ shows what resonated with you, not what the agent bought.
 
 | Priority | Item | Issue | Size |
 | --- | --- | --- | --- |
-| P0 | Turn autonomous stem buying off by default behind a documented flag; keep the purchase path for the Crate Digger (ADR-TE-1) | new | S |
-| P0 | Remove AI filler tracks and Lyria transitions from DJ orchestration (ADR-TE-4; ADR-BM-5.3, ADR-BM-3) | new | S |
-| P0 | Sonic Radar becomes the discovery journal: resonant discoveries per session, a reason, one next action per artist; "total spent" removed (ADR-TE-5) | new | M |
+| P0 | Stop autonomous stem buying: no listener preset selects `buy` mode, `buy` mode behind an operator flag that defaults off; keep the purchase path for the Crate Digger (ADR-TE-1) | [#1954](https://github.com/akoita/resonate/issues/1954) | S |
+| P0 | Sonic Radar becomes the discovery journal: resonant discoveries per session, a reason, one next action per artist; "total spent" removed (ADR-TE-5) | [#1955](https://github.com/akoita/resonate/issues/1955) | M |
+| P1 | Remove the dormant generation paths (sparse-catalog AI tracks in the orchestrator, Lyria transitions in the mixer) before #1456 routes the DJ through shared code (ADR-TE-4; ADR-BM-5.3, ADR-BM-3) | [#1956](https://github.com/akoita/resonate/issues/1956) | S |
 | P1 | Route the DJ through the shared ranking core, one taste profile and one explanation vocabulary | [#1456](https://github.com/akoita/resonate/issues/1456) | M |
-| P1 | Enforce the six recommendation rules in the ranking policy stage, with tests and a User Guide page (ADR-TE-2) | new | S |
-| P2 | Mark ERC-8004 reputation and curator-agent work as frozen, with the reason (ADR-TE-6) | new | S |
+| P1 | Enforce the six recommendation rules in the ranking policy stage, with tests and a User Guide page (ADR-TE-2) | [#1957](https://github.com/akoita/resonate/issues/1957) | S |
+| P2 | Mark ERC-8004 reputation and curator-agent work as frozen, with the reason (ADR-TE-6) | [#1958](https://github.com/akoita/resonate/issues/1958) | S |
 
 **Exit criteria**
 
@@ -55,8 +55,8 @@ shows what resonated with you, not what the agent bought.
 - User Guide pages for the AI DJ and Sonic Radar and the feature pages are
   updated in the same PRs.
 
-**Revenue line:** vision-neutral trust and quality; removes unbilled GPU
-spend. No fee, split or payout change.
+**Revenue line:** vision-neutral trust and quality; removes latent unbilled
+GPU paths. No fee, split or payout change.
 
 ## Vision Sprint 29 — Audio-aware discovery foundations (proposed, Oct 15–28)
 
@@ -71,11 +71,11 @@ track-level measurement is new work ([RFC §3.2](../rfc/taste-engine.md)).
 
 | Priority | Item | Issue | Size |
 | --- | --- | --- | --- |
-| P0 | Measure tempo, key and energy on the full mix at ingestion (the worker already has a single-file `/analyze` endpoint), with confidence; backfill the catalog (ADR-TE-3) | new | M |
-| P0 | Measured track features replace metadata-inferred ones in ranking and the catalog API, with a fallback when confidence is low | new | M |
+| P0 | Measure tempo, key and energy on the full mix at ingestion (the worker already has a single-file `/analyze` endpoint), with confidence; backfill the catalog (ADR-TE-3) | [#1959](https://github.com/akoita/resonate/issues/1959) | M |
+| P0 | Measured track features replace metadata-inferred ones in ranking and the catalog API, with a fallback when confidence is low | [#1960](https://github.com/akoita/resonate/issues/1960) | M |
 | P0 | Real content embeddings with pgvector HNSW, backfill and embed on ingest | [#1452](https://github.com/akoita/resonate/issues/1452) | M |
 | P1 | Measurement: offline recall@k and NDCG, per-surface skip and save rates, a holdout, and the resonant-discoveries metric (ADR-TE-5) | [#1455](https://github.com/akoita/resonate/issues/1455) | M |
-| P2 | Natural-language taste edits ("less drill, more live instruments") on the existing taste memory controls | new | S |
+| P2 | Natural-language taste edits ("less drill, more live instruments") on the existing taste memory controls | [#1961](https://github.com/akoita/resonate/issues/1961) | S |
 
 **Exit criteria**
 
@@ -86,8 +86,8 @@ track-level measurement is new work ([RFC §3.2](../rfc/taste-engine.md)).
 - The quality dashboard reports resonant discoveries and per-surface skip
   rate.
 
-**Deployment half:** the backfill and scheduled embedding jobs need a
-cross-linked `resonate-iac` issue. **Revenue line:** vision-neutral
+**Deployment half:** the backfill and scheduled embedding jobs are tracked in
+`resonate-iac#257`, cross-linked from #1959. **Revenue line:** vision-neutral
 infrastructure for lines 3 and 4. Embedding calls are metered and bounded to
 backfill plus on-ingest.
 
@@ -98,12 +98,12 @@ crate they can buy with one signature.
 
 | Priority | Item | Issue | Size |
 | --- | --- | --- | --- |
-| P0 | Crate request API: plain-language or reference-track request turned into visible filters (BPM, key and Camelot, energy, stems available, license type, max price, verified human artist); honest "3 of 8 found" results | new | M |
-| P0 | Crate page: ordered crate, per-track rights summary, preview of each transition, edit and reorder | new | M |
-| P0 | Quote and one-signature purchase: priced cart, then a batched smart-account operation over the existing marketplace rails, with one receipt per line; no contract change (ADR-TE-1) | new | L |
-| P1 | Export the licensed crate to rekordbox XML and Serato, with BPM, key and cue points | new | M |
-| P1 | `crate.pro` entitlement seam, free for now, same pattern as Remix Studio Pro mode ([#1903](https://github.com/akoita/resonate/issues/1903)) | new | S |
-| P2 | Bounded watching: alert when new releases match a saved crate; optional auto-buy under a cap with the existing session keys (ADR-TE-1.3) | new | M |
+| P0 | Crate request API: plain-language or reference-track request turned into visible filters (BPM, key and Camelot, energy, stems available, license type, max price, verified human artist); honest "3 of 8 found" results | [#1962](https://github.com/akoita/resonate/issues/1962) | M |
+| P0 | Crate page: ordered crate, per-track rights summary, preview of each transition, edit and reorder | [#1963](https://github.com/akoita/resonate/issues/1963) | M |
+| P0 | Quote and one-signature purchase: priced cart, then a batched smart-account operation over the existing marketplace rails, with one receipt per line; no contract change (ADR-TE-1) | [#1964](https://github.com/akoita/resonate/issues/1964) | L |
+| P1 | Export the licensed crate to rekordbox XML and Serato, with BPM, key and cue points | [#1965](https://github.com/akoita/resonate/issues/1965) | M |
+| P1 | `crate.pro` entitlement seam, free for now, same pattern as Remix Studio Pro mode ([#1903](https://github.com/akoita/resonate/issues/1903)) | [#1966](https://github.com/akoita/resonate/issues/1966) | S |
+| P2 | Bounded watching: alert when new releases match a saved crate; optional auto-buy under a cap with the existing session keys (ADR-TE-1.3) | [#1967](https://github.com/akoita/resonate/issues/1967) | M |
 
 **Exit criteria**
 
@@ -123,10 +123,9 @@ concrete next action for it.
 
 | Priority | Item | Issue | Size |
 | --- | --- | --- | --- |
-| P0 | First slice of the artist action cockpit: deterministic action cards with deep links | [#1121](https://github.com/akoita/resonate/issues/1121) | M |
-| P0 | Qualified demand aggregates per release: resonant plays, saves and purchases by city, with minimum-audience thresholds and no listener identities | new | M |
-| P1 | Demand from pros: stems DJs searched for in the Crate Digger and did not find, shown to the artist | new | S |
-| P1 | First listeners: each new verified-artist release gets a slot in the exploration share for listeners whose taste fits, then a reception summary | new | M |
+| P0 | Qualified demand aggregates per release: resonant plays, saves and purchases by city, with minimum-audience thresholds and no listener identities, shown as new card types in the existing artist action cockpit ([#1121](https://github.com/akoita/resonate/issues/1121)) | [#1968](https://github.com/akoita/resonate/issues/1968) | M |
+| P1 | Demand from pros: stems DJs searched for in the Crate Digger and did not find, shown to the artist | [#1969](https://github.com/akoita/resonate/issues/1969) | S |
+| P1 | First listeners: each new verified-artist release gets a slot in the exploration share for listeners whose taste fits, then a reception summary | [#1970](https://github.com/akoita/resonate/issues/1970) | M |
 | P2 | Popularity and engagement marts replace the interim in-process aggregation | [#1450](https://github.com/akoita/resonate/issues/1450) | M |
 
 **Exit criteria**
@@ -147,21 +146,21 @@ only when its gate is met.
 
 | Item | Gate | Issue |
 | --- | --- | --- |
-| Session DJ: intent sessions mixed on measured tempo, key and energy | Listener Pro gate: 500 to 1,000 genuine weekly active listeners (ADR-BM-6) | new |
-| Pay-per-play from the pre-funded budget, with the monthly "where your money went" statement in Sonic Radar | Listener Pro billing (Stripe v1) | new |
-| Taste passport: export, and lend to an external assistant with a scoped grant | Session DJ shipped | new |
+| Session DJ: intent sessions mixed on measured tempo, key and energy | Listener Pro gate: 500 to 1,000 genuine weekly active listeners (ADR-BM-6) | [#1971](https://github.com/akoita/resonate/issues/1971) |
+| Pay-per-play from the pre-funded budget, with the monthly "where your money went" statement in Sonic Radar | Listener Pro billing (Stripe v1) | [#1972](https://github.com/akoita/resonate/issues/1972) |
+| Taste passport: export, and lend to an external assistant with a scoped grant | Session DJ shipped | [#1973](https://github.com/akoita/resonate/issues/1973) |
 | Collaborative filtering activation | Enough real traffic to pass the #978 eval gate | [#1453](https://github.com/akoita/resonate/issues/1453) |
-| MCP tool `crate.build` with quote and receipt | Crate Digger v1 shipped; line 5 | new |
+| MCP tool `crate.build` with quote and receipt | Crate Digger v1 shipped; line 5 | [#1974](https://github.com/akoita/resonate/issues/1974) |
 | Public registry validation for agents | Hardened public origin | [#783](https://github.com/akoita/resonate/issues/783) |
 
 ## Epics
 
 | Epic | Role | Change |
 | --- | --- | --- |
-| New: "Taste engine: refocused AI DJ, Crate Digger, Scene Scout" (`vision:core`) | Umbrella for everything in this plan | Create |
+| [#1952](https://github.com/akoita/resonate/issues/1952) Taste engine: refocused AI DJ, Crate Digger, Scene Scout (`vision:core`) | Umbrella for everything in this plan | Created 2026-09-30 |
 | [#1447](https://github.com/akoita/resonate/issues/1447) Discovery Intelligence | Ranking infrastructure: #1450, #1452, #1453, #1455, #1456 | Keep; linked from the umbrella |
-| [#977](https://github.com/akoita/resonate/issues/977) AI DJ taste intelligence | All six children shipped; its remaining direction moves to the umbrella | Close as completed, with a pointer |
-| [#1121](https://github.com/akoita/resonate/issues/1121) Artist action cockpit | Becomes the Scene Scout P0 | Keep; linked |
+| [#977](https://github.com/akoita/resonate/issues/977) AI DJ taste intelligence | All six children shipped; its remaining direction moves to the umbrella | Closed as completed 2026-09-30, with a pointer |
+| [#1121](https://github.com/akoita/resonate/issues/1121) Artist action cockpit | Shipped with 15 deterministic card types; hosts the Scene Scout cards | Keep; linked |
 
 ## Approval steps
 

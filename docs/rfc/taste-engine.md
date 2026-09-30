@@ -3,7 +3,8 @@
 - **Status:** proposed
 - **Date:** 2026-09-30
 - **Owner:** @akoita
-- **Decisions:** [ADR-TE-1…6](../strategy/taste-engine-decisions.md)
+- **Tracking epic:** [#1952](https://github.com/akoita/resonate/issues/1952)
+- **Decisions:** [ADR-TE-1…6](../strategy/taste-engine-decisions.md) (decision issue [#1953](https://github.com/akoita/resonate/issues/1953))
 - **Strategy:** [AI DJ Rethink and Taste Engine](../strategy/ai-dj-taste-engine-2026-09.md)
 - **Sequencing:** [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md)
 - **Extends:** [RFC: Discovery Intelligence](discovery-intelligence.md) (epic
@@ -41,14 +42,19 @@ Three code facts shape the design:
    extracts tempo, beats, key, RMS energy and onset density for each separated
    stem (`workers/demucs/main.py`, `extract_stem_features`) and ingestion
    stores them on `Stem.audioFeatures` (`stem-result.subscriber.ts`). The
-   `original` stem row is written without features, and the ranker uses
-   metadata-inferred features (`agent_audio_feature.service.ts`,
-   `source: "metadata_inferred"`). Real mixing and audio-aware search need
-   full-mix measurement first.
-2. **The listening session inserts generated content.** The orchestrator
+   `original` stem row is written at ingestion without features; only the
+   admin backfill (`POST /admin/stems/backfill-audio-features`), which selects
+   every unencrypted stem without features, can reach it today. The ranker
+   ignores measured features either way and uses metadata-inferred ones
+   (`agent_audio_feature.service.ts`, `source: "metadata_inferred"`). Real
+   mixing and audio-aware search need full-mix measurement first.
+2. **Generation paths sit next to the session code.** The orchestrator
    generates tracks when fewer than `SPARSE_CATALOG_THRESHOLD = 3` matches
-   exist, and `AgentMixerService` generates transitions and fills with Lyria,
-   unbilled (ADR-TE-4).
+   exist; it serves the admin-only `POST /agents/run`, `/agents/orchestrate`
+   and `/agents/runtime` routes and the evaluation harness, not listener
+   sessions. `AgentMixerService.generate` would create Lyria transitions and
+   fills, unbilled, but no route calls it. Both are removed before any
+   listener path can adopt them (ADR-TE-4).
 3. **The shared ranking core exists.** `DiscoveryRankingService`
    (`backend/src/modules/recommendations/discovery-ranking.service.ts`, #1448)
    already serves Home; the DJ selector is not fully routed through it yet
@@ -119,10 +125,13 @@ Each track carries five groups of features:
    (`firstBeatSec`), key and mode with confidence, Camelot code, RMS energy,
    onset density, duration. Stored on the `original` stem row's
    `audioFeatures` with the existing `stem-audio-features/v1` schema and
-   sanitizer, extracted by the worker's existing single-file `/analyze` path,
-   and backfilled by extending `stem-feature-backfill.service.ts` to
-   `original` rows. `agent_audio_feature.service.ts` then reads measured values
-   first (`source: "measured_full_mix"`) and falls back to inferred ones.
+   sanitizer, extracted at ingestion through the worker's existing
+   single-file `/analyze` path. The existing backfill
+   (`stem-feature-backfill.service.ts`) already selects `original` rows; it
+   gains a type filter so the catalog's full mixes can be backfilled first and
+   progress reported per type. `agent_audio_feature.service.ts` then reads
+   measured values first (`source: "measured_full_mix"`) and falls back to
+   inferred ones.
 3. **Embeddings:** the real content embeddings of #1452, replacing the 16-dim
    hash.
 4. **Rights and availability:** separated stems available and their quality
@@ -166,7 +175,10 @@ every surface calls and tests assert:
    session tracks).
 5. Attach a categorical explanation to every item (§3.5).
 6. Never read payment, placement or partner data. The policy stage has no
-   input through which ranking could be bought (ADR-TE-2.1).
+   input through which ranking could be bought (ADR-TE-2.1). Commercial
+   availability is a filter a DJ chooses, never a boost: the `listed` signal
+   (+14, "Purchasable stem available") in `DiscoveryRankingService` leaves
+   listener ranking and survives only as a Crate Digger filter.
 
 The deterministic fallback (no warehouse, no embeddings, no LLM) must still
 pass the same policy assertions.
@@ -314,10 +326,15 @@ listener identity reaches the artist.
 
 ### 6.2 Next action in the cockpit
 
-The artist action cockpit (#1121) receives one proposed action at a time with
-the evidence: open a Shows campaign where demand concentrates, create a holder
-benefit, adjust the price of a stem DJs ask for, launch a remix challenge.
-With too little data, it says "not enough listening yet" instead of guessing.
+The artist action cockpit (#1121) already ships 15 deterministic card types
+(`ArtistActionCardType` in `backend/src/modules/analytics/analytics.service.ts`)
+with a stable card schema, a minimum-signal floor and impression/click
+analytics. Its Shows card (`review_show_city_demand`) reads explicit
+city-interest joins on an existing campaign. Scene Scout adds card types driven
+by listening demand, for example proposing a Shows campaign in a city where
+none exists yet, publishing a stem DJs keep asking for, or reading a new
+release's reception. Each card shows the evidence and one action. With too
+little data, it says "not enough listening yet" instead of guessing.
 
 ### 6.3 What pros searched for
 
@@ -340,8 +357,12 @@ summary after seven days.
 | Pay-per-play | Listener funds and caps the Listener Pro budget | Monthly budget | Monthly statement |
 | External agent (`crate.build`) | Owner approves the quote | Quote total | Per line |
 
-The listener DJ's autonomous stem buying is disabled by default behind a flag
-first, then removed once the crate quote flow ships.
+The listener DJ's autonomous stem buying stops first: `AgentConfig.sessionMode`
+defaults to `curate`, but the Hype and Dark presets
+(`web/src/components/agent/AgentSessionPresets.tsx`) set `buy`, so choosing a
+mood starts purchases. The presets stop selecting `buy`, `buy` mode is gated
+behind an operator flag that defaults off, and the mode is removed once the
+crate quote flow ships.
 
 ## 8. Removals and freezes
 
@@ -387,8 +408,8 @@ Indicative; each slice finalizes its own migration under `backend/AGENTS.md`.
 Mapped to milestones in the
 [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md):
 
-1. Refocus the AI DJ: turn off autonomous buying, remove generation from
-   sessions, Sonic Radar as journal, policy stage assertions, freeze.
+1. Refocus the AI DJ: stop autonomous buying, remove the dormant generation
+   paths, Sonic Radar as journal, policy stage assertions, freeze.
 2. Audio-aware foundations: full-mix measurement and backfill, measured
    features in ranking, real embeddings (#1452), resonance metrics (#1455).
 3. Crate Digger v1.
