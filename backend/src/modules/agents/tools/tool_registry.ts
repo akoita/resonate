@@ -3,7 +3,6 @@ import { prisma } from "../../../db/prisma";
 import { calculatePrice, PricingInput } from "../../../pricing/pricing";
 import { EmbeddingService } from "../../embeddings/embedding.service";
 import { EmbeddingStore } from "../../embeddings/embedding.store";
-import { GenerationService } from "../../generation/generation.service";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
@@ -23,16 +22,6 @@ export interface Tool {
   run(input: ToolInput): Promise<ToolOutput>;
 }
 
-const COST_PER_GENERATION = 0.06;
-
-/**
- * Agent generations are always attributed to the platform agent artist; tool
- * input cannot choose the artist a release is created under.
- */
-function agentArtistId(): string {
-  return process.env.AGENT_ARTIST_ID ?? "agent";
-}
-
 @Injectable()
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
@@ -40,7 +29,6 @@ export class ToolRegistry {
   constructor(
     private readonly embeddingService: EmbeddingService,
     private readonly embeddingStore: EmbeddingStore,
-    private readonly generationService: GenerationService,
     @Optional()
     private readonly observability?: AgentObservabilityService
   ) {
@@ -71,7 +59,17 @@ export class ToolRegistry {
               : {}),
           },
           include: {
-            release: { select: { title: true, genre: true, artworkUrl: true } },
+            // `artistId` and `moods` feed the shared discovery policy stage
+            // (exploration + diversity) and intent matching in the selector.
+            release: {
+              select: {
+                title: true,
+                genre: true,
+                moods: true,
+                artistId: true,
+                artworkUrl: true,
+              },
+            },
             stems: {
               where: { isCurrent: true },
               select: {
@@ -91,7 +89,9 @@ export class ToolRegistry {
           take,
         });
 
-        // Annotate and sort: listed tracks first
+        // Annotate only. `hasListing` is data for the caller's own filter; it
+        // never orders, boosts or demotes results (ADR-TE-2 rule 6), so the
+        // order stays newest-first exactly as queried.
         const annotated = items.map((t) => {
           const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
           const {
@@ -110,7 +110,6 @@ export class ToolRegistry {
             hasListing,
           };
         });
-        annotated.sort((a, b) => (a.hasListing === b.hasListing ? 0 : a.hasListing ? -1 : 1));
 
         return { items: annotated };
       },
@@ -166,74 +165,6 @@ export class ToolRegistry {
         return {
           ranked: await this.embeddingStore.similarity(queryVector, candidateIds),
         };
-      },
-    });
-
-    // -----------------------------------------------------------------------
-    // Lyria RealTime Generation Tools — new for #335
-    // -----------------------------------------------------------------------
-
-    this.register({
-      name: "generation.create",
-      run: async (input) => {
-        // userId must be supplied by the runtime (session user), never by model output.
-        const userId = String(input.userId ?? "");
-        const prompt = String(input.prompt ?? "");
-        const negativePrompt = input.negativePrompt ? String(input.negativePrompt) : undefined;
-        const artistId = agentArtistId();
-
-        if (!userId || !prompt) {
-          return { error: "userId and prompt are required" };
-        }
-
-        try {
-          const result = await this.generationService.createGeneration(
-            { prompt, negativePrompt, artistId },
-            userId
-          );
-          return {
-            jobId: result.jobId,
-            costUsd: COST_PER_GENERATION,
-            status: "queued",
-          };
-        } catch (err: any) {
-          return { error: err.message ?? "generation_failed" };
-        }
-      },
-    });
-
-    this.register({
-      name: "generation.complementary",
-      run: async (input) => {
-        // userId must be supplied by the runtime (session user), never by model output.
-        const userId = String(input.userId ?? "");
-        const context = String(input.context ?? "");
-        const stemType = String(input.stemType ?? "bass");
-        const existingStems = (input.existingStems as string[]) ?? [];
-        const artistId = agentArtistId();
-
-        // Build a contextual prompt for complementary stem generation
-        const prompt = `Generate a ${stemType} stem that complements existing ${existingStems.join(", ")} stems. Context: ${context}`;
-        const negativePrompt = "vocals, singing, speech";
-
-        if (!userId) {
-          return { error: "userId is required" };
-        }
-
-        try {
-          const result = await this.generationService.createGeneration(
-            { prompt, negativePrompt, artistId },
-            userId
-          );
-          return {
-            jobId: result.jobId,
-            costUsd: COST_PER_GENERATION,
-            stemType,
-            status: "queued",
-          };
-        } catch (err: any) {
-          return { error: err.message ?? "generation_failed" };
-        }
       },
     });
   }

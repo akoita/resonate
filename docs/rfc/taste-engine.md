@@ -370,8 +370,11 @@ crate quote flow ships.
   (`agent_orchestrator.service.ts`, `SPARSE_CATALOG_THRESHOLD`) and the
   mixer's Lyria transitions and fills (`agent_mixer.service.ts`), ADR-TE-4.
 - Freeze ERC-8004 identity and reputation publishing, on-chain curator agents,
-  and unrequested agent-to-agent negotiation, ADR-TE-6. Flags stay; code stays
-  unless it blocks a change.
+  and unrequested agent-to-agent negotiation, ADR-TE-6. They proved the
+  technology but serve no current customer. Flags (`ERC8004_ENABLED`,
+  `ERC8004_REPUTATION_SCHEDULER_ENABLED`, both default off) stay; code stays
+  unless it blocks a change. #322 stem quality ratings stay as data for the
+  Crate Digger quality filter; only their on-chain publishing is frozen.
 
 ## 9. Data model sketch
 

@@ -6,6 +6,8 @@
 
 Research pulled from four parallel tracks: **codebase inventory**, **docs/RFCs**, **issue backlog (318 issues / 45 PRs mined)**, and **Q1/Q2-2026 ecosystem survey** (primary sources). Below is the synthesis, then ranked opportunities, then a staged roadmap.
 
+> **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. Every ERC-8004 and curator-agent item below (opportunities 2 and 3, Wave 2 items 4 to 6, priorities P5 and P6) is frozen, not scheduled. Stem quality ratings from #322 stay as data, for the future Crate Digger quality filter; only their on-chain publishing is frozen. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
+
 ## 0. 2026-04-25 status update
 
 Issue [#627](https://github.com/akoita/resonate/issues/627) is closed as the
@@ -60,7 +62,7 @@ Started beyond Wave 1:
 
 Still open beyond Wave 1:
 
-- Curator agents.
+- Curator agents (frozen, ADR-TE-6).
 - Unified runtime extraction.
 - Learning loop provider-scale expansion and memory integration.
 - Memory layer.
@@ -76,7 +78,7 @@ Resonate is not a green field — it is roughly **55% agent-complete** with a cl
 
 - **Agent runtime** — Google ADK (`@google/adk`) + Vertex/Gemini fallback, deterministic orchestrator as last line of defense ([backend/src/modules/agents/agent_runtime.service.ts](../../backend/src/modules/agents/agent_runtime.service.ts), [runtime/adk_adapter.ts](../../backend/src/modules/agents/runtime/adk_adapter.ts)).
 - **Three-role orchestration** — Selector / Mixer / Negotiator services, each with its own seam.
-- **Tool registry** — `catalog.search`, `pricing.quote`, `analytics.signal` (mocked), `embeddings.similarity`, `generation.create`, `generation.complementary` ([tools/tool_registry.ts](../../backend/src/modules/agents/tools/tool_registry.ts)).
+- **Tool registry** — `catalog.search`, `pricing.quote`, `analytics.signal` (mocked), `embeddings.similarity`; the `generation.create` and `generation.complementary` tools were removed by ADR-TE-4 ([tools/tool_registry.ts](../../backend/src/modules/agents/tools/tool_registry.ts)).
 - **Agent wallet** — self-custodial ECDSA keypair, AES-256-GCM at rest (or GCP KMS), ZeroDev Kernel v3 smart account + session keys, USDC budget enforcement ([agent_wallet.service.ts](../../backend/src/modules/agents/agent_wallet.service.ts), [agent_purchase.service.ts](../../backend/src/modules/agents/agent_purchase.service.ts)).
 - **Lyria generation** — `@google/genai` live-music, SynthID watermark verification, BullMQ queue, $0.06 per 30s clip.
 - **x402 paywall** — middleware + `/api/stems/:id/x402` + `x-payment-info` in OpenAPI (PR #403, #533).
@@ -96,9 +98,9 @@ Resonate is not a green field — it is roughly **55% agent-complete** with a cl
 
 **What's planned but unshipped** (from docs + backlog):
 
-- **ERC-8004 identity + reputation** — referenced in [RESONATE_SPECS.md](RESONATE_SPECS.md), [agentic_ai_orchestration.md](../account-abstraction/agentic_ai_orchestration.md), backlog #261, #291, #322. Code has a comment "Prep for ERC-8004 identity" at [AgentTasteCard.tsx:263](../../web/src/components/agent/AgentTasteCard.tsx#L263).
+- **ERC-8004 identity + reputation** (frozen, ADR-TE-6) — referenced in [RESONATE_SPECS.md](RESONATE_SPECS.md), [agentic_ai_orchestration.md](../account-abstraction/agentic_ai_orchestration.md), backlog #261, #291, #322. Code has a comment "Prep for ERC-8004 identity" at [AgentTasteCard.tsx:263](../../web/src/components/agent/AgentTasteCard.tsx#L263).
 - **Unified runtime extraction** — [RFC agent-platform-refactor.md](agent-platform-refactor.md) + backlog [#424](https://github.com/akoita/resonate/issues/424). "By extracting the agent into its own runtime with a clean API boundary, we naturally create the interface layer that ERC-8004 requires."
-- **Curator Agents** — [#322](https://github.com/akoita/resonate/issues/322): "The AI DJ agent currently buys stems blindly — every buyer agent would need to independently analyze audio quality, which is redundant and wasteful."
+- **Curator Agents** (frozen, ADR-TE-6) — [#322](https://github.com/akoita/resonate/issues/322): "The AI DJ agent currently buys stems blindly — every buyer agent would need to independently analyze audio quality, which is redundant and wasteful."
 - **Learning loop / real Taste Score** — [#290](https://github.com/akoita/resonate/issues/290): "The agent makes the same quality of decisions on day 100 as day 1."
 - **Real-time remix engine** — [#323](https://github.com/akoita/resonate/issues/323): "`AgentMixerService.plan()` outputs a transition type string … but never touches audio."
 - **LangGraph multi-agent state machine** — [#306](https://github.com/akoita/resonate/issues/306), explicitly parked by RFC until ADK proves insufficient.
@@ -157,8 +159,8 @@ Scored **1–5** where 5 = best. "Fit" = how natural to Resonate's goal, "Trend"
 | # | Opportunity | Fit | Trend | Effort (lo=good) | Issue / status |
 |---|---|---|---|---|---|
 | **1** | **Expose Resonate as an MCP server** (catalog/pricing/stem-download/generate as MCP tools; optional x402 gating via existing middleware) | 5 | 5 | 2 | Foundation shipped; `generate.track` remains |
-| **2** | **Ship ERC-8004 Agent Identity + Reputation** — agent soulbound NFT, periodic taste/reputation attestations tied to `AgentConfig` | 5 | 5 | 3 | [#291](https://github.com/akoita/resonate/issues/291), [#261](https://github.com/akoita/resonate/issues/261) |
-| **3** | **Curator agents publishing on-chain quality scores** via ERC-8004 Validation registry — fixes "buys stems blindly" problem | 5 | 5 | 3 | [#322](https://github.com/akoita/resonate/issues/322) |
+| **2** | **[Frozen, ADR-TE-6]** **Ship ERC-8004 Agent Identity + Reputation** — agent soulbound NFT, periodic taste/reputation attestations tied to `AgentConfig` | 5 | 5 | 3 | [#291](https://github.com/akoita/resonate/issues/291), [#261](https://github.com/akoita/resonate/issues/261) |
+| **3** | **[Frozen, ADR-TE-6]** **Curator agents publishing on-chain quality scores** via ERC-8004 Validation registry — fixes "buys stems blindly" problem | 5 | 5 | 3 | [#322](https://github.com/akoita/resonate/issues/322) |
 | **4** | **Langfuse + rubric LLM-as-judge + golden set (start ~100, grow to 200)** — replace home-grown eval harness with the 2026 production pattern | 4 | 5 | 2 | First tracing + tiny golden set shipped; suite/rubric/CI remain |
 | **5** | **Migrate `EmbeddingStore` → pgvector** (already Prisma/Postgres) — unblocks real taste similarity + learning loop | 5 | 4 | 2 | First pgvector path shipped; provider-scale embeddings/HNSW remain |
 | **6** | **Agent Learning Loop** — signal-weighted taste evolution, real Taste Score on dashboard; feeds into ERC-8004 attestation | 5 | 4 | 3 | [#290](https://github.com/akoita/resonate/issues/290) |
@@ -215,16 +217,18 @@ Goal: three small, shippable PRs that each land a trend flag without a refactor.
 
 ### Wave 2 — Identity, reputation, and agent-as-a-brand (≈ 5–7 weeks)
 
+> **Frozen (ADR-TE-6).** Items 4 (ERC-8004 identity), 5 (ERC-8004 reputation attestations) and 6 (curator agent) are frozen and are not scheduled. Items 7 onward are unaffected.
+
 Goal: ship the two most scarce on-chain primitives (ERC-8004 + curator attestations) and extract the agent runtime as its own publishable unit.
 
-4. **ERC-8004 Agent Identity mint** (closes [#291](https://github.com/akoita/resonate/issues/291) / [#261](https://github.com/akoita/resonate/issues/261)).
+4. **ERC-8004 Agent Identity mint** (frozen; closes [#291](https://github.com/akoita/resonate/issues/291) / [#261](https://github.com/akoita/resonate/issues/261)).
    - Deploy or integrate the public ERC-8004 Identity Registry on Base.
    - On first agent activation, mint a soulbound NFT bound to the user's ERC-4337 smart account; metadata `{ agentId, vibes, monthlyCapUsd, createdAt }`.
    - Wire into [AgentSetupWizard](../../web/src/components/agent/AgentSetupWizard.tsx) after budget step.
    - First slice: local identity metadata, reputation snapshots, and credential export are documented in [agent_identity_reputation.md](../architecture/agent_identity_reputation.md).
    - #261 adds official Identity Registry defaults plus the standalone mint/link script; remaining work is periodic reputation publishing and independent validation/feedback.
 
-5. **ERC-8004 Reputation attestations** — cron job publishes periodic attestations `{ tracksCurated, acceptanceRate, avgBudgetUtilization, genreBreakdown, tasteDepth }` from the learning loop.
+5. **ERC-8004 Reputation attestations** (frozen) — cron job publishes periodic attestations `{ tracksCurated, acceptanceRate, avgBudgetUtilization, genreBreakdown, tasteDepth }` from the learning loop.
    - First slice: [#699](https://github.com/akoita/resonate/issues/699)
      ships the deterministic payload, manual export endpoint, and
      `setMetadata` handoff.
@@ -239,7 +243,7 @@ Goal: ship the two most scarce on-chain primitives (ERC-8004 + curator attestati
      to an ERC-8004 Reputation Registry once the deployed interface is
      finalized.
 
-6. **Curator Agent (Claude Agent SDK subagent)** — issue [#322](https://github.com/akoita/resonate/issues/322) now has the backend quality-rating foundation: `StemQualityRating`, a curator analyzer for RMS energy, spectral density, silence ratio, and musical salience, ERC-8004 task-shaped metadata publication, buyer-side quality ranking, and validation-driven curator reputation deltas. Remaining product work is to replace the deterministic analyzer with a richer subagent/audio model and move task publication to a dedicated ERC-8004 Validation Registry when that deployed interface is selected.
+6. **Curator Agent (Claude Agent SDK subagent)** (frozen; #322 ratings stay as data) — issue [#322](https://github.com/akoita/resonate/issues/322) now has the backend quality-rating foundation: `StemQualityRating`, a curator analyzer for RMS energy, spectral density, silence ratio, and musical salience, ERC-8004 task-shaped metadata publication, buyer-side quality ranking, and validation-driven curator reputation deltas. Remaining product work is to replace the deterministic analyzer with a richer subagent/audio model and move task publication to a dedicated ERC-8004 Validation Registry when that deployed interface is selected.
 
 7. **Agent runtime extraction** ([#424](https://github.com/akoita/resonate/issues/424)) — extract `AgentRuntimeService` + `PaymentRouterService` + `PolicyGuardService` into a standalone NestJS app or Node service. Opens the door to public-agent composability and becomes the "binary" an outside ERC-8004-compatible agent talks to.
 
@@ -275,7 +279,7 @@ read the original RFC as frozen history, the next bets are:
      are reachable from an intentionally published API origin and a concrete
      x402 endpoint emits a valid unpaid 402 challenge.
 
-3. **Start Wave 2 with ERC-8004 identity/reputation**
+3. **Start Wave 2 with ERC-8004 identity/reputation** (frozen by ADR-TE-6; do not start)
    - This is the next differentiated on-chain agent primitive now that MCP and
      pgvector foundation work has landed.
 
@@ -294,8 +298,8 @@ Wave 2 identity/reputation.
 | **P2** | pgvector migration | First slice shipped; provider-scale embeddings/HNSW remain | embedding provider choice | medium |
 | **P3** | Langfuse + golden-set evals | Expanded first suite; judge/gate remain | stable eval scenarios | low |
 | **P4** | Public agent registration | Blocked by deployed x402 enablement | deployed API metadata | low once unblocked |
-| **P5** | ERC-8004 identity + reputation | Identity, manual attestation, and scheduler slices landed via #291/#261/#699/#702 | registry deployment + session-key approval | medium/high |
-| **P6** | Curator agents | Not started | ERC-8004 reputation surface, embeddings | high |
+| **P5** | ERC-8004 identity + reputation (frozen, ADR-TE-6) | Identity, manual attestation, and scheduler slices landed via #291/#261/#699/#702 | registry deployment + session-key approval | medium/high |
+| **P6** | Curator agents (frozen, ADR-TE-6) | Not started | ERC-8004 reputation surface, embeddings | high |
 | **P7** | Runtime extraction | Not started | clearer module seams | high |
 
 ### Suggested PR slices

@@ -484,7 +484,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "ai-dj",
     title: "AI DJ & Sonic Radar",
     summary:
-      "Let an AI DJ build a continuous session around a mood or goal, and use Sonic Radar to surface fresh, AI-curated discoveries.",
+      "Let an AI DJ build a continuous session around a mood or goal, and use Sonic Radar to look back at the tracks that resonated with you.",
     category: "discover",
     audiences: ["listener"],
     status: "partial",
@@ -538,33 +538,110 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Sonic Radar is your discovery dashboard — AI-curated releases and stems chosen from across the catalog so you keep finding music outside your usual rotation.",
+            text: "Sonic Radar is your discovery journal — the tracks that resonated with you. A track resonates when you play it through to at least 90% and then replay it or save it within seven days. Sonic Radar only lists music you have actually listened to, and it never shows prices.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/sonic-radar.png`,
-              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of AI-curated discoveries, and a 'No discoveries yet' empty state with a 'Launch AI DJ' button.",
-              caption: "Sonic Radar before your first session — launch the AI DJ to start filling it.",
+              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, two headline numbers (resonant discoveries this week and new artists this week), and yesterday's resonant tracks grouped under 'Yesterday' with an Add to Playlist button.",
+              caption: "Sonic Radar: this week's resonant discoveries and new artists, grouped by day or session.",
               width: 1440,
               height: 900,
               source: LOCAL,
             },
           },
           {
+            kind: "list",
+            items: [
+              "At the top, two weekly numbers: resonant discoveries this week, and new artists this week. A discovery is a resonant track by an artist you had not listened to before.",
+              "Below, your resonant tracks are grouped by AI DJ session, or by day when you listened on your own. Each track shows a short, general reason it fits you, whether you replayed or saved it, and a New to you label for a first-time artist.",
+              "Each artist gets one suggested next step on their first track: visit their artist page, or see their open show campaign when they have one. Open the page or campaign only if you want to; nothing happens automatically.",
+              "Use Add to Playlist on a track or a whole group to keep the music.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "If nothing has resonated yet, Sonic Radar says so and offers a way to start a session. Tracks you finish and then replay or save will show up here.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Purchases are not listed here",
+            text: "Sonic Radar is about listening, not buying. The AI DJ does not buy music for you. Anything you purchase yourself appears in your wallet and library.",
+          },
+          {
             kind: "callout",
             tone: "tip",
             title: "You control what trains your taste",
-            text: "Whether AI DJ playback trains your taste profile is up to you. Manage it any time under Settings → privacy. See Settings & privacy controls.",
+            text: "Whether AI DJ playback trains your taste profile is up to you. Manage it any time under Settings → privacy. If you turn it off, tracks the AI DJ played stay out of Sonic Radar, and resetting your taste memory starts Sonic Radar fresh. See Settings & privacy controls.",
           },
         ],
       },
     ],
     appLinks: [
       { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
-      { label: "Sonic Radar", href: "/sonic-radar", description: "AI-curated discoveries." },
+      { label: "Sonic Radar", href: "/sonic-radar", description: "Your resonant discoveries." },
     ],
-    related: ["discover-music", "playing-music", "marketplace-buy", "settings-privacy"],
+    related: ["discover-music", "playing-music", "marketplace-buy", "settings-privacy", "how-recommendations-work"],
+  },
+  {
+    slug: "how-recommendations-work",
+    title: "How recommendations work",
+    summary:
+      "The six rules every Resonate recommendation follows — on Home and in the AI DJ — for listeners and for artists.",
+    category: "discover",
+    audiences: ["listener", "artist"],
+    keywords: ["recommendations", "ranking", "algorithm", "why this track", "explanation", "discovery", "exploration", "new artists", "ai-generated", "diversity", "fairness", "paid placement", "payola", "hide", "less of this", "taste", "ai dj", "home feed"],
+    sections: [
+      {
+        id: "the-rules",
+        heading: "The six rules",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Home and the AI DJ pick music with one shared recommendation engine. Whatever it suggests passes through the same six rules before you see it.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "1. What you say comes first", description: "If you hide a genre, a mood or an artist, it stays hidden, whatever else the engine thinks. Things you asked to see less of are ranked lower." },
+              { term: "2. No fully AI-generated tracks unless you ask", description: "Music that is entirely AI-generated is left out of your recommendations unless you explicitly asked for AI music. Tracks with some AI assistance keep their disclosure label." },
+              { term: "3. Room for new artists", description: "About one pick in five (and at least one per page or session) is reserved for a verified human artist you have never played, chosen because they sound close to your taste. These picks say \"Discovery pick\"." },
+              { term: "4. Variety", description: "You get at most two tracks by the same artist per page, or per ten tracks in an AI DJ session." },
+              { term: "5. Every pick says why", description: "Each recommendation carries a short reason, such as a vibe you chose, your learned taste, or a discovery pick. Reasons describe your taste in general and never list another listener's history." },
+              { term: "6. Ranking is never for sale", description: "Nobody can pay to move a track up. Having stems for sale, a promotion or a partnership never changes where a track appears in your recommendations." },
+            ],
+          },
+        ],
+      },
+      {
+        id: "for-artists",
+        heading: "What this means for artists",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Your music reaches listeners because it fits their taste, not because of what you sell. Listing stems in the Marketplace does not raise your tracks in recommendations. If you are a verified human artist, new listeners whose taste is close to yours can meet your music through discovery picks.",
+          },
+        ],
+      },
+      {
+        id: "your-controls",
+        heading: "Your controls",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "You can hide or downrank genres, moods and artists, choose whether AI DJ playback trains your taste, and reset your taste at any time from Settings. See Settings & privacy controls.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Discover", href: "/", description: "Your personalized Home feed." },
+      { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
+      { label: "Settings", href: "/settings", description: "Hide, downrank or reset your taste." },
+    ],
+    related: ["discover-music", "ai-dj", "settings-privacy"],
   },
   {
     slug: "library-playlists",

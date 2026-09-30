@@ -176,6 +176,33 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
   });
 
+  it("records an agent selection shortfall and its unmet intent for demand signals (ADR-TE-4)", async () => {
+    const ingest = new AnalyticsIngestService();
+    eventBus = new EventBus();
+    bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+    bridge.onModuleInit();
+
+    eventBus.publish({
+      eventName: "agent.decision_made",
+      eventVersion: 1,
+      occurredAt: "2026-10-01T12:00:00.000Z",
+      sessionId: "session-sparse-1",
+      trackId: "",
+      reason: "no_tracks",
+      shortfall: 5,
+      unmetIntent: { genres: ["Drill"], mood: "Dark", energy: "high" },
+    });
+
+    await waitForExpect(async () => expect(await ingest.listEvents()).toHaveLength(1));
+    expect((await ingest.listEvents())[0].payload).toEqual(
+      expect.objectContaining({
+        reason: "no_tracks",
+        shortfall: 5,
+        unmetIntent: { genres: ["Drill"], mood: "Dark", energy: "high" },
+      }),
+    );
+  });
+
   it("bridges high-value domain events with compact analytics payloads", async () => {
     const ingest = new AnalyticsIngestService();
     eventBus = new EventBus();

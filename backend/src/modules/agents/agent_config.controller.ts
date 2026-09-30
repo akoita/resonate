@@ -278,8 +278,9 @@ export class AgentConfigController {
             });
 
             // Kick off orchestration — route through LLM when AGENT_RUNTIME is set
-            const generationBudgetUsd = parseFloat(process.env.AGENT_GENERATION_BUDGET ?? "1.00");
-            const tasteProfilePromise = this.learningService.computeTasteProfile(req.user.userId, config.vibes).catch((error) => {
+            // One taste profile for every discovery surface (#1456): the same
+            // persisted profile Home and the DJ selector resolve.
+            const tasteProfilePromise = this.learningService.resolveTasteProfile(req.user.userId, config.vibes).catch((error) => {
                 this.logger.warn(`Failed to compute learned taste profile: ${error}`);
                 return null;
             });
@@ -288,7 +289,6 @@ export class AgentConfigController {
                 userId: req.user.userId,
                 recentTrackIds: [] as string[],
                 budgetRemainingUsd: config.monthlyCapUsd,
-                generationBudgetUsd,
                 preferences: {
                     genres: sessionPreferences.genres,
                     stemTypes: config.stemTypes,
@@ -412,6 +412,11 @@ export class AgentConfigController {
                                         queueStyle: sessionPreferences.queueStyle,
                                         startSource: sessionPreferences.source,
                                         runtime: "llm",
+                                        // Same shape as the deterministic path: the
+                                        // policy step's reasonCode + vocabulary copy.
+                                        recommendation: pick.reasonCode || pick.explanation
+                                            ? { score: pick.score, explanation: pick.explanation, reasonCode: pick.reasonCode }
+                                            : undefined,
                                         reason: result.reason ?? "llm",
                                         reasoning: result.reasoning,
                                         outcome: { type: "first_pick_accept", firstPick: true },

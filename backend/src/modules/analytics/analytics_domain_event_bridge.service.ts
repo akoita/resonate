@@ -877,10 +877,13 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "track",
     subjectIdKeys: ["trackId"],
     sessionIdKeys: ["sessionId"],
-    payloadKeys: ["sessionId", "trackId", "artistId", "releaseId", "licenseType", "priceUsd", "reason"],
+    payloadKeys: ["sessionId", "trackId", "artistId", "releaseId", "licenseType", "priceUsd", "reason", "shortfall", "unmetIntent"],
     sourceRefKeys: ["sessionId", "trackId", "artistId", "releaseId"],
   },
   {
+    // RETIRED (ADR-TE-4): agents never generate audio and nothing emits this
+    // event any more. The mapping stays only so historical events already in
+    // the bus or ledger still normalize. Do not add new emitters.
     eventName: "agent.generation_triggered",
     producer: "agent-runtime",
     subjectType: "generation_job",
@@ -1804,7 +1807,7 @@ function analyticsValue(value: unknown, key?: string): unknown {
       .filter((entry): entry is string | number | boolean => entry !== undefined);
     return values.length ? values : undefined;
   }
-  if (key === "preferences" && typeof value === "object") {
+  if ((key === "preferences" || key === "unmetIntent") && typeof value === "object") {
     return compactAnalyticsObject(value as Record<string, unknown>);
   }
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {

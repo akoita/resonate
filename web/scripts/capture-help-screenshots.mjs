@@ -95,8 +95,12 @@ const AUTH_TARGETS = [
   ["/artist/upload", "upload.png"],
   ["/create", "create.png"],
   ["/settings", "settings.png"],
-  ["/agent", "ai-dj.png"],
-  ["/sonic-radar", "sonic-radar.png"],
+  ["/agent", "ai-dj.png", { prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); } }],
+  ["/sonic-radar", "sonic-radar.png", {
+    // ADR-TE-5: the discovery journal, drawn from a fixed sample journal.
+    mockDiscoveries: true,
+    prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
+  }],
   ["/library", "library.png", {
     mockLibrary: true,
     selectors: [".library-item:not(.library-item-header)"],
@@ -249,6 +253,39 @@ async function capture(page, targets, passName) {
           { id: "guide-song-1", userId: "guide-listener", source: "remote", title: "Golden Hour", artist: "Felicia Angels", albumArtist: "Felicia Angels", album: "First Light", duration: 213, remoteArtworkUrl: "/shows/felicia-angels-cover.webp", createdAt },
           { id: "guide-song-2", userId: "guide-listener", source: "remote", title: "After the Rain", artist: "Felicia Angels", albumArtist: "Felicia Angels", album: "First Light", duration: 189, remoteArtworkUrl: "/shows/felicia-angels-cover.webp", createdAt },
         ],
+      }));
+    }
+    if (ready?.mockDiscoveries) {
+      const item = (trackId, title, artistName, extra) => ({
+        trackId, title, artistId: `guide-artist-${artistName.toLowerCase().replace(/\s+/g, "-")}`, artistName,
+        releaseId: "guide-release", releaseTitle: "First Light", artworkUrl: "/shows/felicia-angels-cover.webp",
+        hasUploadedArtwork: false, artworkRevision: null, resonatedAt: "2026-09-29T19:40:00.000Z",
+        followUp: "saved", discovery: false,
+        reason: { code: "learned_taste", text: "Boosted by learned taste" }, nextAction: null, ...extra,
+      });
+      await page.route("**/agents/discoveries**", (request) => request.fulfill({
+        json: {
+          schemaVersion: "discovery-journal/v1",
+          window: { days: 28, from: "2026-09-02T00:00:00.000Z", to: "2026-09-30T00:00:00.000Z" },
+          headline: { resonantDiscoveriesThisWeek: 2, newArtistsThisWeek: 2 },
+          groups: [
+            { key: "day:2026-09-29", sessionId: null, date: "2026-09-29", items: [
+              item("guide-song-1", "Golden Hour", "Felicia Angels", {
+                discovery: true, followUp: "replayed",
+                reason: { code: "discovery_pick", text: "Discovery pick: new verified artist close to your taste" },
+                nextAction: { kind: "show_campaign", label: "Back the Paris show", href: "/shows/felicia-angels-paris" },
+              }),
+              item("guide-song-2", "After the Rain", "Felicia Angels"),
+            ] },
+            { key: "day:2026-09-27", sessionId: null, date: "2026-09-27", items: [
+              item("guide-song-3", "Night Signals", "Sennarin", {
+                discovery: true, resonatedAt: "2026-09-27T21:10:00.000Z",
+                reason: { code: "discovery_pick", text: "Discovery pick: new verified artist close to your taste" },
+                nextAction: { kind: "artist_page", label: "Visit the artist", href: "/artist/guide-artist-sennarin" },
+              }),
+            ] },
+          ],
+        },
       }));
     }
     if (ready?.mockManagement) {

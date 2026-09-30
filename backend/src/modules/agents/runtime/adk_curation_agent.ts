@@ -15,14 +15,14 @@ import { getAgentTrackLimit } from "../agent_runtime.config";
 // Tool definitions — each delegates to the existing ToolRegistry
 // ---------------------------------------------------------------------------
 
-function buildTools(tools: ToolRegistry, userId: string): FunctionTool[] {
+function buildTools(tools: ToolRegistry): FunctionTool[] {
   const catalogSearch = new FunctionTool({
     name: "catalog_search",
     description:
       "Search the music catalog for tracks matching a query. " +
       "Returns a list of track objects with id, title, genre, artwork, and hasListing (boolean). " +
-      "Tracks with hasListing=true are available for on-chain purchase. " +
-      "Prefer tracks where hasListing is true.",
+      "hasListing=true means a stem of the track is listed for sale; it says nothing about how well " +
+      "the track fits the listener, so never use it to rank or choose tracks.",
     parameters: z.object({
       query: z
         .string()
@@ -100,117 +100,43 @@ function buildTools(tools: ToolRegistry, userId: string): FunctionTool[] {
     },
   });
 
-  // -------------------------------------------------------------------------
-  // Lyria RealTime Generation Tools — new for #335
-  // -------------------------------------------------------------------------
-
-  const generateTrack = new FunctionTool({
-    name: "generate_track",
-    description:
-      "Generate a new 30-second track matching a mood/genre/description using Lyria RealTime. " +
-      "Costs $0.06 per generation. Use this when the catalog is sparse for the desired vibe. " +
-      "Returns a jobId that can be tracked. The generated track will be stored automatically.",
-    parameters: z.object({
-      prompt: z
-        .string()
-        .describe(
-          "Description of the track to generate (e.g. 'ambient deep house with warm pads and subtle percussion')"
-        ),
-      negativePrompt: z
-        .string()
-        .optional()
-        .describe("What to avoid in the generation (e.g. 'harsh distortion, screaming')"),
-      style: z
-        .string()
-        .optional()
-        .describe("Style hint appended to prompt (e.g. 'lo-fi', 'cinematic')"),
-    }),
-    execute: async (args) => {
-      const prompt = args.style ? `${args.prompt} (style: ${args.style})` : args.prompt;
-      const result = await tools.get("generation.create").run({
-        userId,
-        prompt,
-        negativePrompt: args.negativePrompt,
-      });
-      return result;
-    },
-  });
-
-  const generateComplementaryStem = new FunctionTool({
-    name: "generate_complementary_stem",
-    description:
-      "Generate a stem that complements existing stems (e.g., bass line for a track with only vocals+drums). " +
-      "Costs $0.06 per generation. Use this to fill gaps in a mix when a track is missing key elements.",
-    parameters: z.object({
-      context: z
-        .string()
-        .describe(
-          "Description of the musical context (e.g. 'upbeat house track at 124 BPM')"
-        ),
-      stemType: z
-        .string()
-        .describe("Type of stem to generate: 'bass', 'drums', 'synth', 'pad', 'fx', 'melody'"),
-      existingStems: z
-        .array(z.string())
-        .describe("Array of stem types already present (e.g. ['vocals', 'drums'])"),
-    }),
-    execute: async (args) => {
-      const result = await tools.get("generation.complementary").run({
-        userId,
-        context: args.context,
-        stemType: args.stemType,
-        existingStems: args.existingStems,
-      });
-      return result;
-    },
-  });
-
   return [
     catalogSearch,
     pricingQuote,
     analyticsSignal,
     embeddingsSimilarity,
-    generateTrack,
-    generateComplementaryStem,
   ];
 }
 
 // ---------------------------------------------------------------------------
-// System prompt — updated for generation capability
+// System prompt
 // ---------------------------------------------------------------------------
 
 function buildSystemPrompt(): string {
   return [
     "You are a creative music curation DJ agent for the Resonate platform.",
-    "Your job is to find and create the best possible music session for the user.",
+    "Your job is to find the best possible music session for the user from the existing catalog.",
     "",
     "You have access to tools to search the catalog, check pricing, get analytics,",
-    "rank tracks by similarity, AND generate new audio content using Lyria RealTime.",
+    "and rank tracks by similarity.",
     "",
     "Guidelines:",
     "- Use catalog_search to find tracks matching EACH of the user's genre/mood preferences.",
     "- Search for each genre separately to get comprehensive results.",
     "- Use pricing_quote to check if tracks fit within the remaining budget.",
-    "- STRONGLY PREFER tracks where hasListing is true — these can be purchased on-chain.",
-    "- Only recommend tracks without listings if no listed alternatives exist.",
+    "- Choose tracks only by how well they fit the listener's taste, mood and energy.",
+    "- hasListing is purchase availability data, not a quality signal: never prefer or avoid a track because of it.",
     "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
     "- If a genre search returns no tracks, treat that as no match for that genre.",
     "- Avoid recommending tracks the user has recently listened to.",
     "- Stay within the user's budget.",
     "",
-    "Generation Guidelines (NEW):",
-    "- If catalog search results are sparse (fewer than 3 good matches), use generate_track to create complementary content.",
-    "- Use generate_complementary_stem to fill gaps (e.g., missing bass line for a track).",
-    "- Each generation costs $0.06 — track this against the generation budget.",
-    "- STOP generating when the generation budget is exhausted.",
-    "- PREFER catalog tracks over generated ones — generation is a last resort to fill gaps.",
-    "- Generated content is tagged with GENERATED: prefix in the response.",
+    "- Never generate audio; if the catalog cannot fill the request, return fewer tracks.",
     "",
-    "After using tools, respond with a concise ranked shortlist of matching and generated tracks.",
+    "After using tools, respond with a concise ranked shortlist of matching catalog tracks.",
     "List each track on its own line using this exact format:",
     "",
     "TRACK: <trackId> | LICENSE: <personal|remix|commercial> | PRICE: <price in USD>",
-    "GENERATED: <jobId> | COST: <cost in USD> | PROMPT: <brief description>",
     "...",
     "",
     "Then on a new line:",
@@ -219,7 +145,7 @@ function buildSystemPrompt(): string {
 }
 
 // ---------------------------------------------------------------------------
-// User message builder — updated with generation budget
+// User message builder
 // ---------------------------------------------------------------------------
 
 export function buildUserMessage(input: AgentRuntimeInput): string {
@@ -228,9 +154,6 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
     `Budget remaining: $${input.budgetRemainingUsd.toFixed(2)}`,
     `Selection target: up to ${getAgentTrackLimit()} tracks`,
   ];
-  if (input.generationBudgetUsd !== undefined) {
-    parts.push(`Generation budget: $${input.generationBudgetUsd.toFixed(2)} (~${Math.floor(input.generationBudgetUsd / 0.06)} clips available)`);
-  }
   if (input.preferences.mood) {
     parts.push(`Mood: ${input.preferences.mood}`);
   }
@@ -248,7 +171,7 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
       `Recently played (avoid these): ${input.recentTrackIds.join(", ")}`
     );
   }
-  parts.push("", "Please find and recommend the best tracks for me. If the catalog is sparse for my taste, generate complementary content.");
+  parts.push("", "Please find and recommend the best tracks for me. If the catalog is sparse for my taste, return fewer tracks.");
   return parts.join("\n");
 }
 
@@ -256,13 +179,13 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
 // Factory — creates the LlmAgent for use by the adapter
 // ---------------------------------------------------------------------------
 
-export function createCurationAgent(toolRegistry: ToolRegistry, userId: string): LlmAgent {
+export function createCurationAgent(toolRegistry: ToolRegistry): LlmAgent {
   const modelName = process.env.VERTEX_AI_MODEL ?? "gemini-2.5-flash";
   return new LlmAgent({
     name: "resonate_curation_agent",
     model: modelName,
-    description: "Creative AI DJ agent that curates and generates music tracks based on user preferences, budget, and catalog availability.",
+    description: "AI DJ agent that curates catalog tracks based on user preferences, budget, and catalog availability.",
     instruction: buildSystemPrompt(),
-    tools: buildTools(toolRegistry, userId),
+    tools: buildTools(toolRegistry),
   });
 }

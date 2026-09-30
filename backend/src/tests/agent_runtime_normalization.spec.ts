@@ -15,8 +15,7 @@ describe("normalizeAgentRuntimeResult", () => {
           },
         },
       ],
-      generationsUsed: 1,
-      generationSpendUsd: 0.06,
+      shortfall: 4,
     });
 
     expect(result.status).toBe("approved");
@@ -28,8 +27,7 @@ describe("normalizeAgentRuntimeResult", () => {
         reason: "within_budget",
       }),
     );
-    expect(result.generationsUsed).toBe(1);
-    expect(result.generationSpendUsd).toBe(0.06);
+    expect(result.shortfall).toBe(4);
   });
 
   it("normalizes adapter picks into the same commerce envelope", () => {

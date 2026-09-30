@@ -872,12 +872,16 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   reason: string;
   reasoning?: string;
   latencyMs?: number;
-  /** Number of AI generations triggered during this session */
-  generationsUsed?: number;
-  /** Total USD spent on AI generation */
-  generationSpendUsd?: number;
+  /** Tracks requested minus tracks returned; set only when > 0. Never filled by generation (ADR-TE-4). */
+  shortfall?: number;
+  /** What the listener asked for when the catalog could not fill the request. */
+  unmetIntent?: { genres?: string[]; mood?: string; energy?: string };
 }
 
+/**
+ * @deprecated Retired by ADR-TE-4: agents never generate audio, so nothing
+ * emits this event. The type remains so historical events still parse.
+ */
 export interface AgentGenerationTriggeredEvent extends BaseEvent {
   eventName: "agent.generation_triggered";
   sessionId: string;

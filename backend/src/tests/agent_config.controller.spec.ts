@@ -28,7 +28,7 @@ jest.mock("../db/prisma", () => ({
 
 import { AgentConfigController } from "../modules/agents/agent_config.controller";
 
-function makeController(overrides: { runResult?: unknown; paymentRouter?: unknown; negotiator?: unknown; identity?: unknown } = {}) {
+function makeController(overrides: { runResult?: unknown; paymentRouter?: unknown; negotiator?: unknown; identity?: unknown; learningService?: unknown } = {}) {
   return new AgentConfigController(
     {} as any,
     {
@@ -44,11 +44,11 @@ function makeController(overrides: { runResult?: unknown; paymentRouter?: unknow
     (overrides.paymentRouter ?? {}) as any,
     (overrides.negotiator ?? {}) as any,
     (overrides.identity ?? {}) as any,
-    {
-      computeTasteProfile: jest.fn().mockResolvedValue(null),
+    (overrides.learningService ?? {
+      resolveTasteProfile: jest.fn().mockResolvedValue(null),
       mergeLearnedGenres: jest.fn(),
       recordSignal: jest.fn(),
-    } as any,
+    }) as any,
     {} as any,
     { publish: jest.fn() } as any,
   );
@@ -180,6 +180,45 @@ describe("AgentConfigController", () => {
       await jest.advanceTimersByTimeAsync(500);
       await jest.advanceTimersByTimeAsync(0);
     }
+
+    it("records the policy step's reasonCode on the LLM pick's accept signal (#1456)", async () => {
+      const learningService = {
+        resolveTasteProfile: jest.fn().mockResolvedValue(null),
+        mergeLearnedGenres: jest.fn(),
+        recordSignal: jest.fn(),
+      };
+      const ctrl = makeController({
+        learningService,
+        runResult: {
+          ...llmResult,
+          picks: [
+            {
+              trackId: "track_1",
+              licenseType: "remix",
+              priceUsd: 1,
+              score: 48,
+              explanation: ["Selected vibe match"],
+              reasonCode: "taste_match",
+            },
+          ],
+        },
+      });
+
+      await runSession(ctrl);
+
+      expect(learningService.recordSignal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            runtime: "llm",
+            recommendation: {
+              score: 48,
+              explanation: ["Selected vibe match"],
+              reasonCode: "taste_match",
+            },
+          }),
+        }),
+      );
+    });
 
     it("does not purchase or record spend for stored buy mode when the flag is off (orchestrator path)", async () => {
       buyConfig();

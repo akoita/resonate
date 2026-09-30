@@ -109,6 +109,8 @@ describe("agent recommendation adapters", () => {
       limit: 5,
       energy: "medium",
       learnedGenreWeights: { "Hip Hop": 3 },
+      // Session context for the ranking core (WS-9): mood doubles as intent.
+      mood: "Focus",
     });
     expect(result).toEqual(expect.objectContaining({
       strategy: "deterministic",
@@ -172,10 +174,11 @@ describe("agent recommendation adapters", () => {
             hasListing: true,
             release: { genre: "Ambient", title: "Drift" },
             agentRecommendation: {
-              score: 14,
+              // A listing is data, not a ranking input (ADR-TE-2): no signal.
+              score: 0,
               matchedQueries: [],
               explanation: ["Catalog candidate"],
-              signals: [{ label: "listed", weight: 14, reason: "has active stem listing" }],
+              signals: [],
             },
           },
         ],

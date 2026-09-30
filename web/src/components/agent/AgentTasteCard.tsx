@@ -109,6 +109,8 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
     const signalCount = learnedTaste?.signals ?? 0;
     const acceptanceRate = Math.round((learnedTaste?.acceptanceRate ?? reputation?.acceptanceRate ?? 0) * 100);
     const credentialAvailable = Boolean(config.identityCredential);
+    // ADR-TE-6: ERC-8004 identity and reputation are frozen; only surface them when the backend flag is on.
+    const showIdentity = config.erc8004Enabled === true;
 
     const handleCredentialExport = async () => {
         if (!config.identityCredential) return;
@@ -312,7 +314,7 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                         </div>
                         <div className="aid-score-pills">
                             <span className="aid-tier-pill">{tier}</span>
-                            <span className="aid-tier-pill">{config.identityStatus}</span>
+                            {showIdentity && <span className="aid-tier-pill">{config.identityStatus}</span>}
                         </div>
                         <p className="aid-taste-hint">
                             {learnedTaste
@@ -337,44 +339,46 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                         ) : null}
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div className="aid-taste-col-header">
-                            <span className="aid-taste-lbl">Portable Identity</span>
-                            <button
-                                className="aid-ghost-btn"
-                                onClick={handleCredentialExport}
-                                disabled={!credentialAvailable}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                    <polyline points="7 10 12 15 17 10" />
-                                    <line x1="12" x2="12" y1="15" y2="3" />
-                                </svg>
-                                VC
-                            </button>
+                    {showIdentity && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div className="aid-taste-col-header">
+                                <span className="aid-taste-lbl">Portable Identity</span>
+                                <button
+                                    className="aid-ghost-btn"
+                                    onClick={handleCredentialExport}
+                                    disabled={!credentialAvailable}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="7 10 12 15 17 10" />
+                                        <line x1="12" x2="12" y1="15" y2="3" />
+                                    </svg>
+                                    VC
+                                </button>
+                            </div>
+                            <p className="aid-taste-hint">
+                                {config.identityTokenId
+                                    ? `ERC-8004 token ${config.identityTokenId}`
+                                    : "Local identity ready for ERC-8004 minting."}
+                            </p>
+                            <div className="aid-identity-actions">
+                                <button
+                                    className="aid-ghost-btn"
+                                    onClick={handleMintIdentity}
+                                    disabled={!onMintIdentity || mintingIdentity || config.identityStatus === "minted" || config.identityStatus === "attested"}
+                                >
+                                    {mintingIdentity ? "Minting..." : "Mint"}
+                                </button>
+                                <button
+                                    className="aid-ghost-btn"
+                                    onClick={handleAttestReputation}
+                                    disabled={!onAttestReputation || attestingReputation || !config.identityTokenId}
+                                >
+                                    {attestingReputation ? "Attesting..." : "Attest"}
+                                </button>
+                            </div>
                         </div>
-                        <p className="aid-taste-hint">
-                            {config.identityTokenId
-                                ? `ERC-8004 token ${config.identityTokenId}`
-                                : "Local identity ready for ERC-8004 minting."}
-                        </p>
-                        <div className="aid-identity-actions">
-                            <button
-                                className="aid-ghost-btn"
-                                onClick={handleMintIdentity}
-                                disabled={!onMintIdentity || mintingIdentity || config.identityStatus === "minted" || config.identityStatus === "attested"}
-                            >
-                                {mintingIdentity ? "Minting..." : "Mint"}
-                            </button>
-                            <button
-                                className="aid-ghost-btn"
-                                onClick={handleAttestReputation}
-                                disabled={!onAttestReputation || attestingReputation || !config.identityTokenId}
-                            >
-                                {attestingReputation ? "Attesting..." : "Attest"}
-                            </button>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>
