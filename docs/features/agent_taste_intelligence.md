@@ -7,6 +7,14 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989]
 
 # Agent Taste Intelligence
 
+> **Direction change (proposed 2026-09-30):** the AI DJ stops buying stems on
+> its own and becomes one face of a shared taste engine. See
+> [AI DJ Rethink and Taste Engine](../strategy/ai-dj-taste-engine-2026-09.md),
+> [ADR-TE-1…6](../strategy/taste-engine-decisions.md) and the
+> [Taste Engine RFC](../rfc/taste-engine.md). This page describes current
+> behavior; it changes as the slices in the
+> [milestone plan](../roadmap/2026-10-taste-engine-milestones.md) ship.
+
 ## Status
 
 `partial`

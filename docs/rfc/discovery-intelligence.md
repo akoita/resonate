@@ -4,6 +4,7 @@
 - **Date:** 2026-07-10
 - **Owner:** platform
 - **Tracking epic:** [#1447](https://github.com/akoita/resonate/issues/1447) (children #1448–#1456)
+- **Extended by:** [RFC: Taste Engine](taste-engine.md) (proposed 2026-09-30), which fixes the ranking objective (resonance), the six public recommendation rules of ADR-TE-2 enforced in the policy stage, and the products built on this core. It also changes the Line 3 statement below: better picks now feed quoted Crate Digger purchases, not autonomous AI DJ stem purchases (ADR-TE-1).
 - **Extends:** epic [#977](https://github.com/akoita/resonate/issues/977) (Analytics-powered AI DJ taste intelligence — all six children shipped)
 - **Related docs:** `docs/features/agent_taste_intelligence.md`, `docs/features/mood_vibe_discovery.md`, `docs/features/analytics_event_ledger.md`, `docs/architecture/agent_learning_loop.md`, `docs/rfc/business-model.md`
 - **Revenue line & phase (required statement):** serves **Line 4 — Listener Pro** (discovery quality is the Listener Pro differentiator per `docs/strategy/issue-triage-2026-07.md`) and amplifies **Line 3 — marketplace take-rate** (better picks → more AI DJ stem purchases). The signal/warehouse groundwork is vision-neutral infra. Per ADR-BM-6, Listener Pro activates at phase 4; this RFC sequences foundation work now and ML activation to be ready before that gate.
