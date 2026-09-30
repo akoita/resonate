@@ -8,10 +8,13 @@ import {
 } from "./agent_recommendation.adapter";
 import { AgentCandidateTrack } from "./agent_selector.service";
 import { DeterministicRecommendationAdapter } from "./deterministic_recommendation.adapter";
+import { DISCOVERY_EXPLANATIONS } from "../recommendations/discovery-explanations";
 
 const MODEL_TIMEOUT_MS = 15_000;
 const MODEL_CANDIDATE_LIMIT = 12;
 const DEFAULT_MIN_CONFIDENCE = 0.55;
+/** Upper bound for model free text kept in the internal trace. */
+const MODEL_RATIONALE_MAX_LENGTH = 280;
 
 const MODEL_RESPONSE_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
@@ -204,7 +207,12 @@ export class ModelAssistedRecommendationAdapter implements AgentRecommendationAd
         strategy: this.name,
         model: modelName,
         summary: response.summary,
-        decisions: rankedDecisions,
+        decisions: rankedDecisions.map((decision) => ({
+          ...decision,
+          ...(decision.explanation !== undefined
+            ? { explanation: this.boundedRationale(decision.explanation) }
+            : {}),
+        })),
       },
     };
   }
@@ -216,11 +224,13 @@ export class ModelAssistedRecommendationAdapter implements AgentRecommendationAd
     modelName: string,
   ): AgentCandidateTrack {
     const existing = candidate.agentRecommendation;
-    const explanation = decision.explanation
-      ? [decision.explanation]
-      : existing?.explanation?.length
-        ? existing.explanation
-        : [summary];
+    // Listener-visible copy stays categorical (RFC taste-engine §3.5, ADR-TE-2
+    // rule 4): the deterministic shortlist's vocabulary sentence, or the one
+    // for its reason code. The model's free text is an internal trace only.
+    const explanation = existing?.explanation?.length
+      ? existing.explanation
+      : [DISCOVERY_EXPLANATIONS[existing?.reasonCode ?? "catalog"]];
+    const modelRationale = this.boundedRationale(decision.explanation) ?? this.boundedRationale(summary);
     const confidenceWeight = Math.round(Math.min(1, Math.max(0, decision.confidence)) * 20);
 
     return {
@@ -244,10 +254,19 @@ export class ModelAssistedRecommendationAdapter implements AgentRecommendationAd
           rank: decision.rank,
           relevance: decision.relevance,
           confidence: decision.confidence,
-          summary,
+          summary: this.boundedRationale(summary),
+          ...(modelRationale ? { modelRationale } : {}),
         },
       },
     };
+  }
+
+  private boundedRationale(text: string | undefined): string | undefined {
+    const normalized = text?.replace(/\s+/g, " ").trim();
+    if (!normalized) return undefined;
+    return normalized.length > MODEL_RATIONALE_MAX_LENGTH
+      ? `${normalized.slice(0, MODEL_RATIONALE_MAX_LENGTH - 1)}…`
+      : normalized;
   }
 
   private parseResponse(text: string): AgentModelRankingResponse {
