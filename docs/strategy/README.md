@@ -23,6 +23,8 @@ docs, roadmap issues, and implementation milestones into a product direction.
 | [External Agent Application UX](agent_ui_ux_relevance.md) | Defines how outside LLM and agentic applications experience Resonate through MCP, x402, OpenAPI, storefront contracts, quotes, errors, receipts, examples, and registry readiness. |
 | [External Agent Application UX Implementation Plan](external_agent_application_ux_implementation_plan.md) | Breaks issue #1006 into contract audit, capability metadata, tool output, stable error, example-client, and registry-readiness slices. |
 | [Agent-Mediated Playback](agent_mediated_playback.md) | Decides how owner-authorized external agents should request queue/playback actions through scoped playback intents, active-client confirmation, analytics markers, and abuse controls. |
+| [AI DJ Rethink and Taste Engine 2026-09](ai-dj-taste-engine-2026-09.md) | Proposed. Retires the autonomous stem-buying AI DJ and reframes the agent as one taste engine with three faces: Session DJ (listeners), Crate Digger (DJs and producers), Scene Scout (artists). Covers findings, constraints, competition, economics and reuse. |
+| [Taste Engine Decisions](taste-engine-decisions.md) | Proposed ADR-TE-1…6: quote before spend, no ranking for sale and public recommendation rules, stems as a pro asset, no generated filler in sessions, commitment-weighted listener-owned taste, freeze of showcase agent work. |
 
 ## Related Planning Anchors
 
@@ -32,6 +34,8 @@ docs, roadmap issues, and implementation milestones into a product direction.
 - [Business Model](../rfc/business-model.md)
 - [Agent Commerce Runtime](../features/agent-commerce-runtime.md)
 - [Agent Platform Refactor RFC](../rfc/agent-platform-refactor.md)
+- [Taste Engine RFC](../rfc/taste-engine.md)
+- [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md)
 - [External Agent Application Contract](../architecture/external_agent_application_contract.md)
 - [Listener Community Network](../features/listener_community_network.md)
 - [Listener Community Network Execution Plan](../features/listener_community_network_execution_plan.md)

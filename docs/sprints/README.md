@@ -48,7 +48,9 @@ Every sprint plan passes the **Business Model Conformance** check in
 ## Sprint index
 
 Latest: [Vision Sprint 27 — Trustworthy artist profile enrichment](2026-09-23-vision-sprint-27-artist-enrichment.md),
-closed with staging release evidence. The next sprint has not yet been approved.
+closed with staging release evidence. The next sprint has not yet been approved;
+a proposed sequence for Vision Sprints 28 to 31 is in the
+[Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
