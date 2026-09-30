@@ -6,7 +6,11 @@ import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
 import { prisma } from "../../db/prisma";
 import type { StemResultMessage } from "./stem-pubsub.publisher";
-import { sanitizeStemAudioFeatures } from "./stem-audio-features";
+import {
+  sanitizeStemAudioFeatures,
+  withCamelot,
+  type StoredStemAudioFeatures,
+} from "./stem-audio-features";
 import { resolveContainedPath } from "../storage/path_containment";
 import { resolvePubSubRuntimeConfig } from "./pubsub-runtime";
 import { CatalogService } from "../catalog/catalog.service";
@@ -177,6 +181,27 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Sanitize worker-reported features for one stem type and attach the Camelot
+   * code. Malformed or missing features degrade to null with a warning and
+   * never block ingestion (#1184, #1959).
+   */
+  private resolveAudioFeatures(
+    result: StemResultMessage,
+    type: string,
+  ): StoredStemAudioFeatures | null {
+    const rawFeatures = result.stemFeatures?.[type] ?? null;
+    if (!rawFeatures) return null;
+    const sanitized = sanitizeStemAudioFeatures(rawFeatures);
+    if (!sanitized) {
+      this.logger.warn(
+        `Dropping malformed audio features for stem type ${type} (track ${result.trackId})`,
+      );
+      return null;
+    }
+    return withCamelot(sanitized);
+  }
+
+  /**
    * Process completed stem separation:
    * 1. Download each stem from GCS
    * 2. Encrypt
@@ -201,6 +226,8 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
         type: "original",
         mimeType: result.originalStemMeta.mimeType || "audio/mpeg",
         durationSeconds: result.originalStemMeta.durationSeconds,
+        // Full-mix tempo/key/energy measured by the worker (#1959).
+        audioFeatures: this.resolveAudioFeatures(result, "original"),
         isEncrypted: false,
         storageProvider: result.originalStemMeta.storageProvider || "gcs",
       });
@@ -215,18 +242,10 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     // Process each AI-generated stem
     for (const [type, stemUri] of Object.entries(result.stems!)) {
       try {
-        // Worker-measured musical features (#1184): sanitize at the
+        // Worker-measured musical features (#1184): sanitized at the
         // boundary; malformed or missing features degrade to null and
         // never block stem persistence.
-        const rawFeatures = result.stemFeatures?.[type] ?? null;
-        const audioFeatures = rawFeatures
-          ? sanitizeStemAudioFeatures(rawFeatures)
-          : null;
-        if (rawFeatures && !audioFeatures) {
-          this.logger.warn(
-            `Dropping malformed audio features for stem type ${type} (track ${result.trackId})`,
-          );
-        }
+        const audioFeatures = this.resolveAudioFeatures(result, type);
         // Download stem data
         let data: Buffer | null = null;
         if (stemUri.startsWith("http://") || stemUri.startsWith("https://")) {

@@ -120,7 +120,94 @@ class DemucsCpuFallbackTest(unittest.TestCase):
             self.assertEqual(results, {"vocals": "rel_test/trk_test/vocals.mp3"})
             # The fake stem is not decodable audio: feature extraction must
             # degrade to None for that stem without failing separation (#1184).
-            self.assertEqual(stem_features, {"vocals": None})
+            # The full mix (#1959) is measured too and degrades the same way.
+            self.assertEqual(stem_features, {"vocals": None, "original": None})
+
+
+    def _run_separation_with_patched_features(self, fake_extract):
+        """Runs a one-stem separation with `extract_stem_features` replaced."""
+        with tempfile.TemporaryDirectory() as temp_dir_name:
+            temp_dir = Path(temp_dir_name)
+            input_path = temp_dir / "track_test.wav"
+            input_path.write_bytes(b"fake wav")
+            output_dir = temp_dir / "outputs"
+
+            async def fake_run_demucs_attempt(
+                input_path: Path,
+                temp_dir: str,
+                device: str,
+                release_id: str,
+                track_id: str,
+                callback_url=None,
+                audio_revision=None,
+            ):
+                attempt_output_dir = Path(temp_dir) / f"demucs-{device}"
+                demucs_output = attempt_output_dir / main.DEMUCS_MODEL / input_path.stem
+                demucs_output.mkdir(parents=True)
+                (demucs_output / "vocals.wav").write_bytes(b"fake separated stem")
+                return 0, "", attempt_output_dir
+
+            class FakeFfmpegProcess:
+                returncode = 0
+
+                async def wait(self):
+                    return None
+
+            async def fake_create_subprocess_exec(*args, **kwargs):
+                Path(args[-1]).write_bytes(b"fake mp3")
+                return FakeFfmpegProcess()
+
+            with (
+                patch.object(main, "STORAGE_MODE", "local"),
+                patch.object(main, "OUTPUT_BASE_DIR", output_dir),
+                patch.object(main, "demucs_devices_to_try", return_value=["cpu"]),
+                patch.object(main, "run_demucs_attempt", fake_run_demucs_attempt),
+                patch.object(main.asyncio, "create_subprocess_exec", fake_create_subprocess_exec),
+                patch.object(main, "extract_stem_features", fake_extract),
+            ):
+                results, stem_features = asyncio.run(
+                    main.run_demucs_separation(
+                        input_path=input_path,
+                        temp_dir=str(temp_dir),
+                        release_id="rel_test",
+                        track_id="trk_test",
+                    )
+                )
+            return input_path.name, results, stem_features
+
+    def test_stem_features_include_original_measured_on_the_input_file(self):
+        measured = []
+
+        def fake_extract(path):
+            measured.append(Path(path))
+            return {"schemaVersion": "stem-audio-features/v1", "source": Path(path).name}
+
+        input_name, results, stem_features = (
+            self._run_separation_with_patched_features(fake_extract)
+        )
+
+        self.assertIn(input_name, [path.name for path in measured])
+        self.assertEqual(
+            stem_features["original"],
+            {"schemaVersion": "stem-audio-features/v1", "source": input_name},
+        )
+        self.assertEqual(stem_features["vocals"]["source"], "vocals.wav")
+        # `original` is a feature key only: it must never join the stem URI map.
+        self.assertEqual(results, {"vocals": "rel_test/trk_test/vocals.mp3"})
+
+    def test_original_feature_failure_degrades_to_none_without_failing_separation(self):
+        def fake_extract(path):
+            if Path(path).name.startswith("track_test"):
+                raise RuntimeError("cannot decode full mix")
+            return {"schemaVersion": "stem-audio-features/v1"}
+
+        _, results, stem_features = self._run_separation_with_patched_features(
+            fake_extract
+        )
+
+        self.assertIsNone(stem_features["original"])
+        self.assertEqual(stem_features["vocals"], {"schemaVersion": "stem-audio-features/v1"})
+        self.assertEqual(results, {"vocals": "rel_test/trk_test/vocals.mp3"})
 
 
 class AudioRevisionTest(unittest.TestCase):
