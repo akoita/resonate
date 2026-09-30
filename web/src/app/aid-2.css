@@ -630,6 +630,7 @@
   gap: 1rem;
   margin-bottom: 1rem;
 }
+.aid-bottom-row--single { grid-template-columns: 1fr; }
 @media (max-width: 900px)  { .aid-bottom-row { grid-template-columns: 1fr; } }
 
 /* ── Discovery banner ────────────────────────────────────────────── */

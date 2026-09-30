@@ -259,7 +259,7 @@ export default function AgentPage() {
                     <div className="aid-empty">
                         <div className="aid-empty-icon">🤖</div>
                         <h2>Set Up Your AI DJ</h2>
-                        <p>Deploy a personal AI agent to scan the catalog, match your mood, and negotiate micro-payments.</p>
+                        <p>Name your DJ and it will build listening sessions around your mood, explaining why each pick fits.</p>
                         <button className="aid-primary-btn" onClick={() => setShowWizard(true)}>
                             Get Started
                         </button>
@@ -341,20 +341,22 @@ export default function AgentPage() {
                             />
                         </div>
 
-                        {/* Bottom row: Finance | Taste */}
-                        <div className="aid-bottom-row">
-                            <AgentBudgetCard
-                                config={config}
-                                spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
-                                onEdit={handleEditBudget}
-                                walletStatus={wallet.walletStatus}
-                                transactions={wallet.transactions}
-                                isEnabling={wallet.isEnabling}
-                                isDisabling={wallet.isDisabling}
-                                onEnable={wallet.enable}
-                                onDisable={wallet.disable}
-                                onRefreshTransactions={wallet.refetchTransactions}
-                            />
+                        {/* Bottom row: Finance | Taste. Finance only when the operator re-enables buy mode (#1954). */}
+                        <div className={`aid-bottom-row ${config.buyModeEnabled === true ? "" : "aid-bottom-row--single"}`}>
+                            {config.buyModeEnabled === true && (
+                                <AgentBudgetCard
+                                    config={config}
+                                    spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
+                                    onEdit={handleEditBudget}
+                                    walletStatus={wallet.walletStatus}
+                                    transactions={wallet.transactions}
+                                    isEnabling={wallet.isEnabling}
+                                    isDisabling={wallet.isDisabling}
+                                    onEnable={wallet.enable}
+                                    onDisable={wallet.disable}
+                                    onRefreshTransactions={wallet.refetchTransactions}
+                                />
+                            )}
                             <AgentTasteCard
                                 config={config}
                                 onUpdateVibes={async (vibes) => {

@@ -21,7 +21,7 @@ function humanStatus(status?: string) {
 
 function humanReason(status?: string, reason?: string) {
     if (status === "no_tracks") return "No matching tracks found for the selected taste profile.";
-    if (status === "all_rejected") return "Matching tracks were found, but none passed budget or policy checks.";
+    if (status === "all_rejected") return "Matching tracks were found, but none passed the DJ's policy checks.";
     if (reason === "no_matching_taste_candidates") return "No catalog candidates matched the selected vibes.";
     return reason ? humanStatus(reason) : "No runtime pick returned.";
 }
@@ -30,6 +30,9 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
     const disabled = !config.isActive || !activeSessionId || isLoading;
     const hasTrack = pick?.status === "ok" && pick.track;
     const emptyStatus = pick && pick.status !== "ok";
+    const sessionLive = config.isActive && Boolean(activeSessionId);
+    // Price and license only matter when the operator re-enables buy mode (#1954).
+    const showPrice = config.buyModeEnabled === true && config.sessionMode === "buy";
 
     return (
         <div className="aid-card aid-card--next-pick">
@@ -40,8 +43,8 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                     </svg>
                     <span className="aid-card-title">Next AI Pick</span>
                 </div>
-                <span className={`aid-session-pill ${config.isActive ? "active" : ""}`}>
-                    {activeSessionId ? "Session Live" : "No Session"}
+                <span className={`aid-session-pill ${sessionLive ? "active" : ""}`}>
+                    {sessionLive ? "Session Live" : "No Session"}
                 </span>
             </div>
 
@@ -58,8 +61,12 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                             <p className="aid-np-kicker">{humanStatus(pick!.runtimeStatus)}</p>
                             <h4 className="aid-np-title">{pick!.track!.title}</h4>
                             <div className="aid-np-meta">
-                                <span className="aid-np-tag">{pick!.licenseType ?? "personal"}</span>
-                                <span className="aid-np-price">{fmt(pick!.priceUsd)}</span>
+                                {showPrice && (
+                                    <>
+                                        <span className="aid-np-tag">{pick!.licenseType ?? "personal"}</span>
+                                        <span className="aid-np-price">{fmt(pick!.priceUsd)}</span>
+                                    </>
+                                )}
                                 {typeof pick!.score === "number" && (
                                     <span className="aid-np-tag">score {pick!.score}</span>
                                 )}

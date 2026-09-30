@@ -62,4 +62,45 @@ describe("AgentNextPickCard", () => {
     expect(html).toContain("Nearby vibe match");
     expect(html).toContain("high energy · 124 BPM");
   });
+
+  const okPick = {
+    status: "ok",
+    track: { id: "track-1", title: "Boom Bap Signal", artistId: "artist-1" },
+    licenseType: "personal" as const,
+    priceUsd: 0.02,
+  };
+
+  it("hides price and license while the DJ only curates", () => {
+    const html = renderToStaticMarkup(
+      <AgentNextPickCard config={config} activeSessionId="session-1" isLoading={false} pick={okPick} onPick={async () => {}} />,
+    );
+
+    expect(html).not.toContain("$0.02");
+    expect(html).not.toContain(">personal<");
+  });
+
+  it("shows price and license for a buy-mode session when buy mode is enabled", () => {
+    const buyConfig = { ...config, buyModeEnabled: true, sessionMode: "buy" } as AgentConfig;
+    const html = renderToStaticMarkup(
+      <AgentNextPickCard config={buyConfig} activeSessionId="session-1" isLoading={false} pick={okPick} onPick={async () => {}} />,
+    );
+
+    expect(html).toContain("$0.02");
+    expect(html).toContain(">personal<");
+  });
+
+  it("does not claim a live session while the DJ is inactive", () => {
+    const html = renderToStaticMarkup(
+      <AgentNextPickCard
+        config={{ ...config, isActive: false } as AgentConfig}
+        activeSessionId="stale-session"
+        isLoading={false}
+        pick={null}
+        onPick={async () => {}}
+      />,
+    );
+
+    expect(html).not.toContain("Session Live");
+    expect(html).toContain("No Session");
+  });
 });

@@ -236,70 +236,73 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                         )}
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div className="aid-taste-col-header">
-                            <span className="aid-taste-lbl">Stem Types to Buy</span>
-                            {onUpdateStemTypes && !editingStems && (
-                                <button className="aid-ghost-btn" onClick={handleEditStems}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                                        <path d="m15 5 4 4" />
-                                    </svg>
-                                    Edit
-                                </button>
+                    {/* Stem types only filter what a buy-mode session purchases (#1954). */}
+                    {config.buyModeEnabled === true && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div className="aid-taste-col-header">
+                                <span className="aid-taste-lbl">Stem Types to Buy</span>
+                                {onUpdateStemTypes && !editingStems && (
+                                    <button className="aid-ghost-btn" onClick={handleEditStems}>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                            <path d="m15 5 4 4" />
+                                        </svg>
+                                        Edit
+                                    </button>
+                                )}
+                            </div>
+
+                            {editingStems ? (
+                                <>
+                                    <div className="aid-vibes-grid">
+                                        {STEM_TYPES.map((type) => (
+                                            <button
+                                                key={type}
+                                                className={`aid-vibe-chip ${stemDraft.includes(type) ? "aid-vibe-chip--active" : ""}`}
+                                                onClick={() => toggleStemType(type)}
+                                            >
+                                                {type}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="aid-taste-hint" style={{ marginTop: 6 }}>
+                                        {stemDraft.length === 0
+                                            ? "No filter \u2014 agent will buy all available stems."
+                                            : `Agent will only buy: ${stemDraft.join(", ")}`}
+                                    </p>
+                                    <div className="aid-edit-actions">
+                                        <button className="aid-ghost-btn" onClick={() => setEditingStems(false)}>
+                                            Cancel
+                                        </button>
+                                        <button
+                                            className="aid-primary-btn"
+                                            onClick={handleSaveStems}
+                                            disabled={savingStems}
+                                        >
+                                            {savingStems ? "Saving..." : "Save"}
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="aid-vibes-row">
+                                        {activeStemTypes.length === 0 ? (
+                                            <span className="aid-vibe-chip aid-vibe-chip--active">All stems</span>
+                                        ) : (
+                                            activeStemTypes.map((type) => (
+                                                <span key={type} className="aid-vibe-chip aid-vibe-chip--active">{type}</span>
+                                            ))
+                                        )}
+                                    </div>
+                                    <p className="aid-taste-hint">
+                                        {activeStemTypes.length === 0
+                                            ? "Your DJ buys every listed stem for a track."
+                                            : `Your DJ only buys ${activeStemTypes.join(", ")} stems.`}
+                                    </p>
+                                </>
                             )}
                         </div>
-
-                        {editingStems ? (
-                            <>
-                                <div className="aid-vibes-grid">
-                                    {STEM_TYPES.map((type) => (
-                                        <button
-                                            key={type}
-                                            className={`aid-vibe-chip ${stemDraft.includes(type) ? "aid-vibe-chip--active" : ""}`}
-                                            onClick={() => toggleStemType(type)}
-                                        >
-                                            {type}
-                                        </button>
-                                    ))}
-                                </div>
-                                <p className="aid-taste-hint" style={{ marginTop: 6 }}>
-                                    {stemDraft.length === 0
-                                        ? "No filter \u2014 agent will buy all available stems."
-                                        : `Agent will only buy: ${stemDraft.join(", ")}`}
-                                </p>
-                                <div className="aid-edit-actions">
-                                    <button className="aid-ghost-btn" onClick={() => setEditingStems(false)}>
-                                        Cancel
-                                    </button>
-                                    <button
-                                        className="aid-primary-btn"
-                                        onClick={handleSaveStems}
-                                        disabled={savingStems}
-                                    >
-                                        {savingStems ? "Saving..." : "Save"}
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div className="aid-vibes-row">
-                                    {activeStemTypes.length === 0 ? (
-                                        <span className="aid-vibe-chip aid-vibe-chip--active">All stems</span>
-                                    ) : (
-                                        activeStemTypes.map((type) => (
-                                            <span key={type} className="aid-vibe-chip aid-vibe-chip--active">{type}</span>
-                                        ))
-                                    )}
-                                </div>
-                                <p className="aid-taste-hint">
-                                    {activeStemTypes.length === 0
-                                        ? "Your DJ buys every listed stem for a track."
-                                        : `Your DJ only buys ${activeStemTypes.join(", ")} stems.`}
-                                </p>
-                            </>
-                        )}
-                    </div>
+                    )}
                 </div>
 
                 {/* ── Side column: Score + Genres + Identity ── */}

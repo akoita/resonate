@@ -76,11 +76,16 @@ export default function AgentStatusCard({ config, onToggle, onModeChange, sessio
                     <span className="aid-sc-stat-val">{trackCount}</span>
                     <span className="aid-sc-stat-lbl">Tracks</span>
                 </div>
-                <div className="aid-sc-stat-divider" />
-                <div className="aid-sc-stat">
-                    <span className="aid-sc-stat-val">${totalSpend.toFixed(2)}</span>
-                    <span className="aid-sc-stat-lbl">Spent</span>
-                </div>
+                {/* Past buy-mode spend stays visible; curate-only DJs never spend (#1954). */}
+                {(config.buyModeEnabled === true || totalSpend > 0) && (
+                    <>
+                        <div className="aid-sc-stat-divider" />
+                        <div className="aid-sc-stat">
+                            <span className="aid-sc-stat-val">${totalSpend.toFixed(2)}</span>
+                            <span className="aid-sc-stat-lbl">Spent</span>
+                        </div>
+                    </>
+                )}
             </div>
 
             {/* Toggle CTA */}
