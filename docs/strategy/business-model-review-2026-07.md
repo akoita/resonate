@@ -188,7 +188,7 @@ Identity doctrine (extends the existing trust ladder):
 | 1 | **Shows campaign fee** — % of successfully funded escrow campaigns | Kickstarter (5% + processing) | 5–8%, success-only | Fans (built into pledge) | Now — closest-to-PMF real-money feature |
 | 2 | **Artist Pro (creator SaaS)** — stem separation, AI remix credits, analytics cockpit, verification fast-path, campaign tools | DistroKid / Splice / LANDR / BeatStars | ~$15–25/mo + metered generation credits (GPU cost + 30–50% margin) | Artists/producers | Next — artists demonstrably pay for tools |
 | 3 | **Marketplace take-rate** — downloads, stems, remix licenses, punchline/moment drops, secondary royalties | Bandcamp / BeatStars / Tracklib | 10% (15% micro-purchases) — raise the 0.5% contract default | Fans & producers | With #2 — rails already live |
-| 4 | **Listener Pro** — $9.99/mo with ~$5 pre-funded wallet; user-centric per-play micropayments; stem preview; AI DJ | SoundCloud FPR + Patreon logic | 15% of micro-spend + subscription margin | Superfans | After catalog/community density |
+| 4 | **Listener Pro** — $9.99/mo with ~$5 pre-funded wallet; user-centric per-play micropayments; stem preview (moved to the pro tiers by ADR-TE-3, 2026-09-30); AI DJ (refocused as the Session DJ, ADR-TE-1…6) | SoundCloud FPR + Patreon logic | 15% of micro-spend + subscription margin | Superfans | After catalog/community density |
 | 5 | **B2B & agent licensing** — commercial/sync tiers, x402/MCP machine-native checkout | Epidemic Sound | 10% of negotiated licenses | Businesses, AI agents | Last — highest value, longest sales cycle; the x402 rails are ahead of the market |
 
 **Listener Pro unit-economics sanity check:** a $5/mo pre-funded wallet at

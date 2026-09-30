@@ -1,6 +1,6 @@
 ---
 title: "AI DJ Rethink and Taste Engine — September 2026"
-status: proposed
+status: accepted
 owner: "@akoita"
 created: "2026-09-30"
 source_context:
@@ -31,7 +31,7 @@ related:
 > commitment (purchases, Shows pledges, remixes), lets listeners see and own
 > their profile, and never sells ranking.
 
-Decisions: [Taste Engine Decisions (ADR-TE-1…6)](taste-engine-decisions.md).
+Decisions: [Taste Engine Decisions (ADR-TE-1…7)](taste-engine-decisions.md); ADR-TE-1…6 accepted 2026-09-30, ADR-TE-7 proposed.
 Design: [RFC: Taste Engine](../rfc/taste-engine.md).
 Sequencing: [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md).
 Tracking: epic [#1952](https://github.com/akoita/resonate/issues/1952), decision issue [#1953](https://github.com/akoita/resonate/issues/1953).

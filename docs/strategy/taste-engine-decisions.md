@@ -1,6 +1,6 @@
 ---
-title: "Taste Engine Decisions (ADR-TE-1…6)"
-status: proposed
+title: "Taste Engine Decisions (ADR-TE-1…7)"
+status: accepted
 owner: "@akoita"
 created: "2026-09-30"
 related:
@@ -10,9 +10,9 @@ related:
   - docs/strategy/business-model-phase0-decisions.md
 ---
 
-# Taste Engine Decisions (ADR-TE-1…6)
+# Taste Engine Decisions (ADR-TE-1…7)
 
-Six ADR-style decisions that turn the
+Seven ADR-style decisions that turn the
 [AI DJ rethink](ai-dj-taste-engine-2026-09.md) into binding rules for the
 agent, the recommendation stack and the listener-facing discovery surfaces.
 The design that implements them is the [Taste Engine RFC](../rfc/taste-engine.md).
@@ -24,6 +24,15 @@ reflected in the affected feature pages and, where it changes a feature pitch
 [`docs/rfc/business-model.md`](../rfc/business-model.md). None of these
 decisions changes a fee, a split or a price.
 
+ADR-TE-1…6 were accepted as written by the owner on 2026-09-30 and recorded on
+[#1953](https://github.com/akoita/resonate/issues/1953). ADR-TE-7 is proposed in
+[#1976](https://github.com/akoita/resonate/issues/1976).
+
+Context: the autonomous stem-buying AI DJ and the agent-commerce showcase around
+it were built to explore the architecture, not for a customer. These decisions
+keep what that work proved and align the product with the business vision
+(ADR-BM-6).
+
 These decisions sit under the accepted business-model decisions
 ([ADR-BM-1…6](business-model-phase0-decisions.md)) and reopen none of them.
 
@@ -31,7 +40,7 @@ These decisions sit under the accepted business-model decisions
 
 ## ADR-TE-1 — The agent spends only on a quote a human approved
 
-> **Status: proposed — 2026-09-30.**
+> **Status: ACCEPTED — 2026-09-30, confirmed by @akoita** ([#1953](https://github.com/akoita/resonate/issues/1953)).
 
 - **Decision:**
   1. No Resonate agent (the listener DJ, the Crate Digger, an external agent
@@ -62,7 +71,7 @@ These decisions sit under the accepted business-model decisions
 
 ## ADR-TE-2 — No ranking for sale, and public recommendation rules
 
-> **Status: proposed — 2026-09-30.**
+> **Status: ACCEPTED — 2026-09-30, confirmed by @akoita** ([#1953](https://github.com/akoita/resonate/issues/1953)).
 
 - **Decision:** Resonate publishes and enforces six recommendation rules:
   1. **No paid ranking.** No artist, label or partner can pay, accept a lower
@@ -98,7 +107,7 @@ These decisions sit under the accepted business-model decisions
 
 ## ADR-TE-3 — Stems are a professional asset, not the listener DJ's headline
 
-> **Status: proposed — 2026-09-30.**
+> **Status: ACCEPTED — 2026-09-30, confirmed by @akoita** ([#1953](https://github.com/akoita/resonate/issues/1953)).
 
 - **Decision:**
   1. The listener DJ (the Session DJ) mixes **full tracks**, using measured
@@ -123,7 +132,7 @@ These decisions sit under the accepted business-model decisions
 
 ## ADR-TE-4 — No generated filler or unmetered generation in listening sessions
 
-> **Status: proposed — 2026-09-30.**
+> **Status: ACCEPTED — 2026-09-30, confirmed by @akoita** ([#1953](https://github.com/akoita/resonate/issues/1953)).
 
 - **Decision:**
   1. Listening sessions never insert AI-generated tracks to pad a sparse
@@ -147,7 +156,7 @@ These decisions sit under the accepted business-model decisions
 
 ## ADR-TE-5 — Taste is weighted by commitment and owned by the listener
 
-> **Status: proposed — 2026-09-30.**
+> **Status: ACCEPTED — 2026-09-30, confirmed by @akoita** ([#1953](https://github.com/akoita/resonate/issues/1953)).
 
 - **Decision:**
   1. The taste model has five layers, weighted in this order: **commitment**
@@ -175,7 +184,7 @@ These decisions sit under the accepted business-model decisions
 
 ## ADR-TE-6 — Freeze showcase agent work
 
-> **Status: proposed — 2026-09-30.**
+> **Status: ACCEPTED — 2026-09-30, confirmed by @akoita** ([#1953](https://github.com/akoita/resonate/issues/1953)).
 
 - **Decision:** freeze new work on ERC-8004 identity and reputation
   publishing, on-chain curator agents, and agent-to-agent negotiation that no
@@ -188,6 +197,47 @@ These decisions sit under the accepted business-model decisions
 - **Consequences:** related open issues are relabeled or closed with a pointer
   to this decision; the AI DJ feature pages mark those slices as frozen.
 
+## ADR-TE-7 — A stem purchase sells a license, and artists can supply official stems
+
+> **Status: proposed — 2026-09-30.** Extends ADR-TE-3.
+
+- **Decision:**
+  1. What a stem listing sells is a **license** (personal, remix or commercial
+     today; sync, sample and broadcast later), with its terms stated in plain
+     words on the listing, the quote and the receipt. The audio file is how the
+     license is delivered, not the product.
+  2. Artists can upload **official stems** for a track: their own lossless
+     (WAV or FLAC) parts, aligned with the published mix. Official stems are
+     delivered lossless and labeled "Official".
+  3. Stems separated from the mix by the ingestion worker stay available and
+     are labeled "Separated (AI)", with the model named. The artist can price
+     each source separately; Resonate sets no price floor.
+  4. Only an account on the release's rights route can upload official stems,
+     under the same verification as the release (ADR-BM-5).
+  5. The Crate Digger and the marketplace can filter by stem source.
+- **Why:** today every stem is separated by Demucs from the uploaded mix and
+  stored as MP3 320 kbps ([upload flow](../features/artist_upload_flow_mvp.md)).
+  DJ software already separates any track live on the DJ's own machine, so
+  separated audio alone gives a professional little reason to pay. What a pro
+  cannot get elsewhere is the right to publish or monetize a remix, an edit or a
+  video, and the artist's own lossless parts. Selling the license, with official
+  stems as the premium source, matches what the buyers in the Crate Digger and
+  Remix Studio need.
+- **Consequences:** the stem model records its source; ingestion accepts an
+  optional official stem package per track, checked for count, duration and
+  alignment with the mix; listings, quotes and receipts show the source and the
+  license terms; a User Guide page explains each license tier. Revenue line:
+  Line 3, marketplace take-rate 10%, phase 2; no fee, split or price change,
+  and the artist keeps at least 85% (ADR-BM-4).
+- **Revisit later:** better in-house separation and production tools could
+  spare artists from uploading stems, which is why official upload stays
+  optional. Separation quality alone is not a differentiator, since DJ software
+  ships comparable separation; the license and easy remix tools are. Remix
+  tools for listeners grow through Remix Studio
+  ([#1896](https://github.com/akoita/resonate/issues/1896)), not the listening
+  app, and neither is pitched as a differentiator of the listening app until
+  usage shows it.
+
 ---
 
 ## Decision tracking
@@ -195,7 +245,8 @@ These decisions sit under the accepted business-model decisions
 | Decision | Issue | Status |
 | --- | --- | --- |
 | Umbrella epic | [#1952](https://github.com/akoita/resonate/issues/1952) | open |
-| ADR-TE-1…6 | [#1953](https://github.com/akoita/resonate/issues/1953) | proposed |
+| ADR-TE-1…6 | [#1953](https://github.com/akoita/resonate/issues/1953) | accepted 2026-09-30 |
+| ADR-TE-7 | [#1976](https://github.com/akoita/resonate/issues/1976) | proposed |
 
 Implementation issues per decision:
 
@@ -207,6 +258,7 @@ Implementation issues per decision:
 | ADR-TE-4 — No generated filler | [#1956](https://github.com/akoita/resonate/issues/1956) |
 | ADR-TE-5 — Commitment-weighted, listener-owned taste | [#1955](https://github.com/akoita/resonate/issues/1955), [#1961](https://github.com/akoita/resonate/issues/1961), [#1973](https://github.com/akoita/resonate/issues/1973), [#1455](https://github.com/akoita/resonate/issues/1455) |
 | ADR-TE-6 — Freeze showcase work | [#1958](https://github.com/akoita/resonate/issues/1958) |
+| ADR-TE-7 — Sell the license, official stems | [#1976](https://github.com/akoita/resonate/issues/1976) |
 
 Accepting a decision: the owner comments on the decision issue with the
 decisions accepted (all, or a subset with changes), and the status lines above

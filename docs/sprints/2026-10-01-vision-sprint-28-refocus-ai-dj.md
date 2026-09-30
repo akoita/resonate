@@ -41,10 +41,9 @@ and can land at any point.
 ## Capacity and dependencies
 
 Solo, about 10 working days: three S and two M items at P0 and P1, one of them
-the #1456 refactor. ADR-TE-1…6 are still `proposed` in
-[#1953](https://github.com/akoita/resonate/issues/1953); this sprint follows
-them as written. A change to a decision re-scopes the sprint and is recorded
-here.
+the #1456 refactor. ADR-TE-1…6 were accepted as written on 2026-09-30
+([#1953](https://github.com/akoita/resonate/issues/1953)). A later change to a
+decision re-scopes the sprint and is recorded here.
 
 ## Revenue line
 

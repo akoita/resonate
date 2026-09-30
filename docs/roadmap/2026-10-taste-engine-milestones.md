@@ -2,9 +2,9 @@
 
 **Status:** planned. The owner approved Vision Sprints 28 to 31 on 2026-09-30;
 each has a sprint doc under [`docs/sprints/`](../sprints/README.md) and one
-GitHub milestone. ADR-TE-1…6 are still proposed in
-[#1953](https://github.com/akoita/resonate/issues/1953); the sprints follow them
-as written, and a changed decision re-scopes the affected sprint in its doc.
+GitHub milestone. ADR-TE-1…6 were accepted as written on 2026-09-30
+([#1953](https://github.com/akoita/resonate/issues/1953)); a later change to a
+decision re-scopes the affected sprint in its doc.
 **Owner:** [@akoita](https://github.com/akoita) (solo + AI-assisted)
 **Direction:** [AI DJ Rethink and Taste Engine](../strategy/ai-dj-taste-engine-2026-09.md) ·
 [ADR-TE-1…6](../strategy/taste-engine-decisions.md) ·
@@ -190,7 +190,7 @@ The "Later" items keep no milestone until their gate is met.
 
 | Assumption or risk | Consequence |
 | --- | --- |
-| ADR-TE-1…6 are accepted as proposed, with the Crate Digger first | If Scene Scout goes first, Sprint 31 moves up to right after Sprint 28; the audio-aware sprint is then only needed before the Crate Digger |
+| ADR-TE-1…6 are accepted as written (2026-09-30), with the Crate Digger first | If Scene Scout goes first, Sprint 31 moves up to right after Sprint 28; the audio-aware sprint is then only needed before the Crate Digger |
 | Solo capacity; recent sprints held 1 to 8 items | Sprint 30 carries the only large item (the one-signature cart) and may split into two milestones |
 | Fiat billing (Stripe) and the production launch are still gated | Every milestone here is proven on staging and claims no production deployment; pro features ship behind free entitlement seams |
 | The staging catalog is small | Crate results will often be partial, so the exit criteria use fixtures and the honest "n of m found" state |

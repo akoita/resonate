@@ -12,7 +12,7 @@ catalog access.
 
 Stems and escrow-backed fan campaigns are first proof points, not the whole
 company. The same foundation also supports agentic commerce, MCP tools,
-x402-native checkout, machine-readable receipts, autonomous discovery and
+x402-native checkout, machine-readable receipts, quoted discovery and
 purchase flows, programmable royalties, and future music experiences that do not
 fit the shape of a traditional streaming product. AI agents become a new class
 of buyer, able to discover catalog, quote usage, pay in stablecoin, and receive
@@ -60,7 +60,7 @@ Spotify's economics are brutal: ~$0.003/stream, requiring billions of plays to p
 | **BeatStars**   | ❌                   | ✅ Beats/instrumentals | ❌                | ❌                  | Marketplace (per-license)       |
 | **STEMS**       | ❌                   | ✅ Full stems          | ❌                | ✅ (NFTs)           | Per-stem purchase               |
 | **Udio/Suno**   | AI-generated         | ❌                     | ✅ Generative     | ❌                  | Subscription                    |
-| **Resonate**    | ✅ (source material) | ✅ (AI-separated)      | ✅ (AI DJ agents) | ✅ (ERC-1155, 4337) | Pro + licensing + escrow-backed fan campaigns |
+| **Resonate**    | ✅ (source material) | ✅ (AI-separated)      | ✅ (taste engine) | ✅ (ERC-1155, 4337) | Pro + licensing + escrow-backed fan campaigns |
 
 ### Key Gap in the Market
 
@@ -136,9 +136,9 @@ Implications for Resonate:
 │  ─── This is where the real money is ───                   │
 │  Revenue: Transaction fees (10%) + royalty enforcement      │
 ├────────────────────────────────────────────────────────────┤
-│  LAYER 2: AGENT-POWERED SUBSCRIPTION ("Resonate Pro")      │
-│  $9.99-14.99/mo — AI DJ agent, budget wallet, unlimited    │
-│  streaming, stem preview, remix sandbox                    │
+│  LAYER 2: LISTENER SUBSCRIPTION ("Resonate Pro")           │
+│  $9.99-14.99/mo — Session DJ, capped pay-per-play budget,  │
+│  HiFi streaming, Sonic Radar journal, remix sandbox        │
 │  Revenue: Recurring SaaS                                   │
 ├────────────────────────────────────────────────────────────┤
 │  LAYER 1: FREE DISCOVERY TIER                              │
@@ -165,26 +165,36 @@ Implications for Resonate:
 
 **Why free?** Because the catalog is small (indie/emerging artists) and the goal is to bring people into the ecosystem. This is NOT a Spotify competitor — it's a discovery tool for a curated niche. Think SoundCloud 2012, not Spotify 2026.
 
-**Artist incentive to upload here vs. Spotify?** On Resonate, their music is not just streamed — it's a _storefront_ for stem licensing. Every play is a potential licensing lead. Artists earn from stems, not from streams.
+**Artist incentive to upload here vs. Spotify?** On Resonate, their music is not just streamed — it's a _storefront_ for licenses. Every play can reach a DJ, producer or creator who licenses the track, and fans who fund a Show. Artists earn from licenses, Shows and direct support, not from a pooled stream share.
 
 > [!IMPORTANT]
 > Free streaming is a **marketing cost**, not a revenue center. It exists solely to funnel users toward Layer 2, Layer 3, and Layer 4.
 
 ### Layer 2 — Resonate Pro (the Engine)
 
-| Feature                 | Details                                                                  |
-| ----------------------- | ------------------------------------------------------------------------ |
-| **AI DJ Agent**         | Deploys a personal AI agent that curates sessions by mood, genre, energy |
-| **Agent Wallet**        | ERC-4337 smart account with monthly budget cap                           |
-| **Stem Preview**        | Hear individual stems in the player (toggle vocals, drums, bass…)        |
-| **HiFi Streaming**      | Lossless quality (FLAC)                                                  |
-| **Sonic Radar**         | AI-powered music discovery sessions                                      |
-| **Remix Sandbox**       | Basic stem layering/preview tool (not a full DAW)                        |
-| **Priority catalog**    | Early access to new releases                                             |
-| **Unlimited playlists** | With stem annotations                                                    |
-| **Price**               | **$9.99/mo** (individual) / **$14.99/mo** (creator)                      |
+> Reconciled 2026-09-30 with the accepted
+> [Taste Engine decisions](../strategy/taste-engine-decisions.md) (ADR-TE-1…6).
+> The AI DJ no longer buys or generates on its own, and stems are a
+> professional asset, not a listener feature. No fee or price changes.
 
-**Why subscribe?** The AI DJ agent is the killer feature — it is unlike anything on any other platform. The stem preview in the player turns passive listening into active exploration. The subscription funds the agent wallet for micro-transactions.
+| Feature                 | Details                                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| **Session DJ**          | Mixes full tracks into sessions by intent, on measured tempo, key and energy (ADR-TE-3)             |
+| **Pay-per-play budget** | A capped budget the listener pre-funds; each play settles to the artist played (ADR-TE-1, ADR-BM-4) |
+| **HiFi Streaming**      | Lossless quality (FLAC)                                                                             |
+| **Sonic Radar**         | Discovery journal: what resonated, why, and one next action per artist (ADR-TE-5)                   |
+| **Taste passport**      | See, edit, export and reset your taste profile (ADR-TE-5)                                           |
+| **Remix Sandbox**       | Basic stem layering/preview tool (not a full DAW)                                                   |
+| **Priority catalog**    | Early access to new releases                                                                        |
+| **Unlimited playlists** | Create and share without a cap                                                                      |
+| **Price**               | **$9.99/mo** (individual) / **$14.99/mo** (creator)                                                 |
+
+**Why subscribe?** Sessions that follow your taste without an algorithm selling
+the ranking (ADR-TE-2), and a budget that pays the artists you actually play,
+per play, with a monthly statement of where the money went. The Session DJ
+never spends beyond the cap the listener set and never buys rights or stems.
+Stem preview and stem-level tools belong to the pro tiers (Crate Digger, Remix
+Studio), per ADR-TE-3.
 
 ### Playback And Stem Access Policy
 
@@ -333,8 +343,8 @@ The proposed model leverages what's already built:
 | Model Component          | Existing Infrastructure                                       | Status            |
 | ------------------------ | ------------------------------------------------------------- | ----------------- |
 | Free streaming           | Player, Library, Playlists, Releases                          | ✅ Built          |
-| AI DJ Agent              | Selector/Mixer/Negotiator services, Agent wallet, Sonic Radar | ✅ Built          |
-| Stem preview in player   | Stem separation (Demucs), Mixer UI, stem toggles              | ✅ Built          |
+| AI DJ Agent              | Selector/Mixer/Negotiator services, Agent wallet, Sonic Radar | ✅ Built; refocus per ADR-TE-1…6 (Vision Sprint 28) |
+| Stem preview in player   | Stem separation (Demucs), Mixer UI, stem toggles              | ✅ Built; a pro-tier tool per ADR-TE-3 |
 | Agent wallet + budget    | ERC-4337, ZeroDev, session keys, budget caps                  | ✅ Built          |
 | Shows web wedge          | Home hero, `/shows`, `/shows/sennarin-paris`, seeded campaigns | 🟡 Partial        |
 | Stem marketplace         | StemNFT, StemMarketplaceV2, IndexerService                    | ✅ Built          |
@@ -407,7 +417,7 @@ in `docs/compliance/ai_generation_acceptable_use.md`). Decision record:
 | No remix revenue                 | Earn recursive royalties from all downstream remixes |
 | Opaque payouts                   | On-chain, real-time revenue visibility               |
 
-**Key message to artists:** "Your music isn't just streamed — it's a licensing storefront. Every listener is a potential licensing customer."
+**Key message to artists:** "Your music isn't just streamed — it's a licensing storefront. Every play can reach the DJs, producers and creators who license music, and the fans who fund your Shows."
 
 ### For DJs / Producers
 
@@ -419,11 +429,11 @@ in `docs/compliance/ai_generation_acceptable_use.md`). Decision record:
 
 ### For Music Lovers
 
-| Spotify                       | Resonate Free                         | Resonate Pro                      |
-| ----------------------------- | ------------------------------------- | --------------------------------- |
-| 100M songs, passive listening | Curated indie catalog, free streaming | AI DJ that learns your taste      |
-| Algorithmic recommendations   | Manual discovery                      | Sonic Radar sessions              |
-| Can't hear the parts          | Can't hear the parts                  | Toggle stems on/off in the player |
+| Spotify                              | Resonate Free                         | Resonate Pro                        |
+| ------------------------------------ | ------------------------------------- | ----------------------------------- |
+| 100M songs, passive listening        | Curated indie catalog, free streaming | Session DJ that learns your taste   |
+| Algorithmic recommendations          | Manual discovery                      | Sonic Radar journal                 |
+| Pro-rata pool follows global streams | No listener payouts                   | Your plays pay the artists you play |
 
 ### For the Platform (Unit Economics)
 
@@ -472,8 +482,8 @@ graph LR
 
 | Tier      | Name                     | Tagline                               |
 | --------- | ------------------------ | ------------------------------------- |
-| Free      | **Resonate**             | "Hear the music. Hear the parts."     |
-| Pro       | **Resonate Pro**         | "Your AI DJ. Your stems. Your rules." |
+| Free      | **Resonate**             | "Hear the music. Find the artists."   |
+| Pro       | **Resonate Pro**         | "Your taste. Your sessions. Your artists, paid." |
 | Licensing | **Resonate Marketplace** | "License any stem, on-chain."         |
 
 **Overall positioning:**
