@@ -24,6 +24,7 @@ import {
   DeterministicRecommendationAdapter,
 } from "../modules/agents/deterministic_recommendation.adapter";
 import { ModelAssistedRecommendationAdapter } from "../modules/agents/model_assisted_recommendation.adapter";
+import { DISCOVERY_EXPLANATIONS } from "../modules/recommendations/discovery-explanations";
 
 describe("agent recommendation adapters", () => {
   const originalStrategy = process.env.AGENT_RECOMMENDATION_STRATEGY;
@@ -229,9 +230,11 @@ describe("agent recommendation adapters", () => {
     expect(result.reason).toBe("model_ranked_shortlist");
     expect(result.selected).toHaveLength(1);
     expect(result.selected[0].id).toBe("rap-track");
-    expect(result.selected[0].agentRecommendation?.explanation).toEqual([
-      "Rap cadence and listed stems match the Hip Hop session.",
-    ]);
+    // Listener copy stays in the shared vocabulary; the model's text is trace-only.
+    expect(result.selected[0].agentRecommendation?.explanation).toEqual(["Nearby vibe match"]);
+    expect(result.selected[0].agentRecommendation?.trace).toEqual(expect.objectContaining({
+      modelRationale: "Rap cadence and listed stems match the Hip Hop session.",
+    }));
     expect(result.selected[0].agentRecommendation?.signals).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "model_semantic_rank" }),
@@ -357,5 +360,89 @@ describe("agent recommendation adapters", () => {
 
     expect(result.strategy).toBe("deterministic");
     expect(result.trace?.fallbackReason).toBe("model_adapter_failure");
+  });
+
+  it("keeps model free text out of listener-visible explanations and bounds the trace", async () => {
+    process.env.GOOGLE_AI_API_KEY = "test-key";
+    const longText = `Sounds like ${"a very long rationale ".repeat(40)}`;
+    const deterministic = {
+      recommend: jest.fn().mockResolvedValue({
+        strategy: "deterministic",
+        candidates: ["coded-track", "bare-track", "plain-track"],
+        selected: [
+          {
+            id: "coded-track",
+            agentRecommendation: {
+              score: 30,
+              matchedQueries: [],
+              explanation: ["Boosted by learned taste"],
+              reasonCode: "learned_taste",
+              signals: [],
+            },
+          },
+          {
+            id: "bare-track",
+            agentRecommendation: {
+              score: 0,
+              matchedQueries: [],
+              explanation: [],
+              reasonCode: "similar_sound",
+              signals: [],
+            },
+          },
+          { id: "plain-track" },
+        ],
+        rejected: [],
+        reason: "ranked_shortlist",
+      }),
+    };
+    mockGenerateContent.mockResolvedValue({
+      response: {
+        text: () => JSON.stringify({
+          summary: "Model summary text that must never reach the listener.",
+          decisions: [
+            { trackId: "coded-track", action: "select", relevance: "exact", confidence: 0.9, rank: 1, explanation: longText },
+            { trackId: "bare-track", action: "select", relevance: "semantic", confidence: 0.8, rank: 2, explanation: "Your friend Sam loves this." },
+            { trackId: "plain-track", action: "select", relevance: "semantic", confidence: 0.7, rank: 3 },
+          ],
+        }),
+      },
+    });
+
+    const result = await new ModelAssistedRecommendationAdapter(deterministic as any).recommend({
+      sessionId: "session-1",
+      userId: "user-1",
+      recentTrackIds: [],
+      budgetRemainingUsd: 1,
+      preferences: { genres: ["Hip Hop"] },
+      limit: 3,
+    });
+
+    expect(result.selected.map((track) => track.id)).toEqual(["coded-track", "bare-track", "plain-track"]);
+    const [coded, bare, plain] = result.selected.map((track) => track.agentRecommendation!);
+
+    expect(coded.explanation).toEqual(["Boosted by learned taste"]);
+    expect(coded.reasonCode).toBe("learned_taste");
+    expect(bare.explanation).toEqual([DISCOVERY_EXPLANATIONS.similar_sound]);
+    expect(bare.reasonCode).toBe("similar_sound");
+    expect(plain.explanation).toEqual([DISCOVERY_EXPLANATIONS.catalog]);
+
+    // Free text never appears in any listener-facing field.
+    for (const recommendation of [coded, bare, plain]) {
+      const listenerFacing = JSON.stringify({
+        explanation: recommendation.explanation,
+        reasonCode: recommendation.reasonCode,
+      });
+      expect(listenerFacing).not.toMatch(/Sam|rationale|Model summary/);
+    }
+
+    // The model text is kept only as a bounded internal trace.
+    const codedRationale = coded.trace?.modelRationale as string;
+    expect(codedRationale.startsWith("Sounds like a very long rationale")).toBe(true);
+    expect(codedRationale.length).toBeLessThanOrEqual(280);
+    expect(bare.trace?.modelRationale).toBe("Your friend Sam loves this.");
+    expect(plain.trace?.modelRationale).toBe("Model summary text that must never reach the listener.");
+    const traceDecisions = result.trace?.decisions ?? [];
+    expect(traceDecisions.every((decision) => (decision.explanation?.length ?? 0) <= 280)).toBe(true);
   });
 });

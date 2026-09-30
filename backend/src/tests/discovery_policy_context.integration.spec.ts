@@ -174,4 +174,109 @@ describe("DiscoveryPolicyContextService (ADR-TE-2)", () => {
     });
     expect((await service.artistIdsForTracks([])).size).toBe(0);
   });
+
+  describe("countDiscoveryPicks (session exploration share)", () => {
+    const OTHER = `${TEST_PREFIX}other_listener`;
+    const T_DISC = trackOf(A_VERIFIED);
+    const T_PLAIN = trackOf(A_UNVERIFIED);
+    const T_LATEST_PLAIN = trackOf(A_PENDING);
+    const T_LATEST_DISC = trackOf(A_NO_USER);
+    const T_OTHER_ONLY = trackOf(A_PLAYED);
+    const T_SKIP = `${TEST_PREFIX}skip_only_track`;
+    const at = (minutes: number) => new Date(Date.UTC(2026, 0, 1, 0, minutes));
+    const accept = (
+      userId: string,
+      trackId: string,
+      reasonCode: string | null,
+      createdAt: Date,
+      action = "accept",
+    ) =>
+      prisma.agentSignal.create({
+        data: {
+          userId,
+          trackId,
+          action,
+          weight: 1,
+          createdAt,
+          metadata:
+            reasonCode === null
+              ? undefined
+              : { recommendation: { reasonCode } },
+        },
+      });
+
+    beforeAll(async () => {
+      await prisma.user.create({ data: { id: OTHER, email: `${OTHER}@test.resonate` } });
+      await prisma.artist.create({
+        data: { id: `${TEST_PREFIX}artist_skip`, displayName: "skip" },
+      });
+      await prisma.release.create({
+        data: {
+          id: `${TEST_PREFIX}release_skip`,
+          artistId: `${TEST_PREFIX}artist_skip`,
+          title: "skip release",
+          status: "ready",
+        },
+      });
+      await prisma.track.create({
+        data: {
+          id: T_SKIP,
+          releaseId: `${TEST_PREFIX}release_skip`,
+          title: "skip track",
+          position: 1,
+        },
+      });
+
+      await accept(LISTENER, T_DISC, "discovery_pick", at(1));
+      await accept(LISTENER, T_PLAIN, "taste_match", at(1));
+      // Latest accept wins: discovery then non-discovery -> not counted.
+      await accept(LISTENER, T_LATEST_PLAIN, "discovery_pick", at(1));
+      await accept(LISTENER, T_LATEST_PLAIN, "taste_match", at(2));
+      // ...and non-discovery then discovery -> counted once despite two rows.
+      await accept(LISTENER, T_LATEST_DISC, "taste_match", at(1));
+      await accept(LISTENER, T_LATEST_DISC, "discovery_pick", at(2));
+      await accept(LISTENER, T_LATEST_DISC, "discovery_pick", at(3));
+      // A discovery-labelled signal that is not an accept is ignored.
+      await accept(LISTENER, T_SKIP, "discovery_pick", at(1), "skip");
+      // Another listener's discovery accept must not count for LISTENER.
+      await accept(OTHER, T_OTHER_ONLY, "discovery_pick", at(1));
+      // Accept with no recommendation metadata at all.
+      await accept(OTHER, T_PLAIN, null, at(1));
+    });
+
+    afterAll(async () => {
+      await prisma.agentSignal.deleteMany({ where: { userId: OTHER } });
+      await prisma.agentSignal.deleteMany({ where: { userId: LISTENER } });
+    });
+
+    const all = [T_DISC, T_PLAIN, T_LATEST_PLAIN, T_LATEST_DISC, T_OTHER_ONLY, T_SKIP];
+
+    it("counts tracks whose latest accept is a discovery pick, once each", async () => {
+      // T_DISC and T_LATEST_DISC only.
+      expect(await service.countDiscoveryPicks(LISTENER, all)).toBe(2);
+    });
+
+    it("lets the most recent accept signal decide", async () => {
+      expect(await service.countDiscoveryPicks(LISTENER, [T_LATEST_PLAIN])).toBe(0);
+      expect(await service.countDiscoveryPicks(LISTENER, [T_LATEST_DISC])).toBe(1);
+    });
+
+    it("ignores non-accept signals and other listeners' signals", async () => {
+      expect(await service.countDiscoveryPicks(LISTENER, [T_SKIP])).toBe(0);
+      expect(await service.countDiscoveryPicks(LISTENER, [T_OTHER_ONLY])).toBe(0);
+      expect(await service.countDiscoveryPicks(OTHER, [T_OTHER_ONLY])).toBe(1);
+      expect(await service.countDiscoveryPicks(OTHER, [T_PLAIN])).toBe(0);
+    });
+
+    it("is bounded to the requested tracks and tolerates duplicates", async () => {
+      expect(await service.countDiscoveryPicks(LISTENER, [T_DISC, T_DISC, ""])).toBe(1);
+      expect(await service.countDiscoveryPicks(LISTENER, [T_PLAIN])).toBe(0);
+    });
+
+    it("returns 0 for an unknown or missing user, or no track ids", async () => {
+      expect(await service.countDiscoveryPicks(`${TEST_PREFIX}nobody`, all)).toBe(0);
+      expect(await service.countDiscoveryPicks(undefined, all)).toBe(0);
+      expect(await service.countDiscoveryPicks(LISTENER, [])).toBe(0);
+    });
+  });
 });

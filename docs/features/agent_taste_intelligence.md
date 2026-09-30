@@ -235,7 +235,14 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   accept signal's `metadata.recommendation` keep it (whitelisted against the
   vocabulary, which the Sonic Radar journal reads back). The policy lookups come
   from `DiscoveryPolicyContextService`; when they are unavailable the DJ and Home
-  run the policy with empty sets, which only removes exploration slots.
+  run the policy with empty sets, which only removes exploration slots. In the
+  DJ the session exploration share counts the discovery picks among the last 9
+  session tracks (accepted picks whose `metadata.recommendation.reasonCode` is
+  `discovery_pick`), so late in a session only the remaining share is reserved;
+  when that count is unavailable the share is taken over the page alone, never
+  over the whole session window. One call never reserves more than its own
+  page share, so a session that fell behind catches up gradually, not in a
+  burst.
 - **Session intent is context, not taste.** The DJ passes the session's intent
   and mood (`sessionIntent`, `mood`, `queueStyle`) to the ranking core as
   request context. A candidate whose moods, genre or titles match earns a
@@ -253,7 +260,11 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   pass a filter-only policy step, `AgentRuntimePolicyService`, applied in
   `AgentRuntimeService.run`: the one choke point that
   `AgentConfigController.startSession` and `SessionsService.agentNext` both
-  reach, in-process or via the remote worker. It loads the picked tracks'
+  reach, in-process or via the remote worker (the backend applies it to the
+  worker's LLM picks, so the stage runs exactly once; the worker's execute route
+  returns the raw executor result). The standalone worker provides the
+  shared ranking, taste and cohort classes, so its deterministic orchestrator
+  fallback runs the same policy stage. It loads the picked tracks'
   metadata in one batched query, scores them with the shared ranking core in the
   same context the DJ selector builds, then enforces rule 1 (hidden), rule 2
   (fully AI-generated), rule 4 (two per artist, session mode) and rule 5 (a
