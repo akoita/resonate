@@ -130,6 +130,40 @@ scans online** (serving reads hit Postgres/Redis exports); explanations are
 bounded and never expose raw listener history; all personalization respects
 consent gating and taste-memory controls.
 
+### 4.1 Recommendation rules (ADR-TE-2)
+
+The "policy" box above is a shared, tested stage that runs **after** scoring on
+every surface (Home, AI DJ): `applyDiscoveryPolicy` in
+`backend/src/modules/recommendations/discovery-policy.ts`. The design is
+[Taste Engine §3.4](./taste-engine.md#34-pipeline-and-policy-stage) and the
+decision is
+[ADR-TE-2](../strategy/taste-engine-decisions.md#adr-te-2--no-ranking-for-sale-and-public-recommendation-rules).
+The six rules it enforces, in order:
+
+1. **Declared taste first** — anything the listener hid is removed; downranks
+   were already applied as score multipliers.
+2. **No fully AI-generated tracks** unless the request explicitly asked for AI
+   content (`isPromotionEligible`).
+3. **Exploration share** — 20% of a page or session, at least one item,
+   reserved for verified human artists the listener has never played, chosen by
+   taste fit. With no eligible candidate the slots fall back to normal ranked
+   order; ineligible items are never labeled as discovery.
+4. **Diversity cap** — at most two tracks per artist per page, or per 10
+   session tracks.
+5. **Categorical explanation** on every item, from the bounded vocabulary in
+   `discovery-explanations.ts` (each item also carries a `reasonCode`).
+6. **No input through which ranking could be bought.** The ranking core no
+   longer gives a `listed` signal (+14, "Purchasable stem available") or a
+   `hasListing` sort tiebreak: having stems for sale never raises a track in
+   listener recommendations. `hasListing` stays on candidates as data for the
+   Crate Digger's explicit filter.
+
+The exploration lookups (verified human artists, artists the listener has
+played) are loaded in bounded batches by `DiscoveryPolicyContextService`.
+The deterministic fallback (no warehouse, no embeddings) passes the same
+policy assertions; `backend/src/tests/discovery_policy.spec.ts` asserts every
+rule on both the deterministic and the enriched path.
+
 ## 5. Workstreams
 
 Sequenced so every slice ships user-visible value and nothing depends on a
@@ -144,7 +178,7 @@ are product surface and measurement; WS-9 unifies the DJ.
 - **WS-6 — Activate collaborative filtering.** Productionize the existing BQML matrix-factorization path in staging: scheduled Dataform+BQML runs, the #978 eval gate as a standing promotion check, scores exported to serving; home + DJ consume them by default (with fallback). Cost-bounded cadence (staging daily, prod per ADR cost discipline).
 - **WS-7 — Home discovery UX v2.** Multi-rail personalized home ("Because you saved X", "Trending in <genre>", "New from artists you play"), real explanations from ranking reasons, exploration slice, impression rotation; design bar per approved home-hero reference.
 - **WS-8 — Measurement & experimentation.** Offline recall@k/NDCG on `user_track_signal_training`; online skip/save/completion per surface; extend the agent quality dashboard to home surfaces; a minimal holdout/A-B mechanism to compare ranker variants before promotion.
-- **WS-9 — AI DJ unification.** DJ selector consumes the shared ranking core with session intents as context; one taste profile drives both surfaces; DJ pick explanations reuse the shared explanation vocabulary.
+- **WS-9 — AI DJ unification.** DJ selector consumes the shared ranking core with session intents as context; one taste profile drives both surfaces; DJ pick explanations reuse the shared explanation vocabulary. **Status (#1456, partial):** shipped for the deterministic DJ path and Home `getRecommendations` — both call the shared core, resolve the persisted `AgentConfig.learnedTasteProfile` through one resolver, read one served history, run the ADR-TE-2 policy stage, and expose `reasonCode`; session intent is ranking context (`session_intent_fit`); the listing preference is removed from the DJ candidate path, prompts and eval. LLM runtime picks (`AGENT_RUNTIME=adk|vertex`) now pass a filter-only policy step at `AgentRuntimeService.run`: rules 1 (hidden), 2 (fully AI), 4 (diversity cap) and 5 (`reasonCode`), keeping the model's order. Remaining: rule 3 (exploration share) is not enforced on LLM picks, and the other Home rails are composed outside `getRecommendations`. See [Agent Taste Intelligence](../features/agent_taste_intelligence.md#one-core-one-profile-one-policy-1456-ws-9-1957).
 
 Dependency sketch: WS-1 ∥ WS-2 ∥ WS-3 → WS-4 (needs WS-3), WS-6 (needs WS-2 for labels, WS-3 export path), WS-5 independent → WS-7 (needs WS-1+WS-4), WS-8 (needs WS-2), WS-9 (needs WS-1).
 

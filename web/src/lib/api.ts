@@ -5011,6 +5011,8 @@ export type AgentConfig = {
   sessionMode: "curate" | "buy";
   /** True only when the operator has enabled buy mode; hide the Curate/Buy toggle otherwise. */
   buyModeEnabled?: boolean;
+  /** Operator flag: ERC-8004 identity and reputation publishing (frozen, ADR-TE-6). */
+  erc8004Enabled?: boolean;
   monthlyCapUsd: number;
   isActive: boolean;
   identityStatus: AgentIdentityStatus;
@@ -5236,8 +5238,8 @@ export type AgentNextPickResponse = {
     explanation?: string[];
     signals?: AgentRecommendationSignal[];
   }>;
-  generationsUsed?: number;
-  generationSpendUsd?: number;
+  /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
+  shortfall?: number;
 };
 
 export async function getAgentHistory(token: string): Promise<AgentSession[]> {
@@ -5253,6 +5255,74 @@ export async function getAgentHistory(token: string): Promise<AgentSession[]> {
     }
   }
   return sessions;
+}
+
+// ========== Discovery Journal (Sonic Radar, ADR-TE-5) ==========
+
+export type DiscoveryJournalNextAction = {
+  kind: "show_campaign" | "artist_page";
+  label: string;
+  href: string;
+};
+
+export type DiscoveryJournalItem = {
+  trackId: string;
+  title: string;
+  artistId: string;
+  artistName: string;
+  releaseId: string;
+  releaseTitle: string;
+  artworkUrl: string | null;
+  hasUploadedArtwork: boolean;
+  artworkRevision: number;
+  resonatedAt: string;
+  followUp: "replayed" | "saved";
+  discovery: boolean;
+  reason: { code: string; text: string };
+  /** One per artist: set on the artist's first item, null on the rest. */
+  nextAction: DiscoveryJournalNextAction | null;
+};
+
+export type DiscoveryJournalGroup = {
+  key: string;
+  sessionId: string | null;
+  /** UTC calendar day (YYYY-MM-DD). */
+  date: string;
+  items: DiscoveryJournalItem[];
+};
+
+export type DiscoveryJournal = {
+  schemaVersion: "discovery-journal/v1";
+  window: { days: number; from: string; to: string };
+  headline: { resonantDiscoveriesThisWeek: number; newArtistsThisWeek: number };
+  groups: DiscoveryJournalGroup[];
+};
+
+/** The listener's resonant tracks (played to 90%+, then replayed or saved). */
+export async function getDiscoveryJournal(
+  token: string,
+  options: { windowDays?: number; limit?: number } = {},
+): Promise<DiscoveryJournal> {
+  const search = new URLSearchParams();
+  if (options.windowDays !== undefined) search.set("windowDays", String(options.windowDays));
+  if (options.limit !== undefined) search.set("limit", String(options.limit));
+  const query = search.toString();
+  const journal = await apiRequest<DiscoveryJournal>(
+    `/agents/discoveries${query ? `?${query}` : ""}`,
+    { cache: "no-store" },
+    token,
+  );
+  // Resolve artwork the same way getAgentHistory does.
+  for (const group of journal.groups) {
+    for (const item of group.items) {
+      if (!item.artworkUrl && item.hasUploadedArtwork) {
+        item.artworkUrl = getReleaseArtworkUrl(item.releaseId, {
+          artworkRevision: item.artworkRevision,
+        });
+      }
+    }
+  }
+  return journal;
 }
 
 export async function getAgentNextPick(

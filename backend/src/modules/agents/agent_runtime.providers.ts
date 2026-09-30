@@ -15,6 +15,7 @@ import { AgentRecommendationService } from "./agent_recommendation.service";
 import { PaymentRouterService } from "./payment_router.service";
 import { PolicyGuardService } from "./policy_guard.service";
 import { AgentRunnerService } from "./agent_runner.service";
+import { AgentRuntimePolicyService } from "./agent_runtime.policy.service";
 import { AgentRuntimeExecutorService } from "./agent_runtime.executor.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentRuntimeRemoteClient } from "./agent_runtime_remote.client";
@@ -37,6 +38,7 @@ export const AGENT_RUNTIME_CORE_PROVIDERS = [
   PaymentRouterService,
   AgentRunnerService,
   AgentRuntimeService,
+  AgentRuntimePolicyService,
   AgentRuntimeExecutorService,
   AgentRuntimeRemoteClient,
   AgentEvaluationService,

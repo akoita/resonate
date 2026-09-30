@@ -15,7 +15,6 @@ import { AgentCuratorController } from "./agent_curator.controller";
 import { AgentsController } from "./agents.controller";
 import { AgentConfigController } from "./agent_config.controller";
 import { IdentityModule } from "../identity/identity.module";
-import { GenerationModule } from "../generation/generation.module";
 import { CatalogModule } from "../catalog/catalog.module";
 import { X402Module } from "../x402/x402.module";
 import { PaymentsModule } from "../payments/payments.module";
@@ -27,7 +26,6 @@ import { CommunityModule } from "../community/community.module";
   imports: [
     SharedModule,
     forwardRef(() => IdentityModule),
-    GenerationModule,
     CatalogModule,
     X402Module,
     PaymentsModule,

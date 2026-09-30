@@ -65,6 +65,8 @@ export type AgentIdentityCredential = Prisma.InputJsonObject;
 export type EnrichedAgentConfig = Omit<AgentConfig, "identityCredential" | "reputationSnapshot"> & {
   reputationSnapshot: AgentReputationSnapshot;
   identityCredential: AgentIdentityCredential;
+  /** Operator flag ERC8004_ENABLED; identity and reputation publishing are frozen (ADR-TE-6) and hidden while false. */
+  erc8004Enabled: boolean;
 };
 
 export type AgentIdentityOnchainResult = {
@@ -361,6 +363,7 @@ export class AgentIdentityService {
       reputationScore: reputationSnapshot.score,
       reputationSnapshot,
       identityCredential,
+      erc8004Enabled: this.configService.get<string>("ERC8004_ENABLED") === "true",
     };
   }
 

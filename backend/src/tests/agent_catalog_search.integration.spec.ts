@@ -7,10 +7,6 @@ const TEST_PREFIX = `agcs_${Date.now()}_`;
 const MATCH_GENRE = `${TEST_PREFIX}HipHop`;
 const MISS_GENRE = `${TEST_PREFIX}Reggaeton`;
 
-const mockGenerationService = {
-  createGeneration: jest.fn().mockResolvedValue({ jobId: "gen-mock-1" }),
-} as any;
-
 describe("agent catalog search tool (integration)", () => {
   let tools: ToolRegistry;
 
@@ -55,6 +51,8 @@ describe("agent catalog search tool (integration)", () => {
           aiContributionFacets: ["production"],
           aiDisclosureSource: "artist",
           generationMetadata: { prompt: "must not leave the tool boundary" },
+          // The LISTED track is the older one: a listing must not lift it.
+          createdAt: new Date(Date.now() - 60_000),
         },
         {
           id: `${TEST_PREFIX}other_track`,
@@ -175,7 +173,7 @@ describe("agent catalog search tool (integration)", () => {
   });
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
   });
 
   it("returns genre matches without pulling unrelated recent tracks", async () => {
@@ -221,6 +219,37 @@ describe("agent catalog search tool (integration)", () => {
     expect(ids).toContain(`${TEST_PREFIX}match_track`);
     expect(ids).toContain(`${TEST_PREFIX}other_track`);
     expect(ids).not.toContain(`${TEST_PREFIX}fully_ai_track`);
+  });
+
+  it("orders by recency only: a listed track is never sorted ahead (ADR-TE-2 rule 6)", async () => {
+    const result = await tools.get("catalog.search").run({
+      query: "",
+      limit: 50,
+      allowExplicit: true,
+    });
+
+    const ids = ((result.items as Array<{ id: string }>) ?? []).map((item) => item.id);
+    const unlistedNewer = ids.indexOf(`${TEST_PREFIX}other_track`);
+    const listedOlder = ids.indexOf(`${TEST_PREFIX}match_track`);
+    expect(unlistedNewer).toBeGreaterThanOrEqual(0);
+    expect(listedOlder).toBeGreaterThanOrEqual(0);
+    expect(unlistedNewer).toBeLessThan(listedOlder);
+  });
+
+  it("returns the artist identity and moods the discovery policy stage needs", async () => {
+    const result = await tools.get("catalog.search").run({
+      query: MATCH_GENRE,
+      limit: 10,
+      allowExplicit: true,
+    });
+    const match = (result.items as Array<{ id: string; release: Record<string, unknown> }>).find(
+      (item) => item.id === `${TEST_PREFIX}match_track`,
+    );
+    expect(match?.release).toMatchObject({
+      artistId: `${TEST_PREFIX}artist`,
+      genre: MATCH_GENRE,
+      moods: [],
+    });
   });
 
   it("marks only active, remaining, unexpired listings as purchasable", async () => {

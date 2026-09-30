@@ -6,8 +6,7 @@ export type AgentLicenseType = "personal" | "remix" | "commercial";
 export type AgentRuntimeOrchestratorResult = {
   status: string;
   tracks: OrchestratedTrack[];
-  generationsUsed?: number;
-  generationSpendUsd?: number;
+  shortfall?: number;
 };
 
 export type AgentRuntimeRunResult =
@@ -27,6 +26,8 @@ export interface AgentRuntimeCommerceTrack {
   reason?: string;
   score?: number;
   explanation?: string[];
+  /** Primary categorical reason from the shared discovery vocabulary. */
+  reasonCode?: string;
   signals?: Array<{ label: string; weight: number; reason: string }>;
   audioFeatures?: unknown;
   mixPlan?: unknown;
@@ -40,8 +41,8 @@ export interface AgentRuntimeCommerceResult {
   reason?: string;
   reasoning?: string;
   latencyMs?: number;
-  generationsUsed?: number;
-  generationSpendUsd?: number;
+  /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
+  shortfall?: number;
 }
 
 function normalizeStatus(status: string): AgentRuntimeCommerceStatus {
@@ -73,6 +74,7 @@ export function normalizeAgentRuntimeResult(
           recommendation?: {
             score?: number;
             explanation?: string[];
+            reasonCode?: string;
             signals?: Array<{ label: string; weight: number; reason: string }>;
             audioFeatures?: unknown;
           };
@@ -85,6 +87,7 @@ export function normalizeAgentRuntimeResult(
         reason: negotiation?.reason,
         score: negotiation?.recommendation?.score,
         explanation: negotiation?.recommendation?.explanation,
+        reasonCode: negotiation?.recommendation?.reasonCode,
         signals: negotiation?.recommendation?.signals,
         audioFeatures: negotiation?.recommendation?.audioFeatures,
         mixPlan: track.mixPlan,
@@ -96,8 +99,7 @@ export function normalizeAgentRuntimeResult(
       status: normalizeStatus(result.status),
       tracks,
       primaryTrack: tracks[0],
-      generationsUsed: result.generationsUsed,
-      generationSpendUsd: result.generationSpendUsd,
+      shortfall: result.shortfall,
     };
   }
 
@@ -118,6 +120,12 @@ export function normalizeAgentRuntimeResult(
     licenseType: normalizeLicenseType(pick.licenseType),
     priceUsd: normalizePriceUsd(pick.priceUsd),
     reason: result.reason,
+    // Present once the runtime policy step has scored the pick (same shape as
+    // the deterministic path's recommendation).
+    ...(pick.score !== undefined ? { score: pick.score } : {}),
+    ...(pick.explanation ? { explanation: pick.explanation } : {}),
+    ...(pick.reasonCode ? { reasonCode: pick.reasonCode } : {}),
+    ...(pick.signals ? { signals: pick.signals } : {}),
   }));
 
   return {
@@ -127,7 +135,5 @@ export function normalizeAgentRuntimeResult(
     reason: result.reason,
     reasoning: result.reasoning,
     latencyMs: result.latencyMs,
-    generationsUsed: result.generationsUsed,
-    generationSpendUsd: result.generationSpendUsd,
   };
 }

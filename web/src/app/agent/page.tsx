@@ -61,7 +61,6 @@ export default function AgentPage() {
         name: string;
         vibes: string[];
         monthlyCapUsd: number;
-        enableWallet: boolean;
     }) => {
         await createConfig(data);
         void recordProductAnalytics(token, "onboarding.completed", {
@@ -70,34 +69,10 @@ export default function AgentPage() {
             payload: {
                 flow: "agent",
                 vibeCount: data.vibes.length,
-                walletEnabled: data.enableWallet,
+                walletEnabled: false,
                 monthlyCapUsd: data.monthlyCapUsd,
             },
         });
-        void recordProductAnalytics(token, "wallet.budget_set", {
-            source: "agent_setup",
-            subjectType: "agent_config",
-            payload: {
-                surface: "agent",
-                monthlyCapUsd: data.monthlyCapUsd,
-            },
-        });
-        if (data.enableWallet) {
-            try {
-                await wallet.enable();
-                addToast({
-                    type: "success",
-                    title: "Smart Wallet Enabled",
-                    message: "Your DJ can now purchase stems autonomously.",
-                });
-            } catch {
-                addToast({
-                    type: "info",
-                    title: "Wallet Setup Skipped",
-                    message: "You can enable the smart wallet from the dashboard.",
-                });
-            }
-        }
         addToast({
             type: "success",
             title: "DJ Activated",

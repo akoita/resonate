@@ -17,7 +17,6 @@ export type AgentRecommendationEvalDimension =
   | "recentAvoidance"
   | "diversity"
   | "policyReadiness"
-  | "listingAvailability"
   | "novelty"
   | "explanationCoverage"
   | "refusalCorrectness";
@@ -33,6 +32,10 @@ export interface AgentRecommendationEvalCandidate {
   title?: string;
   relevance?: "exact" | "semantic" | "unrelated";
   score?: number;
+  /**
+   * Informational only (ADR-TE-2 rule 6): reported as `listingCoverage`, never
+   * scored, gated on, or used to rank.
+   */
   hasListing?: boolean;
   recent?: boolean;
   explanation?: string[];
@@ -59,7 +62,6 @@ export interface AgentRecommendationEvalCase {
     maxSelected?: number;
     minSelected?: number;
     minPrecision?: number;
-    requireListed?: boolean;
     forbidRecent?: boolean;
     requireExplanation?: boolean;
   };
@@ -98,7 +100,6 @@ export interface AgentRecommendationEvalComparisonCandidate extends AgentRecomme
 export interface AgentRecommendationEvalPromotionCriteria {
   minAcceptanceProxyDelta: number;
   minSkipAvoidanceDelta: number;
-  minListingCoverage: number;
   minExplanationCoverage: number;
   minNoveltyCoverage: number;
   minDiversityCoverage: number;
@@ -144,7 +145,6 @@ const MODEL_COMPARISON_VARIANTS: AgentRecommendationEvalModelVariant[] = [
 const DEFAULT_MODEL_PROMOTION_CRITERIA: AgentRecommendationEvalPromotionCriteria = {
   minAcceptanceProxyDelta: 0.02,
   minSkipAvoidanceDelta: 0,
-  minListingCoverage: 0.9,
   minExplanationCoverage: 0.8,
   minNoveltyCoverage: 0.8,
   minDiversityCoverage: 0.5,
@@ -274,9 +274,6 @@ export class AgentRecommendationEvalService {
     }
     if (testCase.expected.minPrecision !== undefined && (metrics.precision ?? 0) < testCase.expected.minPrecision) {
       addFailure("semanticMatch", `precision ${metrics.precision ?? 0} below minimum ${testCase.expected.minPrecision}`);
-    }
-    if (testCase.expected.requireListed && (metrics.listingCoverage ?? 0) < 1) {
-      addFailure("listingAvailability", "selected candidates must all have active listings");
     }
     if (testCase.expected.forbidRecent && (metrics.noveltyCoverage ?? 0) < 1) {
       addFailure("novelty", "selected candidates include recently played tracks");
@@ -499,10 +496,12 @@ export class AgentRecommendationEvalService {
 
   private overallComparisonScore(metrics: AgentRecommendationEvalComparisonMetrics) {
     const weightedMetrics: Array<[keyof AgentRecommendationEvalComparisonMetrics, number]> = [
-      ["precision", 0.25],
-      ["acceptanceProxy", 0.2],
-      ["skipAvoidance", 0.2],
-      ["listingCoverage", 0.15],
+      ["precision", 0.3],
+      ["acceptanceProxy", 0.25],
+      ["skipAvoidance", 0.25],
+      // `listingCoverage` is deliberately absent: commercial availability is
+      // reported, never scored (ADR-TE-2 rule 6). Its former 0.15 weight went
+      // to the taste-fit metrics.
       ["explanationCoverage", 0.1],
       ["noveltyCoverage", 0.05],
       ["diversityCoverage", 0.05],
@@ -546,7 +545,6 @@ export class AgentRecommendationEvalService {
     const delta = {
       acceptanceProxy: this.metricDelta(bqml.acceptanceProxy, baseline.acceptanceProxy),
       skipAvoidance: this.metricDelta(bqml.skipAvoidance, baseline.skipAvoidance),
-      listingCoverage: this.metricDelta(bqml.listingCoverage, baseline.listingCoverage),
       noveltyCoverage: this.metricDelta(bqml.noveltyCoverage, baseline.noveltyCoverage),
       diversityCoverage: this.metricDelta(bqml.diversityCoverage, baseline.diversityCoverage),
       explanationCoverage: this.metricDelta(bqml.explanationCoverage, baseline.explanationCoverage),
@@ -555,7 +553,6 @@ export class AgentRecommendationEvalService {
     const bqmlBeatsBaseline =
       (delta.acceptanceProxy ?? -1) >= criteria.minAcceptanceProxyDelta &&
       (delta.skipAvoidance ?? -1) >= criteria.minSkipAvoidanceDelta &&
-      (bqml.listingCoverage ?? 0) >= criteria.minListingCoverage &&
       (bqml.explanationCoverage ?? 0) >= criteria.minExplanationCoverage &&
       (bqml.noveltyCoverage ?? 0) >= criteria.minNoveltyCoverage &&
       (bqml.diversityCoverage ?? 0) >= criteria.minDiversityCoverage &&

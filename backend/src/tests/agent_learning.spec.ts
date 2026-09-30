@@ -63,6 +63,41 @@ describe("agent learning loop", () => {
     });
   });
 
+  it("keeps a recommendation reasonCode only when it is in the shared vocabulary", () => {
+    const valid = buildAgentSignalMetadata({
+      source: "agent_next_pick",
+      recommendation: {
+        score: 52,
+        explanation: ["Fits this session intent"],
+        reasonCode: "session_fit",
+        signals: [{ label: "session_intent_fit", weight: 12, reason: "raw" }],
+      },
+    });
+    expect(valid.recommendation).toEqual({
+      score: 52,
+      explanation: ["Fits this session intent"],
+      reasonCode: "session_fit",
+    });
+
+    // A reasonCode alone is enough to keep the recommendation block.
+    expect(
+      buildAgentSignalMetadata({ recommendation: { reasonCode: "discovery_pick" } })
+        .recommendation,
+    ).toEqual({ reasonCode: "discovery_pick" });
+
+    // Anything outside DISCOVERY_REASON_CODES (free text, other types) is dropped.
+    for (const reasonCode of ["because you listened to Alice", "purchasable", 7, null, {}]) {
+      const metadata = buildAgentSignalMetadata({
+        recommendation: { score: 10, reasonCode },
+      });
+      expect(metadata.recommendation).toEqual({ score: 10 });
+    }
+    expect(
+      buildAgentSignalMetadata({ recommendation: { reasonCode: "not_a_code" } })
+        .recommendation,
+    ).toBeUndefined();
+  });
+
   it("rejects over-limit scalar metadata and bounds arrays before mapping", () => {
     const genres = Array.from({ length: 9 }, (_, index) => `genre-${index}`);
     Object.defineProperty(genres, 8, {
@@ -101,7 +136,7 @@ describe("agent learning loop", () => {
     expect(profile.favoredGenres).toEqual([]);
   });
 
-  it("scores listed tracks and learned genres in selector ranking", async () => {
+  it("ranks by learned genres; an active stem listing never raises a track (ADR-TE-2)", async () => {
     const tool = {
       run: jest.fn().mockResolvedValue({
         items: [
@@ -122,7 +157,13 @@ describe("agent learning loop", () => {
       limit: 3,
     });
 
-    expect(result.selected.map((track: any) => track.id)).toEqual(["house", "listed", "jazz"]);
+    // The listed Ambient track only earns the shared query match (40), same as
+    // any unlisted track, so it ranks last; selling stems buys no listener rank.
+    expect(result.selected.map((track: any) => track.id)).toEqual(["house", "jazz", "listed"]);
+    const listed: any = result.selected[2];
+    expect(listed.agentRecommendation?.score).toBe(40);
+    expect(listed.agentRecommendation?.signals.map((signal: any) => signal.label)).toEqual(["taste_match"]);
+    expect(listed.agentRecommendation?.explanation).toEqual(["Selected vibe match"]);
     expect(result.selected[0]?.agentRecommendation?.signals).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "learned_preference" }),

@@ -62,6 +62,8 @@ describe('RecommendationsService (integration)', () => {
     await prisma.communityCohortMembership.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.communityCohort.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}cohort_release` } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}jazz_release` } }).catch(() => {});
+    await prisma.release.delete({ where: { id: `${TEST_PREFIX}jazz_release` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}cohort_release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
@@ -200,10 +202,25 @@ describe('RecommendationsService (integration)', () => {
     expect(JSON.stringify(result)).not.toContain('0x');
   });
 
-  it('excludes hidden taste signals from recommendation reasons', async () => {
+  it('excludes hidden taste signals from recommendation reasons and results', async () => {
     const eventBus = new EventBus();
     const tasteMemory = new TasteMemoryService(eventBus);
     const service = new RecommendationsService(eventBus, new DiscoveryRankingService(), tasteMemory);
+    // A second release in a genre the listener has NOT hidden, so the feed
+    // still has a preference match once the hidden genre is gone.
+    await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}jazz_release`,
+        title: 'Jazz Test Album',
+        artistId: `${TEST_PREFIX}artist`,
+        status: 'published',
+        genre: 'Jazz',
+        moods: ['Focus'],
+      },
+    });
+    await prisma.track.create({
+      data: { id: `${TEST_PREFIX}jazz_track`, title: 'Quiet Room', releaseId: `${TEST_PREFIX}jazz_release`, position: 1 },
+    });
     await tasteMemory.upsertSignalControl(`${TEST_PREFIX}user`, {
       signalType: 'genre',
       value: 'Hip Hop',
@@ -211,11 +228,16 @@ describe('RecommendationsService (integration)', () => {
     });
     await service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Hip Hop'], mood: 'Focus' });
 
-    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);
+    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 50);
 
     expect(result.preferences.genres).toEqual([]);
-    expect(result.items[0].reasons).not.toContain('genre:Hip Hop');
-    expect(result.items[0].reasons).toContain('mood:Focus');
+    const mine = result.items.filter((item) => item.id.startsWith(TEST_PREFIX));
+    // ADR-TE-2 rule 1: a hidden genre is removed from the page, not just from
+    // the reasons. The seeded Hip Hop tracks are gone; the Jazz one remains.
+    expect(mine.map((item) => item.genre)).not.toContain('Hip Hop');
+    const jazz = mine.find((item) => item.id === `${TEST_PREFIX}jazz_track`);
+    expect(jazz?.reasons).not.toContain('genre:Hip Hop');
+    expect(jazz?.reasons).toContain('mood:Focus');
   });
 
   it('persists an exact-limit taste signal and rejects an over-limit value', async () => {

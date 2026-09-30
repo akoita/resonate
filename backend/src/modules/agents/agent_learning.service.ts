@@ -1,7 +1,12 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import { scoreMultiplierForSignal, TasteMemoryService } from "../recommendations/taste_memory.service";
+import {
+  scoreMultiplierForSignal,
+  TasteMemoryPolicy,
+  TasteMemoryService,
+} from "../recommendations/taste_memory.service";
+import { DISCOVERY_REASON_CODES } from "../recommendations/discovery-explanations";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 
 export const AGENT_SIGNAL_WEIGHTS = {
@@ -203,7 +208,19 @@ function copySafeRecommendation(target: Record<string, unknown>, value: unknown)
   const safe: Record<string, unknown> = {};
   copyNumber(safe, "score", recommendation.score);
   copyStringArray(safe, "explanation", recommendation.explanation, 5, 120);
-  if (safe.score !== undefined || safe.explanation !== undefined) {
+  // Categorical only: a value outside the shared vocabulary is dropped, never
+  // stored (the Sonic Radar journal validates against the same list).
+  if (
+    typeof recommendation.reasonCode === "string" &&
+    (DISCOVERY_REASON_CODES as readonly string[]).includes(recommendation.reasonCode)
+  ) {
+    safe.reasonCode = recommendation.reasonCode;
+  }
+  if (
+    safe.score !== undefined ||
+    safe.explanation !== undefined ||
+    safe.reasonCode !== undefined
+  ) {
     target.recommendation = safe;
   }
 }
@@ -335,39 +352,24 @@ export class AgentLearningService {
     options: { take?: number } = {},
   ): Promise<AgentTasteProfile> {
     const policy = await this.tasteMemoryService?.getPolicy(userId);
-    const signals = await prisma.agentSignal.findMany({
-      where: {
-        userId,
-        ...(policy?.resetAt ? { createdAt: { gt: policy.resetAt } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: options.take ?? 500,
-      include: {
-        track: {
-          select: {
-            release: { select: { genre: true } },
-          },
-        },
-      },
-    });
+    return computeTasteProfileFromHistory(userId, { fallbackGenres, policy, ...options });
+  }
 
-    return computeAgentTasteProfileFromSignals(
-      signals
-        .map((signal): AgentTasteSignalInput | null => {
-          const genre = signal.track.release.genre;
-          const multiplier = scoreMultiplierForSignal(policy, "genre", genre);
-          if (multiplier <= 0) return null;
-          return {
-            action: signal.action as AgentSignalAction,
-            trackId: signal.trackId,
-            weight: signal.weight * multiplier,
-            createdAt: signal.createdAt,
-            genre,
-          };
-        })
-        .filter((signal): signal is AgentTasteSignalInput => signal !== null),
+  /**
+   * The taste profile both discovery surfaces consume (#1456 WS-9): the
+   * persisted `AgentConfig.learnedTasteProfile`, computed from history only
+   * when none is stored. Home and the AI DJ call this same resolver, so one
+   * listener has one set of learned genre weights.
+   */
+  async resolveTasteProfile(
+    userId: string,
+    fallbackGenres: string[] = [],
+    policy?: TasteMemoryPolicy,
+  ): Promise<AgentTasteProfile> {
+    return resolveAgentTasteProfile(userId, {
       fallbackGenres,
-    );
+      policy: policy ?? (await this.tasteMemoryService?.getPolicy(userId)),
+    });
   }
 
   async persistTasteProfile(agentConfigId: string, profile: AgentTasteProfile) {
@@ -387,6 +389,91 @@ export class AgentLearningService {
       ...vibes,
     ].filter(Boolean)));
   }
+}
+
+/**
+ * Computes the taste profile from the listener's recorded signals (newest 500
+ * by default), honoring the taste-memory reset and genre controls in `policy`.
+ */
+export async function computeTasteProfileFromHistory(
+  userId: string,
+  options: {
+    fallbackGenres?: string[];
+    policy?: TasteMemoryPolicy;
+    take?: number;
+  } = {},
+): Promise<AgentTasteProfile> {
+  const { policy } = options;
+  const signals = await prisma.agentSignal.findMany({
+    where: {
+      userId,
+      ...(policy?.resetAt ? { createdAt: { gt: policy.resetAt } } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: options.take ?? 500,
+    include: {
+      track: {
+        select: {
+          release: { select: { genre: true } },
+        },
+      },
+    },
+  });
+
+  return computeAgentTasteProfileFromSignals(
+    signals
+      .map((signal): AgentTasteSignalInput | null => {
+        const genre = signal.track.release.genre;
+        const multiplier = scoreMultiplierForSignal(policy, "genre", genre);
+        if (multiplier <= 0) return null;
+        return {
+          action: signal.action as AgentSignalAction,
+          trackId: signal.trackId,
+          weight: signal.weight * multiplier,
+          createdAt: signal.createdAt,
+          genre,
+        };
+      })
+      .filter((signal): signal is AgentTasteSignalInput => signal !== null),
+    options.fallbackGenres ?? [],
+  );
+}
+
+/** Validates a stored `AgentConfig.learnedTasteProfile` JSON value. */
+export function parsePersistedAgentTasteProfile(
+  value: unknown,
+): AgentTasteProfile | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<AgentTasteProfile>;
+  if (candidate.schemaVersion !== "agent-taste-profile/v1") return null;
+  const weights = candidate.genreWeights;
+  if (!weights || typeof weights !== "object" || Array.isArray(weights)) {
+    return null;
+  }
+  if (!Object.values(weights).every((weight) => Number.isFinite(weight))) {
+    return null;
+  }
+  if (!Array.isArray(candidate.favoredGenres)) return null;
+  return candidate as AgentTasteProfile;
+}
+
+/**
+ * The single taste-profile resolver shared by Home and the AI DJ (#1456
+ * WS-9): the persisted `AgentConfig.learnedTasteProfile` (kept current by
+ * `recordSignal`, cleared by a taste-memory reset), else a profile computed
+ * from the listener's signals. Read-only: it never writes the profile back.
+ */
+export async function resolveAgentTasteProfile(
+  userId: string,
+  options: { fallbackGenres?: string[]; policy?: TasteMemoryPolicy } = {},
+): Promise<AgentTasteProfile> {
+  const config = await prisma.agentConfig.findUnique({
+    where: { userId },
+    select: { learnedTasteProfile: true },
+  });
+  const persisted = parsePersistedAgentTasteProfile(config?.learnedTasteProfile);
+  if (persisted) return persisted;
+  return computeTasteProfileFromHistory(userId, options);
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {

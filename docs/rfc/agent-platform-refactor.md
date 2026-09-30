@@ -4,6 +4,8 @@
 
 Draft
 
+> **Frozen (ADR-TE-6, 2026-09-30).** ERC-8004 identity and reputation publishing and on-chain curator agents proved the technology but serve no current customer. The code stays behind `ERC8004_ENABLED` and `ERC8004_REPUTATION_SCHEDULER_ENABLED` (both default off); no new work without a new ADR naming a user and a revenue line. See [ADR-TE-6](../strategy/taste-engine-decisions.md).
+
 ## Summary
 
 Resonate should redefine its in-app agent from an "AI DJ with payments" into a
@@ -79,7 +81,7 @@ That split creates three problems:
 
 - introducing LangGraph or a second orchestration framework
 - redesigning the DJ frontend before backend unification
-- shipping ERC-8004 identity and reputation as a dependency
+- shipping ERC-8004 identity and reputation as a dependency (frozen by ADR-TE-6)
 - introducing multiple named agent classes as first-class product objects
 - building a large new service graph before the existing orchestration split is fixed
 

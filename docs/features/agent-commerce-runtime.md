@@ -52,6 +52,7 @@ Available now:
 - AI DJ sessions curate only by default (ADR-TE-1, #1954): no listener preset selects buy mode, and a stored `sessionMode: "buy"` is honored only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED=true` is set. With the flag off, the session runs as `curate`, logs the downgrade, records no purchase and no session spend, `PATCH /agents/config` rejects `buy` with `buy_mode_disabled`, and the config response carries `buyModeEnabled: false` so the web hides the Curate/Buy toggle.
 - When buy mode is enabled, the AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail. The path stays in place for the Crate Digger quote flow.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
+- Agents never generate audio ([ADR-TE-4](../strategy/taste-engine-decisions.md)). See [No generation from agents](#no-generation-from-agents-adr-te-4).
 
 Phase 1 is complete for the in-backend runtime-commerce boundary tracked by
 #805. Issue #812 resolved the public API surface decision: external clients use
@@ -59,6 +60,35 @@ the public storefront x402/MCP surfaces, while `PaymentRouterService` remains a
 trusted backend boundary rather than a generic public command endpoint.
 
 Standalone runtime extraction remains a separate Phase 2 follow-up in #424.
+
+## Listener Session Mode (ADR-TE-1)
+
+The listener AI DJ is listening-only by default. Stem purchases without a quote
+the listener approved are not part of the listener product.
+
+- `AgentConfig.sessionMode` is `curate` or `buy`. `PATCH /agents/config` rejects any other value with `invalid_session_mode`.
+- `buy` is honored only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED` is exactly `true`. The flag defaults to off, and `PATCH /agents/config` rejects `sessionMode: "buy"` with `buy_mode_disabled` while it is off.
+- With the flag off, a stored `buy` config is treated as `curate` when a session starts: no negotiation, no `PaymentRouterService` purchase, and no spend is recorded. The backend logs the downgrade with the session id.
+- `GET` and `PATCH /agents/config` report `buyModeEnabled`, and the web app shows the "Curate Only / Buy Stems" toggle only when it is `true`.
+- The session intent presets (Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift, Static Calm) are listening-only and no longer carry a licensing posture. The setup wizard has two listening-only steps (name, vibe) with no budget or auto-buy wallet step.
+- With the flag on, `buy` behaves as it did before this change. It is an operator-only path for exercising legacy autonomous purchases until the Crate Digger quote flow replaces it.
+
+Variable reference: [Environment variables](../deployment/environment.md).
+
+## No Generation From Agents (ADR-TE-4)
+
+Nothing in the agents module can create an AI generation job. Generated filler on
+a listening session would put fully AI content on a human-artist promotional
+surface (ADR-BM-5.3), and agent-triggered generation would be unmetered
+(ADR-BM-3). The sparse-catalog fill, the generative mix path, and the two
+Lyria tools were removed ([ADR-TE-4](../strategy/taste-engine-decisions.md)).
+
+- When the catalog cannot fill the requested track count (`AGENT_TRACK_LIMIT`, default 5), the runtime returns fewer tracks and an explicit `shortfall` (requested minus returned). It never pads the selection with generated tracks.
+- The unmet intent is recorded on the `agent.decision_made` event: `shortfall` plus `unmetIntent` (`genres`, `mood`, `energy`), both set only when `shortfall > 0`. This is the demand signal for future catalog sourcing.
+- `AgentMixerService` only plans metadata transitions (`plan()`); it has no generation dependency. The runtime tool registry exposes `catalog.search`, `pricing.quote`, `analytics.signal`, and `embeddings.similarity` only, and the ADK agent is instructed to return fewer tracks rather than generate.
+- `AGENT_GENERATION_BUDGET` and the `generationBudgetUsd` runtime input no longer exist. `generationsUsed` and `generationSpendUsd` were removed from runtime results, `POST /sessions/agent/next`, and `agent.decision_made`.
+- The `agent.generation_triggered` analytics event is **retired**: nothing emits it, and the analytics bridge keeps its mapping only so historical events still normalize.
+- Remix Studio generation is unaffected. `GenerationService` stays, credit-billed under ADR-BM-3, and is reachable only from its own routes. `backend/src/tests/agents_no_generation.spec.ts` fails if any agents source imports it or registers a generation tool.
 
 ## End-User Flow
 
@@ -140,10 +170,11 @@ Recommendation explanations are returned on commerce-aware picks when available:
 ```json
 {
   "score": 72,
-  "explanation": ["Nearby vibe match", "Purchasable stem available"],
+  "explanation": ["Nearby vibe match", "Fits this session intent"],
+  "reasonCode": "nearby_taste",
   "signals": [
     { "label": "expanded_taste_match", "weight": 28, "reason": "matches nearby taste rap" },
-    { "label": "listed", "weight": 14, "reason": "has active stem listing" }
+    { "label": "session_intent_fit", "weight": 12, "reason": "fits session intent Hype" }
   ],
   "audioFeatures": {
     "source": "metadata_inferred",
@@ -186,11 +217,12 @@ router result envelope and enforces `PolicyGuardService` before rail execution.
 
 Runtime tools act on behalf of the session user, so identity never comes from
 model output. The runtime binds `userId` from the server-built
-`AgentRuntimeInput`: the ADK agent closes over it, and the Vertex adapter passes
-it to `executeTool`, which overrides any model-supplied `userId`, drops
-`artistId`, and dispatches only the tools declared to the model (undeclared
-names return `unknown_tool`). Generation tools always publish under the platform
-agent artist (`AGENT_ARTIST_ID`), never under an artist named in tool input.
+`AgentRuntimeInput`: the Vertex adapter passes it to `executeTool`, which
+overrides any model-supplied `userId`, drops `artistId`, and dispatches only the
+tools declared to the model (undeclared names, including any `generation_*`
+name, return `unknown_tool`). The registry has no generation tools
+([ADR-TE-4](../strategy/taste-engine-decisions.md)), so there is no agent-artist
+attribution path to bind.
 
 The `/agents/*` developer routes accept a `userId` in the body and are
 admin-only. `@Roles(...)` is enforced by the global `RolesGuard`, which
@@ -368,8 +400,7 @@ Key output fields:
 - `licenseType`
 - `priceUsd`
 - `reason`
-- `generationSpendUsd`
-- `generationsUsed`
+- `shortfall`
 
 ## Main Code References
 
@@ -437,7 +468,7 @@ Important metrics:
 
 - `precision`: selected candidates marked exact or semantic divided by selected candidates with known relevance.
 - `refusalCorrectness`: strict no-match cases that correctly selected zero tracks.
-- `listingCoverage`: selected candidates with known active listing availability.
+- `listingCoverage`: selected candidates with known active listing availability. Informational only: it is reported, never scored and never a pass/fail or promotion gate (ADR-TE-2 rule 6).
 - `noveltyCoverage`: selected candidates that were not recently played.
 - `explanationCoverage`: selected candidates with explanation text or top scoring signals.
 
@@ -474,6 +505,7 @@ npm run test
 ## Related Docs
 
 - [Feature catalog](README.md)
+- [Taste Engine decisions (ADR-TE-1)](../strategy/taste-engine-decisions.md)
 - [Agent Platform Refactor RFC](../rfc/agent-platform-refactor.md)
 - [Agent Platform Refactor Backlog](agent-platform-refactor-backlog.md)
 - [Agent Runtime Worker](../architecture/agent-runtime-worker.md)

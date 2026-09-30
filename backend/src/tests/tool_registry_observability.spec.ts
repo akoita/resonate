@@ -3,14 +3,11 @@ import { EmbeddingStore } from "../modules/embeddings/embedding.store";
 import { ToolRegistry } from "../modules/agents/tools/tool_registry";
 
 describe("tool registry observability", () => {
-  const generationService = { createGeneration: jest.fn() } as any;
-
   it("traces successful tool calls", async () => {
     const observability = { traceToolCall: jest.fn() };
     const registry = new ToolRegistry(
       new EmbeddingService(),
       new EmbeddingStore(),
-      generationService,
       observability as any
     );
 
@@ -33,7 +30,6 @@ describe("tool registry observability", () => {
     const registry = new ToolRegistry(
       new EmbeddingService(),
       new EmbeddingStore(),
-      generationService,
       observability as any
     );
     registry.register({

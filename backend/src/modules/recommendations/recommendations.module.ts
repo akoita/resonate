@@ -3,6 +3,7 @@ import { CatalogModule } from "../catalog/catalog.module";
 import { CommunityModule } from "../community/community.module";
 import { SharedModule } from "../shared/shared.module";
 import { AgentBigQueryTasteSignalService } from "../agents/agent_bigquery_taste_signal.service";
+import { DiscoveryPolicyContextService } from "./discovery-policy-context.service";
 import { DiscoveryRankingService } from "./discovery-ranking.service";
 import { HomeFeedService } from "./home-feed.service";
 import { RecommendationsController } from "./recommendations.controller";
@@ -19,12 +20,19 @@ import { TasteMemoryService } from "./taste_memory.service";
     TasteMemoryService,
     // The unified scoring core (#1448 WS-1) shared with the AI DJ.
     DiscoveryRankingService,
+    // Policy-stage lookups (verified humans, played artists) — ADR-TE-2.
+    DiscoveryPolicyContextService,
     // Env-self-configuring warehouse signal reader so Home inherits the
     // DJ's BigQuery taste signal (consent-gated at call time).
     AgentBigQueryTasteSignalService,
     // Multi-rail Home feed composition (#1454 WS-7).
     HomeFeedService,
   ],
-  exports: [RecommendationsService, TasteMemoryService, DiscoveryRankingService],
+  exports: [
+    RecommendationsService,
+    TasteMemoryService,
+    DiscoveryRankingService,
+    DiscoveryPolicyContextService,
+  ],
 })
 export class RecommendationsModule {}
