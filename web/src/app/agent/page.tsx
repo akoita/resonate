@@ -88,7 +88,7 @@ export default function AgentPage() {
                 addToast({
                     type: "success",
                     title: "Smart Wallet Enabled",
-                    message: "Your DJ can now purchase stems autonomously.",
+                    message: "Your smart wallet is ready. Your DJ curates and never buys on its own.",
                 });
             } catch {
                 addToast({
@@ -139,7 +139,6 @@ export default function AgentPage() {
                     setIsStartingPreset(true);
                     await updateConfig({
                         vibes: preset.searchVibes,
-                        sessionMode: preset.commercePosture,
                     });
                 }
                 const result = await startSession(preferences ? { preferences } : undefined);
@@ -158,7 +157,6 @@ export default function AgentPage() {
                         mood: preset?.preferences.mood,
                         licenseType: preset?.preferences.licenseType,
                         queueStyle: preset?.queueStyle,
-                        commercePosture: preset?.commercePosture,
                     },
                 });
                 addToast({
@@ -192,7 +190,6 @@ export default function AgentPage() {
                 mood: preset.preferences.mood,
                 licenseType: preset.preferences.licenseType,
                 queueStyle: preset.queueStyle,
-                commercePosture: preset.commercePosture,
             },
         });
     };
@@ -289,7 +286,7 @@ export default function AgentPage() {
                     <div className="aid-empty">
                         <div className="aid-empty-icon">🤖</div>
                         <h2>Set Up Your AI DJ</h2>
-                        <p>Deploy a personal AI agent to scan the catalog, match your mood, and negotiate micro-payments.</p>
+                        <p>Deploy a personal AI agent to scan the catalog, match your mood, and play tracks that fit your taste.</p>
                         <button className="aid-primary-btn" onClick={() => setShowWizard(true)}>
                             Get Started
                         </button>
@@ -308,20 +305,22 @@ export default function AgentPage() {
                                 </span>
                             </div>
                             <div className="aid-command-actions">
-                                <div className="aid-mode-seg">
-                                    <button
-                                        className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
-                                        onClick={() => updateConfig({ sessionMode: "curate" })}
-                                    >
-                                        Curate Only
-                                    </button>
-                                    <button
-                                        className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
-                                        onClick={() => updateConfig({ sessionMode: "buy" })}
-                                    >
-                                        Buy Stems
-                                    </button>
-                                </div>
+                                {config.buyModeEnabled ? (
+                                    <div className="aid-mode-seg">
+                                        <button
+                                            className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
+                                            onClick={() => updateConfig({ sessionMode: "curate" })}
+                                        >
+                                            Curate Only
+                                        </button>
+                                        <button
+                                            className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
+                                            onClick={() => updateConfig({ sessionMode: "buy" })}
+                                        >
+                                            Buy Stems
+                                        </button>
+                                    </div>
+                                ) : null}
                                 <button
                                     className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
                                     onClick={() => handleToggle()}
@@ -395,8 +394,8 @@ export default function AgentPage() {
                                         type: "success",
                                         title: "Stem Types Updated",
                                         message: stemTypes.length === 0
-                                            ? "Your DJ will buy all available stems."
-                                            : `Your DJ will buy: ${stemTypes.join(", ")}`,
+                                            ? "Your DJ will consider all stem types."
+                                            : `Your DJ will consider: ${stemTypes.join(", ")}`,
                                     });
                                 }}
                                 onMintIdentity={async () => {

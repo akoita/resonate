@@ -5009,6 +5009,8 @@ export type AgentConfig = {
   vibes: string[];
   stemTypes: string[];
   sessionMode: "curate" | "buy";
+  /** Operator flag: stored `buy` sessions are honored only while this is true (ADR-TE-1). */
+  buyModeEnabled?: boolean;
   monthlyCapUsd: number;
   isActive: boolean;
   identityStatus: AgentIdentityStatus;

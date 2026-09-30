@@ -75,7 +75,7 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                         <div className="agent-wizard-emoji">🤖</div>
                         <h2 className="agent-wizard-title">Name Your DJ</h2>
                         <p className="agent-wizard-desc">
-                            Your AI DJ agent will curate, negotiate, and remix tracks for you in real-time.
+                            Your AI DJ agent will curate and play tracks that fit your taste in real-time.
                         </p>
                         <input
                             className="agent-wizard-input"
@@ -162,7 +162,7 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                         <div className="agent-wizard-emoji">🔐</div>
                         <h2 className="agent-wizard-title">Smart Wallet</h2>
                         <p className="agent-wizard-desc">
-                            Let your DJ autonomously purchase stems on-chain, within your budget. Uses account abstraction — no manual approvals needed.
+                            Set up a smart wallet with a spending cap for the purchases you approve. Your DJ never buys on its own.
                         </p>
                         <div className="agent-wallet-opt-in">
                             <button
@@ -173,7 +173,7 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                                 </svg>
                                 <span className="agent-wallet-opt-label">Enable</span>
-                                <span className="agent-wallet-opt-desc">Auto-buy stems within budget</span>
+                                <span className="agent-wallet-opt-desc">Capped wallet for your purchases</span>
                             </button>
                             <button
                                 className={`agent-wallet-opt-btn ${!enableWallet ? "selected" : ""}`}

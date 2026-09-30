@@ -510,6 +510,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "callout",
             tone: "note",
+            title: "The AI DJ never buys for you",
+            text: "Picking a session intent only changes what the DJ plays and recommends. It does not buy stems or licenses. Anything you purchase, you choose and approve yourself.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
             title: "What the AI DJ promotes",
             text: "The AI DJ can recommend human-made and AI-assisted tracks. Tracks declared fully AI-generated stay available for direct listening but are not selected as promoted AI DJ picks.",
           },
@@ -517,7 +523,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/ai-dj.png`,
-              alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate, negotiate, and remix tracks for you in real time.",
+              alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate and play tracks that fit your taste in real time.",
               caption: "Setting up your AI DJ the first time you open it.",
               width: 1440,
               height: 900,

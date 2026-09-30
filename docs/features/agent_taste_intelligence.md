@@ -15,6 +15,19 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989]
 > behavior; it changes as the slices in the
 > [milestone plan](../roadmap/2026-10-taste-engine-milestones.md) ship.
 
+## AI DJ purchase behavior
+
+The AI DJ does not buy stems on a listener's behalf (ADR-TE-1, #1954). None of
+the five session presets sets `buy`, the `/agent` Curate/Buy toggle is hidden by
+default, and `AgentConfigController` treats any stored `sessionMode: "buy"` as
+`curate` (logging the reason) unless the operator flag
+`AGENT_SESSION_BUY_MODE_ENABLED` is `true`. With the flag off, starting a
+session creates no negotiation-to-purchase call and no `AgentTransaction`; with
+it on, the previous `buy` behavior is unchanged. The purchase services stay for
+the Crate Digger quote flow. Details:
+[Agent Commerce Runtime](agent-commerce-runtime.md) and
+[environment variables](../deployment/environment.md).
+
 ## Status
 
 `partial`

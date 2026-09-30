@@ -15,6 +15,7 @@ import {
 import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { EventBus } from "../shared/event_bus";
 import type { NegotiationResult } from "./agent_negotiator.service";
+import { isAgentSessionBuyModeEnabled, resolveEffectiveSessionMode } from "./agent_session_mode";
 
 @Controller("agents/config")
 export class AgentConfigController {
@@ -37,7 +38,7 @@ export class AgentConfigController {
         const config = await prisma.agentConfig.findUnique({
             where: { userId: req.user.userId },
         });
-        return config ? this.identityService.enrichConfig(config) : null;
+        return config ? this.withBuyModeFlag(await this.identityService.enrichConfig(config)) : null;
     }
 
     @Post()
@@ -101,7 +102,7 @@ export class AgentConfigController {
             where: { userId: req.user.userId },
             data: allowedData,
         });
-        return this.identityService.enrichConfig(config);
+        return this.withBuyModeFlag(await this.identityService.enrichConfig(config));
     }
 
     @Post("identity/mint")
@@ -196,6 +197,12 @@ export class AgentConfigController {
         });
         if (!config) {
             return { status: "not_configured" };
+        }
+        const sessionMode = resolveEffectiveSessionMode(config.sessionMode);
+        if (config.sessionMode === "buy" && sessionMode !== "buy") {
+            this.logger.log(
+                `[Agent] Session mode "buy" ignored for user ${req.user.userId}: AGENT_SESSION_BUY_MODE_ENABLED is off, treating as curate`,
+            );
         }
         const sessionPreferences = {
             genres: body?.preferences?.genres ?? config.vibes,
@@ -321,8 +328,8 @@ export class AgentConfigController {
                                         outcome: { type: "first_pick_accept", firstPick: true },
                                     }),
                                 });
-                                this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${config.sessionMode}`);
-                                if (config.sessionMode === "buy") {
+                                this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${sessionMode}`);
+                                if (sessionMode === "buy") {
                                     await this.recordPurchase(
                                         session.id,
                                         req.user.userId,
@@ -330,7 +337,7 @@ export class AgentConfigController {
                                         track.negotiation,
                                     );
                                 } else {
-                                    this.logger.log(`[Agent] Skipping purchase for ${track.trackId} (mode: ${config.sessionMode})`);
+                                    this.logger.log(`[Agent] Skipping purchase for ${track.trackId} (mode: ${sessionMode})`);
                                 }
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${track.trackId}:`, err);
@@ -389,7 +396,7 @@ export class AgentConfigController {
                                         outcome: { type: "first_pick_accept", firstPick: true },
                                     }),
                                 });
-                                if (config.sessionMode === "buy") {
+                                if (sessionMode === "buy") {
                                     // Fetch actual listings to ensure we can buy
                                     const negotiation = await this.negotiatorService.negotiate({
                                         trackId: pick.trackId,
@@ -575,6 +582,10 @@ export class AgentConfigController {
         }
 
         return sessions;
+    }
+
+    private withBuyModeFlag<T extends object>(config: T): T & { buyModeEnabled: boolean } {
+        return { ...config, buyModeEnabled: isAgentSessionBuyModeEnabled() };
     }
 
     /**
