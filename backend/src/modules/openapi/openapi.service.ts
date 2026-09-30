@@ -531,6 +531,28 @@ export class OpenApiService {
                 type: 'array',
                 items: { $ref: '#/components/schemas/StemSummary' },
               },
+              audioFeatures: {
+                type: 'object',
+                nullable: true,
+                description:
+                  'Full-mix measured tempo, key and energy (#1960). Null when nothing was measured; unmeasured fields are null.',
+                properties: {
+                  tempoBpm: { type: 'number', nullable: true },
+                  tempoConfidence: { type: 'number', nullable: true },
+                  key: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      tonic: { type: 'string' },
+                      mode: { type: 'string', enum: ['major', 'minor'] },
+                      confidence: { type: 'number' },
+                    },
+                  },
+                  camelot: { type: 'string', nullable: true },
+                  energy: { type: 'number', nullable: true },
+                  source: { type: 'string', enum: ['measured_full_mix'] },
+                },
+              },
             },
             required: ['id', 'title'],
           },

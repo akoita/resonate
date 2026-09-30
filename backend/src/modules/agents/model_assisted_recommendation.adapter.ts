@@ -355,7 +355,10 @@ export class ModelAssistedRecommendationAdapter implements AgentRecommendationAd
         })),
         audioFeatures: candidate.agentRecommendation?.audioFeatures
           ? {
-            tempoBpm: candidate.agentRecommendation.audioFeatures.tempoBpm,
+            // Only a measured tempo is a fact; the inferred one is a metadata hash.
+            tempoBpm: candidate.agentRecommendation.audioFeatures.featureSources?.tempo === "measured"
+              ? Math.round(candidate.agentRecommendation.audioFeatures.tempoBpm)
+              : null,
             energyBand: candidate.agentRecommendation.audioFeatures.energyBand,
             moods: candidate.agentRecommendation.audioFeatures.descriptors.moods,
             confidence: candidate.agentRecommendation.audioFeatures.confidence,

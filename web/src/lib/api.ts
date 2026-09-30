@@ -5176,6 +5176,9 @@ export type AgentAudioFeatureSummary = {
   confidence?: number;
   tempoBpm?: number;
   energyBand?: "low" | "medium" | "high";
+  /** Per-field provenance (#1960); only a measured tempo is a real BPM. */
+  featureSources?: { tempo?: "measured" | "inferred" };
+  camelot?: string | null;
   warnings?: string[];
 };
 

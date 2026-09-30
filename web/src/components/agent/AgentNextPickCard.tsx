@@ -74,7 +74,9 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                             {pick!.audioFeatures && (
                                 <p className="aid-np-hint">
                                     {pick!.audioFeatures.energyBand ?? "unknown"} energy
-                                    {pick!.audioFeatures.tempoBpm ? ` · ${pick!.audioFeatures.tempoBpm} BPM` : ""}
+                                    {pick!.audioFeatures.tempoBpm && pick!.audioFeatures.featureSources?.tempo === "measured"
+                                        ? ` · ${Math.round(pick!.audioFeatures.tempoBpm)} BPM`
+                                        : ""}
                                 </p>
                             )}
                             {pick!.explanation?.length ? (

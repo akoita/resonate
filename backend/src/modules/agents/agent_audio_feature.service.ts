@@ -1,6 +1,12 @@
+import { createHash } from "crypto";
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import {
+  EMPTY_MEASURED_TRACK_FEATURES,
+  MeasuredTrackFeatures,
+  measuredTrackFeatures,
+} from "./measured_track_features";
 
 export type AgentEnergyBand = "low" | "medium" | "high";
 export type AgentTempoBand = "slow" | "mid" | "fast";
@@ -19,9 +25,24 @@ export interface AgentAudioFeatureVector {
   values: number[];
 }
 
+/**
+ * Per-field provenance (#1960). `inferred` values are metadata-derived (the
+ * tempo is a hash of title+genre, not a measurement) and must not be shown to
+ * listeners as a BPM; `measured` values come from the full-mix extractor.
+ */
+export interface AgentAudioFeatureSources {
+  tempo: "measured" | "inferred";
+  key: "measured" | "unavailable";
+  energy: "measured" | "inferred";
+}
+
 export interface AgentAudioFeatures {
   schemaVersion: "agent-audio-features/v2";
-  source: "metadata_inferred" | "generated_metadata" | "fingerprint_metadata";
+  source:
+    | "measured_full_mix"
+    | "metadata_inferred"
+    | "generated_metadata"
+    | "fingerprint_metadata";
   extractor: {
     name: "metadata_feature_seed";
     version: "2026-05-15";
@@ -32,7 +53,12 @@ export interface AgentAudioFeatures {
   durationSeconds?: number;
   durationBucket: AgentDurationBucket;
   tempoBpm: number;
+  /** Extractor tempo confidence; present only when the tempo is measured. */
+  tempoConfidence?: number;
   tempoBand: AgentTempoBand;
+  key: { tonic: string; mode: "major" | "minor"; confidence: number } | null;
+  camelot: string | null;
+  featureSources: AgentAudioFeatureSources;
   energy: number;
   energyBand: AgentEnergyBand;
   normalizedGenre?: string;
@@ -78,6 +104,9 @@ const HARMONIC_STEMS = new Set(["bass", "guitar", "piano", "keys", "synth"]);
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
+
+/** Confidence floor when only the energy composite is measured (tempo unreliable). */
+const MEASURED_ENERGY_ONLY_CONFIDENCE = 0.5;
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.max(min, Math.min(max, value));
@@ -125,7 +154,10 @@ export class AgentAudioFeatureService {
       where: { id: trackId },
       include: {
         release: { select: { genre: true, title: true, primaryArtist: true } },
-        stems: { where: { isCurrent: true }, select: { type: true, durationSeconds: true } },
+        stems: {
+          where: { isCurrent: true },
+          select: { id: true, type: true, durationSeconds: true, audioFeatures: true },
+        },
         fingerprint: { select: { duration: true, source: true } },
       },
     });
@@ -141,7 +173,17 @@ export class AgentAudioFeatureService {
       const cachedRevision = isRecord(track.generationMetadata)
         ? track.generationMetadata.agentAudioRevision
         : null;
-      if (isAgentAudioFeatures(existing) && (cachedRevision ?? null) === (track.activeAudioRevision ?? null)) {
+      const cachedMeasuredKey = isRecord(track.generationMetadata)
+        ? track.generationMetadata.agentAudioMeasuredKey
+        : null;
+      const originalStem = track.stems.find((stem) => stem.type === "original");
+      const measured = measuredTrackFeatures(originalStem?.audioFeatures);
+      const measuredKey = measuredCacheKey(originalStem?.id, measured);
+      if (
+        isAgentAudioFeatures(existing) &&
+        (cachedRevision ?? null) === (track.activeAudioRevision ?? null) &&
+        cachedMeasuredKey === measuredKey
+      ) {
         return { status: "ok", trackId, features: existing };
       }
 
@@ -155,6 +197,7 @@ export class AgentAudioFeatureService {
         stemTypes: track.stems.map((stem) => stem.type),
         fingerprintDuration: track.fingerprint?.duration,
         fingerprintSource: track.fingerprint?.source,
+        measured,
       });
 
       const metadata = isRecord(track.generationMetadata) ? track.generationMetadata : {};
@@ -165,6 +208,7 @@ export class AgentAudioFeatureService {
             ...metadata,
             agentAudioFeatures: features as unknown as Prisma.InputJsonObject,
             agentAudioRevision: track.activeAudioRevision,
+            agentAudioMeasuredKey: measuredKey,
           } as unknown as Prisma.InputJsonObject,
         },
       });
@@ -185,7 +229,9 @@ export class AgentAudioFeatureService {
     stemTypes: string[];
     fingerprintDuration?: number;
     fingerprintSource?: string;
+    measured?: MeasuredTrackFeatures;
   }): AgentAudioFeatures {
+    const measured = input.measured ?? EMPTY_MEASURED_TRACK_FEATURES;
     const metadata = isRecord(input.generationMetadata) ? input.generationMetadata : {};
     const genre = input.genre?.trim();
     const normalizedGenre = genre?.toLowerCase() ?? "";
@@ -202,9 +248,12 @@ export class AgentAudioFeatureService {
       : undefined;
     const titleEnergyBoost = /\b(club|dance|drill|heavy|kick|rave|trap|upbeat)\b/i.test(input.title) ? 0.12 : 0;
     const titleEnergyDrop = /\b(ambient|calm|dream|focus|soft|sleep)\b/i.test(input.title) ? -0.1 : 0;
-    const energy = clamp((genreEnergy ?? 0.5) + titleEnergyBoost + titleEnergyDrop);
+    const inferredEnergy = clamp((genreEnergy ?? 0.5) + titleEnergyBoost + titleEnergyDrop);
+    const energyMeasured = measured.energy !== null;
+    const energy = measured.energy ?? inferredEnergy;
     const tempoSeed = hashNumber(`${input.title}:${genre ?? ""}`);
-    const tempoBpm = Math.round(78 + (tempoSeed % 72));
+    const tempoMeasured = measured.tempoBpm !== null;
+    const tempoBpm = measured.tempoBpm ?? Math.round(78 + (tempoSeed % 72));
     const durationBucket = bucketForDuration(durationSeconds);
     const tempoBand = bandForTempo(tempoBpm);
     const instrumentation = Array.from(new Set(stemTypes));
@@ -262,17 +311,25 @@ export class AgentAudioFeatureService {
     if (!genre) warnings.push("genre_unavailable");
     if (stemTypes.length === 0) warnings.push("stems_unavailable");
 
-    const source = input.fingerprintDuration
+    const inferredSource = input.fingerprintDuration
       ? "fingerprint_metadata"
       : metadata.provider
         ? "generated_metadata"
         : "metadata_inferred";
-    const confidence = clamp(
+    const source: AgentAudioFeatures["source"] = tempoMeasured || energyMeasured
+      ? "measured_full_mix"
+      : inferredSource;
+    const inferredConfidence = clamp(
       0.35 +
       (input.fingerprintDuration ? 0.25 : 0) +
       (stemDuration ? 0.15 : 0) +
       (genre ? 0.1 : 0),
     );
+    const confidence = tempoMeasured
+      ? Math.max(inferredConfidence, measured.tempoConfidence ?? 0)
+      : energyMeasured
+        ? Math.max(inferredConfidence, MEASURED_ENERGY_ONLY_CONFIDENCE)
+        : inferredConfidence;
 
     return {
       schemaVersion: "agent-audio-features/v2",
@@ -286,7 +343,17 @@ export class AgentAudioFeatureService {
       ...(durationSeconds ? { durationSeconds } : {}),
       durationBucket,
       tempoBpm,
+      ...(tempoMeasured && measured.tempoConfidence !== null
+        ? { tempoConfidence: measured.tempoConfidence }
+        : {}),
       tempoBand,
+      key: measured.key,
+      camelot: measured.camelot,
+      featureSources: {
+        tempo: tempoMeasured ? "measured" : "inferred",
+        key: measured.key ? "measured" : "unavailable",
+        energy: energyMeasured ? "measured" : "inferred",
+      },
       energy,
       energyBand: bandForEnergy(energy),
       ...(normalizedGenre ? { normalizedGenre } : {}),
@@ -304,5 +371,26 @@ export class AgentAudioFeatureService {
 }
 
 function isAgentAudioFeatures(value: unknown): value is AgentAudioFeatures {
-  return isRecord(value) && value.schemaVersion === "agent-audio-features/v2";
+  // Entries cached before #1960 have no featureSources and are stale.
+  return (
+    isRecord(value) &&
+    value.schemaVersion === "agent-audio-features/v2" &&
+    isRecord(value.featureSources)
+  );
+}
+
+/**
+ * Short stable key over the original stem id and its measured fields. A
+ * backfill or re-ingestion that changes them changes the key, so the cached
+ * derivation is refreshed on next read. "none" when nothing is measured.
+ */
+function measuredCacheKey(stemId: string | undefined, measured: MeasuredTrackFeatures) {
+  if (!stemId) return "none";
+  if (measured.tempoBpm === null && measured.key === null && measured.energy === null) {
+    return "none";
+  }
+  return createHash("sha1")
+    .update(JSON.stringify({ stemId, measured }))
+    .digest("hex")
+    .slice(0, 16);
 }

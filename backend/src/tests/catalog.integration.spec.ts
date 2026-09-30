@@ -2659,4 +2659,116 @@ describe('CatalogService (integration)', () => {
       reason: 'No live campaign for this artist right now.',
     });
   });
+  describe('track audioFeatures (#1960)', () => {
+    const measuredStemFeatures = {
+      schemaVersion: 'stem-audio-features/v1',
+      extractor: { name: 'librosa', version: '0.10' },
+      sampleRate: 22050,
+      durationSeconds: 200,
+      tempoBpm: 124.5,
+      tempoConfidence: 0.8,
+      beatCount: 400,
+      firstBeatSec: 0.4,
+      key: { tonic: 'C', mode: 'major', confidence: 0.4 },
+      energyRms: 0.15,
+      onsetDensity: 4,
+      camelot: '8B',
+    };
+
+    async function seedTrack(suffix: string, originalFeatures: object | null) {
+      const releaseId = `${TEST_PREFIX}af_release_${suffix}`;
+      const trackId = `${TEST_PREFIX}af_track_${suffix}`;
+      await prisma.release.create({
+        data: {
+          id: releaseId,
+          artistId: `${TEST_PREFIX}artist`,
+          title: `Audio Features ${suffix}`,
+          primaryArtist: `${TEST_PREFIX}af_artist_${suffix}`,
+          status: 'ready',
+        },
+      });
+      await prisma.track.create({
+        data: {
+          id: trackId,
+          releaseId,
+          title: `Audio Features Track ${suffix}`,
+          position: 1,
+          processingStatus: 'complete',
+        },
+      });
+      await prisma.stem.createMany({
+        data: [
+          {
+            id: `${TEST_PREFIX}af_original_${suffix}`,
+            trackId,
+            type: 'original',
+            uri: `/catalog/stems/af-original-${suffix}.mp3`,
+            data: Buffer.from('af-original'),
+            isCurrent: true,
+            ...(originalFeatures ? { audioFeatures: originalFeatures } : {}),
+          },
+          {
+            id: `${TEST_PREFIX}af_drums_${suffix}`,
+            trackId,
+            type: 'drums',
+            uri: `/catalog/stems/af-drums-${suffix}.mp3`,
+            data: Buffer.from('af-drums'),
+            isCurrent: true,
+          },
+        ],
+      });
+      return { releaseId, trackId };
+    }
+
+    it('exposes measured full-mix features on the track and release reads', async () => {
+      const { releaseId, trackId } = await seedTrack('measured', measuredStemFeatures);
+
+      const track = await catalog.getTrack(trackId);
+      expect(track?.audioFeatures).toEqual({
+        tempoBpm: 124.5,
+        tempoConfidence: 0.8,
+        key: { tonic: 'C', mode: 'major', confidence: 0.4 },
+        camelot: '8B',
+        // 0.65 * (0.15 / 0.3) + 0.35 * (4 / 8) = 0.5
+        energy: 0.5,
+        source: 'measured_full_mix',
+      });
+      // The raw per-stem JSON is not leaked and no stem data/bytes are added.
+      for (const stem of track?.stems ?? []) {
+        expect(stem).not.toHaveProperty('audioFeatures');
+        expect(stem).not.toHaveProperty('data');
+      }
+
+      const release = await catalog.getRelease(releaseId);
+      expect(release?.tracks[0].audioFeatures).toEqual(track?.audioFeatures);
+
+      const published = (await catalog.listPublished(5, `${TEST_PREFIX}af_artist_measured`)).find((item) => item.id === releaseId);
+      expect(published?.tracks[0].audioFeatures).toEqual(track?.audioFeatures);
+    });
+
+    it('is null when the original stem has no features', async () => {
+      const { releaseId, trackId } = await seedTrack('absent', null);
+
+      expect((await catalog.getTrack(trackId))?.audioFeatures).toBeNull();
+      expect((await catalog.getRelease(releaseId))?.tracks[0].audioFeatures).toBeNull();
+    });
+
+    it('nulls unmeasured fields and never exposes an inferred tempo', async () => {
+      const { trackId } = await seedTrack('lowconf', {
+        ...measuredStemFeatures,
+        tempoConfidence: 0.4,
+        key: { tonic: 'C', mode: 'major', confidence: 0.05 },
+        camelot: null,
+      });
+
+      expect((await catalog.getTrack(trackId))?.audioFeatures).toEqual({
+        tempoBpm: null,
+        tempoConfidence: null,
+        key: null,
+        camelot: null,
+        energy: 0.5,
+        source: 'measured_full_mix',
+      });
+    });
+  });
 });

@@ -47,9 +47,10 @@ describe("AgentNextPickCard", () => {
           score: 72,
           explanation: ["Nearby vibe match", "Purchasable stem available"],
           audioFeatures: {
-            source: "metadata_inferred",
+            source: "measured_full_mix",
             energyBand: "high",
-            tempoBpm: 124,
+            tempoBpm: 124.4,
+            featureSources: { tempo: "measured" },
             confidence: 0.6,
           },
         }}
@@ -61,6 +62,31 @@ describe("AgentNextPickCard", () => {
     expect(html).toContain("score 72");
     expect(html).toContain("Nearby vibe match");
     expect(html).toContain("high energy · 124 BPM");
+  });
+
+  it("does not show an inferred tempo as a BPM (#1960)", () => {
+    const html = renderToStaticMarkup(
+      <AgentNextPickCard
+        config={config}
+        activeSessionId="session-1"
+        isLoading={false}
+        pick={{
+          status: "ok",
+          track: { id: "track-1", title: "Boom Bap Signal", artistId: "artist-1" },
+          runtimeStatus: "approved",
+          audioFeatures: {
+            source: "metadata_inferred",
+            energyBand: "high",
+            tempoBpm: 124,
+            featureSources: { tempo: "inferred" },
+          },
+        }}
+        onPick={async () => {}}
+      />,
+    );
+
+    expect(html).toContain("high energy");
+    expect(html).not.toContain("BPM");
   });
 
   const okPick = {

@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960]
 ---
 
 # Agent Taste Intelligence
@@ -368,6 +368,56 @@ rotation, cold/warm, hidden artist removed from every rail),
 `home_feed_rail_policy.spec.ts` (rail policy rules),
 `recommendations.controller.http.spec.ts` (routing,
 guard, shape), `web/src/components/home/HomeFeedRails.test.tsx`.
+
+## Measured vs inferred audio features (#1960)
+
+**Vision alignment (ADR-BM-6):** vision-neutral infrastructure and quality for
+Lines 3 and 4. No fee, split or payout changes.
+
+`AgentAudioFeatureService.getOrCreate` builds `agent-audio-features/v2` for each
+candidate. Until #1960 every value was inferred from metadata: the tempo is a
+hash of title and genre, not a measurement. Since #1960 the service overlays the
+measured full-mix features that ingestion stores on the current `original` stem
+(`stem-audio-features/v1`, see [Audio features](audio_features.md)). The pure
+rules live in `backend/src/modules/agents/measured_track_features.ts`
+(`measuredTrackFeatures`), and each field is measured or falls back on its own.
+
+| Field | Measured when | Otherwise |
+| --- | --- | --- |
+| Tempo | `tempoBpm` is present and `tempoConfidence >= 0.5` (`MEASURED_TEMPO_MIN_CONFIDENCE`; the extractor's confidence is a beat-vs-average onset strength ratio mapped to (0,1), so 0.5 means beats are no stronger than average) | inferred hash tempo |
+| Key and Camelot | key confidence `>= 0.1` (`CAMELOT_MIN_KEY_CONFIDENCE`); Camelot is the stored code or derived for older rows | `key` and `camelot` are null |
+| Energy | `energyRms` is present: `clamp(0.65 * clamp(energyRms / 0.3) + 0.35 * clamp(onsetDensity / 8))`, rounded to 4 decimals (a missing onset density counts as 0) | genre and title inferred energy |
+
+Measured tempo and energy replace the inferred values everywhere they were
+used: `tempoBpm`, `tempoBand`, `energy`, `energyBand`, the feature-vector energy
+and tempo dimensions, and the mood and tag bands. The output gains
+`featureSources` (`tempo: measured|inferred`, `key: measured|unavailable`,
+`energy: measured|inferred`), `tempoConfidence` (only when the tempo is
+measured), `key` and `camelot`. `source` becomes `measured_full_mix` when the
+tempo or the energy is measured, and `confidence` is raised to the measured
+tempo confidence (or 0.5 when only energy is measured) when that is higher. With
+no measurement, or only below-threshold values, the output equals the previous
+inferred output apart from the new fields (`featureSources` inferred, `key` and
+`camelot` null).
+
+**Cache key.** The derived features are cached in
+`track.generationMetadata.agentAudioFeatures`. The cache is valid only when
+`agentAudioRevision` equals the track's active audio revision and
+`agentAudioMeasuredKey` equals the current measured key: a short sha1 over the
+original stem id and its measured fields, or `none` when nothing is measured. A
+backfill or a new ingestion that changes the measured features therefore
+re-derives on the next read. Cached entries without `featureSources` (written
+before #1960) are stale and are re-derived.
+
+**Explanation rule.** The ranking core prints a BPM only when the tempo is
+measured, rounded to an integer (`124 BPM, high energy`). When the tempo is
+inferred the reason shows the energy band alone (`high energy`), because the
+inferred number is fabricated. The model-assisted adapter applies the same rule
+(`tempoBpm` is null unless measured). Scoring weights are unchanged.
+
+Listeners can see the measured values on the public catalog track API as
+`audioFeatures`, described in [Audio features](audio_features.md). The inferred
+tempo is never exposed there.
 
 ## Recommendation Explanations
 
