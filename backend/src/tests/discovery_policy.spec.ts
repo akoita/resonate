@@ -304,8 +304,66 @@ describe("discovery policy (ADR-TE-2)", () => {
       const due = applyDiscoveryPolicy(list, {
         ...common,
         priorSessionArtistKeys: ["id:a", "id:b", "id:c", "id:d"],
+        priorExplorationCount: 0,
       });
       expect(ids(due.items)).toEqual(["fresh"]);
+    });
+
+    describe("late-session reserve with a full prior window", () => {
+      const prior = Array.from({ length: 9 }, (_, i) => `id:p${i}`);
+      const pool = (): Ranked[] =>
+        [
+          ranked("fam-1", 100, { artistId: "f1" }),
+          ranked("fam-2", 95, { artistId: "f2" }),
+          ranked("fam-3", 90, { artistId: "f3" }),
+          ranked("new-a", 80, { artistId: "n1" }),
+          ranked("new-b", 70, { artistId: "n2" }),
+          ranked("new-c", 60, { artistId: "n3" }),
+          ranked("new-d", 50, { artistId: "n4" }),
+        ];
+      const common = {
+        limit: 5,
+        verifiedHumanArtistIds: new Set(["n1", "n2", "n3", "n4"]),
+        priorSessionArtistKeys: prior,
+      };
+
+      it("reserves the remaining share of the window: 9 prior + 5 = 14 -> 3, minus 2 served = 1", () => {
+        const result = applyDiscoveryPolicy(pool(), {
+          ...common,
+          priorExplorationCount: 2,
+        });
+        expect(result.exploration).toEqual({ reserved: 1, served: 1 });
+      });
+
+      it("reserves nothing once prior exploration already meets the target", () => {
+        const result = applyDiscoveryPolicy(pool(), {
+          ...common,
+          priorExplorationCount: 3,
+        });
+        expect(result.exploration).toEqual({ reserved: 0, served: 0 });
+        expect(
+          result.items.filter((i) => i.reasonCode === "discovery_pick"),
+        ).toHaveLength(0);
+      });
+
+      it("never inflates the reserve when the prior count is unknown: share over the page only", () => {
+        const result = applyDiscoveryPolicy(pool(), common);
+        // max(1, round(5 * 0.2)) = 1, not round(14 * 0.2) = 3 of 5 picks.
+        expect(result.exploration).toEqual({ reserved: 1, served: 1 });
+        expect(
+          result.items.filter((i) => i.reasonCode === "discovery_pick"),
+        ).toHaveLength(1);
+      });
+
+      it("a known zero is still due, but never catches up in a burst", () => {
+        // Window share is round(14 * 0.2) = 3, but one call reserves at most
+        // its own page share, max(1, round(5 * 0.2)) = 1.
+        const result = applyDiscoveryPolicy(pool(), {
+          ...common,
+          priorExplorationCount: 0,
+        });
+        expect(result.exploration.reserved).toBe(1);
+      });
     });
   });
 

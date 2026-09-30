@@ -6,6 +6,7 @@ import { AgentBigQueryTasteSignalService, AgentTasteScore } from "./agent_bigque
 import { CommunityCohortService } from "../community/community_cohort.service";
 import {
   applyDiscoveryPolicy,
+  DISCOVERY_POLICY_DEFAULTS,
   discoveryArtistKey,
 } from "../recommendations/discovery-policy";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
@@ -287,6 +288,7 @@ export class AgentSelectorService {
       verifiedHumanArtistIds: policyContext.verifiedHumanArtistIds,
       playedArtistIds: policyContext.playedArtistIds,
       priorSessionArtistKeys: policyContext.priorSessionArtistKeys,
+      priorExplorationCount: policyContext.priorExplorationCount,
     });
     const selected = policyResult.items.map(toAgentTrack);
     const scored = ranked.map(toAgentTrack);
@@ -359,6 +361,9 @@ export class AgentSelectorService {
     let verifiedHumanArtistIds: ReadonlySet<string> = new Set<string>();
     let playedArtistIds: ReadonlySet<string> = new Set<string>();
     let sessionArtists = new Map<string, string>();
+    // Unknown until counted: the policy then takes the share over the page
+    // alone instead of inflating the reserve late in a session.
+    let priorExplorationCount: number | undefined;
     if (this.policyContext) {
       try {
         const artistIds = fresh
@@ -374,6 +379,24 @@ export class AgentSelectorService {
       } catch (error) {
         this.logger.warn(`Discovery policy context unavailable: ${String(error)}`);
       }
+      // Same prior window the policy uses for the diversity cap (last 9).
+      // Counted separately so a failure here leaves the count unknown
+      // (undefined) without discarding the rest of the context.
+      // An anonymous caller has no signal history to count, so it stays
+      // unknown rather than a misleading 0.
+      try {
+        if (input.userId) {
+          priorExplorationCount = await this.policyContext.countDiscoveryPicks(
+            input.userId,
+            input.recentTrackIds.slice(
+              0,
+              DISCOVERY_POLICY_DEFAULTS.sessionWindow - 1,
+            ),
+          );
+        }
+      } catch (error) {
+        this.logger.warn(`Prior discovery picks unavailable: ${String(error)}`);
+      }
     }
     // recentTrackIds is newest-first; the policy wants chronological order.
     const priorSessionArtistKeys = [...input.recentTrackIds]
@@ -381,7 +404,12 @@ export class AgentSelectorService {
       .map((id) =>
         discoveryArtistKey({ id, artistId: sessionArtists.get(id) ?? null }),
       );
-    return { verifiedHumanArtistIds, playedArtistIds, priorSessionArtistKeys };
+    return {
+      verifiedHumanArtistIds,
+      playedArtistIds,
+      priorSessionArtistKeys,
+      priorExplorationCount,
+    };
   }
 
 }
