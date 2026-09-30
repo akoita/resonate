@@ -43,6 +43,7 @@ import { UsageModule } from "./usage/usage.module";
 import { PunchlineModule } from "./punchline/punchline.module";
 import { PrivacyModule } from "./privacy/privacy.module";
 import { ManagementModule } from "./management/management.module";
+import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.module";
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { ManagementModule } from "./management/management.module";
     PunchlineModule,
     PrivacyModule,
     ManagementModule,
+    DiscoveryJournalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

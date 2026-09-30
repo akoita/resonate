@@ -538,31 +538,50 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Sonic Radar is your discovery dashboard — AI-curated releases and stems chosen from across the catalog so you keep finding music outside your usual rotation.",
+            text: "Sonic Radar is your discovery journal — the tracks that resonated with you. A track resonates when you play it through to at least 90% and then replay it or save it within seven days. Sonic Radar only lists music you have actually listened to, and it never shows prices.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/sonic-radar.png`,
-              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of AI-curated discoveries, and a 'No discoveries yet' empty state with a 'Launch AI DJ' button.",
-              caption: "Sonic Radar before your first session — launch the AI DJ to start filling it.",
+              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, and a 'Your journal is quiet' empty state with a 'Start a session' button.",
+              caption: "Sonic Radar before anything has resonated — start a session to begin.",
               width: 1440,
               height: 900,
               source: LOCAL,
             },
           },
           {
+            kind: "list",
+            items: [
+              "At the top, two weekly numbers: resonant discoveries this week, and new artists this week. A discovery is a resonant track by an artist you had not listened to before.",
+              "Below, your resonant tracks are grouped by AI DJ session, or by day when you listened on your own. Each track shows a short, general reason it fits you, whether you replayed or saved it, and a New to you label for a first-time artist.",
+              "Each artist gets one suggested next step on their first track: visit their artist page, or see their open show campaign when they have one. Open the page or campaign only if you want to; nothing happens automatically.",
+              "Use Add to Playlist on a track or a whole group to keep the music.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "If nothing has resonated yet, Sonic Radar says so and offers a way to start a session. Tracks you finish and then replay or save will show up here.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Purchases are not listed here",
+            text: "Sonic Radar is about listening, not buying. The AI DJ does not buy music for you. Anything you purchase yourself appears in your wallet and library.",
+          },
+          {
             kind: "callout",
             tone: "tip",
             title: "You control what trains your taste",
-            text: "Whether AI DJ playback trains your taste profile is up to you. Manage it any time under Settings → privacy. See Settings & privacy controls.",
+            text: "Whether AI DJ playback trains your taste profile is up to you. Manage it any time under Settings → privacy. If you turn it off, tracks the AI DJ played stay out of Sonic Radar, and resetting your taste memory starts Sonic Radar fresh. See Settings & privacy controls.",
           },
         ],
       },
     ],
     appLinks: [
       { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
-      { label: "Sonic Radar", href: "/sonic-radar", description: "AI-curated discoveries." },
+      { label: "Sonic Radar", href: "/sonic-radar", description: "Your resonant discoveries." },
     ],
     related: ["discover-music", "playing-music", "settings-privacy"],
   },

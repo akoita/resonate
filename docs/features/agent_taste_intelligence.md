@@ -292,6 +292,86 @@ SELECT
 FROM `${PROJECT_ID}.${DATASET}.agent_candidate_scores`;
 ```
 
+## Sonic Radar: discovery journal (ADR-TE-5)
+
+Status: `partial`. Sonic Radar (`/sonic-radar`) is the listener's discovery
+journal: the tracks that resonated. It no longer lists agent purchases, because
+the AI DJ does not buy (ADR-TE-1). Design:
+[RFC §4.1](../rfc/taste-engine.md#41-sonic-radar-becomes-the-discovery-journal)
+and [ADR-TE-5](../strategy/taste-engine-decisions.md).
+
+**Vision alignment (ADR-BM-6):** vision-neutral infrastructure/quality. It is a
+read-only listener surface with no money movement, fee or payout.
+
+**Resonance rule** (RFC §3.3). A track resonates for a listener when:
+
+1. an `AgentSignal` `complete` exists with `metadata.outcome.completionRatio >= 0.9`
+   (a `complete` with no recorded ratio never qualifies), and
+2. within 7 days after that completion the listener replayed it (a later
+   `complete` or `replay` signal on the same track) or saved it (a `save` or
+   `add_to_playlist` signal, or a `LibraryTrack` row created in that window).
+
+A follow-up that has not happened yet does not count. The earliest qualifying
+completion per track is the one shown.
+
+**Resonant discovery.** A resonant track whose artist (the release's artist
+profile) the listener had no earlier recorded interaction with. The opening
+`accept` signal of the very listen, and other tracks of the same sitting (two
+hours before the qualifying completion), do not count as earlier interaction;
+otherwise a first listen could never be a discovery. The headline counts
+resonant discoveries and distinct new artists over the last 7 days ending now.
+
+**Endpoint.** `GET /agents/discoveries` (JWT required; the listener is always
+the authenticated user) with optional `windowDays` (1 to 90, default 28) and
+`limit` (1 to 100, default 50). Non-integer values return `400`; numbers are
+clamped. Response contract `discovery-journal/v1`:
+
+- `window: { days, from, to }`
+- `headline: { resonantDiscoveriesThisWeek, newArtistsThisWeek }`
+- `groups[]: { key, sessionId | null, date, items[] }`, grouped by
+  `AgentSignal.sessionId` when present, else by the UTC calendar day of the
+  qualifying completion; newest first.
+- `items[]`: `trackId`, `title`, `artistId`, `artistName` (credited name),
+  `releaseId`, `releaseTitle`, artwork fields, `resonatedAt`, `followUp`
+  (`replayed` or `saved`), `discovery`, `reason: { code, text }`, and
+  `nextAction`.
+- `reason` uses the shared categorical vocabulary in
+  `backend/src/modules/recommendations/discovery-explanations.ts`. A
+  `reasonCode` recorded on the listener's own accept signal wins when it is in
+  the vocabulary; otherwise a discovery by a verified human artist is a
+  discovery pick and everything else is a listening-pattern fit. Free-text
+  agent reasons are never shown. Until the signal recorder persists a
+  `reasonCode` (the metadata sanitizer keeps only `score` and `explanation`
+  today), the fallback applies.
+- `nextAction` is one per artist, on the artist's first item in display order
+  and `null` on the rest: the artist's open Shows campaign (active, before its
+  deadline, not signal-level) when one exists, else the artist page. A "follow
+  the artist" action is not offered because no follow feature exists yet.
+
+**Privacy and consent.** The journal is computed on read from the signed-in
+listener's own `AgentSignal` and `LibraryTrack` rows, bounded to the window and
+at most 2000 signal rows; it never reads another listener's data. It follows
+the taste-memory controls: signals from before a taste reset are ignored (also
+when deciding whether an artist is new), and when "AI DJ playback trains my
+taste" is off, agent-originated playback (`source = agent_session`, or
+`agentOriginated`) is excluded. Only publicly available tracks are listed
+(same availability rules as the catalog: published, not withdrawn, not
+removed, not restricted).
+
+**No purchase data.** The payload has no price, spend, license or transaction
+fields. Purchase history lives in the wallet and library views. The Listener
+Pro "where your money went" statement in RFC §4.1 is not built.
+
+**Web.** `web/src/app/sonic-radar/page.tsx` renders the headline, the groups,
+the reason and follow-up per track, the single next action per artist, and an
+honest empty state with a link to start an AI DJ session. The User Guide
+article `sonic-radar` (AI DJ & Sonic Radar) describes it; its screenshot needs
+regenerating with `web/scripts/capture-help-screenshots.mjs`.
+
+**Tests.** `backend/src/tests/discovery_journal.integration.spec.ts` (the
+resonance rule, discovery flag, per-listener scoping, consent, next actions,
+no price keys) and `backend/src/tests/discovery_journal.controller.http.spec.ts`.
+
 ## Warehouse Materialization
 
 The baseline warehouse script creates all three MVP tables from `events_clean`

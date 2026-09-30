@@ -3,161 +3,39 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthGate from "../../components/auth/AuthGate";
-import { useAgentHistory } from "../../hooks/useAgentHistory";
-import { useAuth } from "../../components/auth/AuthProvider";
+import { useDiscoveryJournal } from "../../hooks/useDiscoveryJournal";
 import { useUIStore } from "../../lib/uiStore";
-import { type LocalTrack, saveTracksMetadata } from "../../lib/localLibrary";
-import type { AgentSessionLicense, AgentTransaction } from "../../lib/api";
-import { getReleaseArtworkUrl, getTrack as getCatalogTrack, API_BASE } from "../../lib/api";
-
-type GroupedSession = {
-    date: string;
-    sessionId: string;
-    licenses: AgentSessionLicense[];
-    transactions: AgentTransaction[];
-};
-
-function formatSessionDate(iso: string) {
-    const d = new Date(iso);
-    const now = new Date();
-    const diff = now.getTime() - d.getTime();
-    const days = Math.floor(diff / 86400000);
-
-    if (days === 0) return "Today";
-    if (days === 1) return "Yesterday";
-    if (days < 7) return `${days} days ago`;
-    return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
-function licenseLabel(type: string) {
-    switch (type) {
-        case "personal": return "Personal";
-        case "remix": return "Remix";
-        case "commercial": return "Commercial";
-        default: return type;
-    }
-}
+import { saveTracksMetadata } from "../../lib/localLibrary";
+import type { DiscoveryJournalItem } from "../../lib/api";
+import {
+    followUpLabel,
+    formatGroupLabel,
+    hasJournalItems,
+    journalItemToLocalTrack,
+    trackCountLabel,
+} from "./journal";
 
 export default function SonicRadarPage() {
-    const { sessions, isLoading } = useAgentHistory();
-    useAuth();
+    const { journal, isLoading, error, refetch } = useDiscoveryJournal();
     const router = useRouter();
     const { setTracksToAddToPlaylist } = useUIStore();
 
-    /**
-     * Build individual stem-level LocalTrack entries from a session group.
-     * Each confirmed transaction (Drums, Vocals, etc.) becomes a separate
-     * playlist entry with a deterministic ID so it's both unique and resolvable.
-     * Saves them to the library before returning so getTrack() can resolve later.
-     */
-    const buildStemTracks = async (group: GroupedSession): Promise<LocalTrack[]> => {
-        const confirmedTxs = group.transactions.filter(t => t.status === 'confirmed' && t.trackId);
-
-        if (confirmedTxs.length === 0) {
-            // Fallback: no transactions, use licenses (one per parent track)
-            const seen = new Set<string>();
-            return group.licenses
-                .filter(lic => {
-                    if (seen.has(lic.trackId)) return false;
-                    seen.add(lic.trackId);
-                    return true;
-                })
-                .map(lic => ({
-                    id: lic.trackId,
-                    title: lic.track.title,
-                    artist: lic.track.artist,
-                    albumArtist: null,
-                    album: lic.track.release?.title || null,
-                    year: null,
-                    genre: null,
-                    duration: null,
-                    createdAt: new Date().toISOString(),
-                    source: "remote" as const,
-                    remoteArtworkUrl: lic.track.release?.artworkUrl || undefined,
-                }));
-        }
-
-        // Build a lookup from trackId → license (for artwork)
-        const licByTrack = new Map(group.licenses.map(l => [l.trackId, l]));
-
-        // Fetch catalog data for each unique track to get real stem IDs
-        const uniqueTrackIds = [...new Set(confirmedTxs.map(tx => tx.trackId!).filter(Boolean))];
-        const stemLookup = new Map<string, Map<string, string>>();  // trackId → Map<stemType → stemId>
-        await Promise.all(uniqueTrackIds.map(async (trackId) => {
-            try {
-                const catalogTrack = await getCatalogTrack(trackId);
-                if (catalogTrack?.stems) {
-                    const typeMap = new Map<string, string>();
-                    for (const stem of catalogTrack.stems) {
-                        typeMap.set(stem.type.toLowerCase(), stem.id);
-                    }
-                    stemLookup.set(trackId, typeMap);
-                }
-            } catch (err) {
-                console.warn(`[SonicRadar] Failed to fetch catalog track ${trackId}:`, err);
-            }
-        }));
-
-        // Create one LocalTrack per stem transaction
-        const stemTracks: LocalTrack[] = confirmedTxs.map(tx => {
-            const stemSlug = tx.stemName?.toLowerCase().replace(/\s+/g, '_') || 'unknown';
-            const lic = licByTrack.get(tx.trackId!);
-            const artworkUrl = lic?.track.release?.artworkUrl
-                || (lic?.track.release?.artworkMimeType
-                    ? getReleaseArtworkUrl(lic.track.release.id, {
-                        artworkRevision: lic.track.release.artworkRevision,
-                    })
-                    : undefined);
-
-            // Resolve the actual stem ID from catalog data
-            const realStemId = stemLookup.get(tx.trackId!)?.get(stemSlug);
-            const previewUrl = realStemId ? `${API_BASE}/catalog/stems/${realStemId}/preview` : undefined;
-
-            return {
-                id: `stem_${tx.trackId}_${stemSlug}`,
-                title: tx.stemName ? `${tx.trackTitle || 'Unknown'} (${tx.stemName})` : (tx.trackTitle || 'Unknown'),
-                artist: tx.trackArtist || null,
-                albumArtist: null,
-                album: lic?.track.release?.title || null,
-                year: null,
-                genre: null,
-                duration: null,
-                createdAt: tx.createdAt,
-                source: "remote" as const,
-                catalogTrackId: tx.trackId,
-                stemType: tx.stemName || undefined,
-                remoteArtworkUrl: artworkUrl,
-                remoteUrl: previewUrl,
-                previewUrl: previewUrl,
-            };
-        });
-
-        // Persist to library so PlaylistDetail.getTrack() can resolve them
+    const addToPlaylist = async (items: DiscoveryJournalItem[]) => {
+        const tracks = items.map(journalItemToLocalTrack);
+        // Persist so the playlist can resolve the catalog tracks later.
         try {
-            await saveTracksMetadata(stemTracks, "remote");
+            await saveTracksMetadata(tracks, "remote");
         } catch (err) {
-            console.warn('[SonicRadar] Failed to save stem tracks to library:', err);
+            console.warn("[SonicRadar] Failed to save tracks to library:", err);
         }
-
-        return stemTracks;
+        setTracksToAddToPlaylist(tracks);
     };
 
-    // Flatten sessions into grouped display
-    const groups: GroupedSession[] = sessions
-        .filter((s) => s.licenses.length > 0)
-        .map((s) => ({
-            date: formatSessionDate(s.startedAt),
-            sessionId: s.id,
-            licenses: s.licenses,
-            transactions: s.agentTransactions || [],
-        }));
-
-    // Total unique tracks
-    const allLicenses = groups.flatMap((g) => g.licenses);
-    const uniqueTracks = new Set(allLicenses.map((l) => l.trackId)).size;
+    const hasItems = hasJournalItems(journal);
+    const headline = journal?.headline;
 
     return (
-        <AuthGate title="Connect your wallet to see your AI-curated discoveries.">
+        <AuthGate title="Connect your wallet to see your discovery journal.">
             <main className="sonic-radar-page">
                 {/* Hero Section */}
                 <section className="sonic-radar-hero">
@@ -176,25 +54,22 @@ export default function SonicRadarPage() {
                             <span className="text-gradient">Sonic Radar</span>
                         </h1>
                         <p className="sonic-radar-subtitle">
-                            Your AI-curated discoveries — every track your DJ found, negotiated, and secured for you.
+                            Your discovery journal — the tracks that resonated: you played them through, then replayed or saved them.
                         </p>
-                        {!isLoading && allLicenses.length > 0 && (
+                        {!isLoading && headline && hasItems && (
                             <div className="sonic-radar-stats">
                                 <div className="sonic-radar-stat">
-                                    <span className="sonic-radar-stat-value">{uniqueTracks}</span>
-                                    <span className="sonic-radar-stat-label">Track{uniqueTracks !== 1 ? "s" : ""} Discovered</span>
-                                </div>
-                                <div className="sonic-radar-stat-divider" />
-                                <div className="sonic-radar-stat">
-                                    <span className="sonic-radar-stat-value">{groups.length}</span>
-                                    <span className="sonic-radar-stat-label">Session{groups.length !== 1 ? "s" : ""}</span>
-                                </div>
-                                <div className="sonic-radar-stat-divider" />
-                                <div className="sonic-radar-stat">
-                                    <span className="sonic-radar-stat-value">
-                                        ${allLicenses.reduce((s, l) => s + l.priceUsd, 0).toFixed(2)}
+                                    <span className="sonic-radar-stat-value">{headline.resonantDiscoveriesThisWeek}</span>
+                                    <span className="sonic-radar-stat-label">
+                                        Resonant discover{headline.resonantDiscoveriesThisWeek === 1 ? "y" : "ies"} this week
                                     </span>
-                                    <span className="sonic-radar-stat-label">Total Spent</span>
+                                </div>
+                                <div className="sonic-radar-stat-divider" />
+                                <div className="sonic-radar-stat">
+                                    <span className="sonic-radar-stat-value">{headline.newArtistsThisWeek}</span>
+                                    <span className="sonic-radar-stat-label">
+                                        New artist{headline.newArtistsThisWeek === 1 ? "" : "s"} this week
+                                    </span>
                                 </div>
                             </div>
                         )}
@@ -202,7 +77,7 @@ export default function SonicRadarPage() {
                 </section>
 
                 {/* Content */}
-                {isLoading ? (
+                {isLoading && !journal ? (
                     <section className="sonic-radar-loading">
                         <div className="sonic-radar-shimmer-grid">
                             {Array.from({ length: 8 }).map((_, i) => (
@@ -210,32 +85,36 @@ export default function SonicRadarPage() {
                             ))}
                         </div>
                     </section>
-                ) : groups.length === 0 ? (
+                ) : error && !journal ? (
+                    <section className="sonic-radar-empty">
+                        <h2>Couldn&apos;t load your journal</h2>
+                        <p>{error}</p>
+                        <button type="button" className="ui-btn ui-btn-primary" onClick={() => void refetch()}>
+                            Try again
+                        </button>
+                    </section>
+                ) : !hasItems ? (
                     <section className="sonic-radar-empty">
                         <div className="sonic-radar-empty-icon">📡</div>
-                        <h2>No discoveries yet</h2>
+                        <h2>Your journal is quiet</h2>
                         <p>
-                            Your Sonic Radar is quiet. Set up your AI DJ and start a session
-                            to discover tracks tailored to your taste.
+                            No resonant discoveries yet — tracks you finish and then replay or save show up here.
                         </p>
                         <Link href="/agent" className="ui-btn ui-btn-primary">
-                            Launch AI DJ
+                            Start a session
                         </Link>
                     </section>
                 ) : (
                     <div className="sonic-radar-feed">
-                        {groups.map((group) => (
-                            <section key={group.sessionId} className="sonic-radar-group">
+                        {journal?.groups.map((group) => (
+                            <section key={group.key} className="sonic-radar-group">
                                 <div className="sonic-radar-group-header">
-                                    <span className="sonic-radar-group-date">{group.date}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <span className="sonic-radar-group-date">{formatGroupLabel(group)}</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                         <button
                                             className="sonic-radar-add-playlist-btn"
-                                            title="Add all session tracks to playlist"
-                                            onClick={async () => {
-                                                const tracks = await buildStemTracks(group);
-                                                setTracksToAddToPlaylist(tracks);
-                                            }}
+                                            title="Add all tracks in this group to a playlist"
+                                            onClick={() => void addToPlaylist(group.items)}
                                         >
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                 <path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" />
@@ -244,152 +123,90 @@ export default function SonicRadarPage() {
                                             </svg>
                                             Add to Playlist
                                         </button>
-                                        <span className="sonic-radar-group-count">
-                                            {group.licenses.length} track{group.licenses.length !== 1 ? "s" : ""}
-                                        </span>
+                                        <span className="sonic-radar-group-count">{trackCountLabel(group.items.length)}</span>
                                     </div>
                                 </div>
                                 <div className="sonic-radar-grid">
-                                    {group.licenses.map((lic) => {
-                                        const allTxForTrack = group.transactions.filter(t => t.trackId === lic.track.id);
-                                        const hasAnyTx = allTxForTrack.length > 0;
-
-                                        // Helper for human-readable error reasons
-                                        const friendlyError = (msg: string | null) => {
-                                            if (!msg) return "Transaction failed";
-                                            if (msg.includes("AA23")) return "Session key expired — re-enable agent wallet";
-                                            if (msg.includes("budget")) return "Budget limit reached";
-                                            if (msg.includes("session_key_invalid")) return "Session key invalid — re-enable agent wallet";
-                                            if (msg.length > 100) return msg.slice(0, 100) + "…";
-                                            return msg;
-                                        };
-
-                                        const statusIcon = (status: string) => {
-                                            if (status === "confirmed") return "✅";
-                                            if (status === "failed") return "❌";
-                                            return "⏳";
-                                        };
-
-                                        return (
-                                            <div
-                                                key={lic.id}
-                                                className="sonic-radar-card"
-                                                draggable
-                                                onDragStart={(e) => {
-                                                    const payload = JSON.stringify({
-                                                        type: "track",
-                                                        id: lic.trackId,
-                                                        title: lic.track.title,
-                                                        artist: lic.track.artist || "Unknown Artist",
-                                                    });
-                                                    e.dataTransfer.setData("application/json", payload);
-                                                    e.dataTransfer.setData("text/plain", payload);
-                                                    e.dataTransfer.effectAllowed = "copy";
-                                                }}
-                                                onClick={() => router.push(`/release/${lic.track.releaseId}`)}
-                                                style={{ cursor: 'pointer' }}
-                                            >
-                                                <div className="sonic-radar-card-art">
-                                                    {lic.track.release?.artworkUrl ? (
-                                                        /* eslint-disable-next-line @next/next/no-img-element */
-                                                        <img
-                                                            src={lic.track.release.artworkUrl}
-                                                            alt={lic.track.title}
-                                                            loading="lazy"
-                                                        />
-                                                    ) : (
-                                                        <div className="sonic-radar-card-art-placeholder">
-                                                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                                                <path d="M9 18V5l12-2v13" />
-                                                                <circle cx="6" cy="18" r="3" />
-                                                                <circle cx="18" cy="16" r="3" />
-                                                            </svg>
-                                                        </div>
-                                                    )}
-                                                    <div className="sonic-radar-card-overlay">
-                                                        <div className="sonic-radar-play-icon">
-                                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                                                <polygon points="5 3 19 12 5 21 5 3" />
-                                                            </svg>
-                                                        </div>
+                                    {group.items.map((item) => (
+                                        <div
+                                            key={item.trackId}
+                                            className="sonic-radar-card"
+                                            draggable
+                                            onDragStart={(e) => {
+                                                const payload = JSON.stringify({
+                                                    type: "track",
+                                                    id: item.trackId,
+                                                    title: item.title,
+                                                    artist: item.artistName,
+                                                });
+                                                e.dataTransfer.setData("application/json", payload);
+                                                e.dataTransfer.setData("text/plain", payload);
+                                                e.dataTransfer.effectAllowed = "copy";
+                                            }}
+                                            onClick={() => router.push(`/release/${item.releaseId}`)}
+                                            style={{ cursor: "pointer" }}
+                                        >
+                                            <div className="sonic-radar-card-art">
+                                                {item.artworkUrl ? (
+                                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                                    <img src={item.artworkUrl} alt={item.title} loading="lazy" />
+                                                ) : (
+                                                    <div className="sonic-radar-card-art-placeholder">
+                                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                                            <path d="M9 18V5l12-2v13" />
+                                                            <circle cx="6" cy="18" r="3" />
+                                                            <circle cx="18" cy="16" r="3" />
+                                                        </svg>
                                                     </div>
-                                                </div>
-                                                <div className="sonic-radar-card-info">
-                                                    <span className="sonic-radar-card-title">{lic.track.title}</span>
-                                                    <span className="sonic-radar-card-artist">
-                                                        {lic.track.artist || lic.track.release?.title || "Unknown Artist"}
-                                                    </span>
-                                                    {hasAnyTx && (
-                                                        <div className="sonic-radar-stems">
-                                                            {allTxForTrack.map((tx, i) => (
-                                                                <span
-                                                                    key={i}
-                                                                    className={`sonic-radar-stem-badge sonic-radar-stem-badge--${tx.status === 'curated' ? 'pending' : tx.status}`}
-                                                                    title={tx.status === 'failed' ? friendlyError(tx.errorMessage) : undefined}
-                                                                >
-                                                                    {statusIcon(tx.status)} {tx.stemName || "stem"}
-                                                                    {tx.status === 'failed' && tx.errorMessage && (
-                                                                        <span className="sonic-radar-error-tooltip">
-                                                                            {friendlyError(tx.errorMessage)}
-                                                                        </span>
-                                                                    )}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                    {!hasAnyTx && (
-                                                        <div className="sonic-radar-stems">
-                                                            <span className="sonic-radar-stem-badge">📡 Discovered</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="sonic-radar-card-footer">
-                                                    <span className="sonic-radar-card-license">{licenseLabel(lic.type)}</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <button
-                                                            className="sonic-radar-card-add-btn"
-                                                            title="Add to playlist"
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                // Build stem tracks for just this license's track
-                                                                const txsForTrack = group.transactions.filter(
-                                                                    t => t.trackId === lic.trackId && t.status === 'confirmed'
-                                                                );
-                                                                if (txsForTrack.length > 0) {
-                                                                    // Create a mini-group for this one track
-                                                                    const miniGroup: GroupedSession = {
-                                                                        ...group,
-                                                                        transactions: txsForTrack,
-                                                                        licenses: [lic],
-                                                                    };
-                                                                    const tracks = await buildStemTracks(miniGroup);
-                                                                    setTracksToAddToPlaylist(tracks);
-                                                                } else {
-                                                                    // Fallback: add parent track
-                                                                    setTracksToAddToPlaylist([{
-                                                                        id: lic.trackId,
-                                                                        title: lic.track.title,
-                                                                        artist: lic.track.artist,
-                                                                        albumArtist: null,
-                                                                        album: lic.track.release?.title || null,
-                                                                        year: null,
-                                                                        genre: null,
-                                                                        duration: null,
-                                                                        createdAt: new Date().toISOString(),
-                                                                        source: "remote" as const,
-                                                                        remoteArtworkUrl: lic.track.release?.artworkUrl || undefined,
-                                                                    }]);
-                                                                }
-                                                            }}
-                                                        >
-                                                            +
-                                                        </button>
-                                                        <span className="sonic-radar-card-price">${lic.priceUsd.toFixed(2)}</span>
+                                                )}
+                                                <div className="sonic-radar-card-overlay">
+                                                    <div className="sonic-radar-play-icon">
+                                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                                            <polygon points="5 3 19 12 5 21 5 3" />
+                                                        </svg>
                                                     </div>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
+                                            <div className="sonic-radar-card-info">
+                                                <span className="sonic-radar-card-title">{item.title}</span>
+                                                <span className="sonic-radar-card-artist">{item.artistName}</span>
+                                                <div className="sonic-radar-stems">
+                                                    {item.discovery && (
+                                                        <span className="sonic-radar-stem-badge sonic-radar-stem-badge--confirmed">
+                                                            New to you
+                                                        </span>
+                                                    )}
+                                                    <span className="sonic-radar-stem-badge">{followUpLabel(item.followUp)}</span>
+                                                    <span className="sonic-radar-stem-badge" title="Why this fits you">
+                                                        {item.reason.text}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="sonic-radar-card-footer">
+                                                {item.nextAction ? (
+                                                    <Link
+                                                        href={item.nextAction.href}
+                                                        className="sonic-radar-add-playlist-btn"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {item.nextAction.label}
+                                                    </Link>
+                                                ) : (
+                                                    <span />
+                                                )}
+                                                <button
+                                                    className="sonic-radar-card-add-btn"
+                                                    title="Add to playlist"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        void addToPlaylist([item]);
+                                                    }}
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </section>
                         ))}
