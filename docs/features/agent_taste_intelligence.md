@@ -253,7 +253,11 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   pass a filter-only policy step, `AgentRuntimePolicyService`, applied in
   `AgentRuntimeService.run`: the one choke point that
   `AgentConfigController.startSession` and `SessionsService.agentNext` both
-  reach, in-process or via the remote worker. It loads the picked tracks'
+  reach, in-process or via the remote worker (the backend applies it to the
+  worker's LLM picks, so the stage runs exactly once; the worker's execute route
+  returns the raw executor result). The standalone worker provides the
+  shared ranking, taste and cohort classes, so its deterministic orchestrator
+  fallback runs the same policy stage. It loads the picked tracks'
   metadata in one batched query, scores them with the shared ranking core in the
   same context the DJ selector builds, then enforces rule 1 (hidden), rule 2
   (fully AI-generated), rule 4 (two per artist, session mode) and rule 5 (a
