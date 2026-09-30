@@ -4,6 +4,15 @@ import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { deriveCreatorVerificationStates } from "../trust/verification-semantics";
 import type { DiscoveryCandidate } from "./discovery-ranking.service";
 
+const DISCOVERY_PICK_REASON = "discovery_pick";
+
+function reasonCodeOf(metadata: unknown): unknown {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const recommendation = (metadata as Record<string, unknown>).recommendation;
+  if (!recommendation || typeof recommendation !== "object") return undefined;
+  return (recommendation as Record<string, unknown>).reasonCode;
+}
+
 export interface DiscoveryPolicyContext {
   /** Candidate artist ids whose creator is human-verified. */
   verifiedHumanArtistIds: Set<string>;
@@ -51,6 +60,36 @@ export class DiscoveryPolicyContextService {
       select: { id: true, release: { select: { artistId: true } } },
     });
     return new Map(tracks.map((track) => [track.id, track.release.artistId]));
+  }
+
+  /**
+   * How many of the given tracks were exploration ("discovery pick") picks
+   * for this listener, for the session-mode exploration share. One bounded
+   * query over the listener's `accept` AgentSignals for those tracks. A track
+   * counts once, by its most recent accept signal: it is a discovery pick when
+   * that signal's `metadata.recommendation.reasonCode` is `discovery_pick`.
+   * Unknown user or no ids is 0. Errors propagate; callers must treat a
+   * failure as "unknown" (undefined), never as 0.
+   */
+  async countDiscoveryPicks(
+    userId: string | undefined,
+    trackIds: string[],
+  ): Promise<number> {
+    const ids = [...new Set(trackIds.filter(Boolean))];
+    if (!userId || ids.length === 0) return 0;
+    const signals = await prisma.agentSignal.findMany({
+      where: { userId, action: "accept", trackId: { in: ids } },
+      orderBy: { createdAt: "desc" },
+      select: { trackId: true, metadata: true },
+    });
+    const seen = new Set<string>();
+    let picks = 0;
+    for (const signal of signals) {
+      if (seen.has(signal.trackId)) continue;
+      seen.add(signal.trackId);
+      if (reasonCodeOf(signal.metadata) === DISCOVERY_PICK_REASON) picks += 1;
+    }
+    return picks;
   }
 
   /**
