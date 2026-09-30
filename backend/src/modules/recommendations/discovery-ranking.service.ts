@@ -6,6 +6,15 @@ import {
 } from "../agents/agent_bigquery_taste_signal.service";
 import { CommunityCohortDiscoveryContext } from "../community/community_cohort.service";
 import {
+  analyticsExplanationSentence,
+  classifyAnalyticsExplanation,
+  DISCOVERY_EXPLANATION_VARIANTS,
+  DISCOVERY_EXPLANATIONS,
+  DiscoveryReasonCode,
+  energyMatchExplanation,
+  primaryReasonFor,
+} from "./discovery-explanations";
+import {
   scoreMultiplierForSignal,
   TasteMemoryPolicy,
 } from "./taste_memory.service";
@@ -25,6 +34,13 @@ import {
  * sources — RFC §3.2) plus the personalization context; output is the ranked
  * list with weighted signals AND human-readable explanations, so both the DJ's
  * signal traces and the Home feed's `reasons` strings derive from one place.
+ *
+ * ADR-TE-2 rule 6 (no input through which ranking could be bought): nothing in
+ * this file reads payment, placement, partner or commercial-availability data.
+ * `hasListing` (an active stem listing) stays on the candidate as DATA only,
+ * for the Crate Digger's explicit filter; it never contributes a signal, a
+ * score, an explanation or a sort tiebreak. The policy stage that runs after
+ * scoring lives in `discovery-policy.ts` (docs/rfc/taste-engine.md §3.4).
  */
 
 export interface DiscoverySignal {
@@ -37,7 +53,15 @@ export interface DiscoveryCandidate {
   id: string;
   title?: string | null;
   artist?: string | null;
+  /**
+   * Data only (Crate Digger filter). NEVER a ranking input — see the file
+   * comment and ADR-TE-2 rule 6.
+   */
   hasListing?: boolean;
+  /** Artist identity for the policy stage (exploration + diversity caps). */
+  artistId?: string | null;
+  /** Track AI disclosure level ("NONE" | "PARTLY" | "ALL" | "UNDECLARED"). */
+  aiDisclosureLevel?: string | null;
   release?: {
     genre?: string | null;
     title?: string | null;
@@ -75,17 +99,12 @@ export interface RankedDiscoveryCandidate extends DiscoveryCandidate {
   signals: DiscoverySignal[];
   /** Human sentences for UI surfaces ("Boosted by learned taste"). */
   explanation: string[];
+  /** Primary categorical reason (shared vocabulary, ADR-TE-2 rule 4). */
+  reasonCode: DiscoveryReasonCode;
   audioFeatures?: AgentAudioFeatures;
   trace?: Record<string, unknown>;
   recentlyPlayed: boolean;
 }
-
-const ANALYTICS_EXPLANATION_BY_TYPE = {
-  taste_fit: "Learned listening pattern fit",
-  intent_fit: "Fits this session intent",
-  novelty_fit: "Fresh pick based on replay and skip patterns",
-  commerce_fit: "Strong save or purchase signal",
-} as const;
 
 @Injectable()
 export class DiscoveryRankingService {
@@ -127,9 +146,6 @@ export class DiscoveryRankingService {
     const learnedGenreWeights = context.learnedGenreWeights ?? {};
     scored.sort((a, b) => {
       if (a.score !== b.score) return b.score - a.score;
-      const aListed = a.hasListing ? 1 : 0;
-      const bListed = b.hasListing ? 1 : 0;
-      if (aListed !== bListed) return bListed - aListed;
       const aWeight = a.release?.genre
         ? learnedGenreWeights[a.release.genre] ?? 0
         : 0;
@@ -164,16 +180,11 @@ export class DiscoveryRankingService {
           ? `matches selected taste ${matchedQueries[0]}`
           : `matches nearby taste ${matchedQueries[0]}`,
       });
-      explanation.push(exact ? "Selected vibe match" : "Nearby vibe match");
-    }
-
-    if (candidate.hasListing) {
-      signals.push({
-        label: "listed",
-        weight: 14,
-        reason: "has active stem listing",
-      });
-      explanation.push("Purchasable stem available");
+      explanation.push(
+        exact
+          ? DISCOVERY_EXPLANATIONS.taste_match
+          : DISCOVERY_EXPLANATIONS.nearby_taste,
+      );
     }
 
     const learnedGenreWeights = context.learnedGenreWeights ?? {};
@@ -191,8 +202,8 @@ export class DiscoveryRankingService {
       });
       explanation.push(
         learnedMultiplier < 1
-          ? "Lightly boosted by learned taste"
-          : "Boosted by learned taste",
+          ? DISCOVERY_EXPLANATION_VARIANTS.learned_taste_light
+          : DISCOVERY_EXPLANATIONS.learned_taste,
       );
     } else if (learnedWeight < 0) {
       signals.push({
@@ -209,7 +220,7 @@ export class DiscoveryRankingService {
         weight: Math.round(similarity * 12),
         reason: "ranked by text embedding similarity",
       });
-      explanation.push("Semantic similarity");
+      explanation.push(DISCOVERY_EXPLANATIONS.similar_sound);
     }
 
     const tasteScore = context.bigQueryTasteScores?.get(candidate.id);
@@ -253,7 +264,7 @@ export class DiscoveryRankingService {
             weight: 10,
             reason: `matches requested ${context.energy} energy`,
           });
-          explanation.push(`${context.energy} energy match`);
+          explanation.push(energyMatchExplanation(context.energy));
         }
       }
     }
@@ -274,7 +285,10 @@ export class DiscoveryRankingService {
       ...candidate,
       score,
       signals,
-      explanation: explanation.length ? explanation : ["Catalog candidate"],
+      explanation: explanation.length
+        ? explanation
+        : [DISCOVERY_EXPLANATIONS.catalog],
+      reasonCode: primaryReasonFor(signals),
       recentlyPlayed,
       ...(audioFeatures ? { audioFeatures } : {}),
       ...(tasteScore ? { trace: { bigQueryTasteScore: tasteScore } } : {}),
@@ -307,26 +321,9 @@ function analyticsTasteExplanation(explanation?: string): {
   signalReason: string;
   listenerReasons: string[];
 } {
-  const normalized = explanation?.toLowerCase() ?? "";
-  const types: Array<keyof typeof ANALYTICS_EXPLANATION_BY_TYPE> = [];
-
-  if (/\b(intent|mood|vibe|focus|chill|hype|zen|session)\b/.test(normalized)) {
-    types.push("intent_fit");
-  }
-
-  if (/\b(save|playlist|purchase|bought|commerce|listing|x402)\b/.test(normalized)) {
-    types.push("commerce_fit");
-  }
-
-  if (/\b(skips?|replays?|repeats?|fresh|novel|new|recent)\b/.test(normalized)) {
-    types.push("novelty_fit");
-  }
-
-  if (types.length === 0 || /\b(taste|listen|listening|pattern|signal|score|similar)\b/.test(normalized)) {
-    types.unshift("taste_fit");
-  }
-
-  const listenerReasons = Array.from(new Set(types)).slice(0, 3).map((type) => ANALYTICS_EXPLANATION_BY_TYPE[type]);
+  const listenerReasons = classifyAnalyticsExplanation(explanation).map(
+    analyticsExplanationSentence,
+  );
   return {
     signalReason: explanation ?? "precomputed warehouse taste fit",
     listenerReasons,

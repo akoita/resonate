@@ -130,6 +130,40 @@ scans online** (serving reads hit Postgres/Redis exports); explanations are
 bounded and never expose raw listener history; all personalization respects
 consent gating and taste-memory controls.
 
+### 4.1 Recommendation rules (ADR-TE-2)
+
+The "policy" box above is a shared, tested stage that runs **after** scoring on
+every surface (Home, AI DJ): `applyDiscoveryPolicy` in
+`backend/src/modules/recommendations/discovery-policy.ts`. The design is
+[Taste Engine §3.4](./taste-engine.md#34-pipeline-and-policy-stage) and the
+decision is
+[ADR-TE-2](../strategy/taste-engine-decisions.md#adr-te-2--no-ranking-for-sale-and-public-recommendation-rules).
+The six rules it enforces, in order:
+
+1. **Declared taste first** — anything the listener hid is removed; downranks
+   were already applied as score multipliers.
+2. **No fully AI-generated tracks** unless the request explicitly asked for AI
+   content (`isPromotionEligible`).
+3. **Exploration share** — 20% of a page or session, at least one item,
+   reserved for verified human artists the listener has never played, chosen by
+   taste fit. With no eligible candidate the slots fall back to normal ranked
+   order; ineligible items are never labeled as discovery.
+4. **Diversity cap** — at most two tracks per artist per page, or per 10
+   session tracks.
+5. **Categorical explanation** on every item, from the bounded vocabulary in
+   `discovery-explanations.ts` (each item also carries a `reasonCode`).
+6. **No input through which ranking could be bought.** The ranking core no
+   longer gives a `listed` signal (+14, "Purchasable stem available") or a
+   `hasListing` sort tiebreak: having stems for sale never raises a track in
+   listener recommendations. `hasListing` stays on candidates as data for the
+   Crate Digger's explicit filter.
+
+The exploration lookups (verified human artists, artists the listener has
+played) are loaded in bounded batches by `DiscoveryPolicyContextService`.
+The deterministic fallback (no warehouse, no embeddings) passes the same
+policy assertions; `backend/src/tests/discovery_policy.spec.ts` asserts every
+rule on both the deterministic and the enriched path.
+
 ## 5. Workstreams
 
 Sequenced so every slice ships user-visible value and nothing depends on a

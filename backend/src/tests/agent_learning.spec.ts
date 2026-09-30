@@ -101,7 +101,7 @@ describe("agent learning loop", () => {
     expect(profile.favoredGenres).toEqual([]);
   });
 
-  it("scores listed tracks and learned genres in selector ranking", async () => {
+  it("ranks by learned genres; an active stem listing never raises a track (ADR-TE-2)", async () => {
     const tool = {
       run: jest.fn().mockResolvedValue({
         items: [
@@ -122,7 +122,13 @@ describe("agent learning loop", () => {
       limit: 3,
     });
 
-    expect(result.selected.map((track: any) => track.id)).toEqual(["house", "listed", "jazz"]);
+    // The listed Ambient track only earns the shared query match (40), same as
+    // any unlisted track, so it ranks last; selling stems buys no listener rank.
+    expect(result.selected.map((track: any) => track.id)).toEqual(["house", "jazz", "listed"]);
+    const listed: any = result.selected[2];
+    expect(listed.agentRecommendation?.score).toBe(40);
+    expect(listed.agentRecommendation?.signals.map((signal: any) => signal.label)).toEqual(["taste_match"]);
+    expect(listed.agentRecommendation?.explanation).toEqual(["Selected vibe match"]);
     expect(result.selected[0]?.agentRecommendation?.signals).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "learned_preference" }),

@@ -34,10 +34,10 @@ describe("agent recommendation evals", () => {
               score: 64,
               hasListing: true,
               recent: false,
-              explanation: ["Selected vibe match", "Purchasable stem available"],
+              explanation: ["Selected vibe match", "Boosted by learned taste"],
               signals: [
                 { label: "taste_match", weight: 40, reason: "matches selected taste Hip Hop" },
-                { label: "listed", weight: 14, reason: "has active stem listing" },
+                { label: "learned_preference", weight: 14, reason: "learned preference for Hip Hop" },
               ],
             },
           ],
@@ -67,7 +67,7 @@ describe("agent recommendation evals", () => {
               score: 52,
               hasListing: true,
               recent: false,
-              explanation: ["Nearby vibe match", "Semantic similarity"],
+              explanation: ["Nearby vibe match", "Sounds close to your taste"],
               signals: [
                 { label: "expanded_taste_match", weight: 28, reason: "matches nearby taste rap" },
                 { label: "semantic_similarity", weight: 10, reason: "ranked by text embedding similarity" },

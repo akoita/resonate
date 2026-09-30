@@ -172,10 +172,11 @@ describe("agent recommendation adapters", () => {
             hasListing: true,
             release: { genre: "Ambient", title: "Drift" },
             agentRecommendation: {
-              score: 14,
+              // A listing is data, not a ranking input (ADR-TE-2): no signal.
+              score: 0,
               matchedQueries: [],
               explanation: ["Catalog candidate"],
-              signals: [{ label: "listed", weight: 14, reason: "has active stem listing" }],
+              signals: [],
             },
           },
         ],
