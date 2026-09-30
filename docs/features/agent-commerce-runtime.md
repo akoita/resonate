@@ -69,7 +69,7 @@ the listener approved are not part of the listener product.
 - `AgentConfig.sessionMode` is `curate` or `buy`. `PATCH /agents/config` rejects any other value with `invalid_session_mode`.
 - `buy` is honored only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED` is exactly `true`. The flag defaults to off, and `PATCH /agents/config` rejects `sessionMode: "buy"` with `buy_mode_disabled` while it is off.
 - With the flag off, a stored `buy` config is treated as `curate` when a session starts: no negotiation, no `PaymentRouterService` purchase, and no spend is recorded. The backend logs the downgrade with the session id.
-- `GET` and `PATCH /agents/config` report `buyModeEnabled`, and the web app shows the "Curate Only / Buy Stems" toggle only when it is `true`.
+- `GET` and `PATCH /agents/config` report `buyModeEnabled`, and the web app shows the buy-only surfaces on the AI DJ page only when it is `true`: the "Curate Only / Buy Stems" toggle, the Finance (budget and smart wallet) card, the "Stem Types to Buy" filter, and the license and price on Next AI Pick. The Spent stat stays visible only while past buy-mode spend exists.
 - The session intent presets (Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift, Static Calm) are listening-only and no longer carry a licensing posture. The setup wizard has two listening-only steps (name, vibe) with no budget or auto-buy wallet step.
 - With the flag on, `buy` behaves as it did before this change. It is an operator-only path for exercising legacy autonomous purchases until the Crate Digger quote flow replaces it.
 
