@@ -885,14 +885,24 @@ enum AiDisclosureLevel {
   ALL
 }
 
+/// #1452 (WS-5): one text embedding per track over its descriptive metadata.
+/// `model` records which embedder produced the vector (a Vertex model id or the
+/// offline `hash-v1` fallback); similarity queries only compare vectors of the
+/// same model. `contentHash` = sha256(model + embedded text) and makes
+/// re-embedding idempotent. The HNSW cosine index
+/// (`TrackEmbedding_vector_hnsw_idx`) is created in the migration as raw SQL:
+/// Prisma cannot express `USING hnsw ... vector_cosine_ops`.
 model TrackEmbedding {
-  trackId   String                    @id
-  vector    Unsupported("vector(16)")
-  createdAt DateTime                  @default(now())
-  updatedAt DateTime                  @updatedAt
-  track     Track                     @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  trackId     String                     @id
+  vector      Unsupported("vector(768)")
+  model       String
+  contentHash String
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  track       Track                      @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@index([updatedAt])
+  @@index([model])
 }
 
 model Stem {

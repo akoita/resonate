@@ -3,6 +3,7 @@ import { BullModule } from "@nestjs/bullmq";
 import { ConfigModule } from "@nestjs/config";
 import { AnalyticsModule } from "../analytics/analytics.module";
 import { CommunityModule } from "../community/community.module";
+import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { IngestionModule } from "../ingestion/ingestion.module";
 import { PrivacyModule } from "../privacy/privacy.module";
 import { MaintenanceController } from "./maintenance.controller";
@@ -20,6 +21,8 @@ import { MaintenanceService } from "./maintenance.service";
     AnalyticsModule,
     CommunityModule,
     IngestionModule,
+    // #1452: the track embedding backfill route.
+    EmbeddingsModule,
     // #1771 slice 3: the due-erasure route's engine. There is no @Cron in this
     // codebase — scheduled work is driven externally by hitting these routes.
     PrivacyModule,

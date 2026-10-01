@@ -42,6 +42,10 @@ Available in this branch:
   in published, owner, release-detail, artist, and MCP catalog search results.
 - Recommendation scoring includes release mood tags and returns `moods` on
   recommendation items.
+- Release moods, genre, title and credited artist also feed the track text
+  embedding (#1452): `similarTracks` can surface zero-play tracks that are close
+  to a seed by vibe. It is not yet a Home candidate source; see
+  [agent_taste_intelligence.md](agent_taste_intelligence.md) §Track Embeddings.
 
 Known follow-up work:
 

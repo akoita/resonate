@@ -26,3 +26,9 @@ try {
 } catch {
   // No env file = no Testcontainers (logic tests only)
 }
+
+// Track embeddings (#1452) call Vertex AI when a GCP project is configured.
+// Integration suites must never reach a real model, even on a developer
+// machine with ambient GCP credentials; suites that exercise embeddings opt in
+// explicitly (e.g. `TRACK_EMBEDDING_PROVIDER=hash`).
+process.env.TRACK_EMBEDDING_PROVIDER ??= 'disabled';

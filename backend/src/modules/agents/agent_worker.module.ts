@@ -3,6 +3,7 @@ import { BullModule } from "@nestjs/bullmq";
 import { ConfigModule } from "@nestjs/config";
 import { CatalogModule } from "../catalog/catalog.module";
 import { CommunityCohortService } from "../community/community_cohort.service";
+import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import { DiscoveryRankingService } from "../recommendations/discovery-ranking.service";
 import { RecommendationsService } from "../recommendations/recommendations.service";
@@ -39,6 +40,7 @@ const DISCOVERY_POLICY_PROVIDERS = [
     }),
     SharedModule,
     CatalogModule,
+    EmbeddingsModule,
   ],
   controllers: [AgentRuntimeWorkerController],
   providers: [...AGENT_RUNTIME_CORE_PROVIDERS, ...DISCOVERY_POLICY_PROVIDERS],

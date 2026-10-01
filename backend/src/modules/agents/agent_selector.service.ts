@@ -170,7 +170,14 @@ export class AgentSelectorService {
         .map((entry) => allCandidates.find((track) => track.id === entry.trackId))
         .filter(Boolean) as any[];
       if (ordered.length) {
-        allCandidates = ordered;
+        // Embedding coverage can be partial (a candidate may have no current
+        // vector yet); keep those after the ranked ones in their original
+        // order instead of dropping them (#1452).
+        const rankedSet = new Set(ordered.map((track) => track.id));
+        allCandidates = [
+          ...ordered,
+          ...allCandidates.filter((track) => !rankedSet.has(track.id)),
+        ];
       }
     }
 

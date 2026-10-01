@@ -211,7 +211,10 @@ export class RecommendationsService {
    *     terms with NO recency bias — this is what makes older tracks
    *     recommendable (WS-1 acceptance);
    *   - `cohort-hints`: catalog-wide matches for joined-cohort query hints.
-   * WS-3 (popularity marts), WS-5 (embeddings), WS-6 (CF) add sources here.
+   * WS-3 (popularity marts) and WS-6 (CF) add sources here. WS-5 (#1452) is
+   * built as `TrackEmbeddingService.similarTracks` but not wired in yet: it
+   * needs a per-listener positive-engagement seed that this method does not
+   * receive (and that the taste-memory controls gate).
    */
   private async gatherCandidates(input: {
     allowExplicit: boolean;

@@ -1,5 +1,3 @@
-import { EmbeddingService } from "../embeddings/embedding.service";
-import { EmbeddingStore } from "../embeddings/embedding.store";
 import { AgentEvaluationService } from "./agent_evaluation.service";
 import { AgentAudioFeatureService } from "./agent_audio_feature.service";
 import { AgentBigQueryTasteSignalService } from "./agent_bigquery_taste_signal.service";
@@ -27,9 +25,9 @@ import { AdkAdapter } from "./runtime/adk_adapter";
 import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 
+// EmbeddingService / EmbeddingStore / TrackEmbeddingService come from
+// EmbeddingsModule (#1452), which both the API and worker modules import.
 export const AGENT_RUNTIME_CORE_PROVIDERS = [
-  EmbeddingService,
-  EmbeddingStore,
   ToolRegistry,
   AgentAudioFeatureService,
   AgentBigQueryTasteSignalService,
