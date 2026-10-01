@@ -15,6 +15,15 @@ import {
   buildAnalyticsWarehouseExport,
 } from "./analytics_warehouse";
 import { AnalyticsCatalogMetadataService, AnalyticsTrackMetadata } from "./analytics_catalog_metadata.service";
+import {
+  buildDiscoveryQualityReport,
+  isDiscoveryOnlyFact,
+  isHomeDiscoveryFact,
+} from "./analytics_discovery_quality";
+import {
+  RESONANT_DISCOVERY_SOURCE,
+  type ResonantDiscoverySource,
+} from "./analytics_resonant_discovery";
 
 interface TrackStats {
   trackId: string;
@@ -245,6 +254,10 @@ export class AnalyticsService {
     @Inject(ANALYTICS_REPORT_SOURCE)
     private readonly reportSource?: ArtistAnalyticsReportSource,
     @Optional() private readonly catalogMetadataService?: AnalyticsCatalogMetadataService,
+    // #1455: aggregate-only resonant discovery counts (Postgres, bounded).
+    @Optional()
+    @Inject(RESONANT_DISCOVERY_SOURCE)
+    private readonly resonantDiscoverySource?: ResonantDiscoverySource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
@@ -392,7 +405,10 @@ export class AnalyticsService {
 
   async getAgentQualityDashboard(days: number) {
     const data = await this.listAgentQualityData(days);
-    const facts = this.agentQualityFacts(data.facts);
+    // Legacy DJ metrics keep reading only agent facts, minus the event types
+    // only the discovery report needs, so both fact sources agree.
+    const djFacts = this.agentQualityFacts(data.facts);
+    const facts = djFacts.filter((fact) => !isDiscoveryOnlyFact(fact));
     const summary = {
       days: data.metadata.timeWindow.days,
       sessionsStarted: 0,
@@ -485,12 +501,37 @@ export class AnalyticsService {
       tasteSourceBreakdown: this.finalizeBreakdowns(byTasteSource),
       versionBreakdown: this.finalizeBreakdowns(byVersion),
       qualityOverTime: [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date)),
+      ...buildDiscoveryQualityReport(data.facts, new Set(djFacts)),
+      resonantDiscoveries: await this.resonantDiscoveries(data.metadata.timeWindow.days),
       privacy: {
         aggregation: "event-level aggregate metrics only",
         excludes: ["raw listener history", "actor ids", "wallet addresses", "per-user drilldowns"],
       },
       meta: data.metadata,
     };
+  }
+
+  /** Counts only; any failure degrades to `unavailable` rather than failing the dashboard. */
+  private async resonantDiscoveries(windowDays: number) {
+    if (!this.resonantDiscoverySource) {
+      return { total: 0, distinctNewArtists: 0, perActiveListener: 0, activeListeners: 0, status: "unavailable" as const };
+    }
+    try {
+      const counts = await this.resonantDiscoverySource.getResonantDiscoveryAggregate({ windowDays });
+      return {
+        total: counts.total,
+        distinctNewArtists: counts.distinctNewArtists,
+        perActiveListener: ratio(counts.total, counts.activeListeners),
+        activeListeners: counts.activeListeners,
+        status: counts.activeListeners === 0
+          ? ("no_data" as const)
+          : counts.truncated
+            ? ("truncated" as const)
+            : ("ok" as const),
+      };
+    } catch {
+      return { total: 0, distinctNewArtists: 0, perActiveListener: 0, activeListeners: 0, status: "unavailable" as const };
+    }
   }
 
   private async listAgentQualityData(days: number): Promise<AgentQualityData> {
@@ -508,7 +549,8 @@ export class AnalyticsService {
       const occurredAt = new Date(fact.occurredAt).getTime();
       return occurredAt >= from.getTime() && occurredAt < to.getTime();
     });
-    const qualityFacts = this.agentQualityFacts(facts);
+    const agentFacts = new Set(this.agentQualityFacts(facts));
+    const qualityFacts = facts.filter((fact) => agentFacts.has(fact) || isHomeDiscoveryFact(fact));
     const freshness = this.freshnessFromFacts(qualityFacts, to);
     return {
       facts: qualityFacts,

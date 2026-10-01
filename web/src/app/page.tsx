@@ -55,6 +55,11 @@ import { StemLab, selectStemLabEntries } from "../components/home/StemLab";
 import { HomeHeroEmpty, HomeHeroMotif, HomeHeroSkeleton } from "../components/home/HomeHeroEmpty";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
+import { rememberHomeAttribution } from "../lib/homeAttribution";
+import {
+  buildRecommendationClickedPayload,
+  buildRecommendationServedPayload,
+} from "../lib/homeRecommendationEvents";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { useCatalogReleaseActions } from "../components/catalog/useCatalogReleaseActions";
@@ -463,13 +468,7 @@ export default function Home() {
         for (const rail of feed.rails) {
           if (!rail.items.length) continue;
           void recordProductAnalytics(token, "recommendation.served", {
-            payload: {
-              requestId: feed.requestId,
-              railId: rail.id,
-              trackIds: rail.items.map((item) => item.id),
-              count: rail.items.length,
-              source: "home",
-            },
+            payload: buildRecommendationServedPayload(feed, rail),
           });
         }
       })
@@ -632,14 +631,11 @@ export default function Home() {
   // #1449 WS-2: a served recommendation was acted on (open or play).
   const emitRecommendationClick = useCallback((trackId: string | undefined, railId: string, position: number) => {
     if (!trackId) return;
+    // #1455 WS-8: remember the rail so the later play / save of this track is
+    // attributed to it (see lib/homeAttribution.ts).
+    rememberHomeAttribution(trackId, { railId, rankerVariant: homeFeed?.rankerVariant });
     void recordProductAnalytics(token, "recommendation.clicked", {
-      payload: {
-        requestId: homeFeed?.requestId ?? null,
-        railId,
-        trackId,
-        position,
-        source: "home",
-      },
+      payload: buildRecommendationClickedPayload(homeFeed, { railId, trackId, position }),
     });
   }, [token, homeFeed]);
   const managedArtists = summarizeManagedArtists(status === "authenticated" ? myReleases : []).slice(0, 5);

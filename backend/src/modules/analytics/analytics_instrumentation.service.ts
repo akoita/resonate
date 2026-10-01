@@ -21,6 +21,10 @@ interface PlaybackCatalogAnalyticsInput {
   agentOriginated?: boolean;
   agentSessionId?: string;
   playbackCommandId?: string;
+  /** #1455 WS-8: Home rail the play was attributed to (label only). */
+  railId?: string;
+  /** #1455 WS-8: ranker variant the listener was assigned (label only). */
+  rankerVariant?: string;
   actorId?: string;
   actorUserId?: string;
   geo?: AnalyticsGeoDimension;
@@ -44,6 +48,8 @@ export interface PlaybackLifecycleAnalyticsInput extends PlaybackCatalogAnalytic
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
+  /** Why a `skipped` happened (enum-like token such as "next_clicked"). */
+  reason?: string;
 }
 
 export interface ProductAnalyticsInput {
@@ -159,6 +165,8 @@ export class AnalyticsInstrumentationService {
         agentOriginated: input.agentOriginated ?? false,
         agentSessionId: input.agentSessionId,
         playbackCommandId: input.playbackCommandId,
+        ...(input.railId ? { railId: input.railId } : {}),
+        ...(input.rankerVariant ? { rankerVariant: input.rankerVariant } : {}),
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -228,6 +236,9 @@ export class AnalyticsInstrumentationService {
         queueLength: input.queueLength,
         repeatMode: input.repeatMode,
         shuffle: input.shuffle,
+        ...(input.reason ? { reason: input.reason } : {}),
+        ...(input.railId ? { railId: input.railId } : {}),
+        ...(input.rankerVariant ? { rankerVariant: input.rankerVariant } : {}),
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),

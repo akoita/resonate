@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455]
 ---
 
 # Agent Taste Intelligence
@@ -655,6 +655,101 @@ The report tracks:
 The dashboard is aggregate-only. It does not expose raw listener histories,
 actor ids, wallet addresses, or per-user drilldowns.
 
+### Discovery measurement (#1455 WS-8, first slice)
+
+Status: `partial`. **Vision alignment (ADR-BM-6):** vision-neutral measurement
+infrastructure for Line 4 (discovery quality). It has no payout mechanics, no
+fee, and no income share; data is pseudonymous and reported in aggregate only.
+
+`GET /analytics/agent/quality` keeps its existing sections and adds, with the
+same admin/operator guard:
+
+- `surfaceBreakdown[]`: per surface `{ surface, impressions, clicks, plays,
+  completions, skips, saves, clickThroughRate, skipRate, completionRate,
+  saveRate }`. Surfaces are `home:<railId>` (for example `home:because_genre`,
+  `home:exploration`) and `dj`.
+- `variantBreakdown[]`: the same counts and rates per `{ experimentKey, surface,
+  variant }`. A fact with no recorded variant is `unattributed` (reported,
+  never compared).
+- `variantExposure[]`: `recommendation.generated` counts per `{ experimentKey,
+  surface ("home" | "dj"), variant }`, so DJ exposure is visible even though DJ
+  outcomes are not yet attributed to a variant (see Limits).
+- `comparison`: for each `{ experimentKey, surface }`, every non-baseline
+  variant against `baseline`: sample sizes (impressions and plays on both
+  sides) and rate deltas (variant minus baseline). Descriptive only; no
+  significance test is applied, read the sample sizes.
+- `resonantDiscoveries: { total, distinctNewArtists, perActiveListener,
+  activeListeners, status }` over the requested window. `status` is `ok`,
+  `no_data` (no active listeners), `truncated` (a read cap was hit, counts are
+  a lower bound) or `unavailable`.
+
+Definitions (fractions, 0 on a zero denominator): `clickThroughRate = clicks /
+impressions`, `skipRate = skips / plays` (explicit `playback.skipped`),
+`completionRate = completions / plays` (`playback.completed`, the 30 second
+rule), `saveRate = saves / plays` (`library.saved`). Home impressions are the
+number of items shown in a rail (`recommendation.served` `count`). DJ
+impressions are accepted picks; the DJ has no click, so its clicks and
+click-through rate are 0.
+
+**Attribution.** Served and clicked events carry `railId`. A Home tile opens a
+release page or seeds a DJ session, and the play happens later, so the web
+remembers the clicked track's rail and variant for 30 minutes
+(`web/src/lib/homeAttribution.ts`, sessionStorage, labels only) and forwards
+`railId` and `rankerVariant` on that track's `playback.started|completed|
+skipped` and `library.saved` events. `source` stays `web_player`; the rail is a
+separate field so the artist dashboard's source breakdown is unchanged. DJ
+facts are the ones the existing dashboard already classifies as agent session
+facts. Playback and save events are consent-gated telemetry (#1772), so all
+rates cover consenting listeners only.
+
+**Resonant discoveries on the dashboard.** The rule is the discovery journal's
+(`resonant` = completion at or above 90% plus a replay or save within 7 days;
+`discovery` = no earlier interaction with the artist; same consent controls and
+public-availability filter), shared through `isDiscoveryListen` and
+`findResonance` in `discovery_journal.service.ts`. It needs per-listener
+history, which the warehouse facts do not carry, so it is computed in Postgres
+by `DiscoveryJournalService.getResonantDiscoveryAggregate`: a bounded read
+(at most 5000 completions and 20000 follow-up rows, `truncated` reports a hit)
+that returns counts only. Listener ids never leave the service.
+`activeListeners` is the number of distinct listeners with at least one
+`AgentSignal` in the window.
+
+**Both fact sources agree.** The BigQuery `agentQualityFactsQuery` and the
+warehouse-export fallback both keep `recommendation.generated|served|clicked`
+and rail-attributed `playback.started|skipped`. The new fact dimensions are
+`railId`, `rankerVariant`, `experimentKey`, `surface`, `reason` and `itemCount`
+(the served `count`); the streaming transform in
+`workers/analytics-dataflow/analytics_transform.py` writes the same dimensions
+and the parity spec covers them.
+
+**Skip events.** The web emits `playback.skipped` when the listener presses
+next before 97% of a track. `POST /analytics/playback/event` previously only
+accepted `started` and `heartbeat`, so those skips were rejected with `400`;
+it now accepts `skipped` with a short `reason`.
+
+**Variant and holdout mechanism.** `DISCOVERY_RANKER_EXPERIMENT` (see
+[environment variables](../deployment/environment.md)) uses one format,
+`<experimentKey>:<variantA>=<percent>,<variantB>=<percent>`, for example
+`ranker_v2:candidate=10,holdout=5`; the remainder is `baseline`. Unset or
+malformed means no experiment: everyone is `baseline`, no experiment key is
+recorded, and behavior is unchanged. A listener's bucket is
+`sha256(experimentKey + ":" + userId) mod 100`, so assignment is deterministic
+and a new key reshuffles everyone. `backend/src/modules/recommendations/
+discovery_experiment.ts` is the pure module. The Home feed response carries
+`rankerVariant` and `experimentKey`; the web forwards them on
+`recommendation.served` and `recommendation.clicked`. Home and the AI DJ record
+them on `recommendation.generated` (`surface` is `home` or `dj`). This slice
+only records and reports variants: every variant runs the same ranker. The
+bucket itself is never stored or reported.
+
+**Limits and remaining work (tracked under #1455).** DJ outcome events are not
+yet attributed to a variant, because the DJ next-pick response does not
+return the variant for the web to forward (it lives in the sessions module);
+DJ rows therefore show as `unattributed` and only `variantExposure` covers the
+DJ per variant. The operator page `/analytics/agent-quality` does not render
+the new sections yet. Mapping a variant name to a different ranker, and
+promotion rules, are later slices.
+
 The baseline signed feedback includes:
 
 - positive signals from completed plays, saves, playlist adds, purchases, agent
@@ -727,6 +822,43 @@ threshold status per metric. It is intentionally separate from
 `user_track_recommendation_scores`; operators must explicitly promote or blend
 after reviewing the artifact.
 
+### Discovery ranker recall@k and NDCG@k (#1455)
+
+The BQML comparison above scores warehouse tables. The discovery ranker itself
+(`DiscoveryRankingService`) is TypeScript and cannot be reproduced in SQL, so
+its offline evaluation is a backend script that reads a bounded export of the
+same `user_track_signal_training` table, runs the real ranker, and scores it
+with the pure `recallAtK` and `ndcgAtK` in
+`backend/src/modules/recommendations/rankingMetrics.ts`.
+
+Per listener the script holds out the last 30% of their positive tracks by
+time, learns genre weights from the earlier signals, ranks the candidate pool
+(the catalog tracks seen in the sample, minus tracks already in the listener's
+history), and reports recall@k (binary) and NDCG@k (graded by summed positive
+signal weight) for the discovery ranker, a popularity baseline and a seeded
+random floor. Only the learned-genre signal is reproducible offline, and the
+pool is the sample, so the numbers are sampled-ranking metrics: compare
+rankers on the same sample, do not read them as production recall.
+
+```bash
+# 1. Export a bounded, recent sample of the training table.
+bq query --use_legacy_sql=false --format=json --max_rows=200000 \
+  "SELECT user_id, track_id, signal_weight, occurred_at
+   FROM \`$GCP_PROJECT_ID.$ANALYTICS_BIGQUERY_DATASET.user_track_signal_training\`
+   WHERE occurred_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+   ORDER BY occurred_at DESC LIMIT 200000" > signals.json
+
+# 2. Evaluate against a catalog database (DATABASE_URL), read-only.
+cd backend
+npx ts-node --transpile-only scripts/eval_discovery_ranker.ts \
+  --signals ../signals.json --k 10 --holdout 0.3 --max-users 500 \
+  --out eval-results/discovery-ranker-eval.json
+```
+
+The export holds pseudonymous ids: keep it local and out of version control.
+The pure parts (`splitSignalsByTime`, `evaluateRanker`) are unit-tested in
+`backend/src/tests/discovery_offline_eval.spec.ts`.
+
 ## BigQuery AI/ML Follow-Up
 
 Useful next warehouse jobs:
@@ -759,6 +891,7 @@ Useful next warehouse jobs:
 | `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Query timeout. Defaults to `5000`. |
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Maximum score rows returned per selector call. Defaults to `100`. |
 | `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Optional BigQuery API base URL override for tests or private endpoints. |
+| `DISCOVERY_RANKER_EXPERIMENT` | Optional ranker variant / holdout experiment, `<key>:<variant>=<pct>,...` (#1455). Unset means everyone is `baseline`. |
 
 ## Verification
 
@@ -773,6 +906,12 @@ Useful next warehouse jobs:
 - SQL contract tests cover parameterized materialization, required serving
   columns, expected signal families, BQML comparison output, and runner help output in
   `workers/analytics-dataflow/test_agent_taste_sql.py`.
+- Discovery measurement (#1455) is covered by `rankingMetrics.spec.ts`,
+  `discovery_experiment.spec.ts`, `analytics_discovery_quality.spec.ts`,
+  `analytics_playback_attribution.spec.ts`, `discovery_offline_eval.spec.ts`,
+  the quality-route cases in `analytics.controller.http.spec.ts`,
+  `discovery_journal_aggregate.integration.spec.ts`, and the web
+  `homeAttribution.test.ts` and `homeRecommendationEvents.test.ts`.
 - Warehouse verification queries live in
   `workers/analytics-dataflow/sql/agent_taste_intelligence_verification.sql` and
   report freshness, coverage, signal mix, and intent-context coverage.

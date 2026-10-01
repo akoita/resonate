@@ -92,6 +92,22 @@ export interface DiscoveryJournal {
   groups: DiscoveryJournalGroup[];
 }
 
+/** Hard caps on rows read for the operator aggregate (#1455), newest first. */
+export const AGGREGATE_COMPLETION_CAP = 5000;
+export const AGGREGATE_FOLLOW_UP_CAP = 20000;
+
+/** Counts only: no listener ids, no per-listener rows leave the service. */
+export interface ResonantDiscoveryAggregate {
+  /** Resonant discoveries (listener, track) in the window, publicly available tracks only. */
+  total: number;
+  /** Distinct artists that were a discovery for at least one listener. */
+  distinctNewArtists: number;
+  /** Distinct listeners with at least one AgentSignal in the window. */
+  activeListeners: number;
+  /** True when a read cap was hit, so the counts are a lower bound. */
+  truncated: boolean;
+}
+
 export interface GetJournalOptions {
   now?: Date;
   windowDays?: number;
@@ -139,6 +155,16 @@ function isAgentOriginated(metadata: unknown) {
 export function completionRatioOf(metadata: unknown): number | null {
   const ratio = jsonObject(jsonObject(metadata).outcome).completionRatio;
   return typeof ratio === "number" && Number.isFinite(ratio) ? ratio : null;
+}
+
+/**
+ * The discovery rule shared by the listener journal and the operator
+ * aggregate (#1455): a resonant listen is a discovery when the listener's
+ * earliest recorded interaction with the artist is the very listen that
+ * resonated (within the lead-in window), or there is none at all.
+ */
+export function isDiscoveryListen(firstTouch: Date | undefined, completedAt: Date): boolean {
+  return firstTouch === undefined || firstTouch.getTime() >= completedAt.getTime() - LISTEN_LEAD_MS;
 }
 
 function isoDay(date: Date) {
@@ -362,10 +388,7 @@ export class DiscoveryJournalService {
     const discoveryFor = (entry: Resonance) => {
       const artistId = trackById.get(entry.trackId)!.release.artistId;
       const firstTouch = firstTouchByArtist.get(artistId);
-      return (
-        firstTouch === undefined ||
-        firstTouch.getTime() >= entry.completedAt.getTime() - LISTEN_LEAD_MS
-      );
+      return isDiscoveryListen(firstTouch, entry.completedAt);
     };
 
     const headlineEntries = visible.filter(
@@ -468,6 +491,190 @@ export class DiscoveryJournalService {
       headline,
       groups: orderedGroups,
     };
+  }
+
+  /**
+   * Operator aggregate of resonant discoveries over the last `windowDays`
+   * (#1455 WS-8). Applies the same resonance rule, discovery rule, consent
+   * controls (taste reset, agent-playback training) and public-availability
+   * filter as `getJournal`, but across listeners, and returns counts only.
+   * Bounded: at most AGGREGATE_COMPLETION_CAP completions and
+   * AGGREGATE_FOLLOW_UP_CAP follow-up rows are read; `truncated` reports a hit.
+   */
+  async getResonantDiscoveryAggregate(options: {
+    windowDays: number;
+    now?: Date;
+  }): Promise<ResonantDiscoveryAggregate> {
+    const now = options.now ?? new Date();
+    const windowDays = clampInt(options.windowDays, DEFAULT_WINDOW_DAYS, 1, MAX_WINDOW_DAYS);
+    const from = new Date(now.getTime() - windowDays * DAY_MS);
+    const range: Prisma.DateTimeFilter = { gte: from, lte: now };
+
+    const activeRows = await prisma.$queryRaw<Array<{ count: bigint | number }>>(Prisma.sql`
+      SELECT COUNT(DISTINCT "userId") AS "count"
+      FROM "AgentSignal"
+      WHERE "createdAt" >= ${from} AND "createdAt" <= ${now}
+    `);
+    const activeListeners = Number(activeRows[0]?.count ?? 0);
+
+    const completionRows = await prisma.agentSignal.findMany({
+      where: {
+        action: "complete",
+        createdAt: range,
+        metadata: {
+          path: ["outcome", "completionRatio"],
+          gte: RESONANCE_COMPLETION_THRESHOLD,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: AGGREGATE_COMPLETION_CAP + 1,
+      select: { userId: true, trackId: true },
+    });
+    let truncated = completionRows.length > AGGREGATE_COMPLETION_CAP;
+    const candidates = completionRows.slice(0, AGGREGATE_COMPLETION_CAP);
+    if (candidates.length === 0) {
+      return { total: 0, distinctNewArtists: 0, activeListeners, truncated };
+    }
+
+    const userIds = [...new Set(candidates.map((row) => row.userId))];
+    const trackIds = [...new Set(candidates.map((row) => row.trackId))];
+    const pairKey = (userId: string, trackId: string) => `${userId}\u0000${trackId}`;
+    const wanted = new Set(candidates.map((row) => pairKey(row.userId, row.trackId)));
+
+    const [settingsRows, signalRows, libraryRows] = await Promise.all([
+      prisma.listenerTasteMemorySettings.findMany({
+        where: { userId: { in: userIds } },
+        select: { userId: true, resetAt: true, agentPlaybackTrainingEnabled: true },
+      }),
+      prisma.agentSignal.findMany({
+        where: {
+          userId: { in: userIds },
+          trackId: { in: trackIds },
+          action: { in: [...JOURNAL_ACTIONS] },
+          createdAt: range,
+        },
+        orderBy: { createdAt: "desc" },
+        take: AGGREGATE_FOLLOW_UP_CAP + 1,
+        select: {
+          userId: true,
+          trackId: true,
+          action: true,
+          sessionId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      }),
+      prisma.libraryTrack.findMany({
+        where: { userId: { in: userIds }, catalogTrackId: { in: trackIds }, createdAt: range },
+        select: { userId: true, catalogTrackId: true, createdAt: true },
+      }),
+    ]);
+    if (signalRows.length > AGGREGATE_FOLLOW_UP_CAP) truncated = true;
+
+    const consent = new Map(settingsRows.map((row) => [row.userId, row]));
+    const usableFor = (userId: string, createdAt: Date, metadata: unknown) => {
+      const settings = consent.get(userId);
+      if (settings?.resetAt && createdAt <= settings.resetAt) return false;
+      const agentAllowed = settings?.agentPlaybackTrainingEnabled ?? true;
+      return agentAllowed || !isAgentOriginated(metadata);
+    };
+
+    const eventsByPair = new Map<string, SignalRow[]>();
+    for (const row of signalRows.slice(0, AGGREGATE_FOLLOW_UP_CAP)) {
+      const key = pairKey(row.userId, row.trackId);
+      if (!wanted.has(key) || !usableFor(row.userId, row.createdAt, row.metadata)) continue;
+      const list = eventsByPair.get(key) ?? [];
+      list.push(row);
+      eventsByPair.set(key, list);
+    }
+    const libraryByPair = new Map<string, Date[]>();
+    for (const row of libraryRows) {
+      if (!row.catalogTrackId) continue;
+      const key = pairKey(row.userId, row.catalogTrackId);
+      const resetAt = consent.get(row.userId)?.resetAt;
+      if (!wanted.has(key) || (resetAt && row.createdAt <= resetAt)) continue;
+      const list = libraryByPair.get(key) ?? [];
+      list.push(row.createdAt);
+      libraryByPair.set(key, list);
+    }
+
+    const resonant: Array<{ userId: string; trackId: string; completedAt: Date }> = [];
+    for (const key of wanted) {
+      const [userId, trackId] = key.split("\u0000");
+      const found = findResonance({
+        events: eventsByPair.get(key) ?? [],
+        libraryAdds: libraryByPair.get(key) ?? [],
+        from,
+        now,
+      });
+      if (found) resonant.push({ userId, trackId, completedAt: found.completedAt });
+    }
+    const none = { total: 0, distinctNewArtists: 0, activeListeners, truncated };
+    if (resonant.length === 0) return none;
+
+    const tracks = await prisma.track.findMany({
+      where: { id: { in: [...new Set(resonant.map((entry) => entry.trackId))] } },
+      select: {
+        id: true,
+        contentStatus: true,
+        rightsRoute: true,
+        release: {
+          select: {
+            id: true,
+            status: true,
+            rightsRoute: true,
+            withdrawnAt: true,
+            withdrawalReason: true,
+            artistId: true,
+          },
+        },
+      },
+    });
+    const artistByTrack = new Map(
+      tracks
+        .filter((track) => classifyTrackAvailability(track).state === "available")
+        .map((track) => [track.id, track.release.artistId]),
+    );
+    const visible = resonant.filter((entry) => artistByTrack.has(entry.trackId));
+    if (visible.length === 0) return none;
+
+    const visibleUserIds = [...new Set(visible.map((entry) => entry.userId))];
+    const artistIds = [...new Set(visible.map((entry) => artistByTrack.get(entry.trackId)!))];
+    const firstTouchRows = await prisma.$queryRaw<
+      Array<{ userId: string; artistId: string; firstAt: Date }>
+    >(Prisma.sql`
+      SELECT s."userId" AS "userId", r."artistId" AS "artistId", MIN(s."createdAt") AS "firstAt"
+      FROM "AgentSignal" s
+      JOIN "Track" t ON t."id" = s."trackId"
+      JOIN "Release" r ON r."id" = t."releaseId"
+      LEFT JOIN "ListenerTasteMemorySettings" m ON m."userId" = s."userId"
+      WHERE s."userId" IN (${Prisma.join(visibleUserIds)})
+        AND r."artistId" IN (${Prisma.join(artistIds)})
+        AND s."createdAt" <= ${now}
+        AND (m."resetAt" IS NULL OR s."createdAt" > m."resetAt")
+        AND (
+          COALESCE(m."agentPlaybackTrainingEnabled", true)
+          OR (
+            COALESCE(s."metadata"->>'source', '') <> 'agent_session'
+            AND COALESCE(s."metadata"->>'agentOriginated', 'false') <> 'true'
+          )
+        )
+      GROUP BY s."userId", r."artistId"
+    `);
+    const firstTouch = new Map(
+      firstTouchRows.map((row) => [pairKey(row.userId, row.artistId), new Date(row.firstAt)]),
+    );
+
+    const discoveryArtists = new Set<string>();
+    let total = 0;
+    for (const entry of visible) {
+      const artistId = artistByTrack.get(entry.trackId)!;
+      if (isDiscoveryListen(firstTouch.get(pairKey(entry.userId, artistId)), entry.completedAt)) {
+        total += 1;
+        discoveryArtists.add(artistId);
+      }
+    }
+    return { total, distinctNewArtists: discoveryArtists.size, activeListeners, truncated };
   }
 
   /**

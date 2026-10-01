@@ -1044,6 +1044,10 @@ export type PlaybackCompletedAnalyticsInput = {
   agentOriginated?: boolean;
   agentSessionId?: string;
   playbackCommandId?: string;
+  /** #1455: Home rail the play came from (label only). */
+  railId?: string;
+  /** #1455: ranker variant of the listener who was served the rail. */
+  rankerVariant?: string;
   completionRatio: number;
   durationMs?: number;
 };
@@ -1082,6 +1086,10 @@ export type PlaybackLifecycleAnalyticsInput = {
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
+  /** #1455: Home rail the play came from (label only). */
+  railId?: string;
+  /** #1455: ranker variant of the listener who was served the rail. */
+  rankerVariant?: string;
 };
 
 export async function recordPlaybackEvent(
@@ -3403,6 +3411,10 @@ export interface HomeFeedRail {
 export interface HomeFeedResponse {
   userId: string;
   requestId: string;
+  /** #1455: ranker variant label, forwarded on served/clicked events. */
+  rankerVariant?: string;
+  /** #1455: experiment key; null when no experiment is configured. */
+  experimentKey?: string | null;
   cold: boolean;
   rails: HomeFeedRail[];
 }

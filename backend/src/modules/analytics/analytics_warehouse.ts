@@ -432,6 +432,13 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       remixId: stringPayload(clean.payload, "remixId"),
       sourceTrackId: stringPayload(clean.payload, "sourceTrackId"),
       stemIds: arrayPayload(clean.payload, "stemIds"),
+      // #1455 WS-8: discovery measurement. Labels and counts only; no bucket.
+      railId: stringPayload(clean.payload, "railId"),
+      rankerVariant: stringPayload(clean.payload, "rankerVariant"),
+      experimentKey: stringPayload(clean.payload, "experimentKey"),
+      surface: stringPayload(clean.payload, "surface"),
+      reason: stringPayload(clean.payload, "reason"),
+      itemCount: numberPayload(clean.payload, "count"),
     },
   };
 }

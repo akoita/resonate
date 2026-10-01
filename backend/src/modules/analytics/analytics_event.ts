@@ -95,14 +95,14 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "completionRatio", "durationMs", "source"],
+    payloadFields: ["trackId", "artistId", "releaseId", "completionRatio", "durationMs", "source", "railId", "rankerVariant"],
   },
   {
     eventName: "playback.started",
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "source"],
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "source", "railId", "rankerVariant"],
   },
   {
     eventName: "playback.heartbeat",
@@ -118,7 +118,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason"],
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason", "railId", "rankerVariant"],
   },
   {
     eventName: "onboarding.step_completed",
@@ -406,7 +406,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "recommendations-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount", "cohortInfluence"],
+    payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount", "cohortInfluence", "surface", "rankerVariant", "experimentKey"],
   },
   {
     // #1449 WS-2: Home ranking impressions — which ranked items were shown.
@@ -416,7 +416,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["requestId", "railId", "trackIds", "count", "source"],
+    payloadFields: ["requestId", "railId", "trackIds", "count", "source", "rankerVariant", "experimentKey"],
   },
   {
     // #1449 WS-2: a served recommendation was acted on (click/play).
@@ -425,7 +425,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["requestId", "railId", "trackId", "artistId", "position", "source"],
+    payloadFields: ["requestId", "railId", "trackId", "artistId", "position", "source", "rankerVariant", "experimentKey"],
   },
   {
     eventName: "stems.uploaded",

@@ -24,9 +24,12 @@ import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.se
 import { AnalyticsPipelineObservabilityService } from "./analytics_observability.service";
 import { SharedModule } from "../shared/shared.module";
 import { AgentsModule } from "../agents/agents.module";
+import { DiscoveryJournalModule } from "../discovery_journal/discovery_journal.module";
+import { DiscoveryJournalService } from "../discovery_journal/discovery_journal.service";
+import { RESONANT_DISCOVERY_SOURCE } from "./analytics_resonant_discovery";
 
 @Module({
-  imports: [SharedModule, AgentsModule],
+  imports: [SharedModule, AgentsModule, DiscoveryJournalModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,
@@ -48,6 +51,11 @@ import { AgentsModule } from "../agents/agents.module";
     {
       provide: ANALYTICS_EVENT_PUBLISHER,
       useFactory: analyticsEventPublisherFromEnv,
+    },
+    {
+      // #1455: aggregate-only resonant discovery counts for the quality dashboard.
+      provide: RESONANT_DISCOVERY_SOURCE,
+      useExisting: DiscoveryJournalService,
     },
     {
       provide: ANALYTICS_REPORT_SOURCE,

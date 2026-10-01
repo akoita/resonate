@@ -60,6 +60,12 @@ authenticated pseudonymous user playback lifecycle events through
 - `recommendation.served` / `recommendation.clicked` (#1449) — Home ranking
   impressions (requestId, railId, trackIds/position, source) at pseudonymous
   tier, correlating with the `requestId` on `GET /recommendations/:userId`.
+  #1455 adds the `rankerVariant` / `experimentKey` labels to both, and
+  `railId` / `rankerVariant` (plus `reason` on skips) to `playback.started|
+  completed|skipped`; `recommendation.generated` gains `surface`, `rankerVariant`
+  and `experimentKey`. Fact dimensions: `railId`, `rankerVariant`,
+  `experimentKey`, `surface`, `reason`, `itemCount`. Labels only. See
+  [Agent Taste Intelligence](agent_taste_intelligence.md#discovery-measurement-1455-ws-8-first-slice).
 - `player.track_shared` — a listener shared the playing track from the player
   (`channel` enum x/facebook/reddit/native/copy, `trackId`, `releaseId`) at
   pseudonymous tier; no free text. Arrivals from the share link carry
