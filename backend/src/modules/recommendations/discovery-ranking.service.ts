@@ -71,6 +71,12 @@ export interface DiscoveryCandidate {
   };
   /** Which taste queries surfaced this candidate (caller-provided). */
   matchedQueries?: string[];
+  /**
+   * Which kinds of embedding seed surfaced this candidate (#2003): a track the
+   * listener saved or finished, or a note they wrote. Categorical; never the
+   * seed id or text.
+   */
+  embeddingSources?: ReadonlyArray<"seed_track" | "listener_note">;
 }
 
 /**
@@ -130,6 +136,13 @@ export interface RankedDiscoveryCandidate extends DiscoveryCandidate {
 
 /** Weight of a declared "more of this" signal: above the learned-preference cap of 18. */
 export const DECLARED_PREFERENCE_WEIGHT = 20;
+
+/**
+ * Weight of an embedding-neighbour signal (#2003): a modest tilt, below the
+ * declared-preference weight (20) and the learned-preference cap (18), so a
+ * neighbour never outranks a track that matches stated or learned taste.
+ */
+export const EMBEDDING_SIMILARITY_WEIGHT = 8;
 
 /** Weight of the session-intent signal: a tilt, below any taste match. */
 export const SESSION_INTENT_FIT_WEIGHT = 12;
@@ -251,6 +264,28 @@ export class DiscoveryRankingService {
         label: "declared_preference",
         weight: DECLARED_PREFERENCE_WEIGHT,
         reason: `you asked for more ${declaredBoost}`,
+      });
+      explanation.push(DISCOVERY_EXPLANATION_VARIANTS.declared_taste);
+    }
+
+    // Embedding neighbours of what the listener saved or finished, and of what
+    // they wrote in a taste note (#2003, #2006). The signal is categorical: it
+    // says the track sounds close to the listener's taste, not which track or
+    // which words, so no history is exposed.
+    const embeddingSources = candidate.embeddingSources ?? [];
+    if (embeddingSources.includes("seed_track")) {
+      signals.push({
+        label: "embedding_similarity",
+        weight: EMBEDDING_SIMILARITY_WEIGHT,
+        reason: "close to music you engaged with",
+      });
+      explanation.push(DISCOVERY_EXPLANATIONS.similar_sound);
+    }
+    if (embeddingSources.includes("listener_note")) {
+      signals.push({
+        label: "declared_note_match",
+        weight: EMBEDDING_SIMILARITY_WEIGHT,
+        reason: "close to something you wrote",
       });
       explanation.push(DISCOVERY_EXPLANATION_VARIANTS.declared_taste);
     }

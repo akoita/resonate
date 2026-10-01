@@ -348,29 +348,61 @@ export class TrackEmbeddingService implements OnModuleInit, OnModuleDestroy {
     const limit = clampInt(options.limit, 1, SIMILAR_MAX_LIMIT, SIMILAR_DEFAULT_LIMIT);
     const model = this.embeddingService.modelId;
 
-    if (model) {
-      const seedVector = await this.embeddingStore.get(seedTrackId, model);
-      if (seedVector) {
-        const neighbours = await this.embeddingStore.nearest(seedVector, {
-          model,
-          limit: limit * SIMILAR_OVERFETCH,
-          excludeTrackIds: [seedTrackId],
-        });
-        const results = await this.filterEligible(
-          neighbours,
-          limit,
-          options.allowExplicit ?? false,
-        );
-        if (results.length > 0) {
-          return { source: "embedding", model, results };
-        }
-      }
+    const results = await this.embeddingNeighbours(seedTrackId, options);
+    if (model && results.length > 0) {
+      return { source: "embedding", model, results };
     }
     return {
       source: "metadata_fallback",
       model,
       results: await this.metadataFallback(seedTrackId, limit, options.allowExplicit ?? false),
     };
+  }
+
+  /** True when a provider is configured, so stored vectors can be compared. */
+  isEnabled(): boolean {
+    return this.embeddingService.isEnabled();
+  }
+
+  /**
+   * Nearest neighbours of the seed's stored current-model vector, and nothing
+   * else: no metadata fallback and no model call. Empty when the provider is
+   * disabled, the seed has no vector, or no neighbour is publicly listable.
+   * Home uses this so that "embeddings off" leaves its results unchanged.
+   */
+  async embeddingNeighbours(
+    seedTrackId: string,
+    options: SimilarTracksOptions = {},
+  ): Promise<SimilarTrack[]> {
+    const model = this.embeddingService.modelId;
+    if (!model) return [];
+    const seedVector = await this.embeddingStore.get(seedTrackId, model);
+    if (!seedVector) return [];
+    return this.neighboursOfVector(seedVector, {
+      ...options,
+      excludeTrackIds: [seedTrackId],
+    });
+  }
+
+  /**
+   * Publicly listable tracks nearest to an arbitrary query vector (a written
+   * taste note, for instance), same model scope, eligibility and ordering as
+   * `similarTracks`. The caller supplies a vector made by the current model;
+   * nothing here embeds text.
+   */
+  async neighboursOfVector(
+    vector: number[],
+    options: SimilarTracksOptions & { excludeTrackIds?: string[] } = {},
+  ): Promise<SimilarTrack[]> {
+    const limit = clampInt(options.limit, 1, SIMILAR_MAX_LIMIT, SIMILAR_DEFAULT_LIMIT);
+    const model = this.embeddingService.modelId;
+    if (!model) return [];
+    const neighbours = await this.embeddingStore.nearest(vector, {
+      model,
+      limit: limit * SIMILAR_OVERFETCH,
+      excludeTrackIds: options.excludeTrackIds,
+    });
+    return this.filterEligible(neighbours, limit, options.allowExplicit ?? false);
   }
 
   private eligibleWhere(allowExplicit: boolean): Prisma.TrackWhereInput {

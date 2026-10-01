@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.service";
 import { EventBus } from "../shared/event_bus";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 import type { UserPreferences } from "./recommendations.service";
@@ -83,7 +84,7 @@ export interface TasteMemoryPolicy {
   /**
    * Declared "more of this" signals (#1961). Keyed by normalized value, like
    * `hidden` and `downranked`. `note` controls never appear here: a written
-   * preference is stored and shown but has no ranking effect yet.
+   * preference steers Home through its embedding (#2006), not through this map.
    */
   boosted: Map<TasteSignalType, Set<string>>;
   /**
@@ -118,7 +119,12 @@ const DEFAULT_SETTINGS: Omit<TasteMemorySettingsDto, "resetAt"> = {
 
 @Injectable()
 export class TasteMemoryService {
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(
+    private readonly eventBus: EventBus,
+    // Embeds written notes so they can steer Home (#2006). Absent or disabled:
+    // a note is stored and shown but has no ranking effect.
+    @Optional() private readonly noteEmbeddings?: TasteNoteEmbeddingService,
+  ) {}
 
   async getTasteMemory(userId: string) {
     const settings = await this.getOrCreateSettings(userId);
@@ -416,7 +422,7 @@ export class TasteMemoryService {
           })
         : [];
 
-      await prisma.$transaction([
+      const written = await prisma.$transaction([
         ...edits.map((edit) =>
           prisma.listenerTasteSignalControl.upsert({
             where: {
@@ -443,6 +449,17 @@ export class TasteMemoryService {
             })]
           : []),
       ]);
+
+      // Best-effort ranking seed for each written note (#2006). The control is
+      // already saved: a missing provider or a failed call only means this note
+      // has no ranking effect. The text goes to the provider and nowhere else.
+      await Promise.all(
+        edits.flatMap((edit, index) =>
+          edit.signalType === "note" && edit.action === "declared"
+            ? [this.embedNoteSafely((written[index] as { id: string }).id, edit.value)]
+            : [],
+        ),
+      );
 
       for (const control of staleEnergy) {
         this.publish("taste_memory.signal_restored", userId, {
@@ -478,6 +495,14 @@ export class TasteMemoryService {
 
     const memory = await this.getTasteMemory(userId);
     return { ...memory, edits: { appliedCount: edits.length, ignoredCount } };
+  }
+
+  private async embedNoteSafely(controlId: string, text: string) {
+    try {
+      await this.noteEmbeddings?.embedNote(controlId, text);
+    } catch {
+      // Never fail an apply over a ranking seed, and never surface the text.
+    }
   }
 
   private async lookupArtistNames(names: string[]): Promise<Map<string, string>> {
@@ -625,8 +650,8 @@ export function buildPolicy(
   const declared: DeclaredTastePreferences = { boostedGenres: [], boostedMoods: [] };
   let energyCreatedAt = "";
   for (const control of controls) {
-    // `declared` (written notes) deliberately reaches no map: a note is stored
-    // and shown but has no ranking effect in this slice.
+    // `declared` (written notes) deliberately reaches no map: a note steers
+    // Home through its embedding vector (#2006), which is looked up separately.
     const target = control.action === "downranked"
       ? downranked
       : control.action === "boosted"

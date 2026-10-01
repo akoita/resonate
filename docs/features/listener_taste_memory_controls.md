@@ -101,7 +101,7 @@ direction is reported as unmapped rather than guessed.
 | `boost_mood`, `downrank_mood` | `mood` / `boosted`, `downranked` | Focus, Hype, Dark, Zen, Club, Late Night, Warm. "Chill" is energy, not a mood. |
 | `energy_preference` | `energy` / `boosted`, value `low`, `medium` or `high` | "more energetic", "calmer", "chill". "Less energetic" flips the band. One declared band at a time: the newest replaces the rest. |
 | `hide_artist` | `artist` / `hidden` | Only when the name matches an existing artist display name (case-insensitive) and the clause is a rejection ("no", "hide"...). The parser itself is pure: the service looks names up read-only and injects the result. |
-| `written_preference` | `note` / `declared` | Instrument and production phrases ("more live instruments"). **Stored and shown, with no ranking effect in this slice.** |
+| `written_preference` | `note` / `declared` | Instrument and production phrases ("more live instruments"). Stored and shown. When the embedding provider is enabled, the note also steers Home through its embedding (below); with it disabled the note has no ranking effect. |
 | `unmapped` | never stored | Shown honestly ("Couldn't map 'x' to a taste signal"), not selectable, ignored if sent to Apply. |
 
 The genre and mood vocabulary mirrors the artist upload form's suggestions
@@ -124,8 +124,19 @@ clauses; clauses beyond the bound are reported as unmapped, not dropped silently
   The AI DJ and learned profile pick the boost up through
   `scoreMultiplierForSignal`; the DJ's own queries and session energy are left
   alone.
-- A `note` reaches no ranking map. The UI and this page say so: it is a saved
-  statement of preference until a later slice gives it an effect.
+- A `note` reaches no ranking map (`hidden`/`downranked`/`boosted`). Its effect
+  is a Home candidate source (#2003, #2006): when `TRACK_EMBEDDING_PROVIDER` is
+  enabled, applying a note embeds its text as a retrieval query and stores only
+  the vector (`ListenerTasteNoteEmbedding`, deleted with the control, kept
+  through a taste reset like the control). Home then adds the nearest tracks to
+  up to two of the listener's newest notes as candidates, with a small
+  `declared_note_match` signal (weight 8, below a declared boost) explained as
+  "You asked for more of this". The text is sent to the embedding provider and is
+  never logged, published, or stored outside the control. Embedding is
+  best-effort: with the provider disabled or failing, the note is saved with no
+  vector and has no ranking effect. Removing the note removes the vector and the
+  effect. See [Agent Taste Intelligence](agent_taste_intelligence.md)
+  §Home candidate source.
 - A declared edit on a signal that already has a control replaces that control
   (one control per signal type and value).
 - Home: declared boosts reach the rails through `getRecommendations`, but a

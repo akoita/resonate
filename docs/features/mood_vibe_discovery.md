@@ -44,8 +44,11 @@ Available in this branch:
   recommendation items.
 - Release moods, genre, title and credited artist also feed the track text
   embedding (#1452): `similarTracks` can surface zero-play tracks that are close
-  to a seed by vibe. It is not yet a Home candidate source; see
-  [agent_taste_intelligence.md](agent_taste_intelligence.md) §Track Embeddings.
+  to a seed by vibe. Home uses those stored-vector neighbours of tracks the
+  listener saved or finished (and of their written taste notes) as a candidate
+  source when the embedding provider is enabled (#2003); see
+  [agent_taste_intelligence.md](agent_taste_intelligence.md) §Track Embeddings
+  and §Home candidate source.
 
 Known follow-up work:
 

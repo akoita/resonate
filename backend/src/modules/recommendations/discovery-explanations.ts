@@ -134,12 +134,14 @@ const LABEL_PRIORITY = [
   "taste_match",
   "expanded_taste_match",
   "declared_preference",
+  "declared_note_match",
   "learned_preference",
   "bigquery_taste_score",
   "session_intent_fit",
   "energy_match",
   "cohort_context",
   "semantic_similarity",
+  "embedding_similarity",
 ] as const;
 
 function codeForSignal(signal: ReasonSignal): DiscoveryReasonCode | null {
@@ -154,7 +156,13 @@ function codeForSignal(signal: ReasonSignal): DiscoveryReasonCode | null {
     // `taste_match` code; the sentence above distinguishes it (#1961).
     case "declared_preference":
       return "taste_match";
+    // A written note is a declared preference too (#2006): same code, and the
+    // "You asked for more of this" sentence tells it apart.
+    case "declared_note_match":
+      return "taste_match";
     case "semantic_similarity":
+    // Neighbour of a saved or finished track (#2003): "sounds close to your taste".
+    case "embedding_similarity":
       return "similar_sound";
     case "energy_match":
     case "session_intent_fit":

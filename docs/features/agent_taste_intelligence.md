@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455, 2005]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455, 2005, 2003, 2006]
 ---
 
 # Agent Taste Intelligence
@@ -189,10 +189,10 @@ taste-memory policy) and receive weighted signals + human explanations.
 
 - `GET /recommendations/:userId` now routes through the core: candidates come
   from a UNION of sources (newest-50, catalog-wide preference matches with no
-  recency bias, cohort query hints) instead of "50 newest" — older tracks are
-  recommendable. WS-3 popularity marts / WS-6 CF slot in as further sources;
-  the WS-5 embedding source (`similarTracks`, below) is built but not yet wired
-  in.
+  recency bias, cohort query hints, embedding neighbours) instead of "50 newest"
+  — older tracks are recommendable. WS-3 popularity marts / WS-6 CF slot in as
+  further sources; the WS-5 embedding source is wired in, see
+  [Home candidate source](#home-candidate-source-2003-2006) below.
 - User preferences and served-history are durable (`RecommendationProfile`
   Prisma model), fronted by a fail-open Redis cache
   (`shared/redis_cache.service.ts`) — they survive restarts and are coherent
@@ -269,15 +269,63 @@ discovery quality; it changes no price, fee or payout.
   tracks), on ingest (one release's tracks), lazily for DJ candidates that have no
   current vector, and once per DJ similarity call for the query.
   `similarTracks` makes none.
-- **Remaining for #1452.** `RecommendationsService.gatherCandidates` does not yet
-  use `similarTracks` as a candidate source: it has no per-listener
-  positive-engagement seed input (and that data is consent-gated by the taste
-  memory controls), so wiring it needs a separate, deliberate slice. Audio-feature
-  vectors are also later.
+- **Remaining for #1452.** Audio-feature vectors are later. The Home candidate
+  source is described in the next section.
 - Tests: `embeddings.spec.ts`, `vertex_embedding.client.spec.ts`,
   `agent_selector_embeddings.spec.ts`, `embeddings_module.spec.ts`,
   `embeddings.integration.spec.ts`, `track_embedding.integration.spec.ts`,
   `maintenance.controller.http.spec.ts`.
+
+### Home candidate source (#2003, #2006)
+
+Home (`RecommendationsService.gatherCandidates`) now has a fourth candidate
+source, `embedding-neighbours`, next to newest-50, preference matches and cohort
+hints. Vision-neutral infrastructure for Listener Pro discovery quality
+(ADR-BM-6, Line 4); no payout mechanics.
+
+- **Seeds.** Up to **3** tracks from the listener's own positive signals, newest
+  first, one per track: a `save` or `add_to_playlist`, or a `complete` with a
+  recorded completion ratio of at least 0.9. Never skips, short plays or anyone
+  else's history. Seed rules (`embedding_seeds.ts`, pure and unit-tested):
+  signals at or before the taste-memory reset are ignored; agent-originated
+  playback is ignored when "AI DJ playback trains my taste" is off (the same
+  predicate the learning loop and the discovery journal use); a track whose
+  genre, mood or artist is hidden or downranked is never a seed; without the
+  taste-memory policy there are no seeds (consent cannot be checked).
+- **Neighbours.** For each seed, `TrackEmbeddingService.embeddingNeighbours`
+  returns up to **10** nearest tracks from **stored vectors only**: publicly
+  listable, non-explicit unless allowed, not fully AI-generated (ADR-BM-5), seed
+  excluded. Zero-play tracks are reachable. The deterministic metadata fallback
+  of `similarTracks` is deliberately **not** used on Home, so with the provider
+  disabled (the default), no vectors, or no seeds, Home returns exactly what it
+  returned before this source existed, and does no extra queries when disabled.
+  Home never calls the embedding model and never writes vectors.
+- **Written notes (#2006).** When a `note` control is applied
+  (`applyTasteEdits`), its text is embedded once as a retrieval query and the
+  vector is stored in `ListenerTasteNoteEmbedding` (`controlId`, `vector(768)`,
+  `model`, `contentHash`), deleted with the control. Embedding is best-effort:
+  provider disabled or failing means no vector and the apply still succeeds; the
+  text goes to the provider and is never logged or published. On Home, up to **2**
+  of the listener's newest notes with a current-model vector each contribute up
+  to **10** neighbours. Notes survive a taste reset, like the control itself. A
+  note saved while the provider was disabled has no vector until it is re-applied.
+- **Bounds.** At most 3 x 10 seed neighbours plus 2 x 10 note neighbours join the
+  pool, deduped against the other sources and re-checked against the public
+  catalog predicate. Every failure degrades to "no neighbours".
+- **Ranking.** Candidates carry a categorical `embeddingSources`
+  (`seed_track` / `listener_note`), never the seed id or the note text. A
+  seed neighbour gets `embedding_similarity` (weight 8, reason code
+  `similar_sound`, "Sounds close to your taste"); a note neighbour gets
+  `declared_note_match` (weight 8, reason code `taste_match`, "You asked for
+  more of this"). Both sit below the declared-preference weight (20) and the
+  learned-preference cap (18), so a neighbour never outranks a stated or learned
+  match. Home treats an embedding neighbour as a taste match when choosing
+  between preference matches and the fresh fallback, so it is not dropped
+  whenever a genre or mood term matched elsewhere; the policy stage (hidden
+  taste, diversity cap, exploration) still applies. The response contract is
+  unchanged apart from the additive `reasonCode` / `explanations` values.
+- Tests: `embedding_seeds.spec.ts`, `discovery_ranking_embedding.spec.ts`,
+  `home_embedding_candidates.integration.spec.ts`.
 
 ## One Core, One Profile, One Policy (#1456 WS-9, #1957)
 

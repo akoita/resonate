@@ -13,6 +13,8 @@ export interface EmbeddingContentState {
   contentHash: string;
 }
 
+export type EmbeddingNoteState = EmbeddingContentState;
+
 export interface NearestOptions {
   /** Only vectors stored under this model are compared. */
   model: string;
@@ -171,6 +173,69 @@ export class EmbeddingStore {
     return rows.map((row) => ({
       trackId: row.trackId,
       score: Number(row.score),
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Listener taste-note vectors (#2006). The note text lives on the control row;
+  // only the vector is stored here, and it cascades away with the control.
+  // ---------------------------------------------------------------------------
+
+  async upsertTasteNote(
+    controlId: string,
+    vector: number[],
+    model: string,
+    contentHash: string,
+  ) {
+    this.assertVector(vector);
+    const literal = this.toVectorLiteral(vector);
+    await prisma.$executeRaw`
+      INSERT INTO "ListenerTasteNoteEmbedding"
+        ("controlId", "vector", "model", "contentHash", "updatedAt")
+      VALUES (${controlId}, ${literal}::vector, ${model}, ${contentHash}, NOW())
+      ON CONFLICT ("controlId") DO UPDATE
+      SET "vector" = EXCLUDED."vector",
+          "model" = EXCLUDED."model",
+          "contentHash" = EXCLUDED."contentHash",
+          "updatedAt" = NOW()
+    `;
+  }
+
+  /** Model + content hash of a note's stored vector, or null when it has none. */
+  async getTasteNoteState(controlId: string): Promise<EmbeddingNoteState | null> {
+    const rows = await prisma.$queryRaw<Array<{ model: string; contentHash: string }>>`
+      SELECT "model", "contentHash"
+      FROM "ListenerTasteNoteEmbedding"
+      WHERE "controlId" = ${controlId}
+      LIMIT 1
+    `;
+    return rows[0] ?? null;
+  }
+
+  /**
+   * The newest stored note vectors for one listener under `model`. Only
+   * `note` controls the listener still holds are reachable (the row cascades
+   * with the control), so a removed note can never seed anything.
+   */
+  async listTasteNoteVectors(
+    userId: string,
+    model: string,
+    limit: number,
+  ): Promise<Array<{ controlId: string; vector: number[] }>> {
+    const take = Math.min(10, Math.max(1, Math.floor(limit)));
+    const rows = await prisma.$queryRaw<Array<{ controlId: string; vector: string }>>`
+      SELECT e."controlId" AS "controlId", e."vector"::text AS "vector"
+      FROM "ListenerTasteNoteEmbedding" e
+      JOIN "ListenerTasteSignalControl" c ON c."id" = e."controlId"
+      WHERE c."userId" = ${userId}
+        AND c."signalType" = 'note'
+        AND e."model" = ${model}
+      ORDER BY c."createdAt" DESC, c."id" ASC
+      LIMIT ${take}
+    `;
+    return rows.map((row) => ({
+      controlId: row.controlId,
+      vector: this.parseVector(row.vector),
     }));
   }
 

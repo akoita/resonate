@@ -2593,7 +2593,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "What you apply shows up in the same list as your other taste controls, marked as declared by you. Remove an entry there to undo it.",
               "Declared taste stays until you remove it — it never fades with time — and it counts for more than what we have inferred from your listening.",
               "You can ask for more or less of a genre or a mood, hide an artist by name, or say how energetic you like your music.",
-              "Wishes we cannot act on yet, such as \"more live instruments\", are saved as a note you can read back. Notes do not change your recommendations yet.",
+              "Wishes that are not a genre, mood, artist or energy level, such as \"more live instruments\", are saved as a note you can read back. Where music matching is switched on, a note also helps us find tracks that sound like what you wrote. It is a gentle nudge, not a filter, and removing the note stops it.",
             ],
           },
           {
