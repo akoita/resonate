@@ -316,9 +316,10 @@ describe("StemFeatureBackfillService (integration)", () => {
         ]),
       );
       expect(message.stems.map((s: { stemId: string }) => s.stemId)).not.toContain(ID("an_badbucket"));
-      expect(
-        message.stems.some((s: { uri: string }) => s.uri.startsWith("http://backend.test")),
-      ).toBe(false);
+      const dispatchedHosts = message.stems
+        .filter((s: { uri: string }) => /^https?:\/\//.test(s.uri))
+        .map((s: { uri: string }) => new URL(s.uri).hostname);
+      expect(dispatchedHosts).not.toContain("backend.test");
       expect(message.stems.map((s: { stemId: string }) => s.stemId)).not.toContain(ID("an_nouri"));
 
       expect(result).toEqual(
