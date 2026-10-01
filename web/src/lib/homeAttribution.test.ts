@@ -55,6 +55,19 @@ describe("home rail attribution (#1455)", () => {
     expect(getHomeAttribution("t", at + HOME_ATTRIBUTION_TTL_MS)).toBeUndefined();
   });
 
+  it("keeps the experiment key with the variant (#2005)", () => {
+    rememberHomeAttribution("catalog-track-1", {
+      railId: "for-you",
+      rankerVariant: "candidate",
+      experimentKey: "ranker_v2",
+    });
+    expect(getHomeAttribution("catalog-track-1")).toEqual({
+      railId: "for-you",
+      rankerVariant: "candidate",
+      experimentKey: "ranker_v2",
+    });
+  });
+
   it("is a no-op outside the browser", () => {
     vi.unstubAllGlobals();
     expect(() => rememberHomeAttribution("t", { railId: "r" })).not.toThrow();

@@ -777,10 +777,9 @@ operator-only page, so there is no `/help` article.
 
 **Limits and remaining work (tracked under #1455).** DJ plays made before this
 change, or from a client that predates it, have no variant and stay
-`unattributed`. Home playback events forward `railId` and `rankerVariant` but
-not `experimentKey`, so Home outcome rows with an active experiment can be
-reported apart from the impression rows that carry the key; DJ events forward
-all three. Mapping a variant name to a different ranker, and promotion rules,
+`unattributed`. Home and DJ outcome events both forward `rankerVariant` and
+`experimentKey`, so outcome rows join the impression rows that carry the key.
+Mapping a variant name to a different ranker, and promotion rules,
 are later slices.
 
 The baseline signed feedback includes:

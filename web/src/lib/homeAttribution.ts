@@ -7,7 +7,7 @@
  * and playback and save events for that track forward the same labels while the
  * attribution is fresh.
  *
- * Labels only: a rail id and a variant name. Nothing about the listener is
+ * Labels only: a rail id, a variant name and an experiment key. Nothing about the listener is
  * stored, the entry lives in sessionStorage (tab-scoped), and it expires after
  * 30 minutes or when the same track is attributed again.
  */
@@ -19,6 +19,8 @@ const MAX_ENTRIES = 20;
 export type HomeAttribution = {
   railId: string;
   rankerVariant?: string;
+  /** #2005: kept with the variant so outcome rows join their impressions. */
+  experimentKey?: string;
 };
 
 type StoredEntry = HomeAttribution & { trackId: string; at: number };
@@ -57,6 +59,7 @@ export function rememberHomeAttribution(
       trackId,
       railId: attribution.railId,
       ...(attribution.rankerVariant ? { rankerVariant: attribution.rankerVariant } : {}),
+      ...(attribution.experimentKey ? { experimentKey: attribution.experimentKey } : {}),
       at: now,
     },
   ]);
@@ -75,6 +78,7 @@ export function getHomeAttribution(
   return {
     railId: entry.railId,
     ...(entry.rankerVariant ? { rankerVariant: entry.rankerVariant } : {}),
+    ...(entry.experimentKey ? { experimentKey: entry.experimentKey } : {}),
   };
 }
 
