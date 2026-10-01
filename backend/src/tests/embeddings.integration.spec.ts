@@ -149,7 +149,10 @@ describe("EmbeddingStore (integration)", () => {
   it("the nearest-neighbour query shape can use the HNSW index", async () => {
     const literal = `[${vec([0, 1]).join(",")}]`;
     const plan = await prisma.$transaction(async (tx) => {
+      // A tiny table makes "model index + explicit sort" cheapest; disabling
+      // sorts leaves the ordered HNSW scan as the only way to serve ORDER BY.
       await tx.$executeRaw`SET LOCAL enable_seqscan = off`;
+      await tx.$executeRaw`SET LOCAL enable_sort = off`;
       return tx.$queryRawUnsafe<Array<{ "QUERY PLAN": string }>>(
         `EXPLAIN SELECT "trackId" FROM "TrackEmbedding" WHERE "model" = '${MODEL_A}' ` +
           `ORDER BY "vector" <=> '${literal}'::vector LIMIT 5`,
