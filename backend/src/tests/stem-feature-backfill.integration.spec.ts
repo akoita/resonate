@@ -9,6 +9,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { StemFeatureBackfillService } from "../modules/ingestion/stem-feature-backfill.service";
+import { resolveGcsStorageUri } from "../modules/storage/storage_uri_policy";
 
 const TEST_PREFIX = `backfill_${Date.now()}_`;
 const TRACK_ID = `${TEST_PREFIX}track`;
@@ -33,6 +34,8 @@ describe("StemFeatureBackfillService (integration)", () => {
     download: jest.fn(),
     downloadRange: jest.fn(),
     delete: jest.fn(),
+    // Mirrors GcsStorageProvider for the configured test bucket "b".
+    resolveFetchUri: jest.fn((uri: string) => resolveGcsStorageUri(uri, "b").target),
   };
   const publisher = {
     isAvailable: jest.fn(),
@@ -272,6 +275,9 @@ describe("StemFeatureBackfillService (integration)", () => {
       { id: ID("an_gcs"), uri: "https://storage.googleapis.com/b/gcs.mp3", storageProvider: "gcs", mimeType: "audio/wav" },
       { id: ID("an_local"), uri: "/catalog/stems/an_local_file/blob", storageProvider: "local", mimeType: null },
       { id: ID("an_nouri"), uri: "", storageProvider: "gcs", mimeType: null },
+      // Historical bucket-relative GCS form: must not be prefixed with BACKEND_URL.
+      { id: ID("an_gcsrel"), uri: "/b/originals/rel.m4a", storageProvider: "gcs", mimeType: "audio/mp4" },
+      { id: ID("an_badbucket"), uri: "/other-bucket/originals/x.mp3", storageProvider: "gcs", mimeType: null },
     ];
 
     beforeAll(async () => {
@@ -302,8 +308,17 @@ describe("StemFeatureBackfillService (integration)", () => {
         expect.arrayContaining([
           { stemId: ID("an_gcs"), uri: "https://storage.googleapis.com/b/gcs.mp3", mimeType: "audio/wav" },
           { stemId: ID("an_local"), uri: "an_local_file", mimeType: "audio/mpeg" },
+          {
+            stemId: ID("an_gcsrel"),
+            uri: "https://storage.googleapis.com/b/originals/rel.m4a",
+            mimeType: "audio/mp4",
+          },
         ]),
       );
+      expect(message.stems.map((s: { stemId: string }) => s.stemId)).not.toContain(ID("an_badbucket"));
+      expect(
+        message.stems.some((s: { uri: string }) => s.uri.startsWith("http://backend.test")),
+      ).toBe(false);
       expect(message.stems.map((s: { stemId: string }) => s.stemId)).not.toContain(ID("an_nouri"));
 
       expect(result).toEqual(
@@ -320,8 +335,12 @@ describe("StemFeatureBackfillService (integration)", () => {
         stemId: ID("an_nouri"),
         reason: "audio_unavailable",
       });
+      expect(result.skipped).toContainEqual({
+        stemId: ID("an_badbucket"),
+        reason: "audio_unavailable",
+      });
       // In flight stems still count as remaining.
-      expect(result.remaining).toBeGreaterThanOrEqual(3);
+      expect(result.remaining).toBeGreaterThanOrEqual(5);
 
       const rows = await prisma.stem.findMany({
         where: { id: { in: analysisStems.map((s) => s.id) } },
@@ -350,7 +369,7 @@ describe("StemFeatureBackfillService (integration)", () => {
           skipped: [],
         }),
       );
-      expect(result.remaining).toBeGreaterThanOrEqual(3);
+      expect(result.remaining).toBeGreaterThanOrEqual(5);
       expect(publisher.publishAnalysisJob).not.toHaveBeenCalled();
       expect(fetchSpy).not.toHaveBeenCalled();
     });

@@ -207,9 +207,28 @@ export class StemFeatureBackfillService {
         skipped.push({ stemId: stem.id, reason: "audio_unavailable" });
         continue;
       }
+      // GCS stems may be stored bucket-relative (`/{bucket}/{object}`); the
+      // generic mapping would prefix those with the backend URL, so resolve
+      // them to the canonical storage URL the worker downloads directly.
+      let uri: string;
+      try {
+        uri =
+          (stem.storageProvider === "gcs"
+            ? this.storageProvider.resolveFetchUri?.(stem.uri)
+            : undefined) ??
+          toWorkerFetchableUri(stem.uri, stem.storageProvider, backendBaseUrl);
+      } catch (error) {
+        this.logger.warn(
+          `[backfill] unusable storage URI for stem ${stem.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        skipped.push({ stemId: stem.id, reason: "audio_unavailable" });
+        continue;
+      }
       dispatchable.push({
         stemId: stem.id,
-        uri: toWorkerFetchableUri(stem.uri, stem.storageProvider, backendBaseUrl),
+        uri,
         mimeType: stem.mimeType || "audio/mpeg",
       });
     }
