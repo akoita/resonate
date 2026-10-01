@@ -57,6 +57,7 @@ describe("full-mix audio features through ingestion (integration)", () => {
       encryptionService as any,
       artistService as any,
       catalog,
+      {} as any,
     );
 
     await prisma.user.create({

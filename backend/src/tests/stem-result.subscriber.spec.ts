@@ -79,6 +79,12 @@ describe("StemResultSubscriber", () => {
     }),
   } as any;
 
+  const mockBackfillService = {
+    applyAnalysisResults: jest
+      .fn()
+      .mockResolvedValue({ updated: 0, failed: 0, malformed: 0 }),
+  } as any;
+
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.STEM_PROCESSING_MODE = "pubsub";
@@ -91,6 +97,7 @@ describe("StemResultSubscriber", () => {
       mockEncryptionService,
       mockArtistService,
       {} as any,
+      mockBackfillService,
     );
   });
 
@@ -139,6 +146,7 @@ describe("StemResultSubscriber", () => {
         mockEncryptionService,
         mockArtistService,
         {} as any,
+        mockBackfillService,
       );
 
       await subscriber.onModuleInit();
@@ -199,6 +207,83 @@ describe("StemResultSubscriber", () => {
 
       // Verify message was acked
       expect(mockMessage.ack).toHaveBeenCalled();
+    });
+  });
+
+  describe("analysis results (#2013)", () => {
+    let messageHandler: (message: any) => Promise<void>;
+    let separationSpies: jest.SpyInstance[];
+
+    beforeEach(async () => {
+      mockTopicExists.mockResolvedValue([true]);
+      mockSubExists.mockResolvedValue([true]);
+      await subscriber.onModuleInit();
+      messageHandler = mockSubscriptionOn.mock.calls.find(
+        (call: any[]) => call[0] === "message",
+      )?.[1];
+      separationSpies = [
+        jest.spyOn(subscriber as any, "processCompletedSeparation"),
+        jest.spyOn(subscriber as any, "processFailedSeparation"),
+      ];
+    });
+
+    function messageOf(payload: unknown) {
+      return {
+        data: Buffer.from(JSON.stringify(payload)),
+        ack: jest.fn(),
+        nack: jest.fn(),
+      };
+    }
+
+    it("applies analysis results and acks without touching separation paths", async () => {
+      const payload = {
+        kind: "analysis",
+        jobId: "analyze_1_abcd1234",
+        status: "completed",
+        results: [{ stemId: "stem_1", features: { schemaVersion: "stem-audio-features/v1" } }],
+      };
+      const message = messageOf(payload);
+
+      await messageHandler(message);
+
+      expect(mockBackfillService.applyAnalysisResults).toHaveBeenCalledWith(payload);
+      expect(message.ack).toHaveBeenCalled();
+      expect(message.nack).not.toHaveBeenCalled();
+      for (const spy of separationSpies) expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("acks a legacy analyze_ failure without kind and skips separation failure handling", async () => {
+      const message = messageOf({
+        jobId: "analyze_1_abcd1234",
+        releaseId: "",
+        trackId: "",
+        status: "failed",
+        error: "missing releaseId",
+      });
+
+      await messageHandler(message);
+
+      expect(mockBackfillService.applyAnalysisResults).not.toHaveBeenCalled();
+      expect(message.ack).toHaveBeenCalled();
+      expect(message.nack).not.toHaveBeenCalled();
+      for (const spy of separationSpies) expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("nacks when applying analysis results throws", async () => {
+      mockBackfillService.applyAnalysisResults.mockRejectedValueOnce(
+        new Error("db down"),
+      );
+      const message = messageOf({
+        kind: "analysis",
+        jobId: "analyze_2_abcd1234",
+        status: "completed",
+        results: [],
+      });
+
+      await messageHandler(message);
+
+      expect(message.nack).toHaveBeenCalled();
+      expect(message.ack).not.toHaveBeenCalled();
     });
   });
 

@@ -53,6 +53,8 @@ AUDIO_REVISION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 OUTPUT_PATH_SEGMENT_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,128}")
+# Max stems per analysis-only Pub/Sub message (#2013 audio-feature backfill).
+MAX_ANALYSIS_STEMS = 50
 STEM_FILENAME_PATTERN = re.compile(r"(?:vocals|drums|bass|other|piano|guitar)\.mp3")
 
 # Lazy-loaded GCS client (only imported when needed)
@@ -666,8 +668,79 @@ async def download_audio(uri: str, dest_path: Path):
                 return
         raise FileNotFoundError(f"Could not find audio at any of: {[str(c) for c in local_candidates]}")
 
+def validate_analysis_message(message_data: dict) -> Tuple[str, list]:
+    """Validate an analysis-only message; returns (job_id, normalized stems)."""
+    job_id = message_data.get("jobId")
+    if not isinstance(job_id, str) or not job_id:
+        raise ValueError("analysis message requires a string jobId")
+    stems = message_data.get("stems")
+    if not isinstance(stems, list) or not 1 <= len(stems) <= MAX_ANALYSIS_STEMS:
+        raise ValueError(
+            f"analysis message requires 1..{MAX_ANALYSIS_STEMS} stems"
+        )
+    normalized = []
+    for entry in stems:
+        if not isinstance(entry, dict):
+            raise ValueError("analysis stem entries must be objects")
+        stem_id = entry.get("stemId")
+        if not isinstance(stem_id, str) or not OUTPUT_PATH_SEGMENT_PATTERN.fullmatch(stem_id):
+            raise ValueError("analysis stem has an invalid stemId")
+        uri = entry.get("uri")
+        if not isinstance(uri, str) or not uri:
+            raise ValueError("analysis stem requires a non-empty uri")
+        mime_type = entry.get("mimeType", "audio/mpeg")
+        if not isinstance(mime_type, str):
+            raise ValueError("analysis stem mimeType must be a string")
+        normalized.append({"stemId": stem_id, "uri": uri, "mimeType": mime_type})
+    return job_id, normalized
+
+
+async def process_analysis_message(message_data: dict):
+    """Extract audio features for a batch of stems and publish one analysis result (#2013)."""
+    job_id, stems = validate_analysis_message(message_data)
+    logger.info(f"[PubSub] Processing analysis job {job_id}: {len(stems)} stems")
+
+    results = []
+    for stem in stems:
+        stem_id = stem["stemId"]
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                input_path = Path(temp_dir) / f"analyze{audio_file_extension(stem['mimeType'])}"
+                await download_audio(stem["uri"], input_path)
+                if input_path.stat().st_size > MAX_UPLOAD_BYTES:
+                    raise ValueError("audio exceeds upload limit")
+                features = extract_stem_features(input_path)
+            results.append({"stemId": stem_id, "features": features})
+            logger.info(f"[PubSub] Analysis {job_id} stem {stem_id}: ok")
+        except Exception as e:
+            results.append({"stemId": stem_id, "features": None, "error": str(e)[:300]})
+            logger.warning(f"[PubSub] Analysis {job_id} stem {stem_id}: error ({type(e).__name__})")
+
+    from google.cloud import pubsub_v1
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(PUBSUB_PROJECT, RESULTS_TOPIC)
+    result_message = {
+        "kind": "analysis",
+        "jobId": job_id,
+        "status": "completed",
+        "results": results,
+    }
+    future = publisher.publish(
+        topic_path,
+        json.dumps(result_message).encode("utf-8"),
+        jobId=job_id,
+        kind="analysis",
+    )
+    msg_id = future.result()
+    logger.info(f"[PubSub] Published analysis result for job {job_id} (messageId={msg_id})")
+
+
 async def process_pubsub_message(message_data: dict):
     """Process a single Pub/Sub separation job."""
+    if message_data.get("kind") == "analyze":
+        await process_analysis_message(message_data)
+        return
+
     release_id = validate_output_path_segment(message_data["releaseId"], "releaseId")
     track_id = validate_output_path_segment(message_data["trackId"], "trackId")
     audio_revision = validate_audio_revision(message_data.get("audioRevision"))
@@ -841,15 +914,23 @@ def publish_failure_result(message_data: dict, error: Exception) -> bool:
 
         publisher = pubsub_v1.PublisherClient()
         topic_path = publisher.topic_path(PUBSUB_PROJECT, RESULTS_TOPIC)
-        fail_msg = {
-            "jobId": message_data.get("jobId", "unknown"),
-            "releaseId": message_data.get("releaseId", ""),
-            "artistId": message_data.get("artistId", ""),
-            "trackId": message_data.get("trackId", ""),
-            "status": "failed",
-            "error": str(error),
-        }
-        add_audio_revision(fail_msg, message_data.get("audioRevision"))
+        if message_data.get("kind") == "analyze":
+            fail_msg = {
+                "kind": "analysis",
+                "jobId": message_data.get("jobId", "unknown"),
+                "status": "failed",
+                "error": str(error)[:300],
+            }
+        else:
+            fail_msg = {
+                "jobId": message_data.get("jobId", "unknown"),
+                "releaseId": message_data.get("releaseId", ""),
+                "artistId": message_data.get("artistId", ""),
+                "trackId": message_data.get("trackId", ""),
+                "status": "failed",
+                "error": str(error),
+            }
+            add_audio_revision(fail_msg, message_data.get("audioRevision"))
         publisher.publish(topic_path, json.dumps(fail_msg).encode("utf-8")).result()
         return True
     except Exception as pub_err:

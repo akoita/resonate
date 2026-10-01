@@ -19,6 +19,7 @@ describe("replacement result after release publication", () => {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
   );
 
   beforeAll(async () => {

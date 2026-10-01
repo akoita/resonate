@@ -2,7 +2,8 @@
  * Stem audio-feature backfill (#1184/#1182) — integration (Testcontainers).
  *
  * Real Postgres; the demucs worker's /analyze endpoint is mocked at the
- * fetch boundary (external service rule), and storage is a jest fake.
+ * fetch boundary (external service rule), and storage is a jest fake. The
+ * Pub/Sub transport (#2013) uses a mocked publisher.
  */
 
 import { Prisma } from "@prisma/client";
@@ -32,6 +33,14 @@ describe("StemFeatureBackfillService (integration)", () => {
     download: jest.fn(),
     downloadRange: jest.fn(),
     delete: jest.fn(),
+  };
+  const publisher = {
+    isAvailable: jest.fn(),
+    publishAnalysisJob: jest.fn(),
+  };
+  const envSnapshot = {
+    DEMUCS_WORKER_URL: process.env.DEMUCS_WORKER_URL,
+    BACKEND_URL: process.env.BACKEND_URL,
   };
   let service: StemFeatureBackfillService;
   let fetchSpy: jest.SpyInstance;
@@ -104,7 +113,14 @@ describe("StemFeatureBackfillService (integration)", () => {
 
   beforeEach(() => {
     storageProvider.download.mockReset().mockResolvedValue(null);
-    service = new StemFeatureBackfillService(storageProvider as any);
+    publisher.isAvailable.mockReset().mockReturnValue(false);
+    publisher.publishAnalysisJob.mockReset().mockResolvedValue("msg-1");
+    // HTTP transport is the default for the original tests below.
+    process.env.DEMUCS_WORKER_URL = "http://worker.test:8000";
+    service = new StemFeatureBackfillService(
+      storageProvider as any,
+      publisher as any,
+    );
     fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
       status: 200,
@@ -114,10 +130,17 @@ describe("StemFeatureBackfillService (integration)", () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
 
   it("backfills missing features, skips unavailable audio, leaves done/encrypted stems alone", async () => {
     const result = await service.backfill({ limit: 50 });
+    expect(result).toEqual(
+      expect.objectContaining({ transport: "http", status: "ok", dispatched: 0 }),
+    );
 
     // Only the two feature-less, unencrypted seeded stems are in scope
     // (parallel suites could add their own; filter to ours).
@@ -241,5 +264,157 @@ describe("StemFeatureBackfillService (integration)", () => {
     expect(result.remainingByType.guitar).toBeGreaterThanOrEqual(1);
     expect(result.remainingByType.vocals).toBeGreaterThanOrEqual(1);
     expect(result.remaining).toBe(result.remainingByType.original ?? 0);
+  });
+
+  describe("job-mode transport (#2013)", () => {
+    const ID = (name: string) => `${TEST_PREFIX}${name}`;
+    const analysisStems = [
+      { id: ID("an_gcs"), uri: "https://storage.googleapis.com/b/gcs.mp3", storageProvider: "gcs", mimeType: "audio/wav" },
+      { id: ID("an_local"), uri: "/catalog/stems/an_local_file/blob", storageProvider: "local", mimeType: null },
+      { id: ID("an_nouri"), uri: "", storageProvider: "gcs", mimeType: null },
+    ];
+
+    beforeAll(async () => {
+      await prisma.stem.createMany({
+        data: analysisStems.map((stem) => ({
+          ...stem,
+          trackId: TRACK_ID,
+          type: "piano",
+        })),
+      });
+    });
+
+    beforeEach(() => {
+      delete process.env.DEMUCS_WORKER_URL;
+      process.env.BACKEND_URL = "http://backend.test:3000";
+      publisher.isAvailable.mockReturnValue(true);
+    });
+
+    it("dispatches one analysis message with worker-fetchable URIs and leaves features null", async () => {
+      const result = await service.backfill({ limit: 50, types: ["piano"] });
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(publisher.publishAnalysisJob).toHaveBeenCalledTimes(1);
+      const message = publisher.publishAnalysisJob.mock.calls[0][0];
+      expect(message.kind).toBe("analyze");
+      expect(message.jobId).toMatch(/^analyze_\d+_[0-9a-f]{8}$/);
+      expect(message.stems).toEqual(
+        expect.arrayContaining([
+          { stemId: ID("an_gcs"), uri: "https://storage.googleapis.com/b/gcs.mp3", mimeType: "audio/wav" },
+          { stemId: ID("an_local"), uri: "an_local_file", mimeType: "audio/mpeg" },
+        ]),
+      );
+      expect(message.stems.map((s: { stemId: string }) => s.stemId)).not.toContain(ID("an_nouri"));
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          transport: "pubsub",
+          status: "dispatched",
+          jobId: message.jobId,
+          dispatched: message.stems.length,
+          updated: 0,
+        }),
+      );
+      expect(result.scanned).toBe(message.stems.length + result.skipped.length);
+      expect(result.skipped).toContainEqual({
+        stemId: ID("an_nouri"),
+        reason: "audio_unavailable",
+      });
+      // In flight stems still count as remaining.
+      expect(result.remaining).toBeGreaterThanOrEqual(3);
+
+      const rows = await prisma.stem.findMany({
+        where: { id: { in: analysisStems.map((s) => s.id) } },
+        select: { audioFeatures: true },
+      });
+      expect(rows.every((row) => row.audioFeatures === null)).toBe(true);
+    });
+
+    it("propagates a dispatch failure", async () => {
+      publisher.publishAnalysisJob.mockRejectedValueOnce(new Error("run job failed"));
+      await expect(service.backfill({ types: ["piano"] })).rejects.toThrow("run job failed");
+    });
+
+    it("reports worker_unavailable without touching stems or the network when no transport exists", async () => {
+      publisher.isAvailable.mockReturnValue(false);
+
+      const result = await service.backfill({ limit: 50, types: ["piano"] });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          transport: "none",
+          status: "worker_unavailable",
+          scanned: 0,
+          dispatched: 0,
+          updated: 0,
+          skipped: [],
+        }),
+      );
+      expect(result.remaining).toBeGreaterThanOrEqual(3);
+      expect(publisher.publishAnalysisJob).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("status() counts remaining stems without calling a worker", async () => {
+      const status = await service.status({ types: "piano" as unknown });
+      // A non-array `types` is ignored, so every type counts.
+      expect(status.remaining).toBeGreaterThanOrEqual(3);
+
+      const filtered = await service.status({ types: ["piano"] });
+      expect(filtered.remaining).toBeGreaterThanOrEqual(3);
+      expect(filtered.remaining).toBe(filtered.remainingByType.piano);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(publisher.publishAnalysisJob).not.toHaveBeenCalled();
+    });
+
+    it("applyAnalysisResults writes sanitized features, counts failures, and never overwrites", async () => {
+      const gcs = ID("an_gcs");
+      const local = ID("an_local");
+      const nouri = ID("an_nouri");
+      const outcome = await service.applyAnalysisResults({
+        kind: "analysis",
+        jobId: "analyze_1_deadbeef",
+        status: "completed",
+        results: [
+          { stemId: gcs, features: WORKER_FEATURES },
+          { stemId: local, features: { schemaVersion: "v999" } },
+          { stemId: nouri, features: null, error: "download failed" },
+          { stemId: "ignored" } as any,
+          null as any,
+          { features: WORKER_FEATURES } as any,
+        ],
+      });
+      expect(outcome).toEqual({ updated: 1, failed: 2, malformed: 1 });
+
+      const written = await prisma.stem.findUnique({ where: { id: gcs }, select: { audioFeatures: true } });
+      expect(written?.audioFeatures).toEqual(
+        expect.objectContaining({ tempoBpm: 110.2, camelot: "10B" }),
+      );
+      for (const id of [local, nouri]) {
+        const row = await prisma.stem.findUnique({ where: { id }, select: { audioFeatures: true } });
+        expect(row?.audioFeatures).toBeNull();
+      }
+
+      // Redelivery with different features must not overwrite measured data.
+      const again = await service.applyAnalysisResults({
+        kind: "analysis",
+        jobId: "analyze_1_deadbeef",
+        status: "completed",
+        results: [{ stemId: gcs, features: { ...WORKER_FEATURES, tempoBpm: 150 } }],
+      });
+      expect(again.updated).toBe(0);
+      const kept = await prisma.stem.findUnique({ where: { id: gcs }, select: { audioFeatures: true } });
+      expect((kept?.audioFeatures as { tempoBpm?: number }).tempoBpm).toBe(110.2);
+
+      // A whole-message failure is logged and writes nothing.
+      await expect(
+        service.applyAnalysisResults({
+          kind: "analysis",
+          jobId: "analyze_2_deadbeef",
+          status: "failed",
+          error: "boom",
+        }),
+      ).resolves.toEqual({ updated: 0, failed: 0, malformed: 0 });
+    });
   });
 });

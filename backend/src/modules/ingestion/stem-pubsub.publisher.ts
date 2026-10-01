@@ -64,6 +64,41 @@ export interface StemResultMessage {
   };
 }
 
+/**
+ * Analysis-only message published to the same `stem-separate` topic (#2013).
+ * The worker measures audio features for each stem and publishes a
+ * {@link StemAnalysisResultMessage}; it never runs separation for these.
+ */
+export interface StemAnalyzeMessage {
+  kind: "analyze";
+  /** `analyze_<epochMs>_<8 hex>`; the `analyze_` prefix routes the result. */
+  jobId: string;
+  /** 1-50 stems per message. */
+  stems: Array<{
+    stemId: string;
+    /** Worker-fetchable, as for separation's `originalStemUri`. */
+    uri: string;
+    mimeType: string;
+  }>;
+}
+
+/**
+ * Analysis result published to the `stem-results` topic by the worker (#2013).
+ * Per-stem failures carry `features: null` plus a short `error`; a
+ * whole-message failure has `status: "failed"` and no `results`.
+ */
+export interface StemAnalysisResultMessage {
+  kind: "analysis";
+  jobId: string;
+  status: "completed" | "failed";
+  results?: Array<{
+    stemId: string;
+    features: unknown | null;
+    error?: string;
+  }>;
+  error?: string;
+}
+
 const TOPIC_SEPARATE = "stem-separate";
 const TOPIC_RESULTS = "stem-results";
 const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -207,6 +242,41 @@ export class StemPubSubPublisher implements OnModuleInit {
       `Published separation job ${message.jobId} (messageId=${messageId}) for track ${message.trackId}`
     );
     await this.triggerCloudRunJob(message.jobId);
+    return messageId;
+  }
+
+  /** Whether the Pub/Sub separate topic was initialized (job-mode transport). */
+  isAvailable(): boolean {
+    return !!this.separateTopic;
+  }
+
+  /**
+   * Publish an analysis-only job (#2013) to the `stem-separate` topic and
+   * trigger the Cloud Run Job, exactly like a separation job. Returns once the
+   * message is published; results arrive on `stem-results`.
+   */
+  async publishAnalysisJob(message: StemAnalyzeMessage): Promise<string> {
+    if (!this.separateTopic) {
+      const error =
+        "Stem analysis worker path unavailable: Pub/Sub publisher is not initialized. " +
+        "Set PUBSUB_EMULATOR_HOST for local dev, or provide Application Default Credentials " +
+        "via an attached Cloud Run service account, GOOGLE_APPLICATION_CREDENTIALS, " +
+        "or `gcloud auth application-default login`.";
+      this.logger.error(error);
+      throw new Error(error);
+    }
+    const data = Buffer.from(JSON.stringify(message));
+    const messageId = await this.separateTopic.publishMessage({
+      data,
+      attributes: {
+        jobId: message.jobId,
+        kind: "analyze",
+      },
+    });
+    await this.triggerCloudRunJob(message.jobId);
+    this.logger.log(
+      `Published analysis job ${message.jobId} (messageId=${messageId}) for ${message.stems.length} stem(s)`,
+    );
     return messageId;
   }
 }

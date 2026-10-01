@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { randomBytes } from "crypto";
 import { join } from "path";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
@@ -7,6 +8,14 @@ import { prisma } from "../../db/prisma";
 import { StorageProvider } from "../storage/storage_provider";
 import { resolveContainedPath } from "../storage/path_containment";
 import { sanitizeStemAudioFeatures, withCamelot } from "./stem-audio-features";
+import {
+  StemAnalysisResultMessage,
+  StemPubSubPublisher,
+} from "./stem-pubsub.publisher";
+import { toWorkerFetchableUri } from "./worker-fetchable-uri";
+
+/** Stems per analysis message on the Pub/Sub transport (contract: 1-50). */
+const PUBSUB_MAX_STEMS_PER_MESSAGE = 50;
 
 /** Stem types that exist in the catalog; `original` is the full mix (#1959). */
 export const BACKFILL_STEM_TYPES = [
@@ -33,13 +42,42 @@ export type StemFeatureBackfillRequest = {
 
 export type StemFeatureBackfillResult = {
   scanned: number;
+  /**
+   * Stems written during this call. Always 0 on the `pubsub` transport:
+   * results arrive asynchronously and are applied by `applyAnalysisResults`.
+   */
   updated: number;
   skipped: Array<{ stemId: string; reason: string }>;
-  /** Unprocessed stems still lacking features after this run. */
+  /**
+   * Unprocessed stems still lacking features after this run. On the `pubsub`
+   * transport this still counts stems that are in flight (dispatched but not
+   * yet written back), so re-poll it until it stops decreasing.
+   */
   remaining: number;
   /** Stems still lacking features per type, across ALL types (ignores `types`). */
   remainingByType: Record<string, number>;
+  /**
+   * Transport used (#2013): `http` when `DEMUCS_WORKER_URL` is set, `pubsub`
+   * when the Pub/Sub publisher is initialized (job deployment mode), `none`
+   * when neither is available.
+   */
+  transport: "http" | "pubsub" | "none";
+  /**
+   * `ok`: nothing outstanding on this transport (HTTP finished, or nothing
+   * was dispatchable); `dispatched`: an analysis message was published and
+   * results are pending; `worker_unavailable`: no transport is configured.
+   */
+  status: "ok" | "dispatched" | "worker_unavailable";
+  /** Stems sent to the worker in a published analysis message (pubsub only). */
+  dispatched: number;
+  /** Analysis job id of the published message (pubsub only). */
+  jobId?: string;
 };
+
+export type StemFeatureBackfillStatus = Pick<
+  StemFeatureBackfillResult,
+  "remaining" | "remainingByType"
+>;
 
 function sanitizeTypes(types: unknown): string[] | null {
   if (!Array.isArray(types)) return null;
@@ -56,9 +94,12 @@ function sanitizeTypes(types: unknown): string[] | null {
 
 /**
  * Backfills `Stem.audioFeatures` (#1184) for stems ingested before feature
- * extraction shipped, by sending their audio to the demucs worker's
- * `POST /analyze` endpoint. Admin-triggered and batch-bounded: run it
- * repeatedly until `remaining` reaches 0. Stems whose generation drafts
+ * extraction shipped. Two transports (#2013): the demucs worker's
+ * `POST /analyze` endpoint when `DEMUCS_WORKER_URL` is set, or an
+ * analysis-only Pub/Sub message through the separation job dispatch when the
+ * worker runs in job mode (results are applied by `applyAnalysisResults`).
+ * With neither, the call reports `worker_unavailable`. Admin-triggered and
+ * batch-bounded: run it repeatedly until `remaining` reaches 0. Stems whose generation drafts
  * recorded `grounding: prompt_only` only because features were missing
  * (#1192) become feature-conditioned on their next generation.
  */
@@ -66,17 +107,14 @@ function sanitizeTypes(types: unknown): string[] | null {
 export class StemFeatureBackfillService {
   private readonly logger = new Logger(StemFeatureBackfillService.name);
 
-  constructor(private readonly storageProvider: StorageProvider) {}
+  constructor(
+    private readonly storageProvider: StorageProvider,
+    private readonly publisher: StemPubSubPublisher,
+  ) {}
 
-  async backfill(
-    request: StemFeatureBackfillRequest = {},
-  ): Promise<StemFeatureBackfillResult> {
-    const limit = Math.min(100, Math.max(1, Math.floor(request.limit ?? 25)));
-    const workerBaseUrl =
-      process.env.DEMUCS_WORKER_URL || "http://localhost:8000";
-
-    const types = sanitizeTypes(request.types);
-
+  /** Pending-stem filters shared by backfill and status. */
+  private pendingFilters(requestedTypes: unknown) {
+    const types = sanitizeTypes(requestedTypes);
     // AnyNull: the column is nullable JSON, so match DB null and JSON null.
     const pendingWhere: Prisma.StemWhereInput = {
       audioFeatures: { equals: Prisma.AnyNull },
@@ -85,6 +123,201 @@ export class StemFeatureBackfillService {
     const where: Prisma.StemWhereInput = types
       ? { ...pendingWhere, type: { in: types } }
       : pendingWhere;
+    return { types, pendingWhere, where };
+  }
+
+  private async countRemaining(
+    where: Prisma.StemWhereInput,
+    pendingWhere: Prisma.StemWhereInput,
+  ): Promise<StemFeatureBackfillStatus> {
+    const remaining = await prisma.stem.count({ where });
+    const grouped = await prisma.stem.groupBy({
+      by: ["type"],
+      where: pendingWhere,
+      _count: { _all: true },
+    });
+    const remainingByType: Record<string, number> = {};
+    for (const row of grouped) {
+      remainingByType[row.type] = row._count._all;
+    }
+    return { remaining, remainingByType };
+  }
+
+  /** Remaining stems lacking features; no worker calls. */
+  async status(
+    request: { types?: unknown } = {},
+  ): Promise<StemFeatureBackfillStatus> {
+    const { where, pendingWhere } = this.pendingFilters(request.types);
+    return this.countRemaining(where, pendingWhere);
+  }
+
+  async backfill(
+    request: StemFeatureBackfillRequest = {},
+  ): Promise<StemFeatureBackfillResult> {
+    const workerBaseUrl = process.env.DEMUCS_WORKER_URL;
+    if (workerBaseUrl) {
+      return this.backfillViaHttp(request, workerBaseUrl);
+    }
+    if (this.publisher.isAvailable()) {
+      return this.backfillViaPubSub(request);
+    }
+
+    // No localhost fallback (#2013): without a worker every stem would fail.
+    const { types, where, pendingWhere } = this.pendingFilters(request.types);
+    const counts = await this.countRemaining(where, pendingWhere);
+    this.logger.warn(
+      `[backfill] worker_unavailable: neither DEMUCS_WORKER_URL nor the Pub/Sub publisher is available (types=${types ? types.join(",") : "all"}, remaining=${counts.remaining})`,
+    );
+    return {
+      scanned: 0,
+      updated: 0,
+      skipped: [],
+      ...counts,
+      transport: "none",
+      status: "worker_unavailable",
+      dispatched: 0,
+    };
+  }
+
+  private async backfillViaPubSub(
+    request: StemFeatureBackfillRequest,
+  ): Promise<StemFeatureBackfillResult> {
+    const limit = Math.min(
+      PUBSUB_MAX_STEMS_PER_MESSAGE,
+      Math.max(1, Math.floor(request.limit ?? 25)),
+    );
+    const { types, where, pendingWhere } = this.pendingFilters(request.types);
+    const stems = await prisma.stem.findMany({
+      where,
+      select: { id: true, uri: true, mimeType: true, storageProvider: true },
+      orderBy: { id: "asc" },
+      take: limit,
+    });
+
+    const backendBaseUrl =
+      process.env.BACKEND_URL || "http://host.docker.internal:3000";
+    const skipped: Array<{ stemId: string; reason: string }> = [];
+    const dispatchable: Array<{
+      stemId: string;
+      uri: string;
+      mimeType: string;
+    }> = [];
+    for (const stem of stems) {
+      if (!stem.uri) {
+        skipped.push({ stemId: stem.id, reason: "audio_unavailable" });
+        continue;
+      }
+      dispatchable.push({
+        stemId: stem.id,
+        uri: toWorkerFetchableUri(stem.uri, stem.storageProvider, backendBaseUrl),
+        mimeType: stem.mimeType || "audio/mpeg",
+      });
+    }
+
+    let jobId: string | undefined;
+    if (dispatchable.length > 0) {
+      jobId = `analyze_${Date.now()}_${randomBytes(4).toString("hex")}`;
+      try {
+        await this.publisher.publishAnalysisJob({
+          kind: "analyze",
+          jobId,
+          stems: dispatchable,
+        });
+      } catch (error) {
+        this.logger.error(
+          `[backfill] failed to dispatch analysis job ${jobId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        throw error;
+      }
+    }
+
+    const counts = await this.countRemaining(where, pendingWhere);
+    this.logger.log(
+      `[backfill] transport=pubsub scanned=${stems.length} dispatched=${dispatchable.length} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"}${jobId ? ` jobId=${jobId}` : ""}`,
+    );
+    return {
+      scanned: stems.length,
+      updated: 0,
+      skipped,
+      ...counts,
+      transport: "pubsub",
+      status: dispatchable.length > 0 ? "dispatched" : "ok",
+      dispatched: dispatchable.length,
+      ...(jobId ? { jobId } : {}),
+    };
+  }
+
+  /**
+   * Applies a worker's analysis result (#2013) through the same
+   * sanitize/Camelot path as the HTTP backfill. Idempotent: only stems still
+   * lacking features are written, so redelivery never overwrites measured data.
+   */
+  async applyAnalysisResults(
+    message: StemAnalysisResultMessage,
+  ): Promise<{ updated: number; failed: number; malformed: number }> {
+    if (message.status === "failed") {
+      this.logger.error(
+        `[backfill] analysis job ${message.jobId} failed: ${message.error ?? "unknown error"}`,
+      );
+      return { updated: 0, failed: 0, malformed: 0 };
+    }
+
+    let updated = 0;
+    let failed = 0;
+    let malformed = 0;
+    const results = Array.isArray(message.results) ? message.results : [];
+    for (const raw of results) {
+      if (!raw || typeof raw !== "object") continue;
+      const result = raw as {
+        stemId?: unknown;
+        features?: unknown;
+        error?: unknown;
+      };
+      if (typeof result.stemId !== "string" || !result.stemId) continue;
+      const stemId = result.stemId;
+
+      if (result.features == null) {
+        failed++;
+        this.logger.warn(
+          `[backfill] analysis failed for stem ${stemId} (job ${message.jobId}): ${
+            typeof result.error === "string" ? result.error : "no features"
+          }`,
+        );
+        continue;
+      }
+
+      const sanitized = sanitizeStemAudioFeatures(result.features);
+      if (!sanitized) {
+        malformed++;
+        this.logger.warn(
+          `[backfill] malformed audio features for stem ${stemId} (job ${message.jobId})`,
+        );
+        continue;
+      }
+
+      const written = await prisma.stem.updateMany({
+        where: { id: stemId, audioFeatures: { equals: Prisma.AnyNull } },
+        data: {
+          audioFeatures: withCamelot(sanitized) as Prisma.InputJsonValue,
+        },
+      });
+      updated += written.count;
+    }
+
+    this.logger.log(
+      `[backfill] analysis job ${message.jobId} applied: results=${results.length} updated=${updated} failed=${failed} malformed=${malformed}`,
+    );
+    return { updated, failed, malformed };
+  }
+
+  private async backfillViaHttp(
+    request: StemFeatureBackfillRequest,
+    workerBaseUrl: string,
+  ): Promise<StemFeatureBackfillResult> {
+    const limit = Math.min(100, Math.max(1, Math.floor(request.limit ?? 25)));
+    const { types, where, pendingWhere } = this.pendingFilters(request.types);
     const stems = await prisma.stem.findMany({
       where,
       select: {
@@ -134,25 +367,18 @@ export class StemFeatureBackfillService {
       }
     }
 
-    const remaining = await prisma.stem.count({ where });
-    const grouped = await prisma.stem.groupBy({
-      by: ["type"],
-      where: pendingWhere,
-      _count: { _all: true },
-    });
-    const remainingByType: Record<string, number> = {};
-    for (const row of grouped) {
-      remainingByType[row.type] = row._count._all;
-    }
+    const counts = await this.countRemaining(where, pendingWhere);
     this.logger.log(
-      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${remaining} types=${types ? types.join(",") : "all"}`,
+      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"}`,
     );
     return {
       scanned: stems.length,
       updated,
       skipped,
-      remaining,
-      remainingByType,
+      ...counts,
+      transport: "http",
+      status: "ok",
+      dispatched: 0,
     };
   }
 

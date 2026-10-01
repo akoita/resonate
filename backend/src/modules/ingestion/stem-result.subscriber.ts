@@ -5,7 +5,11 @@ import { StorageProvider } from "../storage/storage_provider";
 import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
 import { prisma } from "../../db/prisma";
-import type { StemResultMessage } from "./stem-pubsub.publisher";
+import type {
+  StemAnalysisResultMessage,
+  StemResultMessage,
+} from "./stem-pubsub.publisher";
+import { StemFeatureBackfillService } from "./stem-feature-backfill.service";
 import {
   sanitizeStemAudioFeatures,
   withCamelot,
@@ -32,6 +36,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     private readonly encryptionService: EncryptionService,
     private readonly artistService: ArtistService,
     private readonly catalogService: CatalogService,
+    private readonly stemFeatureBackfillService: StemFeatureBackfillService,
   ) {}
 
   async onModuleInit() {
@@ -111,6 +116,28 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     );
 
     try {
+      // Analysis-only results (#2013) never reach the separation paths. A
+      // worker that predates the `kind` field reports a failed analysis as a
+      // separation-shaped failure, recognised by the `analyze_` job id.
+      const analysis = result as unknown as { kind?: unknown; jobId?: unknown };
+      if (
+        analysis.kind === "analysis" ||
+        (typeof analysis.jobId === "string" &&
+          analysis.jobId.startsWith("analyze_"))
+      ) {
+        if (analysis.kind !== "analysis") {
+          this.logger.warn(
+            `Ignoring legacy result for analysis job ${result.jobId}: status=${result.status} error=${result.error ?? "n/a"}`,
+          );
+        } else {
+          await this.stemFeatureBackfillService.applyAnalysisResults(
+            result as unknown as StemAnalysisResultMessage,
+          );
+        }
+        message.ack();
+        return;
+      }
+
       if (result.audioRevision) {
         const replacementResultState = await prisma.$transaction(async (tx) => {
           // Match the release-before-track lock order used by activation and

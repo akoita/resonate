@@ -143,7 +143,10 @@ Run with Secret Manager-backed configuration.
 
 Pub/Sub topics `stem-separate`, `stem-results`, and `stem-dlq`; Demucs Cloud
 Run Job. The worker can run CPU or GPU mode, starts on demand per queued track,
-and writes processed stems to durable storage.
+and writes processed stems to durable storage. The same topic and job also carry
+analysis-only messages (`kind: "analyze"`) from the audio-feature backfill: the
+job measures a batch of stored stems and publishes one `kind: "analysis"`
+result, which the backend writes to `Stem.audioFeatures` (#2013).
 
 ### Remix Generation
 

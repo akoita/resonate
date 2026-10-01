@@ -449,6 +449,45 @@ existing paths.
 }
 ```
 
+### Analysis-only message (audio-feature backfill)
+
+The same `stem-separate` topic also carries analysis-only messages, so the audio-feature
+backfill works in `pubsub` and `pubsub-once` (Cloud Run Job) modes as well as through
+`POST /analyze`. The worker downloads each stem, runs feature extraction (no separation,
+no fingerprinting) and publishes one result for the whole batch.
+
+Input (`kind: "analyze"`, 1 to 50 stems; `stemId` must match `[A-Za-z0-9_-]{1,128}`,
+`mimeType` is optional and defaults to `audio/mpeg`):
+
+```json
+{
+  "kind": "analyze",
+  "jobId": "analyze_1700000000000_ab12cd34",
+  "stems": [
+    { "stemId": "stem_123", "uri": "https://storage.googleapis.com/bucket/obj", "mimeType": "audio/mpeg" }
+  ]
+}
+```
+
+Output (`stem-results` topic, attributes `jobId` and `kind=analysis`). A stem that cannot
+be downloaded or analyzed gets `features: null` and a short `error` (at most 300
+characters) without failing the batch:
+
+```json
+{
+  "kind": "analysis",
+  "jobId": "analyze_1700000000000_ab12cd34",
+  "status": "completed",
+  "results": [
+    { "stemId": "stem_123", "features": { "...": "..." } },
+    { "stemId": "stem_456", "features": null, "error": "Could not decode audio" }
+  ]
+}
+```
+
+A malformed message (empty or oversized `stems`, unsafe `stemId`, missing `uri`) publishes
+`{"kind": "analysis", "jobId": "...", "status": "failed", "error": "..."}` instead.
+
 ## Troubleshooting
 
 ### Track stuck at "Separating..."
