@@ -48,8 +48,10 @@ export const DISCOVERY_EXPLANATIONS: Record<DiscoveryReasonCode, string> = {
 
 /** Sentence variants that share a reason code with a primary sentence. */
 export const DISCOVERY_EXPLANATION_VARIANTS = {
-  /** `learned_taste` when the genre was downranked by the listener (x0.35). */
+  /** `learned_taste` when the genre was downranked by the listener (x0.35; a boost is x1.5). */
   learned_taste_light: "Lightly boosted by learned taste",
+  /** A genre or mood the listener asked for more of in a confirmed taste edit. */
+  declared_taste: "You asked for more of this",
 } as const;
 
 /** Energy match is templated by the requested band; stays categorical. */
@@ -131,6 +133,7 @@ export interface ReasonSignal {
 const LABEL_PRIORITY = [
   "taste_match",
   "expanded_taste_match",
+  "declared_preference",
   "learned_preference",
   "bigquery_taste_score",
   "session_intent_fit",
@@ -147,6 +150,10 @@ function codeForSignal(signal: ReasonSignal): DiscoveryReasonCode | null {
       return "nearby_taste";
     case "learned_preference":
       return "learned_taste";
+    // A declared boost reads as an explicit selection, so it shares the
+    // `taste_match` code; the sentence above distinguishes it (#1961).
+    case "declared_preference":
+      return "taste_match";
     case "semantic_similarity":
       return "similar_sound";
     case "energy_match":

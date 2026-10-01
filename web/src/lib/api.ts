@@ -3451,11 +3451,59 @@ export type TasteMemorySettings = {
 
 export type TasteSignalControl = {
   id: string;
-  signalType: "genre" | "mood" | "artist" | "scene" | "intent" | "novelty" | "replay" | "commerce";
+  signalType:
+    | "genre"
+    | "mood"
+    | "artist"
+    | "scene"
+    | "intent"
+    | "novelty"
+    | "replay"
+    | "commerce"
+    | "energy"
+    | "note";
   value: string;
-  action: "hidden" | "downranked";
+  /** `boosted` and `declared` only come from confirmed taste edits (#1961). */
+  action: "hidden" | "downranked" | "boosted" | "declared";
   source: string | null;
   createdAt: string;
+};
+
+/** Source the backend stamps on every control written by a confirmed taste edit. */
+export const DECLARED_TEXT_EDIT_SOURCE = "declared_text_edit";
+
+/** What the manual "add a signal" form may write; the rest come from taste edits. */
+export type ManualTasteSignalAction = "hidden" | "downranked";
+
+export type ProposedTasteEditKind =
+  | "downrank_genre"
+  | "boost_genre"
+  | "hide_artist"
+  | "downrank_mood"
+  | "boost_mood"
+  | "energy_preference"
+  | "written_preference"
+  | "unmapped";
+
+/** One proposed change from a preview. Nothing is stored until it is applied. */
+export type ProposedTasteEdit = {
+  id: string;
+  kind: ProposedTasteEditKind;
+  /** `null` for `unmapped` rows, which can never be applied. */
+  signalType: TasteSignalControl["signalType"] | null;
+  value: string;
+  action: TasteSignalControl["action"] | null;
+  phrase: string;
+  statement: string;
+};
+
+export type TasteEditPreviewResponse = { items: ProposedTasteEdit[] };
+
+/** The part of a proposed edit the apply call needs. */
+export type ConfirmedTasteEdit = {
+  signalType: TasteSignalControl["signalType"];
+  value: string;
+  action: TasteSignalControl["action"];
 };
 
 export type TasteMemoryResponse = {
@@ -3504,11 +3552,35 @@ export async function resetTasteMemory(token: string): Promise<TasteMemorySettin
 
 export async function upsertTasteSignalControl(
   token: string,
-  input: Pick<TasteSignalControl, "signalType" | "value"> & { action?: TasteSignalControl["action"]; source?: string },
+  input: Pick<TasteSignalControl, "signalType" | "value"> & { action?: ManualTasteSignalAction; source?: string },
 ): Promise<TasteSignalControl> {
   return apiRequest<TasteSignalControl>(
     "/recommendations/taste-memory/signals",
     { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Proposes taste edits for free text. Never writes anything (#1961). */
+export async function previewTasteEdits(
+  token: string,
+  text: string,
+): Promise<TasteEditPreviewResponse> {
+  return apiRequest<TasteEditPreviewResponse>(
+    "/recommendations/taste-memory/edits/preview",
+    { method: "POST", body: JSON.stringify({ text }) },
+    token,
+  );
+}
+
+/** Applies only the edits the listener confirmed; returns the updated taste memory (#1961). */
+export async function applyTasteEdits(
+  token: string,
+  items: ConfirmedTasteEdit[],
+): Promise<TasteMemoryResponse & { edits: { appliedCount: number; ignoredCount: number } }> {
+  return apiRequest<TasteMemoryResponse & { edits: { appliedCount: number; ignoredCount: number } }>(
+    "/recommendations/taste-memory/edits/apply",
+    { method: "POST", body: JSON.stringify({ items }) },
     token,
   );
 }

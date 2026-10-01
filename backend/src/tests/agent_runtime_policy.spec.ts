@@ -29,6 +29,7 @@ function tastePolicy(hidden: Partial<Record<string, string[]>> = {}): TasteMemor
       ]),
     ),
     downranked: new Map(),
+    boosted: new Map(),
   } as unknown as TasteMemoryPolicy;
 }
 

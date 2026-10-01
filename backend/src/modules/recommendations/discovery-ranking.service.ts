@@ -15,6 +15,7 @@ import {
   primaryReasonFor,
 } from "./discovery-explanations";
 import {
+  hasSignal,
   scoreMultiplierForSignal,
   TasteMemoryPolicy,
 } from "./taste_memory.service";
@@ -127,6 +128,9 @@ export interface RankedDiscoveryCandidate extends DiscoveryCandidate {
   recentlyPlayed: boolean;
 }
 
+/** Weight of a declared "more of this" signal: above the learned-preference cap of 18. */
+export const DECLARED_PREFERENCE_WEIGHT = 20;
+
 /** Weight of the session-intent signal: a tilt, below any taste match. */
 export const SESSION_INTENT_FIT_WEIGHT = 12;
 
@@ -237,6 +241,20 @@ export class DiscoveryRankingService {
       });
     }
 
+    // A genre or mood the listener declared they want more of (#1961,
+    // ADR-TE-5). It counts even with no learned history, and its weight sits
+    // above the learned-preference cap: declared taste overrides inferred taste
+    // (ADR-TE-2 rule 6). Hidden never reaches here; the policy stage drops it.
+    const declaredBoost = declaredBoostMatch(context.tastePolicy, candidate);
+    if (declaredBoost) {
+      signals.push({
+        label: "declared_preference",
+        weight: DECLARED_PREFERENCE_WEIGHT,
+        reason: `you asked for more ${declaredBoost}`,
+      });
+      explanation.push(DISCOVERY_EXPLANATION_VARIANTS.declared_taste);
+    }
+
     const similarity = context.similarityScores?.get(candidate.id) ?? 0;
     if (similarity > 0) {
       signals.push({
@@ -340,6 +358,20 @@ export function audioFeatureReason(features: AgentAudioFeatures): string {
     return `${Math.round(features.tempoBpm)} BPM, ${features.energyBand} energy`;
   }
   return `${features.energyBand} energy`;
+}
+
+/** The boosted genre or mood this candidate carries, if the listener declared one. */
+function declaredBoostMatch(
+  policy: TasteMemoryPolicy | undefined,
+  candidate: DiscoveryCandidate,
+): string | null {
+  if (!policy || policy.boosted.size === 0) return null;
+  const genre = candidate.release?.genre;
+  if (genre && hasSignal(policy.boosted, "genre", genre)) return genre;
+  const mood = (candidate.release?.moods ?? []).find((value) =>
+    hasSignal(policy.boosted, "mood", value),
+  );
+  return mood ?? null;
 }
 
 /** Cohort matching shared by both surfaces (moved from the two copies). */

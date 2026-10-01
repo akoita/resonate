@@ -50,6 +50,7 @@ function tastePolicy(hidden: Record<string, string[]>): TasteMemoryPolicy {
       ]),
     ) as TasteMemoryPolicy["hidden"],
     downranked: new Map() as TasteMemoryPolicy["downranked"],
+    boosted: new Map() as TasteMemoryPolicy["boosted"],
   };
 }
 

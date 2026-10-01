@@ -44,6 +44,7 @@ function ranked(
 function tastePolicy(
   hidden: Partial<Record<string, string[]>> = {},
   downranked: Partial<Record<string, string[]>> = {},
+  boosted: Partial<Record<string, string[]>> = {},
 ): TasteMemoryPolicy {
   const toMap = (source: Partial<Record<string, string[]>>) =>
     new Map(
@@ -62,6 +63,7 @@ function tastePolicy(
     },
     hidden: toMap(hidden),
     downranked: toMap(downranked),
+    boosted: toMap(boosted),
   };
 }
 

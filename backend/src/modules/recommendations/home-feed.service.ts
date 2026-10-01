@@ -217,6 +217,11 @@ export class HomeFeedService {
       size = RAIL_SIZE,
     ) => applyRailPolicy(kind, items, used, tastePolicy, size);
 
+    // Declared taste edits (#1961) reach the rails through
+    // `getRecommendations`, which adds boosted genres/moods to its matching and
+    // ranking. They deliberately do not count here: a listener whose only
+    // declared taste is a boost still sees the honest cold-start rail until
+    // they save a preference or press play.
     const hasPreferences = Boolean(
       preferences.genres?.length || preferences.mood?.trim(),
     );
