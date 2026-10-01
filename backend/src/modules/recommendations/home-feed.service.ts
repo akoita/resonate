@@ -263,9 +263,12 @@ export class HomeFeedService {
         userId,
         RAIL_SIZE * 3,
       );
+      // Saved preferences anchor first, then a declared boost (#2006), so a
+      // listener whose only taste is a boost gets a rail built on it.
+      const declared = tastePolicy?.declared;
       const dominantGenre = this.dominantGenre(
-        preferences.genres ?? [],
-        preferences.mood,
+        [...(preferences.genres ?? []), ...(declared?.boostedGenres ?? [])],
+        preferences.mood?.trim() || declared?.boostedMoods[0],
         recommendations.items,
       );
 

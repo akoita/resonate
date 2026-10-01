@@ -41,13 +41,17 @@ const TASTE_ARTIST = `${TEST_PREFIX}taste_artist`; // genre-matching catalog
 const PLAYED_ARTIST = `${TEST_PREFIX}played_artist`; // artist the warm user plays
 const FRESH_ARTIST = `${TEST_PREFIX}fresh_artist`; // low-data exploration source
 
-function newService() {
+function newService(options: { tasteAwareRecommendations?: boolean } = {}) {
   const eventBus = new EventBus();
+  const tasteMemory = new TasteMemoryService(eventBus);
+  // Production wires taste memory into recommendations too; that is how a
+  // declared boost reaches matching. Most cases here predate it and keep the
+  // narrower wiring.
   const recommendations = new RecommendationsService(
     eventBus,
     new DiscoveryRankingService(),
+    options.tasteAwareRecommendations ? tasteMemory : undefined,
   );
-  const tasteMemory = new TasteMemoryService(eventBus);
   return {
     recommendations,
     tasteMemory,
@@ -308,7 +312,7 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
   });
 
   it("a declared boost alone lifts a listener out of the cold-start rail (#2006)", async () => {
-    const { homeFeed, tasteMemory } = newService();
+    const { homeFeed, tasteMemory } = newService({ tasteAwareRecommendations: true });
     await tasteMemory.applyTasteEdits(BOOST_USER, [
       { kind: "boost_genre", signalType: "genre", value: GENRE, action: "boosted" },
     ]);
