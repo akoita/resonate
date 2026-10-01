@@ -184,7 +184,7 @@ describe("control labels", () => {
   it("labels boosted and note controls clearly", () => {
     expect(controlLabel(control({ action: "boosted" }))).toBe("more of this genre");
     expect(controlLabel(control({ action: "boosted", signalType: "energy", value: "low" }))).toBe("preferred energy");
-    expect(controlLabel(control({ action: "declared", signalType: "note" }))).toContain("does not change recommendations");
+    expect(controlLabel(control({ action: "declared", signalType: "note" }))).toContain("nudges recommendations");
     expect(controlRemoveLabel(control({ action: "boosted" }))).toBe("Remove");
     expect(controlRemoveLabel(control({ action: "declared", signalType: "note" }))).toBe("Remove");
   });

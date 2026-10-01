@@ -332,7 +332,7 @@ function writtenItem(phrase: string): ItemDraft {
     value,
     action: "declared",
     phrase,
-    statement: `Save the note "${value}" (shown in your taste memory; it does not change recommendations yet)`,
+    statement: `Save the note "${value}" (shown in your taste memory; where music matching is on, it nudges recommendations toward music like it)`,
   };
 }
 

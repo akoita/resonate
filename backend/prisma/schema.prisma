@@ -1437,10 +1437,29 @@ model ListenerTasteSignalControl {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// #2006/#2003: query vector of a written `note` control, so the note can seed
+  /// embedding discovery. Deleted with the control; absent when embeddings are off.
+  noteEmbedding ListenerTasteNoteEmbedding?
 
   @@unique([userId, signalType, value])
   @@index([userId, action])
   @@index([signalType, value])
+}
+
+/// The embedding of a listener's written taste note (#2006, #2003). The note
+/// text itself stays on `ListenerTasteSignalControl.value`; this row holds only
+/// the vector, the model that made it and a hash for change detection. The
+/// vector column is raw-SQL only (`EmbeddingStore`), like `TrackEmbedding`.
+model ListenerTasteNoteEmbedding {
+  controlId   String                     @id
+  vector      Unsupported("vector(768)")
+  model       String
+  contentHash String
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  control     ListenerTasteSignalControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@index([model])
 }
 
 model AgentTransaction {

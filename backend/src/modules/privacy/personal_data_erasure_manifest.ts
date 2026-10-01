@@ -652,6 +652,11 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Individual like/ban taste controls the person set; they describe the person and nothing else reads them.",
   },
   {
+    model: "ListenerTasteNoteEmbedding",
+    disposition: "delete",
+    reason: "Cascades from the deleted taste control; the vector of a written note has no use once the note is gone.",
+  },
+  {
     model: "SavedPlaylist",
     disposition: "delete",
     reason: "This person's saves of other people's playlists; a private bookmark with no value to anyone else.",

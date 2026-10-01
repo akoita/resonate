@@ -125,7 +125,7 @@ export function controlLabel(control: TasteSignalControl): string {
     case "boosted":
       return control.signalType === "energy" ? "preferred energy" : `more of this ${control.signalType}`;
     case "declared":
-      return "note (saved, does not change recommendations yet)";
+      return "note (saved; nudges recommendations where music matching is on)";
     default:
       return `${control.action} ${control.signalType}`;
   }

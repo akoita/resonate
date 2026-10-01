@@ -22,7 +22,7 @@ const items: ProposedTasteEdit[] = [
     value: "more live instruments",
     action: "declared",
     phrase: "more live instruments",
-    statement: 'Save the note "more live instruments" (shown in your taste memory; it does not change recommendations yet)',
+    statement: 'Save the note "more live instruments" (shown in your taste memory; where music matching is on, it nudges recommendations toward music like it)',
   },
   {
     id: "edit-3",
@@ -86,9 +86,9 @@ describe("TasteEditSectionContent", () => {
     expect(html).toContain("Apply 2 selected changes");
   });
 
-  it("says written notes do not change recommendations yet", () => {
+  it("says written notes only nudge recommendations where music matching is on", () => {
     const html = render({ draft: buildDraft(items) });
-    expect(html).toContain("does not change recommendations yet");
+    expect(html).toContain("Where music matching is on, it gently nudges recommendations");
   });
 
   it("shows unmapped text honestly and makes it unselectable", () => {

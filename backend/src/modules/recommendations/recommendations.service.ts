@@ -17,6 +17,13 @@ import { discoveryVariantForUser, type DiscoveryVariantAssignment } from "./disc
 import { DiscoveryPolicyContextService } from "./discovery-policy-context.service";
 import { resolveAgentTasteProfile } from "../agents/agent_learning.service";
 import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
+import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.service";
+import { TrackEmbeddingService } from "../embeddings/track_embedding.service";
+import {
+  collectEmbeddingNeighbours,
+  EmbeddingCandidateSource,
+} from "./embedding_candidates";
+import { loadEmbeddingSeedSignals, selectEmbeddingSeeds } from "./embedding_seeds";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
@@ -60,9 +67,10 @@ interface DiscoveryProfile {
  *     survive restarts and are coherent across Cloud Run instances. The
  *     in-memory Maps are gone.
  *   - The candidate pool is a UNION of sources behind `gatherCandidates`
- *     (fresh + preference-catalog + cohort-hints) instead of "50 newest", so
- *     older tracks are reachable through every non-recency source. WS-3
- *     popularity marts / WS-5 embeddings / WS-6 CF slot in as further sources.
+ *     (fresh + preference-catalog + cohort-hints + embedding-neighbours)
+ *     instead of "50 newest", so older tracks are reachable through every
+ *     non-recency source. WS-3 popularity marts / WS-6 CF slot in as further
+ *     sources.
  *   - Scoring is delegated to the shared `DiscoveryRankingService` — the same
  *     core the AI DJ uses — so Home inherits learned-taste/cohort/warehouse
  *     signals as they mature. The legacy response contract is preserved
@@ -85,6 +93,10 @@ export class RecommendationsService {
     // Policy-stage lookups (ADR-TE-2). Absent in lightweight unit wiring: the
     // policy then runs with empty verified/played sets (no exploration slot).
     @Optional() private readonly policyContext?: DiscoveryPolicyContextService,
+    // Embedding candidate source (#2003). Absent in lightweight wiring, and
+    // inert while the embedding provider is disabled: Home is then unchanged.
+    @Optional() private readonly trackEmbeddings?: TrackEmbeddingService,
+    @Optional() private readonly tasteNoteEmbeddings?: TasteNoteEmbeddingService,
   ) { }
 
   // ---------------------------------------------------------------------------
@@ -211,17 +223,28 @@ export class RecommendationsService {
    *   - `preference-catalog`: catalog-wide matches for the user's genre/mood
    *     terms with NO recency bias — this is what makes older tracks
    *     recommendable (WS-1 acceptance);
-   *   - `cohort-hints`: catalog-wide matches for joined-cohort query hints.
-   * WS-3 (popularity marts) and WS-6 (CF) add sources here. WS-5 (#1452) is
-   * built as `TrackEmbeddingService.similarTracks` but not wired in yet: it
-   * needs a per-listener positive-engagement seed that this method does not
-   * receive (and that the taste-memory controls gate).
+   *   - `cohort-hints`: catalog-wide matches for joined-cohort query hints;
+   *   - `embedding-neighbours` (#2003, WS-5): stored-vector nearest neighbours
+   *     of up to 3 tracks the listener saved or finished, plus of up to 2 of
+   *     their written taste notes (#2006), 10 each. Reaches tracks nobody has
+   *     played. Stored vectors only: Home never calls the embedding model and
+   *     never uses the metadata fallback, so with the provider disabled, no
+   *     vectors, or no seeds this source is empty and the pool is unchanged.
+   * WS-3 (popularity marts) and WS-6 (CF) add sources here.
+   *
+   * `embeddingSources` maps a track id to the kinds of seed that reached it so
+   * ranking can attribute the candidate (categorical, never the seed itself).
    */
   private async gatherCandidates(input: {
+    userId: string;
     allowExplicit: boolean;
     preferenceTerms: string[];
     cohortHints: string[];
-  }) {
+    embeddingSeedTrackIds: string[];
+  }): Promise<{
+    tracks: CandidateTrack[];
+    embeddingSources: Map<string, EmbeddingCandidateSource[]>;
+  }> {
     const where = this.publicCatalogWhere(input.allowExplicit);
     const include = {
       release: {
@@ -241,7 +264,33 @@ export class RecommendationsService {
     });
 
     const none: CandidateTrack[] = [];
-    const [fresh, preferenceMatches, cohortMatches] = await Promise.all([
+    // Runs alongside the other sources. Never throws: embeddings only add
+    // candidates, so any failure leaves the pool exactly as it was without them.
+    const embeddingSource = collectEmbeddingNeighbours(
+      { tracks: this.trackEmbeddings, notes: this.tasteNoteEmbeddings },
+      {
+        userId: input.userId,
+        seedTrackIds: input.embeddingSeedTrackIds,
+        allowExplicit: input.allowExplicit,
+      },
+    )
+      .then(async (sources) => ({
+        sources,
+        // Same public-catalog predicate and include as every other source; the
+        // neighbour lists are already eligibility-filtered, this is the join.
+        tracks: sources.size
+          ? ((await prisma.track.findMany({
+              where: { AND: [where, { id: { in: [...sources.keys()] } }] },
+              include,
+            })) as CandidateTrack[])
+          : none,
+      }))
+      .catch(() => ({
+        sources: new Map<string, EmbeddingCandidateSource[]>(),
+        tracks: none,
+      }));
+
+    const [fresh, preferenceMatches, cohortMatches, embedding] = await Promise.all([
       prisma.track.findMany({
         where,
         include,
@@ -262,13 +311,50 @@ export class RecommendationsService {
             take: 30,
           }) as Promise<CandidateTrack[]>)
         : Promise.resolve(none),
+      embeddingSource,
     ]);
 
     const byId = new Map<string, CandidateTrack>();
-    for (const track of [...fresh, ...preferenceMatches, ...cohortMatches]) {
+    for (const track of [
+      ...fresh,
+      ...preferenceMatches,
+      ...cohortMatches,
+      ...embedding.tracks,
+    ]) {
       if (!byId.has(track.id)) byId.set(track.id, track);
     }
-    return [...byId.values()];
+    // Attribution only for tracks that survived the public-catalog join.
+    const joined = new Set(embedding.tracks.map((track) => track.id));
+    const embeddingSources = new Map(
+      [...embedding.sources].filter(([trackId]) => joined.has(trackId)),
+    );
+    return { tracks: [...byId.values()], embeddingSources };
+  }
+
+  /**
+   * Up to 3 tracks the listener saved or finished, for embedding search (#2003).
+   * Needs the taste-memory policy: without it consent cannot be checked, so
+   * there are no seeds. Costs nothing while embeddings are disabled.
+   */
+  private async loadEmbeddingSeedTrackIds(
+    userId: string,
+    policy: TasteMemoryPolicy | undefined,
+  ): Promise<string[]> {
+    if (!this.trackEmbeddings?.isEnabled() || !policy || !this.tasteMemoryService) {
+      return [];
+    }
+    try {
+      const [signals, agentPlaybackAllowed] = await Promise.all([
+        loadEmbeddingSeedSignals(userId, policy.resetAt),
+        this.tasteMemoryService.shouldTrainAgentPlayback(userId, {
+          source: "agent_session",
+        }),
+      ]);
+      return selectEmbeddingSeeds(signals, { policy, agentPlaybackAllowed });
+    } catch {
+      // Embeddings only add candidates; a failure here must not break Home.
+      return [];
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -341,7 +427,9 @@ export class RecommendationsService {
       .filter(Boolean);
     const normalizedMood = prefs.mood?.trim();
 
-    const candidates = await this.gatherCandidates({
+    const { tracks: candidates, embeddingSources } = await this.gatherCandidates({
+      userId,
+      embeddingSeedTrackIds: await this.loadEmbeddingSeedTrackIds(userId, policy),
       allowExplicit,
       preferenceTerms: [
         ...normalizedGenres,
@@ -387,6 +475,9 @@ export class RecommendationsService {
           ...(matchedGenre ? [matchedGenre] : []),
           ...(matchedMood && normalizedMood ? [normalizedMood] : []),
         ],
+        ...(embeddingSources.has(track.id)
+          ? { embeddingSources: embeddingSources.get(track.id) }
+          : {}),
         track,
       };
       return { candidate, matchedGenre, matchedMood };
@@ -451,12 +542,16 @@ export class RecommendationsService {
       );
     });
 
+    // An embedding neighbour of the listener's own saves or notes is a taste
+    // match too (#2003); without this it would be dropped whenever any genre or
+    // mood term matched. It still ranks below stronger matches by score.
     const preferenceMatches = withLegacy.filter(
       (item) =>
         !recent.includes(item.entry.id) &&
-        item.reasons.some(
+        (item.reasons.some(
           (reason) => reason.startsWith("genre:") || reason.startsWith("mood:"),
-        ),
+        ) ||
+          (item.entry.embeddingSources?.length ?? 0) > 0),
     );
     const freshFallback = withLegacy.filter(
       (item) => !recent.includes(item.entry.id),

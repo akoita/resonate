@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { CatalogModule } from "../catalog/catalog.module";
 import { CommunityModule } from "../community/community.module";
+import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { SharedModule } from "../shared/shared.module";
 import { AgentBigQueryTasteSignalService } from "../agents/agent_bigquery_taste_signal.service";
 import { DiscoveryPolicyContextService } from "./discovery-policy-context.service";
@@ -13,7 +14,10 @@ import { TasteMemoryService } from "./taste_memory.service";
 @Module({
   // CatalogModule provides the WS-4 popularity serving consumed by the
   // Home feed's trending / catalog-signal rails (#1454 WS-7).
-  imports: [SharedModule, CommunityModule, CatalogModule],
+  // EmbeddingsModule: stored-vector neighbours as a Home candidate source
+  // (#2003) and taste-note embeddings (#2006). Both are inert while the
+  // embedding provider is disabled.
+  imports: [SharedModule, CommunityModule, CatalogModule, EmbeddingsModule],
   controllers: [RecommendationsController],
   providers: [
     RecommendationsService,
