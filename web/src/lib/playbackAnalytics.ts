@@ -1,5 +1,5 @@
 import type { LocalTrack } from "./localLibrary";
-import { getHomeAttribution } from "./homeAttribution";
+import { getDiscoveryAttribution } from "./discoveryAttribution";
 
 export const PLAYBACK_COMPLETED_SECONDS = 30;
 export const PLAYBACK_HEARTBEAT_SECONDS = 30;
@@ -18,6 +18,9 @@ export type PlaybackCompletedPayload = {
   /** #1455: Home rail and ranker variant the track was opened from. */
   railId?: string;
   rankerVariant?: string;
+  /** #2005: "dj" when the track came from an AI DJ pick. */
+  surface?: "dj";
+  experimentKey?: string;
 };
 
 export type PlaybackLifecyclePayload = {
@@ -40,6 +43,9 @@ export type PlaybackLifecyclePayload = {
   /** #1455: Home rail and ranker variant the track was opened from. */
   railId?: string;
   rankerVariant?: string;
+  /** #2005: "dj" when the track came from an AI DJ pick. */
+  surface?: "dj";
+  experimentKey?: string;
 };
 
 export function getPlaybackAnalyticsSessionId() {
@@ -139,7 +145,7 @@ export function buildPlaybackCompletedPayload(input: {
     source: input.track.source === "remote" ? "web_player" : "web_player_local",
     completionRatio,
     durationMs: durationSeconds ? Math.round(durationSeconds * 1000) : undefined,
-    ...getHomeAttribution(trackId),
+    ...getDiscoveryAttribution(trackId),
   };
 }
 
@@ -191,7 +197,7 @@ export function buildPlaybackLifecyclePayload(input: {
     queueLength: input.queueLength,
     repeatMode: input.repeatMode,
     shuffle: input.shuffle,
-    ...getHomeAttribution(trackId),
+    ...getDiscoveryAttribution(trackId),
   };
 }
 

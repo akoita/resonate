@@ -451,10 +451,14 @@ WHERE occurredAt >= TIMESTAMP(@from)
       'recommendation.clicked'
     )
     -- Started/skipped plays are high volume: keep only rail-attributed ones
-    -- (agent-sourced ones are kept by the source clause below).
+    -- and AI DJ-attributed ones (#2005); agent-sourced ones are kept by the
+    -- source clause below.
     OR (
       JSON_VALUE(dimensions, '$.eventName') IN ('playback.started', 'playback.skipped')
-      AND JSON_VALUE(dimensions, '$.railId') IS NOT NULL
+      AND (
+        JSON_VALUE(dimensions, '$.railId') IS NOT NULL
+        OR JSON_VALUE(dimensions, '$.surface') = 'dj'
+      )
     )
     OR STARTS_WITH(COALESCE(JSON_VALUE(dimensions, '$.source'), ''), 'agent')
   )

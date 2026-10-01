@@ -270,6 +270,43 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it("accepts AI DJ attribution on playback events and rejects other surfaces (#2005)", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        action: "started",
+        trackId: "track-1",
+        source: "web_player",
+        surface: "dj",
+        rankerVariant: "candidate",
+        experimentKey: "ranker_v2",
+      })
+      .expect(201);
+    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        surface: "dj",
+        rankerVariant: "candidate",
+        experimentKey: "ranker_v2",
+      }),
+    );
+
+    await request(app.getHttpServer())
+      .post("/analytics/playback/completed")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ trackId: "track-1", completionRatio: 1, surface: "dj", rankerVariant: "candidate" })
+      .expect(201);
+    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ surface: "dj", rankerVariant: "candidate" }),
+    );
+
+    await request(app.getHttpServer())
+      .post("/analytics/playback/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ action: "started", trackId: "track-1", surface: "home" })
+      .expect(400);
+  });
+
   it("rejects rail and variant labels that are not short labels", async () => {
     await request(app.getHttpServer())
       .post("/analytics/playback/event")

@@ -633,7 +633,11 @@ export default function Home() {
     if (!trackId) return;
     // #1455 WS-8: remember the rail so the later play / save of this track is
     // attributed to it (see lib/homeAttribution.ts).
-    rememberHomeAttribution(trackId, { railId, rankerVariant: homeFeed?.rankerVariant });
+    rememberHomeAttribution(trackId, {
+      railId,
+      rankerVariant: homeFeed?.rankerVariant,
+      experimentKey: homeFeed?.experimentKey ?? undefined,
+    });
     void recordProductAnalytics(token, "recommendation.clicked", {
       payload: buildRecommendationClickedPayload(homeFeed, { railId, trackId, position }),
     });

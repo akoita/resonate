@@ -46,6 +46,38 @@ describe("playback events carry rail and variant labels (#1455)", () => {
     expect(Object.keys(facts[0].dimensions)).not.toContain("bucket");
   });
 
+  it("stores the AI DJ surface and experiment key on DJ-attributed plays (#2005)", async () => {
+    const ingest = new AnalyticsIngestService();
+    const instrumentation = new AnalyticsInstrumentationService(ingest);
+
+    await instrumentation.recordPlaybackLifecycle({
+      action: "started",
+      trackId: "track-1",
+      artistId: "artist-1",
+      source: "web_player",
+      surface: "dj",
+      rankerVariant: "candidate",
+      experimentKey: "ranker_v2",
+    });
+    await instrumentation.recordPlaybackCompleted({
+      trackId: "track-1",
+      artistId: "artist-1",
+      source: "web_player",
+      completionRatio: 1,
+    });
+
+    const events = await ingest.listEvents();
+    expect(events[0].payload).toEqual(
+      expect.objectContaining({ surface: "dj", rankerVariant: "candidate", experimentKey: "ranker_v2" }),
+    );
+    expect(events[1].payload).not.toHaveProperty("surface");
+
+    const facts = buildAnalyticsWarehouseExport(events).analyticsFacts;
+    expect(facts[0].dimensions).toEqual(
+      expect.objectContaining({ surface: "dj", rankerVariant: "candidate", experimentKey: "ranker_v2" }),
+    );
+  });
+
   it("maps served impressions to an item count dimension", async () => {
     const ingest = new AnalyticsIngestService();
     await ingest.ingest({

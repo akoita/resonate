@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import AgentQualityDashboard from "../../../components/analytics/AgentQualityDashboard";
+import DiscoveryQualitySections from "./DiscoveryQualitySections";
 import {
   getAgentQualityDashboard,
   type AgentQualityDashboard as AgentQualityDashboardData,
@@ -95,7 +96,10 @@ export default function AgentQualityAnalyticsPage() {
         <AgentQualityDashboard status="forbidden" days={days} onDaysChange={setDays} />
       ) : null}
       {state.status === "ready" ? (
-        <AgentQualityDashboard status="ready" days={days} data={state.data} onDaysChange={setDays} />
+        <>
+          <AgentQualityDashboard status="ready" days={days} data={state.data} onDaysChange={setDays} />
+          <DiscoveryQualitySections data={state.data} />
+        </>
       ) : null}
     </AuthGate>
   );

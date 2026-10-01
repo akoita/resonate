@@ -11,7 +11,9 @@ import type { AnalyticsFactRow } from "./analytics_warehouse";
  *  - `playback.started|completed|skipped` and `library.saved` are attributed
  *    to `home:<railId>` when they carry a `railId` (the web forwards the rail a
  *    play came from), otherwise to `dj` when the caller classified the fact as
- *    part of an AI DJ session. Anything else is not a discovery-surface fact.
+ *    part of an AI DJ session or the web marked it `surface: "dj"` (#2005: a
+ *    DJ pick carries its variant to the play, skip and save that follow).
+ *    Anything else is not a discovery-surface fact.
  *  - DJ impressions are accepted picks (`agent.next_pick_requested` with
  *    status `ok` and a track, or `agent.recommendation_selected`); the DJ has
  *    no click, so its clicks and click-through rate are 0.
@@ -120,13 +122,22 @@ export function isDiscoveryOnlyFact(fact: AnalyticsFactRow): boolean {
   return Boolean(eventName && DISCOVERY_ONLY_EVENTS.has(eventName));
 }
 
-/** True when a fact can feed the Home part of the report on its own. */
+/**
+ * True when a fact can feed the discovery report on its own: Home facts and
+ * outcomes the web attributed to a rail or to the AI DJ surface.
+ */
 export function isHomeDiscoveryFact(fact: AnalyticsFactRow): boolean {
   const eventName = str(fact, "eventName");
   if (!eventName) return false;
   if (eventName === "recommendation.generated") return true;
   if (HOME_EVENTS.has(eventName)) return true;
-  return OUTCOME_EVENTS.has(eventName) && Boolean(str(fact, "railId"));
+  return OUTCOME_EVENTS.has(eventName) && (Boolean(str(fact, "railId")) || isDjSurfaceOutcome(fact));
+}
+
+/** An outcome the web attributed to the AI DJ (`surface: "dj"`), no rail. */
+function isDjSurfaceOutcome(fact: AnalyticsFactRow): boolean {
+  const eventName = str(fact, "eventName");
+  return Boolean(eventName && OUTCOME_EVENTS.has(eventName) && str(fact, "surface") === "dj");
 }
 
 function rate(numerator: number, denominator: number) {
@@ -236,7 +247,7 @@ export function buildDiscoveryQualityReport(
       continue;
     }
 
-    const attribution = attribute(fact, eventName, djFacts.has(fact));
+    const attribution = attribute(fact, eventName, djFacts.has(fact) || isDjSurfaceOutcome(fact));
     if (!attribution) continue;
 
     const surfaceCounts = bySurface.get(attribution.surface) ?? emptyCounts();

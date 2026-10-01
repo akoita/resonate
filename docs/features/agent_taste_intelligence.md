@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455, 2005]
 ---
 
 # Agent Taste Intelligence
@@ -672,8 +672,8 @@ same admin/operator guard:
   variant }`. A fact with no recorded variant is `unattributed` (reported,
   never compared).
 - `variantExposure[]`: `recommendation.generated` counts per `{ experimentKey,
-  surface ("home" | "dj"), variant }`, so DJ exposure is visible even though DJ
-  outcomes are not yet attributed to a variant (see Limits).
+  surface ("home" | "dj"), variant }`: how many times each variant generated
+  recommendations, shown next to outcomes as exposures.
 - `comparison`: for each `{ experimentKey, surface }`, every non-baseline
   variant against `baseline`: sample sizes (impressions and plays on both
   sides) and rate deltas (variant minus baseline). Descriptive only; no
@@ -716,7 +716,7 @@ that returns counts only. Listener ids never leave the service.
 
 **Both fact sources agree.** The BigQuery `agentQualityFactsQuery` and the
 warehouse-export fallback both keep `recommendation.generated|served|clicked`
-and rail-attributed `playback.started|skipped`. The new fact dimensions are
+and rail- or DJ-attributed `playback.started|skipped`. The new fact dimensions are
 `railId`, `rankerVariant`, `experimentKey`, `surface`, `reason` and `itemCount`
 (the served `count`); the streaming transform in
 `workers/analytics-dataflow/analytics_transform.py` writes the same dimensions
@@ -742,13 +742,45 @@ them on `recommendation.generated` (`surface` is `home` or `dj`). This slice
 only records and reports variants: every variant runs the same ranker. The
 bucket itself is never stored or reported.
 
-**Limits and remaining work (tracked under #1455).** DJ outcome events are not
-yet attributed to a variant, because the DJ next-pick response does not
-return the variant for the web to forward (it lives in the sessions module);
-DJ rows therefore show as `unattributed` and only `variantExposure` covers the
-DJ per variant. The operator page `/analytics/agent-quality` does not render
-the new sections yet. Mapping a variant name to a different ranker, and
-promotion rules, are later slices.
+**DJ outcomes per variant (#2005).** The `POST /sessions/agent/next` response
+now carries `rankerVariant` (and `experimentKey` when an experiment is
+configured) on an accepted pick. It comes from the same
+`discoveryVariantForUser` assignment the agent runtime records on the DJ's
+`recommendation.generated` event (`djPickVariantFields` in
+`backend/src/modules/sessions/dj_pick_variant.ts`), so a listener is never
+re-bucketed. The field is additive and labels-only. On an accepted pick the web
+(`getAgentNextPick`) remembers the variant for that track for 30 minutes in
+sessionStorage (`web/src/lib/discoveryAttribution.ts`, mirroring Home's
+helper), and the AI DJ page sends it on `agent.next_pick_requested` so DJ
+impressions are counted per variant. `playback.started|completed|skipped` and
+`library.saved` for that track then forward `surface: "dj"`, `rankerVariant`
+and `experimentKey`. If a track has both a Home rail and a DJ attribution, the
+more recent one wins, so a play is counted on one surface. Playback endpoints
+accept `surface` only as `dj` (anything else is a `400`) and `experimentKey` as
+a short label. The report attributes an outcome fact to `dj` when it carries
+`surface: "dj"` or belongs to an agent session; DJ rows therefore group by
+variant instead of `unattributed` for plays made after this change. The
+BigQuery fact query keeps `playback.started|skipped` with `surface = 'dj'`
+alongside rail-attributed ones.
+
+**Operator page (#2005).** `/analytics/agent-quality` renders the discovery
+sections below the existing AI DJ quality view
+(`web/src/app/analytics/agent-quality/DiscoveryQualitySections.tsx`): resonant
+discoveries (total, new artists, per active listener), a per-surface table
+(impressions, plays, click, skip, save and complete rates; the DJ shows click
+as n/a), and the ranker variant comparison (exposures, impressions / plays
+sample size, and variant-minus-baseline deltas in percentage points, plus the
+API's descriptive-only note). Each section handles its own states: absent or
+`unavailable` data says so, no rows says there is no data, and `truncated`
+resonant counts or a full 100-row list show a truncation notice. It is an
+operator-only page, so there is no `/help` article.
+
+**Limits and remaining work (tracked under #1455).** DJ plays made before this
+change, or from a client that predates it, have no variant and stay
+`unattributed`. Home and DJ outcome events both forward `rankerVariant` and
+`experimentKey`, so outcome rows join the impression rows that carry the key.
+Mapping a variant name to a different ranker, and promotion rules,
+are later slices.
 
 The baseline signed feedback includes:
 
@@ -909,9 +941,11 @@ Useful next warehouse jobs:
 - Discovery measurement (#1455) is covered by `rankingMetrics.spec.ts`,
   `discovery_experiment.spec.ts`, `analytics_discovery_quality.spec.ts`,
   `analytics_playback_attribution.spec.ts`, `discovery_offline_eval.spec.ts`,
-  the quality-route cases in `analytics.controller.http.spec.ts`,
+  `dj_pick_variant.spec.ts` (#2005), the quality-route and playback-attribution
+  cases in `analytics.controller.http.spec.ts`,
   `discovery_journal_aggregate.integration.spec.ts`, and the web
-  `homeAttribution.test.ts` and `homeRecommendationEvents.test.ts`.
+  `homeAttribution.test.ts`, `homeRecommendationEvents.test.ts`,
+  `discoveryAttribution.test.ts` and `DiscoveryQualitySections.test.tsx`.
 - Warehouse verification queries live in
   `workers/analytics-dataflow/sql/agent_taste_intelligence_verification.sql` and
   report freshness, coverage, signal mix, and intent-context coverage.
