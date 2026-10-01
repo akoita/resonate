@@ -177,7 +177,7 @@ describe("parseTasteEditText", () => {
         action: "declared",
         value: "more live instruments",
       });
-      expect(item.statement).toContain("does not change recommendations yet");
+      expect(item.statement).toContain("nudges recommendations toward music like it");
     });
 
     it("handles the issue's headline example", () => {

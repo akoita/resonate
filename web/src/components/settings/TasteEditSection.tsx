@@ -204,7 +204,7 @@ export function TasteEditSectionContent({
                         <small>
                           {applicable
                             ? item.kind === "written_preference"
-                              ? "Saved as a note you can read back. It does not change recommendations yet."
+                              ? "Saved as a note you can read back. Where music matching is on, it gently nudges recommendations toward music like it."
                               : `From: “${item.phrase}”`
                             : "Not selectable, so it will not be saved."}
                         </small>
