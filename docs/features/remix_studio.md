@@ -273,7 +273,8 @@ from the JWT, never the request body.
   Stems separated before this slice are backfillable: admin-only
   `POST /admin/stems/backfill-audio-features` (batch-bounded `limit`,
   re-run until `remaining` is 0) sends stored stem audio to the worker's
-  `/analyze` and persists sanitized features — after which their next
+  `/analyze`, or in job mode dispatches an analysis-only message (#2013),
+  and persists sanitized features — after which their next
   generation upgrades from `prompt_only` to `feature_conditioned`
   grounding. Encrypted stems are excluded. Chords/structure are v2.
 - UI (#1175): the Library → Stems tab is a real entry point for owned

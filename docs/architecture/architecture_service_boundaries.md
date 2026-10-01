@@ -68,6 +68,7 @@ owner: "@akoita"
   - Model pre-cached in Docker image (~1GB)
 - **GCP Pub/Sub** for event-driven job dispatch (Phase 2).
   - Topics: `stem-separate` (jobs), `stem-results` (completions), `stem-dlq` (dead letters)
+  - `stem-separate` also carries analysis-only backfill messages (`kind: "analyze"`), answered by `kind: "analysis"` results (#2013)
   - Workers pull from subscription with consumer group semantics
   - Dead letter queue after 5 delivery attempts (exponential backoff 10s–300s)
 - **BullMQ** for initial upload queue processing with Redis backend.

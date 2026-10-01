@@ -63,20 +63,38 @@ original row without features until the backfill runs.
 ## Admin backfill
 
 `POST /admin/stems/backfill-audio-features` (admin JWT) analyzes unencrypted
-stems that still lack features, through the worker's `/analyze` endpoint.
+stems that still lack features. The transport follows how the worker is
+deployed (#2013):
+
+| Configuration | Transport | Behaviour |
+| --- | --- | --- |
+| `DEMUCS_WORKER_URL` set (resident worker service) | `http` | Each stem's audio is sent to the worker's `POST /analyze`; features are stored within the call. |
+| No worker URL, Pub/Sub publisher available (job mode, or the local emulator) | `pubsub` | One analysis-only message (`kind: "analyze"`, up to 50 stems) goes to the `stem-separate` topic, the same dispatch as separation, and triggers one job execution when `DEMUCS_CLOUD_RUN_JOB_*` is set. The worker downloads each stem, measures it, and publishes one `kind: "analysis"` result on `stem-results`; the backend stores the features asynchronously. |
+| Neither | `none` | The call returns `status: "worker_unavailable"` and touches nothing. There is no `localhost` fallback. |
 
 Request body:
 
-- `limit`: stems per run, 1-100, default 25.
+- `limit`: stems per run, default 25. Up to 100 over HTTP, up to 50 per
+  dispatched message.
 - `types`: optional list of stem types to target, for example
   `["original"]` to fill full mixes first. Accepted values are `original`,
   `master`, `vocals`, `drums`, `bass`, `other`, `piano`, `guitar`. Unknown
   values are ignored; an empty or absent list targets every type.
 
-Response: `scanned`, `updated`, `skipped[]`, `remaining` (stems still lacking
-features for the requested filter) and `remainingByType` (the count per stem
-type across all types, so the operator sees the whole picture). Re-run until
-`remaining` reaches 0. Backfilled features carry `camelot` too.
+Response: `transport`, `status` (`ok`, `dispatched` or `worker_unavailable`),
+`scanned`, `updated`, `dispatched`, `skipped[]`, `remaining` (stems still
+lacking features for the requested filter) and `remainingByType` (the count per
+stem type across all types, so the operator sees the whole picture). Over HTTP,
+re-run until `remaining` reaches 0. With the `pubsub` transport, `remaining`
+still counts the stems in flight. Call the POST once per batch, then poll
+`GET /admin/stems/backfill-audio-features?types=original` (same admin guard;
+returns `remaining` and `remainingByType` without analyzing anything) until it
+stops falling, before dispatching the next batch. Re-dispatching a batch that
+is still in flight is harmless but wasted work: results only fill stems that
+still lack features. A stem without a stored URI is reported as
+`audio_unavailable` and is not dispatched. Per-stem analysis failures are
+logged by the backend and the stem stays pending. Backfilled features carry
+`camelot` too.
 
 The staging backfill run is tracked in the private deployment repository; this
 page holds no environment URLs or schedules.
