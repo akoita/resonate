@@ -631,7 +631,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "You can hide or downrank genres, moods and artists, choose whether AI DJ playback trains your taste, and reset your taste at any time from Settings. See Settings & privacy controls.",
+            text: "You can hide or downrank genres, moods and artists, ask for more of a genre or mood, tell us in your own words what you want more or less of (you see and confirm every change first), choose whether AI DJ playback trains your taste, and reset your taste at any time from Settings. See Settings & privacy controls.",
           },
         ],
       },
@@ -639,7 +639,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Discover", href: "/", description: "Your personalized Home feed." },
       { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
-      { label: "Settings", href: "/settings", description: "Hide, downrank or reset your taste." },
+      { label: "Settings", href: "/settings", description: "Hide, downrank, boost or reset your taste." },
     ],
     related: ["discover-music", "ai-dj", "settings-privacy"],
   },
@@ -2573,7 +2573,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Manage your profile, notifications, library sources, and exactly how your listening shapes recommendations.",
     category: "account",
     audiences: ["everyone", "listener"],
-    keywords: ["settings", "privacy", "profile", "notifications", "taste memory", "preferences", "opt out", "cohorts", "data"],
+    keywords: ["settings", "privacy", "profile", "notifications", "taste memory", "preferences", "opt out", "cohorts", "data", "taste edits", "more of this", "less of this", "tell us what you want", "declared taste"],
     sections: [
       {
         id: "taste-memory",
@@ -2582,6 +2582,19 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "You decide how much your activity personalizes Resonate. From Settings you can view a plain-language summary of your taste, opt in or out of social taste matching, control city/scene discovery, choose whether AI DJ playback trains your taste, hide or downrank signals, and reset your taste inputs — without ever exposing your raw history.",
+          },
+          {
+            kind: "paragraph",
+            text: "Prefer to just say it? Under Taste Memory, type what you want in your own words — for example \"less drill, more live instruments\" — and choose Preview changes. We list exactly what would change as plain statements such as \"Show less Drill\". Untick, switch between more and less, or remove any line, then choose Apply. Nothing is saved until you apply, and anything we could not understand is shown as such and is never saved.",
+          },
+          {
+            kind: "list",
+            items: [
+              "What you apply shows up in the same list as your other taste controls, marked as declared by you. Remove an entry there to undo it.",
+              "Declared taste stays until you remove it — it never fades with time — and it counts for more than what we have inferred from your listening.",
+              "You can ask for more or less of a genre or a mood, hide an artist by name, or say how energetic you like your music.",
+              "Wishes we cannot act on yet, such as \"more live instruments\", are saved as a note you can read back. Notes do not change your recommendations yet.",
+            ],
           },
           {
             kind: "figure",

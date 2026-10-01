@@ -825,6 +825,35 @@ describe('API Client', () => {
       expect(mockFetch.mock.calls[2][0]).toBe('http://test-api:3000/recommendations/taste-memory/signals/control-1');
       expect(mockFetch.mock.calls[2][1].method).toBe('DELETE');
     });
+
+    it('previews taste edits with only the text, then applies only the confirmed items', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          text: async () => JSON.stringify({ items: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          text: async () => JSON.stringify({ controls: [], edits: { appliedCount: 1, ignoredCount: 0 } }),
+        });
+
+      await api.previewTasteEdits('listener-token', 'less drill');
+      const applied = await api.applyTasteEdits('listener-token', [
+        { signalType: 'genre', value: 'Jazz', action: 'boosted' },
+      ]);
+
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test-api:3000/recommendations/taste-memory/edits/preview');
+      expect(mockFetch.mock.calls[0][1].method).toBe('POST');
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ text: 'less drill' });
+      expect(mockFetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test-api:3000/recommendations/taste-memory/edits/apply');
+      expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+        items: [{ signalType: 'genre', value: 'Jazz', action: 'boosted' }],
+      });
+      expect(applied.edits.appliedCount).toBe(1);
+    });
   });
 
   describe('isGenerationStatusComplete', () => {

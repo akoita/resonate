@@ -122,7 +122,9 @@ Remix Studio generation is unaffected and stays credit-billed. Details:
 
 Listener governance controls live in
 [Listener Taste Memory Controls](listener_taste_memory_controls.md). Hidden and
-downranked signals are applied before recommendation reasons are returned, reset
+downranked signals are applied before recommendation reasons are returned,
+declared "more of this" (`boosted`) signals weight a matching genre or mood at
+x1.5 and add a declared-preference ranking signal (#1961), reset
 markers exclude older `AgentSignal` rows from learned profiles, and future
 social/cohort use of private taste data is disabled unless the listener opts in.
 

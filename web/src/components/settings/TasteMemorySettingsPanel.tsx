@@ -7,6 +7,7 @@ import {
   resetTasteMemory,
   updateTasteMemorySettings,
   upsertTasteSignalControl,
+  type ManualTasteSignalAction,
   type TasteMemoryResponse,
   type TasteMemorySettings,
   type TasteSignalControl,
@@ -14,6 +15,8 @@ import {
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import TasteEditSection from "./TasteEditSection";
+import { controlLabel, controlRemoveLabel, isDeclaredControl } from "./tasteEdits";
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
@@ -22,15 +25,21 @@ type Props = {
   addToast: ToastFn;
 };
 
-const SIGNAL_TYPES: TasteSignalControl["signalType"][] = ["genre", "mood", "artist", "scene", "intent"];
+const SIGNAL_TYPES: Array<"genre" | "mood" | "artist" | "scene" | "intent"> = [
+  "genre",
+  "mood",
+  "artist",
+  "scene",
+  "intent",
+];
 
 export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
   const [memory, setMemory] = useState<TasteMemoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [newSignalType, setNewSignalType] = useState<TasteSignalControl["signalType"]>("genre");
+  const [newSignalType, setNewSignalType] = useState<(typeof SIGNAL_TYPES)[number]>("genre");
   const [newSignalValue, setNewSignalValue] = useState("");
-  const [newSignalAction, setNewSignalAction] = useState<TasteSignalControl["action"]>("hidden");
+  const [newSignalAction, setNewSignalAction] = useState<ManualTasteSignalAction>("hidden");
   const [confirmReset, setConfirmReset] = useState(false);
 
   const load = async () => {
@@ -241,6 +250,8 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
         </label>
       </div>
 
+      <TasteEditSection token={token} addToast={addToast} onApplied={setMemory} />
+
       <div className="taste-memory-editor">
         <div className="taste-memory-editor-inputs">
           <select value={newSignalType} onChange={(event) => setNewSignalType(event.target.value as typeof newSignalType)}>
@@ -267,21 +278,27 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
             {memory.controls.map((control) => (
               <li key={control.id}>
                 <div>
-                  <strong>{control.value}</strong>
-                  <span>{control.action} {control.signalType}</span>
+                  <strong>{control.signalType === "note" ? `\u201c${control.value}\u201d` : control.value}</strong>
+                  <span>{controlLabel(control)}</span>
+                  {isDeclaredControl(control) ? (
+                    <span className="taste-memory-declared">
+                      Declared by you &middot; stays until you remove it
+                    </span>
+                  ) : null}
                 </div>
                 <Button
                   variant="ghost"
                   onClick={() => restoreControl(control)}
                   disabled={savingKey === control.id}
+                  aria-label={`${controlRemoveLabel(control)}: ${control.value}`}
                 >
-                  Restore
+                  {controlRemoveLabel(control)}
                 </Button>
               </li>
             ))}
           </ul>
         ) : (
-          <div className="taste-memory-empty">No hidden or downranked signals.</div>
+          <div className="taste-memory-empty">No taste controls yet.</div>
         )}
       </div>
 

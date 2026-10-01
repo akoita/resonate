@@ -436,6 +436,12 @@ function aiDisclosureLevelOf(item: {
   return typeof level === "string" ? level.toUpperCase() : null;
 }
 
+/**
+ * Only `hidden` filters the DJ's own taste queries. Declared boosts (#1961)
+ * reach the DJ through the shared ranking core (`scoreMultiplierForSignal` and
+ * the declared-preference signal), not by rewriting the listener's queries, and
+ * the session's energy stays the session's own request context.
+ */
 export function isHiddenTasteQuery(policy: TasteMemoryPolicy | undefined, query: string) {
   return hasSignal(policy?.hidden ?? new Map(), "genre", query)
     || hasSignal(policy?.hidden ?? new Map(), "mood", query)

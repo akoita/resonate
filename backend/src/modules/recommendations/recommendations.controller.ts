@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuard
 import { AuthGuard } from "@nestjs/passport";
 import { HomeFeedService } from "./home-feed.service";
 import { RecommendationsService, UserPreferences } from "./recommendations.service";
+import { ApplyTasteEditsDto, PreviewTasteEditsDto } from "./taste_edit.dto";
 import { TasteMemoryService } from "./taste_memory.service";
 
 @Controller("recommendations")
@@ -53,6 +54,20 @@ export class RecommendationsController {
     @Body() body: Parameters<TasteMemoryService["upsertSignalControl"]>[1],
   ) {
     return this.tasteMemoryService.upsertSignalControl(req.user.userId, body);
+  }
+
+  /** Proposes edits for free text (#1961). Never writes. */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("taste-memory/edits/preview")
+  previewTasteEdits(@Body() body: PreviewTasteEditsDto) {
+    return this.tasteMemoryService.previewTasteEdits(body.text);
+  }
+
+  /** Applies only the edits the listener confirmed (#1961). */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("taste-memory/edits/apply")
+  applyTasteEdits(@Req() req: any, @Body() body: ApplyTasteEditsDto) {
+    return this.tasteMemoryService.applyTasteEdits(req.user.userId, body.items);
   }
 
   @UseGuards(AuthGuard("jwt"))

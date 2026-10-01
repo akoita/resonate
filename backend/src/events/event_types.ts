@@ -411,6 +411,27 @@ export interface TasteMemorySignalDownrankedEvent extends BaseEvent {
   action: string;
 }
 
+/** A listener-confirmed "more of this" (#1961). Never emitted for written notes. */
+export interface TasteMemorySignalBoostedEvent extends BaseEvent {
+  eventName: "taste_memory.signal_boosted";
+  userId: string;
+  signalType: string;
+  value: string;
+  action: string;
+}
+
+/** Counts only: the listener's free text is never part of any event (#1961). */
+export interface TasteMemoryEditsAppliedEvent extends BaseEvent {
+  eventName: "taste_memory.edits_applied";
+  userId: string;
+  appliedCount: number;
+  ignoredCount: number;
+  boostedCount: number;
+  downrankedCount: number;
+  hiddenCount: number;
+  declaredCount: number;
+}
+
 export interface TasteMemorySignalRestoredEvent extends BaseEvent {
   eventName: "taste_memory.signal_restored";
   userId: string;
@@ -1509,6 +1530,8 @@ export type ResonateEvent =
   | TasteMemorySettingsUpdatedEvent
   | TasteMemorySignalHiddenEvent
   | TasteMemorySignalDownrankedEvent
+  | TasteMemorySignalBoostedEvent
+  | TasteMemoryEditsAppliedEvent
   | TasteMemorySignalRestoredEvent
   | TasteMemoryResetEvent
   | CommunityProfileVisibilityUpdatedEvent

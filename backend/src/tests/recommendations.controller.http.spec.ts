@@ -20,6 +20,8 @@ const mockRecommendationsService = {
 
 const mockTasteMemoryService = {
   getTasteMemory: jest.fn().mockResolvedValue({}),
+  previewTasteEdits: jest.fn().mockResolvedValue({ items: [] }),
+  applyTasteEdits: jest.fn().mockResolvedValue({ controls: [] }),
 };
 
 const mockHomeFeedService = {
@@ -86,5 +88,75 @@ describe('RecommendationsController home feed (e2e)', () => {
       .expect(200);
     expect(mockRecommendationsService.getRecommendations).toHaveBeenCalled();
     expect(mockHomeFeedService.getHomeFeed).not.toHaveBeenCalled();
+  });
+
+  describe('taste edits (#1961)', () => {
+    const validItem = { signalType: 'genre', value: 'Drill', action: 'downranked' };
+
+    it('POST /recommendations/taste-memory/edits/preview → 401 without JWT', async () => {
+      await request(app.getHttpServer())
+        .post('/recommendations/taste-memory/edits/preview')
+        .send({ text: 'less drill' })
+        .expect(401);
+      expect(mockTasteMemoryService.previewTasteEdits).not.toHaveBeenCalled();
+    });
+
+    it('POST /recommendations/taste-memory/edits/preview → passes only the text', async () => {
+      await request(app.getHttpServer())
+        .post('/recommendations/taste-memory/edits/preview')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ text: 'less drill, more live instruments' })
+        .expect(201);
+      expect(mockTasteMemoryService.previewTasteEdits).toHaveBeenCalledWith('less drill, more live instruments');
+    });
+
+    it.each([
+      ['a missing text', {}],
+      ['an empty text', { text: '' }],
+      ['a non-string text', { text: 42 }],
+      ['a text over 500 characters', { text: 'a'.repeat(501) }],
+    ])('POST /recommendations/taste-memory/edits/preview → 400 for %s', async (_label, body) => {
+      await request(app.getHttpServer())
+        .post('/recommendations/taste-memory/edits/preview')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body)
+        .expect(400);
+      expect(mockTasteMemoryService.previewTasteEdits).not.toHaveBeenCalled();
+    });
+
+    it('POST /recommendations/taste-memory/edits/apply → 401 without JWT', async () => {
+      await request(app.getHttpServer())
+        .post('/recommendations/taste-memory/edits/apply')
+        .send({ items: [validItem] })
+        .expect(401);
+      expect(mockTasteMemoryService.applyTasteEdits).not.toHaveBeenCalled();
+    });
+
+    it('POST /recommendations/taste-memory/edits/apply → applies for the JWT user only', async () => {
+      await request(app.getHttpServer())
+        .post('/recommendations/taste-memory/edits/apply')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ items: [validItem], userId: 'someone-else' })
+        .expect(201);
+      expect(mockTasteMemoryService.applyTasteEdits).toHaveBeenCalledWith('user-1', [validItem]);
+    });
+
+    it.each([
+      ['a missing items list', {}],
+      ['a non-array items', { items: 'genre' }],
+      ['an empty items list', { items: [] }],
+      ['more than 20 items', { items: Array.from({ length: 21 }, () => validItem) }],
+      ['an item without a value', { items: [{ signalType: 'genre', action: 'boosted' }] }],
+      ['an item with an over-long value', { items: [{ ...validItem, value: 'x'.repeat(81) }] }],
+      ['an item with a non-string action', { items: [{ ...validItem, action: 7 }] }],
+      ['an item that is not an object', { items: ['genre'] }],
+    ])('POST /recommendations/taste-memory/edits/apply → 400 for %s', async (_label, body) => {
+      await request(app.getHttpServer())
+        .post('/recommendations/taste-memory/edits/apply')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body)
+        .expect(400);
+      expect(mockTasteMemoryService.applyTasteEdits).not.toHaveBeenCalled();
+    });
   });
 });
