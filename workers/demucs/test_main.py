@@ -664,5 +664,153 @@ class AudioRevisionTest(unittest.TestCase):
             self.assertEqual(attempts, ["cuda", "cpu"])
 
 
+class AnalysisMessageTest(unittest.TestCase):
+    def setUp(self):
+        self.published = []
+        self.attributes = []
+        published = self.published
+        attributes = self.attributes
+
+        class FakeFuture:
+            def result(self):
+                return "message-id"
+
+        class FakePublisher:
+            def topic_path(self, project, topic):
+                return f"{project}/{topic}"
+
+            def publish(self, _topic_path, data, **attrs):
+                published.append(json.loads(data))
+                attributes.append(attrs)
+                return FakeFuture()
+
+        fake_google = types.ModuleType("google")
+        fake_google.__path__ = []
+        fake_cloud = types.ModuleType("google.cloud")
+        fake_cloud.__path__ = []
+        fake_pubsub = types.ModuleType("google.cloud.pubsub_v1")
+        fake_pubsub.PublisherClient = FakePublisher
+        fake_cloud.pubsub_v1 = fake_pubsub
+        fake_google.cloud = fake_cloud
+        patcher = patch.dict(
+            sys.modules,
+            {
+                "google": fake_google,
+                "google.cloud": fake_cloud,
+                "google.cloud.pubsub_v1": fake_pubsub,
+            },
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def message(stems):
+        return {"kind": "analyze", "jobId": "analyze_1_abcd1234", "stems": stems}
+
+    @staticmethod
+    async def fake_download(_uri, dest_path):
+        dest_path.write_bytes(b"fake audio")
+
+    def test_mixed_batch_publishes_one_result_with_per_stem_errors(self):
+        def fake_extract(path):
+            self.assertEqual(path.name, "analyze.mp3")
+            if not hasattr(fake_extract, "calls"):
+                fake_extract.calls = 0
+            fake_extract.calls += 1
+            if fake_extract.calls == 2:
+                raise RuntimeError("decode failed " + "x" * 500)
+            return {"bpm": 120.0}
+
+        with (
+            patch.object(main, "download_audio", self.fake_download),
+            patch.object(main, "extract_stem_features", fake_extract),
+        ):
+            asyncio.run(
+                main.process_analysis_message(
+                    self.message(
+                        [
+                            {"stemId": "stem_a", "uri": "https://example.test/a.mp3"},
+                            {"stemId": "stem_b", "uri": "https://example.test/b.mp3", "mimeType": "audio/mpeg"},
+                        ]
+                    )
+                )
+            )
+
+        self.assertEqual(len(self.published), 1)
+        msg = self.published[0]
+        self.assertEqual(msg["kind"], "analysis")
+        self.assertEqual(msg["status"], "completed")
+        self.assertEqual(msg["jobId"], "analyze_1_abcd1234")
+        self.assertEqual(self.attributes[0], {"jobId": "analyze_1_abcd1234", "kind": "analysis"})
+        self.assertEqual(msg["results"][0], {"stemId": "stem_a", "features": {"bpm": 120.0}})
+        self.assertEqual(msg["results"][1]["stemId"], "stem_b")
+        self.assertIsNone(msg["results"][1]["features"])
+        self.assertTrue(msg["results"][1]["error"].startswith("decode failed"))
+        self.assertLessEqual(len(msg["results"][1]["error"]), 300)
+
+    def test_process_pubsub_message_routes_analyze_kind(self):
+        with (
+            patch.object(main, "download_audio", self.fake_download),
+            patch.object(main, "extract_stem_features", return_value={"bpm": 90.0}),
+            patch.object(main, "generate_fingerprint") as fingerprint,
+            patch.object(main, "run_demucs_separation") as separation,
+        ):
+            asyncio.run(
+                main.process_pubsub_message(
+                    self.message([{"stemId": "stem_a", "uri": "https://example.test/a.mp3"}])
+                )
+            )
+
+        fingerprint.assert_not_called()
+        separation.assert_not_called()
+        self.assertEqual(len(self.published), 1)
+        self.assertEqual(self.published[0]["kind"], "analysis")
+
+    def test_invalid_messages_raise_value_error(self):
+        good = {"stemId": "stem_a", "uri": "https://example.test/a.mp3"}
+        cases = {
+            "empty stems": self.message([]),
+            "too many stems": self.message([dict(good) for _ in range(main.MAX_ANALYSIS_STEMS + 1)]),
+            "unsafe stemId": self.message([{"stemId": "../x", "uri": "https://example.test/a.mp3"}]),
+            "missing uri": self.message([{"stemId": "stem_a"}]),
+            "missing jobId": {"kind": "analyze", "stems": [good]},
+        }
+        for name, message in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                asyncio.run(main.process_analysis_message(message))
+        self.assertEqual(self.published, [])
+
+    def test_oversized_download_is_a_per_stem_error(self):
+        with (
+            patch.object(main, "download_audio", self.fake_download),
+            patch.object(main, "MAX_UPLOAD_BYTES", 4),
+            patch.object(main, "extract_stem_features") as extract,
+        ):
+            asyncio.run(
+                main.process_analysis_message(
+                    self.message([{"stemId": "stem_a", "uri": "https://example.test/a.mp3"}])
+                )
+            )
+
+        extract.assert_not_called()
+        result = self.published[0]["results"][0]
+        self.assertIsNone(result["features"])
+        self.assertIn("upload limit", result["error"])
+
+    def test_failure_result_for_analyze_message_is_analysis_shaped(self):
+        self.assertTrue(
+            main.publish_failure_result(
+                self.message([]), ValueError("e" * 500)
+            )
+        )
+
+        msg = self.published[0]
+        self.assertEqual(msg["kind"], "analysis")
+        self.assertEqual(msg["status"], "failed")
+        self.assertEqual(msg["jobId"], "analyze_1_abcd1234")
+        self.assertEqual(len(msg["error"]), 300)
+        self.assertNotIn("releaseId", msg)
+
+
 if __name__ == "__main__":
     unittest.main()
