@@ -74,8 +74,12 @@ describe("Home embedding candidates (integration)", () => {
       .sort((a, b) => a.id.localeCompare(b.id));
   const byId = (items: Awaited<ReturnType<typeof home>>, id: string) =>
     items.find((item) => item.id === id);
-  const similar = (items: Awaited<ReturnType<typeof home>>) =>
-    items.filter((item) => item.reasonCode === "similar_sound");
+  // A seed neighbour always carries the similar-sound explanation. Its primary
+  // reason can still be learned taste: the seed's save also teaches a genre
+  // weight, and that can outweigh the embedding signal for same-genre tracks.
+  const fromSeed = (item: Awaited<ReturnType<typeof home>>[number] | undefined) =>
+    item?.explanations?.includes(DISCOVERY_EXPLANATIONS.similar_sound) ?? false;
+  const similar = (items: Awaited<ReturnType<typeof home>>) => items.filter(fromSeed);
 
   const signal = (
     trackId: string,
@@ -218,7 +222,7 @@ describe("Home embedding candidates (integration)", () => {
       await signal(ids.seed, "save");
 
       const before = await home(baseline);
-      expect(byId(before, ids.cold)?.reasonCode).toBe("catalog");
+      expect(fromSeed(byId(before, ids.cold))).toBe(false);
 
       const items = await home(withEmbeddings);
       const cold = byId(items, ids.cold);
@@ -226,14 +230,13 @@ describe("Home embedding candidates (integration)", () => {
       // `cold` has no play, save or purchase anywhere: only its vector reaches it.
       expect(await prisma.agentSignal.count({ where: { trackId: ids.cold } })).toBe(0);
       expect(cold).toBeDefined();
-      expect(cold!.reasonCode).toBe("similar_sound");
       expect(cold!.explanations).toContain(DISCOVERY_EXPLANATIONS.similar_sound);
       expect(cold!.score).toBeGreaterThan(byId(before, ids.cold)!.score);
 
       // Bounded: ten neighbours per seed, never the seed itself, never a track
       // the listener's explicit setting excludes.
       expect(similar(items).length).toBeLessThanOrEqual(10);
-      expect(byId(items, ids.seed)?.reasonCode).not.toBe("similar_sound");
+      expect(fromSeed(byId(items, ids.seed))).toBe(false);
       expect(byId(items, ids.explicit)).toBeUndefined();
     });
 
@@ -243,7 +246,7 @@ describe("Home embedding candidates (integration)", () => {
       expect(similar(await home(withEmbeddings))).toHaveLength(0);
 
       await signal(ids.seed, "complete", { metadata: { outcome: { completionRatio: 0.95 } } });
-      expect(byId(await home(withEmbeddings), ids.cold)?.reasonCode).toBe("similar_sound");
+      expect(fromSeed(byId(await home(withEmbeddings), ids.cold))).toBe(true);
     });
 
     it("equals today's Home when the provider is disabled, without touching vectors", async () => {
@@ -320,7 +323,7 @@ describe("Home embedding candidates (integration)", () => {
       expect(similar(await home(withEmbeddings))).toHaveLength(0);
 
       await signal(ids.seed, "save", { createdAt: new Date(Date.now() + 60_000) });
-      expect(byId(await home(withEmbeddings), ids.cold)?.reasonCode).toBe("similar_sound");
+      expect(fromSeed(byId(await home(withEmbeddings), ids.cold))).toBe(true);
     });
 
     it("ignores AI DJ playback when that training is off, but keeps the listener's own saves", async () => {
@@ -331,7 +334,7 @@ describe("Home embedding candidates (integration)", () => {
       expect(similar(await home(withEmbeddings))).toHaveLength(0);
 
       await signal(ids.seed, "save", { metadata: { source: "player" } });
-      expect(byId(await home(withEmbeddings), ids.cold)?.reasonCode).toBe("similar_sound");
+      expect(fromSeed(byId(await home(withEmbeddings), ids.cold))).toBe(true);
     });
 
     it("has no seeds without the taste-memory policy (consent cannot be checked)", async () => {
