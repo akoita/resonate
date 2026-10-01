@@ -133,6 +133,27 @@ type RailCaps = (
 ) => HomeFeedItem[];
 
 /**
+ * A listener is cold when they have no saved preference, no declared boosted
+ * genre or mood (#1961, #2006) and have played no artist. A declared energy
+ * band alone does not count: it re-ranks but gives the personalized rails
+ * nothing to anchor on, so the honest catalog rail serves that listener better.
+ */
+export function isColdStart(input: {
+  preferences: { genres?: string[]; mood?: string };
+  playedArtistCount: number;
+  tastePolicy?: TasteMemoryPolicy;
+}): boolean {
+  const hasPreferences = Boolean(
+    input.preferences.genres?.length || input.preferences.mood?.trim(),
+  );
+  const declared = input.tastePolicy?.declared;
+  const hasDeclaredBoost = Boolean(
+    declared?.boostedGenres.length || declared?.boostedMoods.length,
+  );
+  return !hasPreferences && !hasDeclaredBoost && input.playedArtistCount === 0;
+}
+
+/**
  * Feed-wide dedupe, then the shared policy stage in the rail's own order:
  * hidden taste, fully AI-generated tracks, max N items per artist per rail,
  * and a categorical reason on every item. Adds the returned ids to `used`.
@@ -220,13 +241,14 @@ export class HomeFeedService {
 
     // Declared taste edits (#1961) reach the rails through
     // `getRecommendations`, which adds boosted genres/moods to its matching and
-    // ranking. They deliberately do not count here: a listener whose only
-    // declared taste is a boost still sees the honest cold-start rail until
-    // they save a preference or press play.
-    const hasPreferences = Boolean(
-      preferences.genres?.length || preferences.mood?.trim(),
-    );
-    const cold = !hasPreferences && playedArtistIds.length === 0;
+    // ranking. A listener whose declared taste is a boosted genre or mood is
+    // not cold (#2006): they get the personalized rails, anchored on that
+    // boost, instead of the "Catalog signal" cold rail.
+    const cold = isColdStart({
+      preferences,
+      playedArtistCount: playedArtistIds.length,
+      tastePolicy,
+    });
 
     const rails: HomeFeedRail[] = [];
     const usedTrackIds = new Set<string>();
@@ -241,9 +263,12 @@ export class HomeFeedService {
         userId,
         RAIL_SIZE * 3,
       );
+      // Saved preferences anchor first, then a declared boost (#2006), so a
+      // listener whose only taste is a boost gets a rail built on it.
+      const declared = tastePolicy?.declared;
       const dominantGenre = this.dominantGenre(
-        preferences.genres ?? [],
-        preferences.mood,
+        [...(preferences.genres ?? []), ...(declared?.boostedGenres ?? [])],
+        preferences.mood?.trim() || declared?.boostedMoods[0],
         recommendations.items,
       );
 

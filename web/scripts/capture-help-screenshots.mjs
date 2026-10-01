@@ -44,6 +44,7 @@
  *
  * Requirements: a Chromium browser for Playwright
  *   npx playwright install chromium
+ *   (or set CHROMIUM_EXECUTABLE_PATH to an installed Chromium binary)
  *
  * Output: web/public/help/screenshots/*.png (1440x900 viewport, 1x; selected
  * data-heavy pages use a taller viewport so all documented panels appear, and
@@ -94,7 +95,22 @@ const PUBLIC_TARGETS = [
 const AUTH_TARGETS = [
   ["/artist/upload", "upload.png"],
   ["/create", "create.png"],
-  ["/settings", "settings.png"],
+  ["/settings", "settings.png", {
+    // #2006: the Taste Memory section with the "Tell us what you want more or
+    // less of" box and a previewed edit, drawn from a fixed taste memory so the
+    // picture does not need a backend.
+    mockTasteMemory: true,
+    viewportHeight: 1800,
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.locator(".settings-nav button").filter({ hasText: "Taste Memory" }).first().click();
+      await page.getByLabel("Your words").fill("Less drill, more jazz, something calmer, and no more Night Courier");
+      await page.getByRole("button", { name: "Preview changes" }).click();
+      await page.getByRole("list", { name: "Proposed taste changes" }).waitFor({ state: "visible" });
+      await page.evaluate(() => document.activeElement?.blur());
+      await page.getByRole("heading", { name: "Tell us what you want more or less of" }).scrollIntoViewIfNeeded();
+    },
+  }],
   ["/agent", "ai-dj.png", { prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); } }],
   ["/sonic-radar", "sonic-radar.png", {
     // ADR-TE-5: the discovery journal, drawn from a fixed sample journal.
@@ -253,6 +269,50 @@ async function capture(page, targets, passName) {
           { id: "guide-song-1", userId: "guide-listener", source: "remote", title: "Golden Hour", artist: "Felicia Angels", albumArtist: "Felicia Angels", album: "First Light", duration: 213, remoteArtworkUrl: "/shows/felicia-angels-cover.webp", createdAt },
           { id: "guide-song-2", userId: "guide-listener", source: "remote", title: "After the Rain", artist: "Felicia Angels", albumArtist: "Felicia Angels", album: "First Light", duration: 189, remoteArtworkUrl: "/shows/felicia-angels-cover.webp", createdAt },
         ],
+      }));
+    }
+    if (ready?.mockTasteMemory) {
+      const createdAt = "2026-09-20T09:00:00.000Z";
+      await page.route("**/recommendations/taste-memory", (request) => request.fulfill({
+        json: {
+          schemaVersion: "listener-taste-memory/v1",
+          settings: {
+            socialMatchingEnabled: false,
+            citySceneDiscoveryEnabled: false,
+            agentPlaybackTrainingEnabled: true,
+            recommendationExplanationPreference: "balanced",
+            resetAt: null,
+          },
+          summary: {
+            favoredGenres: ["Amapiano", "Soul"],
+            favoredMoods: ["Warm"],
+            favoredArtists: ["Felicia Angels"],
+            recentIntents: [],
+            noveltyPattern: "Likes a mix of familiar and new",
+            commercePreference: "Not enough signal yet",
+            explanationPreference: "balanced",
+          },
+          controls: [
+            { id: "guide-control-1", signalType: "genre", value: "Jazz", action: "boosted", source: "declared_text_edit", createdAt },
+            { id: "guide-control-2", signalType: "mood", value: "Dark", action: "downranked", source: null, createdAt },
+          ],
+          privacy: {
+            socialMatching: "disabled",
+            citySceneDiscovery: "disabled",
+            agentPlaybackTraining: "enabled",
+            notes: [],
+          },
+        },
+      }));
+      await page.route("**/recommendations/taste-memory/edits/preview", (request) => request.fulfill({
+        json: {
+          items: [
+            { id: "edit-1", kind: "downrank_genre", signalType: "genre", value: "Drill", action: "downranked", phrase: "Less drill", statement: "Show less Drill" },
+            { id: "edit-2", kind: "boost_genre", signalType: "genre", value: "Jazz", action: "boosted", phrase: "more jazz", statement: "Show more Jazz" },
+            { id: "edit-3", kind: "energy_preference", signalType: "energy", value: "low", action: "boosted", phrase: "something calmer", statement: "Prefer calmer, lower-energy music" },
+            { id: "edit-4", kind: "unmapped", signalType: null, value: "", action: null, phrase: "no more Night Courier", statement: "Couldn't map 'no more Night Courier' to a taste signal" },
+          ],
+        },
       }));
     }
     if (ready?.mockDiscoveries) {
@@ -617,7 +677,11 @@ async function captureRemix(browser) {
 }
 
 async function main() {
-  const browser = await chromium.launch();
+  // CHROMIUM_EXECUTABLE_PATH: use an already-installed Chromium whose build
+  // differs from the one this Playwright version expects.
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
+  });
   try {
     if (CAPTURE_PUBLIC) {
       const publicCtx = await browser.newContext({

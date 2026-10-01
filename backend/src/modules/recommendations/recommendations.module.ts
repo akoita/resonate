@@ -9,6 +9,7 @@ import { DiscoveryRankingService } from "./discovery-ranking.service";
 import { HomeFeedService } from "./home-feed.service";
 import { RecommendationsController } from "./recommendations.controller";
 import { RecommendationsService } from "./recommendations.service";
+import { createTasteEditParser, TASTE_EDIT_PARSER } from "./model_taste_edit_parser";
 import { TasteMemoryService } from "./taste_memory.service";
 
 @Module({
@@ -21,6 +22,9 @@ import { TasteMemoryService } from "./taste_memory.service";
   controllers: [RecommendationsController],
   providers: [
     RecommendationsService,
+    // Taste-edit text parser: deterministic by default, model-assisted only
+    // when TASTE_EDIT_PARSER_STRATEGY=model-assisted (#2006).
+    { provide: TASTE_EDIT_PARSER, useFactory: () => createTasteEditParser() },
     TasteMemoryService,
     // The unified scoring core (#1448 WS-1) shared with the AI DJ.
     DiscoveryRankingService,

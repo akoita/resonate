@@ -139,15 +139,49 @@ clauses; clauses beyond the bound are reported as unmapped, not dropped silently
   §Home candidate source.
 - A declared edit on a signal that already has a control replaces that control
   (one control per signal type and value).
-- Home: declared boosts reach the rails through `getRecommendations`, but a
-  listener whose only declared taste is a boost still sees the honest
-  cold-start rail until they save a preference or play something.
+- Home: declared boosts reach the rails through `getRecommendations`, and a
+  listener whose declared taste includes a boosted genre or mood is **not** on
+  the cold-start rail (#2006): they get the personalized rails instead of
+  "Catalog signal", and downranks, hides, notes and a lone energy band do not
+  count. A declared energy band alone keeps the honest cold-start rail, because
+  it re-ranks but gives the personalized rails nothing to anchor on. The check
+  is `isColdStart` in `home-feed.service.ts`.
 
-**Model parser (follow-up [#2006](https://github.com/akoita/resonate/issues/2006), not shipped).** `TasteEditParser` is the seam: the
-service takes a parser implementing it, and only the deterministic one exists.
-A model-backed parser would return the same `ProposedTasteEdit` items, go through
-the same preview, confirmation and server validation, and must never widen the
-allowed (signalType, action) combinations (`DECLARED_EDIT_RULES`).
+**Model-assisted parsing (optional, [#2006](https://github.com/akoita/resonate/issues/2006)).**
+`TasteEditParser` is the seam. The default is the deterministic parser. Setting
+`TASTE_EDIT_PARSER_STRATEGY=model-assisted` swaps in `ModelTasteEditParser`
+(`model_taste_edit_parser.ts`), selected by the `TASTE_EDIT_PARSER` provider in
+`RecommendationsModule`. It reads looser phrasing ("not a fan of Foo", "something
+to run to") and returns the same `ProposedTasteEdit` items, through the same
+preview, confirmation and server-side validation. The model's answer is treated
+as untrusted:
+
+- The model gets only the bounded text (at most 500 characters) and the allowed
+  vocabulary, and answers with a JSON schema of `{kind, value, direction?,
+  phrase}` items (`kind` and `direction` are enums).
+- Every item is re-validated: genre and mood values must map to the vocabulary,
+  energy must be `low`, `medium` or `high`, an artist is hidden only when the
+  listener's text names it, the direction is a rejection, and the artist lookup
+  finds an existing artist (a bounded, read-only query, at most 5 per request),
+  and a note must be the listener's own words (bounded like the deterministic
+  parser). Nothing outside `DECLARED_EDIT_RULES` can come out.
+- The deterministic parser always runs. Its readings win any conflict (same
+  signal with a different action, a second energy band). Model items add what
+  the rules could not read, and text neither parser could map stays reported as
+  unmapped, so the listener sees what was left out.
+- A missing key, timeout, provider error, or malformed or empty output returns
+  the deterministic result unchanged.
+- Privacy: the listener's text is sent to the configured model provider **only**
+  when model-assisted parsing is enabled. Neither the text nor the raw model
+  output is ever logged; failures log a fixed reason code
+  (`timeout`, `invalid_output`, `provider_error`, `missing_api_key`).
+- Settings and credentials: see `docs/deployment/environment.md`
+  (`TASTE_EDIT_PARSER_STRATEGY`, `TASTE_EDIT_PARSER_MODEL`,
+  `TASTE_EDIT_PARSER_TIMEOUT_MS`, `GOOGLE_AI_API_KEY`). Enabling it in a deployed
+  environment is a `resonate-iac` change.
+
+Limits: the model does not change what the confirmation list can hold, only how
+much of the listener's wording it can read; it adds one model call per preview.
 
 ## Privacy Boundaries
 

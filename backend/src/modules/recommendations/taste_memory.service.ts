@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.service";
 import { EventBus } from "../shared/event_bus";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 import type { UserPreferences } from "./recommendations.service";
+import { TASTE_EDIT_PARSER } from "./model_taste_edit_parser";
 import {
   candidateArtistNames,
   DECLARED_ENERGY_VALUES,
@@ -124,6 +125,11 @@ export class TasteMemoryService {
     // Embeds written notes so they can steer Home (#2006). Absent or disabled:
     // a note is stored and shown but has no ranking effect.
     @Optional() private readonly noteEmbeddings?: TasteNoteEmbeddingService,
+    // Chosen by TASTE_EDIT_PARSER_STRATEGY (#2006); direct construction in
+    // specs keeps the deterministic parser.
+    @Optional()
+    @Inject(TASTE_EDIT_PARSER)
+    private readonly tasteEditParser: TasteEditParser = deterministicTasteEditParser,
   ) {}
 
   async getTasteMemory(userId: string) {
@@ -348,12 +354,13 @@ export class TasteMemoryService {
   /**
    * Proposes taste edits for free text (#1961, ADR-TE-5). NEVER writes: the
    * only database access is a read-only artist-name lookup, and the text is
-   * not stored, logged or published. `parser` is the model seam; the shipped
-   * parser is deterministic.
+   * not stored, logged or published. `parser` is the model seam: the injected
+   * parser is deterministic unless `TASTE_EDIT_PARSER_STRATEGY=model-assisted`
+   * (#2006), which falls back to deterministic on any failure.
    */
   async previewTasteEdits(
     text: unknown,
-    parser: TasteEditParser = deterministicTasteEditParser,
+    parser: TasteEditParser = this.tasteEditParser,
   ): Promise<TasteEditPreview> {
     if (typeof text !== "string") {
       throw new BadRequestException("text is required");
@@ -362,6 +369,11 @@ export class TasteMemoryService {
     const artists = await this.lookupArtistNames(candidateArtistNames(bounded));
     const parsed = await parser.parse(bounded, {
       resolveArtist: (name) => artists.get(name.trim().toLowerCase()),
+      // For parsers that name artists the deterministic pass did not (model).
+      resolveArtistAsync: async (name) => {
+        const key = name.trim().toLowerCase();
+        return (await this.lookupArtistNames([name.trim()])).get(key);
+      },
     });
     return { items: parsed.items };
   }

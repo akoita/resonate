@@ -16,6 +16,8 @@
  *   (g) every rail passes the policy stage (#1456, ADR-TE-2): an artist the
  *       listener hid leaves "New from artists you play", and every item
  *       carries a vocabulary reasonCode
+ *   (h) a listener whose only taste is a declared boost (#1961) is not cold
+ *       (#2006)
  *
  * Run: npx jest --runInBand --forceExit --config jest.integration.config.js \
  *        --testPathPattern='home-feed'
@@ -34,22 +36,29 @@ const TEST_PREFIX = `homefeed_${Date.now()}_`;
 const GENRE = `${TEST_PREFIX}amapiano`; // unique genre isolates from parallel suites
 const WARM_USER = `${TEST_PREFIX}warm_user`;
 const COLD_USER = `${TEST_PREFIX}cold_user`;
+const BOOST_USER = `${TEST_PREFIX}boost_user`; // only a declared boost (#2006)
 const TASTE_ARTIST = `${TEST_PREFIX}taste_artist`; // genre-matching catalog
 const PLAYED_ARTIST = `${TEST_PREFIX}played_artist`; // artist the warm user plays
 const FRESH_ARTIST = `${TEST_PREFIX}fresh_artist`; // low-data exploration source
 
-function newService() {
+function newService(options: { tasteAwareRecommendations?: boolean } = {}) {
   const eventBus = new EventBus();
+  const tasteMemory = new TasteMemoryService(eventBus);
+  // Production wires taste memory into recommendations too; that is how a
+  // declared boost reaches matching. Most cases here predate it and keep the
+  // narrower wiring.
   const recommendations = new RecommendationsService(
     eventBus,
     new DiscoveryRankingService(),
+    options.tasteAwareRecommendations ? tasteMemory : undefined,
   );
   return {
     recommendations,
+    tasteMemory,
     homeFeed: new HomeFeedService(
       recommendations,
       new DiscoveryPopularityService(),
-      new TasteMemoryService(eventBus),
+      tasteMemory,
     ),
   };
 }
@@ -62,6 +71,7 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
       data: [
         { id: WARM_USER, email: `${WARM_USER}@test.resonate` },
         { id: COLD_USER, email: `${COLD_USER}@test.resonate` },
+        { id: BOOST_USER, email: `${BOOST_USER}@test.resonate` },
       ],
     });
     await prisma.artist.createMany({
@@ -299,6 +309,24 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
     for (const kind of kinds) {
       expect(["catalog_signal", "exploration"]).toContain(kind);
     }
+  });
+
+  it("a declared boost alone lifts a listener out of the cold-start rail (#2006)", async () => {
+    const { homeFeed, tasteMemory } = newService({ tasteAwareRecommendations: true });
+    await tasteMemory.applyTasteEdits(BOOST_USER, [
+      { kind: "boost_genre", signalType: "genre", value: GENRE, action: "boosted" },
+    ]);
+    const feed = await homeFeed.getHomeFeed(BOOST_USER);
+    expect(feed.cold).toBe(false);
+    const kinds = feed.rails.map((rail) => rail.kind);
+    expect(kinds).not.toContain("catalog_signal");
+    // The boost is the only taste signal, and it anchors the personalized rail.
+    expect(kinds).toContain("because_genre");
+
+    // Removing the boost returns the listener to the honest cold start.
+    await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: BOOST_USER } });
+    const after = await homeFeed.getHomeFeed(BOOST_USER);
+    expect(after.cold).toBe(true);
   });
 
   it("every rail passes the policy stage: hidden artists leave, every item has a reason", async () => {
