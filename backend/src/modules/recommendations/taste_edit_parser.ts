@@ -25,9 +25,9 @@ import type { TasteSignalAction, TasteSignalType } from "./taste_memory.service"
  * The free text is never logged or published: only the structured items leave
  * this module, and only after the listener confirms them.
  *
- * Model seam: `TasteEditParser` is the interface a future model-backed parser
- * would implement (ADR-TE-5 follows the same propose-then-confirm contract).
- * No model parser ships in this slice.
+ * Model seam: `TasteEditParser` is the interface the optional model-assisted
+ * parser implements (`model_taste_edit_parser.ts`, #2006). It follows the same
+ * propose-then-confirm contract and falls back to this parser on any failure.
  */
 
 export const TASTE_EDIT_MAX_TEXT_LENGTH = 500;
@@ -75,13 +75,19 @@ export interface ParseTasteEditOptions {
    * absent, no artist is ever proposed.
    */
   resolveArtist?: (name: string) => string | undefined;
+  /**
+   * Asynchronous artist lookup for parsers that name artists the deterministic
+   * pass could not (the model parser). Same contract as `resolveArtist`, backed
+   * by a bounded read-only query. The deterministic parser ignores it.
+   */
+  resolveArtistAsync?: (name: string) => Promise<string | undefined>;
 }
 
 export interface ParsedTasteEdits {
   items: ProposedTasteEdit[];
 }
 
-/** The seam a model-backed parser would implement (follow-up, not shipped). */
+/** The seam the optional model-assisted parser also implements (#2006). */
 export interface TasteEditParser {
   parse(text: string, options?: ParseTasteEditOptions): ParsedTasteEdits | Promise<ParsedTasteEdits>;
 }
@@ -265,9 +271,9 @@ function artistTargets(clause: string): string[] {
 // Items
 // ---------------------------------------------------------------------------
 
-type ItemDraft = Omit<ProposedTasteEdit, "id">;
+export type ItemDraft = Omit<ProposedTasteEdit, "id">;
 
-function genreItem(value: string, sign: 1 | -1, phrase: string): ItemDraft {
+export function genreItem(value: string, sign: 1 | -1, phrase: string): ItemDraft {
   return sign === 1
     ? {
         kind: "boost_genre",
@@ -287,7 +293,7 @@ function genreItem(value: string, sign: 1 | -1, phrase: string): ItemDraft {
       };
 }
 
-function moodItem(value: string, sign: 1 | -1, phrase: string): ItemDraft {
+export function moodItem(value: string, sign: 1 | -1, phrase: string): ItemDraft {
   return sign === 1
     ? {
         kind: "boost_mood",
@@ -313,7 +319,7 @@ const ENERGY_STATEMENTS: Record<string, string> = {
   low: "Prefer calmer, lower-energy music",
 };
 
-function energyItem(band: string, phrase: string): ItemDraft {
+export function energyItem(band: string, phrase: string): ItemDraft {
   return {
     kind: "energy_preference",
     signalType: "energy",
@@ -324,7 +330,7 @@ function energyItem(band: string, phrase: string): ItemDraft {
   };
 }
 
-function writtenItem(phrase: string): ItemDraft {
+export function writtenItem(phrase: string): ItemDraft {
   const value = phrase.slice(0, MAX_VALUE_LENGTH).trim();
   return {
     kind: "written_preference",
@@ -336,7 +342,7 @@ function writtenItem(phrase: string): ItemDraft {
   };
 }
 
-function artistItem(displayName: string, phrase: string): ItemDraft {
+export function artistItem(displayName: string, phrase: string): ItemDraft {
   return {
     kind: "hide_artist",
     signalType: "artist",
@@ -347,7 +353,7 @@ function artistItem(displayName: string, phrase: string): ItemDraft {
   };
 }
 
-function unmappedItem(phrase: string, hint?: string): ItemDraft {
+export function unmappedItem(phrase: string, hint?: string): ItemDraft {
   return {
     kind: "unmapped",
     signalType: null,
@@ -487,7 +493,7 @@ export function candidateArtistNames(text: string): string[] {
   return [...names];
 }
 
-/** The shipped parser: deterministic rules, no model (ADR-TE-5 slice 1). */
+/** The default parser: deterministic rules, no model (ADR-TE-5 slice 1). */
 export const deterministicTasteEditParser: TasteEditParser = {
   parse: (text, options) => parseTasteEditText(text, options),
 };

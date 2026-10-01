@@ -2600,10 +2600,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/settings.png`,
-              alt: "The Settings page with a left-hand list of sections — Library, Taste Memory, Artist, Community, Listener Cohorts, and Notifications — and the Library section open on the right.",
-              caption: "Settings groups your controls by area — pick Taste Memory, Notifications, and more from the left.",
+              alt: "The Settings page with its list of sections on the left and the Taste Memory section open on the right: a summary of your taste, the privacy toggles, and the \"Tell us what you want more or less of\" box with a preview listing \"Show less Drill\", \"Show more Jazz\" and a calmer-energy preference, each with Switch and Remove buttons, plus an Apply button.",
+              caption: "In Settings, pick Taste Memory, type what you want in your own words, and review the proposed changes before you apply them.",
               width: 1440,
-              height: 900,
+              height: 1800,
               source: LOCAL,
             },
           },
