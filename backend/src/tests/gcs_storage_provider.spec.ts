@@ -23,6 +23,16 @@ describe('GcsStorageProvider', () => {
     return provider;
   }
 
+  it('resolves every stored URI form to the canonical fetch URL (#2013)', () => {
+    const provider = makeProvider();
+    const canonical = 'https://storage.googleapis.com/resonate-stems-staging/originals/stem.mp3';
+    expect(provider.resolveFetchUri('/resonate-stems-staging/originals/stem.mp3')).toBe(canonical);
+    expect(provider.resolveFetchUri('resonate-stems-staging/originals/stem.mp3')).toBe(canonical);
+    expect(provider.resolveFetchUri('gs://resonate-stems-staging/originals/stem.mp3')).toBe(canonical);
+    expect(provider.resolveFetchUri(canonical)).toBe(canonical);
+    expect(() => provider.resolveFetchUri('/another-bucket/originals/stem.mp3')).toThrow(StorageUriPolicyError);
+  });
+
   it('downloads full HTTPS storage URLs unchanged', async () => {
     const provider = makeProvider();
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({

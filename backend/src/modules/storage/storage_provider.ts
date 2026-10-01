@@ -23,4 +23,12 @@ export abstract class StorageProvider {
     async downloadRange(_uri: string, _range: string): Promise<StorageRangeResult | null> {
         return null;
     }
+
+    /**
+     * Canonical absolute form of a stored URI that another service (the demucs
+     * worker) can fetch on its own. Providers without one omit it and callers
+     * keep their own mapping. Throws on a URI the provider rejects. Used by the
+     * job-mode audio-feature backfill (#2013).
+     */
+    resolveFetchUri?(uri: string): string;
 }

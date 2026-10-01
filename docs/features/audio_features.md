@@ -91,7 +91,10 @@ still counts the stems in flight. Call the POST once per batch, then poll
 returns `remaining` and `remainingByType` without analyzing anything) until it
 stops falling, before dispatching the next batch. Re-dispatching a batch that
 is still in flight is harmless but wasted work: results only fill stems that
-still lack features. A stem without a stored URI is reported as
+still lack features. GCS stems are handed to the worker as their
+canonical `https://storage.googleapis.com/…` URL, including those stored in the
+historical bucket-relative `/{bucket}/{object}` form. A stem without a stored
+URI, or with one the storage provider rejects, is reported as
 `audio_unavailable` and is not dispatched. Per-stem analysis failures are
 logged by the backend and the stem stays pending. Backfilled features carry
 `camelot` too.

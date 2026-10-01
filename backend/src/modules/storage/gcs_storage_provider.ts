@@ -74,6 +74,15 @@ export class GcsStorageProvider extends StorageProvider {
         }
     }
 
+    /**
+     * Stored GCS URIs come in three forms (see `resolveGcsStorageUri`), including
+     * the historical bucket-relative `/{bucket}/{object}`. The worker only
+     * recognises the absolute forms, so hand it the canonical target.
+     */
+    resolveFetchUri(uri: string): string {
+        return this.resolveStorageUri(uri).target;
+    }
+
     async upload(data: Buffer, filename: string, _mimeType: string): Promise<StorageResult> {
         const gcsPath = `originals/${filename}`;
         const uri = `https://storage.googleapis.com/${this.bucket}/${gcsPath}`;
