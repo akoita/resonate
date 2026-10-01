@@ -25,12 +25,30 @@ export class MaintenanceController {
   /**
    * Backfills measured audio features (#1184) for stems ingested before
    * feature extraction shipped. Batch-bounded; re-run until remaining=0.
+   * Transport follows configuration (#2013): synchronous HTTP to the demucs
+   * worker when DEMUCS_WORKER_URL is set (result carries `updated`), else an
+   * analysis message through the Pub/Sub/Cloud Run Job dispatch (result is
+   * `status: "dispatched"`; poll `remaining` or the GET route). With neither,
+   * `status: "worker_unavailable"`.
    */
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("stems/backfill-audio-features")
   async backfillStemAudioFeatures(@Body() body: StemFeatureBackfillRequest) {
     return this.stemFeatureBackfillService.backfill(body ?? {});
+  }
+
+  /**
+   * Remaining stems lacking audio features, without calling any worker (#2013).
+   * `types` is a comma-separated list, e.g. `?types=original`.
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Get("stems/backfill-audio-features")
+  async getStemAudioFeatureBackfillStatus(@Query("types") types?: string) {
+    return this.stemFeatureBackfillService.status({
+      types: typeof types === "string" && types ? types.split(",").map((t) => t.trim()) : undefined,
+    });
   }
 
   /**

@@ -21,6 +21,7 @@ const maintenanceService = {
 };
 
 const stemFeatureBackfillService = {
+  status: jest.fn().mockResolvedValue({ remaining: 3, remainingByType: { original: 3 } }),
   backfill: jest
     .fn()
     .mockResolvedValue({ scanned: 2, updated: 2, skipped: [], remaining: 0 }),
@@ -193,6 +194,34 @@ describe("MaintenanceController (HTTP)", () => {
       limit: 5,
       types: ["original"],
     });
+  });
+
+  it("GET /admin/stems/backfill-audio-features requires admin role and passes types (#2013)", async () => {
+    await request(app.getHttpServer())
+      .get("/admin/stems/backfill-audio-features")
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .get("/admin/stems/backfill-audio-features")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get("/admin/stems/backfill-audio-features?types=original,vocals")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ remaining: 3, remainingByType: { original: 3 } });
+      });
+    expect(stemFeatureBackfillService.status).toHaveBeenCalledWith({
+      types: ["original", "vocals"],
+    });
+
+    await request(app.getHttpServer())
+      .get("/admin/stems/backfill-audio-features")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200);
+    expect(stemFeatureBackfillService.status).toHaveBeenLastCalledWith({ types: undefined });
   });
 
   it("POST /admin/embeddings/backfill requires admin role and delegates (#1452)", async () => {

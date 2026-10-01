@@ -3,6 +3,7 @@ import { Job } from "bullmq";
 import { IngestionService } from "./ingestion.service";
 import { Injectable, Logger } from "@nestjs/common";
 import { StemPubSubPublisher, StemSeparateMessage } from "./stem-pubsub.publisher";
+import { toWorkerFetchableUri } from "./worker-fetchable-uri";
 
 @Processor("stems", { concurrency: 1 })
 @Injectable()
@@ -71,19 +72,15 @@ export class StemsProcessor extends WorkerHost {
                     }
                 }
 
-                const isLocalCatalogStem =
-                    originalStem.storageProvider === "local" &&
-                    typeof originalStemUri === "string" &&
-                    originalStemUri.startsWith("/catalog/stems/");
-                if (isLocalCatalogStem) {
-                    const parts = originalStemUri.split("/");
-                    const filename = parts[parts.length - 2];
-                    if (filename) {
-                        originalStemUri = filename;
-                        this.logger.log(
-                            `[StemsProcessor] Using shared-volume local stem for track ${track.id}: ${originalStemUri}`,
-                        );
-                    }
+                const workerUri = toWorkerFetchableUri(
+                    originalStemUri,
+                    originalStem.storageProvider,
+                    backendBaseUrl,
+                );
+                if (workerUri !== originalStemUri && !workerUri.startsWith(backendBaseUrl)) {
+                    this.logger.log(
+                        `[StemsProcessor] Using shared-volume local stem for track ${track.id}: ${workerUri}`,
+                    );
                 }
 
                 const message: StemSeparateMessage = {
@@ -95,9 +92,7 @@ export class StemsProcessor extends WorkerHost {
                     trackTitle: track.title,
                     trackPosition: track.position,
                     // Local storage uses the shared /outputs volume; remote URIs stay fetchable over HTTP.
-                    originalStemUri: originalStemUri.startsWith('http') || !originalStemUri.startsWith('/')
-                        ? originalStemUri
-                        : `${backendBaseUrl}${originalStemUri}`,
+                    originalStemUri: workerUri,
                     mimeType: originalStem.mimeType || "audio/mpeg",
                     callbackUrl: backendBaseUrl,
                     originalStemMeta: {
