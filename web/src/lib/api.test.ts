@@ -686,6 +686,47 @@ describe('API Client', () => {
       expect(result.status).toBe('ok');
       expect(result.track?.title).toBe('Runtime Track');
     });
+
+    it('remembers the pick variant for DJ attribution only on an ok pick (#2005)', async () => {
+      const store = new Map<string, string>();
+      vi.stubGlobal('window', {
+        sessionStorage: {
+          getItem: (key: string) => store.get(key) ?? null,
+          setItem: (key: string, value: string) => void store.set(key, value),
+        },
+      });
+      try {
+        const { getDjAttribution } = await import('./discoveryAttribution');
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              status: 'ok',
+              track: { id: 'dj-track-1', title: 'Pick', artistId: 'artist-1' },
+              rankerVariant: 'candidate',
+              experimentKey: 'ranker_v2',
+            }),
+        });
+        await api.getAgentNextPick('listener-token', { sessionId: 'session-1' });
+        expect(getDjAttribution('dj-track-1')).toEqual({
+          surface: 'dj',
+          rankerVariant: 'candidate',
+          experimentKey: 'ranker_v2',
+        });
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: 'no_tracks', tracks: [], rankerVariant: 'candidate' }),
+        });
+        await api.getAgentNextPick('listener-token', { sessionId: 'session-1' });
+        expect(store.get('resonate.dj.attribution')).not.toContain('no_tracks');
+        expect(JSON.parse(store.get('resonate.dj.attribution') ?? '[]')).toHaveLength(1);
+      } finally {
+        delete (globalThis as { window?: unknown }).window;
+      }
+    });
   });
 
   describe('getSongRecommendations', () => {

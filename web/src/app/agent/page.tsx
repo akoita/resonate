@@ -196,6 +196,9 @@ export default function AgentPage() {
                     trackId: result.track?.id,
                     runtimeStatus: result.runtimeStatus,
                     score: result.score,
+                    // #2005: variant labels so DJ picks are counted per ranker variant.
+                    ...(result.rankerVariant ? { rankerVariant: result.rankerVariant } : {}),
+                    ...(result.experimentKey ? { experimentKey: result.experimentKey } : {}),
                 },
             });
             setNextPick(result);

@@ -59,6 +59,14 @@ function optionalLabel(value: unknown, fieldName: string) {
   }
   return value.trim();
 }
+/** #2005: only the AI DJ surface is accepted on playback events (Home uses railId). */
+function optionalDiscoverySurface(value: unknown): "dj" | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value !== "dj") {
+    throw new BadRequestException("surface must be dj");
+  }
+  return "dj";
+}
 const REPEAT_MODES = new Set(["none", "one", "all"]);
 const PRODUCT_EVENT_NAMES = new Set([
   "player.action_impression",
@@ -326,6 +334,8 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
   const durationMs = body.durationMs === undefined ? undefined : Number(body.durationMs);
   const railId = optionalLabel(body.railId, "railId");
   const rankerVariant = optionalLabel(body.rankerVariant, "rankerVariant");
+  const experimentKey = optionalLabel(body.experimentKey, "experimentKey");
+  const surface = optionalDiscoverySurface(body.surface);
 
   if (!trackId) {
     throw new BadRequestException("trackId is required");
@@ -352,6 +362,8 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
     durationMs,
     railId,
     rankerVariant,
+    experimentKey,
+    surface,
   };
 }
 
@@ -376,6 +388,8 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
   const repeatMode = typeof body.repeatMode === "string" ? body.repeatMode.trim() : undefined;
   const railId = optionalLabel(body.railId, "railId");
   const rankerVariant = optionalLabel(body.rankerVariant, "rankerVariant");
+  const experimentKey = optionalLabel(body.experimentKey, "experimentKey");
+  const surface = optionalDiscoverySurface(body.surface);
   const reason = optionalLabel(body.reason, "reason");
 
   if (!PLAYBACK_LIFECYCLE_ACTIONS.has(action as PlaybackLifecycleAction)) {
@@ -414,6 +428,8 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
     reason,
     railId,
     rankerVariant,
+    experimentKey,
+    surface,
   };
 }
 

@@ -168,6 +168,47 @@ describe("buildDiscoveryQualityReport", () => {
     expect(report.comparison.note).toMatch(/no significance test/);
   });
 
+  it("attributes DJ-surface outcomes to the DJ per variant without a DJ session (#2005)", () => {
+    const dj = (variant?: string) => ({
+      surface: "dj",
+      source: "web_player",
+      ...(variant ? { rankerVariant: variant, experimentKey: "exp" } : {}),
+    });
+    const facts = [
+      // Accepted picks carry the variant the web forwarded from the pick.
+      fact("agent.next_pick_requested", { sessionId: "s9", status: "ok", trackId: "t1", ...dj("baseline") }),
+      fact("agent.next_pick_requested", { sessionId: "s9", status: "ok", trackId: "t2", ...dj("candidate") }),
+      ...Array.from({ length: 2 }, () => fact("playback.started", dj("baseline"))),
+      ...Array.from({ length: 2 }, () => fact("playback.started", dj("candidate"))),
+      fact("playback.skipped", dj("candidate")),
+      fact("playback.completed", dj("baseline")),
+      fact("library.saved", dj("candidate")),
+      // Not DJ-attributed and no rail: ignored.
+      fact("playback.started", { source: "web_player" }),
+    ];
+    const djFacts = new Set(facts.filter((f) => f.dimensions.sessionId === "s9"));
+    const report = buildDiscoveryQualityReport(facts, djFacts);
+
+    expect(report.variantBreakdown.filter((row) => row.surface === "dj")).toEqual([
+      expect.objectContaining({ variant: "baseline", impressions: 1, plays: 2, skips: 0, completions: 1, saves: 0 }),
+      expect.objectContaining({ variant: "candidate", impressions: 1, plays: 2, skips: 1, completions: 0, saves: 1 }),
+    ]);
+    expect(report.variantBreakdown.some((row) => row.variant === "unattributed")).toBe(false);
+    expect(report.surfaceBreakdown.find((row) => row.surface === "dj")).toEqual(
+      expect.objectContaining({ impressions: 2, plays: 4, skips: 1, saves: 1 }),
+    );
+    expect(report.comparison.rows).toEqual([
+      expect.objectContaining({
+        surface: "dj",
+        variant: "candidate",
+        sampleSize: { baselineImpressions: 1, variantImpressions: 1, baselinePlays: 2, variantPlays: 2 },
+        deltas: { clickThroughRate: 0, skipRate: 0.5, completionRate: -0.5, saveRate: 0.5 },
+      }),
+    ]);
+    expect(isHomeDiscoveryFact(fact("playback.started", { surface: "dj" }))).toBe(true);
+    expect(isHomeDiscoveryFact(fact("playback.started", { surface: "home" }))).toBe(false);
+  });
+
   it("reports generations per surface and variant", () => {
     const report = buildDiscoveryQualityReport(seededFacts(), new Set());
     expect(report.variantExposure).toEqual([

@@ -6,6 +6,7 @@ import type {
   RightsVerificationState,
 } from "./verificationSemantics";
 import { invalidateStoredAuthSession } from "./authSession";
+import { rememberDjAttribution } from "./discoveryAttribution";
 import type { RemixBeatRecipe } from "./remixBeat";
 import type { RemixPartRole, RemixParts } from "./remixParts";
 import type { RemixFxRecipe } from "./remixFx";
@@ -866,6 +867,63 @@ export type AgentQualityTimePoint = {
   purchases: number;
 };
 
+/** #1455 / #2005: discovery quality sections. Aggregate, pseudonymous, labels only. */
+export type DiscoveryRates = {
+  clickThroughRate: number;
+  skipRate: number;
+  completionRate: number;
+  saveRate: number;
+};
+
+export type DiscoveryCounts = {
+  impressions: number;
+  clicks: number;
+  plays: number;
+  completions: number;
+  skips: number;
+  saves: number;
+};
+
+/** `home:<railId>` for Home rails, `dj` for AI DJ sessions. */
+export type DiscoverySurfaceRow = { surface: string } & DiscoveryCounts & DiscoveryRates;
+
+export type DiscoveryVariantRow = {
+  experimentKey: string | null;
+  surface: string;
+  variant: string;
+} & DiscoveryCounts &
+  DiscoveryRates;
+
+export type DiscoveryVariantExposure = {
+  experimentKey: string | null;
+  surface: string;
+  variant: string;
+  generations: number;
+};
+
+export type DiscoveryVariantComparison = {
+  experimentKey: string | null;
+  surface: string;
+  variant: string;
+  baselineVariant: string;
+  sampleSize: {
+    baselineImpressions: number;
+    variantImpressions: number;
+    baselinePlays: number;
+    variantPlays: number;
+  };
+  /** variant minus baseline, in rate points (0.01 = one percentage point). */
+  deltas: DiscoveryRates;
+};
+
+export type ResonantDiscoveriesSummary = {
+  total: number;
+  distinctNewArtists: number;
+  perActiveListener: number;
+  activeListeners: number;
+  status: "ok" | "no_data" | "truncated" | "unavailable";
+};
+
 export type AgentQualityDashboard = {
   summary: {
     days: number;
@@ -894,6 +952,16 @@ export type AgentQualityDashboard = {
   tasteSourceBreakdown: AgentQualityBreakdown[];
   versionBreakdown: AgentQualityBreakdown[];
   qualityOverTime: AgentQualityTimePoint[];
+  /** Optional: absent when the backend predates #1455. */
+  surfaceBreakdown?: DiscoverySurfaceRow[];
+  variantBreakdown?: DiscoveryVariantRow[];
+  variantExposure?: DiscoveryVariantExposure[];
+  comparison?: {
+    baselineVariant: string;
+    note: string;
+    rows: DiscoveryVariantComparison[];
+  };
+  resonantDiscoveries?: ResonantDiscoveriesSummary;
   privacy: {
     aggregation: string;
     excludes: string[];
@@ -5316,6 +5384,10 @@ export type AgentNextPickResponse = {
   audioFeatures?: AgentAudioFeatureSummary;
   runtimeStatus?: string;
   reason?: string;
+  /** #2005: the listener's ranker variant (label only); additive. */
+  rankerVariant?: string;
+  /** #2005: set only when a ranker experiment is configured. */
+  experimentKey?: string;
   tracks?: Array<{
     trackId: string;
     licenseType: "personal" | "remix" | "commercial";
@@ -5416,11 +5488,20 @@ export async function getAgentNextPick(
   token: string,
   input: { sessionId: string; preferences?: AgentNextPreferences },
 ): Promise<AgentNextPickResponse> {
-  return apiRequest<AgentNextPickResponse>(
+  const pick = await apiRequest<AgentNextPickResponse>(
     "/sessions/agent/next",
     { method: "POST", body: JSON.stringify(input) },
     token,
   );
+  // #2005: remember the variant so this pick's play, skip and save are
+  // attributed to the AI DJ surface and the listener's ranker variant.
+  if (pick.status === "ok" && pick.track?.id) {
+    rememberDjAttribution(pick.track.id, {
+      rankerVariant: pick.rankerVariant,
+      experimentKey: pick.experimentKey,
+    });
+  }
+  return pick;
 }
 
 // ========== Agent Wallet API ==========

@@ -95,14 +95,14 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "completionRatio", "durationMs", "source", "railId", "rankerVariant"],
+    payloadFields: ["trackId", "artistId", "releaseId", "completionRatio", "durationMs", "source", "railId", "rankerVariant", "experimentKey", "surface"],
   },
   {
     eventName: "playback.started",
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "source", "railId", "rankerVariant"],
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "source", "railId", "rankerVariant", "experimentKey", "surface"],
   },
   {
     eventName: "playback.heartbeat",
@@ -118,7 +118,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason", "railId", "rankerVariant"],
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason", "railId", "rankerVariant", "experimentKey", "surface"],
   },
   {
     eventName: "onboarding.step_completed",

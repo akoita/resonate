@@ -64,7 +64,10 @@ authenticated pseudonymous user playback lifecycle events through
   `railId` / `rankerVariant` (plus `reason` on skips) to `playback.started|
   completed|skipped`; `recommendation.generated` gains `surface`, `rankerVariant`
   and `experimentKey`. Fact dimensions: `railId`, `rankerVariant`,
-  `experimentKey`, `surface`, `reason`, `itemCount`. Labels only. See
+  `experimentKey`, `surface`, `reason`, `itemCount`. #2005 lets playback events
+  also carry `experimentKey` and `surface: "dj"` (the only accepted surface),
+  and `agent.next_pick_requested` the DJ's `rankerVariant` / `experimentKey`.
+  Labels only. See
   [Agent Taste Intelligence](agent_taste_intelligence.md#discovery-measurement-1455-ws-8-first-slice).
 - `player.track_shared` — a listener shared the playing track from the player
   (`channel` enum x/facebook/reddit/native/copy, `trackId`, `releaseId`) at

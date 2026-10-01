@@ -77,3 +77,14 @@ export function getHomeAttribution(
     ...(entry.rankerVariant ? { rankerVariant: entry.rankerVariant } : {}),
   };
 }
+
+/** When the fresh rail attribution for a track was recorded (ms), or undefined. */
+export function getHomeAttributionAt(
+  trackId: string | undefined,
+  now = Date.now(),
+): number | undefined {
+  if (!trackId) return undefined;
+  return readEntries().find(
+    (candidate) => candidate.trackId === trackId && now - candidate.at < HOME_ATTRIBUTION_TTL_MS,
+  )?.at;
+}

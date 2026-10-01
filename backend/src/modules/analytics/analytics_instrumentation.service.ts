@@ -25,6 +25,10 @@ interface PlaybackCatalogAnalyticsInput {
   railId?: string;
   /** #1455 WS-8: ranker variant the listener was assigned (label only). */
   rankerVariant?: string;
+  /** #2005: experiment the variant belongs to (label only). */
+  experimentKey?: string;
+  /** #2005: discovery surface for plays outside a Home rail; only "dj". */
+  surface?: "dj";
   actorId?: string;
   actorUserId?: string;
   geo?: AnalyticsGeoDimension;
@@ -167,6 +171,8 @@ export class AnalyticsInstrumentationService {
         playbackCommandId: input.playbackCommandId,
         ...(input.railId ? { railId: input.railId } : {}),
         ...(input.rankerVariant ? { rankerVariant: input.rankerVariant } : {}),
+        ...(input.experimentKey ? { experimentKey: input.experimentKey } : {}),
+        ...(input.surface ? { surface: input.surface } : {}),
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -239,6 +245,8 @@ export class AnalyticsInstrumentationService {
         ...(input.reason ? { reason: input.reason } : {}),
         ...(input.railId ? { railId: input.railId } : {}),
         ...(input.rankerVariant ? { rankerVariant: input.rankerVariant } : {}),
+        ...(input.experimentKey ? { experimentKey: input.experimentKey } : {}),
+        ...(input.surface ? { surface: input.surface } : {}),
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),

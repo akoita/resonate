@@ -15,7 +15,7 @@ import { useToast } from "../../components/ui/Toast";
 import { MixerConsole } from "../../components/player/MixerConsole";
 import { PlayerActionPanel } from "../../components/player/PlayerActionPanel";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
-import { getHomeAttribution } from "../../lib/homeAttribution";
+import { getDiscoveryAttribution } from "../../lib/discoveryAttribution";
 import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useImmersiveMode } from "../../lib/useImmersiveMode";
@@ -244,12 +244,12 @@ function PlayerContent() {
           setTrackActions((current) => current?.track.id === actionTrackId
             ? { ...current, library: { saved: true, libraryTrackId: savedTrack.id } }
             : current);
-          // #1455 WS-8: a save is a discovery outcome; carry the Home rail and
-          // variant when this track was opened from one.
+          // #1455 WS-8 / #2005: a save is a discovery outcome; carry the Home
+          // rail or AI DJ surface and variant when this track came from one.
           recordProductAnalyticsFromBrowser("library.saved", {
             subjectType: "track",
             subjectId: actionTrackId,
-            payload: { trackId: actionTrackId, ...getHomeAttribution(actionTrackId) },
+            payload: { trackId: actionTrackId, ...getDiscoveryAttribution(actionTrackId) },
           });
           addToast({ type: "success", title: "Saved", message: `"${currentTrack.title}" was added to your library.` });
         }

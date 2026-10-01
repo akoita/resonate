@@ -5,6 +5,7 @@ import { EventBus } from "../shared/event_bus";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
 import { AgentRuntimeService } from "../agents/agent_runtime.service";
+import { djPickVariantFields } from "./dj_pick_variant";
 import { AgentLearningService, buildAgentSignalMetadata } from "../agents/agent_learning.service";
 
 export interface AgentPreferences {
@@ -347,6 +348,9 @@ export class SessionsService {
       signals: selected.signals,
       audioFeatures: selected.audioFeatures,
       runtimeStatus: result.status,
+      // #2005: the listener's ranker variant, so the web can attribute the
+      // play, skip and save of this pick to it. Additive; labels only.
+      ...djPickVariantFields(userId),
       tracks: result.tracks.map((item) => ({
         trackId: item.trackId,
         licenseType: item.licenseType,
