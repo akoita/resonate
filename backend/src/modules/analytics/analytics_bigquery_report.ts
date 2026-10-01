@@ -444,7 +444,17 @@ WHERE occurredAt >= TIMESTAMP(@from)
       'playlist.track_added',
       'commerce.settled',
       'payment.settled',
-      'marketplace.purchase_intent'
+      'marketplace.purchase_intent',
+      -- #1455 WS-8: Home discovery surfaces.
+      'recommendation.generated',
+      'recommendation.served',
+      'recommendation.clicked'
+    )
+    -- Started/skipped plays are high volume: keep only rail-attributed ones
+    -- (agent-sourced ones are kept by the source clause below).
+    OR (
+      JSON_VALUE(dimensions, '$.eventName') IN ('playback.started', 'playback.skipped')
+      AND JSON_VALUE(dimensions, '$.railId') IS NOT NULL
     )
     OR STARTS_WITH(COALESCE(JSON_VALUE(dimensions, '$.source'), ''), 'agent')
   )

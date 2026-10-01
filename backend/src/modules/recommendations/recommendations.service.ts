@@ -13,6 +13,7 @@ import {
   RankedDiscoveryCandidate,
 } from "./discovery-ranking.service";
 import { applyDiscoveryPolicy } from "./discovery-policy";
+import { discoveryVariantForUser, type DiscoveryVariantAssignment } from "./discovery_experiment";
 import { DiscoveryPolicyContextService } from "./discovery-policy-context.service";
 import { resolveAgentTasteProfile } from "../agents/agent_learning.service";
 import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
@@ -295,6 +296,32 @@ export class RecommendationsService {
     }
   }
 
+  /**
+   * Records `recommendation.generated` with the variant label (#1455 WS-8).
+   * Also used by the Home feed for cold listeners, who skip the ranker.
+   */
+  publishGenerated(input: {
+    userId: string;
+    trackIds: string[];
+    strategy: string;
+    variant: DiscoveryVariantAssignment;
+    surface?: string;
+    cohortInfluence?: ReturnType<typeof cohortInfluenceSummary>;
+  }) {
+    this.eventBus.publish({
+      eventName: "recommendation.generated",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      userId: input.userId,
+      trackIds: input.trackIds,
+      strategy: input.strategy,
+      ...(input.cohortInfluence ? { cohortInfluence: input.cohortInfluence } : {}),
+      surface: input.surface ?? "home",
+      rankerVariant: input.variant.rankerVariant,
+      ...(input.variant.experimentKey ? { experimentKey: input.variant.experimentKey } : {}),
+    });
+  }
+
   async getRecommendations(userId: string, limit = 10, preferenceOverrides?: UserPreferences) {
     const policy = await this.tasteMemoryService?.getPolicy(userId);
     const profile = await this.loadProfile(userId);
@@ -469,10 +496,10 @@ export class RecommendationsService {
       recent,
     );
 
-    this.eventBus.publish({
-      eventName: "recommendation.generated",
-      eventVersion: 1,
-      occurredAt: new Date().toISOString(),
+    // #1455 WS-8: every generation records the listener's variant label. All
+    // variants run this same ranker for now; only the label differs.
+    const variant = discoveryVariantForUser(userId);
+    this.publishGenerated({
       userId,
       trackIds: selected.map((item) => item.entry.id),
       strategy: normalizedGenres.length || normalizedMood
@@ -480,6 +507,7 @@ export class RecommendationsService {
         : cohortContext.length
           ? "cohort_context"
           : "recent_first",
+      variant,
       cohortInfluence: cohortInfluenceSummary(
         cohortContext,
         selected.flatMap((item) => item.cohortMatches),
@@ -490,6 +518,9 @@ export class RecommendationsService {
       userId,
       /** #1449: correlates recommendation.served / .clicked impressions. */
       requestId: randomUUID(),
+      /** #1455 WS-8: variant label the web forwards on served/clicked events. */
+      rankerVariant: variant.rankerVariant,
+      experimentKey: variant.experimentKey,
       preferences: prefs,
       cohortContext: cohortContextSummary(cohortContext),
       items: selected.map(({ entry, source, reasons }) => ({

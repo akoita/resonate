@@ -267,6 +267,25 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
     }
   });
 
+  it("returns the ranker variant label and keeps default behavior without an experiment (#1455)", async () => {
+    const previous = process.env.DISCOVERY_RANKER_EXPERIMENT;
+    try {
+      delete process.env.DISCOVERY_RANKER_EXPERIMENT;
+      const { homeFeed } = newService();
+      const plain = await homeFeed.getHomeFeed(WARM_USER);
+      expect(plain.rankerVariant).toBe("baseline");
+      expect(plain.experimentKey).toBeNull();
+
+      process.env.DISCOVERY_RANKER_EXPERIMENT = "ranker_test:candidate=100";
+      const assigned = await newService().homeFeed.getHomeFeed(WARM_USER);
+      expect(assigned.rankerVariant).toBe("candidate");
+      expect(assigned.experimentKey).toBe("ranker_test");
+    } finally {
+      if (previous === undefined) delete process.env.DISCOVERY_RANKER_EXPERIMENT;
+      else process.env.DISCOVERY_RANKER_EXPERIMENT = previous;
+    }
+  });
+
   it("cold user: explicit catalog-signal labeling, no fake personalization", async () => {
     const { homeFeed } = newService();
     const feed = await homeFeed.getHomeFeed(COLD_USER);

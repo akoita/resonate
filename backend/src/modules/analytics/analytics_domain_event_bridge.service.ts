@@ -1105,7 +1105,17 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     eventName: "recommendation.generated",
     producer: "recommendations-service",
     actorIdKeys: ["userId"],
-    payloadKeys: ["userId", "trackIds", "strategy", "cohortInfluence"],
+    // #1455 WS-8: surface / rankerVariant / experimentKey are labels only (no
+    // bucket, no listener attribute) so variants can be compared in aggregate.
+    payloadKeys: [
+      "userId",
+      "trackIds",
+      "strategy",
+      "cohortInfluence",
+      "surface",
+      "rankerVariant",
+      "experimentKey",
+    ],
     sourceRefKeys: ["userId"],
   },
   {

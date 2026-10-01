@@ -225,6 +225,64 @@ describe("AnalyticsController (HTTP)", () => {
     }));
   });
 
+  it("returns the Home surface, variant, comparison and resonant sections unchanged", async () => {
+    const dashboard = {
+      summary: { sessionsStarted: 0 },
+      surfaceBreakdown: [{ surface: "home:because_genre", impressions: 8, skipRate: 0.25 }],
+      variantBreakdown: [{ experimentKey: "exp", surface: "home:because_genre", variant: "baseline" }],
+      variantExposure: [],
+      comparison: { baselineVariant: "baseline", note: "n", rows: [] },
+      resonantDiscoveries: { total: 2, distinctNewArtists: 2, perActiveListener: 0.5, status: "ok" },
+      meta: { isEmpty: false },
+    };
+    analyticsService.getAgentQualityDashboard.mockResolvedValue(dashboard);
+
+    const response = await request(app.getHttpServer())
+      .get("/analytics/agent/quality")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200);
+
+    expect(response.body).toEqual(dashboard);
+  });
+
+  it("accepts rail-attributed skipped playback events with a reason", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        action: "skipped",
+        trackId: "track-1",
+        artistId: "artist-1",
+        source: "web_player",
+        reason: "next_clicked",
+        railId: "because_genre",
+        rankerVariant: "candidate",
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "skipped",
+        reason: "next_clicked",
+        railId: "because_genre",
+        rankerVariant: "candidate",
+      }),
+    );
+  });
+
+  it("rejects rail and variant labels that are not short labels", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ action: "started", trackId: "track-1", railId: "a free text sentence with spaces" })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post("/analytics/playback/completed")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ trackId: "track-1", completionRatio: 1, rankerVariant: "x".repeat(200) })
+      .expect(400);
+  });
+
   it("records playback lifecycle events with the pseudonymous user actor", async () => {
     await request(app.getHttpServer())
       .post("/analytics/playback/event")

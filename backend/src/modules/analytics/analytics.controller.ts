@@ -48,7 +48,17 @@ const CLIENT_TELEMETRY_CONSENT_BASIS = "consent";
 const CONSENT_REFUSED_RESPONSE = { recorded: false, reason: "consent_not_granted" } as const;
 const MAX_POLICY_VERSION_LENGTH = 100;
 
-const PLAYBACK_LIFECYCLE_ACTIONS = new Set<PlaybackLifecycleAction>(["started", "heartbeat"]);
+const PLAYBACK_LIFECYCLE_ACTIONS = new Set<PlaybackLifecycleAction>(["started", "heartbeat", "skipped"]);
+// #1455 WS-8: rail ids, variants and skip reasons are short labels, never prose.
+const ANALYTICS_LABEL_PATTERN = /^[a-z0-9][a-z0-9_:-]{0,63}$/i;
+
+function optionalLabel(value: unknown, fieldName: string) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !ANALYTICS_LABEL_PATTERN.test(value.trim())) {
+    throw new BadRequestException(`${fieldName} must be a short label`);
+  }
+  return value.trim();
+}
 const REPEAT_MODES = new Set(["none", "one", "all"]);
 const PRODUCT_EVENT_NAMES = new Set([
   "player.action_impression",
@@ -314,6 +324,8 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
   const playbackCommandId = typeof body.playbackCommandId === "string" ? body.playbackCommandId.trim() : undefined;
   const completionRatio = Number(body.completionRatio);
   const durationMs = body.durationMs === undefined ? undefined : Number(body.durationMs);
+  const railId = optionalLabel(body.railId, "railId");
+  const rankerVariant = optionalLabel(body.rankerVariant, "rankerVariant");
 
   if (!trackId) {
     throw new BadRequestException("trackId is required");
@@ -338,6 +350,8 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
     geo: normalizeAnalyticsGeoDimension(body.geo),
     completionRatio,
     durationMs,
+    railId,
+    rankerVariant,
   };
 }
 
@@ -360,9 +374,12 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
   const queueIndex = optionalNonNegativeInteger(body.queueIndex, "queueIndex");
   const queueLength = optionalNonNegativeInteger(body.queueLength, "queueLength");
   const repeatMode = typeof body.repeatMode === "string" ? body.repeatMode.trim() : undefined;
+  const railId = optionalLabel(body.railId, "railId");
+  const rankerVariant = optionalLabel(body.rankerVariant, "rankerVariant");
+  const reason = optionalLabel(body.reason, "reason");
 
   if (!PLAYBACK_LIFECYCLE_ACTIONS.has(action as PlaybackLifecycleAction)) {
-    throw new BadRequestException("action must be one of: started, heartbeat");
+    throw new BadRequestException("action must be one of: started, heartbeat, skipped");
   }
   if (!trackId) {
     throw new BadRequestException("trackId is required");
@@ -394,6 +411,9 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
     queueLength,
     repeatMode: repeatMode as PlaybackLifecycleAnalyticsInput["repeatMode"],
     shuffle: body.shuffle,
+    reason,
+    railId,
+    rankerVariant,
   };
 }
 

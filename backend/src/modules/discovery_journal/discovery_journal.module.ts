@@ -11,5 +11,7 @@ import { DiscoveryJournalService } from "./discovery_journal.service";
   imports: [RecommendationsModule],
   controllers: [DiscoveryJournalController],
   providers: [DiscoveryJournalService],
+  // #1455: the analytics quality dashboard reads the aggregate (counts only).
+  exports: [DiscoveryJournalService],
 })
 export class DiscoveryJournalModule {}

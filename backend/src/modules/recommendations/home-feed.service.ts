@@ -16,6 +16,7 @@ import {
 import { applyDiscoveryPolicy } from "./discovery-policy";
 import type { RankedDiscoveryCandidate } from "./discovery-ranking.service";
 import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
+import { discoveryVariantForUser } from "./discovery_experiment";
 
 /**
  * Home feed v2 composition (#1454 WS-7).
@@ -285,7 +286,28 @@ export class HomeFeedService {
       rails.flatMap((rail) => rail.items.map((item) => item.id)),
     );
 
-    return { userId, requestId, cold, rails };
+    // #1455 WS-8: the variant label travels with the response so the web can
+    // forward it on served/clicked events. Non-cold feeds already recorded it
+    // on the ranker's recommendation.generated; cold feeds skip the ranker, so
+    // record their exposure here.
+    const variant = discoveryVariantForUser(userId);
+    if (cold) {
+      this.recommendationsService.publishGenerated({
+        userId,
+        trackIds: rails.flatMap((rail) => rail.items.map((item) => item.id)),
+        strategy: "catalog_signal",
+        variant,
+      });
+    }
+
+    return {
+      userId,
+      requestId,
+      cold,
+      rankerVariant: variant.rankerVariant,
+      experimentKey: variant.experimentKey,
+      rails,
+    };
   }
 
   // -------------------------------------------------------------------------

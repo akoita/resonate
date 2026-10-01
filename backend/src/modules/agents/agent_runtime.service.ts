@@ -8,6 +8,8 @@ import {
   normalizeAgentRuntimeResult,
 } from "./agent_runtime.types";
 import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
+import { EventBus } from "../shared/event_bus";
+import { discoveryVariantForUser } from "../recommendations/discovery_experiment";
 
 @Injectable()
 export class AgentRuntimeService {
@@ -17,7 +19,9 @@ export class AgentRuntimeService {
     private readonly executor: AgentRuntimeExecutorService,
     private readonly remoteClient: AgentRuntimeRemoteClient,
     // Policy step for LLM picks (#1456). Absent in lightweight unit wiring.
-    @Optional() private readonly policy?: AgentRuntimePolicyService
+    @Optional() private readonly policy?: AgentRuntimePolicyService,
+    // #1455 WS-8: records the ranker variant on DJ recommendations.
+    @Optional() private readonly eventBus?: EventBus,
   ) {}
 
   /**
@@ -29,10 +33,37 @@ export class AgentRuntimeService {
    */
   async run(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
     const result = await this.execute(input);
-    if (this.policy && !("tracks" in result)) {
-      return this.policy.apply(input, result);
+    const final =
+      this.policy && !("tracks" in result) ? await this.policy.apply(input, result) : result;
+    this.recordVariant(input, final);
+    return final;
+  }
+
+  /**
+   * #1455 WS-8: record which ranker variant the listener was in for this DJ
+   * recommendation. Label only; the DJ ranks identically in every variant.
+   * Never affects the pick: failures are swallowed.
+   */
+  private recordVariant(input: AgentRuntimeInput, result: AgentRuntimeRunResult) {
+    if (!this.eventBus || !input.userId) return;
+    try {
+      const trackIds = normalizeAgentRuntimeResult(result).tracks.map((track) => track.trackId);
+      if (trackIds.length === 0) return;
+      const variant = discoveryVariantForUser(input.userId);
+      this.eventBus.publish({
+        eventName: "recommendation.generated",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        userId: input.userId,
+        trackIds,
+        strategy: "ai_dj",
+        surface: "dj",
+        rankerVariant: variant.rankerVariant,
+        ...(variant.experimentKey ? { experimentKey: variant.experimentKey } : {}),
+      });
+    } catch (error) {
+      this.logger.warn(`ranker variant not recorded: ${String(error)}`);
     }
-    return result;
   }
 
   private async execute(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {

@@ -419,6 +419,12 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
                         "remixId": string_payload(payload, "remixId"),
                         "sourceTrackId": string_payload(payload, "sourceTrackId"),
                         "stemIds": list_payload(payload, "stemIds"),
+                        "railId": string_payload(payload, "railId"),
+                        "rankerVariant": string_payload(payload, "rankerVariant"),
+                        "experimentKey": string_payload(payload, "experimentKey"),
+                        "surface": string_payload(payload, "surface"),
+                        "reason": string_payload(payload, "reason"),
+                        "itemCount": number_payload(payload, "count"),
                     }
                 )
             ),

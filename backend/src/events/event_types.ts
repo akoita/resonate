@@ -387,6 +387,12 @@ export interface RecommendationGeneratedEvent extends BaseEvent {
   trackIds: string[];
   strategy: string;
   cohortInfluence?: CohortInfluenceEventSummary;
+  /** #1455 WS-8: where the recommendations were generated ("home" | "dj"). */
+  surface?: string;
+  /** #1455 WS-8: ranker variant the listener was assigned (label only). */
+  rankerVariant?: string;
+  /** #1455 WS-8: experiment key, absent when no experiment is configured. */
+  experimentKey?: string;
 }
 
 export interface TasteMemorySettingsUpdatedEvent extends BaseEvent {
