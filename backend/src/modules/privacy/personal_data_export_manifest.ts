@@ -665,6 +665,7 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
   CommunityCohort: "A group definition, not a person; this person's place in it is exported as CommunityCohortMembership.",
   CommunityDiscordRoleMapping: "Role mapping keyed by bridgeId, reachable only through the exported CommunityDiscordBridge.",
   CommunityDiscordSyncAttempt: "Delivery attempt log keyed by bridgeId, reachable only through the exported CommunityDiscordBridge.",
+  ListenerTasteNoteEmbedding: "Machine-generated vector of a written taste note, keyed by controlId; the note text itself is exported with ListenerTasteSignalControl.",
   TrackPopularity: "Aggregate popularity of a track across all listeners; no individual is identifiable in it.",
 
   // Someone else's personal data.

@@ -138,6 +138,8 @@ const PERSON_KEY_OVERRIDES: Readonly<Record<string, readonly PersonKey[] | "casc
   // ON DELETE CASCADE from CommunityDiscordBridge, which this engine deletes.
   CommunityDiscordRoleMapping: "cascade",
   CommunityDiscordSyncAttempt: "cascade",
+  // ON DELETE CASCADE from ListenerTasteSignalControl, which this engine deletes.
+  ListenerTasteNoteEmbedding: "cascade",
 };
 
 /**
