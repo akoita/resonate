@@ -589,11 +589,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "crate-digger",
     title: "Crate Digger",
     summary:
-      "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, then get a quote and buy the stems with one signature.",
+      "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, then get a quote and buy the stems with one signature, and export the stems you own to rekordbox or Serato.",
     category: "discover",
     audiences: ["listener", "curator"],
     status: "partial",
-    keywords: ["crate digger", "crate", "dj set", "dj", "set", "bpm", "key", "camelot", "energy", "stems", "license", "transition", "crossfade", "more like this", "reorder", "lock", "swap", "playlist builder", "quote", "buy", "receipt", "budget", "one signature"],
+    keywords: ["export", "rekordbox", "serato", "rekordbox xml", "serato crate", "cue", "download stems", "crate digger", "crate", "dj set", "dj", "set", "bpm", "key", "camelot", "energy", "stems", "license", "transition", "crossfade", "more like this", "reorder", "lock", "swap", "playlist builder", "quote", "buy", "receipt", "budget", "one signature"],
     sections: [
       {
         id: "build",
@@ -747,12 +747,55 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "export",
+        heading: "Export to rekordbox or Serato",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Below the quote, Export to rekordbox or Serato takes the stems you already own from this crate into your DJ software. It lists only stems you own under a personal, remix or commercial license. Exporting never buys or licenses anything, and a track you have not bought is shown under Left out with the reason.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Press Download stems. Your browser saves one file per stem, named with the artist, the track and the stem. If it asks, allow multiple downloads.",
+              "Move those files into one folder on your computer.",
+              "Type that folder in Folder where you saved these files, for example /Users/you/Music/Resonate on a Mac or C:\\Users\\you\\Music\\Resonate on Windows. It is remembered in this browser only; Resonate does not keep it.",
+              "Press rekordbox XML or Serato crate and save the file.",
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/crate-digger-export.png`,
+              alt: "The Export to rekordbox or Serato panel. It lists three stems you own, such as Neon Drift Vocals with its license, tempo, key, a cue time and the file name it is saved as. Below are a Download stems button, a Folder where you saved these files box holding a folder path, rekordbox XML and Serato crate buttons with short instructions, and a Left out list that explains why four tracks are not in the export.",
+              caption: "Export: the stems you own with their file names, the folder box, the two export buttons, and the lines that were left out and why.",
+              width: 929,
+              height: 1101,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "rekordbox", description: "In rekordbox choose File > Import > rekordbox xml, or point Preferences > Advanced > rekordbox xml at the file. Each stem comes with its measured tempo and key, and a cue at the first beat when we measured one. Nothing is guessed: a stem without a measured tempo or first beat has no cue." },
+              { term: "Serato", description: "Copy the crate file into the _Serato_/Subcrates folder on the same drive as your stems. The crate only lists the files. Serato works out tempo, key and cues from its own analysis, so they do not come from Resonate." },
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "One file per stem, no full mix",
+            text: "Resonate sells stems, so each owned stem is its own file. The export does not include a full mix. The list comes from your saved crate; save your changes to see them here.",
+          },
+        ],
+      },
+      {
         id: "coming-soon",
         heading: "What is coming soon",
         blocks: [
           {
             kind: "paragraph",
-            text: "Building, editing and buying a crate works today. Exporting a crate to DJ software and watching for new tracks that fit it are coming soon.",
+            text: "Building, editing, buying and exporting a crate works today. Watching for new tracks that fit a crate is coming soon.",
           },
         ],
       },

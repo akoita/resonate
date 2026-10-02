@@ -3,6 +3,7 @@ import { AgentsModule } from "../agents/agents.module";
 import { RecommendationsModule } from "../recommendations/recommendations.module";
 import { CrateEntitlementsService } from "./crate-entitlements";
 import { CRATE_MARKETPLACE_READER, createViemMarketplaceReader } from "./crate_marketplace_reader";
+import { CrateExportService } from "./crate_export.service";
 import { CrateQuoteService } from "./crate_quote.service";
 import { CRATE_REQUEST_PARSER } from "./crate_request_parser";
 import { createCrateRequestParser } from "./model_crate_request_parser";
@@ -23,6 +24,7 @@ import { CratesService } from "./crates.service";
   providers: [
     CratesService,
     CrateQuoteService,
+    CrateExportService,
     CrateEntitlementsService,
     // The chain behind quotes and settlement; the indexer's RPC_URL and
     // MARKETPLACE_ADDRESS, so no new variable (#1964).

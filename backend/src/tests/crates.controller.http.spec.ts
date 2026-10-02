@@ -16,6 +16,8 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { CratesController } from "../modules/crates/crates.controller";
+import { CrateEntitlementsService } from "../modules/crates/crate-entitlements";
+import { CrateExportService } from "../modules/crates/crate_export.service";
 import { CrateQuoteService } from "../modules/crates/crate_quote.service";
 import { CratesService } from "../modules/crates/crates.service";
 import { createControllerTestApp, authToken } from "./e2e-helpers";
@@ -34,6 +36,11 @@ const mockQuotes = {
   settleQuote: jest.fn(),
 };
 
+const mockExport = {
+  getManifest: jest.fn(),
+  exportFile: jest.fn(),
+};
+
 describe("CratesController (http)", () => {
   let app: INestApplication;
 
@@ -41,6 +48,7 @@ describe("CratesController (http)", () => {
     app = await createControllerTestApp(CratesController, [
       { provide: CratesService, useValue: mockCrates },
       { provide: CrateQuoteService, useValue: mockQuotes },
+      { provide: CrateExportService, useValue: mockExport },
     ]);
   });
 
@@ -545,6 +553,187 @@ describe("CratesController (http)", () => {
         .send({ transactionHash: hash })
         .expect(409);
       expect(conflict.body.code).toBe("already_submitted");
+    });
+  });
+
+  describe("crate export (#1965)", () => {
+    const manifest = { entries: [], skipped: [], notes: [] };
+
+    beforeEach(() => {
+      mockExport.getManifest.mockResolvedValue(manifest);
+      mockExport.exportFile.mockResolvedValue({
+        fileName: "Warm-up Ö.xml",
+        contentType: "application/xml; charset=utf-8",
+        body: Buffer.from("<xml/>", "utf8"),
+      });
+    });
+
+    it("GET /crates/:id/export and /export/manifest -> 401 without JWT", async () => {
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/export")
+        .send({ format: "rekordbox", folder: "/Music" })
+        .expect(401);
+      await request(app.getHttpServer()).get("/crates/crate-1/export/manifest").expect(401);
+      expect(mockExport.exportFile).not.toHaveBeenCalled();
+      expect(mockExport.getManifest).not.toHaveBeenCalled();
+    });
+
+    it("GET /crates/:id/export/manifest -> 200, routed to the export service for the JWT user", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/crates/crate-1/export/manifest")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      expect(res.body).toEqual(manifest);
+      expect(mockExport.getManifest).toHaveBeenCalledWith("dj-1", "crate-1");
+      expect(mockCrates.getCrate).not.toHaveBeenCalled();
+    });
+
+    it("POST /crates/:id/export -> 200, rekordbox XML headers, body and the JWT user, format and folder passed on", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/crates/crate-1/export")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ format: "rekordbox", folder: "C:\\Users\\dj\\My Music", userId: "someone-else" })
+        .expect(200);
+
+      expect(res.headers["content-type"]).toBe("application/xml; charset=utf-8");
+      expect(res.headers["content-disposition"]).toBe(
+        "attachment; filename=\"Warm-up _.xml\"; filename*=UTF-8''Warm-up%20%C3%96.xml",
+      );
+      expect(res.headers["cache-control"]).toBe("no-store");
+      expect(res.headers["content-length"]).toBe("6");
+      expect(res.text).toBe("<xml/>");
+      expect(mockExport.exportFile).toHaveBeenCalledWith("dj-1", "crate-1", {
+        format: "rekordbox",
+        folder: "C:\\Users\\dj\\My Music",
+      });
+      expect(mockCrates.getCrate).not.toHaveBeenCalled();
+    });
+
+    it("POST /crates/:id/export -> Serato bytes as application/octet-stream", async () => {
+      const bytes = Buffer.from([0x76, 0x72, 0x73, 0x6e, 0x00, 0xff]);
+      mockExport.exportFile.mockResolvedValueOnce({
+        fileName: "Crate.crate",
+        contentType: "application/octet-stream",
+        body: bytes,
+      });
+      const res = await request(app.getHttpServer())
+        .post("/crates/crate-1/export")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ format: "serato", folder: "/Volumes/DJ/Music" })
+        .buffer(true)
+        .parse((response, done) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk: Buffer) => chunks.push(chunk));
+          response.on("end", () => done(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+      expect(res.headers["content-type"]).toBe("application/octet-stream");
+      expect(res.headers["content-disposition"]).toContain('filename="Crate.crate"');
+      expect(Buffer.from(res.body).equals(bytes)).toBe(true);
+    });
+
+    it("passes 404, 409 no_wallet, 409 nothing_to_export and 403 pro_required through on both routes", async () => {
+      const cases: Array<[Error, number, string | undefined]> = [
+        [new NotFoundException("Crate not found"), 404, undefined],
+        [new ConflictException({ code: "no_wallet" }), 409, "no_wallet"],
+        [new ConflictException({ code: "nothing_to_export" }), 409, "nothing_to_export"],
+        [new ForbiddenException({ code: "pro_required" }), 403, "pro_required"],
+      ];
+      for (const [error, status, code] of cases) {
+        mockExport.exportFile.mockRejectedValueOnce(error);
+        const file = await request(app.getHttpServer())
+          .post("/crates/other/export")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ format: "serato", folder: "/Music" })
+          .expect(status);
+        expect(file.body.code).toBe(code);
+
+        mockExport.getManifest.mockRejectedValueOnce(error);
+        await request(app.getHttpServer())
+          .get("/crates/other/export/manifest")
+          .set("Authorization", `Bearer ${token}`)
+          .expect(status);
+      }
+    });
+
+    describe("body validation (real export service, no database reached)", () => {
+      let realApp: INestApplication;
+
+      beforeAll(async () => {
+        realApp = await createControllerTestApp(CratesController, [
+          { provide: CratesService, useValue: mockCrates },
+          { provide: CrateQuoteService, useValue: mockQuotes },
+          CrateExportService,
+          CrateEntitlementsService,
+        ]);
+      });
+
+      afterAll(async () => {
+        await realApp.close();
+      });
+
+      const post = (body: Record<string, unknown> | undefined) => {
+        const call = request(realApp.getHttpServer())
+          .post("/crates/crate-1/export")
+          .set("Authorization", `Bearer ${token}`);
+        return body === undefined ? call : call.send(body);
+      };
+
+      it.each([
+        ["missing", {}],
+        ["unknown", { format: "traktor" }],
+        ["empty", { format: "" }],
+        ["a list", { format: ["rekordbox", "serato"] }],
+        ["a number", { format: 1 }],
+        ["wrong case", { format: "Rekordbox" }],
+      ])("-> 400 invalid_format when the format is %s", async (_label, extra) => {
+        const res = await post({ folder: "/Users/dj/Music", ...extra }).expect(400);
+        expect(res.body.code).toBe("invalid_format");
+      });
+
+      it("-> 400 invalid_format for an empty body and for no body at all", async () => {
+        expect((await post({}).expect(400)).body.code).toBe("invalid_format");
+        expect((await post(undefined).expect(400)).body.code).toBe("invalid_format");
+      });
+
+      it("-> ignores the URL: a folder in the query string is not read", async () => {
+        const res = await request(realApp.getHttpServer())
+          .post("/crates/crate-1/export?format=rekordbox&folder=/Users/dj/Music")
+          .set("Authorization", `Bearer ${token}`)
+          .send({})
+          .expect(400);
+        expect(res.body.code).toBe("invalid_format");
+      });
+
+      it("-> 403 pro_required when the policy denies the export (before any lookup)", async () => {
+        const denied = jest.spyOn(CrateEntitlementsService.prototype, "export").mockResolvedValueOnce({
+          allowed: false,
+          reason: "subscription_required",
+          policyVersion: "crate-pro-policy/v2",
+        });
+        const res = await post({ format: "serato", folder: "/Music" }).expect(403);
+        expect(res.body.code).toBe("pro_required");
+        denied.mockRestore();
+      });
+
+      it.each([
+        ["missing", undefined],
+        ["empty", ""],
+        ["relative", "Music/Crates"],
+        ["home-relative", "~/Music"],
+        ["parent segment", "/Users/dj/../root"],
+        ["a control character", "/Users/dj\u0007/Music"],
+        ["over 400 characters", `/${"a".repeat(400)}`],
+        ["a list", ["/a", "/b"]],
+        ["a number", 42],
+      ])("-> 400 invalid_folder when the folder is %s, without echoing it", async (_label, folder) => {
+        const body: Record<string, unknown> = { format: "rekordbox" };
+        if (folder !== undefined) body.folder = folder;
+        const res = await post(body).expect(400);
+        expect(res.body.code).toBe("invalid_folder");
+        const secret = typeof folder === "string" ? folder : "";
+        if (secret.length > 3) expect(JSON.stringify(res.body)).not.toContain(secret);
+      });
     });
   });
 });

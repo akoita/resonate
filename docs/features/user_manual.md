@@ -120,7 +120,8 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
   element crops, so update the figure `width`/`height` in `content.ts` if a
   layout change resizes them, and look at every image before committing.
 - **Crate Digger pass** (`CAPTURE_CRATES=true`, off by default): the request box,
-  a crate page and the quote panel (`crate-digger-quote.png`, #1964) for the
+  a crate page, the quote panel (`crate-digger-quote.png`, #1964) and the export
+  panel (`crate-digger-export.png`, #1965) for the
   `crate-digger` article, against the fully mocked
   crate API the Playwright flow uses (`web/tests/fixtures/crate-digger-mock.mjs`),
   so no backend or staging data is needed. From `web/`, with mock auth and

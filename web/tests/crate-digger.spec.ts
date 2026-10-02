@@ -111,7 +111,8 @@ test.describe("Crate Digger (#1963)", () => {
     await dialog.getByRole("button", { name: "Remove", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(titles).toHaveCount(5);
-    await expect(page.getByText("Paper Lanterns")).toHaveCount(0);
+    // The line is gone from the set (the export panel below still reads the saved crate).
+    await expect(page.locator(".crates-line").getByText("Paper Lanterns")).toHaveCount(0);
 
     // Title and save.
     await page.getByLabel("Crate title").fill("Friday warm-up");
@@ -476,5 +477,173 @@ test.describe("Crate quote (#1964)", () => {
     // Nothing from a finished purchase can be approved again.
     await expect(panel(page).getByRole("button", { name: "Approve and buy" })).toHaveCount(0);
     await expect(panel(page).getByRole("button", { name: "Get a new quote" })).toBeVisible();
+  });
+});
+
+test.describe("Crate export (#1965)", () => {
+  const SAVED_ID = "e2e-export";
+  const FOLDER = "/Users/dj/Music/Resonate";
+
+  const panel = (page: import("@playwright/test").Page) =>
+    page.getByRole("region", { name: "Export to rekordbox or Serato" });
+
+  async function openSavedCrate(
+    page: import("@playwright/test").Page,
+    options: { ownsNothing?: boolean } = {},
+  ) {
+    const crate = mockCrate(SAVED_ID, { title: "Friday warm-up", status: "saved" });
+    const mock = await mockCrateApi(page, { savedCrates: [crate], ...options });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/crates/${SAVED_ID}`);
+    await expect(page.getByRole("heading", { name: "Friday warm-up", level: 1 })).toBeVisible();
+    return mock;
+  }
+
+  test("lists the stems you own with their file names, and explains each skipped line", async ({
+    authenticatedPage: page,
+  }) => {
+    await openSavedCrate(page);
+    const entries = panel(page).getByRole("list", { name: "Stems you can export" });
+    await expect(panel(page).getByRole("heading", { name: "Stems you can export (3)" })).toBeVisible();
+
+    const vocals = entries.locator('[data-stem-id="stem-track-neon-drift-vocals"]');
+    await expect(vocals.getByText("Neon Drift: Vocals")).toBeVisible();
+    await expect(vocals.getByText("Aya Volt · Remix license")).toBeVisible();
+    await expect(vocals.getByText("122 BPM · Am (8A) · cue at 0.214 s")).toBeVisible();
+    await expect(vocals.getByText("Aya Volt - Neon Drift (Vocals).mp3")).toBeVisible();
+
+    // Measured facts are never guessed.
+    const bass = entries.locator('[data-stem-id="stem-track-glass-harbour-bass"]');
+    await expect(bass.getByText("124 BPM · Key not measured · no cue")).toBeVisible();
+
+    const skipped = panel(page).getByRole("list", { name: "Lines left out of the export" });
+    await expect(panel(page).getByRole("heading", { name: "Left out (4)" })).toBeVisible();
+    await expect(skipped.locator('[data-track-id="track-midnight-courier"]')).toContainText(
+      "no standard terms",
+    );
+    await expect(skipped.locator('[data-track-id="track-saltwater"]')).toContainText(
+      "You do not own a stem of this track yet.",
+    );
+  });
+
+  test("downloads each stem one after another under its file name, with the licensed download path", async ({
+    authenticatedPage: page,
+  }) => {
+    const { stemDownloads } = await openSavedCrate(page);
+    const names: string[] = [];
+    page.on("download", (download) => names.push(download.suggestedFilename()));
+
+    await panel(page).getByRole("button", { name: "Download stems" }).click();
+    await expect(page.getByText("Stems downloaded")).toBeVisible();
+    await expect.poll(() => names.length).toBe(3);
+
+    expect(names).toEqual([
+      "Aya Volt - Neon Drift (Vocals).mp3",
+      "Aya Volt - Neon Drift (Drums).mp3",
+      "Mira Okoye - Glass Harbour (Bass).mp3",
+    ]);
+    expect(stemDownloads).toEqual([
+      { stemId: "stem-track-neon-drift-vocals", walletAddress: MOCK_BUYER },
+      { stemId: "stem-track-neon-drift-drums", walletAddress: MOCK_BUYER },
+      { stemId: "stem-track-glass-harbour-bass", walletAddress: MOCK_BUYER },
+    ]);
+    await expect(panel(page).getByText(/^Saved 3 stems\./)).toBeVisible();
+  });
+
+  test("the folder is remembered in this browser, checked before export, and sent with the export request", async ({
+    authenticatedPage: page,
+  }) => {
+    const { exportRequests } = await openSavedCrate(page);
+    const rekordbox = panel(page).getByRole("button", { name: "rekordbox XML" });
+    const serato = panel(page).getByRole("button", { name: "Serato crate" });
+    const folder = panel(page).getByLabel("Folder where you saved these files");
+
+    await expect(rekordbox).toBeDisabled();
+    await expect(serato).toBeDisabled();
+
+    // A relative path is explained and nothing can be sent.
+    await folder.fill("Music/Resonate");
+    await expect(panel(page).getByText("Type the full path, starting with / or a drive letter")).toBeVisible();
+    await expect(rekordbox).toBeDisabled();
+
+    await folder.fill(FOLDER);
+    await expect(rekordbox).toBeEnabled();
+    const consoleText: string[] = [];
+    page.on("console", (message) => consoleText.push(message.text()));
+
+    const rekordboxDownload = page.waitForEvent("download");
+    await rekordbox.click();
+    expect((await rekordboxDownload).suggestedFilename()).toBe("Friday warm-up.xml");
+    const seratoDownload = page.waitForEvent("download");
+    await serato.click();
+    expect((await seratoDownload).suggestedFilename()).toBe("Friday warm-up.crate");
+
+    expect(exportRequests).toEqual([
+      { crateId: SAVED_ID, format: "rekordbox", folder: FOLDER, urlHasQuery: false },
+      { crateId: SAVED_ID, format: "serato", folder: FOLDER, urlHasQuery: false },
+    ]);
+    // The folder can hold a username: it is never written to the console.
+    expect(consoleText.filter((text) => text.includes("dj/Music"))).toEqual([]);
+
+    // Reopening the page in the same browser restores it.
+    await page.reload();
+    await expect(panel(page).getByLabel("Folder where you saved these files")).toHaveValue(FOLDER);
+    await expect(panel(page).getByRole("button", { name: "rekordbox XML" })).toBeEnabled();
+  });
+
+  test("a Windows folder is accepted and the page says where each file goes", async ({
+    authenticatedPage: page,
+  }) => {
+    const { exportRequests } = await openSavedCrate(page);
+    await panel(page).getByLabel("Folder where you saved these files").fill("C:\\Users\\dj\\My Music");
+    await expect(panel(page).getByRole("button", { name: "rekordbox XML" })).toBeEnabled();
+    await expect(panel(page).getByText(/File > Import > rekordbox xml/)).toBeVisible();
+    await expect(panel(page).getByText(/_Serato_\/Subcrates/)).toBeVisible();
+    await expect(panel(page).getByText(/Serato works out tempo, key and cues from its own analysis/)).toBeVisible();
+    await expect(panel(page).getByText(/It stays in this browser; Resonate does not keep it\./)).toBeVisible();
+    expect(exportRequests).toEqual([]);
+  });
+
+  test("a failed export says why in plain words", async ({ authenticatedPage: page }) => {
+    const { failExport, exportRequests } = await openSavedCrate(page);
+    failExport({
+      status: 409,
+      json: { code: "nothing_to_export", message: "No stem in this crate is owned under a license that includes export" },
+    });
+    await panel(page).getByLabel("Folder where you saved these files").fill(FOLDER);
+    await panel(page).getByRole("button", { name: "Serato crate" }).click();
+    await expect(page.getByText("Could not export the Serato crate")).toBeVisible();
+    await expect(page.getByText(/None of the stems in this crate are ones you own/)).toBeVisible();
+    expect(exportRequests).toHaveLength(1);
+  });
+
+  test("a crate with nothing owned says so and lists what was left out", async ({
+    authenticatedPage: page,
+  }) => {
+    await openSavedCrate(page, { ownsNothing: true });
+    await expect(panel(page).getByTestId("crate-export-empty")).toContainText("Nothing to export yet");
+    await expect(panel(page).getByRole("button", { name: "Download stems" })).toHaveCount(0);
+    await expect(panel(page).getByRole("button", { name: "rekordbox XML" })).toHaveCount(0);
+    await expect(panel(page).getByRole("heading", { name: "Left out (6)" })).toBeVisible();
+  });
+
+  test("the export panel has no serious automated accessibility violations", async ({
+    authenticatedPage: page,
+  }) => {
+    await openSavedCrate(page);
+    await expect(panel(page).getByRole("heading", { name: "Stems you can export (3)" })).toBeVisible();
+    await panel(page).getByLabel("Folder where you saved these files").fill("Music/Resonate");
+    const blocking = async () => {
+      const results = await new AxeBuilder({ page })
+        .include(".crates-export-panel")
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+        .analyze();
+      return results.violations
+        .filter((v) => v.impact === "serious" || v.impact === "critical")
+        .map((v) => ({ id: v.id, nodes: v.nodes.slice(0, 3).map((n) => n.html) }));
+    };
+    expect(await blocking()).toEqual([]);
+    await panel(page).getByLabel("Folder where you saved these files").fill(FOLDER);
+    expect(await blocking()).toEqual([]);
   });
 });

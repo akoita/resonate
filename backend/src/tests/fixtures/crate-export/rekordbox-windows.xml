@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="Resonate" Version="1.0.0" Company="Resonate"/>
+  <COLLECTION Entries="3">
+    <TRACK TrackID="1" Name="Say &quot;Hi&quot; &lt;3 &amp; more (Vocals)" Artist="Ada &amp; Bob" Album="Warm-up: Friday &amp; &quot;Late&quot;" Kind="MP3 File" AverageBpm="128.00" Tonality="Am" Location="file://localhost/C:/Users/dj/My%20Music/Crates/Ada%20%26%20Bob%20-%20Say%20Hi%203%20%26%20more%20%28Vocals%29.mp3">
+      <TEMPO Inizio="0.123" Bpm="128.00" Metro="4/4" Battito="1"/>
+      <POSITION_MARK Name="First beat" Type="0" Start="0.123" Num="-1"/>
+    </TRACK>
+    <TRACK TrackID="2" Name="Night Drive (Bass)" Artist="DJ Öz" Album="Warm-up: Friday &amp; &quot;Late&quot;" Kind="MP3 File" AverageBpm="122.50" Tonality="F#m" Location="file://localhost/C:/Users/dj/My%20Music/Crates/DJ%20%C3%96z%20-%20Night%20Drive%20%28Bass%29.mp3"/>
+    <TRACK TrackID="3" Name="Night Drive (Bass)" Artist="DJ Öz" Album="Warm-up: Friday &amp; &quot;Late&quot;" Kind="MP3 File" Location="file://localhost/C:/Users/dj/My%20Music/Crates/DJ%20%C3%96z%20-%20Night%20Drive%20%28Bass%29%20%5Bcccccc%5D.mp3"/>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="1">
+      <NODE Type="1" Name="Warm-up: Friday &amp; &quot;Late&quot;" KeyType="0" Entries="3">
+        <TRACK Key="1"/>
+        <TRACK Key="2"/>
+        <TRACK Key="3"/>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

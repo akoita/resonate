@@ -1,0 +1,44 @@
+{
+  "crateTitle": "Warm-up: Friday & \"Late\"",
+  "entries": [
+    {
+      "position": 0,
+      "trackId": "track-1",
+      "stemId": "aaaaaa11-0000-4000-8000-000000000001",
+      "stemType": "vocals",
+      "title": "Say \"Hi\" <3 & more",
+      "artistName": "Ada & Bob",
+      "licenseType": "commercial",
+      "bpm": 128,
+      "key": "Am",
+      "camelot": "8A",
+      "firstBeatSec": 0.123
+    },
+    {
+      "position": 1,
+      "trackId": "track-2",
+      "stemId": "bbbbbb22-0000-4000-8000-000000000002",
+      "stemType": "bass",
+      "title": "Night Drive",
+      "artistName": "DJ Öz",
+      "licenseType": "personal",
+      "bpm": 122.5,
+      "key": "F#m",
+      "camelot": "11A",
+      "firstBeatSec": null
+    },
+    {
+      "position": 2,
+      "trackId": "track-3",
+      "stemId": "cccccc33-0000-4000-8000-000000000003",
+      "stemType": "bass",
+      "title": "Night Drive",
+      "artistName": "DJ Öz",
+      "licenseType": "remix",
+      "bpm": null,
+      "key": null,
+      "camelot": null,
+      "firstBeatSec": null
+    }
+  ]
+}
