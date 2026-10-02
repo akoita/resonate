@@ -23,6 +23,7 @@ const typeIcon = (type: string) => {
     case "listing_expired": return "\u23f3";
     case "credits_requested": return "\ud83e\ude99";
     case "credits_granted": return "\u2728";
+    case "crate_watch_match": return "\ud83d\udce6";
     default: return "\ud83d\udd14";
   }
 };
@@ -44,6 +45,11 @@ const subscribe = () => () => {};
  * Pure so the mapping is unit-testable without rendering the bell.
  */
 export function getNotificationHref(notification: DisputeNotification, role: string | null | undefined) {
+  if (notification.type === "crate_watch_match") {
+    // The crate page lists the match; without an id, the crate list.
+    return notification.crateId ? `/crates/${encodeURIComponent(notification.crateId)}` : "/crates";
+  }
+
   if (notification.type === "credits_requested") {
     return "/admin/credit-requests";
   }
@@ -85,6 +91,10 @@ export function getNotificationHref(notification: DisputeNotification, role: str
 }
 
 export function getNotificationActionHint(notification: DisputeNotification, role: string | null | undefined) {
+  if (notification.type === "crate_watch_match") {
+    return "Open crate \u2192";
+  }
+
   if (notification.type === "credits_requested") {
     return "Review credit requests \u2192";
   }

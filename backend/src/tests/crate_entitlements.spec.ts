@@ -49,12 +49,43 @@ describe("CrateEntitlementsService (#1966)", () => {
     for (const userId of ["user-a", "user-b", ""]) {
       await expect(service.export(userId)).resolves.toEqual(GRANTED);
     }
-    // The crate DTO shape does not change.
-    await expect(service.forCrate("user-a")).resolves.toEqual({ pro: GRANTED });
   });
 
-  it("exposes the crate DTO shape", async () => {
-    await expect(service.forCrate("user-a")).resolves.toEqual({ pro: GRANTED });
+  it("allows watching a crate for every user, through the same policy (#1967)", async () => {
+    for (const userId of ["user-a", "user-b", ""]) {
+      await expect(service.watch(userId)).resolves.toEqual(GRANTED);
+    }
+  });
+
+  it("exposes one decision per feature on the crate DTO", async () => {
+    await expect(service.forCrate("user-a")).resolves.toEqual({
+      pro: GRANTED,
+      export: GRANTED,
+      watch: GRANTED,
+    });
+  });
+
+  it("returns denied for every feature when the policy denies (#1966)", async () => {
+    // A future policy replaces `pro`; export and watch ride on it, so a denial
+    // reaches every feature without any caller changing.
+    class DenyingEntitlements extends CrateEntitlementsService {
+      async pro(_userId: string): Promise<CrateEntitlementDecision> {
+        return DENIED;
+      }
+    }
+    const denying = new DenyingEntitlements();
+    await expect(denying.pro("user-a")).resolves.toEqual(DENIED);
+    await expect(denying.export("user-a")).resolves.toEqual(DENIED);
+    await expect(denying.watch("user-a")).resolves.toEqual(DENIED);
+    await expect(denying.forCrate("user-a")).resolves.toEqual({
+      pro: DENIED,
+      export: DENIED,
+      watch: DENIED,
+    });
+    // At the free limit the same decision refuses one more saved crate.
+    expect(
+      canCreateCrate({ existingCrates: CRATE_FREE_SAVED_CRATES, pro: await denying.pro("user-a") }),
+    ).toEqual({ allowed: false, reason: "pro_required" });
   });
 });
 

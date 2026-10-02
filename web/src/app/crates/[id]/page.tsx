@@ -8,6 +8,7 @@ import { useAuth } from "../../../components/auth/AuthProvider";
 import { CrateLine, type TransitionPreviewState } from "../../../components/crates/CrateLine";
 import { CrateExportPanel } from "../../../components/crates/CrateExportPanel";
 import { CrateQuotePanel } from "../../../components/crates/CrateQuotePanel";
+import { CrateWatchPanel } from "../../../components/crates/CrateWatchPanel";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useToast } from "../../../components/ui/Toast";
 import {
@@ -43,6 +44,7 @@ import {
   type CrateFilters,
   type CrateItemDto,
   type CrateQuote,
+  type CrateWatch,
 } from "../../../lib/crates";
 import {
   createCrateTransitionPlayer,
@@ -141,6 +143,11 @@ function CrateEditor({ crateId }: { crateId: string }) {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
+  // Only the watch changes: the title, lines and filters being edited stay as they are.
+  const onWatchChange = useCallback((watch: CrateWatch) => {
+    setCrate((current) => (current ? { ...current, watch } : current));
+  }, []);
 
   const stopPreview = useCallback(() => {
     playerRef.current?.stop();
@@ -498,6 +505,14 @@ function CrateEditor({ crateId }: { crateId: string }) {
           Prices here are indicative; the quote below sets the final price.
         </p>
       </section>
+
+      <CrateWatchPanel
+        crateId={crate.id}
+        status={crate.status}
+        watch={crate.watch}
+        entitlements={crate.entitlements}
+        onWatchChange={onWatchChange}
+      />
 
       <CrateQuotePanel
         crateId={crate.id}

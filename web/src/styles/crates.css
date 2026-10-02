@@ -660,3 +660,63 @@
 .crates-export-panel .crates-title-input {
   width: 100%;
 }
+
+/* Watching a crate (#1967). */
+.crates-watch-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-sm);
+  align-items: flex-end;
+}
+
+.crates-watch-modes {
+  display: flex;
+  gap: var(--r-sm);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.crates-watch-modes legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.crates-watch-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+.crates-watch-mode input:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.crates-watch-summary {
+  margin: 0;
+}
+
+.crates-watch-subheading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.crates-watch-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.crates-watch-matches a {
+  color: var(--r-primary-soft);
+}

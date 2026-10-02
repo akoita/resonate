@@ -284,6 +284,71 @@ describe("CratesController (http)", () => {
       expect(mockCrates.updateCrate).not.toHaveBeenCalled();
     });
 
+    describe("watch (#1967)", () => {
+      const patch = (body: unknown) =>
+        request(app.getHttpServer())
+          .patch("/crates/crate-1")
+          .set("Authorization", `Bearer ${token}`)
+          .send(body as object);
+
+      it("-> 200 and passes a watch request to the service", async () => {
+        await patch({ watch: { mode: "notify", expiresInDays: 30 } }).expect(200);
+        expect(mockCrates.updateCrate).toHaveBeenCalledWith(
+          "dj-1",
+          "crate-1",
+          expect.objectContaining({ watch: { mode: "notify", expiresInDays: 30 } }),
+        );
+        await patch({ watch: { mode: "off" } }).expect(200);
+        expect(mockCrates.updateCrate).toHaveBeenLastCalledWith(
+          "dj-1",
+          "crate-1",
+          expect.objectContaining({ watch: { mode: "off" } }),
+        );
+      });
+
+      it("-> accepts the bounds of the expiry, 1 and 365 days", async () => {
+        await patch({ watch: { mode: "notify", expiresInDays: 1 } }).expect(200);
+        await patch({ watch: { mode: "notify", expiresInDays: 365 } }).expect(200);
+      });
+
+      it.each([
+        ["mode", { watch: { mode: "email" } }],
+        ["missing mode", { watch: {} }],
+        ["mode type", { watch: { mode: 1 } }],
+        ["watch type", { watch: "notify" }],
+        ["expiry of 0", { watch: { mode: "notify", expiresInDays: 0 } }],
+        ["expiry of 366", { watch: { mode: "notify", expiresInDays: 366 } }],
+        ["fractional expiry", { watch: { mode: "notify", expiresInDays: 1.5 } }],
+        ["expiry type", { watch: { mode: "notify", expiresInDays: "30" } }],
+      ])("-> 400 for an invalid %s", async (_name, body) => {
+        await patch(body).expect(400);
+        expect(mockCrates.updateCrate).not.toHaveBeenCalled();
+      });
+
+      it("-> lets the reserved auto_buy mode through to the service, which refuses it", async () => {
+        mockCrates.updateCrate.mockRejectedValueOnce(
+          new BadRequestException({ code: "watch_mode_unavailable" }),
+        );
+        const res = await patch({ watch: { mode: "auto_buy" } }).expect(400);
+        expect(res.body.code).toBe("watch_mode_unavailable");
+        expect(mockCrates.updateCrate).toHaveBeenCalledTimes(1);
+      });
+
+      it("-> passes a service 409 crate_not_saved and 403 pro_required through", async () => {
+        mockCrates.updateCrate.mockRejectedValueOnce(
+          new ConflictException({ code: "crate_not_saved" }),
+        );
+        const draft = await patch({ watch: { mode: "notify" } }).expect(409);
+        expect(draft.body.code).toBe("crate_not_saved");
+
+        mockCrates.updateCrate.mockRejectedValueOnce(
+          new ForbiddenException({ code: "pro_required" }),
+        );
+        const denied = await patch({ watch: { mode: "notify" } }).expect(403);
+        expect(denied.body.code).toBe("pro_required");
+      });
+    });
+
     it("-> passes a service 404, 400 invalid_items and 403 pro_required through", async () => {
       mockCrates.updateCrate.mockRejectedValueOnce(new NotFoundException("Crate not found"));
       await request(app.getHttpServer())

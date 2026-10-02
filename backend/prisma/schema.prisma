@@ -45,6 +45,7 @@ model User {
   crateRequests               CrateRequest[]
   crateQuotes                 CrateQuote[]
   crateQuoteLines             CrateQuoteLine[]
+  crateWatchMatches           CrateWatchMatch[]
   folders                     Folder[]
   libraryTracks               LibraryTrack[]
   playlists                   Playlist[]
@@ -1481,21 +1482,52 @@ model ListenerTasteNoteEmbedding {
 /// and erased with the account (the engine deletes it; items cascade). Listings
 /// and prices are filters the DJ chose, never ranking inputs (ADR-TE-2 rule 6).
 model Crate {
-  id        String         @id @default(uuid())
-  userId    String
-  title     String?
+  id             String            @id @default(uuid())
+  userId         String
+  title          String?
   /// The `CrateFilters` the crate was built with, as the DJ last edited them.
-  filters   Json
+  filters        Json
   /// "draft" | "saved"
-  status    String         @default("draft")
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items     CrateItem[]
-  requests  CrateRequest[]
-  quotes    CrateQuote[]
+  status         String            @default("draft")
+  /// #1967: how the crate watches for new releases. "off" | "notify".
+  /// "auto_buy" is reserved for a later slice and is rejected by validation
+  /// until it is built; nothing here buys anything.
+  watchMode      String            @default("off")
+  /// When watching stops by itself; null while the mode is "off".
+  watchExpiresAt DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items          CrateItem[]
+  requests       CrateRequest[]
+  quotes         CrateQuote[]
+  watchMatches   CrateWatchMatch[]
 
   @@index([userId, updatedAt])
+  @@index([watchMode, watchExpiresAt])
+}
+
+/// #1967 (Crate Digger watching, notify only): a newly playable track that fits
+/// a watching crate's filters. One row per (crate, track), so seeing the same
+/// release twice records nothing new. `notifiedAt` is null when no notification
+/// was sent: the person has no wallet inbox, or they hit the daily notification
+/// cap (the match still shows in the crate's summary). `trackId` is a plain
+/// string with no foreign key so a removed track does not rewrite what was
+/// matched. `userId` is the crate owner, denormalized (like `CrateItem`) so the
+/// account export and erasure find the rows directly. ADR-BM-6 Line 3 phase 2:
+/// watching leads to quoted purchases; no fee is added here.
+model CrateWatchMatch {
+  id         String    @id @default(uuid())
+  crateId    String
+  userId     String
+  trackId    String
+  matchedAt  DateTime  @default(now())
+  notifiedAt DateTime?
+  crate      Crate     @relation(fields: [crateId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([crateId, trackId])
+  @@index([userId, matchedAt])
 }
 
 /// #1962: one track in a crate. `position` is the 0-based order the DJ sees;
@@ -2710,6 +2742,8 @@ model Notification {
   disputeId     String?
   releaseId     String?
   stemListingId String?
+  /// #1967: the crate a `crate_watch_match` notification leads to.
+  crateId       String?
   read          Boolean  @default(false)
   createdAt     DateTime @default(now())
 

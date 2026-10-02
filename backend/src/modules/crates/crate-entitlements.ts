@@ -19,7 +19,13 @@
  * future policy that denies it makes the export routes answer 403
  * `pro_required`; it never changes what the DJ owns or may already download.
  *
- * Enforcement (planned, in the crate service): creating a crate beyond
+ * Watching a crate for new releases (#1967) is decided by
+ * {@link CrateEntitlementsService.watch}: free for everyone today. A future
+ * policy that denies it makes turning watching on answer 403 `pro_required`;
+ * turning it off is always allowed, and a denial never hides or deletes the
+ * matches already recorded.
+ *
+ * Enforcement (in the crate service): creating a crate beyond
  * {@link CRATE_FREE_SAVED_CRATES} is refused with 403 `pro_required` when the
  * entitlement is not allowed (see {@link canCreateCrate}). Today the policy
  * never denies, so nothing is refused. An entitlement never deletes or hides
@@ -53,9 +59,14 @@ export type CrateEntitlementDecision = {
   policyVersion: string;
 };
 
-/** Entitlements exposed on the crate DTOs. */
+/**
+ * Entitlements exposed on the crate DTOs: one decision per feature that calls
+ * the resolver (saving beyond the free number is `pro`).
+ */
 export type CrateEntitlements = {
   pro: CrateEntitlementDecision;
+  export: CrateEntitlementDecision;
+  watch: CrateEntitlementDecision;
 };
 
 /**
@@ -96,8 +107,22 @@ export class CrateEntitlementsService {
     return this.pro(userId);
   }
 
+  /**
+   * Whether `userId` may turn on watching for a crate (#1967). Part of
+   * `crate.pro`: today's policy allows everyone. Watching only notifies; it
+   * buys nothing. Turning it off never needs this decision.
+   */
+  async watch(userId: string): Promise<CrateEntitlementDecision> {
+    return this.pro(userId);
+  }
+
   /** Every Crate Digger entitlement, as the crate DTOs expose them. */
   async forCrate(userId: string): Promise<CrateEntitlements> {
-    return { pro: await this.pro(userId) };
+    const [pro, exportDecision, watch] = await Promise.all([
+      this.pro(userId),
+      this.export(userId),
+      this.watch(userId),
+    ]);
+    return { pro, export: exportDecision, watch };
   }
 }

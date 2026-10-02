@@ -289,6 +289,37 @@ function arrange(items) {
   });
 }
 
+/** A crate that is not watching and has no matches (#1967). */
+export function offWatch() {
+  return {
+    mode: "off",
+    expiresAt: null,
+    summary: { month: "2026-09", matches: 0, notified: 0 },
+    recentMatches: [],
+  };
+}
+
+/** A watching crate with three matches this month, newest first (#1967). */
+export function watchingWatch(expiresAt = "2026-12-27T09:00:00.000Z") {
+  return {
+    mode: "notify",
+    expiresAt,
+    summary: { month: "2026-09", matches: 3, notified: 3 },
+    recentMatches: [
+      { trackId: "track-new-1", releaseId: "release-new-1", title: "Harbour Lights", artistName: "Aya Volt", matchedAt: "2026-09-27T18:00:00.000Z" },
+      { trackId: "track-new-2", releaseId: "release-new-2", title: "Slow Tide", artistName: "Mira Okoye", matchedAt: "2026-09-25T10:00:00.000Z" },
+      { trackId: "track-new-3", releaseId: "release-new-3", title: "Paper Moons", artistName: null, matchedAt: "2026-09-22T08:30:00.000Z" },
+    ],
+  };
+}
+
+/** The `watch` entitlement decision of a policy that denies watching (#1966). */
+export const WATCH_DENIED = {
+  allowed: false,
+  reason: "subscription_required",
+  policyVersion: "crate-pro-policy/v2",
+};
+
 /**
  * @param {string} id
  * @param {{ title?: string | null; status?: string; filters?: Record<string, any>; items?: Array<Record<string, any>> }} [overrides]
@@ -303,7 +334,10 @@ export function mockCrate(id, overrides = {}) {
     updatedAt: "2026-09-28T09:00:00.000Z",
     entitlements: {
       pro: { allowed: true, reason: "free_for_everyone", policyVersion: "crate-pro-policy/v1" },
+      export: { allowed: true, reason: "free_for_everyone", policyVersion: "crate-pro-policy/v1" },
+      watch: { allowed: true, reason: "free_for_everyone", policyVersion: "crate-pro-policy/v1" },
     },
+    watch: offWatch(),
     ...overrides,
     items: arrange(overrides.items ?? crateLines()),
   };
@@ -594,7 +628,7 @@ export function buildExportManifest(crate, options = {}) {
  * renders cleanly. Returns the bodies the pages sent, for assertions.
  *
  * @param {import("@playwright/test").Page} page
- * @param {{ savedCrates?: Array<Record<string, any>>; latestQuotes?: Record<string, Record<string, any>>; now?: number; ownsNothing?: boolean }} [options] `now` pins the clock quotes expire against (the help screenshots freeze the page's clock to the same instant); `ownsNothing` makes the export manifest empty
+ * @param {{ savedCrates?: Array<Record<string, any>>; latestQuotes?: Record<string, Record<string, any>>; now?: number; ownsNothing?: boolean; watchOnState?: Record<string, any> }} [options] `watchOnState` is merged into a crate's `watch` when it starts watching (matches to show); `now` pins the clock quotes expire against (the help screenshots freeze the page's clock to the same instant); `ownsNothing` makes the export manifest empty
  */
 export async function mockCrateApi(page, options = {}) {
   /** @type {Map<string, Record<string, any>>} */
@@ -782,7 +816,7 @@ export async function mockCrateApi(page, options = {}) {
       return route.fulfill({ status: 404, json: { message: "Crate not found" } });
     }
     if (request.method() === "PATCH") {
-      /** @type {{ title?: string | null; status?: string; items?: Array<{ trackId: string; locked?: boolean }> }} */
+      /** @type {{ title?: string | null; status?: string; items?: Array<{ trackId: string; locked?: boolean }>; watch?: { mode: string; expiresInDays?: number } }} */
       const body = request.postDataJSON();
       patches.push({ crateId, body });
       let items = crate.items;
@@ -792,11 +826,26 @@ export async function mockCrateApi(page, options = {}) {
           return { ...existing, locked: entry.locked ?? existing?.locked ?? false };
         });
       }
+      const status = body.status ?? crate.status;
+      let watch = crate.watch ?? offWatch();
+      if (body.watch?.mode === "notify") {
+        if (crate.entitlements?.watch?.allowed === false) {
+          return route.fulfill({ status: 403, json: { code: "pro_required", message: "Watching a crate needs Crate Digger Pro" } });
+        }
+        if (status !== "saved") {
+          return route.fulfill({ status: 409, json: { code: "crate_not_saved", message: "Save the crate to watch it" } });
+        }
+        const days = body.watch.expiresInDays ?? 90;
+        watch = { ...watch, ...(options.watchOnState ?? {}), mode: "notify", expiresAt: new Date((options.now ?? Date.now()) + days * 86_400_000).toISOString() };
+      } else if (body.watch?.mode === "off") {
+        watch = { ...watch, mode: "off", expiresAt: null };
+      }
       const next = {
         ...mockCrate(crateId, { items }),
-        ...pick(crate, ["filters", "createdAt"]),
+        ...pick(crate, ["filters", "createdAt", "entitlements"]),
+        watch,
         title: body.title === undefined ? crate.title : body.title,
-        status: body.status ?? crate.status,
+        status,
         updatedAt: "2026-09-28T09:30:00.000Z",
       };
       crates.set(crateId, next);

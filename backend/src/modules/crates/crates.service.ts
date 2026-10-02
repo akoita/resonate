@@ -23,12 +23,12 @@ import {
   type DiscoveryRankingContext,
 } from "../recommendations/discovery-ranking.service";
 import { TasteMemoryService } from "../recommendations/taste_memory.service";
-import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import {
   CRATE_TITLE_MAX_LENGTH,
   type CrateDto,
   type CrateItemDto,
   type CrateItemStemDto,
+  type CrateWatchDto,
   type CreateCrateResponse,
   type GetCrateResponse,
   type ListCratesResponse,
@@ -45,8 +45,18 @@ import {
   type CrateRequestSource,
 } from "./crate.types";
 import { canCreateCrate, CrateEntitlementsService } from "./crate-entitlements";
-import { candidateFactsFromRow, type CrateTrackRow } from "./crate_candidates";
+import { candidateFactsFromRow, creditedArtistName, type CrateTrackRow } from "./crate_candidates";
 import { sanitizeCrateFilters } from "./crate_filters";
+import { crateTrackSelect } from "./crate_track_select";
+import {
+  CRATE_WATCH_ERROR_CODES,
+  CRATE_WATCH_RECENT_MATCHES_LIMIT,
+  isWatching,
+  monthBounds,
+  monthKey,
+  parseWatchRequest,
+  watchExpiresAt,
+} from "./crate_watch";
 import { CrateQuoteService } from "./crate_quote.service";
 import { crateLicenseOptions } from "./crate_license_rights";
 import { orderCrateAsSetPath, transitionFacts } from "./crate_ordering";
@@ -137,52 +147,6 @@ type ConsideredCandidate = { row: CrateTrackRow; facts: CrateCandidateFacts };
 
 /** Stem types that are not a usable stem for a DJ. */
 const NON_STEM_TYPES = new Set(["original", "master"]);
-
-/** Everything the crate pipeline reads about a track. */
-function crateTrackSelect(now: Date) {
-  return {
-    id: true,
-    title: true,
-    artist: true,
-    aiDisclosureLevel: true,
-    contentStatus: true,
-    rightsRoute: true,
-    release: {
-      select: {
-        title: true,
-        status: true,
-        rightsRoute: true,
-        withdrawnAt: true,
-        withdrawalReason: true,
-        genre: true,
-        moods: true,
-        artistId: true,
-        primaryArtist: true,
-        artist: { select: { displayName: true } },
-      },
-    },
-    stems: {
-      where: { isCurrent: true },
-      select: {
-        id: true,
-        type: true,
-        isCurrent: true,
-        audioFeatures: true,
-        pricing: {
-          select: {
-            basePlayPriceUsd: true,
-            remixLicenseUsd: true,
-            commercialLicenseUsd: true,
-          },
-        },
-        listings: {
-          where: { status: "active", expiresAt: { gt: now } },
-          select: { licenseType: true, status: true, expiresAt: true },
-        },
-      },
-    },
-  } satisfies Prisma.TrackSelect;
-}
 
 @Injectable()
 export class CratesService {
@@ -374,6 +338,35 @@ export class CratesService {
     const title = normalizeTitle(input.title);
     const requested = input.items ?? undefined;
 
+    // Watching (#1967): validated before anything is read. Turning it on needs
+    // the `watch` entitlement (before any lookup, like export); turning it off
+    // is always allowed and never asks the resolver.
+    let watch: { mode: "off" | "notify"; expiresInDays: number } | undefined;
+    if (input.watch !== undefined && input.watch !== null) {
+      const parsed = parseWatchRequest(input.watch);
+      if (!parsed.ok) {
+        throw new BadRequestException({
+          code: parsed.code,
+          message:
+            parsed.code === CRATE_WATCH_ERROR_CODES.modeUnavailable
+              ? "This watch mode is not available yet"
+              : "watch must be { mode: \"off\" | \"notify\", expiresInDays?: 1-365 }",
+        });
+      }
+      watch = { mode: parsed.mode, expiresInDays: parsed.expiresInDays };
+      if (watch.mode === "notify") {
+        const decision = await this.entitlements.watch(userId);
+        if (!decision.allowed) {
+          throw new ForbiddenException({
+            code: CRATE_REQUEST_ERROR_CODES.proRequired,
+            message: "Watching a crate needs Crate Digger Pro",
+          });
+        }
+      }
+    }
+
+    const now = new Date();
+
     await prisma.$transaction(async (tx) => {
       // Someone else's crate and an unknown id look identical: 404, never 403.
       const crate = await tx.crate.findFirst({
@@ -415,6 +408,14 @@ export class CratesService {
         }
       }
 
+      // Only a saved crate can watch; the status this same request sets counts.
+      if (watch?.mode === "notify" && (input.status ?? crate.status) !== "saved") {
+        throw new ConflictException({
+          code: CRATE_WATCH_ERROR_CODES.crateNotSaved,
+          message: "Save the crate to watch it",
+        });
+      }
+
       if (requested !== undefined) {
         const lockedByTrack = new Map(crate.items.map((item) => [item.trackId, item.locked]));
         await tx.crateItem.deleteMany({
@@ -434,8 +435,12 @@ export class CratesService {
         data: {
           ...(title !== undefined ? { title } : {}),
           ...(input.status ? { status: input.status } : {}),
+          ...(watch?.mode === "notify"
+            ? { watchMode: "notify", watchExpiresAt: watchExpiresAt(now, watch.expiresInDays) }
+            : {}),
+          ...(watch?.mode === "off" ? { watchMode: "off", watchExpiresAt: null } : {}),
           // Items live in another table; bump the crate so lists sort by edits.
-          updatedAt: new Date(),
+          updatedAt: now,
         },
       });
     });
@@ -799,9 +804,78 @@ export class CratesService {
     return scores;
   }
 
+  /**
+   * The crate's watch state (#1967): what is in effect now, this UTC month's
+   * counts, and the newest matches that are still publicly playable. Read on
+   * demand; there is no scheduled summary. Counts every match, listed or not.
+   */
+  private async loadWatch(crate: {
+    id: string;
+    status: string;
+    watchMode: string;
+    watchExpiresAt: Date | null;
+  }): Promise<CrateWatchDto> {
+    const now = new Date();
+    const { start, end } = monthBounds(now);
+    const inMonth = { crateId: crate.id, matchedAt: { gte: start, lt: end } };
+    const [matches, notified, recent] = await Promise.all([
+      prisma.crateWatchMatch.count({ where: inMonth }),
+      prisma.crateWatchMatch.count({ where: { ...inMonth, notifiedAt: { not: null } } }),
+      prisma.crateWatchMatch.findMany({
+        where: { crateId: crate.id },
+        orderBy: [{ matchedAt: "desc" }, { id: "asc" }],
+        // More than the limit: matches of tracks that are no longer playable
+        // are dropped below and must not leave the list short.
+        take: CRATE_WATCH_RECENT_MATCHES_LIMIT * 5,
+        select: { trackId: true, matchedAt: true },
+      }),
+    ]);
+
+    let recentMatches: CrateWatchDto["recentMatches"] = [];
+    if (recent.length > 0) {
+      const rows = await prisma.track.findMany({
+        where: { id: { in: recent.map((match) => match.trackId) } },
+        select: crateTrackSelect(now),
+      });
+      const rowById = new Map(rows.map((row) => [row.id, row as CrateTrackRow]));
+      recentMatches = recent
+        .flatMap((match) => {
+          const row = rowById.get(match.trackId);
+          if (!row || !isPlayableAvailability(classifyTrackAvailability(row))) return [];
+          return [
+            {
+              trackId: row.id,
+              releaseId: row.releaseId ?? null,
+              title: row.title,
+              artistName: creditedArtistName(row),
+              matchedAt: match.matchedAt.toISOString(),
+            },
+          ];
+        })
+        .slice(0, CRATE_WATCH_RECENT_MATCHES_LIMIT);
+    }
+
+    // A draft crate and a watch that has run out are not watching.
+    const watching = crate.status === "saved" && isWatching(crate, now);
+    return {
+      mode: watching ? "notify" : "off",
+      expiresAt: crate.watchMode === "notify" ? (crate.watchExpiresAt?.toISOString() ?? null) : null,
+      summary: { month: monthKey(now), matches, notified },
+      recentMatches,
+    };
+  }
+
   private async toCrateDto(
     userId: string,
-    crate: { id: string; status: string; title: string | null; createdAt: Date; updatedAt: Date },
+    crate: {
+      id: string;
+      status: string;
+      title: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      watchMode: string;
+      watchExpiresAt: Date | null;
+    },
     filters: CrateFilters,
     lines: CrateLine[],
     lockedByTrack: ReadonlyMap<string, boolean> = new Map(),
@@ -852,18 +926,10 @@ export class CratesService {
       createdAt: crate.createdAt.toISOString(),
       updatedAt: crate.updatedAt.toISOString(),
       entitlements: await this.entitlements.forCrate(userId),
+      watch: await this.loadWatch(crate),
       items,
     };
   }
-}
-
-/** The credited artist (#1492), not the uploader account label. */
-function creditedArtistName(row: CrateTrackRow): string | null {
-  return resolveCreditedArtistName({
-    trackArtist: row.artist,
-    primaryArtist: row.release.primaryArtist,
-    accountDisplayName: row.release.artist?.displayName ?? null,
-  });
 }
 
 /** Current non-original, non-master stems with an id, sorted by type then id. */

@@ -301,6 +301,15 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "userId (denormalized from the quote).",
   },
   {
+    model: "CrateWatchMatch",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #1967. The new releases that fit the person's watching crates: the crate and track ids, when "
+      + "each matched and when (if ever) a notification was sent; keyed by the owner's userId (denormalized "
+      + "from the crate).",
+  },
+  {
     model: "Playlist",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

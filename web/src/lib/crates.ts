@@ -122,9 +122,48 @@ export type CrateItemDto = {
   licenseOptions: CrateLicenseOption[];
 };
 
+export type CrateEntitlementDecision = { allowed: boolean; reason: string; policyVersion: string };
+
+/**
+ * One server-made decision per gated feature (#1966). The page reads these and
+ * never hard-codes who may do what.
+ */
 export type CrateEntitlements = {
-  pro: { allowed: boolean; reason: string; policyVersion: string };
+  pro: CrateEntitlementDecision;
+  export: CrateEntitlementDecision;
+  watch: CrateEntitlementDecision;
 };
+
+/* ------------------------------------------------------------------ */
+/* Watching (#1967)                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Mirrors `CrateWatchDto` in `crate.dto.ts`. `mode` is what is in effect now. */
+export type CrateWatchMode = "off" | "notify";
+
+export type CrateWatchMatch = {
+  trackId: string;
+  /** The release page that plays the track; null when unknown. */
+  releaseId: string | null;
+  title: string;
+  artistName: string | null;
+  matchedAt: string;
+};
+
+export type CrateWatch = {
+  mode: CrateWatchMode;
+  /**
+   * When watching ends. With `mode` "off" a non-null value is when a watch that
+   * ran out ended.
+   */
+  expiresAt: string | null;
+  /** This UTC month's counts, read on demand. */
+  summary: { month: string; matches: number; notified: number };
+  /** Newest first, at most 20, only tracks still publicly playable. */
+  recentMatches: CrateWatchMatch[];
+};
+
+export type UpdateCrateWatchBody = { mode: CrateWatchMode; expiresInDays?: number };
 
 export type CrateStatus = "draft" | "saved";
 
@@ -136,6 +175,7 @@ export type CrateDto = {
   createdAt: string;
   updatedAt: string;
   entitlements: CrateEntitlements;
+  watch: CrateWatch;
   items: CrateItemDto[];
 };
 
@@ -281,6 +321,7 @@ export type UpdateCrateBody = {
   title?: string | null;
   status?: CrateStatus;
   items?: Array<{ trackId: string; locked?: boolean }>;
+  watch?: UpdateCrateWatchBody;
 };
 
 /* ------------------------------------------------------------------ */
@@ -751,6 +792,8 @@ export function crateErrorMessage(error: unknown, fallback: string): string {
   const code = crateErrorCode(error);
   if (code === "pro_required") return "This needs Crate Digger Pro.";
   if (code === "line_locked") return "That line is locked. Unlock it to swap it.";
+  if (code === "crate_not_saved") return "Save the crate to watch it.";
+  if (code === "invalid_watch_expiry") return "Pick a watch length between 1 and 365 days.";
   const details = (error as ErrorLike | null)?.details;
   if (details && typeof details === "object" && "message" in details) {
     const message = (details as { message?: unknown }).message;

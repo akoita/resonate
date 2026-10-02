@@ -83,6 +83,19 @@ describe("useDisputeNotifications helpers", () => {
     });
   });
 
+  it("carries the crate of a crate watch notification (#1967)", () => {
+    expect(
+      normalizeIncomingNotification({
+        id: "n-2",
+        type: "crate_watch_match",
+        title: "New match for Friday",
+        message: "Night Drive by Ada fits your crate filters.",
+        crateId: "crate-1",
+        timestamp: "2026-10-02T10:00:00.000Z",
+      }),
+    ).toMatchObject({ type: "crate_watch_match", crateId: "crate-1", read: false });
+  });
+
   it("joins wallet rooms and refetches notifications on connect", async () => {
     const handlers = new Map<string, TestHandler>();
     const socket: TestSocket = {

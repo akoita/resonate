@@ -19,6 +19,14 @@ describe("notification routing", () => {
     expect(getNotificationActionHint(notification("credits_granted"), "user")).toBe("Start creating →");
   });
 
+  it("sends a crate watch match to its crate, or to the crate list without one (#1967)", () => {
+    expect(getNotificationHref(notification("crate_watch_match", { crateId: "c 1" }), "user"))
+      .toBe("/crates/c%201");
+    expect(getNotificationHref(notification("crate_watch_match"), "user")).toBe("/crates");
+    expect(getNotificationHref(notification("crate_watch_match", { crateId: null }), "user")).toBe("/crates");
+    expect(getNotificationActionHint(notification("crate_watch_match"), "user")).toBe("Open crate →");
+  });
+
   it("keeps the existing listing, release-rights, and dispute mappings", () => {
     expect(getNotificationHref(notification("listing_expired", { stemListingId: "l-1" }), null))
       .toBe("/marketplace/manage?listing=l-1&status=expired");

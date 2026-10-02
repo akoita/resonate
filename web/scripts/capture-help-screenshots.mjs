@@ -66,6 +66,7 @@ import {
   CRATE_REQUEST_TEXT,
   mockCrate,
   mockCrateApi,
+  watchingWatch,
 } from "../tests/fixtures/crate-digger-mock.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "https://staging.resonate.pydes.xyz";
@@ -769,6 +770,27 @@ const CRATE_TARGETS = [
       return { locator: panel };
     },
   },
+  {
+    // #1967: the watch panel on a saved crate that is watching, with the
+    // month's summary and the recent matches.
+    file: "crate-digger-watch.png",
+    viewportHeight: 2600,
+    prepare: async (page) => {
+      await page.goto(`${BASE_URL}/crates`, { waitUntil: "networkidle", timeout: 90000 });
+      await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+      await page.getByRole("button", { name: "Build crate" }).click();
+      await page.waitForURL(`**/crates/${CRATE_ID}`, { timeout: 45000 });
+      await page.getByText("6 of 8 found").waitFor({ timeout: 45000 });
+      await page.getByLabel("Crate title").fill("Friday warm-up");
+      await page.getByRole("button", { name: "Save crate" }).click();
+      await page.getByText("Crate saved").waitFor();
+      const panel = page.getByRole("region", { name: "Watch for new releases" });
+      await panel.getByLabel("Notify me").click();
+      await panel.getByRole("button", { name: "Stop watching" }).waitFor({ timeout: 45000 });
+      await page.getByText("Watching this crate").waitFor({ state: "hidden", timeout: 15000 });
+      return { locator: panel };
+    },
+  },
 ];
 
 async function captureCrates(browser) {
@@ -792,7 +814,12 @@ async function captureCrates(browser) {
     // The quote shows a countdown: freeze the page's clock and the instant quotes
     // expire against, so "Prices are good for 10:00" reads the same on every run.
     await page.clock.setFixedTime(CRATE_CLOCK_MS);
-    await mockCrateApi(page, { savedCrates: CRATE_LIST_SAMPLES, now: CRATE_CLOCK_MS });
+    await mockCrateApi(page, {
+      savedCrates: CRATE_LIST_SAMPLES,
+      now: CRATE_CLOCK_MS,
+      // Watching shows this month's matches the moment it starts (#1967).
+      watchOnState: { summary: watchingWatch().summary, recentMatches: watchingWatch().recentMatches },
+    });
     await page.setViewportSize({ width: 1440, height: target.viewportHeight ?? 900 });
     const shot = await target.prepare(page);
     await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
