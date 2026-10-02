@@ -416,8 +416,11 @@ export class ContractsService implements OnModuleInit {
    * Reconcile DB listings with on-chain state.
    * Any "active" listing whose on-chain record shows seller=0x0 (deleted)
    * or amount=0 is marked as "sold" in the DB.
+   * `readListing` is an optional override for the on-chain read (used by tests).
    */
-  private async reconcileListings() {
+  async reconcileListings(
+    readListing?: (listingId: bigint) => Promise<{ seller: string; amount: bigint; expiry: number | bigint }>
+  ) {
     const chainId = resolveIndexerChainId();
     const config = CHAIN_CONFIGS[chainId];
     const marketplaceAddr = MARKETPLACE_ADDRESSES[chainId];
@@ -428,10 +431,24 @@ export class ContractsService implements OnModuleInit {
     }
 
     const client = createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+    const read =
+      readListing ??
+      ((listingId: bigint) =>
+        client.readContract({
+          address: marketplaceAddr,
+          abi: MARKETPLACE_ABI,
+          functionName: "getListing",
+          args: [listingId],
+        }));
 
     // Get all "active" listings from DB for this chain
     const activeListings = await prisma.stemListing.findMany({
-      where: { status: "active", chainId },
+      where: {
+        status: "active",
+        chainId,
+        // A listing on another marketplace contract cannot be judged by this one.
+        contractAddress: { equals: marketplaceAddr, mode: "insensitive" },
+      },
       select: { id: true, listingId: true, expiresAt: true },
     });
 
@@ -443,12 +460,7 @@ export class ContractsService implements OnModuleInit {
 
     for (const dbListing of activeListings) {
       try {
-        const onChain = await client.readContract({
-          address: marketplaceAddr,
-          abi: MARKETPLACE_ABI,
-          functionName: "getListing",
-          args: [dbListing.listingId],
-        });
+        const onChain = await read(dbListing.listingId);
 
         const seller = onChain.seller as string;
         const amount = onChain.amount as bigint;
