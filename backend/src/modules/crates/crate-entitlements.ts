@@ -14,6 +14,11 @@
  * change must land in `docs/rfc/business-model.md` FIRST, then bump
  * {@link CRATE_PRO_POLICY}'s version here.
  *
+ * Exporting a crate to rekordbox or Serato (#1965) is decided through the same
+ * seam by {@link CrateEntitlementsService.export}: free for everyone today. A
+ * future policy that denies it makes the export routes answer 403
+ * `pro_required`; it never changes what the DJ owns or may already download.
+ *
  * Enforcement (planned, in the crate service): creating a crate beyond
  * {@link CRATE_FREE_SAVED_CRATES} is refused with 403 `pro_required` when the
  * entitlement is not allowed (see {@link canCreateCrate}). Today the policy
@@ -80,6 +85,15 @@ export class CrateEntitlementsService {
       reason: "free_for_everyone",
       policyVersion: CRATE_PRO_POLICY.version,
     };
+  }
+
+  /**
+   * Whether `userId` may export a crate to rekordbox or Serato (#1965). Part of
+   * `crate.pro`: today's policy allows everyone. Export never grants rights, it
+   * only lists stems the user already owns.
+   */
+  async export(userId: string): Promise<CrateEntitlementDecision> {
+    return this.pro(userId);
   }
 
   /** Every Crate Digger entitlement, as the crate DTOs expose them. */

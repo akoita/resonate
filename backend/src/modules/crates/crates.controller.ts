@@ -5,8 +5,10 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
+  StreamableFile,
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
@@ -19,6 +21,9 @@ import type {
   ListCratesResponse,
   SwapCrateItemResponse,
 } from "./crate.dto";
+import { contentDisposition } from "./crate_export";
+import type { CrateExportManifestDto } from "./crate_export.dto";
+import { CrateExportService } from "./crate_export.service";
 import { CrateQuoteService } from "./crate_quote.service";
 import { CreateCrateQuoteDto, SettleCrateQuoteDto } from "./crate_quote.dto";
 import type { CrateQuoteDto } from "./crate_quote.dto";
@@ -39,6 +44,7 @@ export class CratesController {
   constructor(
     private readonly crates: CratesService,
     private readonly quotes: CrateQuoteService,
+    private readonly crateExports: CrateExportService,
   ) {}
 
   /**
@@ -145,5 +151,46 @@ export class CratesController {
     const quote = await this.quotes.settleQuote(req.user.userId, id, quoteId, body);
     res.status(quote.status === "submitted" ? 202 : 200);
     return quote;
+  }
+
+  /**
+   * What exporting the crate would contain (#1965): the stems the caller owns
+   * under a standard license with their download file names, the lines left
+   * out and why, and the limits of each format. Needs no folder. A crate with
+   * nothing to export still answers 200 with empty `entries`.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+  @Get(":id/export/manifest")
+  exportManifest(@Req() req: any, @Param("id") id: string): Promise<CrateExportManifestDto> {
+    return this.crateExports.getManifest(req.user.userId, id);
+  }
+
+  /**
+   * The crate as a rekordbox XML or a Serato crate (#1965), listing the stems
+   * the caller owns under a standard license. `folder` is the absolute path of
+   * the directory the DJ saved the stems in; it is written into the file and
+   * is never stored or logged. Export never grants a right: the stems are
+   * downloaded through the licensed `POST /encryption/download` path.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+  @Get(":id/export")
+  async exportCrate(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Query("format") format: unknown,
+    @Query("folder") folder: unknown,
+    @Res({ passthrough: true }) res: { set(headers: Record<string, string | number>): unknown },
+  ): Promise<StreamableFile> {
+    const file = await this.crateExports.exportFile(req.user.userId, id, { format, folder });
+    res.set({
+      "Content-Type": file.contentType,
+      "Content-Length": file.body.length,
+      "Content-Disposition": contentDisposition(file.fileName),
+      // Private to the caller, and the folder is in the file.
+      "Cache-Control": "no-store",
+    });
+    return new StreamableFile(file.body);
   }
 }

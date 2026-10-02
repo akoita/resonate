@@ -45,6 +45,14 @@ describe("CrateEntitlementsService (#1966)", () => {
     }
   });
 
+  it("allows exporting a crate for every user, through the same policy (#1965)", async () => {
+    for (const userId of ["user-a", "user-b", ""]) {
+      await expect(service.export(userId)).resolves.toEqual(GRANTED);
+    }
+    // The crate DTO shape does not change.
+    await expect(service.forCrate("user-a")).resolves.toEqual({ pro: GRANTED });
+  });
+
   it("exposes the crate DTO shape", async () => {
     await expect(service.forCrate("user-a")).resolves.toEqual({ pro: GRANTED });
   });
