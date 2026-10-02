@@ -49,7 +49,7 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
   month's matches. Watching only notifies; it never buys.
 
 Not built yet, tracked in
-[#1967](https://github.com/akoita/resonate/issues/1967):
+[#2027](https://github.com/akoita/resonate/issues/2027) (split from #1967):
 
 - Optional capped auto-buy while watching. The `auto_buy` mode name is reserved
   and refused (`watch_mode_unavailable`); no purchase code exists.
@@ -337,9 +337,12 @@ tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
 
 ## Known Limits
 
-- Watching is notify only. Auto-buy while watching is not built; a decision on
-  it is pending, and the design leaves room (the reserved `auto_buy` mode, the
-  quote and settle flow) without any purchase code.
+- Watching is notify only. Auto-buy while watching is not built; it is tracked
+  in [#2027](https://github.com/akoita/resonate/issues/2027). The design leaves
+  room (the reserved `auto_buy` mode, the quote and settle flow) without any
+  purchase code. Session keys pay in native ETH only today, and their grant
+  screen was removed with the AI DJ buy mode, so auto-buy needs its own grant
+  flow and an atomic spending cap.
 - At most 500 watching crates are evaluated per new track, least recently
   updated first; the bound is logged when hit.
 - At most 20 match notifications per person per rolling 24 hours; further
