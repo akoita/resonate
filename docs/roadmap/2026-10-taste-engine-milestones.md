@@ -1,6 +1,7 @@
 # Roadmap — Taste engine: refocused AI DJ, Crate Digger, Scene Scout (2026-10-01 → 2026-12-09)
 
-**Status:** planned. The owner approved Vision Sprints 28 to 31 on 2026-09-30;
+**Status:** in progress. Vision Sprints 28 and 29 are closed; 30 and 31 are
+planned. The owner approved Vision Sprints 28 to 31 on 2026-09-30;
 each has a sprint doc under [`docs/sprints/`](../sprints/README.md) and one
 GitHub milestone. ADR-TE-1…6 were accepted as written on 2026-09-30
 ([#1953](https://github.com/akoita/resonate/issues/1953)); a later change to a
@@ -32,7 +33,7 @@ dates.
 
 ---
 
-## Vision Sprint 28 — Refocus the AI DJ (planned, Oct 1–14)
+## Vision Sprint 28 — Refocus the AI DJ (closed 2026-09-30)
 
 **Sprint doc:** [Vision Sprint 28](../sprints/2026-10-01-vision-sprint-28-refocus-ai-dj.md)
 
@@ -62,7 +63,7 @@ shows what resonated with you, not what the agent bought.
 **Revenue line:** vision-neutral trust and quality; removes latent unbilled
 GPU paths. No fee, split or payout change.
 
-## Vision Sprint 29 — Audio-aware discovery foundations (planned, Oct 15–28)
+## Vision Sprint 29 — Audio-aware discovery foundations (closed 2026-10-02)
 
 **Sprint doc:** [Vision Sprint 29](../sprints/2026-10-15-vision-sprint-29-audio-aware-discovery.md)
 
