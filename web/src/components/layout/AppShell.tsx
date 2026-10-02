@@ -10,6 +10,7 @@ import { useUIStore } from "../../lib/uiStore";
 import { AddToPlaylistModal } from "../library/AddToPlaylistModal";
 import { ResaleModal } from "../marketplace/ResaleModal";
 import AgentOnboardingGate from "../agent/AgentOnboardingGate";
+import AgentDjContinuation from "../agent/AgentDjContinuation";
 import AnalyticsConsentPrompt from "../analytics/AnalyticsConsentPrompt";
 import AccountClosureNotice from "../settings/AccountClosureNotice";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
@@ -68,6 +69,8 @@ export default function AppShell({
         * everyone rather than wait for them to find a settings panel. */}
       <AnalyticsConsentPrompt />
       <PlaybackIntentBridge />
+      {/* Keeps a live AI DJ set going on every page, not just while Home is open. */}
+      <AgentDjContinuation />
     </PlayerProvider>
 
   );

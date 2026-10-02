@@ -160,6 +160,31 @@ describe('SessionsService (integration)', () => {
       }),
     );
     expect(second.status).toBe('ok');
+    // Next picks join the session history once each, like session-start picks.
+    const licenses = await prisma.license.findMany({ where: { sessionId: session.id } });
+    expect(licenses.map((license) => license.trackId)).toEqual([`${TEST_PREFIX}track`]);
+    expect(licenses[0]).toMatchObject({ type: 'remix', priceUsd: 5, durationSeconds: 0 });
+  });
+
+  it('skips next-pick ids the catalog does not hold', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({
+        status: 'approved',
+        tracks: [
+          { trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 },
+          { trackId: `${TEST_PREFIX}missing`, licenseType: 'personal', priceUsd: 0 },
+        ],
+        primaryTrack: { trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 },
+      }),
+    };
+    const { service } = makeService(runtimeService);
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    const result = await service.agentNext({ sessionId: session.id }) as any;
+
+    expect(result.status).toBe('ok');
+    const licenses = await prisma.license.findMany({ where: { sessionId: session.id } });
+    expect(licenses.map((license) => license.trackId)).toEqual([`${TEST_PREFIX}track`]);
   });
 
   it('searches learned genres and excludes the tracks session start picked', async () => {

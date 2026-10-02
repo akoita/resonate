@@ -298,6 +298,7 @@ export class SessionsService {
     }
 
     this.rememberRecentTrack(sessionId, track.id);
+    await this.recordSessionPicks(sessionId, [selected, ...result.tracks]);
     if (this.agentLearningService) {
       await this.agentLearningService.recordSignal({
         userId,
@@ -398,6 +399,51 @@ export class SessionsService {
       select: { trackId: true },
     });
     return [...new Set([...remembered, ...licensed.map((license) => license.trackId)])];
+  }
+
+  /**
+   * Record a next pick's tracks on the session, as session start records its
+   * picks (`AgentConfigController.startSession`): the web plays the whole
+   * shortlist, so session history counts every track the DJ queued, and
+   * `sessionTrackIds` excludes them from the next refill. Curate-only, no
+   * purchase. Ids the catalog does not hold (an LLM pick can name one) are
+   * skipped; a write failure never fails the pick.
+   */
+  private async recordSessionPicks(
+    sessionId: string,
+    picks: AgentRuntimeCommerceResult["tracks"],
+  ) {
+    const ids = [...new Set(picks.map((pick) => pick.trackId).filter(Boolean))];
+    if (ids.length === 0) return;
+    try {
+      const [known, recorded] = await Promise.all([
+        prisma.track.findMany({ where: { id: { in: ids } }, select: { id: true } }),
+        prisma.license.findMany({
+          where: { sessionId, trackId: { in: ids } },
+          select: { trackId: true },
+        }),
+      ]);
+      const knownIds = new Set(known.map((row) => row.id));
+      const recordedIds = new Set(recorded.map((row) => row.trackId));
+      const fresh = picks.filter(
+        (pick, index) =>
+          knownIds.has(pick.trackId) &&
+          !recordedIds.has(pick.trackId) &&
+          picks.findIndex((other) => other.trackId === pick.trackId) === index,
+      );
+      if (fresh.length === 0) return;
+      await prisma.license.createMany({
+        data: fresh.map((pick) => ({
+          sessionId,
+          trackId: pick.trackId,
+          type: pick.licenseType ?? "personal",
+          priceUsd: pick.priceUsd ?? 0,
+          durationSeconds: 0,
+        })),
+      });
+    } catch {
+      // History is a record of the set, not a gate on it.
+    }
   }
 
   private rememberRecentTrack(sessionId: string, trackId: string) {
