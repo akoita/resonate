@@ -504,7 +504,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Go to Home and find the Your AI DJ section. Sign in if you haven't already; signed out, you can still see the session intents.",
               "The first time, set up your DJ from there or in Settings → AI DJ, where you give it a name and choose your vibes. You can change them later in the same place.",
               "Choose a session intent to set the direction, then start the session. Starting a session from the Home tuner or a feed prompt begins it in place.",
-              "Watch the status, activity and history in the same section. Use Next AI Pick to skip ahead, and your feedback shapes future picks. Stop the session whenever you like.",
+              "When you start a session from the Your AI DJ section, the DJ takes a few seconds to choose its first picks and then plays them in the player. If it finds nothing to play, you'll see a message; try Next AI Pick or another intent.",
+              "Watch the status, activity and history in the same section. Use Next AI Pick to get a new pick, which starts playing right away, and your feedback shapes future picks. Stop the session whenever you like.",
             ],
           },
           {
