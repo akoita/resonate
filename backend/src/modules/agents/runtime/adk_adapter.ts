@@ -98,7 +98,6 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       /TRACK:\s*(.+?)\s*\|\s*LICENSE:\s*(\w+)\s*\|\s*PRICE:\s*\$?([\d.]+)/gi;
     const picks: LlmTrackPick[] = [];
     const pickLimit = getAgentTrackLimit();
-    let budgetLeft = input.budgetRemainingUsd;
     let match: RegExpExecArray | null;
 
     while (picks.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
@@ -109,9 +108,9 @@ export class AdkAdapter implements AgentRuntimeAdapter {
         | "commercial";
       const priceUsd = parseFloat(match[3]);
 
-      if (trackId && priceUsd <= budgetLeft) {
+      // Listening picks are not budget-limited (ADR-TE-1).
+      if (trackId) {
         picks.push({ trackId, licenseType, priceUsd });
-        budgetLeft -= priceUsd;
       }
     }
 
@@ -128,9 +127,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
           | "remix"
           | "commercial";
         const priceUsd = priceMatch ? parseFloat(priceMatch[1]) : 0;
-        if (priceUsd <= input.budgetRemainingUsd) {
-          picks.push({ trackId, licenseType, priceUsd });
-        }
+        picks.push({ trackId, licenseType, priceUsd });
       }
     }
 

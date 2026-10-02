@@ -1,7 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { AgentMixerService } from "./agent_mixer.service";
-import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentRecommendationService } from "./agent_recommendation.service";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 
@@ -9,7 +8,12 @@ export interface AgentOrchestratorInput {
   sessionId: string;
   userId: string;
   recentTrackIds: string[];
-  budgetRemainingUsd: number;
+  /**
+   * Retained for wire compatibility with the runtime contract only. Listening
+   * runs are neither priced nor budget-limited (ADR-TE-1): it never reduces
+   * how many tracks are selected.
+   */
+  budgetRemainingUsd?: number;
   preferences: {
     mood?: string;
     energy?: "low" | "medium" | "high";
@@ -25,10 +29,22 @@ export interface AgentOrchestratorInput {
   };
 }
 
+/**
+ * The DJ's record of one pick. Listening picks are never priced or negotiated
+ * (ADR-TE-1: purchases go through Crate Digger quotes), so `priceUsd` is always
+ * 0 and `licenseType` exists only for type compatibility.
+ */
+export interface OrchestratedPick {
+  licenseType: "personal" | "remix" | "commercial";
+  priceUsd: 0;
+  reason: "selected";
+  recommendation?: any;
+}
+
 export interface OrchestratedTrack {
   trackId: string;
   mixPlan: any;
-  negotiation: any;
+  pick: OrchestratedPick;
 }
 
 /**
@@ -49,7 +65,6 @@ export class AgentOrchestratorService {
   constructor(
     private readonly recommendations: AgentRecommendationService,
     private readonly mixer: AgentMixerService,
-    private readonly negotiator: AgentNegotiatorService,
     private readonly eventBus: EventBus
   ) { }
 
@@ -64,7 +79,6 @@ export class AgentOrchestratorService {
       sessionId: input.sessionId,
       userId: input.userId,
       recentTrackIds: input.recentTrackIds,
-      budgetRemainingUsd: input.budgetRemainingUsd,
       preferences: input.preferences,
       limit: requestedLimit,
     });
@@ -101,9 +115,9 @@ export class AgentOrchestratorService {
       });
     }
 
-    // Process each selected catalog track through mixer + negotiator
+    // Plan the mix for every selected catalog track. Listening picks are not
+    // priced, negotiated, or limited by budget.
     const tracks: OrchestratedTrack[] = [];
-    let budgetLeft = input.budgetRemainingUsd;
     let previousTrackId = input.recentTrackIds[0];
 
     for (const track of selection.selected ?? []) {
@@ -124,44 +138,22 @@ export class AgentOrchestratorService {
         transition: mixPlan.transition,
       });
 
-      const negotiation = await this.negotiator.negotiate({
+      tracks.push({
         trackId: track.id,
-        licenseType: input.preferences.licenseType,
-        budgetRemainingUsd: budgetLeft,
-        stemTypes: input.preferences.stemTypes,
+        mixPlan,
+        pick: {
+          licenseType: input.preferences.licenseType ?? "personal",
+          priceUsd: 0,
+          reason: "selected",
+          recommendation: (track as any).agentRecommendation,
+        },
       });
-
-      this.eventBus.publish({
-        eventName: "agent.negotiated",
-        eventVersion: 1,
-        occurredAt: new Date().toISOString(),
-        sessionId: input.sessionId,
-        trackId: track.id,
-        trackTitle: track.title ?? "Unknown",
-        licenseType: negotiation.licenseType,
-        priceUsd: negotiation.priceUsd,
-        reason: negotiation.reason,
-      });
-
-      if (negotiation.allowed) {
-        budgetLeft -= negotiation.priceUsd;
-        tracks.push({
-          trackId: track.id,
-          mixPlan,
-          negotiation: {
-            ...negotiation,
-            recommendation: (track as any).agentRecommendation,
-          },
-        });
-      }
 
       previousTrackId = track.id;
-
-      if (budgetLeft <= 0) break;
     }
 
-    // Final decision event. A sparse or budget-limited selection returns fewer
-    // tracks with an explicit shortfall; audio is never generated to fill it.
+    // Final decision event. A sparse selection returns fewer tracks with an
+    // explicit shortfall; audio is never generated to fill it.
     const shortfall = Math.max(0, requestedLimit - tracks.length);
     const status = tracks.length > 0 ? "approved" : "all_rejected";
     this.eventBus.publish({
@@ -170,7 +162,6 @@ export class AgentOrchestratorService {
       occurredAt: new Date().toISOString(),
       sessionId: input.sessionId,
       trackCount: tracks.length,
-      totalSpend: tracks.reduce((sum, t) => sum + t.negotiation.priceUsd, 0),
       reason: status,
       ...(shortfall > 0
         ? { shortfall, unmetIntent: buildUnmetIntent(input.preferences) }

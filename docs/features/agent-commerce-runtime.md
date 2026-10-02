@@ -2,7 +2,7 @@
 title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
-issues: [356, 805, 812, 841, 846, 1954, 1964]
+issues: [356, 805, 812, 841, 846, 1954, 1964, 2036]
 introduced_by: [808, 810, 811, 821, 823, 824]
 ---
 
@@ -32,8 +32,8 @@ Available now:
 
 - `SessionsService.agentNext()` routes through `AgentRuntimeService.runCommerce()`.
 - Runtime output is normalized into `status`, `tracks`, `primaryTrack`, `licenseType`, and `priceUsd`.
-- The `/agent` dashboard exposes a "Next AI Pick" control that calls the shared runtime-commerce path for the active session and shows track, license, price, and runtime status.
-- The Home page exposes a "Recommended for You" row backed by `GET /recommendations/:userId`, with a seeded "Start session" action that creates or updates the listener's AI DJ taste seed before opening `/agent`.
+- Home's **Your AI DJ** section (`/#ai-dj`; `/agent` redirects) exposes a "Next AI Pick" control that calls the shared runtime-commerce path for the active session and shows the track, score, reasons and runtime status. It shows no license or price: listening sessions have none (#2036).
+- The Home page exposes a "Recommended for You" row backed by `GET /recommendations/:userId`, with a seeded "Start session" action that starts a session in place from the seed genre. A first-time listener's DJ is created with the seed as its saved vibes; an existing DJ keeps the vibes saved in Settings and the seed steers that session only (#2036).
 - Joined, consented listener cohorts can influence Home recommendations and AI DJ picks as a bounded additive signal. Explanations name only the safe cohort label; member lists, exact raw membership, wallets, and raw listening history are not exposed.
 - `SessionsService.agentNext()` searches the listener's learned favorite genres plus the session's genres, as session start does, and passes every track the session already holds (in-memory next picks and the session's licenses) as `recentTrackIds`, so a next pick never repeats a session track.
 - Runtime catalog search treats explicit genre/taste queries as hard candidate constraints. A query with no catalog matches returns no candidates instead of falling back to unrelated recent tracks.
@@ -68,10 +68,10 @@ listener approved are not part of the listener product, and the autonomous buy
 mode that once existed behind `AGENT_SESSION_BUY_MODE_ENABLED` was removed
 (#1964). Purchases now happen through [Crate Digger](crate_digger.md) quotes.
 
-- Every AI DJ session runs as `curate`: no negotiation, no `PaymentRouterService` purchase, and no session spend is recorded. A stored `AgentConfig.sessionMode: "buy"` from before the removal is read as `curate`.
+- Every AI DJ session runs as `curate`: no negotiation, no pricing, no `PaymentRouterService` purchase, no session budget or spend limit, and no auto-`accept` signal for the DJ's own picks (#2036). The session's pick-log rows (`License`) stay as the "tracks picked" log, recorded at price 0. A stored `AgentConfig.sessionMode: "buy"` from before the removal is read as `curate`.
 - `PATCH /agents/config` accepts `sessionMode: "curate"`, rejects `sessionMode: "buy"` with `buy_mode_disabled`, and rejects any other value with `invalid_session_mode`.
-- `GET` and `PATCH /agents/config` no longer return `buyModeEnabled`. The AI DJ page has no Curate/Buy toggle, Finance (budget and smart wallet) card, "Stem Types to Buy" filter, or license and price on Next AI Pick. The Spent stat shows only while past spend exists.
-- The session intent presets (Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift, Static Calm) are listening-only and no longer carry a licensing posture. The setup wizard has two listening-only steps (name, vibe) with no budget or auto-buy wallet step.
+- `GET` and `PATCH /agents/config` no longer return `buyModeEnabled`. The AI DJ page has no Curate/Buy toggle, Finance (budget and smart wallet) card, "Stem Types to Buy" filter, or license and price on Next AI Pick, and (#2036) no spend stat, per-session spend, per-pick license or price badge, or price in the Next AI Pick toast.
+- The session intent presets (Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift, Static Calm) are listening-only and no longer carry a licensing posture, a license tier or a "Tempo target" (selection never used it). Starting a preset sends its genres, mood, energy and intent as session preferences and does not overwrite the saved vibes; the session's genres are the learned favorites, then the saved vibes, then the session's requested genres (#2036). The setup wizard has two listening-only steps (name, vibe) with no budget or auto-buy wallet step.
 
 Variable reference: [Environment variables](../deployment/environment.md).
 

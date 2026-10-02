@@ -87,7 +87,7 @@ describe('AgentRuntimeExecutorService (integration)', () => {
     const orchestrator = {
       orchestrate: async () => ({
         status: 'approved',
-        tracks: [{ trackId: 't-orch', mixPlan: {}, negotiation: { priceUsd: 0.05, licenseType: 'personal' } }],
+        tracks: [{ trackId: 't-orch', mixPlan: {}, pick: { priceUsd: 0, licenseType: 'personal', reason: 'selected' } }],
       }),
     } as any;
     const runtime = new AgentRuntimeExecutorService(
@@ -107,7 +107,7 @@ describe('AgentRuntimeExecutorService (integration)', () => {
     const orchestrator = {
       orchestrate: async () => ({
         status: 'approved',
-        tracks: [{ trackId: 't-1', mixPlan: {}, negotiation: {} }],
+        tracks: [{ trackId: 't-1', mixPlan: {}, pick: { priceUsd: 0, licenseType: 'personal', reason: 'selected' } }],
       }),
     } as any;
     const badAdapter = {
@@ -129,7 +129,7 @@ describe('AgentRuntimeExecutorService (integration)', () => {
     const orchestrator = {
       orchestrate: async () => ({
         status: 'approved',
-        tracks: [{ trackId: 't-1', mixPlan: {}, negotiation: {} }],
+        tracks: [{ trackId: 't-1', mixPlan: {}, pick: { priceUsd: 0, licenseType: 'personal', reason: 'selected' } }],
       }),
     } as any;
     const badAdkAdapter = {

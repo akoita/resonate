@@ -12,7 +12,6 @@ export interface AgentRecommendationInput {
   sessionId: string;
   userId: string;
   recentTrackIds: string[];
-  budgetRemainingUsd: number;
   preferences: AgentRuntimeInput["preferences"];
   limit: number;
 }

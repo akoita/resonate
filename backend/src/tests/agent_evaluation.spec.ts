@@ -9,14 +9,16 @@ describe("agent evaluation", () => {
           ? {
             status: "approved",
             tracks: [
-              { trackId: "track-1", negotiation: { priceUsd: 0.5 }, mixPlan: {} },
+              {
+                trackId: "track-1",
+                mixPlan: {},
+                pick: { licenseType: "personal", priceUsd: 0, reason: "selected" },
+              },
             ],
           }
           : {
-            status: "rejected",
-            tracks: [
-              { trackId: "track-1", mixPlan: {} },
-            ],
+            status: "all_rejected",
+            tracks: [],
           },
     } as any;
     const runtimeService = { run: async () => ({ status: "approved" }) } as any;
@@ -46,7 +48,8 @@ describe("agent evaluation", () => {
 
     expect(result.metrics.approved).toBe(1);
     expect(result.metrics.rejected).toBe(1);
-    expect(result.metrics.repeatRate).toBe(0.5);
+    expect(result.metrics.repeatRate).toBe(0);
+    expect(result.metrics.avgPriceUsd).toBe(0);
     expect(observability.traceEvaluation).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "agent.evaluate",

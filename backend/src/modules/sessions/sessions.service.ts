@@ -6,7 +6,8 @@ import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
 import { AgentRuntimeService } from "../agents/agent_runtime.service";
 import { djPickVariantFields } from "./dj_pick_variant";
-import { AgentLearningService, buildAgentSignalMetadata } from "../agents/agent_learning.service";
+import { AgentLearningService } from "../agents/agent_learning.service";
+import { mergeSessionGenres } from "../agents/agent_session_genres";
 
 export interface AgentPreferences {
   mood?: string;
@@ -227,6 +228,8 @@ export class SessionsService {
 
     const preferences = this.mergeAgentPreferences(input.sessionId, input.preferences);
     const recentTrackIds = await this.sessionTrackIds(input.sessionId);
+    // Wire-contract field only: listening runs are not budget-limited
+    // (ADR-TE-1), so the remaining budget never reduces the picks.
     const budgetRemainingUsd = Math.max(0, session.budgetCapUsd - session.spentUsd);
     const result = await this.agentRuntimeService.runCommerce({
       sessionId: input.sessionId,
@@ -299,33 +302,9 @@ export class SessionsService {
 
     this.rememberRecentTrack(sessionId, track.id);
     await this.recordSessionPicks(sessionId, [selected, ...result.tracks]);
-    if (this.agentLearningService) {
-      await this.agentLearningService.recordSignal({
-        userId,
-        sessionId,
-        trackId: track.id,
-        action: "accept",
-        metadata: buildAgentSignalMetadata({
-          source: "agent_next_pick",
-          sessionIntent: this.agentPreferences.get(sessionId)?.sessionIntent,
-          sessionIntentName: this.agentPreferences.get(sessionId)?.sessionIntentName,
-          mood: this.agentPreferences.get(sessionId)?.mood,
-          energy: this.agentPreferences.get(sessionId)?.energy,
-          genres: this.agentPreferences.get(sessionId)?.genres,
-          licenseType: selected.licenseType,
-          queueStyle: this.agentPreferences.get(sessionId)?.queueStyle,
-          startSource: this.agentPreferences.get(sessionId)?.source,
-          runtime: result.status,
-          recommendation: {
-            score: selected.score,
-            explanation: selected.explanation,
-            reasonCode: selected.reasonCode,
-          },
-          reason: selected.reason ?? result.reason,
-          outcome: { type: "next_pick_accept" },
-        }),
-      });
-    }
+    // No taste signal here: the DJ queueing a track says nothing about whether
+    // the listener likes it, and the web refills the queue without any user
+    // action. Play, complete, skip, and save are the only signals.
     this.eventBus.publish({
       eventName: "agent.track_selected",
       eventVersion: 1,
@@ -370,19 +349,24 @@ export class SessionsService {
   }
 
   /**
-   * The genres a next pick searches: the listener's learned favorites plus the
-   * session's own, merged exactly as session start does
-   * (`AgentConfigController.startSession`). Without the learned genres a
+   * The genres a next pick searches: the listener's learned favorites, their
+   * saved vibes, and the session's own genres, merged exactly as session start
+   * does (`AgentConfigController.startSession`). Without the learned genres a
    * preset whose genres the catalog lacks finds nothing, although the session
-   * start found picks. Fails open to the session's genres.
+   * start found picks. Fails open to saved vibes plus the session's genres.
    */
-  private async withLearnedGenres(userId: string, genres: string[] = []) {
-    if (!this.agentLearningService) return genres;
+  private async withLearnedGenres(userId: string, sessionGenres: string[] = []) {
+    const vibes = await prisma.agentConfig
+      .findUnique({ where: { userId }, select: { vibes: true } })
+      .then((config) => config?.vibes ?? [])
+      .catch(() => [] as string[]);
+    const fallback = mergeSessionGenres({ vibes, sessionGenres });
+    if (!this.agentLearningService) return fallback;
     try {
-      const profile = await this.agentLearningService.resolveTasteProfile(userId, genres);
-      return this.agentLearningService.mergeLearnedGenres(genres, profile);
+      const profile = await this.agentLearningService.resolveTasteProfile(userId, fallback);
+      return this.agentLearningService.mergeLearnedGenres(vibes, profile, sessionGenres);
     } catch {
-      return genres;
+      return fallback;
     }
   }
 
@@ -406,7 +390,7 @@ export class SessionsService {
    * picks (`AgentConfigController.startSession`): the web plays the whole
    * shortlist, so session history counts every track the DJ queued, and
    * `sessionTrackIds` excludes them from the next refill. Curate-only, no
-   * purchase. Ids the catalog does not hold (an LLM pick can name one) are
+   * purchase: rows are the DJ pick log, never priced. Ids the catalog does not hold (an LLM pick can name one) are
    * skipped; a write failure never fails the pick.
    */
   private async recordSessionPicks(
@@ -432,12 +416,13 @@ export class SessionsService {
           picks.findIndex((other) => other.trackId === pick.trackId) === index,
       );
       if (fresh.length === 0) return;
+      // The DJ pick log, not a purchase: always priceUsd 0.
       await prisma.license.createMany({
         data: fresh.map((pick) => ({
           sessionId,
           trackId: pick.trackId,
           type: pick.licenseType ?? "personal",
-          priceUsd: pick.priceUsd ?? 0,
+          priceUsd: 0,
           durationSeconds: 0,
         })),
       });

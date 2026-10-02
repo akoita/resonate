@@ -11,7 +11,6 @@ import { prisma } from '../db/prisma';
 import { DiscoveryRankingService } from "../modules/recommendations/discovery-ranking.service";
 import { EventBus } from '../modules/shared/event_bus';
 import { AgentMixerService } from '../modules/agents/agent_mixer.service';
-import { AgentNegotiatorService } from '../modules/agents/agent_negotiator.service';
 import { AgentOrchestratorService } from '../modules/agents/agent_orchestrator.service';
 import { AgentSelectorService } from '../modules/agents/agent_selector.service';
 import { AgentRecommendationService } from '../modules/agents/agent_recommendation.service';
@@ -32,7 +31,6 @@ function buildOrchestrator(eventBus = new EventBus()) {
   return new AgentOrchestratorService(
     new AgentRecommendationService(new DeterministicRecommendationAdapter(selector)),
     new AgentMixerService(),
-    new AgentNegotiatorService(tools),
     eventBus,
   );
 }
@@ -88,7 +86,7 @@ describe('AgentOrchestratorService (integration)', () => {
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
   });
 
-  it('orchestrates selection, mix, negotiation', async () => {
+  it('orchestrates selection and mix with unpriced picks', async () => {
     const orchestrator = buildOrchestrator();
     const result = await orchestrator.orchestrate({
       sessionId: 'session-1',

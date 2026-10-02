@@ -401,7 +401,6 @@ describe("AI DJ selector on the shared core (#1456 WS-9)", () => {
         sessionId: "s",
         userId: "u",
         recentTrackIds: [],
-        budgetRemainingUsd: 1,
         preferences: { mood: "Hype", sessionIntent: "Hype", queueStyle: "Fast cuts" },
         limit: 3,
       });

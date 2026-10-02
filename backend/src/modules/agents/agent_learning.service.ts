@@ -8,6 +8,7 @@ import {
 } from "../recommendations/taste_memory.service";
 import { DISCOVERY_REASON_CODES } from "../recommendations/discovery-explanations";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
+import { mergeSessionGenres } from "./agent_session_genres";
 
 export const AGENT_SIGNAL_WEIGHTS = {
   accept: 1,
@@ -383,11 +384,20 @@ export class AgentLearningService {
     });
   }
 
-  mergeLearnedGenres(vibes: string[], profile: AgentTasteProfile): string[] {
-    return Array.from(new Set([
-      ...profile.favoredGenres,
-      ...vibes,
-    ].filter(Boolean)));
+  /**
+   * Learned favorites, then saved vibes, then this session's own genres (a
+   * preset's genres must survive the merge). See `mergeSessionGenres`.
+   */
+  mergeLearnedGenres(
+    vibes: string[],
+    profile: AgentTasteProfile,
+    sessionGenres: string[] = [],
+  ): string[] {
+    return mergeSessionGenres({
+      learnedGenres: profile.favoredGenres,
+      vibes,
+      sessionGenres,
+    });
   }
 }
 
