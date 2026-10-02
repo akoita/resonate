@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AgentsModule } from "../agents/agents.module";
+import { ContractsModule } from "../contracts/contracts.module";
+import { IndexerService } from "../contracts/indexer.service";
 import { NotificationModule } from "../notifications/notification.module";
 import { RecommendationsModule } from "../recommendations/recommendations.module";
 import { CrateEntitlementsService } from "./crate-entitlements";
@@ -7,6 +9,7 @@ import { CRATE_MARKETPLACE_READER, createViemMarketplaceReader } from "./crate_m
 import { CrateExportService } from "./crate_export.service";
 import { CrateWatchService } from "./crate_watch.service";
 import { CrateQuoteService } from "./crate_quote.service";
+import { CRATE_TRANSACTION_INDEXER } from "./crate_transaction_indexer";
 import { CRATE_REQUEST_PARSER } from "./crate_request_parser";
 import { createCrateRequestParser } from "./model_crate_request_parser";
 import { CratesController } from "./crates.controller";
@@ -19,10 +22,11 @@ import { CratesService } from "./crates.service";
  * lookup and the taste policy; AgentsModule provides the shared taste-profile
  * resolver and the stem quality service the quote settlement validates with.
  * NotificationModule delivers the watch-match notification (#1967).
+ * ContractsModule provides the indexer settlement uses to record purchases now.
  * Nothing imports this module, so it adds no import cycle.
  */
 @Module({
-  imports: [RecommendationsModule, AgentsModule, NotificationModule],
+  imports: [RecommendationsModule, AgentsModule, NotificationModule, ContractsModule],
   controllers: [CratesController],
   providers: [
     CratesService,
@@ -34,6 +38,8 @@ import { CratesService } from "./crates.service";
     // The chain behind quotes and settlement; the indexer's RPC_URL and
     // MARKETPLACE_ADDRESS, so no new variable (#1964).
     { provide: CRATE_MARKETPLACE_READER, useFactory: () => createViemMarketplaceReader() },
+    // Settlement indexes its purchase transaction through the shared indexer.
+    { provide: CRATE_TRANSACTION_INDEXER, useExisting: IndexerService },
     // Deterministic by default; model-assisted only when
     // CRATE_REQUEST_PARSER_STRATEGY=model-assisted.
     { provide: CRATE_REQUEST_PARSER, useFactory: () => createCrateRequestParser() },

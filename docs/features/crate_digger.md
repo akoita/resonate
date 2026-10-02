@@ -39,7 +39,10 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
   stems (every change prices the whole quote again), checks every line against
   the chain, and sends one batched user operation after a confirm step. Receipts
   show per stem and come back when the crate is reopened. `StemPurchase` is
-  indexed per `Sold` log, so a batch of N buys records N purchases.
+  indexed per `Sold` log, so a batch of N buys records N purchases. Settlement
+  indexes the purchase transaction itself, so the stems count as owned (export,
+  downloads) as soon as the receipts show, without waiting for the background
+  indexer.
 - **Export to rekordbox and Serato (#1965).**
   `POST /crates/:id/export` with `{ format, folder }` builds the file
   from the stems the DJ owns for the crate's tracks; `GET /crates/:id/export/manifest`
