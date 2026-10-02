@@ -40,12 +40,19 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
   each stem through the existing licensed download path, remembers the folder
   per browser, and saves the file. Export never grants a right.
 - **`crate.pro` entitlement seam (#1966).** Free for everyone; nothing is gated
-  yet. The crate page reads it from the crate response.
+  yet. Every gated feature (saving beyond the free number, export, watching)
+  asks the resolver, and the crate response carries `pro`, `export` and `watch`
+  decisions the page reads instead of hard-coding them.
+- **Watching, notify only (#1967, slice A).** A saved crate can watch for new
+  releases. When a newly playable track fits every filter of a watching crate,
+  the DJ gets a notification that opens the crate, and the crate page lists this
+  month's matches. Watching only notifies; it never buys.
 
-Not built yet, each tracked in its own issue:
+Not built yet, tracked in
+[#1967](https://github.com/akoita/resonate/issues/1967):
 
-- Bounded watching with optional capped auto-buy
-  ([#1967](https://github.com/akoita/resonate/issues/1967)).
+- Optional capped auto-buy while watching. The `auto_buy` mode name is reserved
+  and refused (`watch_mode_unavailable`); no purchase code exists.
 
 ## Who It Is For
 
@@ -229,14 +236,75 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
        `Content-Disposition: attachment` and an RFC 5987 `filename*`; the API
        exposes `Content-Disposition` to the browser for it.
 
+14. **Watching (#1967, notify only).**
+    1. *Turning it on.* `PATCH /crates/:id` with `watch: { mode, expiresInDays? }`.
+       Only a saved crate can watch (409 `crate_not_saved`); a draft says "Save
+       the crate to watch it". Turning it on asks the `watch` entitlement (403
+       `pro_required` when denied). `expiresInDays` is a whole number from 1 to
+       365, default 90; watching stops by itself after it. `"off"` is one action,
+       is always allowed and clears the expiry. `"auto_buy"` is reserved: the
+       request validates but is refused with 400 `watch_mode_unavailable`. An
+       entitlement never hides or deletes matches already recorded.
+    2. *When a track is evaluated.* The catalog publishes `catalog.release_ready`
+       after the transaction that stores a release's stems, their measured
+       features and the `complete` track status has committed, so a track is
+       publicly playable with its features by then; `stems.processed` needs no
+       subscription of its own. Each track of the release that is publicly
+       playable and fully processed is evaluated against the watching crates
+       (mode `notify`, saved, not expired). Evaluating a track twice is harmless.
+    3. *What matches.* The same filter evaluation as building a crate
+       (`failedFilters`): the track matches when it fails no filter, and unknown
+       facts never pass. `count` and `maxTotalUsd` constrain a whole crate and do
+       not apply to one track. Never a match: the crate owner's own release, a
+       track already in the crate, and a fully AI-generated track unless the
+       crate allows it.
+    4. *Recording.* One `CrateWatchMatch` per crate and track (unique), so a
+       duplicate event records and notifies nothing. The match is recorded even
+       when nobody can be notified.
+    5. *Notification.* Type `crate_watch_match`, "New match for <crate title>",
+       "<track> by <artist> fits your crate filters.", linked to the crate
+       (`Notification.crateId`; the bell opens `/crates/:id`). At most 20 match
+       notifications per person per rolling 24 hours (`notifiedAt` is the
+       count); beyond that, or for an account whose id is not a wallet address
+       (the inbox is keyed by wallet address), or when the person switched
+       notifications off, the match is recorded with `notifiedAt` null and still
+       shows in the crate summary.
+    6. *The crate summary.* `GET /crates/:id` returns `watch`: the mode in effect
+       (a draft crate and an expired watch read `off`; `expiresAt` then says when
+       it ended), this UTC month's `matches` and `notified`, and up to 20
+       `recentMatches` newest first, only for tracks still publicly playable,
+       each with a release link. It is computed when the crate is read: there is
+       no scheduled job and no emailed summary.
+    7. *Failure.* The handler runs after the release is already ready and
+       catches everything: it logs the release id and an error code, never
+       filters, titles or user ids, and never reaches the publishing pipeline.
+
+## Entitlements
+
+`CrateEntitlementsService` decides each gated feature and the crate response
+carries all three decisions, so the page never hard-codes them:
+
+| Decision | Gates | Today |
+| --- | --- | --- |
+| `pro` | saving more than 3 crates | free for everyone |
+| `export` | the rekordbox and Serato export | free for everyone |
+| `watch` | turning watching on | free for everyone |
+
+All three come from one policy (`crate-pro-policy/v1`, rule `everyone`). A future
+policy that denies one never hides or deletes what the person already made:
+existing crates stay readable, matches stay listed, and turning watching off is
+always allowed. Revenue line: ADR-BM-6 Line 3 (watching leads to quoted
+purchases the DJ approves) in phase 2; #1966 is Line 2 readiness. No fee or price
+changes.
+
 ## Privacy
 
 The export folder, which can contain the DJ's username, is only written into
 the generated file. It travels in the `POST` body, never in a URL, so proxy and
 load balancer URL logs cannot capture it. The API never stores or logs it and
 the web helper does not use the logging request wrapper. The request text is never stored or logged; `CrateRequest` keeps only the
-filters, the number of unparsed phrases and the unmet filter keys. Crates,
-crate lines and crate requests are included in the personal data export and
+filters, the number of unparsed phrases and the unmet filter keys. Crates (with their watch
+state), crate lines, crate requests and watch matches are included in the personal data export and
 deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 
 ## API Surfaces
@@ -254,6 +322,8 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | `GET /crates/:id/export/manifest` | The stems you own for the crate with their download names, the lines left out and why, and notes; 200 even when empty; 404 / 409 `no_wallet` / 403 `pro_required` (JWT) |
 | `POST /crates/:id/export` `{ format: "rekordbox"\|"serato", folder }` | The rekordbox XML or Serato crate for the stems you own (200 with the file). The folder is in the body, not the URL: #1965 first said `GET` with a query string, changed for privacy because proxies and load balancers log URLs. 400 `invalid_format` / `invalid_folder`, 404, 409 `no_wallet` / `nothing_to_export`, 403 `pro_required` (JWT) |
 | `GET /crates/:id` `latestQuote` | The crate's most recent quote, or null |
+| `PATCH /crates/:id` `watch: { mode: "off"\|"notify", expiresInDays? }` | Watch a saved crate for new releases (1 to 365 days, default 90); off is always allowed. 400 `invalid_watch_mode` / `invalid_watch_expiry` / `watch_mode_unavailable`, 409 `crate_not_saved`, 403 `pro_required` (JWT) |
+| `GET /crates/:id` `crate.watch` | `{ mode, expiresAt, summary: { month, matches, notified }, recentMatches }` |
 | `/crates`, `/crates/:id` | Crate Digger request box, crate list and crate page with the quote and purchase panel |
 
 ## Configuration
@@ -266,6 +336,23 @@ per-chain variants) and `INDEXER_CHAIN_ID` / `CHAIN_ID` / `AA_CHAIN_ID`; payment
 tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
 
 ## Known Limits
+
+- Watching is notify only. Auto-buy while watching is not built; a decision on
+  it is pending, and the design leaves room (the reserved `auto_buy` mode, the
+  quote and settle flow) without any purchase code.
+- At most 500 watching crates are evaluated per new track, least recently
+  updated first; the bound is logged when hit.
+- At most 20 match notifications per person per rolling 24 hours; further
+  matches are recorded and listed on the crate without a notification.
+- The month's summary is worked out when the crate is opened; there is no
+  scheduled or emailed summary, because the scheduled jobs cannot call
+  admin-only routes.
+- A track is evaluated when its release becomes ready. A track that is not
+  publicly playable then (for example held for a rights review) is not
+  evaluated again by a later change of that kind.
+- Notifications reach accounts whose id is a wallet address (the inbox is keyed
+  by wallet address); other accounts still see matches on the crate page.
+- The match list links to the track's release page.
 
 - The candidate pool is bounded to the 500 newest publicly playable tracks;
   coverage is honest about that pool, not the whole catalog.
@@ -333,8 +420,9 @@ tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
 ## Testing
 
 - Unit: `cd backend && npx jest src/tests/crate_ src/tests/model_crate_request_parser.spec.ts src/tests/crates.controller.http.spec.ts` (includes the quote rules in `crate_quote.spec.ts` and the viem reader in `crate_marketplace_reader.spec.ts`)
+- Watching: `cd backend && npx jest src/tests/crate_watch.spec.ts src/tests/crate_entitlements.spec.ts` (pure core, entitlement decisions) and `npm run test:integration -- crate_watch.integration` (real Prisma: matches, notifications, the cap, duplicates, bounds, erasure)
 - Export: `cd backend && npx jest src/tests/crate_export.spec.ts` (byte-exact rekordbox XML and Serato crate against the fixtures in `src/tests/fixtures/crate-export/`) and `npm run test:integration -- crate_export.integration` (real Prisma: ownership, skipped reasons, manifest, the folder never persisted)
-- Web: `cd web && npx vitest run src/lib/crates.test.ts src/lib/crateExport src/lib/crateTransitionPreview.test.ts src/lib/crateQuote src/lib/onchainCheckout.test.ts src/components/crates`
+- Web: `cd web && npx vitest run src/lib/crates.test.ts src/lib/crateWatch src/lib/crateExport src/lib/crateTransitionPreview.test.ts src/lib/crateQuote src/lib/onchainCheckout.test.ts src/components/crates`
 - Web flow (mock auth, no backend data; the dev server and the tests must agree on `NEXT_PUBLIC_CHAIN_ID` and `NEXT_PUBLIC_MARKETPLACE_ADDRESS`): `cd web && npx playwright test tests/crate-digger.spec.ts --project=chromium`
 - Integration (Docker): `cd backend && npm run test:integration -- crates.integration crate_quote.integration flow2_contracts` (the quote spec replaces the chain with a fake reader; Prisma is real)
 - Contracts (Foundry): `cd contracts && forge test --match-path test/unit/StemMarketplace.t.sol --match-test BatchBuy` (one approval and several buys in one call match `quoteBuy`; one expired line reverts the whole batch)
