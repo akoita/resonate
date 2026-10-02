@@ -1978,7 +1978,7 @@ export class CatalogService implements OnModuleInit {
               key: "buy_license",
               label: PLAYER_ACTION_LABELS.buy_license,
               status: "available",
-              href: "/marketplace",
+              href: "/crates?tab=stems",
               metadata: {
                 listingCount: activeListings.length,
                 licenseTypes,
@@ -1997,7 +1997,7 @@ export class CatalogService implements OnModuleInit {
               key: "remix",
               label: PLAYER_ACTION_LABELS.remix,
               status: "available",
-              href: hasRemixListing ? "/marketplace" : `/release/${track.release.id}`,
+              href: hasRemixListing ? "/crates?tab=stems" : `/release/${track.release.id}`,
               metadata: {
                 source: hasRemixListing ? "marketplace_listing" : "stem_nft_metadata",
                 hasRemixListing,

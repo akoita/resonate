@@ -5,7 +5,7 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 const PUBLIC_ROUTES = [
   { path: "/", surface: "Home" },
-  { path: "/marketplace", surface: "Marketplace" },
+  { path: "/crates?tab=stems", surface: "Crates & Stems browse stems" },
   { path: "/shows/sennarin-paris", surface: "Shows campaign" },
 ] as const;
 
@@ -14,8 +14,7 @@ const AUTHENTICATED_ROUTES = [
   { path: "/artist/upload", surface: "Artist upload" },
   { path: "/wallet", surface: "Wallet" },
   { path: "/player", surface: "Player" },
-  { path: "/agent", surface: "AI DJ" },
-  { path: "/crates", surface: "Crate Digger" },
+  { path: "/crates", surface: "Crates & Stems build a crate" },
 ] as const;
 
 async function authenticate(page: Page) {

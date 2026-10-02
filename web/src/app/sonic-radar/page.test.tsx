@@ -73,7 +73,7 @@ describe("SonicRadarPage (discovery journal)", () => {
         const html = renderToStaticMarkup(<SonicRadarPage />);
 
         expect(html).toContain("No resonant discoveries yet — tracks you finish and then replay or save show up here.");
-        expect(html).toMatch(/<a[^>]*href="\/agent"[^>]*>Start a session<\/a>/);
+        expect(html).toMatch(/<a[^>]*href="\/#ai-dj"[^>]*>Start a session<\/a>/);
         expect(html).not.toContain("sonic-radar-stats");
     });
 

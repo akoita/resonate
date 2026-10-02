@@ -1,30 +1,54 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import AuthGate from "../../components/auth/AuthGate";
-import { useAuth } from "../../components/auth/AuthProvider";
+import { useAuth } from "../auth/AuthProvider";
 import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
-import { getAgentNextPick, type AgentNextPickResponse, type AgentNextPreferences } from "../../lib/api";
-import AgentSetupWizard from "../../components/agent/AgentSetupWizard";
-import AgentStatusCard from "../../components/agent/AgentStatusCard";
-import AgentActivityFeed from "../../components/agent/AgentActivityFeed";
-import AgentTasteCard from "../../components/agent/AgentTasteCard";
-import AgentHistoryCard from "../../components/agent/AgentHistoryCard";
-import AgentSessionPresets, { SESSION_PRESETS, type SessionPreset } from "../../components/agent/AgentSessionPresets";
-import AgentNextPickCard from "../../components/agent/AgentNextPickCard";
-import { useToast } from "../../components/ui/Toast";
+import {
+    getAgentNextPick,
+    type AgentNextPickResponse,
+    type AgentNextPreferences,
+} from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
+import { useToast } from "../ui/Toast";
+import AgentActivityFeed from "./AgentActivityFeed";
+import AgentHistoryCard from "./AgentHistoryCard";
+import AgentNextPickCard from "./AgentNextPickCard";
+import AgentSessionPresets, { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
+import AgentSetupWizard from "./AgentSetupWizard";
+import AgentStatusCard from "./AgentStatusCard";
 
-export default function AgentPage() {
+/** Analytics surface for the DJ session panel (it lives in the Home `#ai-dj` section). */
+const ANALYTICS_SURFACE = "home";
+
+/** `.aid-page` was a full-page canvas; embedded in Home it must not claim a viewport. */
+const EMBEDDED_STYLE: CSSProperties = { minHeight: 0, padding: 0, background: "transparent" };
+
+type Props = {
+    /**
+     * Bumped by the host whenever a session is started outside this panel
+     * (e.g. from the Home tuner) so the panel refetches config and history
+     * without a page reload. 0/undefined means "no external change yet".
+     */
+    refreshKey?: number;
+};
+
+/**
+ * Start/stop and follow an AI DJ session: command bar, intent presets, live
+ * status/activity/next pick, and session history. DJ preferences (name,
+ * vibes) live in Settings → AI DJ; ERC-8004 identity is frozen (ADR-TE-6)
+ * and intentionally not surfaced here.
+ */
+export default function AgentSessionPanel({ refreshKey }: Props) {
     const { token } = useAuth();
-    const { config, isLoading, showWizard, setShowWizard, createConfig, updateConfig, mintIdentity, attestReputation, startSession, stopSession } =
+    const { config, isLoading, createConfig, updateConfig, startSession, stopSession, refetch: refetchConfig } =
         useAgentConfig();
     const events = useAgentEvents();
     const { sessions, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
     const { addToast } = useToast();
+    const [wizardOpen, setWizardOpen] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [nextPick, setNextPick] = useState<AgentNextPickResponse | null>(null);
     const [isPickingNext, setIsPickingNext] = useState(false);
@@ -35,13 +59,20 @@ export default function AgentPage() {
         return activeSessionId ?? sessions.find((session) => !session.endedAt)?.id ?? null;
     }, [activeSessionId, sessions]);
 
+    // A session was started elsewhere on the page: pick it up without a reload.
+    useEffect(() => {
+        if (!refreshKey) return;
+        void refetchConfig();
+        void refetchHistory();
+    }, [refreshKey, refetchConfig, refetchHistory]);
+
     useEffect(() => {
         void recordProductAnalytics(token, "agent.intent_viewed", {
             source: "agent_session_intent_panel",
             subjectType: "agent_config",
             subjectId: config?.id,
             payload: {
-                surface: "agent",
+                surface: ANALYTICS_SURFACE,
                 presetCount: SESSION_PRESETS.length,
                 intents: SESSION_PRESETS.map((preset) => preset.intent),
             },
@@ -58,6 +89,7 @@ export default function AgentPage() {
         monthlyCapUsd: number;
     }) => {
         await createConfig(data);
+        setWizardOpen(false);
         void recordProductAnalytics(token, "onboarding.completed", {
             source: "agent_setup",
             subjectType: "agent_config",
@@ -87,7 +119,7 @@ export default function AgentPage() {
                 subjectType: "agent_session",
                 subjectId: stoppedSessionId ?? undefined,
                 payload: {
-                    surface: "agent",
+                    surface: ANALYTICS_SURFACE,
                     intent: selectedPreset?.intent,
                     intentName: selectedPreset?.name,
                     sessionDurationMs: stoppedSession
@@ -118,7 +150,7 @@ export default function AgentPage() {
                     subjectType: "agent_session",
                     subjectId: result?.sessionId,
                     payload: {
-                        surface: "agent",
+                        surface: ANALYTICS_SURFACE,
                         intent: preset?.intent,
                         intentName: preset?.name,
                         energy: preset?.preferences.energy,
@@ -151,7 +183,7 @@ export default function AgentPage() {
             subjectType: "agent_config",
             subjectId: config?.id,
             payload: {
-                surface: "agent",
+                surface: ANALYTICS_SURFACE,
                 intent: preset.intent,
                 intentName: preset.name,
                 energy: preset.preferences.energy,
@@ -184,7 +216,7 @@ export default function AgentPage() {
                 subjectType: "agent_session",
                 subjectId: openSessionId,
                 payload: {
-                    surface: "agent",
+                    surface: ANALYTICS_SURFACE,
                     intent: selectedPreset?.intent,
                     intentName: selectedPreset?.name,
                     status: result.status,
@@ -223,141 +255,105 @@ export default function AgentPage() {
         }
     };
 
+    // A refetch must not blank the panel: only show the loaders on first load.
+    const showConfigLoader = isLoading && !config;
+    const showHistoryLoader = historyLoading && sessions.length === 0;
+
     return (
-        <AuthGate title="Connect your wallet to access your AI DJ.">
-            <div className="aid-page">
-                <div className="aid-discovery-banner">
-                    <span>
-                        Building a DJ set? <strong>Crate Digger</strong> turns what your set needs into a crate you can reorder, lock and save.
-                    </span>
-                    <Link href="/crates" className="aid-ghost-btn">Open Crate Digger →</Link>
+        <div className="aid-page" data-testid="agent-session-panel" style={EMBEDDED_STYLE}>
+            {showConfigLoader ? (
+                <div className="aid-loader-wrap">
+                    <span className="aid-spinner" />
+                    <span>Loading your DJ…</span>
                 </div>
-                {isLoading ? (
-                    <div className="aid-loader-wrap">
-                        <span className="aid-spinner" />
-                        <span>Loading your DJ…</span>
-                    </div>
-                ) : !config ? (
-                    <div className="aid-empty">
-                        <div className="aid-empty-icon">🤖</div>
-                        <h2>Set Up Your AI DJ</h2>
-                        <p>Name your DJ and it will build listening sessions around your mood, explaining why each pick fits.</p>
-                        <button className="aid-primary-btn" onClick={() => setShowWizard(true)}>
-                            Get Started
-                        </button>
-                    </div>
-                ) : (
-                    <>
-                        {/* Command bar */}
-                        <div className="aid-command">
-                            <div className="aid-orb">
-                                <span className="aid-orb-badge">{config.name.slice(0, 2).toUpperCase()}</span>
-                            </div>
-                            <div className="aid-command-info">
-                                <span className="aid-command-name">{config.name}</span>
-                                <span className={`aid-command-status ${config.isActive ? "active" : ""}`}>
-                                    {config.isActive ? "● Live" : "○ Inactive"}
-                                </span>
-                            </div>
-                            <div className="aid-command-actions">
-                                <button
-                                    className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
-                                    onClick={() => handleToggle()}
-                                >
-                                    {config.isActive ? "Stop Session" : "Start Session"}
-                                </button>
-                            </div>
+            ) : !config ? (
+                <div className="aid-empty">
+                    <div className="aid-empty-icon">🤖</div>
+                    <h2>Set up your DJ</h2>
+                    <p>Name your DJ and it will build listening sessions around your mood, explaining why each pick fits.</p>
+                    <button className="aid-primary-btn" onClick={() => setWizardOpen(true)}>
+                        Set up your DJ
+                    </button>
+                </div>
+            ) : (
+                <>
+                    {/* Command bar */}
+                    <div className="aid-command">
+                        <div className="aid-orb">
+                            <span className="aid-orb-badge">{config.name.slice(0, 2).toUpperCase()}</span>
                         </div>
+                        <div className="aid-command-info">
+                            <span className="aid-command-name">{config.name}</span>
+                            <span className={`aid-command-status ${config.isActive ? "active" : ""}`}>
+                                {config.isActive ? "● Live" : "○ Inactive"}
+                            </span>
+                        </div>
+                        <div className="aid-command-actions">
+                            <button
+                                className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
+                                onClick={() => handleToggle()}
+                            >
+                                {config.isActive ? "Stop Session" : "Start Session"}
+                            </button>
+                        </div>
+                    </div>
 
-                        {/* Preset strip */}
-                        <AgentSessionPresets
-                            selectedIntent={selectedPreset?.intent}
-                            isStarting={isStartingPreset}
-                            showOpenLink={false}
-                            onSelect={handleSelectPreset}
-                            onStart={handleStartPreset}
+                    {/* Preset strip */}
+                    <AgentSessionPresets
+                        selectedIntent={selectedPreset?.intent}
+                        isStarting={isStartingPreset}
+                        showOpenLink={false}
+                        onSelect={handleSelectPreset}
+                        onStart={handleStartPreset}
+                    />
+
+                    {/* Middle row: Status | Activity | Next Pick */}
+                    <div className="aid-middle-row">
+                        <AgentStatusCard
+                            config={config}
+                            onToggle={() => handleToggle()}
+                            sessionCount={sessions.length}
+                            trackCount={sessions.reduce((sum, s) => sum + s.licenses.length, 0)}
+                            totalSpend={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
                         />
+                        <AgentActivityFeed isActive={config.isActive} events={events} />
+                        <AgentNextPickCard
+                            config={config}
+                            activeSessionId={openSessionId}
+                            pick={nextPick}
+                            isLoading={isPickingNext}
+                            onPick={handleNextPick}
+                        />
+                    </div>
 
-                        {/* Middle row: Status | Activity | Next Pick */}
-                        <div className="aid-middle-row">
-                            <AgentStatusCard
-                                config={config}
-                                onToggle={() => handleToggle()}
-                                sessionCount={sessions.length}
-                                trackCount={sessions.reduce((sum, s) => sum + s.licenses.length, 0)}
-                                totalSpend={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
-                            />
-                            <AgentActivityFeed isActive={config.isActive} events={events} />
-                            <AgentNextPickCard
-                                config={config}
-                                activeSessionId={openSessionId}
-                                pick={nextPick}
-                                isLoading={isPickingNext}
-                                onPick={handleNextPick}
-                            />
+                    {/* Discovery banner */}
+                    {!historyLoading && sessions.some((s) => s.licenses.length > 0) && (
+                        <div className="aid-discovery-banner">
+                            <span>
+                                <strong>{sessions.reduce((sum, s) => sum + s.licenses.length, 0)}</strong> tracks discovered across{" "}
+                                <strong>{sessions.filter((s) => s.licenses.length > 0).length}</strong> sessions
+                            </span>
+                            <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
                         </div>
+                    )}
 
-                        {/* Bottom row: Taste */}
-                        <div className="aid-bottom-row aid-bottom-row--single">
-                            <AgentTasteCard
-                                config={config}
-                                onUpdateVibes={async (vibes) => {
-                                    await updateConfig({ vibes });
-                                    addToast({ type: "success", title: "Vibes Updated", message: "Your DJ's taste has been updated." });
-                                }}
-                                onMintIdentity={async () => {
-                                    const result = await mintIdentity();
-                                    const reason = result?.onchain?.reason;
-                                    addToast({
-                                        type: result?.identityStatus === "minted" || result?.identityStatus === "attested" ? "success" : "info",
-                                        title: reason === "erc8004_disabled" ? "Identity Local" : "Identity Updated",
-                                        message: result?.identityTxHash
-                                            ? "ERC-8004 identity transaction recorded."
-                                            : reason === "erc8004_disabled"
-                                                ? "ERC-8004 registry writes are not configured for this environment."
-                                                : "Enable the smart wallet session key to mint on-chain.",
-                                    });
-                                }}
-                                onAttestReputation={async () => {
-                                    const result = await attestReputation();
-                                    const reason = result?.onchain?.reason;
-                                    addToast({
-                                        type: result?.reputationTxHash ? "success" : "info",
-                                        title: result?.reputationTxHash ? "Reputation Attested" : "Attestation Pending",
-                                        message: result?.reputationTxHash
-                                            ? "Taste and reputation snapshot published on-chain."
-                                            : reason === "erc8004_disabled"
-                                                ? "ERC-8004 registry writes are not configured for this environment."
-                                                : "Mint an ERC-8004 identity and enable the smart wallet session key first.",
-                                    });
-                                }}
-                            />
-                        </div>
+                    {/* History */}
+                    <AgentHistoryCard sessions={sessions} isLoading={showHistoryLoader} />
 
-                        {/* Discovery banner */}
-                        {!historyLoading && sessions.some(s => s.licenses.length > 0) && (
-                            <div className="aid-discovery-banner">
-                                <span>
-                                    <strong>{sessions.reduce((sum, s) => sum + s.licenses.length, 0)}</strong> tracks discovered across{" "}
-                                    <strong>{sessions.filter(s => s.licenses.length > 0).length}</strong> sessions
-                                </span>
-                                <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
-                            </div>
-                        )}
+                    <p className="aid-taste-hint">
+                        Rename your DJ or change its vibes in{" "}
+                        <Link href="/settings?section=dj">Settings → AI DJ</Link>.
+                    </p>
+                </>
+            )}
 
-                        {/* History */}
-                        <AgentHistoryCard sessions={sessions} isLoading={historyLoading} />
-                    </>
-                )}
-            </div>
-
-            {showWizard && (
+            {wizardOpen && (
                 <AgentSetupWizard
                     onComplete={handleWizardComplete}
-                    onClose={() => setShowWizard(false)}
+                    onClose={() => setWizardOpen(false)}
                 />
             )}
-        </AuthGate>
+        </div>
     );
 }
 

@@ -793,6 +793,9 @@ export function crateErrorMessage(error: unknown, fallback: string): string {
   if (code === "pro_required") return "This needs Crate Digger Pro.";
   if (code === "line_locked") return "That line is locked. Unlock it to swap it.";
   if (code === "crate_not_saved") return "Save the crate to watch it.";
+  if (code === "line_exists") return "Already in that crate.";
+  if (code === "crate_full") return "That crate is full. Remove a line to make room.";
+  if (code === "track_not_found") return "That track is no longer available.";
   if (code === "invalid_watch_expiry") return "Pick a watch length between 1 and 365 days.";
   const details = (error as ErrorLike | null)?.details;
   if (details && typeof details === "object" && "message" in details) {

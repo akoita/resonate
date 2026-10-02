@@ -33,7 +33,7 @@ test.describe("Catalog & Home Page", () => {
         const filters = page.getByRole("group", { name: "Filter trending" }).first();
         await expect(filters).toBeVisible();
         await expect(filters.getByRole("button", { name: "All Trending" })).toHaveAttribute("aria-pressed", "true");
-        await expect(page.getByRole("link", { name: "Open AI DJ" }).first()).toHaveAttribute("href", "/agent");
+        await expect(page.getByRole("link", { name: "Go to your AI DJ" }).first()).toHaveAttribute("href", "#ai-dj");
     });
 
     test("HOME-04: Hero actions are visible", async ({ page }) => {

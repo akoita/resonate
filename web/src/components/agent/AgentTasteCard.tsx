@@ -3,7 +3,7 @@
 import { useState, type KeyboardEvent } from "react";
 import type { AgentConfig } from "../../lib/api";
 
-const PRESET_VIBES = [
+export const PRESET_VIBES = [
     "Deep House", "Lo-fi", "Focus", "Ambient", "Jazz", "Electronic",
     "Hip Hop", "Classical", "R&B", "Soul", "Trap", "Drill",
     "Afrobeats", "Reggaeton", "Techno", "Indie", "Pop", "Rock",

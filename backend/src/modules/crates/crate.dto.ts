@@ -132,6 +132,14 @@ export class UpdateCrateDto {
   watch?: UpdateCrateWatchDto;
 }
 
+/** `POST /crates/:id/items` (#2032): one track to append to the crate. */
+export class AddCrateItemDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  trackId!: string;
+}
+
 /** A current non-original, non-master stem of a crate line. */
 export type CrateItemStemDto = {
   type: string;

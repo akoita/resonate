@@ -6,7 +6,7 @@ import { test, expect, type Page } from "@playwright/test";
  * Runs on chromium / chromium-tablet / chromium-mobile (see playwright.config).
  * The smoke checks keep the existing four-route guardrails and phone drawer
  * behavior. The phone audit samples the named Library, artist, Create,
- * Marketplace, Shows, Wallet, Player, Community, Settings, and Analytics
+ * Crates & Stems (browse stems), Shows, Wallet, Player, Community, Settings, and Analytics
  * surfaces at the four narrowest supported widths, reporting the concrete
  * elements that widen past the viewport.
  *
@@ -19,7 +19,7 @@ import { test, expect, type Page } from "@playwright/test";
  */
 test.describe.configure({ mode: "serial", retries: 2 });
 
-const ROUTES = ["/", "/library", "/marketplace", "/wallet"] as const;
+const ROUTES = ["/", "/library", "/crates?tab=stems", "/wallet"] as const;
 
 const MOBILE_AUDIT_WIDTHS = [320, 375, 390, 400] as const;
 
@@ -30,7 +30,7 @@ const MOBILE_AUDIT_ROUTES = [
   { path: "/artist/catalog", surface: "artist catalog" },
   { path: "/artist/upload", surface: "artist upload" },
   { path: "/create", surface: "create/remix entry" },
-  { path: "/marketplace", surface: "marketplace" },
+  { path: "/crates?tab=stems", surface: "crates and stems / browse stems" },
   { path: "/shows/sennarin-paris", surface: "shows detail/pledge" },
   { path: "/wallet", surface: "wallet" },
   { path: "/player", surface: "player" },

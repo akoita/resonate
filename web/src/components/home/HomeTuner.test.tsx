@@ -28,10 +28,11 @@ function render(activeId: string, overrides: { matchCount?: number; starting?: b
 }
 
 describe("HomeTuner", () => {
-  it("shows the Open AI DJ link for the all filter", () => {
+  it("shows the Go to your AI DJ link (to the Home #ai-dj section) for the all filter", () => {
     const html = render("all");
-    expect(html).toContain('href="/agent"');
-    expect(html).toContain("Open AI DJ");
+    expect(html).toContain('href="#ai-dj"');
+    expect(html).not.toContain('href="/agent"');
+    expect(html).toContain("Go to your AI DJ");
     expect(html).not.toContain("session</button>");
     expect(html).toContain("Pick a genre or mood");
     expect(html).toContain("Energy · Medium");
@@ -40,7 +41,7 @@ describe("HomeTuner", () => {
   it("shows the Start session button for a genre or mood filter", () => {
     const html = render("hip-hop", { matchCount: 3 });
     expect(html).toContain("Start Hip-Hop session");
-    expect(html).not.toContain("Open AI DJ");
+    expect(html).not.toContain("Go to your AI DJ");
     expect(html).toContain("3 catalog matches for Hip-Hop.");
     expect(html).toContain("Energy · High");
     expect(html).toContain('data-energy="high"');

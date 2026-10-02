@@ -36,7 +36,7 @@ Available in this branch:
   genre chip. It queues matching tracks, updates the listener AI DJ config,
   starts an agent session, and records an `agent.track_selected` signal with
   `source: "home_vibe_session"` metadata. With "All Trending" selected, the
-  same slot links to `/agent` instead.
+  same slot links to Home's Your AI DJ section (`/#ai-dj`) instead.
 - Artist upload exposes mood tags and forwards them through ingestion metadata.
 - Catalog releases persist `moods` as normalized string arrays and include them
   in published, owner, release-detail, artist, and MCP catalog search results.
@@ -63,7 +63,7 @@ Known follow-up work:
 2. In the Tuner, select a mood chip such as Focus, Hype, Chill, or Late Night
    (or a genre chip).
 3. Review the personalized shelves, Trending Now, and the retuned Stem Lab.
-4. Press **Start {mood} session** to queue tracks and continue in `/agent`.
+4. Press **Start {mood} session** to queue tracks and continue in Home's Your AI DJ section (`/#ai-dj`).
 
 ## Artist Flow
 

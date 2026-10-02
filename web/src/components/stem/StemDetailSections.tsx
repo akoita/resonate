@@ -88,7 +88,7 @@ export function StemHero({
 
       <div className="relative max-w-6xl mx-auto px-4 pt-8 pb-14">
         <Link
-          href="/marketplace"
+          href="/crates?tab=stems"
           className="text-sm text-zinc-400 hover:text-white inline-flex items-center gap-1"
         >
           ← Back to Marketplace

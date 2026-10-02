@@ -481,7 +481,7 @@ Hover:      rgba(255, 107, 74, 0.15), border rgba(255, 107, 74, 0.20)
 | Campaign hero      | `.r-campaign-hero`   | 21:9 banner, glass info card  | CTA pair, live pulse dot             |
 | Campaign card      | `.r-campaign-card`   | 16:9 art + progress block     | Full-card link to `/shows/[id]`      |
 | Artist pill         | `.r-artist-pill`    | Avatar circle + name          | Click opens `/artist/[id]`           |
-| Agent mix          | `.r-agent-mix`       | Circle with violet ring       | Click opens `/agent`                 |
+| Agent mix          | `.r-agent-mix`       | Circle with violet ring       | Click opens `/#ai-dj`                |
 
 ### 7.3 Persistent Chrome
 
@@ -715,7 +715,7 @@ visual cue that the user has entered the live/campaign domain.
 - Detail page: signal cards (backers, raised, days left, threshold),
   brief + pledge panel, artist audio preview
 
-### 8.5 Marketplace
+### 8.5 Browse stems (formerly Marketplace; `/crates?tab=stems`)
 
 Glass grid of stem listings with:
 - Stem artwork (from parent release)

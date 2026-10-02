@@ -113,6 +113,16 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Marketplace and Crate Digger became one destination (#2032), and the AI DJ
+  // moved into Home and Settings. Old URLs keep working; they are temporary
+  // (non-permanent) redirects while the new layout settles.
+  async redirects() {
+    return [
+      { source: "/marketplace", destination: "/crates?tab=stems", permanent: false },
+      { source: "/marketplace/manage", destination: "/artist/listings", permanent: false },
+      { source: "/agent", destination: "/#ai-dj", permanent: false },
+    ];
+  },
   async rewrites() {
     return [
       // ZeroDev passkey proxy is handled by /api/zerodev/[...slug]/route.ts

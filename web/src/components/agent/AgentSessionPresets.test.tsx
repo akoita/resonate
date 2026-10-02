@@ -17,7 +17,9 @@ describe("AgentSessionPresets", () => {
 
     expect(html).toContain("AI DJ Session Intent");
     expect(html).toContain("Tell the DJ what this session is for.");
-    expect(html).toContain("Open AI DJ");
+    expect(html).toContain("Go to your AI DJ");
+    expect(html).toContain('href="/#ai-dj"');
+    expect(html).not.toContain('href="/agent"');
     expect(html).not.toContain("mystery orb");
     expect(html.match(/<article/g)?.length).toBe(SESSION_PRESETS.length);
   });
@@ -35,7 +37,7 @@ describe("AgentSessionPresets", () => {
     expect(html).toContain("agent-session-card selected");
     expect(html).toContain("Start with this");
     expect(html).not.toContain("Buy-ready stems");
-    expect(html).not.toContain("Open AI DJ");
+    expect(html).not.toContain("Go to your AI DJ");
   });
 
   it("never exposes stem buying on any preset", () => {

@@ -1087,6 +1087,23 @@ export async function getCrate(token: string, crateId: string) {
   );
 }
 
+/**
+ * Add a track to a crate as a new line (#2032). The response is the same as
+ * `getCrate`. Failures carry a `code`: `track_not_found` (404), `line_exists`
+ * (409) and `crate_full` (409); see `crateErrorMessage`.
+ */
+export async function addCrateItem(token: string, crateId: string, trackId: string) {
+  return apiRequest<GetCrateResponse>(
+    `/crates/${encodeURIComponent(crateId)}/items`,
+    {
+      method: "POST",
+      body: JSON.stringify({ trackId }),
+      silentErrorCodes: [404, 409],
+    },
+    token,
+  );
+}
+
 export async function updateCrate(token: string, crateId: string, body: UpdateCrateBody) {
   return apiRequest<{ crate: CrateDto }>(
     `/crates/${encodeURIComponent(crateId)}`,

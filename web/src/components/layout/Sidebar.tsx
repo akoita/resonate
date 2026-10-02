@@ -69,25 +69,7 @@ const PRIMARY_ITEMS = [
     )
   },
   {
-    name: "Marketplace",
-    href: "/marketplace",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-      </svg>
-    )
-  },
-  {
-    name: "AI DJ",
-    href: "/agent",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-      </svg>
-    )
-  },
-  {
-    name: "Crate Digger",
+    name: "Crates & Stems",
     href: "/crates",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -158,6 +140,15 @@ const SECONDARY_ITEMS = [
     )
   },
   {
+    name: "Listings",
+    href: "/artist/listings",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" />
+      </svg>
+    )
+  },
+  {
     name: "Analytics",
     href: "/artist/analytics",
     icon: (
@@ -219,6 +210,15 @@ const SECONDARY_ITEMS = [
     )
   },
 ];
+
+/**
+ * Crates & Stems owns every /crates route (the Browse stems tab and each saved
+ * crate), so it stays highlighted on /crates/<id>; other items match exactly.
+ */
+function isPrimaryItemActive(pathname: string, href: string): boolean {
+  if (href === "/crates") return pathname === href || pathname.startsWith(`${href}/`);
+  return pathname === href;
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -323,7 +323,7 @@ export default function Sidebar() {
 
       <nav className="sidebar-nav primary" aria-label="Primary">
         {PRIMARY_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = isPrimaryItemActive(pathname, item.href);
           const badge = "badge" in item ? item.badge : undefined;
           return (
             <Link

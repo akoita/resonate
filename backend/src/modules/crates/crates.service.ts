@@ -108,6 +108,9 @@ export const CRATE_REQUEST_ERROR_CODES = {
   proRequired: "pro_required",
   lineLocked: "line_locked",
   lineChanged: "line_changed",
+  lineExists: "line_exists",
+  crateFull: "crate_full",
+  trackNotFound: "track_not_found",
 } as const;
 
 /** Most crates `GET /crates` returns. */
@@ -444,6 +447,81 @@ export class CratesService {
         },
       });
     });
+
+    return this.getCrate(userId, crateId);
+  }
+
+  // -------------------------------------------------------------------------
+  // POST /crates/:id/items
+  // -------------------------------------------------------------------------
+
+  /**
+   * Appends one track to the end of the caller's crate (#2032), e.g. from a
+   * stem listing. The line is unlocked and owned by the crate owner. 404 for an
+   * unknown or foreign crate and for a track that cannot be a crate line (it
+   * does not exist or is not publicly playable); 409 `line_exists` when the
+   * track is already a line and 409 `crate_full` at CRATE_MAX_COUNT lines.
+   */
+  async addItem(userId: string, crateId: string, trackId: string): Promise<GetCrateResponse> {
+    const now = new Date();
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Someone else's crate and an unknown id look identical: 404, never 403.
+        const crate = await tx.crate.findFirst({
+          where: { id: crateId, userId },
+          include: { items: true },
+        });
+        if (!crate) throw new NotFoundException("Crate not found");
+
+        if (crate.items.some((item) => item.trackId === trackId)) {
+          throw new ConflictException({
+            code: CRATE_REQUEST_ERROR_CODES.lineExists,
+            message: "The track is already in the crate",
+          });
+        }
+        if (crate.items.length >= CRATE_MAX_COUNT) {
+          throw new ConflictException({
+            code: CRATE_REQUEST_ERROR_CODES.crateFull,
+            message: `A crate holds at most ${CRATE_MAX_COUNT} tracks`,
+          });
+        }
+
+        // Resolved like every stored line; a track that is gone or not publicly
+        // playable is not something a DJ can add.
+        const [line] = await this.loadCrateLines([trackId], now);
+        if (!line || !line.available) {
+          throw new NotFoundException({
+            code: CRATE_REQUEST_ERROR_CODES.trackNotFound,
+            message: "Track not available for crates",
+          });
+        }
+
+        const position =
+          crate.items.length === 0 ? 0 : Math.max(...crate.items.map((item) => item.position)) + 1;
+        await tx.crateItem.create({
+          data: {
+            crateId,
+            // Always the crate owner (denormalized for export and erasure).
+            userId,
+            trackId,
+            position,
+            locked: false,
+          },
+        });
+        // Items live in another table; bump the crate so lists sort by edits.
+        await tx.crate.update({ where: { id: crateId }, data: { updatedAt: now } });
+      });
+    } catch (error) {
+      // The same track was added concurrently.
+      if (isUniqueViolation(error)) {
+        throw new ConflictException({
+          code: CRATE_REQUEST_ERROR_CODES.lineExists,
+          message: "The track is already in the crate",
+        });
+      }
+      throw error;
+    }
 
     return this.getCrate(userId, crateId);
   }

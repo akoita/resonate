@@ -89,7 +89,9 @@ import { recordProductAnalytics } from "../lib/productAnalytics";
  *   7. Upcoming Live Events — ticket-style campaign cards with funding progress
  *   8. Drops — collectible moments shelf (#1479)
  *   9. Recently Added — global catalog snapshot browser
- *  10. AI DJ session presets — intent-led mix modes
+ *  10. AI DJ (`#ai-dj`) — start/stop and follow a DJ session (signed in) or the
+ *      intent presets with a sign-in prompt (signed out). The old /agent page
+ *      redirects here; DJ name/vibes live in Settings → AI DJ.
  *  11. Your studio — Managed Catalog + Your Releases panels
  *
  * Icons use Material Symbols (loaded in app/layout.tsx).
@@ -336,6 +338,24 @@ const AgentSessionPresets = dynamic(
   { loading: () => <AgentSessionPresetsSkeleton /> },
 );
 
+// Signed-in session panel: client-only (config, history and realtime events
+// are fetched with the viewer's token), so it never contributes server output.
+const AgentSessionPanel = dynamic(
+  () => import("../components/agent/AgentSessionPanel"),
+  { ssr: false, loading: () => <AgentSessionPresetsSkeleton /> },
+);
+
+/** Home section id for the AI DJ; also the `/agent` redirect target (`/#ai-dj`). */
+const AI_DJ_SECTION_ID = "ai-dj";
+
+/** Scroll the AI DJ section into view (smooth unless the user prefers reduced motion). */
+function scrollToAiDj() {
+  const el = document.getElementById(AI_DJ_SECTION_ID);
+  if (!el) return;
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+}
+
 export default function Home() {
   const router = useRouter();
   const [releases, setReleases] = useState<Release[]>([]);
@@ -348,13 +368,15 @@ export default function Home() {
   const [homeFeed, setHomeFeed] = useState<HomeFeedResponse | null>(null);
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
+  // Bumped after a session starts from the tuner/feed so the AI DJ section refetches.
+  const [aiDjRefreshKey, setAiDjRefreshKey] = useState(0);
   // #1869: null = not loaded yet (hero skeleton); [] = resolved, none open
   // (honest empty hero). Never seeded with sample campaigns.
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
   const [heroPaused, setHeroPaused] = useState(false);
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
-  const { status, token, userId } = useAuth();
+  const { status, token, userId, connectPrivy } = useAuth();
   const { addToast } = useToast();
   const { playQueue } = usePlayer();
   const { releaseActions } = useCatalogReleaseActions();
@@ -543,6 +565,30 @@ export default function Home() {
     }, 9000);
     return () => window.clearInterval(timer);
   }, [heroCampaigns, heroPaused]);
+  // `/agent` redirects to `/#ai-dj`. The browser anchors before the lazy
+  // sections and the content above have settled, so re-anchor a few times
+  // while the page loads — unless the user has already scrolled themselves.
+  useEffect(() => {
+    if (window.location.hash !== `#${AI_DJ_SECTION_ID}`) return;
+    let userMoved = false;
+    const markMoved = () => {
+      userMoved = true;
+    };
+    window.addEventListener("wheel", markMoved, { passive: true });
+    window.addEventListener("touchstart", markMoved, { passive: true });
+    window.addEventListener("keydown", markMoved);
+    const timers = [0, 500, 1500].map((delay) =>
+      window.setTimeout(() => {
+        if (!userMoved) scrollToAiDj();
+      }, delay),
+    );
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener("wheel", markMoved);
+      window.removeEventListener("touchstart", markMoved);
+      window.removeEventListener("keydown", markMoved);
+    };
+  }, []);
   const activeHeroCampaignImage = activeHeroCampaign
     ? activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url
     : undefined;
@@ -723,10 +769,10 @@ export default function Home() {
     if (status !== "authenticated" || !token) {
       addToast({
         type: "info",
-        title: "Connect wallet",
-        message: "Open AI DJ to start a personalized session.",
+        title: "Sign in to start a session",
+        message: "Sign in to start a personalized AI DJ session.",
       });
-      router.push("/agent");
+      scrollToAiDj();
       return;
     }
 
@@ -754,10 +800,11 @@ export default function Home() {
         addToast({
           type: "info",
           title: "AI DJ ready",
-          message: "Open the dashboard to finish session setup.",
+          message: "Your AI DJ is set up. Start a session from the AI DJ section.",
         });
       }
-      router.push("/agent");
+      setAiDjRefreshKey((key) => key + 1);
+      scrollToAiDj();
     } catch (error) {
       addToast({
         type: "error",
@@ -775,10 +822,10 @@ export default function Home() {
     if (status !== "authenticated" || !token) {
       addToast({
         type: "info",
-        title: "Connect wallet",
-        message: `Open AI DJ to start a ${filter.label} vibe session.`,
+        title: "Sign in to start a session",
+        message: `Sign in to start a ${filter.label} vibe session.`,
       });
-      router.push("/agent");
+      scrollToAiDj();
       return;
     }
 
@@ -824,7 +871,8 @@ export default function Home() {
           ? `${queue.length} matching track${queue.length > 1 ? "s" : ""} queued.`
           : "AI DJ is ready with your vibe.",
       });
-      router.push("/agent");
+      setAiDjRefreshKey((key) => key + 1);
+      scrollToAiDj();
     } catch (error) {
       addToast({
         type: "error",
@@ -1118,9 +1166,40 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 10. AI DJ SESSION PRESETS ———————————————————————————— */}
-        <section className="ng-section ng-section--presets">
-          <AgentSessionPresets compact />
+        {/* 10. AI DJ — session control (signed in) / presets (signed out) ———— */}
+        {/* scroll-margin keeps the heading below the sticky topbar when anchored. */}
+        <section
+          id={AI_DJ_SECTION_ID}
+          className="ng-section ng-section--presets"
+          aria-labelledby="ai-dj-title"
+          style={{ scrollMarginTop: 96 }}
+        >
+          <header className="ng-shelf__header">
+            <div className="ng-shelf__heading">
+              <span className="ng-kicker ng-kicker--violet">Listening sessions</span>
+              <h3 className="ng-section-title" id="ai-dj-title">Your AI DJ</h3>
+            </div>
+          </header>
+          {status === "authenticated" ? (
+            <AgentSessionPanel refreshKey={aiDjRefreshKey} />
+          ) : (
+            <>
+              <AgentSessionPresets compact showOpenLink={false} />
+              <p className="ng-shelf__description" style={{ marginTop: 12 }}>
+                Sign in to start a session and let your AI DJ build the queue around the intent you pick.
+              </p>
+              {status !== "loading" ? (
+                <button
+                  type="button"
+                  className="ng-btn ng-btn--primary"
+                  style={{ marginTop: 12 }}
+                  onClick={connectPrivy}
+                >
+                  Sign in to start a session
+                </button>
+              ) : null}
+            </>
+          )}
         </section>
 
         {/* 11. YOUR STUDIO — upload operations ——————————————————— */}

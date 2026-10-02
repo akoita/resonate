@@ -63,7 +63,7 @@ export function getNotificationHref(notification: DisputeNotification, role: str
     if (notification.stemListingId) query.set("listing", notification.stemListingId);
     if (notification.type === "listing_expired") query.set("status", "expired");
     const queryString = query.toString();
-    return queryString ? `/marketplace/manage?${queryString}` : "/marketplace/manage";
+    return queryString ? `/artist/listings?${queryString}` : "/artist/listings";
   }
 
   if (notification.type.startsWith("release_rights_")) {

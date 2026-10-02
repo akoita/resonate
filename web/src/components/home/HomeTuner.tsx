@@ -12,8 +12,8 @@ import { useSyncExternalStore } from "react";
  *   local time.
  * - The energy meter is decorative (aria-hidden); its readable caption states
  *   the active filter's energy.
- * - The deck action is always real: "Open AI DJ" links to /agent for the
- *   all filter; any other filter starts a vibe session via `onStartSession`.
+ * - The deck action is always real: "Go to your AI DJ" jumps to the Home
+ *   `#ai-dj` section for the all filter; any other filter starts a vibe session via `onStartSession`.
  */
 
 export type TunerFilter = {
@@ -132,9 +132,9 @@ export function HomeTuner({
           <span className="ng-tuner__energy">Energy · {ENERGY_LABEL[energy]}</span>
         </div>
         {isAll ? (
-          <Link href="/agent" className="ng-btn ng-btn--glass ng-tuner__action">
+          <Link href="#ai-dj" className="ng-btn ng-btn--glass ng-tuner__action">
             <span className="ms-icon" aria-hidden>auto_awesome</span>
-            Open AI DJ
+            Go to your AI DJ
           </Link>
         ) : (
           <button

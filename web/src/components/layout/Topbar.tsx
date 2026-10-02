@@ -13,14 +13,13 @@ export type TopbarProps = {
 };
 
 const ROUTE_TITLES: Array<[string, string]> = [
-  ["/agent", "AI DJ"],
   ["/sonic-radar", "Sonic Radar"],
   ["/player", "Player"],
   ["/library", "Library"],
   ["/create", "Create"],
   ["/shows", "Shows"],
   ["/drops", "Drops"],
-  ["/marketplace", "Marketplace"],
+  ["/crates", "Crates & Stems"],
   ["/playlists", "Playlists"],
   ["/artist/analytics", "Analytics"],
   ["/analytics/agent-quality", "AI DJ Quality"],
@@ -30,6 +29,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/credit-requests", "Credit Requests"],
   ["/admin/management-recovery", "Management Transfer Recovery"],
   ["/artist/catalog", "Catalog"],
+  ["/artist/listings", "Listings"],
   ["/artist/upload", "Upload"],
   ["/wallet", "Wallet"],
   ["/disputes", "Disputes"],

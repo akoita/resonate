@@ -29,7 +29,7 @@ describe("notification routing", () => {
 
   it("keeps the existing listing, release-rights, and dispute mappings", () => {
     expect(getNotificationHref(notification("listing_expired", { stemListingId: "l-1" }), null))
-      .toBe("/marketplace/manage?listing=l-1&status=expired");
+      .toBe("/artist/listings?listing=l-1&status=expired");
     expect(getNotificationActionHint(notification("listing_expiring_soon"), null)).toBe("Open listing manager →");
     expect(getNotificationHref(notification("release_rights_submitted"), "admin")).toBe("/disputes/admin");
     expect(getNotificationActionHint(notification("release_rights_submitted"), "admin")).toBe("Open admin review →");

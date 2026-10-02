@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
+import AgentDjSettingsPanel from "../../components/settings/AgentDjSettingsPanel";
 import AccountClosurePanel from "../../components/settings/AccountClosurePanel";
 import AnalyticsConsentSettingsPanel from "../../components/settings/AnalyticsConsentSettingsPanel";
 import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSettingsPanel";
@@ -32,7 +33,7 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
-type SettingsSectionId = "library" | "artist" | "taste" | "privacy" | "community" | "cohorts" | "usage" | "notifications" | "troubleshooting";
+type SettingsSectionId = "library" | "artist" | "taste" | "dj" | "privacy" | "community" | "cohorts" | "usage" | "notifications" | "troubleshooting";
 
 const SETTINGS_SECTIONS: Array<{
     id: SettingsSectionId;
@@ -51,6 +52,12 @@ const SETTINGS_SECTIONS: Array<{
         label: "Taste Memory",
         eyebrow: "Recommendations",
         description: "Signals that guide discovery and AI DJ.",
+    },
+    {
+        id: "dj",
+        label: "AI DJ",
+        eyebrow: "Listening sessions",
+        description: "Your DJ's name and the vibes it starts from.",
     },
     {
         id: "privacy",
@@ -101,6 +108,13 @@ export default function SettingsPage() {
     const { token, disconnect } = useAuth();
     const [activeSection, setActiveSection] = useState<SettingsSectionId>("library");
     const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+
+    // Deep link: /settings?section=dj (the AI DJ preferences moved here from /agent).
+    useEffect(() => {
+        const requested = new URLSearchParams(window.location.search).get("section");
+        const match = SETTINGS_SECTIONS.find((section) => section.id === requested);
+        if (match) setActiveSection(match.id);
+    }, []);
 
     const handleResetLocalSession = () => {
         resetLocalAppState();
@@ -499,6 +513,8 @@ export default function SettingsPage() {
                         {activeSection === "taste" ? (
                             <TasteMemorySettingsPanel token={token} addToast={addToast} />
                         ) : null}
+
+                        {activeSection === "dj" ? <AgentDjSettingsPanel /> : null}
 
                         {activeSection === "privacy" ? (
                             <>

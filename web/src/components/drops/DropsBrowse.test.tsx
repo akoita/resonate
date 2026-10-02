@@ -95,7 +95,7 @@ describe("DropsBrowseView", () => {
     );
     expect(html).toContain("Collection gallery");
     expect(html).toContain("Own the moments.");
-    expect(html).toContain('href="/marketplace"');
+    expect(html).toContain('href="/crates?tab=stems"');
     expect(html).toContain("License the ingredients");
     expect(html).toContain('class="ng-filter-deck"');
     expect(html).not.toContain("<form");

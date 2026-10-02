@@ -100,7 +100,7 @@ export default function SonicRadarPage() {
                         <p>
                             No resonant discoveries yet — tracks you finish and then replay or save show up here.
                         </p>
-                        <Link href="/agent" className="ui-btn ui-btn-primary">
+                        <Link href="/#ai-dj" className="ui-btn ui-btn-primary">
                             Start a session
                         </Link>
                     </section>

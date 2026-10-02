@@ -84,7 +84,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "tip",
             title: "Browse before you sign in",
-            text: "You can explore Discover, the catalog, the Marketplace, and Shows campaigns without signing in. You'll be asked to connect only when you save, buy, pledge, or upload.",
+            text: "You can explore Discover, the catalog, Browse stems in Crates & Stems, and Shows campaigns without signing in. You'll be asked to connect only when you save, buy, pledge, or upload.",
           },
         ],
       },
@@ -185,7 +185,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Resonate settles payments in stablecoins (a digital dollar such as USDC) so prices stay steady. Add funds from the Wallet page, then your balance is ready for Marketplace purchases and Shows pledges.",
+            text: "Resonate settles payments in stablecoins (a digital dollar such as USDC) so prices stay steady. Add funds from the Wallet page, then your balance is ready for stem purchases and Shows pledges.",
           },
           {
             kind: "callout",
@@ -364,7 +364,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Fully AI-generated tracks stay available through the catalog, search, artist pages, playlists, direct links, playback, and the Marketplace. They are not placed in personalized recommendations, AI DJ picks, Trending, or the activity used to rank Top Artists. AI-assisted tracks remain eligible for those discovery surfaces and keep their label.",
+            text: "Fully AI-generated tracks stay available through the catalog, search, artist pages, playlists, direct links, playback, and Browse stems. They are not placed in personalized recommendations, AI DJ picks, Trending, or the activity used to rank Top Artists. AI-assisted tracks remain eligible for those discovery surfaces and keep their label.",
           },
           {
             kind: "callout",
@@ -455,7 +455,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Inspect stems opens the release page with every stem of the track, so you can hear the individual parts.",
               "Remix opens Remix Studio straight away when you are allowed to remix the track; when a remix license is needed, it takes you to the license instead.",
               "Check the AI-contribution badge without leaving the player.",
-              "Open licensing actions when a stem is available to collect or license in the Marketplace.",
+              "Open licensing actions when a stem is available to collect or license in Browse stems.",
               "Support a show when the playing artist has a live campaign; the chip opens the campaign page so you can review the details before pledging.",
               "Share what you are playing from Broadcast Signal. The link opens the track's release page, with its cover in the preview. When the artist has a live show campaign, the post invites your friends to back it and links to it. The post only mentions what the artist keeps from a sale when something of theirs is actually for sale. Tracks with a public Resonate release can be shared; files from your device cannot.",
             ],
@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying"],
     sections: [
       {
         id: "sessions",
@@ -501,10 +501,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open AI DJ and connect if you haven't already.",
-              "The first time, give your DJ a name to set up your agent.",
-              "Choose a session intent or a mood to set the direction.",
-              "Press play — use Next AI Pick to skip ahead, and your feedback shapes future picks.",
+              "Go to Home and find the Your AI DJ section. Sign in if you haven't already; signed out, you can still see the session intents.",
+              "The first time, set up your DJ from there or in Settings → AI DJ, where you give it a name and choose your vibes. You can change them later in the same place.",
+              "Choose a session intent to set the direction, then start the session. Starting a session from the Home tuner or a feed prompt begins it in place.",
+              "Watch the status, activity and history in the same section. Use Next AI Pick to skip ahead, and your feedback shapes future picks. Stop the session whenever you like.",
             ],
           },
           {
@@ -517,14 +517,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "The AI DJ never buys for you",
-            text: "The AI DJ picks and plays music. It never buys anything on your behalf. A purchase only happens when you choose to buy something yourself, for example from the Marketplace.",
+            text: "The AI DJ picks and plays music. It never buys anything on your behalf. A purchase only happens when you choose to buy something yourself, for example from Browse stems in Crates & Stems.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/ai-dj.png`,
               alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate, negotiate, and remix tracks for you in real time.",
-              caption: "Setting up your AI DJ the first time you open it.",
+              caption: "Setting up your AI DJ the first time.",
               width: 1440,
               height: 900,
               source: LOCAL,
@@ -580,7 +580,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
+      { label: "Your AI DJ", href: "/#ai-dj", description: "Start an AI-guided listening session from Home." },
+      { label: "AI DJ settings", href: "/settings?section=dj", description: "Your DJ name and vibes." },
       { label: "Sonic Radar", href: "/sonic-radar", description: "Your resonant discoveries." },
     ],
     related: ["discover-music", "playing-music", "marketplace-buy", "settings-privacy", "how-recommendations-work"],
@@ -601,12 +602,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Crate Digger turns what your set needs into a crate of tracks. Type it in your own words, for example the tempo range, the key, how much energy you want, the stems you need and what you can spend. Choose how many lines you want, from 1 to 25, in the Lines box or in your sentence (\"4 tracks\"). Leave Lines empty to use the number in your sentence, or 8.",
+            text: "Crate Digger lives under Crates & Stems in the sidebar, on the Build a crate tab (you need to be signed in). It turns what your set needs into a crate of tracks. Type it in your own words, for example the tempo range, the key, how much energy you want, the stems you need and what you can spend. Choose how many lines you want, from 1 to 25, in the Lines box or in your sentence (\"4 tracks\"). Leave Lines empty to use the number in your sentence, or 8.",
           },
           {
             kind: "steps",
             items: [
-              "Open Crate Digger and describe your set.",
+              "Open Crates & Stems, stay on the Build a crate tab and describe your set.",
               "Choose how many lines you want, or leave Lines empty to use the number in your sentence, and press Build crate.",
               "Check the banner at the top of your crate. It tells you how many tracks were found out of how many you asked for, and which parts of your request held tracks back.",
               "If part of your request could not be understood, it is shown back to you word for word so nothing is silently ignored.",
@@ -632,6 +633,28 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "Fully AI-generated tracks stay out unless you allow them",
             text: "A crate leaves out tracks declared fully AI-generated unless your request allows them. Paying for a listing never moves a track up your crate.",
+          },
+        ],
+      },
+      {
+        id: "browse-and-add",
+        heading: "Browse stems and add to a crate",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Crate Digger lives under Crates & Stems in the sidebar, with two tabs: Build a crate and Browse stems. Browse stems is open to everyone, even without signing in. Every listing there has an Add to crate control.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Open Crates & Stems and choose the Browse stems tab.",
+              "Choose Add to crate on a listing you like. You need to be signed in for this.",
+              "Pick one of your crates to add the track to it, or choose New crate from this track to start a fresh one.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "If the track is already in that crate, or the crate is full (a crate holds up to 25 lines), you are told and nothing changes.",
           },
         ],
       },
@@ -837,6 +860,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Crate Digger", href: "/crates", description: "Build, shape and buy a crate for your next set." },
+      { label: "Browse stems", href: "/crates?tab=stems", description: "Browse stems and add them to a crate." },
     ],
     related: ["ai-dj", "how-recommendations-work", "playing-music", "marketplace-buy"],
   },
@@ -876,7 +900,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Your music reaches listeners because it fits their taste, not because of what you sell. Listing stems in the Marketplace does not raise your tracks in recommendations. If you are a verified human artist, new listeners whose taste is close to yours can meet your music through discovery picks.",
+            text: "Your music reaches listeners because it fits their taste, not because of what you sell. Listing stems for sale does not raise your tracks in recommendations. If you are a verified human artist, new listeners whose taste is close to yours can meet your music through discovery picks.",
           },
         ],
       },
@@ -893,7 +917,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Discover", href: "/", description: "Your personalized Home feed." },
-      { label: "AI DJ", href: "/agent", description: "Start an AI-guided listening session." },
+      { label: "Your AI DJ", href: "/#ai-dj", description: "Start an AI-guided listening session." },
       { label: "Settings", href: "/settings", description: "Hide, downrank, boost or reset your taste." },
     ],
     related: ["discover-music", "ai-dj", "settings-privacy"],
@@ -1016,18 +1040,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
     sections: [
       {
         id: "browse",
-        heading: "Browsing the Marketplace",
+        heading: "Browsing stems",
         blocks: [
           {
             kind: "paragraph",
-            text: "The Marketplace lists individual stems — vocals, drums, bass, melody, and more — that artists have put up for sale. Filter by part or artist, sort, and preview before you buy.",
+            text: "Browse stems, a tab in Crates & Stems, lists individual stems — vocals, drums, bass, melody, and more — that artists have put up for sale. Filter by part or artist, sort, and preview before you buy.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/marketplace.png`,
-              alt: "The Marketplace titled 'Own the stems.' with a search bar, part filters (Vocals, Drums, Bass, Melody, Guitar, Piano), and a grid of stem listing cards.",
-              caption: "Marketplace: filter by part or artist and preview a stem before collecting it.",
+              alt: "The stem browser titled 'Own the stems.' with a search bar, part filters (Vocals, Drums, Bass, Melody, Guitar, Piano), and a grid of stem listing cards.",
+              caption: "Browse stems: filter by part or artist and preview a stem before collecting it.",
               width: 1440,
               height: 900,
               source: STAGING,
@@ -1076,7 +1100,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Open the Marketplace", href: "/marketplace", description: "Browse and collect stems." },
+      { label: "Browse stems", href: "/crates?tab=stems", description: "Browse and collect stems." },
     ],
     related: ["smart-wallet", "remix-studio", "marketplace-sell"],
   },
@@ -1097,7 +1121,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "From a stem on one of your releases, choose List for sale (or use Mint & list in the Marketplace).",
+              "From a stem on one of your releases, choose List for sale (or use Mint & list from Listings).",
               "Pick the license tier buyers will receive — personal, remix, or commercial.",
               "Set the price (prefilled from your catalog price when available) and confirm.",
             ],
@@ -1140,8 +1164,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Marketplace", href: "/marketplace", description: "Public listings and the Mint & list flow." },
-      { label: "Manage listings", href: "/marketplace/manage", description: "Your seller workspace." },
+      { label: "Browse stems", href: "/crates?tab=stems", description: "Public stem listings." },
+      { label: "Listings", href: "/artist/listings", description: "Your seller workspace and the Mint & list flow." },
     ],
     related: ["marketplace-buy", "upload-music", "artist-analytics"],
   },
@@ -1259,7 +1283,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "tip",
             title: "If the Remix button is greyed out",
-            text: "It tells you why, usually that a remix license is required. Collect the stem at the remix tier in the Marketplace to unlock it.",
+            text: "It tells you why, usually that a remix license is required. Collect the stem at the remix tier from Browse stems to unlock it.",
           },
         ],
       },
@@ -1621,7 +1645,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Remix license: lets you make private drafts and publish your remix on Resonate.",
               "Commercial license: also lets you download your remix with \"Export audio\" and use it elsewhere, and sell it. The Export button tells you when a commercial license is what's missing.",
               "Publishing: \"Publish on Resonate\" asks you to confirm, then makes your remix a public release that credits the original song and artist. Resonate checks your rights again at that moment. After publishing, the studio is locked so the release stays as published.",
-              "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it in the Marketplace. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
+              "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it for sale. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
             ],
           },
           {
@@ -1834,7 +1858,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Browse the catalog", href: "/catalog", description: "Open a release or stem to find its Remix button." },
-      { label: "Marketplace", href: "/marketplace", description: "Collect a remix-tier stem to get started." },
+      { label: "Browse stems", href: "/crates?tab=stems", description: "Collect a remix-tier stem to get started." },
     ],
     related: ["marketplace-buy", "marketplace-sell", "create-ai-music", "rights-protection"],
   },
@@ -1904,7 +1928,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "What a fully AI-generated declaration changes",
-            text: "The track can still appear in the catalog and Marketplace and can still be opened and played directly. It will carry an AI-generated label and will not be promoted in recommendations, AI DJ, Trending, or Top Artists.",
+            text: "The track can still appear in the catalog and Browse stems and can still be opened and played directly. It will carry an AI-generated label and will not be promoted in recommendations, AI DJ, Trending, or Top Artists.",
           },
           {
             kind: "callout",

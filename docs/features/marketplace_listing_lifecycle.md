@@ -24,9 +24,11 @@ buyer and machine-commerce surfaces strict about availability.
 - Agent catalog search uses the same public-purchasable rule before setting
   `hasListing`, so AI DJ and model tool calls do not boost expired or sold-out
   inventory as buyable.
-- Owner listing management is available at `/marketplace/manage`, from the
-  marketplace hero, from the connected-wallet marketplace filter bar, and from
-  lifecycle notification deep links.
+- Owner listing management is available at `/artist/listings` (sidebar
+  **Listings**, artist side) and from lifecycle notification deep links.
+  `/marketplace/manage` redirects there. Public browsing of listings lives at
+  `/crates?tab=stems` (**Browse stems** in Crates & Stems); `/marketplace`
+  redirects there (#2032).
 - Owner inventory can show `active`, `expiring_soon`, `expired`, `sold`,
   `cancelled`, and `stale` lifecycle states.
 - Backend reconciliation marks active rows as `expired` after `expiresAt <= now`.
@@ -64,7 +66,7 @@ buyer and machine-commerce surfaces strict about availability.
 
 ### Creator
 
-1. Open `Manage listings` from `/marketplace` or visit `/marketplace/manage`
+1. Open **Listings** in the sidebar (`/artist/listings`)
    with the listing seller wallet or smart account.
 2. Filter by Active, Expiring, Expired, Sold, or Cancelled.
 3. Select eligible expired or cancelled rows, or use Relist on a single row.
@@ -100,10 +102,10 @@ buyer and machine-commerce surfaces strict about availability.
 
 | Surface | Current behavior |
 | --- | --- |
-| Public marketplace | Excludes expired and sold-out listings and links sellers to the listing manager. |
+| Public stem browsing (`/crates?tab=stems`) | Excludes expired and sold-out listings; sellers manage theirs from **Listings**. |
 | Storefront/x402/MCP/agent commerce | Storefront, x402 settlement lookup, MCP catalog search, player actions, and AI DJ catalog search treat expired and sold-out listings as unavailable. |
 | Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist progress. |
-| Notification bell | Routes listing lifecycle notifications to `/marketplace/manage`. |
+| Notification bell | Routes listing lifecycle notifications to `/artist/listings`. |
 
 ## Tests
 
@@ -114,7 +116,7 @@ cd backend && npm run test:integration -- --runInBand --testPathPattern=agent_ca
 ```
 
 Frontend validation is currently covered by TypeScript/lint and manual UI review
-for `/marketplace/manage`; dedicated component tests should follow once the
+for `/artist/listings`; dedicated component tests should follow once the
 listing manager stabilizes.
 
 ## References
@@ -128,4 +130,4 @@ listing manager stabilizes.
   - `backend/src/modules/contracts/contracts.service.ts`
   - `backend/src/modules/contracts/metadata.controller.ts`
   - `backend/src/modules/agents/tools/tool_registry.ts`
-  - `web/src/app/marketplace/manage/page.tsx`
+  - `web/src/app/artist/listings/page.tsx`

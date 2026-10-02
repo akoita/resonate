@@ -720,3 +720,53 @@
 .crates-watch-matches a {
   color: var(--r-primary-soft);
 }
+
+/* Crates & Stems (#2032): two tabs over one page. */
+.crates-page--wide {
+  max-width: none;
+}
+
+.crates-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-xs);
+  border-bottom: 1px solid var(--r-outline);
+}
+
+.crates-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--r-on-surface-variant);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 8px 14px;
+}
+
+.crates-tab:hover {
+  color: var(--r-on-surface);
+}
+
+.crates-tab[aria-selected="true"] {
+  border-bottom-color: var(--r-primary-soft);
+  color: var(--r-on-surface);
+}
+
+.crates-tab:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.crates-tabpanel,
+.crates-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-lg);
+}
+
+/* The embedded stem browser lays itself out; let it fill the panel. */
+.crates-tabpanel > .marketplace-page {
+  width: 100%;
+}

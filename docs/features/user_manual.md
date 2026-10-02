@@ -76,7 +76,7 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
 
 - **Public pass** (normally from staging; a local public preview is acceptable
   before a new route is first deployed): Discover, Catalog, Shows, a Shows
-  campaign, the Marketplace, the Drops gallery (`/drops` → `drops.png`), the
+  campaign, Browse stems (`/crates?tab=stems`), the Drops gallery (`/drops` → `drops.png`), the
   Player, the Wallet, and the connect wall. Discover is captured at 1440x1200
   with reduced motion so the Recently Added covers show and the hero stops
   rotating; the script features the first campaign whose title doesn't look

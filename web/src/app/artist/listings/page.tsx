@@ -25,7 +25,7 @@ import {
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
 import { sellerNetProceedsLine } from "../../../lib/marketplaceProceeds";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
-import "../marketplace.css";
+import "../../../styles/marketplace.css";
 
 type ListingLifecycleStatus =
   | "all"
@@ -407,8 +407,8 @@ export default function MarketplaceListingManagerPage() {
             <p className="marketplace-subtitle">Connect a wallet to manage your marketplace listings.</p>
           </div>
           <div className="marketplace-manager-hero__actions">
-            <Link href="/marketplace" className="marketplace-secondary-link">
-              Browse marketplace
+            <Link href="/crates?tab=stems" className="marketplace-secondary-link">
+              Browse stems
             </Link>
           </div>
         </section>
@@ -432,8 +432,8 @@ export default function MarketplaceListingManagerPage() {
           </div>
         </div>
         <div className="marketplace-manager-hero__actions">
-          <Link href="/marketplace" className="marketplace-secondary-link">
-            Browse marketplace
+          <Link href="/crates?tab=stems" className="marketplace-secondary-link">
+            Browse stems
           </Link>
           <Link href="/artist/upload" className="marketplace-action-btn marketplace-action-btn--link">
             Upload & mint
@@ -534,8 +534,8 @@ export default function MarketplaceListingManagerPage() {
           <h3 className="marketplace-empty__title">No listings in this state</h3>
           <p className="marketplace-empty__text">Switch filters, browse the public marketplace, or mint a new stem listing.</p>
           <div className="marketplace-manager-empty__actions">
-            <Link href="/marketplace" className="marketplace-secondary-link">
-              Browse marketplace
+            <Link href="/crates?tab=stems" className="marketplace-secondary-link">
+              Browse stems
             </Link>
             <Link href="/artist/upload" className="marketplace-action-btn marketplace-action-btn--link">
               Upload & mint

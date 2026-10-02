@@ -5,22 +5,23 @@ import Link from "next/link";
 import { useWebSockets, type MarketplaceUpdate } from "../../hooks/useWebSockets";
 import { useBuyStem } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
-import { useToast } from "../../components/ui/Toast";
-import { useAuth } from "../../components/auth/AuthProvider";
-import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
+import { useToast } from "../ui/Toast";
+import { useAuth } from "../auth/AuthProvider";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { API_BASE, getReleaseArtworkUrl, type AiDisclosure } from "../../lib/api";
-import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
+import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
     findPaymentAssetForToken,
     formatPaymentAmount,
     paymentAssetSymbol,
 } from "../../lib/payments";
-import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
-import { BuyModal } from "../../components/marketplace/BuyModal";
-import type { LicenseType } from "../../components/marketplace/LicenseTypeSelector";
+import { ExpiryBadge } from "./ExpiryBadge";
+import { AddToCrateControl } from "./AddToCrateControl";
+import { BuyModal } from "./BuyModal";
+import type { LicenseType } from "./LicenseTypeSelector";
 import { artistProfileHref } from "../../lib/artistRoutes";
-import "./marketplace.css";
+import "../../styles/marketplace.css";
 import "../../styles/license-badges.css";
 
 /** Resolve a potentially-relative backend path to a full URL */
@@ -48,6 +49,7 @@ interface ListingData {
         title: string;
         type: string;
         track?: string;
+        trackId?: string;
         artist?: string;
         genre?: string;
         artworkUrl?: string;
@@ -130,7 +132,20 @@ function ListingArtwork({
     );
 }
 
-export default function MarketplacePage() {
+type MarketplaceBrowseProps = {
+    /**
+     * Heading element for the "Own the stems." hero title. The page that hosts
+     * the browser owns the h1, so embedded use passes 2.
+     */
+    headingLevel?: 1 | 2;
+};
+
+/**
+ * Public stem-license browser: search, filters, listing cards, live updates and
+ * the buy flow. Rendered as the "Browse stems" tab of /crates (#2032).
+ */
+export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps = {}) {
+    const HeroHeading = headingLevel === 2 ? "h2" : "h1";
 
     // ---- State ----
     const [listings, setListings] = useState<ListingData[]>([]);
@@ -511,16 +526,16 @@ export default function MarketplacePage() {
                 <div className="marketplace-hero__main">
                     <div>
                         <div className="marketplace-kicker">Marketplace</div>
-                        <h1 className="marketplace-title" data-testid="marketplace-title">
+                        <HeroHeading className="marketplace-title" data-testid="marketplace-title">
                             Own the stems.
-                        </h1>
+                        </HeroHeading>
                         <p className="marketplace-subtitle">
                             Preview and collect licensed audio stems from artists worldwide —{" "}
                             <span className="marketplace-subtitle__stat">{filteredListings.length} live listing{filteredListings.length === 1 ? "" : "s"}</span>.
                         </p>
                     </div>
                     <div className="marketplace-hero__actions">
-                        <Link href="/marketplace/manage" className="marketplace-secondary-link">
+                        <Link href="/artist/listings" className="marketplace-secondary-link">
                             Manage listings
                         </Link>
                         <Link href="/artist/upload" className="marketplace-action-btn marketplace-action-btn--link">
@@ -625,7 +640,7 @@ export default function MarketplacePage() {
                                 <span className="marketplace-toggle__slider" />
                                 <span className="marketplace-toggle__label">Hide my listings</span>
                             </label>
-                            <Link href="/marketplace/manage" className="marketplace-manage-link">
+                            <Link href="/artist/listings" className="marketplace-manage-link">
                                 Manage my listings
                             </Link>
                         </>
@@ -814,17 +829,25 @@ export default function MarketplacePage() {
                                                 return <>{price.amount}<small>{price.symbol}</small></>;
                                             })()}
                                         </span>
-                                        {signerAddress && listing.seller.toLowerCase() === signerAddress ? (
-                                            <span className="stem-card__own-label">Your Listing</span>
-                                        ) : (
-                                            <button
-                                                className="stem-card__buy"
-                                                onClick={() => openBuyModal(listing)}
-                                                disabled={buyPending}
-                                            >
-                                                Buy now
-                                            </button>
-                                        )}
+                                        <div className="stem-card__actions">
+                                            {listing.stem?.trackId && (
+                                                <AddToCrateControl
+                                                    trackId={listing.stem.trackId}
+                                                    trackTitle={listing.stem.track}
+                                                />
+                                            )}
+                                            {signerAddress && listing.seller.toLowerCase() === signerAddress ? (
+                                                <span className="stem-card__own-label">Your Listing</span>
+                                            ) : (
+                                                <button
+                                                    className="stem-card__buy"
+                                                    onClick={() => openBuyModal(listing)}
+                                                    disabled={buyPending}
+                                                >
+                                                    Buy now
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

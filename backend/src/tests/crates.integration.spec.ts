@@ -24,7 +24,7 @@ import {
 import { prisma } from "../db/prisma";
 import { AgentLearningService } from "../modules/agents/agent_learning.service";
 import { CrateEntitlementsService } from "../modules/crates/crate-entitlements";
-import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../modules/crates/crate.types";
+import { CRATE_MAX_COUNT, CRATE_REQUEST_MAX_TEXT_LENGTH } from "../modules/crates/crate.types";
 import { CRATE_LICENSE_RIGHTS } from "../modules/crates/crate_license_rights";
 import { defaultCrateFilters } from "../modules/crates/crate_filters";
 import { deterministicCrateRequestParser } from "../modules/crates/crate_request_parser";
@@ -1030,6 +1030,106 @@ describe("CratesService (integration)", () => {
           "remix",
           "commercial",
         ]);
+      });
+    });
+
+    describe("add a track (#2032)", () => {
+      it("appends the track at the end, unlocked, owned by the crate owner", async () => {
+        const crate = await freshCrate(FILTERS, [id("t3"), id("t1")]);
+        const before = (await prisma.crate.findUniqueOrThrow({ where: { id: crate.id } })).updatedAt;
+
+        const response = await service.addItem(EDITOR, crate.id, id("t2"));
+        expect(order(response.crate)).toEqual([id("t3"), id("t1"), id("t2")]);
+        expect(response.crate.items.map((item) => item.position)).toEqual([0, 1, 2]);
+        const added = response.crate.items[2];
+        expect(added.locked).toBe(false);
+        expect(added.available).toBe(true);
+        expect(added.originalStemId).toBe(id("t2_original"));
+
+        const stored = await prisma.crateItem.findMany({
+          where: { crateId: crate.id },
+          orderBy: { position: "asc" },
+        });
+        expect(stored.map((item) => [item.trackId, item.position, item.locked])).toEqual([
+          [id("t3"), 0, false],
+          [id("t1"), 1, false],
+          [id("t2"), 2, false],
+        ]);
+        expect(stored.every((item) => item.userId === EDITOR)).toBe(true);
+
+        // It persisted and bumped the crate.
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual(order(response.crate));
+        const after = (await prisma.crate.findUniqueOrThrow({ where: { id: crate.id } })).updatedAt;
+        expect(after.getTime()).toBeGreaterThan(before.getTime());
+      });
+
+      it("starts an empty crate at position 0", async () => {
+        const crate = await freshCrate(FILTERS, []);
+        const response = await service.addItem(EDITOR, crate.id, id("t1"));
+        expect(order(response.crate)).toEqual([id("t1")]);
+        expect(response.crate.items[0].position).toBe(0);
+      });
+
+      it("another user's crate and an unknown id are a 404 and nothing is added", async () => {
+        const crate = await freshCrate(FILTERS, [id("t3")]);
+        await expect(service.addItem(OTHER_DJ, crate.id, id("t1"))).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        await expect(
+          service.addItem(EDITOR, id("no_such_crate"), id("t1")),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual([id("t3")]);
+      });
+
+      it("a track already in the crate is a 409 line_exists", async () => {
+        const crate = await freshCrate(FILTERS, [id("t3"), id("t1")]);
+        const { error, body } = await errorBody(service.addItem(EDITOR, crate.id, id("t1")));
+        expect(error).toBeInstanceOf(ConflictException);
+        expect(body.code).toBe("line_exists");
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual([id("t3"), id("t1")]);
+      });
+
+      it("a crate at the maximum number of lines is a 409 crate_full", async () => {
+        // A withdrawn release is never a candidate for another scenario; its
+        // tracks only exist to fill a crate to the limit.
+        const releaseId = id("full_release");
+        await prisma.release.create({
+          data: {
+            id: releaseId,
+            title: "Release full",
+            artistId: A_PLAIN,
+            status: "withdrawn",
+            genre: "Techno",
+            createdAt: new Date(Date.UTC(2099, 0, 1)),
+          },
+        });
+        const fillerIds = Array.from({ length: CRATE_MAX_COUNT }, (_, index) => id(`full_${index}`));
+        await prisma.track.createMany({
+          data: fillerIds.map((trackId, index) => ({
+            id: trackId,
+            title: `Filler ${index}`,
+            releaseId,
+            position: index + 1,
+          })),
+        });
+
+        const crate = await freshCrate(FILTERS, fillerIds);
+        expect(crate.items).toHaveLength(CRATE_MAX_COUNT);
+        const { error, body } = await errorBody(service.addItem(EDITOR, crate.id, id("t1")));
+        expect(error).toBeInstanceOf(ConflictException);
+        expect(body.code).toBe("crate_full");
+        expect(await prisma.crateItem.count({ where: { crateId: crate.id } })).toBe(CRATE_MAX_COUNT);
+      });
+
+      it("an unknown or not publicly playable track is a 404 track_not_found", async () => {
+        const crate = await freshCrate(FILTERS, [id("t3")]);
+        // t6 sits on a withdrawn release.
+        for (const trackId of [id("no_such_track"), id("t6")]) {
+          const { error, body } = await errorBody(service.addItem(EDITOR, crate.id, trackId));
+          expect(error).toBeInstanceOf(NotFoundException);
+          expect(body.code).toBe("track_not_found");
+        }
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual([id("t3")]);
       });
     });
 
