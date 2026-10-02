@@ -5566,7 +5566,43 @@ export interface AgentSession {
   agentTransactions: AgentTransaction[];
 }
 
+/** #2037: the listening filters parsed from a listener's own words. Free text never appears here. */
+export type AgentSessionEnergy = "low" | "medium" | "high";
+
+export type AgentSessionRequest = {
+  genres: string[];
+  moods: string[];
+  energy: AgentSessionEnergy | null;
+  bpm: { min: number | null; max: number | null } | null;
+};
+
+/** Filters the sentence set that a listening session cannot use. */
+export type AgentSessionRequestIgnoredKey =
+  | "keys"
+  | "requiredStems"
+  | "licenseType"
+  | "maxTotalUsd"
+  | "maxPerItemUsd"
+  | "verifiedHumanOnly";
+
+export type AgentRequestCoverageFilter = "genres" | "moods" | "energy" | "bpm";
+
+/** How well the DJ's latest picks matched the request; only filters with matched < picks are listed. */
+export type AgentRequestCoverage = {
+  picks: number;
+  gaps: Array<{ filter: AgentRequestCoverageFilter; matched: number }>;
+};
+
+export type AgentSessionRequestParse = {
+  request: AgentSessionRequest;
+  unparsed: string[];
+  ignored: AgentSessionRequestIgnoredKey[];
+  strategy: "deterministic" | "model-assisted";
+};
+
 export type AgentNextPreferences = {
+  /** #2037: the editable filters behind this session (never the typed sentence). */
+  request?: AgentSessionRequest;
   mood?: string;
   energy?: "low" | "medium" | "high";
   genres?: string[];
@@ -5608,6 +5644,8 @@ export type AgentNextPickResponse = {
   }>;
   /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
   shortfall?: number;
+  /** #2037: how well these picks matched the session request; present when the request had a filter. */
+  requestCoverage?: AgentRequestCoverage;
 };
 
 export async function getAgentHistory(token: string): Promise<AgentSession[]> {
@@ -5691,6 +5729,21 @@ export async function getDiscoveryJournal(
     }
   }
   return journal;
+}
+
+/**
+ * #2037: turn a sentence into editable session filters. The text travels only
+ * in this request body; the server neither stores nor logs it.
+ */
+export async function parseAgentSessionRequest(
+  token: string,
+  text: string,
+): Promise<AgentSessionRequestParse> {
+  return apiRequest<AgentSessionRequestParse>(
+    "/agents/config/session/parse",
+    { method: "POST", body: JSON.stringify({ text }), silentErrorCodes: [400, 429] },
+    token,
+  );
 }
 
 export async function getAgentNextPick(

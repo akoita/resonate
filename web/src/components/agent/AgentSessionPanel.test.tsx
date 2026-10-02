@@ -1,7 +1,14 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentConfig, AgentNextPickResponse, AgentSession } from "../../lib/api";
+import type {
+  AgentConfig,
+  AgentNextPickResponse,
+  AgentSession,
+  AgentSessionRequestParse,
+} from "../../lib/api";
+import type { AgentEvent } from "../../hooks/useAgentEvents";
+import type { DjSet } from "../../lib/agentDjSet";
 import type { LocalTrack } from "../../lib/localLibrary";
 
 // Effects never run in a server render, so record them and run them by hand.
@@ -40,6 +47,10 @@ const hookState = {
   isLoading: false,
   sessions: [] as AgentSession[],
   historyLoading: false,
+  events: [] as AgentEvent[],
+  queue: [] as Array<{ id: string; catalogTrackId?: string }>,
+  currentIndex: 0,
+  djSet: null as DjSet | null,
 };
 const startSession = vi.fn(async () => ({ status: "started", sessionId: "s-1" }));
 const stopSession = vi.fn(async () => ({ status: "stopped" }));
@@ -70,21 +81,41 @@ const playQueue = vi.fn(async () => undefined);
 const saveTracksMetadata = vi.fn(async (tracks: unknown[]) => tracks);
 const resolveDjQueue = vi.fn<(ids: string[], token?: string | null) => Promise<LocalTrack[]>>(async () => []);
 const getAgentNextPick = vi.fn(async (): Promise<AgentNextPickResponse> => ({ status: "no_tracks" }));
-vi.mock("../../lib/playerContext", () => ({ usePlayer: () => ({ playQueue }) }));
+const removeFromQueue = vi.fn();
+const addTracksToQueue = vi.fn((tracks: LocalTrack[]) => ({ added: tracks, skipped: [] as LocalTrack[] }));
+const parseAgentSessionRequest = vi.fn<(token: string, text: string) => Promise<AgentSessionRequestParse>>(
+  async () => ({
+    request: { genres: [], moods: [], energy: null, bpm: null },
+    unparsed: [],
+    ignored: [],
+    strategy: "deterministic",
+  }),
+);
+vi.mock("../../lib/playerContext", () => ({
+  usePlayer: () => ({
+    playQueue,
+    removeFromQueue,
+    addTracksToQueue,
+    queue: hookState.queue,
+    currentIndex: hookState.currentIndex,
+  }),
+}));
 vi.mock("../../lib/localLibrary", () => ({
   saveTracksMetadata: (...args: unknown[]) => saveTracksMetadata(...(args as [unknown[]])),
 }));
 const setDjSet = vi.fn();
 vi.mock("../../lib/agentDjSet", () => ({
   setDjSet: (...args: unknown[]) => setDjSet(...args),
+  getDjSet: () => hookState.djSet,
 }));
 vi.mock("../../lib/agentDjPlayback", () => ({
   resolveDjQueue: (...args: unknown[]) => resolveDjQueue(...(args as [string[], string])),
 }));
 vi.mock("../../lib/api", () => ({
   getAgentNextPick: (...args: unknown[]) => getAgentNextPick(...(args as [])),
+  parseAgentSessionRequest: (...args: unknown[]) => parseAgentSessionRequest(...(args as [string, string])),
 }));
-vi.mock("../../hooks/useAgentEvents", () => ({ useAgentEvents: () => [] }));
+vi.mock("../../hooks/useAgentEvents", () => ({ useAgentEvents: () => hookState.events }));
 vi.mock("../../hooks/useAgentHistory", () => ({
   useAgentHistory: () => ({
     sessions: hookState.sessions,
@@ -97,7 +128,7 @@ vi.mock("../../hooks/useAgentHistory", () => ({
 const captured: {
   onToggle?: () => void;
   onPick?: () => Promise<void>;
-  onStart?: (preset: SessionPreset) => Promise<void>;
+  prompt?: PromptProps;
 } = {};
 vi.mock("./AgentStatusCard", () => ({
   default: (props: { onToggle: () => void }) => {
@@ -112,21 +143,21 @@ vi.mock("./AgentNextPickCard", () => ({
     return null;
   },
 }));
-vi.mock("./AgentSessionPresets", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./AgentSessionPresets")>();
-  return {
-    ...actual,
-    default: (props: { onStart: (preset: SessionPreset) => Promise<void> }) => {
-      captured.onStart = props.onStart;
-      return null;
-    },
-  };
-});
+vi.mock("./AgentSessionPrompt", () => ({
+  default: (props: PromptProps) => {
+    captured.prompt = props;
+    return null;
+  },
+}));
 vi.mock("./AgentHistoryCard", () => ({ default: () => null }));
 vi.mock("./AgentSetupWizard", () => ({ default: () => null }));
 
-import AgentSessionPanel from "./AgentSessionPanel";
-import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
+import AgentSessionPanel, { buildSessionPreferences, toIntentPreferences } from "./AgentSessionPanel";
+import { SESSION_PRESETS } from "./AgentSessionPresets";
+import { requestFromPreset } from "../../lib/agentSessionRequest";
+import type AgentSessionPrompt from "./AgentSessionPrompt";
+
+type PromptProps = React.ComponentProps<typeof AgentSessionPrompt>;
 
 function config(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
@@ -174,7 +205,12 @@ describe("AgentSessionPanel", () => {
     hookState.historyLoading = false;
     captured.onToggle = undefined;
     captured.onPick = undefined;
-    captured.onStart = undefined;
+    captured.prompt = undefined;
+    hookState.events = [];
+    hookState.queue = [];
+    hookState.currentIndex = 0;
+    hookState.djSet = null;
+    addTracksToQueue.mockImplementation((tracks: LocalTrack[]) => ({ added: tracks, skipped: [] }));
   });
 
   afterEach(() => {
@@ -221,17 +257,26 @@ describe("AgentSessionPanel", () => {
     expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Session Started" }));
   });
 
-  it("starts a preset without overwriting the saved vibes (#2036)", async () => {
+  it("starts a preset exactly as before, plus its request, without overwriting saved vibes (#2036)", async () => {
     hookState.config = config({ isActive: false, vibes: ["Jazz"] });
     render();
     const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype");
     expect(preset).toBeDefined();
 
-    await captured.onStart?.(preset!);
+    captured.prompt?.onSelectPreset(preset!);
+    render();
+    expect(captured.prompt?.activePresetIntent).toBe("Hype");
+    expect(captured.prompt?.request).toEqual(requestFromPreset(preset!));
+    // A preset stands for known filters: nothing is parsed.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(parseAgentSessionRequest).not.toHaveBeenCalled();
+
+    await captured.onToggle?.();
 
     expect(updateConfig).not.toHaveBeenCalled();
     expect(startSession).toHaveBeenCalledTimes(1);
     const [input] = startSession.mock.calls[0] as unknown as [{ preferences: Record<string, unknown> }];
+    expect(input.preferences).toEqual({ ...toIntentPreferences(preset!), request: requestFromPreset(preset!) });
     expect(input.preferences).toEqual(
       expect.objectContaining({
         genres: preset!.searchVibes,
@@ -241,6 +286,396 @@ describe("AgentSessionPanel", () => {
       }),
     );
     expect(input.preferences).not.toHaveProperty("licenseType");
+    expect(recordProductAnalytics).toHaveBeenCalledWith(
+      "tok",
+      "agent.intent_selected",
+      expect.objectContaining({ payload: expect.objectContaining({ intent: "Hype" }) }),
+    );
+    expect(recordProductAnalytics).toHaveBeenCalledWith(
+      "tok",
+      "agent.session_started",
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          startedFrom: "preset",
+          intent: "Hype",
+          requestFilterKeys: ["genres", "moods", "energy"],
+          unparsedCount: 0,
+          ignoredKeys: [],
+        }),
+      }),
+    );
+  });
+
+  it("starts a plain session with no preferences when nothing was typed or chosen", async () => {
+    hookState.config = config({ isActive: false });
+    render();
+    await captured.onToggle?.();
+    expect(startSession).toHaveBeenCalledWith(undefined);
+    expect(recordProductAnalytics).toHaveBeenCalledWith(
+      "tok",
+      "agent.session_started",
+      expect.objectContaining({
+        source: "agent_command_bar",
+        payload: expect.objectContaining({ startedFrom: "plain", requestFilterKeys: [] }),
+      }),
+    );
+  });
+
+  describe("typing what the session is for", () => {
+    const SENTENCE = "Warm deep house around 122 BPM for cooking, in A minor under $5";
+    const parsed: AgentSessionRequestParse = {
+      request: { genres: ["deep house"], moods: ["warm"], energy: null, bpm: { min: 120, max: 125 } },
+      unparsed: ["for cooking"],
+      ignored: ["keys", "maxTotalUsd"],
+      strategy: "deterministic",
+    };
+
+    function everythingSent(): string {
+      return JSON.stringify({
+        start: startSession.mock.calls,
+        analytics: recordProductAnalytics.mock.calls,
+        djSet: setDjSet.mock.calls,
+        next: getAgentNextPick.mock.calls,
+      });
+    }
+
+    it("reads the sentence after a pause and shows the filters", async () => {
+      hookState.config = config({ isActive: false });
+      parseAgentSessionRequest.mockResolvedValueOnce(parsed);
+      render();
+
+      captured.prompt?.onTextChange(SENTENCE);
+      render();
+      expect(captured.prompt?.isParsing).toBe(true);
+      expect(parseAgentSessionRequest).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(600);
+      expect(parseAgentSessionRequest).toHaveBeenCalledWith("tok", SENTENCE);
+      render();
+      expect(captured.prompt?.isParsing).toBe(false);
+      expect(captured.prompt?.request).toEqual(parsed.request);
+      expect(captured.prompt?.unparsed).toEqual(["for cooking"]);
+      expect(captured.prompt?.ignored).toEqual(["keys", "maxTotalUsd"]);
+      expect(captured.prompt?.activePresetIntent).toBeNull();
+    });
+
+    it("starts from the filters and never sends or records the sentence", async () => {
+      hookState.config = config({ isActive: false });
+      parseAgentSessionRequest.mockResolvedValueOnce(parsed);
+      render();
+      captured.prompt?.onTextChange(SENTENCE);
+      render();
+
+      // Still reading: starting now would ignore the sentence.
+      await captured.onToggle?.();
+      expect(startSession).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(600);
+      render();
+      await captured.onToggle?.();
+
+      expect(startSession).toHaveBeenCalledWith({
+        preferences: {
+          request: parsed.request,
+          genres: ["deep house"],
+          mood: "warm",
+          energy: undefined,
+          source: "agent_session_prompt",
+        },
+      });
+      expect(recordProductAnalytics).toHaveBeenCalledWith(
+        "tok",
+        "agent.session_started",
+        expect.objectContaining({
+          source: "agent_session_prompt",
+          payload: expect.objectContaining({
+            startedFrom: "prompt",
+            requestFilterKeys: ["genres", "moods", "bpm"],
+            unparsedCount: 1,
+            ignoredKeys: ["keys", "maxTotalUsd"],
+          }),
+        }),
+      );
+
+      // The first picks arrive and the DJ set is recorded.
+      hookState.sessions = [session("s-1", ["t-1"])];
+      render();
+      effects.forEach((run) => run());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(setDjSet).toHaveBeenCalledTimes(1);
+      expect(setDjSet.mock.calls[0][0].preferences.request).toEqual(parsed.request);
+
+      for (const fragment of ["cooking", "122", "A minor", "$5", SENTENCE]) {
+        expect(everythingSent()).not.toContain(fragment);
+      }
+    });
+
+    it("ignores a stale parse and keeps the previous chips when reading fails", async () => {
+      hookState.config = config({ isActive: false });
+      let releaseFirst: (value: AgentSessionRequestParse) => void = () => undefined;
+      parseAgentSessionRequest.mockImplementationOnce(
+        () => new Promise<AgentSessionRequestParse>((resolve) => (releaseFirst = resolve)),
+      );
+      parseAgentSessionRequest.mockResolvedValueOnce({
+        ...parsed,
+        request: { ...parsed.request, genres: ["techno"] },
+      });
+      render();
+
+      captured.prompt?.onTextChange("deep house");
+      render();
+      await vi.advanceTimersByTimeAsync(600);
+      captured.prompt?.onTextChange("techno");
+      render();
+      await vi.advanceTimersByTimeAsync(600);
+      releaseFirst(parsed);
+      await vi.advanceTimersByTimeAsync(0);
+      render();
+      expect(captured.prompt?.request?.genres).toEqual(["techno"]);
+
+      parseAgentSessionRequest.mockRejectedValueOnce(new Error("boom"));
+      captured.prompt?.onTextChange("techno but faster");
+      render();
+      await vi.advanceTimersByTimeAsync(600);
+      render();
+      expect(captured.prompt?.request?.genres).toEqual(["techno"]);
+      expect(captured.prompt?.parseError).toMatch(/Couldn't read that/);
+      expect(captured.prompt?.parseError).not.toContain("techno");
+      expect(captured.prompt?.isParsing).toBe(false);
+    });
+
+    it("clears the filters when the text is emptied, which starts a plain session", async () => {
+      hookState.config = config({ isActive: false });
+      parseAgentSessionRequest.mockResolvedValueOnce(parsed);
+      render();
+      captured.prompt?.onTextChange("deep house");
+      render();
+      await vi.advanceTimersByTimeAsync(600);
+      render();
+      expect(captured.prompt?.request).not.toBeNull();
+
+      captured.prompt?.onTextChange("   ");
+      render();
+      expect(captured.prompt?.request).toBeNull();
+      await captured.onToggle?.();
+      expect(startSession).toHaveBeenCalledWith(undefined);
+    });
+
+    it("editing a chip makes the filters the listener's own and drops the preset", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      captured.prompt?.onSelectPreset(preset);
+      render();
+      captured.prompt?.onRemoveChip("energy");
+      render();
+      expect(captured.prompt?.activePresetIntent).toBeNull();
+      expect(captured.prompt?.request?.energy).toBeNull();
+
+      captured.prompt?.onEnergyChange("low");
+      render();
+      expect(captured.prompt?.request?.energy).toBe("low");
+
+      await captured.onToggle?.();
+      const [input] = startSession.mock.calls[0] as unknown as [{ preferences: Record<string, unknown> }];
+      expect(input.preferences).toEqual(
+        expect.objectContaining({
+          source: "agent_session_prompt",
+          genres: preset.searchVibes,
+          mood: "Hype",
+          energy: "low",
+        }),
+      );
+      expect(input.preferences).not.toHaveProperty("sessionIntent");
+    });
+  });
+
+  describe("re-planning a live session when a filter is edited", () => {
+    function liveSet(): DjSet {
+      return { sessionId: "s-open", preferences: {}, trackIds: ["a", "b", "c"] };
+    }
+
+    function setUpLiveSet() {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      hookState.djSet = liveSet();
+      hookState.queue = [{ id: "a" }, { id: "b" }, { id: "local-c", catalogTrackId: "c" }, { id: "mine" }];
+      hookState.currentIndex = 0;
+    }
+
+    function pickResponse(ids: string[], extra: Partial<AgentNextPickResponse> = {}): AgentNextPickResponse {
+      return {
+        status: "ok",
+        track: { id: ids[0], title: ids[0], artistId: "a-1" },
+        tracks: ids.slice(1).map((trackId) => ({ trackId, licenseType: "personal", priceUsd: 0 })),
+        ...extra,
+      };
+    }
+
+    async function editAndRender(edit: () => void) {
+      edit();
+      render();
+      effects.forEach((run) => run());
+    }
+
+    it("swaps the DJ's upcoming picks for ones that follow the edited filters", async () => {
+      setUpLiveSet();
+      render();
+      effects.forEach((run) => run());
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      await editAndRender(() => captured.prompt?.onSelectPreset(preset));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+
+      getAgentNextPick.mockResolvedValueOnce(
+        pickResponse(["n1", "n2"], { requestCoverage: { picks: 2, gaps: [{ filter: "energy", matched: 1 }] } }),
+      );
+      await vi.advanceTimersByTimeAsync(800);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(getAgentNextPick).toHaveBeenCalledTimes(1);
+      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [
+        string,
+        { sessionId: string; preferences: { request: { genres: string[] }; source: string } },
+      ];
+      expect(body.sessionId).toBe("s-open");
+      expect(body.preferences.request.genres).toEqual(["Club", "Trap"]);
+      expect(body.preferences.source).toBe("agent_session_prompt");
+
+      // Upcoming DJ picks (indices 1 and 2) go, highest first; the listener's own track and the current one stay.
+      expect(removeFromQueue.mock.calls.map(([index]) => index)).toEqual([2, 1]);
+      expect(resolveDjQueue).toHaveBeenCalledWith(["n1", "n2"], "tok");
+      expect(addTracksToQueue).toHaveBeenCalledTimes(1);
+      expect(setDjSet).toHaveBeenCalledWith({
+        sessionId: "s-open",
+        preferences: body.preferences,
+        trackIds: ["a", "n1", "n2"],
+      });
+      expect(playQueue).not.toHaveBeenCalled();
+
+      render();
+      expect(captured.prompt?.coverage).toEqual({ picks: 2, gaps: [{ filter: "energy", matched: 1 }] });
+    });
+
+    it("re-plans once for rapid chip removals", async () => {
+      setUpLiveSet();
+      render();
+      effects.forEach((run) => run());
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      await editAndRender(() => captured.prompt?.onSelectPreset(preset));
+      await vi.advanceTimersByTimeAsync(300);
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+      await vi.advanceTimersByTimeAsync(300);
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Club"));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(getAgentNextPick).not.toHaveBeenCalled();
+
+      getAgentNextPick.mockResolvedValueOnce(pickResponse(["n1"]));
+      await vi.advanceTimersByTimeAsync(600);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getAgentNextPick).toHaveBeenCalledTimes(1);
+      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { request: { genres: string[] } } }];
+      expect(body.preferences.request.genres).toEqual(["Trap"]);
+    });
+
+    it("keeps the upcoming queue when the DJ finds nothing for the new filters", async () => {
+      setUpLiveSet();
+      render();
+      effects.forEach((run) => run());
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      await editAndRender(() => captured.prompt?.onSelectPreset(preset));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+
+      getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
+      await vi.advanceTimersByTimeAsync(800);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(removeFromQueue).not.toHaveBeenCalled();
+      expect(addTracksToQueue).not.toHaveBeenCalled();
+      expect(setDjSet).not.toHaveBeenCalled();
+      expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "No new picks for those filters" }));
+    });
+
+    it("only updates local state when no DJ set is live yet", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      render();
+      effects.forEach((run) => run());
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      await editAndRender(() => captured.prompt?.onSelectPreset(preset));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+      await vi.advanceTimersByTimeAsync(800);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getAgentNextPick).not.toHaveBeenCalled();
+
+      // The next pick follows the edited filters.
+      getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
+      await captured.onPick?.();
+      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { request: { genres: string[] } } }];
+      expect(body.preferences.request.genres).toEqual(["Club", "Trap"]);
+    });
+
+    it("the Update session action re-plans immediately", async () => {
+      setUpLiveSet();
+      render();
+      effects.forEach((run) => run());
+      getAgentNextPick.mockResolvedValueOnce(pickResponse(["n1"]));
+      await captured.prompt?.onSubmit();
+      expect(getAgentNextPick).toHaveBeenCalledTimes(1);
+      expect(setDjSet).toHaveBeenCalled();
+    });
+
+    it("stopping the session cancels a pending re-plan", async () => {
+      setUpLiveSet();
+      render();
+      effects.forEach((run) => run());
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      await editAndRender(() => captured.prompt?.onSelectPreset(preset));
+      await captured.onToggle?.();
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(getAgentNextPick).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("coverage", () => {
+    it("shows the coverage of the newest live decision for the open session", () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      const coverage = { picks: 5, gaps: [{ filter: "bpm" as const, matched: 1 }] };
+      hookState.events = [
+        { id: "e2", type: "agent.selection", sessionId: "s-open", message: "", timestamp: "", icon: "" },
+        { id: "e1", type: "agent.decision_made", sessionId: "other", message: "", timestamp: "", icon: "", coverage: { picks: 3, gaps: [] } },
+        { id: "e0", type: "agent.decision_made", sessionId: "s-open", message: "", timestamp: "", icon: "", coverage },
+      ];
+      render();
+      expect(captured.prompt?.coverage).toEqual(coverage);
+    });
+
+    it("hides coverage when no session is live", () => {
+      hookState.config = config({ isActive: false });
+      hookState.events = [
+        { id: "e0", type: "agent.decision_made", sessionId: "s-open", message: "", timestamp: "", icon: "", coverage: { picks: 5, gaps: [] } },
+      ];
+      render();
+      expect(captured.prompt?.coverage).toBeNull();
+    });
+  });
+
+  describe("buildSessionPreferences", () => {
+    it("returns nothing to steer without filters or a preset", () => {
+      expect(buildSessionPreferences({ activePreset: null, request: null })).toBeUndefined();
+      expect(
+        buildSessionPreferences({
+          activePreset: null,
+          request: { genres: [], moods: [], energy: null, bpm: null },
+        }),
+      ).toBeUndefined();
+    });
+
+    it("uses the saved vibes only for pick requests whose filters name no genre", () => {
+      const request = { genres: [], moods: [], energy: "high" as const, bpm: null };
+      expect(buildSessionPreferences({ activePreset: null, request })?.genres).toEqual([]);
+      expect(buildSessionPreferences({ activePreset: null, request, fallbackGenres: ["Jazz"] })?.genres).toEqual(["Jazz"]);
+    });
   });
 
   it("stops a live session", async () => {

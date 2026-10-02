@@ -672,3 +672,160 @@
   color: rgba(240,234,255,0.5);
   font-size: 0.9rem;
 }
+
+/* ── "What's this session for?" prompt (#2037) ──────────── */
+.aid-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 18px 22px;
+  backdrop-filter: blur(12px);
+}
+.aid-prompt-label {
+  color: #f0eaff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.aid-prompt-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  resize: vertical;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(8,8,15,0.6);
+  color: #f0eaff;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.aid-prompt-input::placeholder { color: rgba(240,234,255,0.38); }
+.aid-prompt-input:focus-visible {
+  outline: 2px solid var(--r-agent, #8b5cf6);
+  outline-offset: 1px;
+}
+.aid-prompt-hint {
+  margin: 0;
+  color: rgba(240,234,255,0.5);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.aid-prompt-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.aid-prompt-preset {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(196,181,253,0.25);
+  background: rgba(124,92,255,0.1);
+  color: #ede9fe;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, transform 0.12s;
+}
+.aid-prompt-preset:hover { background: rgba(124,92,255,0.2); border-color: rgba(196,181,253,0.5); }
+.aid-prompt-preset.active {
+  background: linear-gradient(135deg, var(--r-agent, #8b5cf6), var(--r-agent-soft, #a78bfa));
+  border-color: rgba(167,139,250,0.6);
+  color: #fff;
+}
+.aid-prompt-preset:focus-visible,
+.aid-prompt-chip-remove:focus-visible,
+.aid-prompt-chip-select:focus-visible,
+.aid-prompt-submit:focus-visible {
+  outline: 2px solid var(--r-agent, #8b5cf6);
+  outline-offset: 2px;
+}
+
+.aid-prompt-filters { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.aid-prompt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.aid-prompt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.07);
+  color: #f0eaff;
+  font-size: 0.85rem;
+}
+.aid-prompt-chip-label { color: rgba(240,234,255,0.6); font-size: 0.8rem; }
+.aid-prompt-chip-select {
+  border: 0;
+  border-radius: 8px;
+  background: rgba(8,8,15,0.6);
+  color: inherit;
+  font: inherit;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.aid-prompt-chip-remove {
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(240,234,255,0.6);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.aid-prompt-chip-remove:hover { background: rgba(255,255,255,0.12); color: #f0eaff; }
+
+.aid-prompt-note {
+  margin: 0;
+  color: rgba(240,234,255,0.62);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.aid-prompt-note--coverage { color: #fcd34d; }
+.aid-prompt-note--error { color: #f87171; }
+
+.aid-prompt-actions { display: flex; justify-content: flex-end; }
+.aid-prompt-submit {
+  min-height: 38px;
+  padding: 0 22px;
+  border-radius: 12px;
+  border: 1px solid rgba(167,139,250,0.5);
+  background: linear-gradient(135deg, var(--r-agent, #8b5cf6), var(--r-agent-soft, #a78bfa));
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.18s, transform 0.12s;
+}
+.aid-prompt-submit:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.aid-prompt-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@media (max-width: 767px) {
+  .aid-prompt { padding: 16px; border-radius: 16px; }
+  .aid-prompt-actions .aid-prompt-submit { width: 100%; }
+  .aid-prompt-presets {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .aid-prompt-preset { flex: 0 0 auto; }
+}
