@@ -7,7 +7,6 @@ type Props = {
     onToggle: () => Promise<void>;
     sessionCount: number;
     trackCount: number;
-    totalSpend: number;
 };
 
 /**
@@ -15,7 +14,7 @@ type Props = {
  * standalone (e.g. outside AgentDashboard). When used inside AgentDashboard,
  * the Command Center strip replaces the top-level toggle/mode controls.
  */
-export default function AgentStatusCard({ config, onToggle, sessionCount, trackCount, totalSpend }: Props) {
+export default function AgentStatusCard({ config, onToggle, sessionCount, trackCount }: Props) {
     return (
         <div className="aid-card aid-card--status">
             {/* Avatar orb */}
@@ -52,16 +51,6 @@ export default function AgentStatusCard({ config, onToggle, sessionCount, trackC
                     <span className="aid-sc-stat-val">{trackCount}</span>
                     <span className="aid-sc-stat-lbl">Tracks</span>
                 </div>
-                {/* Past spend stays visible; curate-only DJs never spend (ADR-TE-1.4). */}
-                {totalSpend > 0 && (
-                    <>
-                        <div className="aid-sc-stat-divider" />
-                        <div className="aid-sc-stat">
-                            <span className="aid-sc-stat-val">${totalSpend.toFixed(2)}</span>
-                            <span className="aid-sc-stat-lbl">Spent</span>
-                        </div>
-                    </>
-                )}
             </div>
 
             {/* Toggle CTA */}

@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes"],
     sections: [
       {
         id: "sessions",
@@ -503,7 +503,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Go to Home and find the Your AI DJ section. Sign in if you haven't already; signed out, you can still see the session intents.",
               "The first time, set up your DJ from there or in Settings → AI DJ, where you give it a name and choose your vibes. You can change them later in the same place.",
-              "Choose a session intent to set the direction, then start the session. Starting a session from the Home tuner or a feed prompt begins it in place.",
+              "Choose a session intent to set the direction, then start the session. Starting a session from the Home tuner or a feed prompt begins it in place. A session intent or Home pick only steers that session: the vibes you saved in Settings → AI DJ are kept as they are.",
               "When you start a session from the Your AI DJ section, the DJ takes a few seconds to choose its first picks and then plays them in the player. If it finds nothing to play, you'll see a message; try Next AI Pick or another intent.",
               "Watch the status, activity and history in the same section. Use Next AI Pick to get a new pick, which starts playing right away, and your feedback shapes future picks.",
               "Keep listening wherever you are in the app. As the queue runs low, the DJ adds more picks, for as long as the session is live. Stop the session whenever you like; stopping it means no new picks are added (what is already in your queue stays).",
@@ -519,13 +519,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "The AI DJ never buys for you",
-            text: "The AI DJ picks and plays music. It never buys anything on your behalf. A purchase only happens when you choose to buy something yourself, for example from Browse stems in Crates & Stems.",
+            text: "The AI DJ picks and plays music. Its sessions show no prices and no spending, and it never buys anything on your behalf. A purchase only happens when you choose to buy something yourself, for example from Browse stems in Crates & Stems.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/ai-dj.png`,
-              alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate, negotiate, and remix tracks for you in real time.",
+              alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate and play tracks for you in real time.",
               caption: "Setting up your AI DJ the first time.",
               width: 1440,
               height: 900,

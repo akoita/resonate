@@ -419,7 +419,6 @@
 .aid-history-details { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .aid-history-date    { font-size: 0.7rem; color: rgba(240,234,255,0.4); }
 .aid-history-duration{ font-size: 0.7rem; color: rgba(240,234,255,0.4); }
-.aid-history-spend   { font-size: 0.75rem; font-weight: 700; color: #4ade80; }
 .aid-history-stats   { display: flex; flex-wrap: wrap; gap: 6px; }
 .aid-history-chevron { flex-shrink: 0; color: rgba(240,234,255,0.25); transition: transform 0.2s ease; }
 
@@ -455,7 +454,6 @@
 .aid-history-lic-artist { font-size: 0.68rem; color: rgba(240,234,255,0.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .aid-history-lic-meta   { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .aid-history-lic-arrow  { color: rgba(240,234,255,0.2); }
-.aid-history-lic-price  { font-size: 0.72rem; font-weight: 700; color: #34d399; }
 
 .aid-lic-badge {
   font-size: 0.6rem;

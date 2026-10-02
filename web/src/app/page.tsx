@@ -15,10 +15,8 @@ import {
   listMyReleases,
   listPublicPlaylists,
   listPublishedReleases,
-  recordAgentSignal,
   Release,
   startAgentSession,
-  updateAgentConfig,
   type HomeFeedItem,
   type HomeFeedResponse,
   type PublicPlaylistSummary,
@@ -780,16 +778,18 @@ export default function Home() {
     try {
       const existing = await getAgentConfig(token);
       const vibes = [seedGenre].filter(Boolean);
-      if (existing) {
-        await updateAgentConfig(token, { vibes, sessionMode: "curate" });
-      } else {
+      // First-time setup seeds the saved vibes; an existing DJ keeps the vibes
+      // the listener saved in Settings and only steers this session (#2036).
+      if (!existing) {
         await createAgentConfig(token, {
           name: "Home DJ",
           vibes,
           monthlyCapUsd: 10,
         });
       }
-      const result = await startAgentSession(token);
+      const result = await startAgentSession(token, {
+        preferences: { genres: vibes, source: "home_recommendation" },
+      });
       if (result.status === "started") {
         addToast({
           type: "success",
@@ -838,9 +838,9 @@ export default function Home() {
       }
 
       const existing = await getAgentConfig(token);
-      if (existing) {
-        await updateAgentConfig(token, { vibes: [vibe], sessionMode: "curate" });
-      } else {
+      // First-time setup seeds the saved vibes; an existing DJ keeps the vibes
+      // the listener saved in Settings and only steers this session (#2036).
+      if (!existing) {
         await createAgentConfig(token, {
           name: `${filter.label} DJ`,
           vibes: [vibe],
@@ -848,21 +848,11 @@ export default function Home() {
         });
       }
 
-      const result = await startAgentSession(token);
-      const firstTrack = queue[0]?.catalogTrackId || queue[0]?.id;
-      if (firstTrack) {
-        await recordAgentSignal(token, {
-          trackId: firstTrack,
-          action: "accept",
-          sessionId: result.sessionId,
-          metadata: {
-            source: "home_vibe_session",
-            vibe,
-            filterKind: filter.kind,
-            autoQueuedTracks: queue.length,
-          },
-        }).catch(() => undefined);
-      }
+      // No taste signal here: the queue was picked for the listener, who has
+      // not acted on it yet (#2036). Plays, skips and saves are the signals.
+      await startAgentSession(token, {
+        preferences: { genres: [vibe], source: "home_vibe_session" },
+      });
 
       addToast({
         type: "success",

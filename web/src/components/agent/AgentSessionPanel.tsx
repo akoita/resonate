@@ -52,7 +52,7 @@ type Props = {
  */
 export default function AgentSessionPanel({ refreshKey }: Props) {
     const { token } = useAuth();
-    const { config, isLoading, createConfig, updateConfig, startSession, stopSession, refetch: refetchConfig } =
+    const { config, isLoading, createConfig, startSession, stopSession, refetch: refetchConfig } =
         useAgentConfig();
     const events = useAgentEvents();
     const { sessions, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
@@ -88,7 +88,6 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         return {
             ...(selectedIntentPreferences ?? {}),
             genres: selectedIntentPreferences?.genres ?? config?.vibes,
-            licenseType: selectedIntentPreferences?.licenseType ?? "personal",
         };
     }, [selectedIntentPreferences, config?.vibes]);
 
@@ -231,10 +230,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         } else {
             const preferences = preset ? toIntentPreferences(preset) : undefined;
             try {
-                if (preset) {
-                    setIsStartingPreset(true);
-                    await updateConfig({ vibes: preset.searchVibes });
-                }
+                // A preset steers this session only: it travels as session
+                // preferences and never overwrites the vibes saved in Settings.
+                if (preset) setIsStartingPreset(true);
                 const result = await startSession(preferences ? { preferences } : undefined);
                 if (result?.sessionId) {
                     setActiveSessionId(result.sessionId);
@@ -250,7 +248,6 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         intentName: preset?.name,
                         energy: preset?.preferences.energy,
                         mood: preset?.preferences.mood,
-                        licenseType: preset?.preferences.licenseType,
                         queueStyle: preset?.queueStyle,
                     },
                 });
@@ -280,7 +277,6 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 intentName: preset.name,
                 energy: preset.preferences.energy,
                 mood: preset.preferences.mood,
-                licenseType: preset.preferences.licenseType,
                 queueStyle: preset.queueStyle,
             },
         });
@@ -321,7 +317,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 addToast({
                     type: "success",
                     title: "AI Pick Ready",
-                    message: `Playing ${result.track.title} · ${result.licenseType ?? "personal"} · $${(result.priceUsd ?? 0).toFixed(2)}`,
+                    message: `Playing ${result.track.title}`,
                 });
                 void playDjTracks(openSessionId, [result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
             } else {
@@ -403,7 +399,6 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                             onToggle={() => handleToggle()}
                             sessionCount={sessions.length}
                             trackCount={sessions.reduce((sum, s) => sum + s.licenses.length, 0)}
-                            totalSpend={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
                         />
                         <AgentActivityFeed isActive={config.isActive} events={events} />
                         <AgentNextPickCard

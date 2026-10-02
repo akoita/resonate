@@ -50,4 +50,15 @@ describe("AgentSessionPresets", () => {
       expect(JSON.stringify(preset)).not.toMatch(/"buy"/i);
     }
   });
+
+  it("shows no tempo target and carries no license tier on any preset (#2036)", () => {
+    const html = renderToStaticMarkup(<AgentSessionPresets />);
+
+    expect(html).not.toContain("Tempo target");
+    expect(html).not.toMatch(/\bBPM\b/);
+    for (const preset of SESSION_PRESETS) {
+      expect(preset).not.toHaveProperty("tempo");
+      expect(preset.preferences).not.toHaveProperty("licenseType");
+    }
+  });
 });
