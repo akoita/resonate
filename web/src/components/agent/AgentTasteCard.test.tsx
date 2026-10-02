@@ -70,22 +70,12 @@ describe("AgentTasteCard ERC-8004 gating", () => {
   });
 });
 
-// #1954: stem types only filter buy-mode purchases, so they stay hidden while
-// the operator keeps buy mode off.
-describe("AgentTasteCard stem types gating", () => {
-  it.each([
-    ["undefined", undefined],
-    ["false", false],
-  ])("hides the stem types to buy panel when buyModeEnabled is %s", (_label, flag) => {
-    const html = render({ ...baseConfig, buyModeEnabled: flag });
+// ADR-TE-1.4: autonomous buying is removed, so there is no stem-type buy filter.
+describe("AgentTasteCard stem types", () => {
+  it("never renders the stem types to buy panel", () => {
+    const html = render(baseConfig);
 
     expect(html).not.toContain("Stem Types to Buy");
     expect(html).not.toContain("buys every listed stem");
-  });
-
-  it("shows the stem types to buy panel when buy mode is enabled", () => {
-    const html = render({ ...baseConfig, buyModeEnabled: true });
-
-    expect(html).toContain("Stem Types to Buy");
   });
 });

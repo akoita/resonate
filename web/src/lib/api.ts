@@ -5255,9 +5255,8 @@ export type AgentConfig = {
   name: string;
   vibes: string[];
   stemTypes: string[];
+  /** Always runs as curate; a stored legacy "buy" is read as curate (ADR-TE-1.4). */
   sessionMode: "curate" | "buy";
-  /** True only when the operator has enabled buy mode; hide the Curate/Buy toggle otherwise. */
-  buyModeEnabled?: boolean;
   /** Operator flag: ERC-8004 identity and reputation publishing (frozen, ADR-TE-6). */
   erc8004Enabled?: boolean;
   monthlyCapUsd: number;

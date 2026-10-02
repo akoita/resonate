@@ -3,8 +3,6 @@ import { AuthGuard } from "@nestjs/passport";
 import { prisma } from "../../db/prisma";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
-import { PaymentRouterService } from "./payment_router.service";
-import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentIdentityService } from "./agent_identity.service";
 import {
     AgentLearningService,
@@ -12,10 +10,7 @@ import {
     isAgentSignalAction,
     type AgentSignalAction,
 } from "./agent_learning.service";
-import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { EventBus } from "../shared/event_bus";
-import type { NegotiationResult } from "./agent_negotiator.service";
-import { isAgentSessionBuyModeEnabled, resolveAgentSessionMode } from "./agent_session_mode";
 
 @Controller("agents/config")
 export class AgentConfigController {
@@ -24,11 +19,8 @@ export class AgentConfigController {
     constructor(
         private readonly orchestrator: AgentOrchestratorService,
         private readonly runtimeService: AgentRuntimeService,
-        private readonly paymentRouter: PaymentRouterService,
-        private readonly negotiatorService: AgentNegotiatorService,
         private readonly identityService: AgentIdentityService,
         private readonly learningService: AgentLearningService,
-        private readonly stemQualityService: AgentStemQualityService,
         private readonly eventBus: EventBus
     ) { }
 
@@ -39,10 +31,7 @@ export class AgentConfigController {
             where: { userId: req.user.userId },
         });
         if (!config) return null;
-        return {
-            ...(await this.identityService.enrichConfig(config)),
-            buyModeEnabled: isAgentSessionBuyModeEnabled(),
-        };
+        return this.identityService.enrichConfig(config);
     }
 
     @Post()
@@ -87,7 +76,6 @@ export class AgentConfigController {
         @Req() req: any,
         @Body() body: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: string; monthlyCapUsd?: number; isActive?: boolean }
     ) {
-        const buyModeEnabled = isAgentSessionBuyModeEnabled();
         const allowedData: {
             name?: string;
             vibes?: string[];
@@ -103,7 +91,9 @@ export class AgentConfigController {
             if (body.sessionMode !== "curate" && body.sessionMode !== "buy") {
                 throw new BadRequestException({ reason: "invalid_session_mode" });
             }
-            if (body.sessionMode === "buy" && !buyModeEnabled) {
+            // Autonomous stem buying was removed (ADR-TE-1.4); purchases go
+            // through Crate Digger quotes. "buy" stays a recognised, rejected value.
+            if (body.sessionMode === "buy") {
                 throw new BadRequestException({ reason: "buy_mode_disabled" });
             }
             allowedData.sessionMode = body.sessionMode;
@@ -115,7 +105,7 @@ export class AgentConfigController {
             where: { userId: req.user.userId },
             data: allowedData,
         });
-        return { ...(await this.identityService.enrichConfig(config)), buyModeEnabled };
+        return this.identityService.enrichConfig(config);
     }
 
     @Post("identity/mint")
@@ -252,17 +242,6 @@ export class AgentConfigController {
             });
         }
 
-        // Buy mode is honored only when the operator flag is on (#1954).
-        const { mode: sessionMode, downgraded } = resolveAgentSessionMode(
-            config.sessionMode,
-            isAgentSessionBuyModeEnabled(),
-        );
-        if (downgraded) {
-            this.logger.log(
-                `[Agent] Session ${session.id}: buy mode disabled by AGENT_SESSION_BUY_MODE_ENABLED; running as curate`,
-            );
-        }
-
         // Delay orchestration slightly to let the WebSocket client connect
         // after receiving the HTTP response. This fixes the event race condition.
         setTimeout(() => {
@@ -346,33 +325,10 @@ export class AgentConfigController {
                                         outcome: { type: "first_pick_accept", firstPick: true },
                                     }),
                                 });
-                                this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${sessionMode}`);
-                                if (sessionMode === "buy") {
-                                    await this.recordPurchase(
-                                        session.id,
-                                        req.user.userId,
-                                        track.trackId,
-                                        track.negotiation,
-                                    );
-                                } else {
-                                    this.logger.log(`[Agent] Skipping purchase for ${track.trackId} (mode: ${sessionMode})`);
-                                }
+                                this.logger.log(`[Agent] Recorded pick ${track.trackId} (curate session; no purchase)`);
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${track.trackId}:`, err);
                             }
-                        }
-                        // Only record spend for purchases that can actually happen (buy mode).
-                        const totalSpend = sessionMode === "buy"
-                            ? result.tracks.reduce(
-                                (sum, t) => sum + t.negotiation.priceUsd,
-                                0
-                            )
-                            : 0;
-                        if (totalSpend > 0) {
-                            await prisma.session.update({
-                                where: { id: session.id },
-                                data: { spentUsd: totalSpend },
-                            });
                         }
                     } else {
                         // LLM adapter result (vertex/langgraph mode)
@@ -384,7 +340,6 @@ export class AgentConfigController {
                         this.logger.log(
                             `LLM decision: ${result.status} ${picks.length} track(s) reason=${result.reason} (${result.latencyMs}ms)`
                         );
-                        let totalSpend = 0;
                         for (const pick of picks) {
                             try {
                                 await prisma.license.create({
@@ -422,38 +377,9 @@ export class AgentConfigController {
                                         outcome: { type: "first_pick_accept", firstPick: true },
                                     }),
                                 });
-                                if (sessionMode === "buy") {
-                                    // Fetch actual listings to ensure we can buy
-                                    const negotiation = await this.negotiatorService.negotiate({
-                                        trackId: pick.trackId,
-                                        licenseType: pick.licenseType,
-                                        budgetRemainingUsd: config.monthlyCapUsd, // We use cap here, actual spend check happens in service
-                                        stemTypes: config.stemTypes,
-                                    });
-
-                                    if (negotiation.allowed) {
-                                        await this.recordPurchase(
-                                            session.id,
-                                            req.user.userId,
-                                            pick.trackId,
-                                            negotiation,
-                                        );
-                                    } else {
-                                        this.logger.warn(`[Agent] LLM picked track ${pick.trackId} but negotiation failed: ${negotiation.reason}`);
-                                    }
-                                }
-                                if (sessionMode === "buy") {
-                                    totalSpend += pick.priceUsd;
-                                }
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${pick.trackId}:`, err);
                             }
-                        }
-                        if (totalSpend > 0) {
-                            await prisma.session.update({
-                                where: { id: session.id },
-                                data: { spentUsd: totalSpend },
-                            });
                         }
                         // Publish decision event with LLM reasoning
                         this.eventBus.publish({
@@ -463,7 +389,7 @@ export class AgentConfigController {
                             sessionId: session.id,
                             trackId: picks.map(p => p.trackId).join(","),
                             licenseType: picks[0]?.licenseType,
-                            priceUsd: totalSpend,
+                            priceUsd: 0,
                             reason: result.reason ?? "llm",
                             reasoning: result.reasoning,
                             latencyMs: result.latencyMs,
@@ -610,86 +536,5 @@ export class AgentConfigController {
         }
 
         return sessions;
-    }
-
-    /**
-     * Purchase all active on-chain listings for a track via the bundler.
-     * Tracks without listings are skipped — no mock records.
-     */
-    private async recordPurchase(
-        sessionId: string,
-        userId: string,
-        trackId: string,
-        negotiation: NegotiationResult,
-    ) {
-        const listings = negotiation.listings ?? [];
-        this.logger.log(`[Agent] recordPurchase: track=${trackId} user=${userId} listings=${listings.length}`);
-
-        if (listings.length === 0) {
-            this.logger.warn(`[Agent] No active listings for track ${trackId} — skipping purchase`);
-            return;
-        }
-
-        const session = await prisma.session.findUnique({
-            where: { id: sessionId },
-            select: { budgetCapUsd: true, spentUsd: true },
-        });
-        let budgetRemainingUsd = Math.max(
-            0,
-            (session?.budgetCapUsd ?? negotiation.priceUsd) - (session?.spentUsd ?? 0),
-        );
-        let purchaseSignalRecorded = false;
-        for (const listing of listings) {
-            try {
-                this.logger.log(`[Agent] Purchasing listing ${listing.listingId} price=${listing.pricePerUnit}`);
-                const result = await this.paymentRouter.purchase({
-                    sessionId,
-                    userId,
-                    rail: "erc4337_marketplace",
-                    licenseType: negotiation.licenseType,
-                    listingId: listing.listingId,
-                    tokenId: listing.tokenId,
-                    amount: 1n,
-                    totalPriceWei: listing.pricePerUnit,
-                    priceUsd: negotiation.priceUsd,
-                    budgetRemainingUsd,
-                });
-                if (!result.success) {
-                    this.logger.warn(
-                        `Purchase failed for listing ${listing.listingId} (${listing.stemType}): ${result.reason}`,
-                    );
-                } else {
-                    budgetRemainingUsd = result.remaining ?? Math.max(0, budgetRemainingUsd - negotiation.priceUsd);
-                    if (!purchaseSignalRecorded) {
-                        await this.learningService.recordSignal({
-                            userId,
-                            sessionId,
-                            trackId,
-                            action: "purchase",
-                            metadata: buildAgentSignalMetadata({
-                                source: "agent_purchase",
-                                licenseType: negotiation.licenseType,
-                                outcome: {
-                                    type: "purchase",
-                                    priceUsd: negotiation.priceUsd,
-                                },
-                            }),
-                        });
-                        purchaseSignalRecorded = true;
-                    }
-                    if (listing.stemId) {
-                        await this.stemQualityService.recordValidation({
-                            stemId: listing.stemId,
-                            validation: "purchase",
-                        });
-                    }
-                    this.logger.log(`[Agent] Purchase success: tx=${result.txHash}`);
-                }
-            } catch (err) {
-                this.logger.error(
-                    `Purchase error for listing ${listing.listingId}: ${err}`,
-                );
-            }
-        }
     }
 }

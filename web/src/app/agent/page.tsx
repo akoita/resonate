@@ -7,13 +7,10 @@ import { useAuth } from "../../components/auth/AuthProvider";
 import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
-import { useAgentWallet } from "../../hooks/useAgentWallet";
 import { getAgentNextPick, type AgentNextPickResponse, type AgentNextPreferences } from "../../lib/api";
 import AgentSetupWizard from "../../components/agent/AgentSetupWizard";
 import AgentStatusCard from "../../components/agent/AgentStatusCard";
 import AgentActivityFeed from "../../components/agent/AgentActivityFeed";
-import AgentBudgetCard from "../../components/agent/AgentBudgetCard";
-import AgentBudgetModal from "../../components/agent/AgentBudgetModal";
 import AgentTasteCard from "../../components/agent/AgentTasteCard";
 import AgentHistoryCard from "../../components/agent/AgentHistoryCard";
 import AgentSessionPresets, { SESSION_PRESETS, type SessionPreset } from "../../components/agent/AgentSessionPresets";
@@ -27,9 +24,7 @@ export default function AgentPage() {
         useAgentConfig();
     const events = useAgentEvents();
     const { sessions, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
-    const wallet = useAgentWallet();
     const { addToast } = useToast();
-    const [showBudgetModal, setShowBudgetModal] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [nextPick, setNextPick] = useState<AgentNextPickResponse | null>(null);
     const [isPickingNext, setIsPickingNext] = useState(false);
@@ -228,28 +223,6 @@ export default function AgentPage() {
         }
     };
 
-    const handleEditBudget = () => setShowBudgetModal(true);
-
-    const handleBudgetConfirm = (newBudget: number) => {
-        setShowBudgetModal(false);
-        updateConfig({ monthlyCapUsd: newBudget });
-        void recordProductAnalytics(token, "wallet.budget_set", {
-            source: "agent_budget_modal",
-            subjectType: "agent_config",
-            subjectId: config?.id,
-            payload: {
-                surface: "agent",
-                monthlyCapUsd: newBudget,
-                previousMonthlyCapUsd: config?.monthlyCapUsd,
-            },
-        });
-        addToast({
-            type: "success",
-            title: "Budget Updated",
-            message: `Monthly cap set to $${newBudget}/mo`,
-        });
-    };
-
     return (
         <AuthGate title="Connect your wallet to access your AI DJ.">
             <div className="aid-page">
@@ -287,22 +260,6 @@ export default function AgentPage() {
                                 </span>
                             </div>
                             <div className="aid-command-actions">
-                                {config.buyModeEnabled === true ? (
-                                    <div className="aid-mode-seg">
-                                        <button
-                                            className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
-                                            onClick={() => updateConfig({ sessionMode: "curate" })}
-                                        >
-                                            Curate Only
-                                        </button>
-                                        <button
-                                            className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
-                                            onClick={() => updateConfig({ sessionMode: "buy" })}
-                                        >
-                                            Buy Stems
-                                        </button>
-                                    </div>
-                                ) : null}
                                 <button
                                     className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
                                     onClick={() => handleToggle()}
@@ -326,16 +283,6 @@ export default function AgentPage() {
                             <AgentStatusCard
                                 config={config}
                                 onToggle={() => handleToggle()}
-                                onModeChange={async (mode) => {
-                                    await updateConfig({ sessionMode: mode });
-                                    addToast({
-                                        type: "success",
-                                        title: "Session Mode Updated",
-                                        message: mode === "curate"
-                                            ? "Your DJ will curate tracks without purchasing."
-                                            : "Your DJ will curate and purchase stems on-chain.",
-                                    });
-                                }}
                                 sessionCount={sessions.length}
                                 trackCount={sessions.reduce((sum, s) => sum + s.licenses.length, 0)}
                                 totalSpend={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
@@ -350,37 +297,13 @@ export default function AgentPage() {
                             />
                         </div>
 
-                        {/* Bottom row: Finance | Taste. Finance only when the operator re-enables buy mode (#1954). */}
-                        <div className={`aid-bottom-row ${config.buyModeEnabled === true ? "" : "aid-bottom-row--single"}`}>
-                            {config.buyModeEnabled === true && (
-                                <AgentBudgetCard
-                                    config={config}
-                                    spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
-                                    onEdit={handleEditBudget}
-                                    walletStatus={wallet.walletStatus}
-                                    transactions={wallet.transactions}
-                                    isEnabling={wallet.isEnabling}
-                                    isDisabling={wallet.isDisabling}
-                                    onEnable={wallet.enable}
-                                    onDisable={wallet.disable}
-                                    onRefreshTransactions={wallet.refetchTransactions}
-                                />
-                            )}
+                        {/* Bottom row: Taste */}
+                        <div className="aid-bottom-row aid-bottom-row--single">
                             <AgentTasteCard
                                 config={config}
                                 onUpdateVibes={async (vibes) => {
                                     await updateConfig({ vibes });
                                     addToast({ type: "success", title: "Vibes Updated", message: "Your DJ's taste has been updated." });
-                                }}
-                                onUpdateStemTypes={async (stemTypes) => {
-                                    await updateConfig({ stemTypes });
-                                    addToast({
-                                        type: "success",
-                                        title: "Stem Types Updated",
-                                        message: stemTypes.length === 0
-                                            ? "Your DJ will buy all available stems."
-                                            : `Your DJ will buy: ${stemTypes.join(", ")}`,
-                                    });
                                 }}
                                 onMintIdentity={async () => {
                                     const result = await mintIdentity();
@@ -434,14 +357,6 @@ export default function AgentPage() {
                     onClose={() => setShowWizard(false)}
                 />
             )}
-
-            <AgentBudgetModal
-                isOpen={showBudgetModal}
-                currentBudget={config?.monthlyCapUsd ?? 10}
-                spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
-                onConfirm={handleBudgetConfirm}
-                onClose={() => setShowBudgetModal(false)}
-            />
         </AuthGate>
     );
 }

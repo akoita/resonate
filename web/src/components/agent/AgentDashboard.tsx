@@ -7,7 +7,6 @@ type Props = {
     config: AgentConfig;
     sessions: AgentSession[];
     onToggle: () => Promise<void>;
-    onModeChange: (mode: "curate" | "buy") => Promise<void>;
     /** Slot: 3-col middle row — ActivityFeed, NextPick, Finance */
     middleRow: ReactNode;
     /** Slot: full-width taste profile */
@@ -22,7 +21,6 @@ export default function AgentDashboard({
     config,
     sessions,
     onToggle,
-    onModeChange,
     middleRow,
     tastePanel,
     historyPanel,
@@ -82,29 +80,6 @@ export default function AgentDashboard({
                         <span className="aid-stat-label">Spent</span>
                     </div>
                 </div>
-
-                {/* Mode toggle */}
-                {config.buyModeEnabled === true ? (
-                    <div className="aid-command-mode">
-                        <span className="aid-mode-label">Mode</span>
-                        <div className="aid-mode-seg">
-                            <button
-                                className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
-                                onClick={() => onModeChange("curate")}
-                            >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-                                Curate Only
-                            </button>
-                            <button
-                                className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
-                                onClick={() => onModeChange("buy")}
-                            >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
-                                Buy Stems
-                            </button>
-                        </div>
-                    </div>
-                ) : null}
 
                 {/* CTA */}
                 <div className="aid-command-cta">

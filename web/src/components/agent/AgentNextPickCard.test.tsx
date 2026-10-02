@@ -105,14 +105,14 @@ describe("AgentNextPickCard", () => {
     expect(html).not.toContain(">personal<");
   });
 
-  it("shows price and license for a buy-mode session when buy mode is enabled", () => {
-    const buyConfig = { ...config, buyModeEnabled: true, sessionMode: "buy" } as AgentConfig;
+  it("hides price and license even for a legacy stored buy-mode config", () => {
+    const legacyConfig = { ...config, sessionMode: "buy" } as AgentConfig;
     const html = renderToStaticMarkup(
-      <AgentNextPickCard config={buyConfig} activeSessionId="session-1" isLoading={false} pick={okPick} onPick={async () => {}} />,
+      <AgentNextPickCard config={legacyConfig} activeSessionId="session-1" isLoading={false} pick={okPick} onPick={async () => {}} />,
     );
 
-    expect(html).toContain("$0.02");
-    expect(html).toContain(">personal<");
+    expect(html).not.toContain("$0.02");
+    expect(html).not.toContain(">personal<");
   });
 
   it("does not claim a live session while the DJ is inactive", () => {

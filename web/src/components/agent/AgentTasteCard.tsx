@@ -9,38 +9,24 @@ const PRESET_VIBES = [
     "Afrobeats", "Reggaeton", "Techno", "Indie", "Pop", "Rock",
 ];
 
-const STEM_TYPES = ["vocals", "drums", "bass", "piano", "guitar", "other"];
-
 type Props = {
     config: AgentConfig;
     onUpdateVibes?: (vibes: string[]) => Promise<void>;
-    onUpdateStemTypes?: (stemTypes: string[]) => Promise<void>;
     onMintIdentity?: () => Promise<void>;
     onAttestReputation?: () => Promise<void>;
 };
 
-export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemTypes, onMintIdentity, onAttestReputation }: Props) {
+export default function AgentTasteCard({ config, onUpdateVibes, onMintIdentity, onAttestReputation }: Props) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<string[]>(config.vibes);
     const [saving, setSaving] = useState(false);
     const [customInput, setCustomInput] = useState("");
-
-    // Stem types state
-    const [editingStems, setEditingStems] = useState(false);
-    const [stemDraft, setStemDraft] = useState<string[]>(config.stemTypes ?? []);
-    const [savingStems, setSavingStems] = useState(false);
     const [mintingIdentity, setMintingIdentity] = useState(false);
     const [attestingReputation, setAttestingReputation] = useState(false);
 
     const toggleVibe = (vibe: string) => {
         setDraft((prev) =>
             prev.includes(vibe) ? prev.filter((v) => v !== vibe) : [...prev, vibe]
-        );
-    };
-
-    const toggleStemType = (type: string) => {
-        setStemDraft((prev) =>
-            prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
         );
     };
 
@@ -80,25 +66,8 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
         }
     };
 
-    const handleEditStems = () => {
-        setStemDraft([...(config.stemTypes ?? [])]);
-        setEditingStems(true);
-    };
-
-    const handleSaveStems = async () => {
-        if (!onUpdateStemTypes) return;
-        setSavingStems(true);
-        try {
-            await onUpdateStemTypes(stemDraft);
-            setEditingStems(false);
-        } finally {
-            setSavingStems(false);
-        }
-    };
-
     // Custom vibes that aren't in the preset list
     const customVibes = draft.filter((v) => !PRESET_VIBES.includes(v));
-    const activeStemTypes = config.stemTypes ?? [];
     const learnedTaste = config.learnedTasteProfile;
     const reputation = config.reputationSnapshot;
     const score = Math.max(0, Math.min(100, config.tasteScore ?? learnedTaste?.score ?? config.reputationScore ?? reputation?.score ?? 0));
@@ -235,74 +204,6 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                             </div>
                         )}
                     </div>
-
-                    {/* Stem types only filter what a buy-mode session purchases (#1954). */}
-                    {config.buyModeEnabled === true && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            <div className="aid-taste-col-header">
-                                <span className="aid-taste-lbl">Stem Types to Buy</span>
-                                {onUpdateStemTypes && !editingStems && (
-                                    <button className="aid-ghost-btn" onClick={handleEditStems}>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                                            <path d="m15 5 4 4" />
-                                        </svg>
-                                        Edit
-                                    </button>
-                                )}
-                            </div>
-
-                            {editingStems ? (
-                                <>
-                                    <div className="aid-vibes-grid">
-                                        {STEM_TYPES.map((type) => (
-                                            <button
-                                                key={type}
-                                                className={`aid-vibe-chip ${stemDraft.includes(type) ? "aid-vibe-chip--active" : ""}`}
-                                                onClick={() => toggleStemType(type)}
-                                            >
-                                                {type}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <p className="aid-taste-hint" style={{ marginTop: 6 }}>
-                                        {stemDraft.length === 0
-                                            ? "No filter \u2014 agent will buy all available stems."
-                                            : `Agent will only buy: ${stemDraft.join(", ")}`}
-                                    </p>
-                                    <div className="aid-edit-actions">
-                                        <button className="aid-ghost-btn" onClick={() => setEditingStems(false)}>
-                                            Cancel
-                                        </button>
-                                        <button
-                                            className="aid-primary-btn"
-                                            onClick={handleSaveStems}
-                                            disabled={savingStems}
-                                        >
-                                            {savingStems ? "Saving..." : "Save"}
-                                        </button>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="aid-vibes-row">
-                                        {activeStemTypes.length === 0 ? (
-                                            <span className="aid-vibe-chip aid-vibe-chip--active">All stems</span>
-                                        ) : (
-                                            activeStemTypes.map((type) => (
-                                                <span key={type} className="aid-vibe-chip aid-vibe-chip--active">{type}</span>
-                                            ))
-                                        )}
-                                    </div>
-                                    <p className="aid-taste-hint">
-                                        {activeStemTypes.length === 0
-                                            ? "Your DJ buys every listed stem for a track."
-                                            : `Your DJ only buys ${activeStemTypes.join(", ")} stems.`}
-                                    </p>
-                                </>
-                            )}
-                        </div>
-                    )}
                 </div>
 
                 {/* ── Side column: Score + Genres + Identity ── */}
