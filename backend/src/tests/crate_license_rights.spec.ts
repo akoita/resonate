@@ -2,6 +2,7 @@ import type { CrateCandidateFacts } from "../modules/crates/crate.types";
 import {
   CRATE_LICENSE_RIGHTS,
   crateLicenseOptions,
+  crateTierRights,
 } from "../modules/crates/crate_license_rights";
 
 function facts(overrides: Partial<CrateCandidateFacts> = {}): CrateCandidateFacts {
@@ -125,6 +126,22 @@ describe("crateLicenseOptions", () => {
   it("does not let callers mutate the shared grants", () => {
     const [option] = crateLicenseOptions(facts({ listedLicenseTypes: ["personal"] }));
     option.grants.push("extra");
+    expect(CRATE_LICENSE_RIGHTS.personal).toHaveLength(1);
+  });
+});
+
+describe("crateTierRights", () => {
+  it("gives the standard tiers their grants and the others none", () => {
+    expect(crateTierRights("remix")).toEqual({
+      licenseType: "remix",
+      standardTerms: true,
+      grants: [...CRATE_LICENSE_RIGHTS.remix],
+    });
+    expect(crateTierRights("sync")).toEqual({ licenseType: "sync", standardTerms: false, grants: [] });
+  });
+
+  it("does not let callers mutate the shared grants", () => {
+    crateTierRights("personal").grants.push("extra");
     expect(CRATE_LICENSE_RIGHTS.personal).toHaveLength(1);
   });
 });

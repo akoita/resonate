@@ -176,6 +176,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
       chainId,
       contractAddress: contractAddr,
       transactionHash: `0x${P}sold_tx`,
+      logIndex: 0,
       blockNumber: '4',
     };
     eventBus.publish(soldEvent);
@@ -195,6 +196,182 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     expect(purchase!.paymentAssetSymbol).toBe('TOKEN');
     expect(purchase!.settlementAmountUnits).toBe('250000');
     expect(purchase!.licenseType).toBe('remix');
+    expect(purchase!.logIndex).toBe(0);
+  }, 20000);
+
+  it('Batched purchase: two Sold logs in one transaction record two purchases', async () => {
+    // A batched user operation (#1964) buys several listings in ONE transaction,
+    // so the transaction hash alone no longer identifies a purchase.
+    const seedListing = (listingId: bigint, amount: bigint, licenseType: 'personal' | 'sync') =>
+      prisma.stemListing.create({
+        data: {
+          listingId,
+          stemId,
+          tokenId: BigInt(tokenId),
+          chainId,
+          contractAddress: contractAddr,
+          sellerAddress: '0x' + 'a'.repeat(40),
+          pricePerUnit: '1000',
+          amount,
+          paymentToken: '0x0000000000000000000000000000000000000000',
+          expiresAt: new Date(Date.now() + 86_400_000),
+          transactionHash: `0x${P}batch_list_${listingId}`,
+          blockNumber: 7n,
+          licenseType,
+          status: 'active',
+          listedAt: new Date(),
+        },
+      });
+    const first = await seedListing(30n, 3n, 'personal');
+    const second = await seedListing(31n, 1n, 'sync');
+
+    const batchTx = `0x${P}batch_tx`;
+    const sold = (listingId: string, logIndex: number, amount: string): ContractStemSoldEvent => ({
+      eventName: 'contract.stem_sold',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      listingId,
+      buyerAddress: '0xBatchBuyer',
+      amount,
+      totalPaid: '1000',
+      chainId,
+      contractAddress: contractAddr,
+      transactionHash: batchTx,
+      logIndex,
+      blockNumber: '8',
+    });
+
+    eventBus.publish(sold('30', 4, '1'));
+    eventBus.publish(sold('31', 7, '1'));
+    await wait(1500);
+
+    const purchases = await prisma.stemPurchase.findMany({
+      where: { transactionHash: batchTx },
+      orderBy: { logIndex: 'asc' },
+    });
+    expect(purchases.map((purchase) => purchase.logIndex)).toEqual([4, 7]);
+    expect(purchases.map((purchase) => purchase.listingId)).toEqual([first.id, second.id]);
+
+    const firstAfter = await prisma.stemListing.findUnique({ where: { id: first.id } });
+    const secondAfter = await prisma.stemListing.findUnique({ where: { id: second.id } });
+    expect(firstAfter!.amount).toBe(2n);
+    expect(firstAfter!.status).toBe('active');
+    expect(secondAfter!.amount).toBe(0n);
+    expect(secondAfter!.status).toBe('sold');
+
+    // Replaying either log (reindex) changes nothing.
+    eventBus.publish(sold('30', 4, '1'));
+    eventBus.publish(sold('31', 7, '1'));
+    await wait(1500);
+
+    expect(await prisma.stemPurchase.count({ where: { transactionHash: batchTx } })).toBe(2);
+    const firstReplayed = await prisma.stemListing.findUnique({ where: { id: first.id } });
+    expect(firstReplayed!.amount).toBe(2n);
+  }, 20000);
+
+  it('Batched purchase: two Sold logs for one listing row decrement it twice, replay-safe', async () => {
+    const listing = await prisma.stemListing.create({
+      data: {
+        listingId: 32n,
+        stemId,
+        tokenId: BigInt(tokenId),
+        chainId,
+        contractAddress: contractAddr,
+        sellerAddress: '0x' + 'b'.repeat(40),
+        pricePerUnit: '1000',
+        amount: 5n,
+        paymentToken: '0x0000000000000000000000000000000000000000',
+        expiresAt: new Date(Date.now() + 86_400_000),
+        transactionHash: `0x${P}batch_list_32`,
+        blockNumber: 7n,
+        licenseType: 'personal',
+        status: 'active',
+        listedAt: new Date(),
+      },
+    });
+    const sameListingTx = `0x${P}batch_same_listing_tx`;
+    const sold = (logIndex: number): ContractStemSoldEvent => ({
+      eventName: 'contract.stem_sold',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      listingId: '32',
+      buyerAddress: '0xBatchBuyer',
+      amount: '1',
+      totalPaid: '1000',
+      chainId,
+      contractAddress: contractAddr,
+      transactionHash: sameListingTx,
+      logIndex,
+      blockNumber: '9',
+    });
+
+    eventBus.publish(sold(1));
+    eventBus.publish(sold(2));
+    await wait(1500);
+    eventBus.publish(sold(1));
+    await wait(1000);
+
+    expect(await prisma.stemPurchase.count({ where: { transactionHash: sameListingTx } })).toBe(2);
+    expect((await prisma.stemListing.findUnique({ where: { id: listing.id } }))!.amount).toBe(3n);
+  }, 20000);
+
+  it('A purchase indexed before logIndex existed is not recorded twice on replay', async () => {
+    const listing = await prisma.stemListing.create({
+      data: {
+        listingId: 33n,
+        stemId,
+        tokenId: BigInt(tokenId),
+        chainId,
+        contractAddress: contractAddr,
+        sellerAddress: '0x' + 'c'.repeat(40),
+        pricePerUnit: '1000',
+        amount: 3n,
+        paymentToken: '0x0000000000000000000000000000000000000000',
+        expiresAt: new Date(Date.now() + 86_400_000),
+        transactionHash: `0x${P}batch_list_33`,
+        blockNumber: 7n,
+        licenseType: 'personal',
+        status: 'active',
+        listedAt: new Date(),
+      },
+    });
+    const legacyTx = `0x${P}legacy_tx`;
+    // The row the old indexer wrote: no logIndex, listing already decremented.
+    await prisma.stemListing.update({ where: { id: listing.id }, data: { amount: 2n } });
+    await prisma.stemPurchase.create({
+      data: {
+        listingId: listing.id,
+        buyerAddress: '0xlegacybuyer',
+        amount: 1n,
+        totalPaid: '1000',
+        royaltyPaid: '0',
+        protocolFeePaid: '0',
+        sellerReceived: '0',
+        transactionHash: legacyTx,
+        logIndex: null,
+        blockNumber: 6n,
+        purchasedAt: new Date(),
+      },
+    });
+
+    eventBus.publish({
+      eventName: 'contract.stem_sold',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      listingId: '33',
+      buyerAddress: '0xLegacyBuyer',
+      amount: '1',
+      totalPaid: '1000',
+      chainId,
+      contractAddress: contractAddr,
+      transactionHash: legacyTx,
+      logIndex: 3,
+      blockNumber: '6',
+    } satisfies ContractStemSoldEvent);
+    await wait(1500);
+
+    expect(await prisma.stemPurchase.count({ where: { transactionHash: legacyTx } })).toBe(1);
+    expect((await prisma.stemListing.findUnique({ where: { id: listing.id } }))!.amount).toBe(2n);
   }, 20000);
 
   it('Listing cancellation', async () => {

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { minutes } from "../shared/rate_limits";
@@ -9,6 +19,9 @@ import type {
   ListCratesResponse,
   SwapCrateItemResponse,
 } from "./crate.dto";
+import { CrateQuoteService } from "./crate_quote.service";
+import { CreateCrateQuoteDto, SettleCrateQuoteDto } from "./crate_quote.dto";
+import type { CrateQuoteDto } from "./crate_quote.dto";
 import { CratesService } from "./crates.service";
 
 /** Tracked per signed-in person where the guard has resolved them, else per IP. */
@@ -23,7 +36,10 @@ const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
  */
 @Controller("crates")
 export class CratesController {
-  constructor(private readonly crates: CratesService) {}
+  constructor(
+    private readonly crates: CratesService,
+    private readonly quotes: CrateQuoteService,
+  ) {}
 
   /**
    * Builds and persists a draft crate from text, a reference track or edited
@@ -82,5 +98,52 @@ export class CratesController {
     @Param("trackId") trackId: string,
   ): Promise<SwapCrateItemResponse> {
     return this.crates.swapItem(req.user.userId, id, trackId);
+  }
+
+  /**
+   * Prices the crate's lines (or the listed ones) from on-chain facts for the
+   * DJ to approve (#1964). Nothing is bought here: the browser signs and sends
+   * one batched user operation, then reports it to settle.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+  @Post(":id/quote")
+  createQuote(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() body: CreateCrateQuoteDto,
+  ): Promise<CrateQuoteDto> {
+    return this.quotes.createQuote(req.user.userId, id, body);
+  }
+
+  /** The caller's own quote of the crate; anyone else's is a 404. */
+  @UseGuards(AuthGuard("jwt"))
+  @Get(":id/quotes/:quoteId")
+  getQuote(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Param("quoteId") quoteId: string,
+  ): Promise<CrateQuoteDto> {
+    return this.quotes.getQuote(req.user.userId, id, quoteId);
+  }
+
+  /**
+   * Reports the transaction of an approved quote and verifies it from the
+   * chain. 202 while the transaction has no receipt yet (retry); 200 once the
+   * quote is settled, partial or failed, and on every later call.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+  @Post(":id/quotes/:quoteId/settle")
+  async settleQuote(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Param("quoteId") quoteId: string,
+    @Body() body: SettleCrateQuoteDto,
+    @Res({ passthrough: true }) res: { status(code: number): unknown },
+  ): Promise<CrateQuoteDto> {
+    const quote = await this.quotes.settleQuote(req.user.userId, id, quoteId, body);
+    res.status(quote.status === "submitted" ? 202 : 200);
+    return quote;
   }
 }

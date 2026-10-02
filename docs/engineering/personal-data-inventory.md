@@ -189,7 +189,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
 `ShowPledge`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
-`CrateRequest`.
+`CrateRequest`, `CrateQuote`, `CrateQuoteLine`.
 
 Crate Digger (#1962) adds three of these, all keyed by `userId`. `Crate` (title,
 filters, status), `CrateItem` (track id, position, locked flag; `userId` is
@@ -199,6 +199,15 @@ Erasure disposition: `delete` for all three, by `userId`. Export: all three are
 included. **No free text is stored**: the DJ's request text is never persisted
 (`CrateRequest.unparsedCount` is a count only), so the export and erasure have
 no request text to cover. `Crate.title` is the one user-typed string.
+
+Crate quotes (#1964) add two more, also keyed by `userId`. `CrateQuote` (the
+marketplace, the DJ's smart-account address at quote time, expiry, submitted
+transaction hash, status) and `CrateQuoteLine` (track, stem, tier, on-chain
+listing and token ids, raw price units from the chain, the settlement receipt;
+`userId` is denormalized from the quote) are the person's own data. Erasure
+disposition: `delete` for both, by `userId`; the settled sales themselves are
+chain facts and `StemPurchase` rows, which erasure does not touch. Export: both
+are included. Nothing user-typed is stored.
 
 ## Category 2 — personal, but no relation (28 models)
 

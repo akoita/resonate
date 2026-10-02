@@ -674,6 +674,18 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     note: "`crateId` is SET NULL when the crate above is deleted; this rule deletes the request rows themselves by `userId`, so none survive the erasure.",
   },
   {
+    model: "CrateQuote",
+    disposition: "delete",
+    reason: "The priced offers a DJ asked for on their crates (#1964): the person's smart-account address, the transaction they submitted and when. It is behavioural state about them; the settled sales themselves live on in the chain and in StemPurchase, which this rule does not touch.",
+    note: "Deleted by `userId`; the crate delete would also cascade the quotes.",
+  },
+  {
+    model: "CrateQuoteLine",
+    disposition: "delete",
+    reason: "The lines of a person's crate quotes (#1964): which stems at which tier and price they were offered or bought. Owned by the person through the denormalized `userId` and deleted with their quotes; no retention basis once the quote is gone.",
+    note: "`userId` is denormalized from the quote so the engine and the export find the rows directly; the quote delete would also cascade them.",
+  },
+  {
     model: "SavedPlaylist",
     disposition: "delete",
     reason: "This person's saves of other people's playlists; a private bookmark with no value to anyone else.",

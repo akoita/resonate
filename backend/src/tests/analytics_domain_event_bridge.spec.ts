@@ -309,6 +309,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
         chainId: 31337,
         contractAddress: "0xmarket",
         transactionHash: "0xtx919",
+        logIndex: 3,
         blockNumber: "12",
       },
       {

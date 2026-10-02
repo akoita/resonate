@@ -748,14 +748,26 @@ export class ContractsService implements OnModuleInit {
           return;
         }
 
-        // Idempotency: if this sale was already recorded (reindex/replay),
-        // skip — re-running the listing update below would double-decrement.
-        const existingPurchase = await prisma.stemPurchase.findUnique({
-          where: { transactionHash: event.transactionHash },
+        // Idempotency: a purchase is the (transactionHash, logIndex) of its Sold
+        // log, because one transaction can carry several (a batched purchase of
+        // many listings, #1964). A row indexed before logIndex existed has a
+        // null logIndex: it is the same sale when it is for the same listing row
+        // in the same transaction. A replay must not double-decrement the listing
+        // below, so it is skipped here and again by the unique key on create.
+        const existingPurchase = await prisma.stemPurchase.findFirst({
+          where: {
+            transactionHash: event.transactionHash,
+            OR: [
+              { logIndex: event.logIndex },
+              { logIndex: null, listingId: listing.id },
+            ],
+          },
           select: { id: true },
         });
         if (existingPurchase) {
-          this.logger.log(`StemPurchase already recorded for tx ${event.transactionHash}, skipping`);
+          this.logger.log(
+            `StemPurchase already recorded for tx ${event.transactionHash} log ${event.logIndex}, skipping`,
+          );
           return;
         }
 
@@ -768,41 +780,59 @@ export class ContractsService implements OnModuleInit {
           paymentToken: listing.paymentToken,
           amountUnits: event.totalPaid,
         });
-        await prisma.stemPurchase.upsert({
-          where: { transactionHash: event.transactionHash },
-          create: {
-            listingId: listing.id,
-            buyerAddress: event.buyerAddress.toLowerCase(),
-            amount: BigInt(event.amount),
-            totalPaid: event.totalPaid,
-            paymentToken: purchasePayment.paymentToken,
-            paymentAssetId: purchasePayment.paymentAssetId,
-            paymentAssetSymbol: purchasePayment.paymentAssetSymbol,
-            paymentAssetDecimals: purchasePayment.paymentAssetDecimals,
-            settlementAmount: purchasePayment.settlementAmount,
-            settlementAmountUnits: purchasePayment.settlementAmountUnits,
-            canonicalAmountUsd: purchasePayment.canonicalAmountUsd,
-            royaltyPaid: "0", // Will be updated from RoyaltyPaid event
-            protocolFeePaid: "0",
-            sellerReceived: "0",
-            licenseType: listing.licenseType,
-            transactionHash: event.transactionHash,
-            blockNumber: BigInt(event.blockNumber),
-            purchasedAt: new Date(event.occurredAt),
-          },
-          update: {},
-        });
-
-        // Update listing status
-        const remainingAmount = listing.amount - BigInt(event.amount);
-        await prisma.stemListing.update({
-          where: { id: listing.id },
-          data: {
-            amount: remainingAmount,
-            status: remainingAmount <= 0n ? "sold" : "active",
-            soldAt: remainingAmount <= 0n ? new Date(event.occurredAt) : null,
-          },
-        });
+        const soldAt = new Date(event.occurredAt);
+        try {
+          // The purchase and the listing decrement commit together, and the
+          // decrement is atomic so two Sold logs for one listing row in the same
+          // transaction cannot lose an update.
+          await prisma.$transaction(async (tx) => {
+            await tx.stemPurchase.create({
+              data: {
+                listingId: listing.id,
+                buyerAddress: event.buyerAddress.toLowerCase(),
+                amount: BigInt(event.amount),
+                totalPaid: event.totalPaid,
+                paymentToken: purchasePayment.paymentToken,
+                paymentAssetId: purchasePayment.paymentAssetId,
+                paymentAssetSymbol: purchasePayment.paymentAssetSymbol,
+                paymentAssetDecimals: purchasePayment.paymentAssetDecimals,
+                settlementAmount: purchasePayment.settlementAmount,
+                settlementAmountUnits: purchasePayment.settlementAmountUnits,
+                canonicalAmountUsd: purchasePayment.canonicalAmountUsd,
+                royaltyPaid: "0", // Will be updated from RoyaltyPaid event
+                protocolFeePaid: "0",
+                sellerReceived: "0",
+                licenseType: listing.licenseType,
+                transactionHash: event.transactionHash,
+                logIndex: event.logIndex,
+                blockNumber: BigInt(event.blockNumber),
+                purchasedAt: soldAt,
+              },
+            });
+            const updated = await tx.stemListing.update({
+              where: { id: listing.id },
+              data: { amount: { decrement: BigInt(event.amount) } },
+              select: { amount: true },
+            });
+            const soldOut = updated.amount <= 0n;
+            await tx.stemListing.update({
+              where: { id: listing.id },
+              data: {
+                status: soldOut ? "sold" : "active",
+                soldAt: soldOut ? soldAt : null,
+              },
+            });
+          });
+        } catch (error) {
+          if ((error as { code?: unknown } | null)?.code === "P2002") {
+            // A concurrent delivery of the same Sold log won the race.
+            this.logger.log(
+              `StemPurchase already recorded for tx ${event.transactionHash} log ${event.logIndex}, skipping`,
+            );
+            return;
+          }
+          throw error;
+        }
 
         this.logger.log(`Stored StemPurchase: listingId=${event.listingId}`);
       } catch (error) {
