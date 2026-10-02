@@ -523,3 +523,36 @@ export function quoteSummaryText(quote: CrateQuote): string {
 export function shortHash(hash: string): string {
   return hash.length > 14 ? `${hash.slice(0, 8)}…${hash.slice(-6)}` : hash;
 }
+
+/** What a quote line id stands for on screen: "Track title" and the stem. */
+export function stemLabel(
+  quote: CrateQuote,
+  quoteLineId: string,
+): { trackTitle: string; stemType: string; item: CrateQuoteItem } | null {
+  for (const line of quote.lines) {
+    for (const item of line.items) {
+      if (item.quoteLineId === quoteLineId) {
+        return { trackTitle: line.title?.trim() || "Untitled track", stemType: item.stemType, item };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * What the given stems cost, per payment token, formatted from their units
+ * (bigint sums, never floats), in the order tokens first appear.
+ */
+export function totalsForStems(quote: CrateQuote, quoteLineIds: readonly string[]): string[] {
+  const sums = new Map<string, { symbol: string; decimals: number; units: bigint }>();
+  for (const id of quoteLineIds) {
+    const item = stemLabel(quote, id)?.item;
+    const units = parseUnits(item?.totalUnits);
+    if (!item || units === null || !item.paymentToken || !item.symbol || item.decimals === null) continue;
+    const key = item.paymentToken.toLowerCase();
+    const sum = sums.get(key);
+    if (sum) sum.units += units;
+    else sums.set(key, { symbol: item.symbol, decimals: item.decimals, units });
+  }
+  return [...sums.values()].map((sum) => formatTokenUnits(sum.units, sum.symbol, sum.decimals));
+}

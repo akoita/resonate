@@ -19,6 +19,8 @@ import {
   receiptRows,
   resolveBuyerAddress,
   stemChoices,
+  stemLabel,
+  totalsForStems,
   tierChoices,
   withStemToggled,
   withTier,
@@ -285,5 +287,28 @@ describe("receipts", () => {
       expect.objectContaining({ quoteLineId: "q2", outcome: "dropped", reason: "Left out: the listing changed" }),
       expect.objectContaining({ quoteLineId: "q3", outcome: "failed", reason: "Not part of the purchase" }),
     ]);
+  });
+});
+
+describe("stem labels and totals", () => {
+  it("finds a stem's track and sums chosen stems per token with bigint units", () => {
+    const quote = makeQuote();
+    expect(stemLabel(quote, "q2")).toMatchObject({ trackTitle: "Track t1", stemType: "vocals" });
+    expect(stemLabel(quote, "nope")).toBeNull();
+    expect(totalsForStems(quote, ["q1", "q3"])).toEqual(["4 USDC"]);
+    expect(totalsForStems(quote, ["q1", "q2", "q3"])).toEqual(["7 USDC"]);
+    expect(totalsForStems(quote, [])).toEqual([]);
+  });
+
+  it("keeps different payment tokens apart", () => {
+    const quote = makeQuote({
+      lines: [
+        quoteLine("t1", [
+          quoteItem("q1", { totalUnits: "1500000000000000000", symbol: "ETH", decimals: 18, paymentToken: "0x0000000000000000000000000000000000000000" }),
+          quoteItem("q2", { totalUnits: "2000000" }),
+        ]),
+      ],
+    });
+    expect(totalsForStems(quote, ["q1", "q2"])).toEqual(["1.5 ETH", "2 USDC"]);
   });
 });
