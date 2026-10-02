@@ -127,13 +127,15 @@
 }
 
 .crates-btn--primary {
-  background: var(--r-primary);
-  border-color: var(--r-primary);
+  /* --r-primary with white text is 4.34:1; the container shade clears 4.5:1. */
+  background: var(--r-primary-container);
+  border-color: var(--r-primary-container);
   color: var(--r-on-primary);
 }
 
 .crates-btn--primary:hover:not(:disabled) {
   background: var(--r-primary-container);
+  filter: brightness(0.9);
 }
 
 .crates-btn--danger {
@@ -377,4 +379,224 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* Crate quote and purchase (#1964). */
+
+.crates-select {
+  background: var(--r-surface-lowest);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  color: var(--r-on-surface);
+  font: inherit;
+  padding: 8px 10px;
+  max-width: 16rem;
+}
+
+.crates-select:focus-visible,
+.crates-quote-stem-choice input:focus-visible,
+.crates-quote-receipts a:focus-visible,
+.crates-quote-sent a:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.crates-select:disabled {
+  opacity: 0.6;
+}
+
+.crates-notice {
+  margin: 0;
+  padding: var(--r-xs) var(--r-sm);
+  border-left: 4px solid var(--r-info);
+  background: var(--r-surface-mid);
+  border-radius: var(--r-radius-sm);
+}
+
+.crates-quote-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.crates-quote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-sm);
+}
+
+.crates-quote-expiry {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-on-surface-variant);
+}
+
+.crates-quote-expiry--expired {
+  color: var(--r-warning);
+}
+
+.crates-quote-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-sm);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.crates-quote-line {
+  background: var(--r-surface-mid);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  padding: var(--r-sm) var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-xs);
+}
+
+.crates-quote-line .crates-line-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.crates-quote-grants {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+}
+
+.crates-quote-stems {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-xs) var(--r-md);
+}
+
+.crates-quote-stems legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 0.875rem;
+  color: var(--r-on-surface-variant);
+}
+
+.crates-quote-stem-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+}
+
+.crates-quote-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.crates-quote-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--r-sm);
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.crates-quote-item--dropped {
+  color: var(--r-on-surface-variant);
+}
+
+.crates-quote-stem {
+  font-weight: 600;
+  min-width: 5rem;
+}
+
+.crates-quote-totals {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.crates-quote-totals > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-xs);
+}
+
+.crates-quote-totals dt {
+  color: var(--r-on-surface-variant);
+}
+
+.crates-quote-totals dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.crates-quote-confirm,
+.crates-quote-sent {
+  border: 1px solid var(--r-primary-soft);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-mid);
+  padding: var(--r-sm) var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-xs);
+}
+
+.crates-quote-confirm h3,
+.crates-quote-receipts h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.crates-quote-confirm p,
+.crates-quote-sent p,
+.crates-quote-receipts p {
+  margin: 0;
+}
+
+.crates-quote-confirm-list,
+.crates-quote-dropped,
+.crates-quote-receipt-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.crates-quote-receipts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-xs);
+}
+
+.crates-quote-receipt-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--r-xs);
+}
+
+.crates-quote-receipt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--r-sm);
+  align-items: baseline;
+  padding: var(--r-xs) var(--r-sm);
+  border-left: 4px solid var(--r-outline);
+  background: var(--r-surface-mid);
+  border-radius: var(--r-radius-sm);
+}
+
+.crates-quote-receipt--settled {
+  border-left-color: var(--r-success, var(--r-primary-soft));
+}
+
+.crates-quote-receipt--failed {
+  border-left-color: var(--r-error);
+}
+
+.crates-quote-receipt--dropped {
+  border-left-color: var(--r-warning);
 }

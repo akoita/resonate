@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { CrateLine, type TransitionPreviewState } from "../../../components/crates/CrateLine";
+import { CrateQuotePanel } from "../../../components/crates/CrateQuotePanel";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useToast } from "../../../components/ui/Toast";
 import {
@@ -40,6 +41,7 @@ import {
   type CrateDto,
   type CrateFilters,
   type CrateItemDto,
+  type CrateQuote,
 } from "../../../lib/crates";
 import {
   createCrateTransitionPlayer,
@@ -63,6 +65,7 @@ function CrateEditor({ crateId }: { crateId: string }) {
   const [title, setTitle] = useState("");
   const [filters, setFilters] = useState<CrateFilters | null>(null);
   const [notes, setNotes] = useState<CrateCreationNotes | null>(null);
+  const [latestQuote, setLatestQuote] = useState<CrateQuote | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [busy, setBusy] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<CrateItemDto | null>(null);
@@ -86,6 +89,7 @@ function CrateEditor({ crateId }: { crateId: string }) {
       .then((result) => {
         if (cancelled) return;
         adopt(result.crate);
+        setLatestQuote(result.latestQuote ?? null);
         setNotes(readCrateCreationNotes(crateId));
         setLoadState("ready");
       })
@@ -108,6 +112,22 @@ function CrateEditor({ crateId }: { crateId: string }) {
   const titleChanged = crate !== null && title.trim() !== (crate.title ?? "").trim();
   const orderChanged = crate !== null && itemsChanged(crate.items, items);
   const dirty = titleChanged || orderChanged;
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
+  // After a purchase, read the crate again so lines that sold out show as such.
+  // Unsaved edits are never replaced.
+  const refreshAfterPurchase = useCallback(async () => {
+    if (!token) return;
+    try {
+      const result = await getCrate(token, crateId);
+      if (!dirtyRef.current) adopt(result.crate);
+    } catch {
+      // The receipts are already on screen; the crate refreshes on the next visit.
+    }
+  }, [adopt, crateId, token]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -471,10 +491,17 @@ function CrateEditor({ crateId }: { crateId: string }) {
           </ol>
         )}
         <p className="crates-hint">
-          Prices are indicative; the quote sets the final price. Buying from a crate is coming
-          soon.
+          Prices here are indicative; the quote below sets the final price.
         </p>
       </section>
+
+      <CrateQuotePanel
+        crateId={crate.id}
+        items={crate.items}
+        latestQuote={latestQuote}
+        hasUnsavedChanges={dirty}
+        onPurchaseFinished={() => void refreshAfterPurchase()}
+      />
 
       <ConfirmDialog
         isOpen={removeTarget !== null}

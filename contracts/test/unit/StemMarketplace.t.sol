@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
@@ -14,6 +15,35 @@ import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 import {StemMarketplaceProxyDeployer} from "../utils/StemMarketplaceProxyDeployer.sol";
+
+/**
+ * @notice Test-only stand-in for the smart account of a batched purchase (#1964).
+ * @dev The DJ's passkey smart account sends ONE user operation that approves the
+ *      payment token once and then calls `buy` for each approved line. This
+ *      contract does the same in one external call, so the marketplace sees a
+ *      contract buyer exactly as it does for the real account. It holds no
+ *      logic of its own and is never deployed.
+ */
+contract BatchBuyer {
+    /// @dev ERC-1155 receiver hook: the marketplace transfers each bought stem here.
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
+        return 0xf23a6e61; // IERC1155Receiver.onERC1155Received.selector
+    }
+
+    /// @notice approve(`approveAmount`) then buy every line; any revert reverts all of it.
+    function approveAndBuy(
+        StemMarketplaceV2 market,
+        MockUSDC token,
+        uint256 approveAmount,
+        uint256[] calldata listingIds,
+        uint256[] calldata amounts
+    ) external {
+        token.approve(address(market), approveAmount);
+        for (uint256 i = 0; i < listingIds.length; ++i) {
+            market.buy(listingIds[i], amounts[i]);
+        }
+    }
+}
 
 /**
  * @title StemMarketplaceV2 Unit Tests
@@ -987,5 +1017,174 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
         assertEq(stemNFT.balanceOf(buyer, 1), 10);
         assertEq(address(marketplace).balance, 0);
+    }
+
+    // ============ Batched purchase (#1964) ============
+
+    /// @dev Three USDC listings from two sellers (two tokens, two royalty receivers),
+    ///      the shape of a crate quote; returns listing ids and the amounts to buy.
+    function _listBatch(uint256 shortDuration)
+        internal
+        returns (uint256[] memory listingIds, uint256[] memory amounts, uint256 token2)
+    {
+        address seller2 = makeAddr("seller2");
+        address royaltyReceiver2 = makeAddr("royaltyReceiver2");
+
+        // Read the role first: `vm.prank` applies to the next call only.
+        bytes32 minterRole = stemNFT.MINTER_ROLE();
+        vm.prank(admin);
+        stemNFT.grantRole(minterRole, seller2);
+        uint256[] memory parentIds = new uint256[](0);
+        vm.prank(seller2);
+        token2 = stemNFT.mint(seller2, 100, "ipfs://test2", royaltyReceiver2, 300, true, parentIds);
+        vm.prank(seller2);
+        stemNFT.setApprovalForAll(address(marketplace), true);
+
+        listingIds = new uint256[](3);
+        amounts = new uint256[](3);
+        // Line 1: seller, token 1 (5% royalty to royaltyReceiver), 2 units at 10 USDC.
+        vm.prank(seller);
+        listingIds[0] = marketplace.list(1, 10, 10_000000, address(usdc), LISTING_DURATION);
+        amounts[0] = 2;
+        // Line 2: seller2, token 2 (3% royalty to royaltyReceiver2), 1 unit at 25 USDC.
+        vm.prank(seller2);
+        listingIds[1] = marketplace.list(token2, 5, 25_000000, address(usdc), LISTING_DURATION);
+        amounts[1] = 1;
+        // Line 3: seller2 again, 2 units at 7.5 USDC; the duration is the caller's choice.
+        vm.prank(seller2);
+        listingIds[2] = marketplace.list(token2, 3, 7_500000, address(usdc), shortDuration);
+        amounts[2] = 2;
+    }
+
+    /// @dev USDC balances of every party a batched purchase touches.
+    struct BatchBalances {
+        uint256 buyer;
+        uint256 seller1;
+        uint256 seller2;
+        uint256 royalty1;
+        uint256 royalty2;
+        uint256 fee;
+    }
+
+    function _batchBalances(address buyerAddress) internal returns (BatchBalances memory balances) {
+        balances.buyer = usdc.balanceOf(buyerAddress);
+        balances.seller1 = usdc.balanceOf(seller);
+        balances.seller2 = usdc.balanceOf(makeAddr("seller2"));
+        balances.royalty1 = usdc.balanceOf(royaltyReceiver);
+        balances.royalty2 = usdc.balanceOf(makeAddr("royaltyReceiver2"));
+        balances.fee = usdc.balanceOf(feeRecipient);
+    }
+
+    /// @dev The movements the contract's own `quoteBuy` promises for the batch.
+    ///      `buyer` is the total the buyer pays; line 1 is seller / token 1, lines
+    ///      2 and 3 are seller2 / token 2.
+    function _quotedMovements(uint256[] memory listingIds, uint256[] memory amounts)
+        internal
+        view
+        returns (BatchBalances memory moved)
+    {
+        for (uint256 i = 0; i < listingIds.length; ++i) {
+            (uint256 total, uint256 royalty, uint256 fee, uint256 sellerAmount) =
+                marketplace.quoteBuy(listingIds[i], amounts[i]);
+            moved.buyer += total;
+            moved.fee += fee;
+            if (i == 0) {
+                moved.royalty1 += royalty;
+                moved.seller1 += sellerAmount;
+            } else {
+                moved.royalty2 += royalty;
+                moved.seller2 += sellerAmount;
+            }
+        }
+    }
+
+    /// @notice One approval and N buys in one call move every balance by exactly the
+    /// summed `quoteBuy` outputs, the buyer ends up holding each stem, and three
+    /// `Sold` logs are emitted (what the backend matches a quote against).
+    function test_BatchBuy_OneApproval_MatchesQuotes() public {
+        (uint256[] memory listingIds, uint256[] memory amounts, uint256 token2) = _listBatch(LISTING_DURATION);
+        BatchBuyer batcher = new BatchBuyer();
+        usdc.mint(address(batcher), 500_000000);
+
+        BatchBalances memory expected = _quotedMovements(listingIds, amounts);
+        assertEq(expected.buyer, 20_000000 + 25_000000 + 15_000000);
+        assertTrue(expected.royalty1 > 0 && expected.royalty2 > 0 && expected.fee > 0);
+        BatchBalances memory before = _batchBalances(address(batcher));
+
+        vm.recordLogs();
+        batcher.approveAndBuy(marketplace, usdc, expected.buyer, listingIds, amounts);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        BatchBalances memory afterBuy = _batchBalances(address(batcher));
+        assertEq(before.buyer - afterBuy.buyer, expected.buyer);
+        assertEq(afterBuy.seller1 - before.seller1, expected.seller1);
+        assertEq(afterBuy.seller2 - before.seller2, expected.seller2);
+        assertEq(afterBuy.royalty1 - before.royalty1, expected.royalty1);
+        assertEq(afterBuy.royalty2 - before.royalty2, expected.royalty2);
+        assertEq(afterBuy.fee - before.fee, expected.fee);
+        // Nothing is left behind: not in the marketplace, not as allowance.
+        assertEq(usdc.balanceOf(address(marketplace)), 0);
+        assertEq(usdc.allowance(address(batcher), address(marketplace)), 0);
+
+        assertEq(stemNFT.balanceOf(address(batcher), 1), 2);
+        assertEq(stemNFT.balanceOf(address(batcher), token2), 3);
+
+        _assertSoldLogs(entries, address(batcher), listingIds, amounts);
+
+        // Listings are decremented on chain.
+        assertEq(marketplace.getListing(listingIds[0]).amount, 8);
+        assertEq(marketplace.getListing(listingIds[1]).amount, 4);
+        assertEq(marketplace.getListing(listingIds[2]).amount, 1);
+    }
+
+    /// @dev Exactly one Sold log per line, in line order, each to `buyerAddress`.
+    function _assertSoldLogs(
+        Vm.Log[] memory entries,
+        address buyerAddress,
+        uint256[] memory listingIds,
+        uint256[] memory amounts
+    ) internal {
+        bytes32 soldTopic = keccak256("Sold(uint256,address,uint256,uint256)");
+        uint256 soldLogs;
+        for (uint256 i = 0; i < entries.length; ++i) {
+            if (entries[i].emitter != address(marketplace) || entries[i].topics[0] != soldTopic) continue;
+            assertEq(uint256(entries[i].topics[1]), listingIds[soldLogs]);
+            assertEq(address(uint160(uint256(entries[i].topics[2]))), buyerAddress);
+            (uint256 amount,) = abi.decode(entries[i].data, (uint256, uint256));
+            assertEq(amount, amounts[soldLogs]);
+            soldLogs++;
+        }
+        assertEq(soldLogs, listingIds.length);
+    }
+
+    /// @notice One expired line reverts the whole batched call and nobody is charged
+    /// or paid: this is why the web must simulate the batch and drop such lines
+    /// before the DJ signs.
+    function test_BatchBuy_ExpiredLineRevertsWholeBatch() public {
+        // The third listing lives one hour; the first two a week.
+        (uint256[] memory listingIds, uint256[] memory amounts, uint256 token2) = _listBatch(1 hours);
+        BatchBuyer batcher = new BatchBuyer();
+        usdc.mint(address(batcher), 500_000000);
+        uint256 totalPaid = 20_000000 + 25_000000 + 15_000000;
+
+        vm.warp(block.timestamp + 2 hours);
+        BatchBalances memory before = _batchBalances(address(batcher));
+
+        vm.expectRevert(IStemMarketplaceV2.Expired.selector);
+        batcher.approveAndBuy(marketplace, usdc, totalPaid, listingIds, amounts);
+
+        BatchBalances memory afterRevert = _batchBalances(address(batcher));
+        assertEq(afterRevert.buyer, before.buyer);
+        assertEq(afterRevert.seller1, before.seller1);
+        assertEq(afterRevert.seller2, before.seller2);
+        assertEq(afterRevert.royalty1, before.royalty1);
+        assertEq(afterRevert.royalty2, before.royalty2);
+        assertEq(afterRevert.fee, before.fee);
+        assertEq(usdc.allowance(address(batcher), address(marketplace)), 0);
+        assertEq(stemNFT.balanceOf(address(batcher), 1), 0);
+        assertEq(stemNFT.balanceOf(address(batcher), token2), 0);
+        // The first two lines, which were fine, are untouched too.
+        assertEq(marketplace.getListing(listingIds[0]).amount, 10);
+        assertEq(marketplace.getListing(listingIds[1]).amount, 5);
     }
 }

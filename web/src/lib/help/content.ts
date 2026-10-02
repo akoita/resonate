@@ -589,11 +589,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "crate-digger",
     title: "Crate Digger",
     summary:
-      "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, with tempo, key, energy, stems and license options on every line.",
+      "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, then get a quote and buy the stems with one signature.",
     category: "discover",
     audiences: ["listener", "curator"],
     status: "partial",
-    keywords: ["crate digger", "crate", "dj set", "dj", "set", "bpm", "key", "camelot", "energy", "stems", "license", "transition", "crossfade", "more like this", "reorder", "lock", "swap", "playlist builder"],
+    keywords: ["crate digger", "crate", "dj set", "dj", "set", "bpm", "key", "camelot", "energy", "stems", "license", "transition", "crossfade", "more like this", "reorder", "lock", "swap", "playlist builder", "quote", "buy", "receipt", "budget", "one signature"],
     sections: [
       {
         id: "build",
@@ -687,7 +687,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Prices are indicative",
-            text: "Prices in a crate are a guide. The quote you get when you buy sets the final price.",
+            text: "Prices in a crate are a guide. The quote you get when you buy sets the final price, read from the network when you ask for it.",
           },
         ],
       },
@@ -702,18 +702,63 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "quote-and-buy",
+        heading: "Get a quote and buy",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "At the bottom of a saved crate, Buy this crate prices the stems you want and lets you buy them all with one signature. Nothing is bought until you approve the exact stems and the total.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Save your crate, then press Get a quote. A quote prices the crate as it is saved.",
+              "Check the quote. Each line shows its license, what that license lets you do, and each stem with its price, the share that goes to the artist side and the platform fee. Change a line's license or switch stems on or off and the quote is priced again.",
+              "Stems that cannot be bought are listed with the reason, for example sold out, expired or not for sale at that license. They are not part of the total.",
+              "Look at the total in each currency and in dollars. If your crate has a budget and the quote is above it, you are told.",
+              "Press Approve and buy. A confirm step lists exactly what will be bought and the total. Press Confirm and sign and approve once with your passkey.",
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/crate-digger-quote.png`,
+              alt: "The Buy this crate panel with a quote. A countdown reads Prices are good for 10:00. Each line shows its track, a license menu, what the license grants, stem checkboxes and every stem with its price, the artist side and the platform fee. A sold-out vocals stem and a track that is not for sale at this license are marked Not in this quote with the reason. At the bottom are the total in USDC and dollars and the Approve and buy and Get a new quote buttons.",
+              caption: "A quote: every line with its license, stems and prices, the stems that could not be quoted and why, and the total you approve.",
+              width: 929,
+              height: 1650,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "paragraph",
+            text: "A quote is good for about ten minutes. When it runs out, press Get a new quote. Before you are asked to sign, every stem is checked against the network again. If something changed, for example it sold out, the price moved, or your balance does not cover every stem, you are shown what was left out and why, and asked whether to buy the rest. Nothing is sent until you say yes.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "You are never charged for a stem that cannot be bought",
+            text: "A stem that was left out, or that does not appear in the purchase, is not charged. If you cancel the signature, nothing is charged and your quote stays open until it runs out.",
+          },
+          {
+            kind: "paragraph",
+            text: "When the purchase is confirmed, you see a receipt for each stem: bought, not bought, or left out with the reason, and a link to the transaction. Reopen the crate later and the receipts of your latest quote are still there. If it says it is still confirming, press Check again in a minute.",
+          },
+        ],
+      },
+      {
         id: "coming-soon",
         heading: "What is coming soon",
         blocks: [
           {
             kind: "paragraph",
-            text: "Building and editing crates works today. Buying a whole crate, exporting it and watching for new tracks that fit it are coming soon.",
+            text: "Building, editing and buying a crate works today. Exporting a crate to DJ software and watching for new tracks that fit it are coming soon.",
           },
         ],
       },
     ],
     appLinks: [
-      { label: "Crate Digger", href: "/crates", description: "Build and shape a crate for your next set." },
+      { label: "Crate Digger", href: "/crates", description: "Build, shape and buy a crate for your next set." },
     ],
     related: ["ai-dj", "how-recommendations-work", "playing-music", "marketplace-buy"],
   },

@@ -20,7 +20,6 @@ function render(config: AgentConfig) {
     <AgentStatusCard
       config={config}
       onToggle={async () => {}}
-      onModeChange={() => {}}
       sessionCount={0}
       trackCount={0}
       totalSpend={0}
@@ -28,20 +27,16 @@ function render(config: AgentConfig) {
   );
 }
 
-describe("AgentStatusCard session mode toggle", () => {
-  it("hides the Curate/Buy toggle when buyModeEnabled is undefined", () => {
+describe("AgentStatusCard session mode", () => {
+  it("renders no Curate/Buy toggle", () => {
     const html = render(baseConfig);
     expect(html).not.toContain("Buy Stems");
     expect(html).not.toContain("Curate Only");
   });
 
-  it("hides the toggle when buyModeEnabled is false", () => {
-    expect(render({ ...baseConfig, buyModeEnabled: false })).not.toContain("Buy Stems");
-  });
-
-  it("shows the toggle when buyModeEnabled is true", () => {
-    const html = render({ ...baseConfig, buyModeEnabled: true });
-    expect(html).toContain("Buy Stems");
-    expect(html).toContain("Curate Only");
+  it("renders no Curate/Buy toggle for a legacy stored buy-mode config", () => {
+    const html = render({ ...baseConfig, sessionMode: "buy" } as AgentConfig);
+    expect(html).not.toContain("Buy Stems");
+    expect(html).not.toContain("Curate Only");
   });
 });

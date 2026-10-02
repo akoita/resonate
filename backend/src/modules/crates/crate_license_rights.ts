@@ -49,6 +49,23 @@ function isStandardTier(tier: CrateLicenseType): tier is CrateStandardLicenseTyp
   return (CRATE_STANDARD_LICENSE_TYPES as readonly string[]).includes(tier);
 }
 
+/** The rights of one tier: what a quote line shows next to its stems (#1964). */
+export type CrateTierRightsDto = {
+  licenseType: CrateLicenseType;
+  /** True when `grants` are the platform's standard terms for the tier. */
+  standardTerms: boolean;
+  grants: string[];
+};
+
+/** The tier's rights in the buy flow's wording; non-standard tiers have no grants. */
+export function crateTierRights(tier: CrateLicenseType): CrateTierRightsDto {
+  return {
+    licenseType: tier,
+    standardTerms: isStandardTier(tier),
+    grants: isStandardTier(tier) ? [...CRATE_LICENSE_RIGHTS[tier]] : [],
+  };
+}
+
 /**
  * One option per tier the track lists or prices (the same rule as the crate's
  * license filter), in {@link CRATE_LICENSE_TYPES} order.

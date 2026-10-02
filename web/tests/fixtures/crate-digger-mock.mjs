@@ -4,9 +4,12 @@
  * (`scripts/capture-help-screenshots.mjs`), so the guide's images and the
  * tested pages can't drift apart. No backend data is needed.
  *
- * The shapes mirror `backend/src/modules/crates/crate.dto.ts`. The mock is
- * stateful enough for the editing flow: PATCH applies the title, status,
- * order, locks and removals, and swap replaces a line with a spare track.
+ * The shapes mirror `backend/src/modules/crates/crate.dto.ts` and
+ * `crate_quote.dto.ts`. The mock is stateful enough for the editing flow: PATCH
+ * applies the title, status, order, locks and removals, and swap replaces a line
+ * with a spare track. `POST /crates/:id/quote` prices the crate (#1964); the
+ * signing path itself cannot run under mock auth, so settlement is only seeded
+ * through `latestQuotes`.
  *
  * Plain ESM with JSDoc types so the capture script runs under plain Node.
  */
@@ -21,6 +24,23 @@ const API_ORIGIN = new URL(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:
  */
 const apiPath = (pathPattern) => (/** @type {URL} */ url) =>
   url.origin === API_ORIGIN && pathPattern.test(url.pathname);
+
+/**
+ * The chain and marketplace the page is configured for: a quote is only
+ * approvable for them. Run the dev server with the same `NEXT_PUBLIC_CHAIN_ID`
+ * and `NEXT_PUBLIC_MARKETPLACE_ADDRESS` the tests run with (unset is fine: both
+ * sides then use the defaults below).
+ */
+export const QUOTE_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 11155111);
+export const QUOTE_MARKETPLACE =
+  process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS
+  || (QUOTE_CHAIN_ID === 31337
+    ? "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+    : "0x0000000000000000000000000000000000000000");
+export const QUOTE_USDC = "0x00000000000000000000000000000000000000a0";
+/** The smart account the mock auth session signs with (the page sends it as `buyerAddress`). */
+export const MOCK_BUYER = "0x742d35cc6634c0532925a3b844bc9e7595f1ea2c";
+export const MOCK_QUOTE_HASH = `0x${"ab".repeat(32)}`;
 
 export const CRATE_ID = "e2e-crate";
 export const REFERENCE_CRATE_ID = "e2e-crate-reference";
@@ -289,18 +309,233 @@ export function mockCrate(id, overrides = {}) {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Quotes (#1964)                                                      */
+/* ------------------------------------------------------------------ */
+
+/** What one stem costs at each tier, in USD (a stand-in for the chain's price). */
+const STEM_USD = { personal: 0.5, remix: 2, commercial: 5 };
+const FALLBACK_STEM_USD = 10;
+
+/** USDC has six decimals. */
+const toUnits = (usd) => BigInt(Math.round(usd * 1_000_000));
+
+/** @param {bigint} units */
+function formatUsdc(units) {
+  const whole = units / 1_000_000n;
+  const fraction = (units % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : `${whole}`;
+}
+
+/** @param {bigint} units */
+const usdOf = (units) => formatUsdc(units);
+
+/**
+ * Builds a quote the way the backend does: the DJ's per-line tier and stems, else
+ * the cheapest listed tier and the crate's required stems (else every stem).
+ * `Midnight Courier`'s vocals are sold out, and a tier the track does not list
+ * is `not_listed`, so a default quote always shows dropped stems with reasons.
+ *
+ * @param {Record<string, any>} crate
+ * @param {{ lines?: Array<{ trackId: string; licenseType?: string; stemTypes?: string[] }>; buyerAddress?: string }} body
+ * @param {{ number: number; expiresInMs: number; nowMs?: number; status?: string; transactionHash?: string | null }} options
+ */
+export function buildQuote(crate, body, options) {
+  const requested = new Map((body.lines ?? []).map((line) => [line.trackId, line]));
+  const targets = crate.items.filter((item) => !body.lines || requested.has(item.trackId));
+  let listingId = 100;
+  let total = 0n;
+  const lines = targets.map((item, position) => {
+    const request = requested.get(item.trackId);
+    const listed = item.licenseOptions.filter((option) => option.listed);
+    const tier = request?.licenseType ?? listed[0]?.licenseType ?? "personal";
+    const wanted =
+      request?.stemTypes?.length
+        ? request.stemTypes
+        : crate.filters.requiredStems.length > 0
+          ? crate.filters.requiredStems
+          : item.stems.map((stem) => stem.type);
+    const stemTypes = item.stems.map((stem) => stem.type).filter((type) => wanted.includes(type));
+    const tierListed = listed.some((option) => option.licenseType === tier);
+    const grants = STANDARD_GRANTS[/** @type {keyof typeof STANDARD_GRANTS} */ (tier)];
+    const items = stemTypes.map((stemType) => {
+      const quoteLineId = `ql-${options.number}-${item.trackId}-${stemType}`;
+      const base = {
+        quoteLineId,
+        stemId: `stem-${item.trackId}-${stemType}`,
+        stemType,
+        receipt: null,
+      };
+      const dropReason = !item.available || !tierListed
+        ? "not_listed"
+        : item.trackId === "track-midnight-courier" && stemType === "vocals"
+          ? "sold_out"
+          : null;
+      if (dropReason) {
+        return {
+          ...base,
+          status: "dropped",
+          reason: dropReason,
+          listingId: null,
+          tokenId: null,
+          paymentToken: null,
+          symbol: null,
+          decimals: null,
+          totalUnits: null,
+          total: null,
+          totalUsd: null,
+          artistShareUnits: null,
+          platformFeeUnits: null,
+        };
+      }
+      const units = toUnits(STEM_USD[tier] ?? FALLBACK_STEM_USD);
+      const fee = (units * 10n) / 100n;
+      total += units;
+      listingId += 1;
+      return {
+        ...base,
+        status: "quoted",
+        reason: null,
+        listingId: String(listingId),
+        tokenId: String(listingId * 10),
+        paymentToken: QUOTE_USDC,
+        symbol: "USDC",
+        decimals: 6,
+        totalUnits: units.toString(),
+        total: formatUsdc(units),
+        totalUsd: usdOf(units),
+        artistShareUnits: (units - fee).toString(),
+        platformFeeUnits: fee.toString(),
+      };
+    });
+    return {
+      position,
+      trackId: item.trackId,
+      title: item.title,
+      artistName: item.artistName,
+      licenseType: tier,
+      rights: {
+        licenseType: tier,
+        standardTerms: Boolean(grants),
+        grants: grants ? [...grants] : [],
+      },
+      items,
+    };
+  });
+
+  const budgetUsd = crate.filters.maxTotalUsd ?? null;
+  const totalUsd = usdOf(total);
+  return {
+    id: `quote-${options.number}`,
+    crateId: crate.id,
+    status: options.status ?? "open",
+    chainId: QUOTE_CHAIN_ID,
+    marketplaceAddress: QUOTE_MARKETPLACE,
+    buyerAddress: body.buyerAddress ?? MOCK_BUYER,
+    expiresAt: new Date((options.nowMs ?? Date.now()) + options.expiresInMs).toISOString(),
+    transactionHash: options.transactionHash ?? null,
+    lines,
+    totals:
+      total === 0n
+        ? []
+        : [
+            {
+              paymentToken: QUOTE_USDC,
+              symbol: "USDC",
+              decimals: 6,
+              totalUnits: total.toString(),
+              total: formatUsdc(total),
+              totalUsd,
+            },
+          ],
+    totalUsd,
+    budgetUsd,
+    overBudget: budgetUsd !== null && Number(totalUsd) > budgetUsd,
+  };
+}
+
+/**
+ * A quote that was bought in part, for the receipts a reopened crate shows: the
+ * first stem settled, one was left out by the browser, one did not appear in
+ * the transaction, and the rest of the lines settled.
+ *
+ * @param {Record<string, any>} crate
+ */
+export function settledQuote(crate) {
+  const quote = buildQuote(
+    crate,
+    {
+      buyerAddress: MOCK_BUYER,
+      lines: crate.items
+        .filter((item) => item.available)
+        .slice(0, 2)
+        .map((item) => ({ trackId: item.trackId, licenseType: "personal", stemTypes: ["drums", "bass"] })),
+    },
+    { number: 90, expiresInMs: -3_600_000, status: "partial", transactionHash: MOCK_QUOTE_HASH },
+  );
+  let logIndex = 0;
+  const outcomes = ["settled", "dropped", "settled", "failed"];
+  quote.lines.forEach((line) => {
+    line.items = line.items.map((item) => {
+      const outcome = item.status === "quoted" ? (outcomes.shift() ?? "settled") : item.status;
+      if (outcome === "settled") {
+        logIndex += 1;
+        return {
+          ...item,
+          status: "settled",
+          receipt: {
+            transactionHash: MOCK_QUOTE_HASH,
+            logIndex,
+            totalPaidUnits: item.totalUnits,
+            purchaseId: `purchase-${logIndex}`,
+          },
+        };
+      }
+      if (outcome === "dropped") return { ...item, status: "dropped", reason: "listing_changed" };
+      if (outcome === "failed") return { ...item, status: "failed", reason: "not_in_transaction" };
+      return item;
+    });
+  });
+  const settledUnits = quote.lines
+    .flatMap((line) => line.items)
+    .filter((item) => item.status === "settled")
+    .reduce((sum, item) => sum + BigInt(item.totalUnits), 0n);
+  quote.totals = settledUnits === 0n
+    ? []
+    : [
+        {
+          paymentToken: QUOTE_USDC,
+          symbol: "USDC",
+          decimals: 6,
+          totalUnits: settledUnits.toString(),
+          total: formatUsdc(settledUnits),
+          totalUsd: usdOf(settledUnits),
+        },
+      ];
+  quote.totalUsd = usdOf(settledUnits);
+  quote.overBudget = false;
+  return quote;
+}
+
 /**
  * Routes every Crate Digger request to in-memory crates. Anything else the
  * app shell asks the API for is answered with an empty success so the page
  * renders cleanly. Returns the bodies the pages sent, for assertions.
  *
  * @param {import("@playwright/test").Page} page
- * @param {{ savedCrates?: Array<Record<string, any>> }} [options]
+ * @param {{ savedCrates?: Array<Record<string, any>>; latestQuotes?: Record<string, Record<string, any>>; now?: number }} [options] `now` pins the clock quotes expire against (the help screenshots freeze the page's clock to the same instant)
  */
 export async function mockCrateApi(page, options = {}) {
   /** @type {Map<string, Record<string, any>>} */
   const crates = new Map();
   for (const saved of options.savedCrates ?? []) crates.set(saved.id, saved);
+  /** @type {Map<string, Record<string, any>>} */
+  const latestQuotes = new Map(Object.entries(options.latestQuotes ?? {}));
+  /** @type {Array<{ crateId: string; body: Record<string, any> }>} */
+  const quoteRequests = [];
+  /** Milliseconds from now each next quote expires in; the last entry repeats. */
+  const expiries = [10 * 60_000];
+  let quoteNumber = 0;
   /** @type {Array<Record<string, any>>} */
   const created = [];
   /** @type {Array<{ crateId: string; body: Record<string, any> }>} */
@@ -401,6 +636,20 @@ export async function mockCrateApi(page, options = {}) {
     await route.fulfill({ json: { crate: next, swapped: true } });
   });
 
+  await page.route(apiPath(/^\/crates\/[^/]+\/quote$/), async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const crateId = decodeURIComponent(new URL(route.request().url()).pathname.split("/")[2] ?? "");
+    const crate = crates.get(crateId);
+    if (!crate) return route.fulfill({ status: 404, json: { message: "Crate not found" } });
+    const body = route.request().postDataJSON();
+    quoteRequests.push({ crateId, body });
+    quoteNumber += 1;
+    const expiresInMs = expiries.length > 1 ? (expiries.shift() ?? 0) : expiries[0];
+    const quote = buildQuote(crate, body, { number: quoteNumber, expiresInMs, nowMs: options.now });
+    latestQuotes.set(crateId, quote);
+    await route.fulfill({ status: 201, json: quote });
+  });
+
   await page.route(apiPath(/^\/crates\/(?!requests$)[^/]+$/), async (route) => {
     const request = route.request();
     const crateId = decodeURIComponent(new URL(request.url()).pathname.split("/").pop() ?? "");
@@ -430,12 +679,23 @@ export async function mockCrateApi(page, options = {}) {
       return route.fulfill({ json: { crate: next } });
     }
     if (request.method() === "GET") {
-      return route.fulfill({ json: { crate } });
+      return route.fulfill({ json: { crate, latestQuote: latestQuotes.get(crateId) ?? null } });
     }
     return route.fallback();
   });
 
-  return { patches, swaps, created, crates };
+  return {
+    patches,
+    swaps,
+    created,
+    crates,
+    quoteRequests,
+    /** The next quote expires in this many milliseconds (negative: already expired). */
+    expireNextQuoteIn: (/** @type {number} */ ms) => {
+      expiries.length = 0;
+      expiries.push(ms, 10 * 60_000);
+    },
+  };
 }
 
 /**

@@ -180,6 +180,30 @@ export function resolveIndexerChainId(): number {
   return parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || process.env.AA_CHAIN_ID || "31337", 10);
 }
 
+/**
+ * The read-only chain and marketplace the indexer watches for `chainId`, from
+ * the same environment variables the indexer itself uses (RPC_URL,
+ * MARKETPLACE_ADDRESS and their per-chain variants). Other readers of the
+ * marketplace (the crate quote, #1964) use this instead of redeclaring them. A
+ * chain the indexer does not know returns null parts, so callers treat it as
+ * unconfigured.
+ */
+export function resolveMarketplaceReadConfig(chainId: number = resolveIndexerChainId()): {
+  chainId: number;
+  chain: any | null;
+  rpcUrl: string | null;
+  marketplace: Address | null;
+} {
+  const chain = CHAIN_CONFIGS[chainId];
+  const marketplace = CONTRACT_ADDRESSES[chainId]?.marketplace;
+  return {
+    chainId,
+    chain: chain?.chain ?? null,
+    rpcUrl: chain?.rpcUrl ?? null,
+    marketplace: marketplace && marketplace !== ZERO_PAYMENT_TOKEN ? marketplace : null,
+  };
+}
+
 type IndexerProgressLogLevel = "silent" | "debug" | "log";
 
 function parsePositiveIntegerEnv(name: string, fallback: number): number {
@@ -654,7 +678,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async publishTypedEvent(eventName: string, decodedArgs: any, log: Log, chainId: number) {
-    const { transactionHash, blockNumber, address } = log;
+    const { transactionHash, blockNumber, address, logIndex } = log;
     const occurredAt = new Date().toISOString();
 
     switch (eventName) {
@@ -727,6 +751,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
+          logIndex: logIndex!,
           blockNumber: blockNumber!.toString(),
         });
         break;

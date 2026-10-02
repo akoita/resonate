@@ -2,7 +2,7 @@
 title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
-issues: [356, 805, 812, 841, 846, 1954]
+issues: [356, 805, 812, 841, 846, 1954, 1964]
 introduced_by: [808, 810, 811, 821, 823, 824]
 ---
 
@@ -49,8 +49,7 @@ Available now:
 - The listener purchase modal defaults to the stablecoin x402 rail only when it can execute contract-backed marketplace settlement for the selected listing. It shows the backend-authored platform fee as included in the unchanged total, validates the exact decimal amount, asset, and payout destination before enabling payment, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail, displays the listing payment asset, and uses a tested approval-plus-buy transaction plan for ERC-20 stablecoin listings.
 - Marketplace listings carry an enforced `licenseType`. The listener buy modal switches to the selected tier's active listing ID before quoting or buying, disables tiers without an active listing, and persists the enforced tier onto `StemPurchase` records. The browser x402 checkout remains limited to the personal tier until the x402 stem endpoint accepts tier-specific resources.
 - Listing notifications persist the selected payment token and reconcile already-indexed listing rows. Listing reads also backfill native-token fallback rows from stored listing intents, so marketplace cards display the configured stablecoin asset instead of falling back to native ETH when the indexer wins the race.
-- AI DJ sessions curate only by default (ADR-TE-1, #1954): no listener preset selects buy mode, and a stored `sessionMode: "buy"` is honored only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED=true` is set. With the flag off, the session runs as `curate`, logs the downgrade, records no purchase and no session spend, `PATCH /agents/config` rejects `buy` with `buy_mode_disabled`, and the config response carries `buyModeEnabled: false` so the web hides the Curate/Buy toggle.
-- When buy mode is enabled, the AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail. The path stays in place for the Crate Digger quote flow.
+- AI DJ sessions are curate-only (ADR-TE-1, #1954, #1964): the listener AI DJ no longer buys stems. Autonomous buy mode and its operator flag `AGENT_SESSION_BUY_MODE_ENABLED` were removed once the Crate Digger quote flow shipped; purchases now happen through listener-approved quotes (see [Crate Digger](crate_digger.md)). `PaymentRouterService`, `AgentNegotiatorService`, `AgentPurchaseService`, session keys and the wallet budget code stay in place; bounded watching (#1967) is expected to reuse the session-key purchase path.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 - Agents never generate audio ([ADR-TE-4](../strategy/taste-engine-decisions.md)). See [No generation from agents](#no-generation-from-agents-adr-te-4).
 
@@ -63,15 +62,15 @@ Standalone runtime extraction remains a separate Phase 2 follow-up in #424.
 
 ## Listener Session Mode (ADR-TE-1)
 
-The listener AI DJ is listening-only by default. Stem purchases without a quote
-the listener approved are not part of the listener product.
+The listener AI DJ is listening-only. Stem purchases without a quote the
+listener approved are not part of the listener product, and the autonomous buy
+mode that once existed behind `AGENT_SESSION_BUY_MODE_ENABLED` was removed
+(#1964). Purchases now happen through [Crate Digger](crate_digger.md) quotes.
 
-- `AgentConfig.sessionMode` is `curate` or `buy`. `PATCH /agents/config` rejects any other value with `invalid_session_mode`.
-- `buy` is honored only when the operator flag `AGENT_SESSION_BUY_MODE_ENABLED` is exactly `true`. The flag defaults to off, and `PATCH /agents/config` rejects `sessionMode: "buy"` with `buy_mode_disabled` while it is off.
-- With the flag off, a stored `buy` config is treated as `curate` when a session starts: no negotiation, no `PaymentRouterService` purchase, and no spend is recorded. The backend logs the downgrade with the session id.
-- `GET` and `PATCH /agents/config` report `buyModeEnabled`, and the web app shows the buy-only surfaces on the AI DJ page only when it is `true`: the "Curate Only / Buy Stems" toggle, the Finance (budget and smart wallet) card, the "Stem Types to Buy" filter, and the license and price on Next AI Pick. The Spent stat stays visible only while past buy-mode spend exists.
+- Every AI DJ session runs as `curate`: no negotiation, no `PaymentRouterService` purchase, and no session spend is recorded. A stored `AgentConfig.sessionMode: "buy"` from before the removal is read as `curate`.
+- `PATCH /agents/config` accepts `sessionMode: "curate"`, rejects `sessionMode: "buy"` with `buy_mode_disabled`, and rejects any other value with `invalid_session_mode`.
+- `GET` and `PATCH /agents/config` no longer return `buyModeEnabled`. The AI DJ page has no Curate/Buy toggle, Finance (budget and smart wallet) card, "Stem Types to Buy" filter, or license and price on Next AI Pick. The Spent stat shows only while past spend exists.
 - The session intent presets (Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift, Static Calm) are listening-only and no longer carry a licensing posture. The setup wizard has two listening-only steps (name, vibe) with no budget or auto-buy wallet step.
-- With the flag on, `buy` behaves as it did before this change. It is an operator-only path for exercising legacy autonomous purchases until the Crate Digger quote flow replaces it.
 
 Variable reference: [Environment variables](../deployment/environment.md).
 

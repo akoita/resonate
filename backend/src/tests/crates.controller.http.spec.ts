@@ -13,8 +13,10 @@ import {
   ForbiddenException,
   INestApplication,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { CratesController } from "../modules/crates/crates.controller";
+import { CrateQuoteService } from "../modules/crates/crate_quote.service";
 import { CratesService } from "../modules/crates/crates.service";
 import { createControllerTestApp, authToken } from "./e2e-helpers";
 
@@ -26,12 +28,19 @@ const mockCrates = {
   swapItem: jest.fn(),
 };
 
+const mockQuotes = {
+  createQuote: jest.fn(),
+  getQuote: jest.fn(),
+  settleQuote: jest.fn(),
+};
+
 describe("CratesController (http)", () => {
   let app: INestApplication;
 
   beforeAll(async () => {
     app = await createControllerTestApp(CratesController, [
       { provide: CratesService, useValue: mockCrates },
+      { provide: CrateQuoteService, useValue: mockQuotes },
     ]);
   });
 
@@ -50,6 +59,9 @@ describe("CratesController (http)", () => {
     mockCrates.listCrates.mockResolvedValue({ crates: [] });
     mockCrates.updateCrate.mockResolvedValue({ crate: { id: "crate-1", items: [] } });
     mockCrates.swapItem.mockResolvedValue({ crate: { id: "crate-1", items: [] }, swapped: true });
+    mockQuotes.createQuote.mockResolvedValue({ id: "q-1", crateId: "crate-1", status: "open", lines: [] });
+    mockQuotes.getQuote.mockResolvedValue({ id: "q-1", crateId: "crate-1", status: "open", lines: [] });
+    mockQuotes.settleQuote.mockResolvedValue({ id: "q-1", crateId: "crate-1", status: "settled", lines: [] });
   });
 
   const token = authToken("dj-1");
@@ -323,6 +335,216 @@ describe("CratesController (http)", () => {
         .set("Authorization", `Bearer ${token}`)
         .expect(409);
       expect(locked.body.code).toBe("line_locked");
+    });
+  });
+
+  describe("crate quotes (#1964)", () => {
+    const hash = `0x${"ab".repeat(32)}`;
+
+    it("POST /crates/:id/quote -> 401 without JWT", async () => {
+      await request(app.getHttpServer()).post("/crates/crate-1/quote").send({}).expect(401);
+      expect(mockQuotes.createQuote).not.toHaveBeenCalled();
+    });
+
+    it("POST /crates/:id/quote -> 201, JWT user and body passed to the service", async () => {
+      const lines = [{ trackId: "t1", licenseType: "remix", stemTypes: ["vocals", "drums"] }];
+      const res = await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ lines, userId: "someone-else" })
+        .expect(201);
+      expect(res.body.id).toBe("q-1");
+      expect(mockQuotes.createQuote).toHaveBeenCalledWith(
+        "dj-1",
+        "crate-1",
+        expect.objectContaining({ lines }),
+      );
+    });
+
+    it("POST /crates/:id/quote -> passes a valid buyerAddress through, and a 409 wallet_mismatch", async () => {
+      const buyerAddress = `0x${"Ab".repeat(20)}`;
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ buyerAddress })
+        .expect(201);
+      expect(mockQuotes.createQuote).toHaveBeenCalledWith("dj-1", "crate-1", expect.objectContaining({ buyerAddress }));
+
+      mockQuotes.createQuote.mockRejectedValueOnce(new ConflictException({ code: "wallet_mismatch" }));
+      const mismatch = await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ buyerAddress })
+        .expect(409);
+      expect(mismatch.body.code).toBe("wallet_mismatch");
+    });
+
+    it("POST /crates/:id/quote -> accepts an empty body (every line)", async () => {
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({})
+        .expect(201);
+    });
+
+    it.each([
+      ["buyerAddress type", { buyerAddress: 5 }],
+      ["buyerAddress short", { buyerAddress: "0x1234" }],
+      ["buyerAddress non-hex", { buyerAddress: `0x${"zz".repeat(20)}` }],
+      ["buyerAddress without prefix", { buyerAddress: "ab".repeat(20) }],
+      ["lines type", { lines: "t1" }],
+      ["empty lines", { lines: [] }],
+      ["too many lines", { lines: Array.from({ length: 26 }, (_, i) => ({ trackId: `t${i}` })) }],
+      ["line shape", { lines: ["t1"] }],
+      ["line trackId", { lines: [{ licenseType: "remix" }] }],
+      ["line trackId length", { lines: [{ trackId: "x".repeat(201) }] }],
+      ["licenseType", { lines: [{ trackId: "t1", licenseType: "free" }] }],
+      ["stemTypes type", { lines: [{ trackId: "t1", stemTypes: "vocals" }] }],
+      ["stemTypes value", { lines: [{ trackId: "t1", stemTypes: ["original"] }] }],
+      [
+        "stemTypes length",
+        { lines: [{ trackId: "t1", stemTypes: Array(7).fill("vocals") }] },
+      ],
+    ])("POST /crates/:id/quote -> 400 for an invalid %s", async (_name, body) => {
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send(body)
+        .expect(400);
+      expect(mockQuotes.createQuote).not.toHaveBeenCalled();
+    });
+
+    it("POST /crates/:id/quote -> passes 404, 409 no_wallet, 503 and 400 invalid_lines through", async () => {
+      mockQuotes.createQuote.mockRejectedValueOnce(new NotFoundException("Crate not found"));
+      await request(app.getHttpServer())
+        .post("/crates/someone-elses/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({})
+        .expect(404);
+
+      mockQuotes.createQuote.mockRejectedValueOnce(new ConflictException({ code: "no_wallet" }));
+      const noWallet = await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({})
+        .expect(409);
+      expect(noWallet.body.code).toBe("no_wallet");
+
+      mockQuotes.createQuote.mockRejectedValueOnce(
+        new ServiceUnavailableException({ code: "marketplace_unavailable" }),
+      );
+      const unavailable = await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({})
+        .expect(503);
+      expect(unavailable.body.code).toBe("marketplace_unavailable");
+
+      mockQuotes.createQuote.mockRejectedValueOnce(
+        new BadRequestException({ code: "invalid_lines" }),
+      );
+      const invalid = await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ lines: [{ trackId: "not-in-crate" }] })
+        .expect(400);
+      expect(invalid.body.code).toBe("invalid_lines");
+    });
+
+    it("GET /crates/:id/quotes/:quoteId -> 401 without JWT, else scoped to the JWT user", async () => {
+      await request(app.getHttpServer()).get("/crates/crate-1/quotes/q-1").expect(401);
+      const res = await request(app.getHttpServer())
+        .get("/crates/crate-1/quotes/q-1")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      expect(res.body.id).toBe("q-1");
+      expect(mockQuotes.getQuote).toHaveBeenCalledWith("dj-1", "crate-1", "q-1");
+    });
+
+    it("GET /crates/:id/quotes/:quoteId -> passes a service 404 through", async () => {
+      mockQuotes.getQuote.mockRejectedValue(new NotFoundException("Crate quote not found"));
+      await request(app.getHttpServer())
+        .get("/crates/crate-1/quotes/someone-elses")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(404);
+    });
+
+    it("POST settle -> 401 without JWT", async () => {
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/quotes/q-1/settle")
+        .send({ transactionHash: hash })
+        .expect(401);
+      expect(mockQuotes.settleQuote).not.toHaveBeenCalled();
+    });
+
+    it("POST settle -> 200 for a final quote and passes user, ids and body to the service", async () => {
+      const dropped = [{ quoteLineId: "line-1", reason: "deselected" }];
+      const res = await request(app.getHttpServer())
+        .post("/crates/crate-1/quotes/q-1/settle")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ transactionHash: hash, dropped, userId: "someone-else" })
+        .expect(200);
+      expect(res.body.status).toBe("settled");
+      expect(mockQuotes.settleQuote).toHaveBeenCalledWith(
+        "dj-1",
+        "crate-1",
+        "q-1",
+        expect.objectContaining({ transactionHash: hash, dropped }),
+      );
+    });
+
+    it("POST settle -> 202 while the transaction has no receipt yet", async () => {
+      mockQuotes.settleQuote.mockResolvedValue({ id: "q-1", status: "submitted", lines: [] });
+      const res = await request(app.getHttpServer())
+        .post("/crates/crate-1/quotes/q-1/settle")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ transactionHash: hash })
+        .expect(202);
+      expect(res.body.status).toBe("submitted");
+    });
+
+    it.each([
+      ["missing hash", {}],
+      ["short hash", { transactionHash: "0x1234" }],
+      ["non-hex hash", { transactionHash: `0x${"zz".repeat(32)}` }],
+      ["hash type", { transactionHash: 5 }],
+      ["dropped type", { transactionHash: hash, dropped: "line-1" }],
+      ["dropped shape", { transactionHash: hash, dropped: ["line-1"] }],
+      ["dropped reason", { transactionHash: hash, dropped: [{ quoteLineId: "l", reason: "nope" }] }],
+      ["dropped id", { transactionHash: hash, dropped: [{ reason: "deselected" }] }],
+      [
+        "dropped length",
+        {
+          transactionHash: hash,
+          dropped: Array.from({ length: 151 }, (_, i) => ({ quoteLineId: `l${i}`, reason: "deselected" })),
+        },
+      ],
+    ])("POST settle -> 400 for an invalid %s", async (_name, body) => {
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/quotes/q-1/settle")
+        .set("Authorization", `Bearer ${token}`)
+        .send(body)
+        .expect(400);
+      expect(mockQuotes.settleQuote).not.toHaveBeenCalled();
+    });
+
+    it("POST settle -> passes 404 and 409 already_submitted through", async () => {
+      mockQuotes.settleQuote.mockRejectedValueOnce(new NotFoundException("Crate quote not found"));
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/quotes/other/settle")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ transactionHash: hash })
+        .expect(404);
+
+      mockQuotes.settleQuote.mockRejectedValueOnce(
+        new ConflictException({ code: "already_submitted" }),
+      );
+      const conflict = await request(app.getHttpServer())
+        .post("/crates/crate-1/quotes/q-1/settle")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ transactionHash: hash })
+        .expect(409);
+      expect(conflict.body.code).toBe("already_submitted");
     });
   });
 });

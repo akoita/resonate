@@ -43,6 +43,8 @@ model User {
   crates                      Crate[]
   crateItems                  CrateItem[]
   crateRequests               CrateRequest[]
+  crateQuotes                 CrateQuote[]
+  crateQuoteLines             CrateQuoteLine[]
   folders                     Folder[]
   libraryTracks               LibraryTrack[]
   playlists                   Playlist[]
@@ -1093,12 +1095,20 @@ model StemPurchase {
   protocolFeePaid       String
   sellerReceived        String
   licenseType           LicenseType @default(personal)
-  transactionHash       String      @unique
+  /// One transaction can carry several purchases (a batched user operation buys
+  /// many listings at once), so the hash alone is not unique; a purchase is the
+  /// (transactionHash, logIndex) of its Sold log (#1964).
+  transactionHash       String
+  /// Position of the Sold log in the transaction. Null only on rows indexed
+  /// before #1964 whose Sold event could not be matched during the backfill.
+  logIndex              Int?
   blockNumber           BigInt
   purchasedAt           DateTime
   createdAt             DateTime    @default(now())
   listing               StemListing @relation(fields: [listingId], references: [id])
 
+  @@unique([transactionHash, logIndex], name: "transactionHash_logIndex")
+  @@index([transactionHash])
   @@index([buyerAddress])
   @@index([purchasedAt])
   @@index([licenseType])
@@ -1483,6 +1493,7 @@ model Crate {
   user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   items     CrateItem[]
   requests  CrateRequest[]
+  quotes    CrateQuote[]
 
   @@index([userId, updatedAt])
 }
@@ -1539,6 +1550,96 @@ model CrateRequest {
 
   @@index([userId, createdAt])
   @@index([createdAt])
+}
+
+/// #1964 (Crate Digger purchase, docs/rfc/taste-engine.md §5.4): a priced offer
+/// for the lines of a crate, produced from ON-CHAIN facts (`getListing` and
+/// `quoteBuy`) and approved by the DJ before anything is bought (ADR-TE-1). The
+/// browser signs one batched user operation with the DJ's smart account; the
+/// backend only quotes and then verifies settlement from the on-chain receipt.
+/// Owned by `userId`; erased with the account (the engine deletes it; lines
+/// cascade) and deleted with its crate. Business model: ADR-BM-6 Line 3
+/// (marketplace take-rate, 10%), phase 2; no fee is added here.
+model CrateQuote {
+  id                 String           @id @default(uuid())
+  crateId            String
+  userId             String
+  /// "open" | "submitted" | "settled" | "partial" | "failed"
+  status             String           @default("open")
+  chainId            Int
+  /// The marketplace the quote was priced against (lower-case).
+  marketplaceAddress String
+  /// The DJ's smart account at quote time (lower-case `Wallet.address`).
+  buyerAddress       String
+  /// Offer expiry: the earlier of the quote TTL and the soonest on-chain
+  /// listing expiry. A mined transaction is settled even after it passes.
+  expiresAt          DateTime
+  /// The chain head when the quote was priced. A transaction mined at or before
+  /// this block cannot be the DJ's purchase of this quote, so settlement fails
+  /// it (`transaction_before_quote`) instead of reusing an older purchase.
+  quotedAtBlock      BigInt
+  /// The user operation's transaction, once the web reports it. Unique: one
+  /// transaction settles at most one quote.
+  transactionHash    String?          @unique
+  submittedAt        DateTime?
+  settledAt          DateTime?
+  createdAt          DateTime         @default(now())
+  crate              Crate            @relation(fields: [crateId], references: [id], onDelete: Cascade)
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lines              CrateQuoteLine[]
+
+  @@index([crateId, createdAt])
+  @@index([userId])
+}
+
+/// #1964: one (track, stem) of a quote. Prices are raw payment-token units read
+/// from the chain (`quoteBuy`), never the possibly stale database listing.
+/// `trackId`, `stemId` and `listingRowId` are plain strings with no foreign key,
+/// so a later catalog change cannot rewrite or erase what the DJ approved. A
+/// dropped line keeps whatever is known about its listing: a `not_listed` line
+/// has none, so the listing and price columns are null rather than a fake zero.
+/// `userId` is the quote owner, denormalized (like `CrateItem`) so the account
+/// export and erasure find the rows directly.
+model CrateQuoteLine {
+  id                String      @id @default(uuid())
+  quoteId           String
+  userId            String
+  /// Position of the crate line (track) this stem belongs to; several rows share it.
+  position          Int
+  trackId           String
+  stemId            String
+  stemType          String
+  licenseType       LicenseType
+  /// `StemListing.id` the line was derived from; null when no listing exists.
+  listingRowId      String?
+  /// On-chain listing id and ERC-1155 token id; null when no listing exists.
+  listingId         BigInt?
+  tokenId           BigInt?
+  /// Units bought; always 1 today.
+  amount            BigInt      @default(1)
+  /// Lower-case payment token address read from the chain (zero = native);
+  /// null when the chain was not read.
+  paymentToken      String?
+  /// Raw units from `quoteBuy(listingId, amount)`; null on a dropped line the
+  /// chain was not asked to price.
+  totalPriceUnits   String?
+  royaltyUnits      String?
+  protocolFeeUnits  String?
+  sellerUnits       String?
+  /// "quoted" | "dropped" | "settled" | "failed"
+  status            String      @default("quoted")
+  /// Fixed code: why a line was dropped or failed (crate_quote.ts).
+  reason            String?
+  /// Position of the matching Sold log once settled.
+  logIndex          Int?
+  /// `totalPaid` of the matching Sold log once settled.
+  settledTotalUnits String?
+  createdAt         DateTime    @default(now())
+  quote             CrateQuote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, position])
+  @@index([userId])
 }
 
 model AgentTransaction {

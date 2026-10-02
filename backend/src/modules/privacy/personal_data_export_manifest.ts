@@ -284,6 +284,23 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "that left gaps. The free text they typed is never stored, so there is none to export.",
   },
   {
+    model: "CrateQuote",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #1964. The person's crate quotes: the marketplace, their smart-account address at quote time, "
+      + "expiry, the transaction they submitted and the settlement status.",
+  },
+  {
+    model: "CrateQuoteLine",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #1964. The lines of the person's crate quotes: track, stem, license tier, on-chain listing and "
+      + "token ids, raw price units from the chain and the settlement receipt of each line; keyed by the owner's "
+      + "userId (denormalized from the quote).",
+  },
+  {
     model: "Playlist",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
@@ -812,6 +829,10 @@ export const REVIEWED_SAFE_FIELDS: Readonly<Record<string, Readonly<Record<strin
   },
   ContentAttestation: { tokenId: "ERC-1155 token id the attestation covers." },
   AgentTransaction: { tokenId: "ERC-1155 token id the agent transacted on." },
+  CrateQuoteLine: {
+    tokenId: "ERC-1155 token id of the public listing the line was priced from.",
+    paymentToken: "The ERC-20 contract address the line was priced in.",
+  },
   LibraryTrack: { tokenId: "ERC-1155 token id of a stem the person owns." },
   StemQualityRating: { curatorIdentityTokenId: "The curator agent's on-chain identity NFT id, a public identifier." },
   AgentConfig: { identityTokenId: "The agent's on-chain identity NFT id, a public identifier." },

@@ -1079,6 +1079,12 @@ export interface ContractStemSoldEvent extends BaseEvent {
   chainId: number;
   contractAddress: string;
   transactionHash: string;
+  /**
+   * Position of the Sold log in its transaction. A transaction can carry many
+   * Sold logs (a batched purchase), so (transactionHash, logIndex) identifies
+   * one purchase (#1964).
+   */
+  logIndex: number;
   blockNumber: string;
 }
 

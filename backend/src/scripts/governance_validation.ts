@@ -564,6 +564,7 @@ export async function seedErasure(
       protocolFeePaid: "50",
       sellerReceived: "850",
       transactionHash: harnessHash(invocation.erasurePrefix, "purchase"),
+      logIndex: 0,
       blockNumber: 2n,
       purchasedAt: now,
     },

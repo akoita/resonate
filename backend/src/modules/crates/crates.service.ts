@@ -47,6 +47,7 @@ import {
 import { canCreateCrate, CrateEntitlementsService } from "./crate-entitlements";
 import { candidateFactsFromRow, type CrateTrackRow } from "./crate_candidates";
 import { sanitizeCrateFilters } from "./crate_filters";
+import { CrateQuoteService } from "./crate_quote.service";
 import { crateLicenseOptions } from "./crate_license_rights";
 import { orderCrateAsSetPath, transitionFacts } from "./crate_ordering";
 import {
@@ -196,6 +197,8 @@ export class CratesService {
     // empty-taste context, the same deterministic fallback as everywhere else.
     @Optional() private readonly learning?: AgentLearningService,
     @Optional() private readonly tasteMemory?: TasteMemoryService,
+    // The crate's latest quote (#1964); without it `latestQuote` is null.
+    @Optional() private readonly quotes?: CrateQuoteService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -290,6 +293,7 @@ export class CratesService {
 
     return {
       crate: await this.toCrateDto(userId, crate, filters, lines, lockedByTrack),
+      latestQuote: (await this.quotes?.latestQuote(userId, crateId)) ?? null,
     };
   }
 

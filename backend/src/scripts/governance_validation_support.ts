@@ -77,7 +77,7 @@ export function prefixesFor(runId: string) {
  * `<phase> [--run-id <id>]`.
  *
  * The run id lets two validation runs share an environment without colliding
- * on the unique columns the fixtures occupy (`StemPurchase.transactionHash`,
+ * on the unique columns the fixtures occupy (`StemPurchase.id`,
  * `AnalyticsEvent.eventId`). It defaults to a constant rather than to a
  * timestamp on purpose: seed and verify are separate processes, so anything
  * derived from the clock could not be rediscovered by the phase that has to

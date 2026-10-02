@@ -10,10 +10,6 @@ type Props = {
     onPick: () => Promise<void>;
 };
 
-function fmt(v?: number) {
-    return typeof v === "number" && Number.isFinite(v) ? `$${v.toFixed(2)}` : "$0.00";
-}
-
 function humanStatus(status?: string) {
     if (!status) return "Runtime";
     return status.replace(/_/g, " ");
@@ -31,8 +27,6 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
     const hasTrack = pick?.status === "ok" && pick.track;
     const emptyStatus = pick && pick.status !== "ok";
     const sessionLive = config.isActive && Boolean(activeSessionId);
-    // Price and license only matter when the operator re-enables buy mode (#1954).
-    const showPrice = config.buyModeEnabled === true && config.sessionMode === "buy";
 
     return (
         <div className="aid-card aid-card--next-pick">
@@ -61,12 +55,6 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                             <p className="aid-np-kicker">{humanStatus(pick!.runtimeStatus)}</p>
                             <h4 className="aid-np-title">{pick!.track!.title}</h4>
                             <div className="aid-np-meta">
-                                {showPrice && (
-                                    <>
-                                        <span className="aid-np-tag">{pick!.licenseType ?? "personal"}</span>
-                                        <span className="aid-np-price">{fmt(pick!.priceUsd)}</span>
-                                    </>
-                                )}
                                 {typeof pick!.score === "number" && (
                                     <span className="aid-np-tag">score {pick!.score}</span>
                                 )}

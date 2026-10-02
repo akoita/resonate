@@ -13,8 +13,13 @@ import type { RemixFxRecipe } from "./remixFx";
 import type {
   CrateDto,
   CrateListEntry,
+  CrateQuote,
+  CreateCrateQuoteBody,
   CreateCrateRequestBody,
   CreateCrateResponse,
+  GetCrateResponse,
+  SettleCrateQuoteBody,
+  SettleCrateQuoteResult,
   UpdateCrateBody,
 } from "./crates";
 import type { RemixStructure, RemixStructureSegment } from "./remixStructure";
@@ -1072,7 +1077,7 @@ export async function listCrates(token: string) {
 }
 
 export async function getCrate(token: string, crateId: string) {
-  return apiRequest<{ crate: CrateDto }>(
+  return apiRequest<GetCrateResponse>(
     `/crates/${encodeURIComponent(crateId)}`,
     { cache: "no-store", silentErrorCodes: [404] },
     token,
@@ -1093,6 +1098,52 @@ export async function swapCrateLine(token: string, crateId: string, trackId: str
     { method: "POST", silentErrorCodes: [404, 409] },
     token,
   );
+}
+
+/**
+ * Crate quote (#1964): price the crate's lines from the chain for the DJ to
+ * approve, read a quote, and report the transaction that bought it. Nothing is
+ * bought by these calls. The expected failures (409 wallet and transaction
+ * conflicts, 503 marketplace) carry a `code`; see `crateQuoteErrorMessage`.
+ */
+export async function createCrateQuote(
+  token: string,
+  crateId: string,
+  body: CreateCrateQuoteBody,
+) {
+  return apiRequest<CrateQuote>(
+    `/crates/${encodeURIComponent(crateId)}/quote`,
+    { method: "POST", body: JSON.stringify(body), silentErrorCodes: [400, 404, 409, 503] },
+    token,
+  );
+}
+
+export async function getCrateQuote(token: string, crateId: string, quoteId: string) {
+  return apiRequest<CrateQuote>(
+    `/crates/${encodeURIComponent(crateId)}/quotes/${encodeURIComponent(quoteId)}`,
+    { cache: "no-store", silentErrorCodes: [404] },
+    token,
+  );
+}
+
+/**
+ * Reports the transaction of an approved quote. The backend answers 202 while
+ * the transaction has no receipt yet; `apiRequest` hides the HTTP status, so it
+ * is read back from the quote the same way the controller sets it: a quote that
+ * is still `submitted` is a 202, every other state a 200.
+ */
+export async function settleCrateQuote(
+  token: string,
+  crateId: string,
+  quoteId: string,
+  body: SettleCrateQuoteBody,
+): Promise<SettleCrateQuoteResult> {
+  const quote = await apiRequest<CrateQuote>(
+    `/crates/${encodeURIComponent(crateId)}/quotes/${encodeURIComponent(quoteId)}/settle`,
+    { method: "POST", body: JSON.stringify(body), silentErrorCodes: [400, 404, 409, 503] },
+    token,
+  );
+  return { status: quote.status === "submitted" ? 202 : 200, quote };
 }
 
 export async function getArtistAnalyticsDashboard(
@@ -5204,9 +5255,8 @@ export type AgentConfig = {
   name: string;
   vibes: string[];
   stemTypes: string[];
+  /** Always runs as curate; a stored legacy "buy" is read as curate (ADR-TE-1.4). */
   sessionMode: "curate" | "buy";
-  /** True only when the operator has enabled buy mode; hide the Curate/Buy toggle otherwise. */
-  buyModeEnabled?: boolean;
   /** Operator flag: ERC-8004 identity and reputation publishing (frozen, ADR-TE-6). */
   erc8004Enabled?: boolean;
   monthlyCapUsd: number;

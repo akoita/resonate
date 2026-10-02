@@ -15,6 +15,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import type { CrateLicenseOptionDto } from "./crate_license_rights";
+import type { CrateQuoteDto } from "./crate_quote.dto";
 import type { CrateTransitionFacts } from "./crate_ordering";
 import type { CrateEntitlements } from "./crate-entitlements";
 import {
@@ -168,8 +169,12 @@ export type CrateRequestDto = {
   unparsed: string[];
 };
 
-/** `GET /crates/:id`. */
-export type GetCrateResponse = { crate: CrateDto };
+/**
+ * `GET /crates/:id`. `latestQuote` (#1964) is the crate's most recent quote
+ * (any status), or null when it has none; the other quote routes return the
+ * same shape.
+ */
+export type GetCrateResponse = { crate: CrateDto; latestQuote: CrateQuoteDto | null };
 
 /** `POST /crates/requests`. */
 export type CreateCrateResponse = {

@@ -702,6 +702,8 @@ const CRATE_LIST_SAMPLES = [
   mockCrate("guide-crate-draft", { items: mockCrate("sample").items.slice(0, 4) }),
 ];
 
+const CRATE_CLOCK_MS = Date.parse("2026-09-28T09:30:00.000Z");
+
 // file -> { viewportHeight, prepare(page) => { locator } | { clip } | {} }
 const CRATE_TARGETS = [
   {
@@ -731,6 +733,25 @@ const CRATE_TARGETS = [
       return {};
     },
   },
+  {
+    // #1964: the quote panel the DJ approves before one signature buys the crate.
+    file: "crate-digger-quote.png",
+    viewportHeight: 2600,
+    prepare: async (page) => {
+      await page.goto(`${BASE_URL}/crates`, { waitUntil: "networkidle", timeout: 90000 });
+      await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+      await page.getByRole("button", { name: "Build crate" }).click();
+      await page.waitForURL(`**/crates/${CRATE_ID}`, { timeout: 45000 });
+      await page.getByText("6 of 8 found").waitFor({ timeout: 45000 });
+      const panel = page.getByRole("region", { name: "Buy this crate" });
+      await panel.getByRole("button", { name: "Get a quote" }).click();
+      await panel.getByRole("heading", { name: "Your quote" }).waitFor({ timeout: 45000 });
+      // A second stem on one line, so the picture shows more than the default.
+      await panel.locator('.crates-quote-line[data-track-id="track-glass-harbour"]').getByLabel("Drums").click();
+      await panel.getByText("2.5 USDC (about $2.50)").waitFor({ timeout: 45000 });
+      return { locator: panel };
+    },
+  },
 ];
 
 async function captureCrates(browser) {
@@ -751,7 +772,10 @@ async function captureCrates(browser) {
     if (process.env.CAPTURE_ONLY && target.file !== process.env.CAPTURE_ONLY) continue;
     // A fresh page per target: routes and crate state never leak between shots.
     const page = await ctx.newPage();
-    await mockCrateApi(page, { savedCrates: CRATE_LIST_SAMPLES });
+    // The quote shows a countdown: freeze the page's clock and the instant quotes
+    // expire against, so "Prices are good for 10:00" reads the same on every run.
+    await page.clock.setFixedTime(CRATE_CLOCK_MS);
+    await mockCrateApi(page, { savedCrates: CRATE_LIST_SAMPLES, now: CRATE_CLOCK_MS });
     await page.setViewportSize({ width: 1440, height: target.viewportHeight ?? 900 });
     const shot = await target.prepare(page);
     await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
