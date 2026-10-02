@@ -253,7 +253,7 @@ describe("settleWithBackoff", () => {
       .mockResolvedValueOnce(pending)
       .mockResolvedValueOnce(pending)
       .mockResolvedValueOnce(done);
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => undefined);
     const outcome = await settleWithBackoff({ settle, sleep });
     expect(outcome.kind).toBe("final");
     expect(settle).toHaveBeenCalledTimes(3);
@@ -262,7 +262,7 @@ describe("settleWithBackoff", () => {
 
   it("gives up as still confirming after the last delay", async () => {
     const settle = vi.fn(async () => pending);
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => undefined);
     const outcome = await settleWithBackoff({ settle, sleep });
     expect(outcome.kind).toBe("pending");
     expect(settle).toHaveBeenCalledTimes(5);

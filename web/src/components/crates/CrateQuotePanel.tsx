@@ -40,6 +40,7 @@ import type {
   CrateItemDto,
   CrateLicenseType,
   CrateQuote,
+  CrateQuoteSettleDropReason,
   CrateStemType,
 } from "../../lib/crates";
 import type { CrateBatchLine } from "../../lib/onchainCheckout";
@@ -54,9 +55,11 @@ import "../../styles/crates.css";
 
 type Busy = "quoting" | "checking" | "deciding" | "signing" | "settling" | null;
 
+type SettleDrop = { quoteLineId: string; reason: CrateQuoteSettleDropReason };
+
 type Sent = {
   hash: string;
-  dropped: PreflightDrop[];
+  dropped: SettleDrop[];
   /** "pending": no receipt yet, retry. "rejected": the backend refused it for good. */
   state: "pending" | "rejected";
   message: string | null;
@@ -203,7 +206,7 @@ export function CrateQuotePanel({
   };
 
   const applySettlement = useCallback(
-    (settlement: SettlementOutcome, hash: string, dropped: PreflightDrop[], quoteId: string) => {
+    (settlement: SettlementOutcome, hash: string, dropped: SettleDrop[], quoteId: string) => {
       if (!mountedRef.current) return;
       if (settlement.kind === "final") {
         setQuote(settlement.quote);

@@ -149,7 +149,7 @@ describe("CrateQuoteView", () => {
   it("does not let the last stem of a line be switched off", () => {
     const quote = makeQuote({ lines: [quoteLine("t1", [quoteItem("q1", { stemType: "vocals" })])] });
     const html = render({ quote });
-    expect(html).toMatch(/<input type="checkbox" checked="" disabled=""/);
+    expect(html).toMatch(/<input type="checkbox" disabled="" checked=""\/>Vocals/);
   });
 });
 
