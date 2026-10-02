@@ -40,6 +40,9 @@ model User {
   recommendationProfile       RecommendationProfile?
   tasteMemorySettings         ListenerTasteMemorySettings?
   tasteSignalControls         ListenerTasteSignalControl[]
+  crates                      Crate[]
+  crateItems                  CrateItem[]
+  crateRequests               CrateRequest[]
   folders                     Folder[]
   libraryTracks               LibraryTrack[]
   playlists                   Playlist[]
@@ -863,6 +866,7 @@ model Track {
   agentSignals         AgentSignal[]
   stems                Stem[]
   embedding            TrackEmbedding?
+  crateItems           CrateItem[]
   fingerprint          AudioFingerprint?
   dmcaReports          DmcaReport[]
   release              Release           @relation(fields: [releaseId], references: [id])
@@ -1460,6 +1464,81 @@ model ListenerTasteNoteEmbedding {
   control     ListenerTasteSignalControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
 
   @@index([model])
+}
+
+/// #1962 (Crate Digger, docs/rfc/taste-engine.md §5): a DJ's saved crate, an
+/// ordered set of tracks plus the filters it was built from. Owned by `userId`
+/// and erased with the account (the engine deletes it; items cascade). Listings
+/// and prices are filters the DJ chose, never ranking inputs (ADR-TE-2 rule 6).
+model Crate {
+  id        String         @id @default(uuid())
+  userId    String
+  title     String?
+  /// The `CrateFilters` the crate was built with, as the DJ last edited them.
+  filters   Json
+  /// "draft" | "saved"
+  status    String         @default("draft")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CrateItem[]
+  requests  CrateRequest[]
+
+  @@index([userId, updatedAt])
+}
+
+/// #1962: one track in a crate. `position` is the 0-based order the DJ sees;
+/// `locked` pins the line so a re-dig replaces only the unlocked ones. Deleted
+/// with the crate or the track. `userId` names the owner, always equal to the
+/// crate's `userId` (the service sets it); it is denormalized so the account
+/// export and erasure can find a person's crate contents directly.
+model CrateItem {
+  id       String   @id @default(uuid())
+  crateId  String
+  userId   String
+  trackId  String
+  position Int
+  locked   Boolean  @default(false)
+  addedAt  DateTime @default(now())
+  crate    Crate    @relation(fields: [crateId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([crateId, trackId])
+  @@index([crateId, position])
+  @@index([userId])
+}
+
+/// #1962: one crate request and what it found. This is the "searched but
+/// missing" demand signal Scene Scout (#1969) aggregates (RFC §6.3), so it
+/// records counts and filter keys only. The DJ's free text is NEVER stored:
+/// `unparsedCount` is how many phrases the parser could not map to a filter,
+/// not the phrases. `referenceTrackId` is a plain string with no foreign key so
+/// a removed track does not erase the request history. `crateId` is cleared
+/// (not cascaded) if the crate is deleted; the account's requests are erased
+/// by the erasure engine through `userId`.
+model CrateRequest {
+  id               String   @id @default(uuid())
+  userId           String
+  crateId          String?
+  /// "text" | "reference_track" | "filters"
+  source           String
+  referenceTrackId String?
+  /// The `CrateFilters` the request ran with.
+  filters          Json
+  /// "deterministic" | "model-assisted"
+  parserStrategy   String
+  unparsedCount    Int      @default(0)
+  requestedCount   Int
+  foundCount       Int
+  /// Filter keys that left gaps (for example "bpm", "keys", "requiredStems").
+  unmetFilters     String[] @default([])
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  crate            Crate?   @relation(fields: [crateId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model AgentTransaction {
