@@ -9,6 +9,7 @@ import { createCrateQuote, settleCrateQuote } from "../../lib/api";
 import { getContractAddresses } from "../../lib/contracts";
 import {
   choicesFromQuote,
+  clearPendingSettle,
   crateQuoteErrorMessage,
   hasReceipts,
   isQuoteExpired,
@@ -18,7 +19,9 @@ import {
   quoteBlocker,
   quoteBlockerText,
   quotedStems,
+  readPendingSettle,
   resolveBuyerAddress,
+  storePendingSettle,
   titleCase,
   totalsForStems,
   withStemToggled,
@@ -123,7 +126,15 @@ export function CrateQuotePanel({
   const [decision, setDecision] = useState<{ dropped: PreflightDrop[]; keep: CrateBatchLine[] } | null>(
     null,
   );
-  const [sent, setSent] = useState<Sent | null>(null);
+  // A transaction sent for the reopened quote before the page closed: finish
+  // settling it, never offer the same stems again.
+  const [sent, setSent] = useState<Sent | null>(() => {
+    if (!latestQuote || latestQuote.status !== "open") return null;
+    const pending = readPendingSettle(latestQuote.id);
+    return pending
+      ? { hash: pending.transactionHash, dropped: pending.dropped, state: "pending", message: null }
+      : null;
+  });
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const decisionRef = useRef<((proceed: boolean) => void) | null>(null);
@@ -139,6 +150,10 @@ export function CrateQuotePanel({
       decisionRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (quote && hasReceipts(quote)) clearPendingSettle(quote.id);
+  }, [quote]);
 
   const live = quote !== null && quote.status === "open";
   useEffect(() => {
@@ -188,7 +203,7 @@ export function CrateQuotePanel({
   };
 
   const applySettlement = useCallback(
-    (settlement: SettlementOutcome, hash: string, dropped: PreflightDrop[]) => {
+    (settlement: SettlementOutcome, hash: string, dropped: PreflightDrop[], quoteId: string) => {
       if (!mountedRef.current) return;
       if (settlement.kind === "final") {
         setQuote(settlement.quote);
@@ -201,6 +216,7 @@ export function CrateQuotePanel({
         setSent({ hash, dropped, state: "pending", message: null });
         return;
       }
+      clearPendingSettle(quoteId);
       setSent({
         hash,
         dropped,
@@ -212,7 +228,7 @@ export function CrateQuotePanel({
   );
 
   const handleOutcome = useCallback(
-    (outcome: PurchaseOutcome) => {
+    (outcome: PurchaseOutcome, quoteId: string) => {
       if (!mountedRef.current) return;
       switch (outcome.kind) {
         case "blocked":
@@ -231,7 +247,7 @@ export function CrateQuotePanel({
           setError(outcome.message);
           break;
         case "sent":
-          applySettlement(outcome.settlement, outcome.transactionHash, outcome.dropped);
+          applySettlement(outcome.settlement, outcome.transactionHash, outcome.dropped, quoteId);
           break;
       }
     },
@@ -290,9 +306,11 @@ export function CrateQuotePanel({
         settle: (body) => settleCrateQuote(token, crateId, quote.id, body),
         sleep,
         onStage,
+        onSent: (transactionHash, dropped) =>
+          storePendingSettle(quote.id, { transactionHash, dropped }),
         isCancelled: () => !mountedRef.current,
       });
-      handleOutcome(outcome);
+      handleOutcome(outcome, quote.id);
     } catch {
       if (mountedRef.current) {
         setError(
@@ -335,7 +353,7 @@ export function CrateQuotePanel({
         sleep,
         isCancelled: () => !mountedRef.current,
       });
-      applySettlement(settlement, pendingHash, dropped);
+      applySettlement(settlement, pendingHash, dropped, quote.id);
     } finally {
       runningRef.current = false;
       if (mountedRef.current) setBusy(null);
