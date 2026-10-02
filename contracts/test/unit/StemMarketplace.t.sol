@@ -1030,8 +1030,10 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         address seller2 = makeAddr("seller2");
         address royaltyReceiver2 = makeAddr("royaltyReceiver2");
 
+        // Read the role first: `vm.prank` applies to the next call only.
+        bytes32 minterRole = stemNFT.MINTER_ROLE();
         vm.prank(admin);
-        stemNFT.grantRole(stemNFT.MINTER_ROLE(), seller2);
+        stemNFT.grantRole(minterRole, seller2);
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller2);
         token2 = stemNFT.mint(seller2, 100, "ipfs://test2", royaltyReceiver2, 300, true, parentIds);
