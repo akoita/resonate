@@ -57,7 +57,7 @@ describe('SessionsService (integration)', () => {
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
   });
 
-  function makeService(runtimeService: any = { runCommerce: jest.fn() }) {
+  function makeService(runtimeService: any = { runCommerce: jest.fn() }, agentLearningService?: any) {
     const eventBus = new EventBus();
     const providerRegistry = {
       getProvider: () => ({
@@ -81,7 +81,7 @@ describe('SessionsService (integration)', () => {
     const agentPurchaseService = { purchase: async () => {} } as any;
     return {
       eventBus,
-      service: new SessionsService(walletService, eventBus, runtimeService, agentPurchaseService),
+      service: new SessionsService(walletService, eventBus, runtimeService, agentPurchaseService, agentLearningService),
     };
   }
 
@@ -160,6 +160,36 @@ describe('SessionsService (integration)', () => {
       }),
     );
     expect(second.status).toBe('ok');
+  });
+
+  it('searches learned genres and excludes the tracks session start picked', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({ status: 'no_tracks', tracks: [], shortfall: 5 }),
+    };
+    const agentLearningService = {
+      resolveTasteProfile: jest.fn().mockResolvedValue({ favoredGenres: ['hip hop'], genreWeights: { 'hip hop': 1 } }),
+      mergeLearnedGenres: (vibes: string[], profile: { favoredGenres: string[] }) =>
+        Array.from(new Set([...profile.favoredGenres, ...vibes])),
+    };
+    const { service } = makeService(runtimeService, agentLearningService);
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+    // Session start records its picks as licenses (AgentConfigController.startSession).
+    await prisma.license.create({
+      data: { sessionId: session.id, trackId: `${TEST_PREFIX}track`, type: 'personal', priceUsd: 0, durationSeconds: 0 },
+    });
+
+    const result = await service.agentNext({
+      sessionId: session.id,
+      preferences: { genres: ['Ambient', 'Lo-fi'], mood: 'Focus' },
+    }) as any;
+
+    expect(result.status).toBe('no_tracks');
+    expect(runtimeService.runCommerce).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recentTrackIds: [`${TEST_PREFIX}track`],
+        preferences: expect.objectContaining({ genres: ['hip hop', 'Ambient', 'Lo-fi'], mood: 'Focus' }),
+      }),
+    );
   });
 
   it('returns only current stems in playlist track summaries', async () => {

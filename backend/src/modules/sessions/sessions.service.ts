@@ -226,14 +226,17 @@ export class SessionsService {
     }
 
     const preferences = this.mergeAgentPreferences(input.sessionId, input.preferences);
-    const recentTrackIds = this.recentTrackIds.get(input.sessionId) ?? [];
+    const recentTrackIds = await this.sessionTrackIds(input.sessionId);
     const budgetRemainingUsd = Math.max(0, session.budgetCapUsd - session.spentUsd);
     const result = await this.agentRuntimeService.runCommerce({
       sessionId: input.sessionId,
       userId: session.userId,
       recentTrackIds,
       budgetRemainingUsd,
-      preferences,
+      preferences: {
+        ...preferences,
+        genres: await this.withLearnedGenres(session.userId, preferences.genres),
+      },
     });
 
     return this.toAgentNextResponse(input.sessionId, session.userId, result);
@@ -363,6 +366,38 @@ export class SessionsService {
       })),
       shortfall: result.shortfall,
     };
+  }
+
+  /**
+   * The genres a next pick searches: the listener's learned favorites plus the
+   * session's own, merged exactly as session start does
+   * (`AgentConfigController.startSession`). Without the learned genres a
+   * preset whose genres the catalog lacks finds nothing, although the session
+   * start found picks. Fails open to the session's genres.
+   */
+  private async withLearnedGenres(userId: string, genres: string[] = []) {
+    if (!this.agentLearningService) return genres;
+    try {
+      const profile = await this.agentLearningService.resolveTasteProfile(userId, genres);
+      return this.agentLearningService.mergeLearnedGenres(genres, profile);
+    } catch {
+      return genres;
+    }
+  }
+
+  /**
+   * Tracks this session already holds, newest first: next picks remembered in
+   * memory, then the picks session start recorded as licenses. The selector
+   * excludes these, so a next pick never repeats one of the session's tracks,
+   * even after a restart or on another instance.
+   */
+  private async sessionTrackIds(sessionId: string): Promise<string[]> {
+    const remembered = this.recentTrackIds.get(sessionId) ?? [];
+    const licensed = await prisma.license.findMany({
+      where: { sessionId },
+      select: { trackId: true },
+    });
+    return [...new Set([...remembered, ...licensed.map((license) => license.trackId)])];
   }
 
   private rememberRecentTrack(sessionId: string, trackId: string) {

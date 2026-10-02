@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useAgentConfig } from "../../hooks/useAgentConfig";
@@ -11,6 +11,9 @@ import {
     type AgentNextPickResponse,
     type AgentNextPreferences,
 } from "../../lib/api";
+import { resolveDjQueue } from "../../lib/agentDjPlayback";
+import { saveTracksMetadata } from "../../lib/localLibrary";
+import { usePlayer } from "../../lib/playerContext";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useToast } from "../ui/Toast";
 import AgentActivityFeed from "./AgentActivityFeed";
@@ -22,6 +25,11 @@ import AgentStatusCard from "./AgentStatusCard";
 
 /** Analytics surface for the DJ session panel (it lives in the Home `#ai-dj` section). */
 const ANALYTICS_SURFACE = "home";
+
+/** How often to refetch history while waiting for a started session's first picks. */
+const AUTOPLAY_POLL_INTERVAL_MS = 3000;
+/** Give up waiting for a started session's first picks after this long (LLM search can take ~30s). */
+const AUTOPLAY_MAX_WAIT_MS = 45000;
 
 /** `.aid-page` was a full-page canvas; embedded in Home it must not claim a viewport. */
 const EMBEDDED_STYLE: CSSProperties = { minHeight: 0, padding: 0, background: "transparent" };
@@ -48,12 +56,48 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const events = useAgentEvents();
     const { sessions, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
     const { addToast } = useToast();
+    const { playQueue } = usePlayer();
     const [wizardOpen, setWizardOpen] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [nextPick, setNextPick] = useState<AgentNextPickResponse | null>(null);
     const [isPickingNext, setIsPickingNext] = useState(false);
     const [selectedPreset, setSelectedPreset] = useState<SessionPreset | null>(SESSION_PRESETS[0] ?? null);
     const [isStartingPreset, setIsStartingPreset] = useState(false);
+    // A session started from this panel whose first picks should autoplay once
+    // they appear. The ref is the synchronous source of truth so the picks play
+    // only once; the state drives the polling effect.
+    const [awaitingAutoplayId, setAwaitingAutoplayId] = useState<string | null>(null);
+    const awaitingAutoplayRef = useRef<string | null>(null);
+
+    const beginAwaitingAutoplay = useCallback((sessionId: string) => {
+        awaitingAutoplayRef.current = sessionId;
+        setAwaitingAutoplayId(sessionId);
+    }, []);
+    const clearAwaitingAutoplay = useCallback(() => {
+        awaitingAutoplayRef.current = null;
+        setAwaitingAutoplayId(null);
+    }, []);
+
+    /** Put the DJ's picks in the player. Returns how many tracks were queued. */
+    const playDjTracks = useCallback(
+        async (trackIds: string[]): Promise<number> => {
+            try {
+                const queue = await resolveDjQueue(trackIds, token);
+                if (queue.length === 0) return 0;
+                await saveTracksMetadata(queue, "remote");
+                await playQueue(queue, 0);
+                return queue.length;
+            } catch (error) {
+                addToast({
+                    type: "error",
+                    title: "Couldn't play the DJ's picks",
+                    message: error instanceof Error ? error.message : "Unable to start playback.",
+                });
+                return 0;
+            }
+        },
+        [token, playQueue, addToast],
+    );
 
     const openSessionId = useMemo(() => {
         return activeSessionId ?? sessions.find((session) => !session.endedAt)?.id ?? null;
@@ -65,6 +109,37 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         void refetchConfig();
         void refetchHistory();
     }, [refreshKey, refetchConfig, refetchHistory]);
+
+    // Poll history while a just-started session's picks are still being chosen.
+    useEffect(() => {
+        if (!awaitingAutoplayId) return;
+        const interval = setInterval(() => {
+            void refetchHistory();
+        }, AUTOPLAY_POLL_INTERVAL_MS);
+        const giveUp = setTimeout(() => {
+            if (awaitingAutoplayRef.current !== awaitingAutoplayId) return;
+            clearAwaitingAutoplay();
+            addToast({
+                type: "info",
+                title: "The DJ found nothing to play yet",
+                message: "Try Next AI Pick, or start a session with another intent.",
+            });
+        }, AUTOPLAY_MAX_WAIT_MS);
+        return () => {
+            clearInterval(interval);
+            clearTimeout(giveUp);
+        };
+    }, [awaitingAutoplayId, refetchHistory, clearAwaitingAutoplay, addToast]);
+
+    // Play the started session's first picks, once.
+    useEffect(() => {
+        const sessionId = awaitingAutoplayRef.current;
+        if (!sessionId) return;
+        const session = sessions.find((candidate) => candidate.id === sessionId);
+        if (!session || session.licenses.length === 0) return;
+        clearAwaitingAutoplay();
+        void playDjTracks(session.licenses.map((license) => license.trackId));
+    }, [sessions, playDjTracks, clearAwaitingAutoplay]);
 
     useEffect(() => {
         void recordProductAnalytics(token, "agent.intent_viewed", {
@@ -112,6 +187,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             const stoppedSessionId = openSessionId;
             const stoppedSession = stoppedSessionId ? sessions.find((session) => session.id === stoppedSessionId) : null;
             await stopSession();
+            clearAwaitingAutoplay();
             setActiveSessionId(null);
             setNextPick(null);
             void recordProductAnalytics(token, "agent.session_stopped", {
@@ -144,6 +220,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 const result = await startSession(preferences ? { preferences } : undefined);
                 if (result?.sessionId) {
                     setActiveSessionId(result.sessionId);
+                    beginAwaitingAutoplay(result.sessionId);
                 }
                 void recordProductAnalytics(token, "agent.session_started", {
                     source: preset ? "agent_session_intent_panel" : "agent_command_bar",
@@ -164,12 +241,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     title: "Session Started",
                     message: preset
                         ? `${preset.name} is now guiding the queue.`
-                        : "Your DJ is now scanning for tracks!",
+                        : "Your DJ is picking tracks and will start playing shortly.",
                 });
-                // Refetch history after orchestration completes (LLM may take up to ~30s for multi-genre search)
-                setTimeout(() => refetchHistory(), 15000);
-                // Safety-net refetch for slower LLM responses
-                setTimeout(() => refetchHistory(), 35000);
+                // History is polled by the autoplay effect until the first picks arrive.
             } finally {
                 setIsStartingPreset(false);
             }
@@ -233,8 +307,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 addToast({
                     type: "success",
                     title: "AI Pick Ready",
-                    message: `${result.track.title} · ${result.licenseType ?? "personal"} · $${(result.priceUsd ?? 0).toFixed(2)}`,
+                    message: `Playing ${result.track.title} · ${result.licenseType ?? "personal"} · $${(result.priceUsd ?? 0).toFixed(2)}`,
                 });
+                void playDjTracks([result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
             } else {
                 addToast({
                     type: "info",

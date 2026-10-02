@@ -34,6 +34,14 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > Settings → **AI DJ** (`/settings?section=dj`). The ERC-8004 identity and
 > reputation actions are no longer shown to listeners. The AI DJ never buys.
 
+> **Session playback.** Starting a session from the AI DJ section plays the
+> session's first picks in the player once they are recorded (the panel polls
+> history for up to 45 s, then says it found nothing), and Next AI Pick plays
+> its pick at once. Next AI Pick searches the same genres session start does
+> (the listener's learned favorite genres plus the session's own) and excludes
+> every track the session already picked, including the picks session start
+> recorded as licenses.
+
 ## Status
 
 `partial`
