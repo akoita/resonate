@@ -23,6 +23,14 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
   license options with what each grants, plus a beat-aligned transition preview
   into the next line. The DJ can reorder, lock, remove and swap lines, rename
   and save the crate, and edit the filter chips to build a new crate.
+- **Browse stems tab and add to crate (#2032).** The former Marketplace is
+  merged into Crates & Stems: one sidebar entry at `/crates` with two tabs,
+  **Build a crate** (default, needs sign-in) and **Browse stems**
+  (`/crates?tab=stems`, public). `/marketplace` redirects to
+  `/crates?tab=stems`. Every browsed listing has an **Add to crate** control:
+  signed in, it lists the DJ's crates to add the track to one, plus **New crate
+  from this track**. Listing management moved to the artist side at
+  `/artist/listings` (see [Marketplace Listing Lifecycle](marketplace_listing_lifecycle.md)).
 - **Quote, one-signature purchase and receipts (#1964).**
   `POST /crates/:id/quote` prices the crate's lines from the chain for the DJ to
   approve; `POST /crates/:id/quotes/:quoteId/settle` verifies the transaction
@@ -327,6 +335,8 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | `GET /crates/:id` `latestQuote` | The crate's most recent quote, or null |
 | `PATCH /crates/:id` `watch: { mode: "off"\|"notify", expiresInDays? }` | Watch a saved crate for new releases (1 to 365 days, default 90); off is always allowed. 400 `invalid_watch_mode` / `invalid_watch_expiry` / `watch_mode_unavailable`, 409 `crate_not_saved`, 403 `pro_required` (JWT) |
 | `GET /crates/:id` `crate.watch` | `{ mode, expiresAt, summary: { month, matches, notified }, recentMatches }` |
+| `POST /crates/:id/items` | Add a track to one of your crates (JWT); 404 `track_not_found`, 409 `line_exists` (already in the crate) / `crate_full` (25 lines) |
+| `/crates?tab=stems` | Browse stems tab (public), with Add to crate on every listing; `/marketplace` redirects here |
 | `/crates`, `/crates/:id` | Crate Digger request box, crate list and crate page with the quote and purchase panel |
 
 ## Configuration
