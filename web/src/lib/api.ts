@@ -12,6 +12,8 @@ import type { RemixPartRole, RemixParts } from "./remixParts";
 import type { RemixFxRecipe } from "./remixFx";
 import type {
   CrateDto,
+  CrateExportFormat,
+  CrateExportManifest,
   CrateListEntry,
   CrateQuote,
   CreateCrateQuoteBody,
@@ -1144,6 +1146,89 @@ export async function settleCrateQuote(
     token,
   );
   return { status: quote.status === "submitted" ? 202 : 200, quote };
+}
+
+/**
+ * Crate export (#1965): what exporting the crate would contain, the stems the
+ * wallet owns with the names to save them under, the lines left out and why.
+ * Needs no folder.
+ */
+export async function getCrateExportManifest(token: string, crateId: string) {
+  return apiRequest<CrateExportManifest>(
+    `/crates/${encodeURIComponent(crateId)}/export/manifest`,
+    { cache: "no-store", silentErrorCodes: [403, 404, 409] },
+    token,
+  );
+}
+
+/**
+ * Downloads the crate as a rekordbox XML or a Serato crate. `folder` is the
+ * absolute path the DJ saved the stems in; the backend writes it into the file
+ * and keeps nothing. This deliberately does not go through `apiRequest`, which
+ * logs every request path: the folder can contain the DJ's username and must
+ * never reach a log. Errors carry the backend's `code` like `apiRequest` errors.
+ */
+export async function downloadCrateExport(
+  token: string,
+  crateId: string,
+  format: CrateExportFormat,
+  folder: string,
+): Promise<{ blob: Blob; contentDisposition: string | null }> {
+  const search = new URLSearchParams({ format, folder });
+  const response = await fetch(
+    `${API_BASE}/crates/${encodeURIComponent(crateId)}/export?${search.toString()}`,
+    { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    let detail = "";
+    try {
+      detail = await response.text();
+    } catch {
+      // ignore
+    }
+    if (response.status === 401) invalidateStoredAuthSession();
+    let details: unknown;
+    try {
+      details = JSON.parse(detail);
+    } catch {
+      details = undefined;
+    }
+    throw new ApiRequestError(
+      formatApiErrorMessage(response.status, response.statusText, detail),
+      response.status,
+      details,
+    );
+  }
+  return {
+    blob: await response.blob(),
+    contentDisposition: response.headers.get("Content-Disposition"),
+  };
+}
+
+/**
+ * Downloads a stem the wallet owns through the licensed download path (the
+ * same call the library page makes). The backend verifies the purchase; this
+ * never grants a right.
+ */
+export async function downloadOwnedStem(
+  token: string,
+  stemId: string,
+  walletAddress: string,
+): Promise<Blob> {
+  const response = await fetch("/api/encryption/download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ stemId, walletAddress }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      response.status === 429
+        ? "You are doing that a bit too quickly. Please wait a moment and try again."
+        : text.trim() || "Download failed",
+    );
+  }
+  return response.blob();
 }
 
 export async function getArtistAnalyticsDashboard(

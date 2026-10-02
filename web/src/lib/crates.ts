@@ -693,6 +693,44 @@ export function readCrateCreationNotes(
 }
 
 /* ------------------------------------------------------------------ */
+/* Export to rekordbox or Serato (#1965)                               */
+/* ------------------------------------------------------------------ */
+
+export type CrateExportFormat = "rekordbox" | "serato";
+export type CrateExportSkipReason = "not_purchased" | "no_export_right";
+
+/** One stem the DJ owns under a standard license; mirrors `crate_export.dto.ts`. */
+export type CrateExportEntry = {
+  position: number;
+  trackId: string;
+  stemId: string;
+  stemType: string;
+  title: string;
+  artistName: string;
+  licenseType: "personal" | "remix" | "commercial";
+  /** The name to save the downloaded stem under; the export files point at it. */
+  fileName: string;
+  bpm: number | null;
+  key: string | null;
+  camelot: string | null;
+  firstBeatSec: number | null;
+  hasCue: boolean;
+};
+
+export type CrateExportSkipped = {
+  position: number;
+  trackId: string;
+  title: string;
+  reason: CrateExportSkipReason;
+};
+
+export type CrateExportManifest = {
+  entries: CrateExportEntry[];
+  skipped: CrateExportSkipped[];
+  notes: string[];
+};
+
+/* ------------------------------------------------------------------ */
 /* API errors                                                          */
 /* ------------------------------------------------------------------ */
 

@@ -69,6 +69,8 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
+    // The browser reads the file name of a crate export (#1965) from this header.
+    exposedHeaders: ["Content-Disposition"],
   });
 
   app.use(requestObservabilityMiddleware());

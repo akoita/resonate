@@ -517,13 +517,84 @@ export function settledQuote(crate) {
   return quote;
 }
 
+/* ------------------------------------------------------------------ */
+/* Export to rekordbox or Serato (#1965)                               */
+/* ------------------------------------------------------------------ */
+
+/** The stems the mock wallet owns, by track: what a crate export lists. */
+const OWNED_STEMS = {
+  "track-neon-drift": [
+    { stemType: "vocals", licenseType: "remix", bpm: 122, key: "Am", camelot: "8A", firstBeatSec: 0.214 },
+    { stemType: "drums", licenseType: "personal", bpm: 122, key: "Am", camelot: "8A", firstBeatSec: 0.214 },
+  ],
+  "track-glass-harbour": [
+    { stemType: "bass", licenseType: "commercial", bpm: 124, key: null, camelot: null, firstBeatSec: null },
+  ],
+};
+/** A track whose only purchases are sync, sample or broadcast licenses. */
+const NO_EXPORT_RIGHT_TRACKS = new Set(["track-midnight-courier"]);
+
+const titleCase = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * The backend's export manifest for a mock crate: owned standard-license stems
+ * in crate order with their download names, and every other line skipped.
+ *
+ * @param {Record<string, any>} crate
+ * @param {{ owned?: boolean }} [options] `owned: false` owns nothing
+ */
+export function buildExportManifest(crate, options = {}) {
+  const owned = options.owned !== false;
+  const entries = [];
+  const skipped = [];
+  for (const item of crate.items) {
+    const stems = owned ? OWNED_STEMS[item.trackId] ?? [] : [];
+    for (const stem of stems) {
+      entries.push({
+        position: item.position,
+        trackId: item.trackId,
+        stemId: `stem-${item.trackId}-${stem.stemType}`,
+        stemType: stem.stemType,
+        title: item.title,
+        artistName: item.artistName,
+        licenseType: stem.licenseType,
+        fileName: `${item.artistName} - ${item.title} (${titleCase(stem.stemType)}).mp3`,
+        bpm: stem.bpm,
+        key: stem.key,
+        camelot: stem.camelot,
+        firstBeatSec: stem.firstBeatSec,
+        hasCue: stem.bpm !== null && stem.firstBeatSec !== null,
+      });
+    }
+    if (stems.length === 0) {
+      skipped.push({
+        position: item.position,
+        trackId: item.trackId,
+        title: item.title,
+        reason: owned && NO_EXPORT_RIGHT_TRACKS.has(item.trackId) ? "no_export_right" : "not_purchased",
+      });
+    }
+  }
+  return {
+    entries,
+    skipped,
+    notes: [
+      "Only stems you own under a personal, remix or commercial license are exported. Exporting never grants a license.",
+      "The Serato crate lists the files only: Serato reads tempo, key and cues from its own analysis or the file's tags, so the crate carries none of them.",
+      ...(entries.some((entry) => entry.bpm === null)
+        ? ["1 stem has no measured tempo; your DJ software will analyze it on import."]
+        : []),
+    ],
+  };
+}
+
 /**
  * Routes every Crate Digger request to in-memory crates. Anything else the
  * app shell asks the API for is answered with an empty success so the page
  * renders cleanly. Returns the bodies the pages sent, for assertions.
  *
  * @param {import("@playwright/test").Page} page
- * @param {{ savedCrates?: Array<Record<string, any>>; latestQuotes?: Record<string, Record<string, any>>; now?: number }} [options] `now` pins the clock quotes expire against (the help screenshots freeze the page's clock to the same instant)
+ * @param {{ savedCrates?: Array<Record<string, any>>; latestQuotes?: Record<string, Record<string, any>>; now?: number; ownsNothing?: boolean }} [options] `now` pins the clock quotes expire against (the help screenshots freeze the page's clock to the same instant); `ownsNothing` makes the export manifest empty
  */
 export async function mockCrateApi(page, options = {}) {
   /** @type {Map<string, Record<string, any>>} */
@@ -544,6 +615,12 @@ export async function mockCrateApi(page, options = {}) {
   const swaps = [];
   let swapped = false;
   let nextId = 1;
+  /** @type {Array<{ crateId: string; format: string | null; folder: string | null }>} */
+  const exportRequests = [];
+  /** @type {Array<{ stemId: string; walletAddress: string }>} */
+  const stemDownloads = [];
+  /** @type {{ status: number; json: Record<string, any> } | null} */
+  let exportFailure = null;
 
   // Registered first so the specific routes below win (Playwright tries the
   // most recently registered route first).
@@ -650,6 +727,45 @@ export async function mockCrateApi(page, options = {}) {
     await route.fulfill({ status: 201, json: quote });
   });
 
+  // The licensed stem download, through the app's own origin (a rewrite to the API).
+  await page.route("**/api/encryption/download", async (route) => {
+    const body = route.request().postDataJSON();
+    stemDownloads.push({ stemId: body.stemId, walletAddress: body.walletAddress });
+    await route.fulfill({
+      status: 200,
+      contentType: "audio/mpeg",
+      body: Buffer.from(`mp3:${body.stemId}`),
+    });
+  });
+
+  await page.route(apiPath(/^\/crates\/[^/]+\/export\/manifest$/), async (route) => {
+    const crateId = decodeURIComponent(new URL(route.request().url()).pathname.split("/")[2] ?? "");
+    const crate = crates.get(crateId);
+    if (!crate) return route.fulfill({ status: 404, json: { message: "Crate not found" } });
+    await route.fulfill({ json: buildExportManifest(crate, { owned: !options.ownsNothing }) });
+  });
+
+  await page.route(apiPath(/^\/crates\/[^/]+\/export$/), async (route) => {
+    const url = new URL(route.request().url());
+    const crateId = decodeURIComponent(url.pathname.split("/")[2] ?? "");
+    const format = url.searchParams.get("format");
+    exportRequests.push({ crateId, format, folder: url.searchParams.get("folder") });
+    if (exportFailure) return route.fulfill(exportFailure);
+    const crate = crates.get(crateId);
+    if (!crate) return route.fulfill({ status: 404, json: { message: "Crate not found" } });
+    const title = crate.title || "Resonate crate";
+    const fileName = `${title}.${format === "serato" ? "crate" : "xml"}`;
+    await route.fulfill({
+      status: 200,
+      contentType: format === "serato" ? "application/octet-stream" : "application/xml; charset=utf-8",
+      headers: {
+        "Content-Disposition": `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        "Access-Control-Expose-Headers": "Content-Disposition",
+      },
+      body: format === "serato" ? Buffer.from("vrsn") : `<DJ_PLAYLISTS Version="1.0.0"/>`,
+    });
+  });
+
   await page.route(apiPath(/^\/crates\/(?!requests$)[^/]+$/), async (route) => {
     const request = route.request();
     const crateId = decodeURIComponent(new URL(request.url()).pathname.split("/").pop() ?? "");
@@ -690,6 +806,14 @@ export async function mockCrateApi(page, options = {}) {
     created,
     crates,
     quoteRequests,
+    /** Every export request: the crate, the format and the folder the page sent. */
+    exportRequests,
+    /** Every stem download: the stem and the wallet address the page sent. */
+    stemDownloads,
+    /** The next export request fails with this response (null: succeed). */
+    failExport: (/** @type {{ status: number; json: Record<string, any> } | null} */ failure) => {
+      exportFailure = failure;
+    },
     /** The next quote expires in this many milliseconds (negative: already expired). */
     expireNextQuoteIn: (/** @type {number} */ ms) => {
       expiries.length = 0;

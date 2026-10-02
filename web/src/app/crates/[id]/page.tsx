@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { CrateLine, type TransitionPreviewState } from "../../../components/crates/CrateLine";
+import { CrateExportPanel } from "../../../components/crates/CrateExportPanel";
 import { CrateQuotePanel } from "../../../components/crates/CrateQuotePanel";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useToast } from "../../../components/ui/Toast";
@@ -66,6 +67,8 @@ function CrateEditor({ crateId }: { crateId: string }) {
   const [filters, setFilters] = useState<CrateFilters | null>(null);
   const [notes, setNotes] = useState<CrateCreationNotes | null>(null);
   const [latestQuote, setLatestQuote] = useState<CrateQuote | null>(null);
+  // Bumped after a purchase so the export panel reads the stems you own again.
+  const [exportRefresh, setExportRefresh] = useState(0);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [busy, setBusy] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<CrateItemDto | null>(null);
@@ -121,6 +124,7 @@ function CrateEditor({ crateId }: { crateId: string }) {
   // Unsaved edits are never replaced.
   const refreshAfterPurchase = useCallback(async () => {
     if (!token) return;
+    setExportRefresh((count) => count + 1);
     try {
       const result = await getCrate(token, crateId);
       if (!dirtyRef.current) adopt(result.crate);
@@ -501,6 +505,13 @@ function CrateEditor({ crateId }: { crateId: string }) {
         latestQuote={latestQuote}
         hasUnsavedChanges={dirty}
         onPurchaseFinished={() => void refreshAfterPurchase()}
+      />
+
+      <CrateExportPanel
+        crateId={crate.id}
+        crateTitle={crate.title}
+        hasUnsavedChanges={dirty}
+        refreshKey={exportRefresh}
       />
 
       <ConfirmDialog

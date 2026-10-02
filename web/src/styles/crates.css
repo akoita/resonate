@@ -600,3 +600,63 @@
 .crates-quote-receipt--dropped {
   border-left-color: var(--r-warning);
 }
+
+/* Export to rekordbox or Serato (#1965). */
+
+.crates-export-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.crates-export-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-xs);
+}
+
+.crates-export-list,
+.crates-export-skipped,
+.crates-export-failures {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--r-xs);
+}
+
+.crates-export-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--r-xs) var(--r-sm);
+  border-left: 4px solid var(--r-outline);
+  background: var(--r-surface-mid);
+  border-radius: var(--r-radius-sm);
+}
+
+.crates-export-skipped li {
+  padding: var(--r-xs) var(--r-sm);
+  border-left: 4px solid var(--r-warning);
+  background: var(--r-surface-mid);
+  border-radius: var(--r-radius-sm);
+}
+
+.crates-export-help,
+.crates-export-notes {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--r-xs);
+}
+
+.crates-export-help {
+  font-size: 0.875rem;
+}
+
+.crates-export-panel code {
+  overflow-wrap: anywhere;
+}
+
+.crates-export-panel .crates-title-input {
+  width: 100%;
+}
