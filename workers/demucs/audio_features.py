@@ -24,7 +24,10 @@ SCHEMA_VERSION = "stem-audio-features/v1"
 #   2 (#2016): key chroma measured at KEY_SAMPLE_RATE on the harmonic
 #     component (HPSS), so drums no longer flatten the pitch-class profile of
 #     a full mix.
-ANALYSIS_REVISION = 2
+#   3 (#2018): Albrecht-Shanahan key profiles instead of Krumhansl. Their
+#     confidence sits lower, so the backend's usability cutoff is per revision
+#     (0.05 from revision 3, 0.1 before).
+ANALYSIS_REVISION = 3
 # Files load at their native rate (usually 44.1/48 kHz), where chroma_stft's
 # 2048-sample window has half the frequency resolution it has at 22.05 kHz and
 # low notes smear across pitch classes. The key is measured at this rate.
@@ -33,12 +36,15 @@ KEY_SAMPLE_RATE = 22050
 # part, which is what clears percussion out of dense full mixes.
 KEY_HARMONIC_MARGIN = 3.0
 
-# Krumhansl-Schmuckler key profiles (major/minor pitch-class weightings).
-KRUMHANSL_MAJOR = [
-    6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+# Albrecht & Shanahan (2013) key profiles: major/minor pitch-class
+# distributions, C-rooted. Against labelled keys (GiantSteps, FMA) they beat
+# the Krumhansl-Schmuckler profiles used up to revision 2 on every measure
+# (#2018).
+KEY_PROFILE_MAJOR = [
+    0.238, 0.006, 0.111, 0.006, 0.137, 0.094, 0.016, 0.214, 0.009, 0.080, 0.008, 0.081,
 ]
-KRUMHANSL_MINOR = [
-    6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+KEY_PROFILE_MINOR = [
+    0.220, 0.006, 0.104, 0.123, 0.019, 0.103, 0.012, 0.214, 0.062, 0.022, 0.061, 0.052,
 ]
 TONICS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -54,7 +60,7 @@ def _finite(value: Optional[float]) -> Optional[float]:
 
 
 def _estimate_key(chroma_mean) -> Optional[dict]:
-    """Krumhansl-style template matching over the mean chroma vector.
+    """Key-profile template matching over the mean chroma vector.
 
     Confidence is the relative margin between the best and second-best
     template correlation, bounded to [0, 1]. Flat/silent chroma yields None.
@@ -65,7 +71,7 @@ def _estimate_key(chroma_mean) -> Optional[dict]:
         return None
 
     scores = []
-    for mode, profile in (("major", KRUMHANSL_MAJOR), ("minor", KRUMHANSL_MINOR)):
+    for mode, profile in (("major", KEY_PROFILE_MAJOR), ("minor", KEY_PROFILE_MINOR)):
         profile_arr = np.asarray(profile)
         for shift in range(12):
             rotated = np.roll(profile_arr, shift)
