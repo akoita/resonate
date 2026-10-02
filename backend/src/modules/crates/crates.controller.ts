@@ -14,7 +14,7 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { minutes } from "../shared/rate_limits";
-import { CreateCrateRequestDto, UpdateCrateDto } from "./crate.dto";
+import { AddCrateItemDto, CreateCrateRequestDto, UpdateCrateDto } from "./crate.dto";
 import type {
   CreateCrateResponse,
   GetCrateResponse,
@@ -89,6 +89,21 @@ export class CratesController {
     @Body() body: UpdateCrateDto,
   ): Promise<GetCrateResponse> {
     return this.crates.updateCrate(req.user.userId, id, body);
+  }
+
+  /**
+   * Appends one track to the end of the caller's crate (#2032). Anyone else's
+   * crate is a 404; a track already in the crate or a full crate is a 409.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+  @Post(":id/items")
+  addItem(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() body: AddCrateItemDto,
+  ): Promise<GetCrateResponse> {
+    return this.crates.addItem(req.user.userId, id, body.trackId);
   }
 
   /**

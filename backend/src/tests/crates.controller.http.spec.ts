@@ -27,6 +27,7 @@ const mockCrates = {
   getCrate: jest.fn(),
   listCrates: jest.fn(),
   updateCrate: jest.fn(),
+  addItem: jest.fn(),
   swapItem: jest.fn(),
 };
 
@@ -66,6 +67,7 @@ describe("CratesController (http)", () => {
     mockCrates.getCrate.mockResolvedValue({ crate: { id: "crate-1", items: [] } });
     mockCrates.listCrates.mockResolvedValue({ crates: [] });
     mockCrates.updateCrate.mockResolvedValue({ crate: { id: "crate-1", items: [] } });
+    mockCrates.addItem.mockResolvedValue({ crate: { id: "crate-1", items: [] }, latestQuote: null });
     mockCrates.swapItem.mockResolvedValue({ crate: { id: "crate-1", items: [] }, swapped: true });
     mockQuotes.createQuote.mockResolvedValue({ id: "q-1", crateId: "crate-1", status: "open", lines: [] });
     mockQuotes.getQuote.mockResolvedValue({ id: "q-1", crateId: "crate-1", status: "open", lines: [] });
@@ -376,6 +378,62 @@ describe("CratesController (http)", () => {
         .send({ status: "saved" })
         .expect(403);
       expect(pro.body.code).toBe("pro_required");
+    });
+  });
+
+  describe("POST /crates/:id/items (#2032)", () => {
+    it("-> 401 without JWT", async () => {
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/items")
+        .send({ trackId: "t1" })
+        .expect(401);
+      expect(mockCrates.addItem).not.toHaveBeenCalled();
+    });
+
+    it("-> passes the JWT user, the crate and the track to the service", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/crates/crate-1/items")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ trackId: "t1", userId: "someone-else" })
+        .expect(201);
+      expect(res.body.crate.id).toBe("crate-1");
+      expect(mockCrates.addItem).toHaveBeenCalledWith("dj-1", "crate-1", "t1");
+    });
+
+    it("-> 400 on a missing, empty, non-string or oversized trackId", async () => {
+      for (const body of [{}, { trackId: "" }, { trackId: 5 }, { trackId: "x".repeat(201) }]) {
+        await request(app.getHttpServer())
+          .post("/crates/crate-1/items")
+          .set("Authorization", `Bearer ${token}`)
+          .send(body)
+          .expect(400);
+      }
+      expect(mockCrates.addItem).not.toHaveBeenCalled();
+    });
+
+    it("-> passes a service 404 and the 409 codes through", async () => {
+      mockCrates.addItem.mockRejectedValueOnce(new NotFoundException("Crate not found"));
+      await request(app.getHttpServer())
+        .post("/crates/someone-elses/items")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ trackId: "t1" })
+        .expect(404);
+
+      mockCrates.addItem.mockRejectedValueOnce(new ConflictException({ code: "line_exists" }));
+      const exists = await request(app.getHttpServer())
+        .post("/crates/crate-1/items")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ trackId: "t1" })
+        .expect(409);
+      expect(exists.body.code).toBe("line_exists");
+
+      mockCrates.addItem.mockRejectedValueOnce(new ConflictException({ code: "crate_full" }));
+      const full = await request(app.getHttpServer())
+        .post("/crates/crate-1/items")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ trackId: "t2" })
+        .expect(409);
+      expect(full.body.code).toBe("crate_full");
     });
   });
 

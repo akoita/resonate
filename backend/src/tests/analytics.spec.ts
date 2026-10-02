@@ -177,7 +177,7 @@ describe("analytics", () => {
     expect(cardsByType.get("review_marketplace_readiness")).toEqual(expect.objectContaining({
       sourceSignal: expect.objectContaining({ category: "marketplace", count: 1 }),
       privacy: expect.objectContaining({ aggregateOnly: true, thresholdApplied: false }),
-      cta: expect.objectContaining({ href: "/marketplace/manage" }),
+      cta: expect.objectContaining({ href: "/artist/listings" }),
     }));
     expect(cardsByType.get("start_listener_community")).toEqual(expect.objectContaining({
       sourceSignal: expect.objectContaining({ category: "community", count: 5 }),
@@ -340,7 +340,7 @@ describe("analytics", () => {
     expect(cardsByType.get("prepare_remix_challenge")).toEqual(expect.objectContaining({
       sourceSignal: expect.objectContaining({ category: "remix", count: 5 }),
       priority: "medium",
-      cta: expect.objectContaining({ href: "/marketplace/manage?status=active" }),
+      cta: expect.objectContaining({ href: "/artist/listings?status=active" }),
       privacy: expect.objectContaining({
         aggregateOnly: true,
         thresholdApplied: true,
@@ -487,7 +487,7 @@ describe("analytics", () => {
       reason: expect.stringContaining("3 listings can be relisted"),
       sourceSignal: expect.objectContaining({ category: "marketplace", count: 3 }),
       privacy: expect.objectContaining({ aggregateOnly: true, thresholdApplied: false }),
-      cta: expect.objectContaining({ href: "/marketplace/manage?status=expired" }),
+      cta: expect.objectContaining({ href: "/artist/listings?status=expired" }),
     }));
     expect(cardsByType.get("improve_marketplace_conversion")).toEqual(expect.objectContaining({
       title: "Improve marketplace checkout conversion",
@@ -498,7 +498,7 @@ describe("analytics", () => {
         count: 5,
       }),
       privacy: expect.objectContaining({ aggregateOnly: true, thresholdApplied: true, minimumThreshold: 5 }),
-      cta: expect.objectContaining({ href: "/marketplace/manage?status=active" }),
+      cta: expect.objectContaining({ href: "/artist/listings?status=active" }),
     }));
     expect(cardsByType.get("review_marketplace_pricing")).toBeUndefined();
 
@@ -543,7 +543,7 @@ describe("analytics", () => {
       reason: expect.stringContaining("5 aggregate purchase intents"),
       sourceSignal: expect.objectContaining({ category: "marketplace", count: 5 }),
       privacy: expect.objectContaining({ aggregateOnly: true, thresholdApplied: true, minimumThreshold: 5 }),
-      cta: expect.objectContaining({ href: "/marketplace/manage?status=active" }),
+      cta: expect.objectContaining({ href: "/artist/listings?status=active" }),
     }));
     expect(cardsByType.get("improve_marketplace_conversion")).toBeUndefined();
   });
@@ -584,7 +584,7 @@ describe("analytics", () => {
     expect(cardsByType.get("review_marketplace_pricing")).toEqual(expect.objectContaining({
       reason: expect.stringContaining("5 aggregate purchase intents"),
       sourceSignal: expect.objectContaining({ category: "marketplace", count: 5 }),
-      cta: expect.objectContaining({ href: "/marketplace/manage?status=active" }),
+      cta: expect.objectContaining({ href: "/artist/listings?status=active" }),
     }));
     expect(cardsByType.get("improve_marketplace_conversion")).toBeUndefined();
   });
@@ -735,7 +735,7 @@ describe("analytics", () => {
         summary: "Remix demand with no active owner inventory",
         count: 25,
       }),
-      cta: expect.objectContaining({ href: "/marketplace/manage?status=active" }),
+      cta: expect.objectContaining({ href: "/artist/listings?status=active" }),
       privacy: expect.objectContaining({
         aggregateOnly: true,
         thresholdApplied: true,
