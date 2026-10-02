@@ -1,14 +1,17 @@
 import {
   camelotCode,
-  CAMELOT_MIN_KEY_CONFIDENCE,
+  keyConfidenceCutoff,
   sanitizeStemAudioFeatures,
+  stemAnalysisRevision,
 } from "../ingestion/stem-audio-features";
 
 /**
  * Measured full-mix track features (#1960), read from the current `original`
  * stem's `audioFeatures` (schema `stem-audio-features/v1`, shipped in #1959).
  * Each field is either a measured value or null; callers fall back to the
- * metadata-inferred value for anything null.
+ * metadata-inferred value for anything null. The key is usable when its
+ * confidence reaches the cutoff of the payload's analysis revision (0.1 for
+ * revisions 1-2, 0.05 from revision 3, #2018).
  */
 
 // The extractor's tempo confidence is a beat-vs-average onset strength ratio mapped to (0,1); 0.5 means beats are no stronger than average.
@@ -50,10 +53,11 @@ export function measuredTrackFeatures(raw: unknown): MeasuredTrackFeatures {
     sanitized.tempoConfidence !== null &&
     sanitized.tempoConfidence >= MEASURED_TEMPO_MIN_CONFIDENCE;
 
+  const revision = stemAnalysisRevision(sanitized);
   const keyMeasured =
     sanitized.key !== null &&
     sanitized.key.confidence !== null &&
-    sanitized.key.confidence >= CAMELOT_MIN_KEY_CONFIDENCE;
+    sanitized.key.confidence >= keyConfidenceCutoff(revision);
 
   let camelot: string | null = null;
   if (keyMeasured) {
@@ -64,7 +68,7 @@ export function measuredTrackFeatures(raw: unknown): MeasuredTrackFeatures {
     camelot =
       typeof stored === "string" && stored.trim()
         ? stored
-        : camelotCode(sanitized.key);
+        : camelotCode(sanitized.key, revision);
   }
 
   const energy =

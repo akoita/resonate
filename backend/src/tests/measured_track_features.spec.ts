@@ -64,6 +64,31 @@ describe("measuredTrackFeatures", () => {
     ).toBeNull();
   });
 
+  it("applies the revision-aware key cutoff (#2018)", () => {
+    const at = (confidence: number, analysisRevision?: number) =>
+      measuredTrackFeatures(
+        stored({
+          key: { tonic: "A", mode: "minor", confidence },
+          camelot: null,
+          ...(analysisRevision === undefined ? {} : { analysisRevision }),
+        }),
+      );
+    const usable = at(0.07, 3);
+    expect(usable.key).toEqual({ tonic: "A", mode: "minor", confidence: 0.07 });
+    expect(usable.camelot).toBe("8A");
+    for (const revision of [1, 2, undefined]) {
+      const dropped = at(0.07, revision);
+      expect(dropped.key).toBeNull();
+      expect(dropped.camelot).toBeNull();
+    }
+    expect(at(0.04, 3).key).toBeNull();
+    expect(at(0.04, 3).camelot).toBeNull();
+    for (const revision of [1, 2, 3, undefined]) {
+      expect(at(0.12, revision).key).not.toBeNull();
+      expect(at(0.12, revision).camelot).toBe("8A");
+    }
+  });
+
   it("derives camelot for legacy rows stored without it", () => {
     const { camelot: _omit, ...legacy } = stored({
       key: { tonic: "C", mode: "major", confidence: 0.3 },
