@@ -17,13 +17,17 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
 - **Crate request API (#1962).** `POST /crates/requests` turns a DJ's text, a
   reference track, or edited filters into an ordered draft crate with honest
   coverage. `GET /crates/:id` returns the owner's crate.
+- **Crate page (#1963).** `/crates` takes a sentence (or starts from a track
+  with "Start a crate from this track") and lists your crates. `/crates/:id`
+  shows each line's BPM, Camelot key, energy, stems with quality scores and
+  license options with what each grants, plus a beat-aligned transition preview
+  into the next line. The DJ can reorder, lock, remove and swap lines, rename
+  and save the crate, and edit the filter chips to build a new crate.
 - **`crate.pro` entitlement seam (#1966).** Free for everyone; nothing is gated
-  yet.
+  yet. The crate page reads it from the crate response.
 
 Not built yet, each tracked in its own issue:
 
-- Crate page with rights summary, transition previews, edit and reorder
-  ([#1963](https://github.com/akoita/resonate/issues/1963)).
 - Quote and one-signature batched purchase with a receipt per line
   ([#1964](https://github.com/akoita/resonate/issues/1964)).
 - rekordbox XML and Serato export
@@ -80,6 +84,18 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
    tempo steps and a gentle energy build, with the facts of each transition.
 6. **Persistence.** A draft `Crate`, its `CrateItem` lines and a `CrateRequest`
    recording the filters, coverage and unmet filters.
+7. **Editing.** Reorder, lock and remove are saved together with the title
+   when the DJ saves; saving moves the crate from draft to saved (the future
+   `crate.pro` limit applies only to new saves and never hides a crate). Swap
+   replaces one unlocked line with the best-ranked track that passes the same
+   filters, is not already in the crate and keeps it within the total budget.
+8. **Rights before any quote.** Each line lists the license tiers it offers.
+   Personal, remix and commercial show what they grant; sync, sample and
+   broadcast have no standard Resonate terms yet and say so. Prices are
+   indicative; the quote (#1964) sets the binding price.
+9. **Transition preview.** The browser crossfades the two lines' previews over
+   eight beats at the outgoing tempo, tempo-matching the incoming line within
+   ±8%. Deterministic DSP only; nothing is generated.
 
 ## Privacy
 
@@ -93,7 +109,11 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | Surface | Purpose |
 | --- | --- |
 | `POST /crates/requests` | Build a draft crate from text, a reference track or filters (JWT) |
+| `GET /crates` | List your crates, most recently edited first (JWT) |
 | `GET /crates/:id` | Read one of your crates; other users' crates return 404 (JWT) |
+| `PATCH /crates/:id` | Rename, save, reorder, lock or remove lines (JWT) |
+| `POST /crates/:id/items/:trackId/swap` | Swap one unlocked line for a similar track (JWT) |
+| `/crates`, `/crates/:id` | Crate Digger request box, crate list and crate page |
 
 ## Configuration
 
@@ -109,10 +129,14 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
   A crate held back by two filters at once reports the shortfall without a gap.
 - "Afro house" and other genres outside the taste-edit vocabulary are reported
   as unparsed rather than mapped.
+- The coverage banner shows right after a crate is built; reopening a crate
+  later shows its lines and filters without the coverage numbers.
+- Editing the filter chips builds a new crate; the original stays in the list.
 
 ## Testing
 
 - Unit: `cd backend && npx jest src/tests/crate_ src/tests/model_crate_request_parser.spec.ts src/tests/crates.controller.http.spec.ts`
+- Web: `cd web && npx vitest run src/lib/crates.test.ts src/lib/crateTransitionPreview.test.ts src/components/crates`
 - Integration (Docker): `cd backend && npm run test:integration -- crates.integration`
 
 ## References

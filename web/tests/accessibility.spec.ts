@@ -15,6 +15,7 @@ const AUTHENTICATED_ROUTES = [
   { path: "/wallet", surface: "Wallet" },
   { path: "/player", surface: "Player" },
   { path: "/agent", surface: "AI DJ" },
+  { path: "/crates", surface: "Crate Digger" },
 ] as const;
 
 async function authenticate(page: Page) {

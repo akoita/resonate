@@ -10,6 +10,13 @@ import { rememberDjAttribution } from "./discoveryAttribution";
 import type { RemixBeatRecipe } from "./remixBeat";
 import type { RemixPartRole, RemixParts } from "./remixParts";
 import type { RemixFxRecipe } from "./remixFx";
+import type {
+  CrateDto,
+  CrateListEntry,
+  CreateCrateRequestBody,
+  CreateCrateResponse,
+  UpdateCrateBody,
+} from "./crates";
 import type { RemixStructure, RemixStructureSegment } from "./remixStructure";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -1047,6 +1054,43 @@ export async function updateArtistSettings(
       body: JSON.stringify({ remixConsent: input.remixConsent }),
       silentErrorCodes: [403, 404],
     },
+    token,
+  );
+}
+
+/** Crate Digger (#1963): build, list, read, shape and swap lines of a crate. */
+export async function createCrateRequest(token: string, body: CreateCrateRequestBody) {
+  return apiRequest<CreateCrateResponse>(
+    "/crates/requests",
+    { method: "POST", body: JSON.stringify(body), silentErrorCodes: [400, 403] },
+    token,
+  );
+}
+
+export async function listCrates(token: string) {
+  return apiRequest<{ crates: CrateListEntry[] }>("/crates", { cache: "no-store" }, token);
+}
+
+export async function getCrate(token: string, crateId: string) {
+  return apiRequest<{ crate: CrateDto }>(
+    `/crates/${encodeURIComponent(crateId)}`,
+    { cache: "no-store", silentErrorCodes: [404] },
+    token,
+  );
+}
+
+export async function updateCrate(token: string, crateId: string, body: UpdateCrateBody) {
+  return apiRequest<{ crate: CrateDto }>(
+    `/crates/${encodeURIComponent(crateId)}`,
+    { method: "PATCH", body: JSON.stringify(body), silentErrorCodes: [400, 403, 404] },
+    token,
+  );
+}
+
+export async function swapCrateLine(token: string, crateId: string, trackId: string) {
+  return apiRequest<{ crate: CrateDto; swapped: boolean }>(
+    `/crates/${encodeURIComponent(crateId)}/items/${encodeURIComponent(trackId)}/swap`,
+    { method: "POST", silentErrorCodes: [404, 409] },
     token,
   );
 }

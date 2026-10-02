@@ -253,6 +253,12 @@ export default function AgentPage() {
     return (
         <AuthGate title="Connect your wallet to access your AI DJ.">
             <div className="aid-page">
+                <div className="aid-discovery-banner">
+                    <span>
+                        Building a DJ set? <strong>Crate Digger</strong> turns what your set needs into a crate you can reorder, lock and save.
+                    </span>
+                    <Link href="/crates" className="aid-ghost-btn">Open Crate Digger →</Link>
+                </div>
                 {isLoading ? (
                     <div className="aid-loader-wrap">
                         <span className="aid-spinner" />
