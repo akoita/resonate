@@ -1,7 +1,9 @@
 import {
   CAMELOT_MIN_KEY_CONFIDENCE,
+  CURRENT_STEM_ANALYSIS_REVISION,
   camelotCode,
   sanitizeStemAudioFeatures,
+  stemAnalysisRevision,
   withCamelot,
   STEM_AUDIO_FEATURES_SCHEMA_VERSION,
 } from "../modules/ingestion/stem-audio-features";
@@ -100,6 +102,54 @@ describe("sanitizeStemAudioFeatures (#1184)", () => {
       beatCount: 15.9,
     });
     expect(result?.beatCount).toBe(15);
+  });
+});
+
+describe("analysisRevision (#2016)", () => {
+  it("keeps a positive integer revision and leaves it off when absent", () => {
+    expect(
+      sanitizeStemAudioFeatures({ ...validFeatures, analysisRevision: 2 })
+        ?.analysisRevision,
+    ).toBe(2);
+    const legacy = sanitizeStemAudioFeatures(validFeatures);
+    expect(legacy).not.toBeNull();
+    expect(legacy).not.toHaveProperty("analysisRevision");
+  });
+
+  it.each([0, -1, 1.5, "2", null, Number.NaN, 2 ** 60])(
+    "omits an invalid revision (%p) without rejecting the payload",
+    (analysisRevision) => {
+      const result = sanitizeStemAudioFeatures({
+        ...validFeatures,
+        analysisRevision,
+      });
+      expect(result).not.toBeNull();
+      expect(result).not.toHaveProperty("analysisRevision");
+      expect(result?.tempoBpm).toBe(validFeatures.tempoBpm);
+    },
+  );
+
+  it("carries the revision through withCamelot", () => {
+    const sanitized = sanitizeStemAudioFeatures({
+      ...validFeatures,
+      analysisRevision: 2,
+    });
+    expect(withCamelot(sanitized!)).toEqual(
+      expect.objectContaining({ analysisRevision: 2, camelot: "8B" }),
+    );
+  });
+
+  it("stemAnalysisRevision returns the stored revision or 1", () => {
+    expect(CURRENT_STEM_ANALYSIS_REVISION).toBe(2);
+    expect(stemAnalysisRevision({ analysisRevision: 3 })).toBe(3);
+    expect(stemAnalysisRevision(validFeatures)).toBe(1);
+    expect(stemAnalysisRevision(null)).toBe(1);
+    expect(stemAnalysisRevision(undefined)).toBe(1);
+    expect(stemAnalysisRevision([])).toBe(1);
+    expect(stemAnalysisRevision("2")).toBe(1);
+    for (const bad of [0, -1, 1.5, "2", null, Number.NaN]) {
+      expect(stemAnalysisRevision({ analysisRevision: bad })).toBe(1);
+    }
   });
 });
 

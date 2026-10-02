@@ -196,6 +196,19 @@ describe("MaintenanceController (HTTP)", () => {
     });
   });
 
+  it("POST /admin/stems/backfill-audio-features passes refresh through (#2016)", async () => {
+    await request(app.getHttpServer())
+      .post("/admin/stems/backfill-audio-features")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ limit: 5, refresh: true })
+      .expect(201);
+
+    expect(stemFeatureBackfillService.backfill).toHaveBeenLastCalledWith({
+      limit: 5,
+      refresh: true,
+    });
+  });
+
   it("GET /admin/stems/backfill-audio-features requires admin role and passes types (#2013)", async () => {
     await request(app.getHttpServer())
       .get("/admin/stems/backfill-audio-features")
@@ -215,13 +228,36 @@ describe("MaintenanceController (HTTP)", () => {
       });
     expect(stemFeatureBackfillService.status).toHaveBeenCalledWith({
       types: ["original", "vocals"],
+      refresh: false,
     });
 
     await request(app.getHttpServer())
       .get("/admin/stems/backfill-audio-features")
       .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
       .expect(200);
-    expect(stemFeatureBackfillService.status).toHaveBeenLastCalledWith({ types: undefined });
+    expect(stemFeatureBackfillService.status).toHaveBeenLastCalledWith({
+      types: undefined,
+      refresh: false,
+    });
+
+    await request(app.getHttpServer())
+      .get("/admin/stems/backfill-audio-features?types=original&refresh=true")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200);
+    expect(stemFeatureBackfillService.status).toHaveBeenLastCalledWith({
+      types: ["original"],
+      refresh: true,
+    });
+
+    // Only the literal string "true" enables refresh.
+    await request(app.getHttpServer())
+      .get("/admin/stems/backfill-audio-features?refresh=1")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200);
+    expect(stemFeatureBackfillService.status).toHaveBeenLastCalledWith({
+      types: undefined,
+      refresh: false,
+    });
   });
 
   it("POST /admin/embeddings/backfill requires admin role and delegates (#1452)", async () => {

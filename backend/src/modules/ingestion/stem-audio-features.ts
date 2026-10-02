@@ -9,6 +9,14 @@
 
 export const STEM_AUDIO_FEATURES_SCHEMA_VERSION = "stem-audio-features/v1";
 
+/**
+ * Revision of the extraction method that produced a feature payload (#2016).
+ * Revision 2 computes the key chroma on the harmonic part of the signal.
+ * Payloads without the field were produced by revision 1. The schema version
+ * stays v1 because the shape is unchanged.
+ */
+export const CURRENT_STEM_ANALYSIS_REVISION = 2;
+
 const BPM_MIN = 30;
 const BPM_MAX = 300;
 
@@ -24,6 +32,8 @@ export type SanitizedStemAudioFeatures = {
   key: { tonic: string; mode: "major" | "minor"; confidence: number | null } | null;
   energyRms: number | null;
   onsetDensity: number | null;
+  /** Extraction method revision; absent on payloads measured before #2016. */
+  analysisRevision?: number;
 };
 
 function finiteNumber(value: unknown): number | null {
@@ -51,6 +61,20 @@ function sanitizeKey(raw: unknown): SanitizedStemAudioFeatures["key"] {
     mode: key.mode,
     confidence: unitInterval(key.confidence),
   };
+}
+
+/**
+ * Revision recorded in a stored or incoming feature payload: the positive
+ * integer `analysisRevision`, or 1 when it is absent or invalid.
+ */
+export function stemAnalysisRevision(features: unknown): number {
+  if (!features || typeof features !== "object" || Array.isArray(features)) {
+    return 1;
+  }
+  const revision = (features as { analysisRevision?: unknown }).analysisRevision;
+  return typeof revision === "number" && Number.isSafeInteger(revision) && revision > 0
+    ? revision
+    : 1;
 }
 
 /**
@@ -82,6 +106,14 @@ export function sanitizeStemAudioFeatures(
 
   const beatCountRaw = nonNegative(input.beatCount);
 
+  const revisionRaw = input.analysisRevision;
+  const analysisRevision =
+    typeof revisionRaw === "number" &&
+    Number.isSafeInteger(revisionRaw) &&
+    revisionRaw > 0
+      ? revisionRaw
+      : null;
+
   return {
     schemaVersion: STEM_AUDIO_FEATURES_SCHEMA_VERSION,
     extractor: {
@@ -98,6 +130,7 @@ export function sanitizeStemAudioFeatures(
     key: sanitizeKey(input.key),
     energyRms: nonNegative(input.energyRms),
     onsetDensity: nonNegative(input.onsetDensity),
+    ...(analysisRevision !== null ? { analysisRevision } : {}),
   };
 }
 

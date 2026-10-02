@@ -7,7 +7,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { StorageProvider } from "../storage/storage_provider";
 import { resolveContainedPath } from "../storage/path_containment";
-import { sanitizeStemAudioFeatures, withCamelot } from "./stem-audio-features";
+import {
+  CURRENT_STEM_ANALYSIS_REVISION,
+  sanitizeStemAudioFeatures,
+  stemAnalysisRevision,
+  withCamelot,
+} from "./stem-audio-features";
 import {
   StemAnalysisResultMessage,
   StemPubSubPublisher,
@@ -38,6 +43,12 @@ export type StemFeatureBackfillRequest = {
    * means every type.
    */
   types?: string[];
+  /**
+   * Also re-measure stems whose stored features were produced by an older
+   * analysis revision than the current one (#2016); a missing revision counts
+   * as 1. Default false: only stems without features are targeted.
+   */
+  refresh?: boolean;
 };
 
 export type StemFeatureBackfillResult = {
@@ -79,6 +90,24 @@ export type StemFeatureBackfillStatus = Pick<
   "remaining" | "remainingByType"
 >;
 
+/**
+ * SQL for the revision stored in `Stem."audioFeatures"`: the positive integer
+ * `analysisRevision`, else 1 (absent, null, non-numeric or out of range).
+ * Mirrors `stemAnalysisRevision`; the digit bound keeps the cast within int.
+ */
+const STORED_REVISION_SQL = Prisma.sql`(CASE WHEN jsonb_typeof("audioFeatures"->'analysisRevision') = 'number' AND ("audioFeatures"->>'analysisRevision') ~ '^[1-9][0-9]{0,8}$' THEN ("audioFeatures"->>'analysisRevision')::int ELSE 1 END)`;
+
+/** Features are missing, or were produced by a revision older than `revisionSql`. */
+function needsMeasurementSql(currentRevision: number | Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`("audioFeatures" IS NULL OR jsonb_typeof("audioFeatures") = 'null' OR ${STORED_REVISION_SQL} < ${currentRevision})`;
+}
+
+function refreshPredicate(types: string[] | null): Prisma.Sql {
+  return Prisma.sql`"isEncrypted" = false AND ${needsMeasurementSql(
+    CURRENT_STEM_ANALYSIS_REVISION,
+  )}${types ? Prisma.sql` AND "type" IN (${Prisma.join(types)})` : Prisma.empty}`;
+}
+
 function sanitizeTypes(types: unknown): string[] | null {
   if (!Array.isArray(types)) return null;
   const allowed = new Set<string>(BACKFILL_STEM_TYPES);
@@ -113,7 +142,7 @@ export class StemFeatureBackfillService {
   ) {}
 
   /** Pending-stem filters shared by backfill and status. */
-  private pendingFilters(requestedTypes: unknown) {
+  private pendingFilters(requestedTypes: unknown, refresh = false) {
     const types = sanitizeTypes(requestedTypes);
     // AnyNull: the column is nullable JSON, so match DB null and JSON null.
     const pendingWhere: Prisma.StemWhereInput = {
@@ -123,17 +152,53 @@ export class StemFeatureBackfillService {
     const where: Prisma.StemWhereInput = types
       ? { ...pendingWhere, type: { in: types } }
       : pendingWhere;
-    return { types, pendingWhere, where };
+    return { types, pendingWhere, where, refresh };
+  }
+
+  /**
+   * Query arguments selecting up to `limit` pending stems ordered by id. With
+   * `refresh`, the ids come from a raw query (the revision lives inside the
+   * JSON column) and the rows are then loaded by id.
+   */
+  private async pendingSelection(
+    filters: ReturnType<StemFeatureBackfillService["pendingFilters"]>,
+    limit: number,
+  ): Promise<{
+    where: Prisma.StemWhereInput;
+    orderBy: { id: "asc" };
+    take?: number;
+  }> {
+    if (!filters.refresh) {
+      return { where: filters.where, orderBy: { id: "asc" }, take: limit };
+    }
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT "id" FROM "Stem" WHERE ${refreshPredicate(filters.types)} ORDER BY "id" ASC LIMIT ${limit}`,
+    );
+    return { where: { id: { in: rows.map((row) => row.id) } }, orderBy: { id: "asc" } };
   }
 
   private async countRemaining(
-    where: Prisma.StemWhereInput,
-    pendingWhere: Prisma.StemWhereInput,
+    filters: ReturnType<StemFeatureBackfillService["pendingFilters"]>,
   ): Promise<StemFeatureBackfillStatus> {
-    const remaining = await prisma.stem.count({ where });
+    if (filters.refresh) {
+      const [totalRows, groupedRows] = await Promise.all([
+        prisma.$queryRaw<Array<{ count: bigint }>>(
+          Prisma.sql`SELECT COUNT(*) AS "count" FROM "Stem" WHERE ${refreshPredicate(filters.types)}`,
+        ),
+        prisma.$queryRaw<Array<{ type: string; count: bigint }>>(
+          Prisma.sql`SELECT "type", COUNT(*) AS "count" FROM "Stem" WHERE ${refreshPredicate(null)} GROUP BY "type"`,
+        ),
+      ]);
+      const remainingByType: Record<string, number> = {};
+      for (const row of groupedRows) {
+        remainingByType[row.type] = Number(row.count);
+      }
+      return { remaining: Number(totalRows[0]?.count ?? 0), remainingByType };
+    }
+    const remaining = await prisma.stem.count({ where: filters.where });
     const grouped = await prisma.stem.groupBy({
       by: ["type"],
-      where: pendingWhere,
+      where: filters.pendingWhere,
       _count: { _all: true },
     });
     const remainingByType: Record<string, number> = {};
@@ -143,12 +208,13 @@ export class StemFeatureBackfillService {
     return { remaining, remainingByType };
   }
 
-  /** Remaining stems lacking features; no worker calls. */
+  /** Remaining stems lacking (or, with `refresh`, outdated) features; no worker calls. */
   async status(
-    request: { types?: unknown } = {},
+    request: { types?: unknown; refresh?: unknown } = {},
   ): Promise<StemFeatureBackfillStatus> {
-    const { where, pendingWhere } = this.pendingFilters(request.types);
-    return this.countRemaining(where, pendingWhere);
+    return this.countRemaining(
+      this.pendingFilters(request.types, request.refresh === true),
+    );
   }
 
   async backfill(
@@ -163,10 +229,11 @@ export class StemFeatureBackfillService {
     }
 
     // No localhost fallback (#2013): without a worker every stem would fail.
-    const { types, where, pendingWhere } = this.pendingFilters(request.types);
-    const counts = await this.countRemaining(where, pendingWhere);
+    const filters = this.pendingFilters(request.types, request.refresh === true);
+    const { types, refresh } = filters;
+    const counts = await this.countRemaining(filters);
     this.logger.warn(
-      `[backfill] worker_unavailable: neither DEMUCS_WORKER_URL nor the Pub/Sub publisher is available (types=${types ? types.join(",") : "all"}, remaining=${counts.remaining})`,
+      `[backfill] worker_unavailable: neither DEMUCS_WORKER_URL nor the Pub/Sub publisher is available (types=${types ? types.join(",") : "all"}, refresh=${refresh}, remaining=${counts.remaining})`,
     );
     return {
       scanned: 0,
@@ -186,12 +253,11 @@ export class StemFeatureBackfillService {
       PUBSUB_MAX_STEMS_PER_MESSAGE,
       Math.max(1, Math.floor(request.limit ?? 25)),
     );
-    const { types, where, pendingWhere } = this.pendingFilters(request.types);
+    const filters = this.pendingFilters(request.types, request.refresh === true);
+    const { types, refresh } = filters;
     const stems = await prisma.stem.findMany({
-      where,
+      ...(await this.pendingSelection(filters, limit)),
       select: { id: true, uri: true, mimeType: true, storageProvider: true },
-      orderBy: { id: "asc" },
-      take: limit,
     });
 
     const backendBaseUrl =
@@ -252,9 +318,9 @@ export class StemFeatureBackfillService {
       }
     }
 
-    const counts = await this.countRemaining(where, pendingWhere);
+    const counts = await this.countRemaining(filters);
     this.logger.log(
-      `[backfill] transport=pubsub scanned=${stems.length} dispatched=${dispatchable.length} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"}${jobId ? ` jobId=${jobId}` : ""}`,
+      `[backfill] transport=pubsub scanned=${stems.length} dispatched=${dispatchable.length} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"} refresh=${refresh}${jobId ? ` jobId=${jobId}` : ""}`,
     );
     return {
       scanned: stems.length,
@@ -270,8 +336,10 @@ export class StemFeatureBackfillService {
 
   /**
    * Applies a worker's analysis result (#2013) through the same
-   * sanitize/Camelot path as the HTTP backfill. Idempotent: only stems still
-   * lacking features are written, so redelivery never overwrites measured data.
+   * sanitize/Camelot path as the HTTP backfill. Idempotent: a stem is written
+   * only when it lacks features or its stored analysis revision is older than
+   * the incoming one (#2016), so redelivery never overwrites or downgrades
+   * measured data.
    */
   async applyAnalysisResults(
     message: StemAnalysisResultMessage,
@@ -316,13 +384,12 @@ export class StemFeatureBackfillService {
         continue;
       }
 
-      const written = await prisma.stem.updateMany({
-        where: { id: stemId, audioFeatures: { equals: Prisma.AnyNull } },
-        data: {
-          audioFeatures: withCamelot(sanitized) as Prisma.InputJsonValue,
-        },
-      });
-      updated += written.count;
+      // Compare-and-set in one statement so concurrent redeliveries cannot
+      // overwrite a payload of the same or a newer revision.
+      const written = await prisma.$executeRaw(
+        Prisma.sql`UPDATE "Stem" SET "audioFeatures" = ${JSON.stringify(withCamelot(sanitized))}::jsonb WHERE "id" = ${stemId} AND ${needsMeasurementSql(stemAnalysisRevision(sanitized))}`,
+      );
+      updated += written;
     }
 
     this.logger.log(
@@ -336,9 +403,10 @@ export class StemFeatureBackfillService {
     workerBaseUrl: string,
   ): Promise<StemFeatureBackfillResult> {
     const limit = Math.min(100, Math.max(1, Math.floor(request.limit ?? 25)));
-    const { types, where, pendingWhere } = this.pendingFilters(request.types);
+    const filters = this.pendingFilters(request.types, request.refresh === true);
+    const { types, refresh } = filters;
     const stems = await prisma.stem.findMany({
-      where,
+      ...(await this.pendingSelection(filters, limit)),
       select: {
         id: true,
         uri: true,
@@ -347,8 +415,6 @@ export class StemFeatureBackfillService {
         storageProvider: true,
         type: true,
       },
-      orderBy: { id: "asc" },
-      take: limit,
     });
 
     let updated = 0;
@@ -386,9 +452,9 @@ export class StemFeatureBackfillService {
       }
     }
 
-    const counts = await this.countRemaining(where, pendingWhere);
+    const counts = await this.countRemaining(filters);
     this.logger.log(
-      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"}`,
+      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"} refresh=${refresh}`,
     );
     return {
       scanned: stems.length,
