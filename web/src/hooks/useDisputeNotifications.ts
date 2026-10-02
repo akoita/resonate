@@ -13,6 +13,8 @@ export interface DisputeNotification {
   disputeId?: string;
   releaseId?: string;
   stemListingId?: string;
+  /** The crate a crate_watch_match notification leads to (#1967). */
+  crateId?: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -36,6 +38,7 @@ export interface IncomingNotificationEvent {
   disputeId?: string;
   releaseId?: string;
   stemListingId?: string;
+  crateId?: string | null;
   timestamp?: string;
 }
 
@@ -90,6 +93,7 @@ export function normalizeIncomingNotification(data: IncomingNotificationEvent): 
     disputeId: data.disputeId,
     releaseId: data.releaseId,
     stemListingId: data.stemListingId,
+    crateId: data.crateId,
     read: false,
     createdAt: data.timestamp || new Date().toISOString(),
   };

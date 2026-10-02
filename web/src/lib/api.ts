@@ -23,6 +23,7 @@ import type {
   SettleCrateQuoteBody,
   SettleCrateQuoteResult,
   UpdateCrateBody,
+  UpdateCrateWatchBody,
 } from "./crates";
 import type { RemixStructure, RemixStructureSegment } from "./remixStructure";
 
@@ -1089,9 +1090,18 @@ export async function getCrate(token: string, crateId: string) {
 export async function updateCrate(token: string, crateId: string, body: UpdateCrateBody) {
   return apiRequest<{ crate: CrateDto }>(
     `/crates/${encodeURIComponent(crateId)}`,
-    { method: "PATCH", body: JSON.stringify(body), silentErrorCodes: [400, 403, 404] },
+    { method: "PATCH", body: JSON.stringify(body), silentErrorCodes: [400, 403, 404, 409] },
     token,
   );
+}
+
+/**
+ * Turn watching on or off for a saved crate (#1967). Only the watch is sent:
+ * the title and lines are left exactly as they are. `crate_not_saved` (409) and
+ * `pro_required` (403) carry a `code`; see `crateErrorMessage`.
+ */
+export async function setCrateWatch(token: string, crateId: string, watch: UpdateCrateWatchBody) {
+  return updateCrate(token, crateId, { watch });
 }
 
 export async function swapCrateLine(token: string, crateId: string, trackId: string) {
