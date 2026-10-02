@@ -720,6 +720,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
             ],
           },
           {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/crate-digger-quote.png`,
+              alt: "The Buy this crate panel with a quote. A countdown reads Prices are good for 10:00. Each line shows its track, a license menu, what the license grants, stem checkboxes and every stem with its price, the artist side and the platform fee. A sold-out vocals stem and a track that is not for sale at this license are marked Not in this quote with the reason. At the bottom are the total in USDC and dollars and the Approve and buy and Get a new quote buttons.",
+              caption: "A quote: every line with its license, stems and prices, the stems that could not be quoted and why, and the total you approve.",
+              width: 929,
+              height: 1650,
+              source: LOCAL,
+            },
+          },
+          {
             kind: "paragraph",
             text: "A quote is good for about ten minutes. When it runs out, press Get a new quote. Before you are asked to sign, every stem is checked against the network again. If something changed, for example it sold out, the price moved, or your balance does not cover every stem, you are shown what was left out and why, and asked whether to buy the rest. Nothing is sent until you say yes.",
           },

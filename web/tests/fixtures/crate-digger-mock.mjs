@@ -338,7 +338,7 @@ const usdOf = (units) => formatUsdc(units);
  *
  * @param {Record<string, any>} crate
  * @param {{ lines?: Array<{ trackId: string; licenseType?: string; stemTypes?: string[] }>; buyerAddress?: string }} body
- * @param {{ number: number; expiresInMs: number; status?: string; transactionHash?: string | null }} options
+ * @param {{ number: number; expiresInMs: number; nowMs?: number; status?: string; transactionHash?: string | null }} options
  */
 export function buildQuote(crate, body, options) {
   const requested = new Map((body.lines ?? []).map((line) => [line.trackId, line]));
@@ -432,7 +432,7 @@ export function buildQuote(crate, body, options) {
     chainId: QUOTE_CHAIN_ID,
     marketplaceAddress: QUOTE_MARKETPLACE,
     buyerAddress: body.buyerAddress ?? MOCK_BUYER,
-    expiresAt: new Date(Date.now() + options.expiresInMs).toISOString(),
+    expiresAt: new Date((options.nowMs ?? Date.now()) + options.expiresInMs).toISOString(),
     transactionHash: options.transactionHash ?? null,
     lines,
     totals:
@@ -523,7 +523,7 @@ export function settledQuote(crate) {
  * renders cleanly. Returns the bodies the pages sent, for assertions.
  *
  * @param {import("@playwright/test").Page} page
- * @param {{ savedCrates?: Array<Record<string, any>>; latestQuotes?: Record<string, Record<string, any>> }} [options]
+ * @param {{ savedCrates?: Array<Record<string, any>>; latestQuotes?: Record<string, Record<string, any>>; now?: number }} [options] `now` pins the clock quotes expire against (the help screenshots freeze the page's clock to the same instant)
  */
 export async function mockCrateApi(page, options = {}) {
   /** @type {Map<string, Record<string, any>>} */
@@ -645,7 +645,7 @@ export async function mockCrateApi(page, options = {}) {
     quoteRequests.push({ crateId, body });
     quoteNumber += 1;
     const expiresInMs = expiries.length > 1 ? (expiries.shift() ?? 0) : expiries[0];
-    const quote = buildQuote(crate, body, { number: quoteNumber, expiresInMs });
+    const quote = buildQuote(crate, body, { number: quoteNumber, expiresInMs, nowMs: options.now });
     latestQuotes.set(crateId, quote);
     await route.fulfill({ status: 201, json: quote });
   });
