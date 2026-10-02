@@ -668,6 +668,25 @@ describe("CrateQuoteService (integration)", () => {
       });
     });
 
+    it("checks the claimed buyer against the wallet on file: mismatch is 409, a match (any case) or none is fine", async () => {
+      const crateId = await makeCrate(DJ, ["tB"]);
+      const mismatch = await service
+        .createQuote(DJ, crateId, { buyerAddress: OTHER_BUYER })
+        .catch((caught) => caught);
+      expect(mismatch).toBeInstanceOf(ConflictException);
+      expect((mismatch as ConflictException).getResponse()).toMatchObject({ code: "wallet_mismatch" });
+      expect(await prisma.crateQuote.count({ where: { crateId } })).toBe(0);
+
+      const matched = await service.createQuote(DJ, crateId, { buyerAddress: DJ_WALLET.toUpperCase().replace("0X", "0x") });
+      expect(matched.buyerAddress).toBe(DJ_WALLET.toLowerCase());
+      const absent = await service.createQuote(DJ, crateId, {});
+      expect(absent.buyerAddress).toBe(DJ_WALLET.toLowerCase());
+
+      const invalid = await service.createQuote(DJ, crateId, { buyerAddress: "0x12" }).catch((caught) => caught);
+      expect(invalid).toBeInstanceOf(BadRequestException);
+      expect((invalid as BadRequestException).getResponse()).toMatchObject({ code: "invalid_buyer_address" });
+    });
+
     it("another user's crate and an unknown id are a 404", async () => {
       const crateId = await makeCrate(DJ, ["tA"]);
       await expect(service.createQuote(OTHER_DJ, crateId, {})).rejects.toBeInstanceOf(NotFoundException);

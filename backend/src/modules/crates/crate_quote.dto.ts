@@ -52,8 +52,17 @@ export class CrateQuoteLineRequestDto {
   stemTypes?: CrateStemType[];
 }
 
-/** `POST /crates/:id/quote`. Omitted `lines` quotes every line of the crate. */
+/**
+ * `POST /crates/:id/quote`. Omitted `lines` quotes every line of the crate.
+ * `buyerAddress` is the smart account the browser will send the purchase from;
+ * when given it must be the account on file, else 409 `wallet_mismatch`.
+ */
 export class CreateCrateQuoteDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[0-9a-fA-F]{40}$/)
+  buyerAddress?: string;
+
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)

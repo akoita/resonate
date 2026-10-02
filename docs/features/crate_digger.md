@@ -150,7 +150,7 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | `GET /crates/:id` | Read one of your crates; other users' crates return 404 (JWT) |
 | `PATCH /crates/:id` | Rename, save, reorder, lock or remove lines (JWT) |
 | `POST /crates/:id/items/:trackId/swap` | Swap one unlocked line for a similar track (JWT) |
-| `POST /crates/:id/quote` | Price lines from the chain for approval; 400 `invalid_lines`, 409 `no_wallet`, 503 `marketplace_unavailable` (JWT) |
+| `POST /crates/:id/quote` | Price lines from the chain for approval; 400 `invalid_lines` / `invalid_buyer_address`, 409 `no_wallet` / `wallet_mismatch`, 503 `marketplace_unavailable` (JWT) |
 | `GET /crates/:id/quotes/:quoteId` | Read a quote with its receipts; other users' quotes return 404 (JWT) |
 | `POST /crates/:id/quotes/:quoteId/settle` | Report the transaction and verify it from the chain; 202 while pending, 409 `already_submitted` (JWT) |
 | `GET /crates/:id` `latestQuote` | The crate's most recent quote, or null |
@@ -187,6 +187,14 @@ tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
   chain head when it was priced; a transaction mined at or before that block
   fails the quote (`transaction_before_quote`), and one transaction can settle at
   most one quote (409 `transaction_already_used`).
+- The quote buys for the wallet on file (`Wallet.address`). The web should send
+  the smart account it will sign with as `buyerAddress`; a different address is
+  a 409 `wallet_mismatch` ("sign in again"), and omitting it behaves as before.
+  `Wallet.address` is rewritten at every passkey sign-in, but
+  `WalletService.refreshWallet` (the `/wallet/aa/enable`, `/wallet/aa/refresh`
+  and `/wallet/agent/enable` routes) can overwrite it with a derived
+  pseudo-address until the next sign-in. That is tracked separately and not
+  changed here; the `buyerAddress` check is what protects a quote from it.
 - If the chain cannot be read when settling, the quote stays `submitted` and
   the web retries.
 

@@ -85,6 +85,8 @@ export const CRATE_QUOTE_ERROR_CODES = {
   invalidTransactionHash: "invalid_transaction_hash",
   invalidDropped: "invalid_dropped",
   noWallet: "no_wallet",
+  invalidBuyerAddress: "invalid_buyer_address",
+  walletMismatch: "wallet_mismatch",
   marketplaceUnavailable: "marketplace_unavailable",
   alreadySubmitted: "already_submitted",
   transactionAlreadyUsed: "transaction_already_used",
@@ -146,9 +148,10 @@ export class CrateQuoteService {
   async createQuote(
     userId: string,
     crateId: string,
-    input: { lines?: unknown } = {},
+    input: { lines?: unknown; buyerAddress?: unknown } = {},
   ): Promise<CrateQuoteDto> {
     const requested = parseLineInputs(input.lines);
+    const claimedBuyer = parseBuyerAddress(input.buyerAddress);
 
     // Someone else's crate and an unknown id look identical: 404, never 403.
     const crate = await prisma.crate.findFirst({
@@ -178,6 +181,16 @@ export class CrateQuoteService {
       throw new ConflictException({
         code: CRATE_QUOTE_ERROR_CODES.noWallet,
         message: "A wallet is needed to buy; create one first",
+      });
+    }
+    // The purchase is signed by the passkey smart account in the browser; the
+    // wallet on file can be rewritten by other flows, and a quote for a buyer
+    // that never signs would fail on settlement. Better to say so up front.
+    if (claimedBuyer !== null && claimedBuyer !== wallet.address.toLowerCase()) {
+      throw new ConflictException({
+        code: CRATE_QUOTE_ERROR_CODES.walletMismatch,
+        message:
+          "Your signed-in wallet does not match the account you are buying from; sign in again and retry",
       });
     }
     if (!this.reader.isConfigured()) {
@@ -940,6 +953,18 @@ function isKnownPaymentAsset(chainId: number, paymentToken: string): boolean {
       && asset.enabled !== false
       && normalizePaymentToken(asset.tokenAddress) === token,
   );
+}
+
+/** Validates the optional `buyerAddress`; returns it lower-case, or null when absent. */
+function parseBuyerAddress(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    throw new BadRequestException({
+      code: CRATE_QUOTE_ERROR_CODES.invalidBuyerAddress,
+      message: "buyerAddress must be a 0x-prefixed 20-byte address",
+    });
+  }
+  return value.toLowerCase();
 }
 
 /** Validates the `lines` of a quote request; undefined means every crate line. */

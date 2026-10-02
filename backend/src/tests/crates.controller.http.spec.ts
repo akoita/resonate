@@ -361,6 +361,24 @@ describe("CratesController (http)", () => {
       );
     });
 
+    it("POST /crates/:id/quote -> passes a valid buyerAddress through, and a 409 wallet_mismatch", async () => {
+      const buyerAddress = `0x${"Ab".repeat(20)}`;
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ buyerAddress })
+        .expect(201);
+      expect(mockQuotes.createQuote).toHaveBeenCalledWith("dj-1", "crate-1", expect.objectContaining({ buyerAddress }));
+
+      mockQuotes.createQuote.mockRejectedValueOnce(new ConflictException({ code: "wallet_mismatch" }));
+      const mismatch = await request(app.getHttpServer())
+        .post("/crates/crate-1/quote")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ buyerAddress })
+        .expect(409);
+      expect(mismatch.body.code).toBe("wallet_mismatch");
+    });
+
     it("POST /crates/:id/quote -> accepts an empty body (every line)", async () => {
       await request(app.getHttpServer())
         .post("/crates/crate-1/quote")
@@ -370,6 +388,10 @@ describe("CratesController (http)", () => {
     });
 
     it.each([
+      ["buyerAddress type", { buyerAddress: 5 }],
+      ["buyerAddress short", { buyerAddress: "0x1234" }],
+      ["buyerAddress non-hex", { buyerAddress: `0x${"zz".repeat(20)}` }],
+      ["buyerAddress without prefix", { buyerAddress: "ab".repeat(20) }],
       ["lines type", { lines: "t1" }],
       ["empty lines", { lines: [] }],
       ["too many lines", { lines: Array.from({ length: 26 }, (_, i) => ({ trackId: `t${i}` })) }],
