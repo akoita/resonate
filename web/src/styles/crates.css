@@ -127,13 +127,15 @@
 }
 
 .crates-btn--primary {
-  background: var(--r-primary);
-  border-color: var(--r-primary);
+  /* --r-primary with white text is 4.34:1; the container shade clears 4.5:1. */
+  background: var(--r-primary-container);
+  border-color: var(--r-primary-container);
   color: var(--r-on-primary);
 }
 
 .crates-btn--primary:hover:not(:disabled) {
   background: var(--r-primary-container);
+  filter: brightness(0.9);
 }
 
 .crates-btn--danger {
