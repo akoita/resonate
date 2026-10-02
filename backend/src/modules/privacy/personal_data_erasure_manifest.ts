@@ -657,6 +657,23 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Cascades from the deleted taste control; the vector of a written note has no use once the note is gone.",
   },
   {
+    model: "Crate",
+    disposition: "delete",
+    reason: "A DJ's saved crates (#1962): the person's own working lists and filters, built only for them, with no retention basis once they are gone.",
+  },
+  {
+    model: "CrateItem",
+    disposition: "delete",
+    reason: "The tracks in a person's saved crates (#1962): a track id, a position and a lock flag, owned by the person through `userId` and deleted with their crates.",
+    note: "`userId` is denormalized from the crate so the engine and the export find the rows directly; the crate delete would also cascade them.",
+  },
+  {
+    model: "CrateRequest",
+    disposition: "delete",
+    reason: "The person's crate request log (#1962): filters, counts and unmet filter keys that describe what they searched for. It holds no free text, but it is behavioural state about them with no retention basis.",
+    note: "`crateId` is SET NULL when the crate above is deleted; this rule deletes the request rows themselves by `userId`, so none survive the erasure.",
+  },
+  {
     model: "SavedPlaylist",
     disposition: "delete",
     reason: "This person's saves of other people's playlists; a private bookmark with no value to anyone else.",

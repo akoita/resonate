@@ -188,7 +188,17 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
 `ShowPledge`, `ShowCampaignEvent`, `PunchlineCollectible`,
-`RecommendationProfile`, `PunchlineUnlockGrant`.
+`RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
+`CrateRequest`.
+
+Crate Digger (#1962) adds three of these, all keyed by `userId`. `Crate` (title,
+filters, status), `CrateItem` (track id, position, locked flag; `userId` is
+denormalized from the crate) and `CrateRequest` (source, filters, parser
+strategy, counts and the filter keys that left gaps) are the person's own data.
+Erasure disposition: `delete` for all three, by `userId`. Export: all three are
+included. **No free text is stored**: the DJ's request text is never persisted
+(`CrateRequest.unparsedCount` is a count only), so the export and erasure have
+no request text to cover. `Crate.title` is the one user-typed string.
 
 ## Category 2 — personal, but no relation (28 models)
 

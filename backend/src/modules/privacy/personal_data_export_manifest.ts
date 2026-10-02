@@ -264,6 +264,26 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
   },
   {
+    model: "Crate",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "Added by #1962. The person's saved crates: title, status and the filters each was built with.",
+  },
+  {
+    model: "CrateItem",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "Added by #1962. The tracks in the person's saved crates: track id, position, locked flag and when it was added, keyed by the owner's userId (denormalized from the crate).",
+  },
+  {
+    model: "CrateRequest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #1962. The person's crate requests: source, filters, parser strategy, counts and the filter keys "
+      + "that left gaps. The free text they typed is never stored, so there is none to export.",
+  },
+  {
     model: "Playlist",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
