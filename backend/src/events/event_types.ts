@@ -1284,6 +1284,8 @@ export interface NotificationCreatedEvent extends BaseEvent {
   disputeId?: string;
   releaseId?: string;
   stemListingId?: string;
+  /** The crate a `crate_watch_match` notification leads to (#1967). */
+  crateId?: string;
 }
 
 export interface ReleaseRightsRequestUpdatedEvent extends BaseEvent {

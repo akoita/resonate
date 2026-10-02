@@ -189,7 +189,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
 `ShowPledge`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
-`CrateRequest`, `CrateQuote`, `CrateQuoteLine`.
+`CrateRequest`, `CrateQuote`, `CrateQuoteLine`, `CrateWatchMatch`.
 
 Crate Digger (#1962) adds three of these, all keyed by `userId`. `Crate` (title,
 filters, status), `CrateItem` (track id, position, locked flag; `userId` is
@@ -208,6 +208,16 @@ listing and token ids, raw price units from the chain, the settlement receipt;
 disposition: `delete` for both, by `userId`; the settled sales themselves are
 chain facts and `StemPurchase` rows, which erasure does not touch. Export: both
 are included. Nothing user-typed is stored.
+
+Crate watching (#1967) adds one more, keyed by `userId`. `CrateWatchMatch` (crate
+id, track id, when it matched, when a notification was sent, if ever; `userId` is
+denormalized from the crate) records which new releases fit a person's watching
+crates. Erasure disposition: `delete`, by `userId`; the crate delete also
+cascades it. Export: included. `Crate` gains `watchMode` and `watchExpiresAt`,
+which travel with the crate in both. The `crate_watch_match` notification is an
+ordinary `Notification` row keyed by wallet address, which the existing export
+and erasure rules already cover; its new `crateId` column holds a crate id, not
+personal text. Nothing user-typed is stored beyond the existing crate title.
 
 ## Category 2 — personal, but no relation (28 models)
 

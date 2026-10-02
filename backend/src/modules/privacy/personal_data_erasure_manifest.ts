@@ -686,6 +686,12 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     note: "`userId` is denormalized from the quote so the engine and the export find the rows directly; the quote delete would also cascade them.",
   },
   {
+    model: "CrateWatchMatch",
+    disposition: "delete",
+    reason: "The new releases that matched a person's watching crates (#1967): crate and track ids with the time of each match. It is behavioural state about what they want to hear, with no retention basis once their crates are gone.",
+    note: "`userId` is denormalized from the crate so the engine and the export find the rows directly; the crate delete would also cascade them.",
+  },
+  {
     model: "SavedPlaylist",
     disposition: "delete",
     reason: "This person's saves of other people's playlists; a private bookmark with no value to anyone else.",

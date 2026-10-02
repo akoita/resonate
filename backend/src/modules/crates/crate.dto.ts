@@ -19,6 +19,11 @@ import type { CrateQuoteDto } from "./crate_quote.dto";
 import type { CrateTransitionFacts } from "./crate_ordering";
 import type { CrateEntitlements } from "./crate-entitlements";
 import {
+  CRATE_WATCH_DTO_MODES,
+  CRATE_WATCH_MAX_DAYS,
+  CRATE_WATCH_MIN_DAYS,
+} from "./crate_watch";
+import {
   CRATE_MAX_COUNT,
   CRATE_MIN_COUNT,
   CRATE_REQUEST_MAX_TEXT_LENGTH,
@@ -81,6 +86,23 @@ export class UpdateCrateItemDto {
 }
 
 /**
+ * The `watch` member of `PATCH /crates/:id` (#1967). `mode` "auto_buy" passes
+ * the DTO so the service can answer it with its own fixed code
+ * (`watch_mode_unavailable`); any other unknown mode is a 400 here.
+ * `expiresInDays` defaults to 90 and is ignored for "off".
+ */
+export class UpdateCrateWatchDto {
+  @IsIn([...CRATE_WATCH_DTO_MODES])
+  mode!: (typeof CRATE_WATCH_DTO_MODES)[number];
+
+  @IsOptional()
+  @IsInt()
+  @Min(CRATE_WATCH_MIN_DAYS)
+  @Max(CRATE_WATCH_MAX_DAYS)
+  expiresInDays?: number;
+}
+
+/**
  * `PATCH /crates/:id` (#1963). `items`, when present, is the full new order of
  * the crate: every current line exactly once, nothing added (omitting a line
  * removes it). The service enforces that and answers 400 `invalid_items`.
@@ -102,6 +124,12 @@ export class UpdateCrateDto {
   @ValidateNested({ each: true })
   @Type(() => UpdateCrateItemDto)
   items?: UpdateCrateItemDto[];
+
+  /** Watch for new releases that fit the crate (#1967); saved crates only. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateCrateWatchDto)
+  watch?: UpdateCrateWatchDto;
 }
 
 /** A current non-original, non-master stem of a crate line. */
@@ -147,6 +175,30 @@ export type CrateItemDto = {
   transitionToNext: CrateTransitionFacts | null;
 };
 
+/** One newly playable track that fit a watching crate (#1967). */
+export type CrateWatchMatchDto = {
+  trackId: string;
+  /** The release page that plays the track; null when unknown. */
+  releaseId: string | null;
+  title: string;
+  artistName: string | null;
+  matchedAt: string;
+};
+
+/**
+ * What a crate is watching for (#1967). `mode` is what is in effect now: "off"
+ * for a draft crate and for a watch that has run out (`expiresAt` then says
+ * when it ended). `summary` counts this UTC month and is computed when the crate
+ * is read, never sent on a schedule. `recentMatches` is newest first, at most
+ * 20, and lists only tracks that are still publicly playable.
+ */
+export type CrateWatchDto = {
+  mode: "off" | "notify";
+  expiresAt: string | null;
+  summary: { month: string; matches: number; notified: number };
+  recentMatches: CrateWatchMatchDto[];
+};
+
 export type CrateDto = {
   id: string;
   status: string;
@@ -155,6 +207,7 @@ export type CrateDto = {
   createdAt: string;
   updatedAt: string;
   entitlements: CrateEntitlements;
+  watch: CrateWatchDto;
   items: CrateItemDto[];
 };
 

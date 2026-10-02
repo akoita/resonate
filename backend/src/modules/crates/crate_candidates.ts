@@ -1,4 +1,5 @@
 import { measuredTrackFeatures } from "../agents/measured_track_features";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import type { CrateCandidateFacts, CrateLicenseType } from "./crate.types";
 
 /**
@@ -33,6 +34,8 @@ export type CrateStemRow = {
 /** A catalog track with everything the crate pipeline reads about it. */
 export type CrateTrackRow = {
   id: string;
+  /** The release the track is on; the crate watch list links to it. */
+  releaseId?: string;
   title: string;
   /** `Track.artist` scalar override. */
   artist: string | null;
@@ -121,4 +124,13 @@ export function candidateFactsFromRow(
     indicativePriceUsd,
     verifiedHuman: verifiedHumanArtistIds.has(row.release.artistId),
   };
+}
+
+/** The credited artist (#1492), not the uploader account label. */
+export function creditedArtistName(row: CrateTrackRow): string | null {
+  return resolveCreditedArtistName({
+    trackArtist: row.artist,
+    primaryArtist: row.release.primaryArtist,
+    accountDisplayName: row.release.artist?.displayName ?? null,
+  });
 }

@@ -27,6 +27,8 @@ interface NotificationPayload {
   disputeId?: string;
   releaseId?: string;
   stemListingId?: string;
+  /** The crate a `crate_watch_match` notification leads to (#1967). */
+  crateId?: string;
 }
 
 @Injectable()
@@ -302,6 +304,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
           disputeId: payload.disputeId,
           releaseId: payload.releaseId,
           stemListingId: payload.stemListingId,
+          crateId: payload.crateId,
         },
       });
 
@@ -318,6 +321,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
         disputeId: payload.disputeId,
         releaseId: payload.releaseId,
         stemListingId: payload.stemListingId,
+        crateId: payload.crateId,
       });
 
       this.logger.log(`Created notification ${notification.id} (${payload.type}) for ${payload.walletAddress}`);
