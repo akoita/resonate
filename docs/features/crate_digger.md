@@ -32,13 +32,18 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
   the chain, and sends one batched user operation after a confirm step. Receipts
   show per stem and come back when the crate is reopened. `StemPurchase` is
   indexed per `Sold` log, so a batch of N buys records N purchases.
+- **Export to rekordbox and Serato (#1965).**
+  `GET /crates/:id/export?format=rekordbox|serato&folder=...` builds the file
+  from the stems the DJ owns for the crate's tracks; `GET /crates/:id/export/manifest`
+  lists them with the names to save them under, and the lines left out with a
+  reason. The crate page's **Export to rekordbox or Serato** panel downloads
+  each stem through the existing licensed download path, remembers the folder
+  per browser, and saves the file. Export never grants a right.
 - **`crate.pro` entitlement seam (#1966).** Free for everyone; nothing is gated
   yet. The crate page reads it from the crate response.
 
 Not built yet, each tracked in its own issue:
 
-- rekordbox XML and Serato export
-  ([#1965](https://github.com/akoita/resonate/issues/1965)).
 - Bounded watching with optional capped auto-buy
   ([#1967](https://github.com/akoita/resonate/issues/1967)).
 
@@ -172,9 +177,65 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
    eight beats at the outgoing tempo, tempo-matching the incoming line within
    ±8%. Deterministic DSP only; nothing is generated.
 
+13. **Export (#1965).** Resonate sells stems, not full mixes, so an export entry
+    is a stem the DJ owns, not a track.
+    1. *What is exportable.* A current stem of a crate track covered by a
+       `StemPurchase` of the caller's `Wallet.address` (the ownership rule of
+       `POST /encryption/download`) under a personal, remix or commercial
+       license. All three standard tiers include the full-quality stem download
+       (`docs/rfc/business-model.md`). A purchase under `sync`, `sample` or
+       `broadcast` has no standard terms: that line is skipped
+       `no_export_right`. A line with no purchased stem is skipped
+       `not_purchased`. Entries are deduplicated by stem and ordered by crate
+       position, then stem type (vocals, drums, bass, piano, guitar, other).
+       The seam decision `CrateEntitlementsService.export` is free for
+       everyone; a future denial answers 403 `pro_required`.
+    2. *File names.* The backend decides them: `Artist - Title (Stem).mp3`,
+       stripped of `<>:"/\|?*` and control characters, spaces collapsed,
+       leading and trailing dots and spaces trimmed, at most 150 characters
+       before the extension; a collision inside one export appends
+       ` [first 6 characters of the stem id]`. The web saves each downloaded
+       stem under the manifest's `fileName`, so the export files and the disk
+       agree.
+    3. *Measured facts.* Tempo, key and first beat come from the stem's own
+       `audioFeatures`, else from the track's measured features (its `original`
+       stem); the first beat follows the tempo it is paired with. The platform's
+       confidence gates apply, and nothing is guessed.
+    4. *The folder.* rekordbox and Serato reference files on the DJ's disk, so
+       the export takes `folder`, the absolute path the DJ typed (`/Users/...`
+       or `C:\...`, at most 400 characters, no control characters, no `.` or
+       `..` segment; otherwise 400 `invalid_folder`). It is written into the
+       file and nowhere else: never stored, never logged, never in an error
+       message. The web remembers it in `localStorage` only.
+    5. *rekordbox XML.* `DJ_PLAYLISTS` 1.0.0 with a `COLLECTION` of `TRACK`
+       elements (`Name` is `Title (Stem)`, `Album` the crate title, `Location`
+       `file://localhost/` plus the percent-encoded path, `AverageBpm`,
+       `Tonality` such as `Am` or `F#m`), a `TEMPO` child and a `First beat`
+       memory cue only when both a tempo and a first beat were measured, and a
+       playlist of the crate title in crate order.
+    6. *Serato crate.* A binary `.crate`: a `vrsn` tag, then one `otrk` tag per
+       entry holding a `ptrk` tag with the path relative to the volume root, all
+       UTF-16BE (POSIX drops the leading `/`, and `Volumes/<name>/` for a mounted
+       volume; Windows drops the drive). Serato reads tempo, key and cues from
+       its own analysis or the file's tags, so the crate carries none of them.
+    7. *Routes.* `format` is validated first (400 `invalid_format`), then the
+       folder (400 `invalid_folder`), then the entitlement, the crate (another
+       user's is a 404), the wallet (409 `no_wallet`) and the entries (409
+       `nothing_to_export` for the file routes; the manifest still answers 200
+       with empty `entries`). Both are throttled like the other crate routes
+       and answer `Cache-Control: no-store`. The file route answers
+       `application/xml; charset=utf-8` (`<crate title>.xml`) or
+       `application/octet-stream` (`<crate title>.crate`) with
+       `Content-Disposition: attachment` and an RFC 5987 `filename*`; the API
+       exposes `Content-Disposition` to the browser for it.
+
 ## Privacy
 
-The request text is never stored or logged; `CrateRequest` keeps only the
+The export folder, which can contain the DJ's username, is only written into
+the generated file. The API never stores or logs it (its request log records
+the path without the query string) and the web helper does not use the logging
+request wrapper. Request logs outside the application (a proxy or load
+balancer) are a deployment matter: see `resonate-iac`. The request text is never stored or logged; `CrateRequest` keeps only the
 filters, the number of unparsed phrases and the unmet filter keys. Crates,
 crate lines and crate requests are included in the personal data export and
 deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
@@ -191,6 +252,8 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | `POST /crates/:id/quote` | Price lines from the chain for approval; 400 `invalid_lines` / `invalid_buyer_address`, 409 `no_wallet` / `wallet_mismatch`, 503 `marketplace_unavailable` (JWT) |
 | `GET /crates/:id/quotes/:quoteId` | Read a quote with its receipts; other users' quotes return 404 (JWT) |
 | `POST /crates/:id/quotes/:quoteId/settle` | Report the transaction and verify it from the chain; 202 while pending, 409 `already_submitted` (JWT) |
+| `GET /crates/:id/export/manifest` | The stems you own for the crate with their download names, the lines left out and why, and notes; 200 even when empty; 404 / 409 `no_wallet` / 403 `pro_required` (JWT) |
+| `GET /crates/:id/export?format=rekordbox\|serato&folder=...` | The rekordbox XML or Serato crate for the stems you own; 400 `invalid_format` / `invalid_folder`, 404, 409 `no_wallet` / `nothing_to_export`, 403 `pro_required` (JWT) |
 | `GET /crates/:id` `latestQuote` | The crate's most recent quote, or null |
 | `/crates`, `/crates/:id` | Crate Digger request box, crate list and crate page with the quote and purchase panel |
 
@@ -256,10 +319,23 @@ tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
   panel and the API calls, and unit tests cover the plan, the chain check and
   the purchase sequence.
 
+- Export lists one file per owned stem and never a full mix. The folder is typed
+  by the DJ and not checked against their disk; a wrong folder gives a file
+  whose paths do not resolve, and the DJ software shows the tracks as missing.
+- The Serato crate carries no tempo, key or cue; only the rekordbox XML carries a
+  tempo grid and a first-beat cue. A stem with no measured tempo has none.
+- The download path does not check track availability, and neither does the
+  export: an owned stem of a track that has since been withdrawn is still listed.
+- The export list is read from the saved crate; unsaved edits are flagged, not
+  exported. The browser may ask permission to save several files at once.
+- Key names use sharp spellings (`A#m`, not `Bbm`), as the platform's key tables
+  do.
+
 ## Testing
 
 - Unit: `cd backend && npx jest src/tests/crate_ src/tests/model_crate_request_parser.spec.ts src/tests/crates.controller.http.spec.ts` (includes the quote rules in `crate_quote.spec.ts` and the viem reader in `crate_marketplace_reader.spec.ts`)
-- Web: `cd web && npx vitest run src/lib/crates.test.ts src/lib/crateTransitionPreview.test.ts src/lib/crateQuote src/lib/onchainCheckout.test.ts src/components/crates`
+- Export: `cd backend && npx jest src/tests/crate_export.spec.ts` (byte-exact rekordbox XML and Serato crate against the fixtures in `src/tests/fixtures/crate-export/`) and `npm run test:integration -- crate_export.integration` (real Prisma: ownership, skipped reasons, manifest, the folder never persisted)
+- Web: `cd web && npx vitest run src/lib/crates.test.ts src/lib/crateExport src/lib/crateTransitionPreview.test.ts src/lib/crateQuote src/lib/onchainCheckout.test.ts src/components/crates`
 - Web flow (mock auth, no backend data; the dev server and the tests must agree on `NEXT_PUBLIC_CHAIN_ID` and `NEXT_PUBLIC_MARKETPLACE_ADDRESS`): `cd web && npx playwright test tests/crate-digger.spec.ts --project=chromium`
 - Integration (Docker): `cd backend && npm run test:integration -- crates.integration crate_quote.integration flow2_contracts` (the quote spec replaces the chain with a fake reader; Prisma is real)
 - Contracts (Foundry): `cd contracts && forge test --match-path test/unit/StemMarketplace.t.sol --match-test BatchBuy` (one approval and several buys in one call match `quoteBuy`; one expired line reverts the whole batch)
