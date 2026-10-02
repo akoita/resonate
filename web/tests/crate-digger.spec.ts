@@ -3,9 +3,13 @@ import { test, expect } from "./auth.setup";
 import {
   CRATE_ID,
   CRATE_REQUEST_TEXT,
+  MOCK_BUYER,
+  MOCK_QUOTE_HASH,
   REFERENCE_CRATE_ID,
   REFERENCE_TRACK_ID,
+  mockCrate,
   mockCrateApi,
+  settledQuote,
 } from "./fixtures/crate-digger-mock.mjs";
 
 /**
@@ -297,6 +301,16 @@ test.describe("Crate Digger (#1963)", () => {
     await page.locator(".crates-line").nth(1).getByText(/^License options/).click();
     await page.getByRole("button", { name: 'Lock "Midnight Courier" in place' }).click();
     expect(await blocking()).toEqual([]);
+
+    // The quote panel, with a quote on screen and at the confirm step.
+    await page.getByRole("button", { name: "Save crate" }).click();
+    await expect(page.getByText("Crate saved")).toBeVisible();
+    await page.getByRole("button", { name: "Get a quote" }).click();
+    await expect(page.locator(".crates-quote-line").first()).toBeVisible();
+    expect(await blocking()).toEqual([]);
+    await page.getByRole("button", { name: "Approve and buy" }).click();
+    await expect(page.getByRole("heading", { name: "Confirm your purchase" })).toBeVisible();
+    expect(await blocking()).toEqual([]);
   });
 
   test("an unknown crate says so", async ({ authenticatedPage: page }) => {
@@ -304,5 +318,163 @@ test.describe("Crate Digger (#1963)", () => {
     await page.goto("/crates/does-not-exist");
     await expect(page.getByRole("heading", { name: "Crate not found" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Back to your crates" })).toBeVisible();
+  });
+});
+
+test.describe("Crate quote (#1964)", () => {
+  // The signing path itself (wallet, bundler, chain) cannot run under mock auth:
+  // it is covered by the unit tests of the plan, the preflight and the purchase
+  // sequence. These tests cover what the DJ sees and what is sent to the API.
+  async function buildCrate(page: import("@playwright/test").Page) {
+    await page.goto("/crates");
+    await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+    await page.getByRole("button", { name: "Build crate" }).click();
+    await page.waitForURL(`**/crates/${CRATE_ID}`);
+    await expect(page.locator(".crates-line")).toHaveCount(6);
+  }
+
+  const panel = (page: import("@playwright/test").Page) =>
+    page.getByRole("region", { name: "Buy this crate" });
+  const quoteLine = (page: import("@playwright/test").Page, trackId: string) =>
+    page.locator(`.crates-quote-line[data-track-id="${trackId}"]`);
+
+  test("a quote shows each line's price, split, rights, dropped stems and totals", async ({
+    authenticatedPage: page,
+  }) => {
+    const { quoteRequests } = await mockCrateApi(page);
+    await buildCrate(page);
+
+    await panel(page).getByRole("button", { name: "Get a quote" }).click();
+    await expect(panel(page).getByRole("heading", { name: "Your quote" })).toBeVisible();
+    // The page asks for the account it will sign with, and nothing else on a first quote.
+    expect(quoteRequests).toHaveLength(1);
+    expect(quoteRequests[0].crateId).toBe(CRATE_ID);
+    expect(quoteRequests[0].body).toEqual({ buyerAddress: MOCK_BUYER });
+
+    const neon = quoteLine(page, "track-neon-drift");
+    await expect(neon.getByText("Vocals", { exact: true }).first()).toBeVisible();
+    await expect(neon.getByText("0.5 USDC (about $0.50)")).toBeVisible();
+    await expect(neon.getByText("Artist side 0.45 USDC")).toBeVisible();
+    await expect(neon.getByText(/Platform fee 0\.05 USDC/)).toBeVisible();
+    await expect(neon.getByText("Stream & collect — personal listening")).toBeVisible();
+    await expect(neon.getByLabel("License for Neon Drift")).toHaveValue("personal");
+
+    // A sold-out stem and an unavailable track say why, in plain words.
+    await expect(quoteLine(page, "track-midnight-courier").getByText("Not in this quote: Sold out")).toBeVisible();
+    await expect(
+      quoteLine(page, "track-paper-lanterns").getByText("Not in this quote: Not for sale at this license"),
+    ).toBeVisible();
+
+    // Four stems are on offer at $0.50 each.
+    await expect(panel(page).getByText("Total in USDC")).toBeVisible();
+    await expect(panel(page).getByLabel("Quote total").getByText("2 USDC (about $2.00)")).toBeVisible();
+    await expect(panel(page).getByText(/^Prices are good for \d+:\d\d$/)).toBeVisible();
+    await expect(panel(page).getByText(/Over your/)).toHaveCount(0);
+
+    // Approve opens a confirm step that lists exactly what will be bought.
+    await panel(page).getByRole("button", { name: "Approve and buy" }).click();
+    const confirm = panel(page).getByRole("group", { name: "Confirm your purchase" });
+    await expect(confirm.getByText("You are about to buy 4 stems:")).toBeVisible();
+    await expect(confirm.getByText(/^Neon Drift: Vocals \(Personal\) for 0\.5 USDC$/)).toBeVisible();
+    await expect(confirm.getByText(/^Midnight Courier/)).toHaveCount(0);
+    await expect(confirm.getByRole("button", { name: "Confirm and sign" })).toBeEnabled();
+    await confirm.getByRole("button", { name: "Back" }).click();
+    await expect(panel(page).getByRole("button", { name: "Approve and buy" })).toBeVisible();
+    expect(quoteRequests).toHaveLength(1);
+  });
+
+  test("changing a line's license or stems re-quotes every line", async ({ authenticatedPage: page }) => {
+    const { quoteRequests } = await mockCrateApi(page);
+    await buildCrate(page);
+    await panel(page).getByRole("button", { name: "Get a quote" }).click();
+    await expect(quoteLine(page, "track-neon-drift")).toBeVisible();
+
+    // A different license on one line: the request carries every line.
+    await quoteLine(page, "track-neon-drift").getByLabel("License for Neon Drift").selectOption("remix");
+    await expect(quoteLine(page, "track-neon-drift").getByText("2 USDC (about $2.00)")).toBeVisible();
+    expect(quoteRequests).toHaveLength(2);
+    expect(quoteRequests[1].body.buyerAddress).toBe(MOCK_BUYER);
+    expect(quoteRequests[1].body.lines).toHaveLength(6);
+    expect(quoteRequests[1].body.lines[0]).toEqual({
+      trackId: "track-neon-drift",
+      licenseType: "remix",
+      stemTypes: ["vocals"],
+    });
+    await expect(panel(page).getByLabel("Quote total").getByText("3.5 USDC (about $3.50)")).toBeVisible();
+    await expect(quoteLine(page, "track-neon-drift").getByText("Use in derivative works, publish remixes")).toBeVisible();
+
+    // One more stem on another line.
+    await quoteLine(page, "track-glass-harbour").getByLabel("Drums").click();
+    await expect(quoteLine(page, "track-glass-harbour").locator(".crates-quote-item")).toHaveCount(2);
+    expect(quoteRequests).toHaveLength(3);
+    const glass = quoteRequests[2].body.lines.find((line: { trackId: string }) => line.trackId === "track-glass-harbour");
+    expect(glass).toEqual({ trackId: "track-glass-harbour", licenseType: "personal", stemTypes: ["vocals", "drums"] });
+    // The earlier choice is kept.
+    expect(quoteRequests[2].body.lines[0]).toMatchObject({ trackId: "track-neon-drift", licenseType: "remix" });
+    await expect(panel(page).getByLabel("Quote total").getByText("4 USDC (about $4.00)")).toBeVisible();
+  });
+
+  test("an expired quote cannot be approved and asks for a new one", async ({ authenticatedPage: page }) => {
+    const { quoteRequests, expireNextQuoteIn } = await mockCrateApi(page);
+    await buildCrate(page);
+    expireNextQuoteIn(-1_000);
+
+    await panel(page).getByRole("button", { name: "Get a quote" }).click();
+    await expect(panel(page).getByText("This quote has expired. Get a new quote.")).toBeVisible();
+    await expect(panel(page).getByRole("button", { name: "Approve and buy" })).toHaveCount(0);
+
+    await panel(page).getByRole("button", { name: "Get a new quote" }).click();
+    await expect(panel(page).getByText(/^Prices are good for \d+:\d\d$/)).toBeVisible();
+    await expect(panel(page).getByRole("button", { name: "Approve and buy" })).toBeEnabled();
+    expect(quoteRequests).toHaveLength(2);
+  });
+
+  test("a quote over the crate's budget says so", async ({ authenticatedPage: page }) => {
+    const { crates } = await mockCrateApi(page);
+    await buildCrate(page);
+    const crate = crates.get(CRATE_ID);
+    if (!crate) throw new Error("The mock crate is missing");
+    crate.filters.maxTotalUsd = 1;
+
+    await panel(page).getByRole("button", { name: "Get a quote" }).click();
+    await expect(panel(page).getByText("Over your $1.00 budget")).toBeVisible();
+    await panel(page).getByRole("button", { name: "Approve and buy" }).click();
+    await expect(
+      panel(page).getByRole("group", { name: "Confirm your purchase" }).getByText("Over your $1.00 budget"),
+    ).toBeVisible();
+  });
+
+  test("unsaved changes must be saved before a quote", async ({ authenticatedPage: page }) => {
+    const { quoteRequests } = await mockCrateApi(page);
+    await buildCrate(page);
+    await page.getByRole("button", { name: 'Move "Neon Drift" down' }).click();
+    await expect(panel(page).getByRole("button", { name: "Get a quote" })).toBeDisabled();
+    await expect(panel(page).getByText(/Save your changes first/)).toBeVisible();
+    await page.getByRole("button", { name: "Save crate" }).click();
+    await expect(page.getByText("Crate saved")).toBeVisible();
+    await expect(panel(page).getByRole("button", { name: "Get a quote" })).toBeEnabled();
+    expect(quoteRequests).toHaveLength(0);
+  });
+
+  test("a settled quote shows its receipts when the crate is reopened", async ({
+    authenticatedPage: page,
+  }) => {
+    const crate = mockCrate("e2e-receipts", { title: "Sunday sunset set", status: "saved" });
+    await mockCrateApi(page, {
+      savedCrates: [crate],
+      latestQuotes: { "e2e-receipts": settledQuote(crate) },
+    });
+    await page.goto("/crates/e2e-receipts");
+    await expect(page.getByRole("heading", { name: "Sunday sunset set", level: 1 })).toBeVisible();
+
+    const receipts = panel(page).getByRole("region", { name: "Receipts" });
+    await expect(receipts.getByText(/^Bought 2 stems\./)).toBeVisible();
+    await expect(receipts.getByText("Left out: the listing changed")).toBeVisible();
+    await expect(receipts.getByText("Not part of the purchase")).toBeVisible();
+    await expect(receipts.getByText("Bought for 0.5 USDC").first()).toBeVisible();
+    await expect(receipts.getByText(`Transaction ${MOCK_QUOTE_HASH.slice(0, 8)}`).first()).toBeVisible();
+    // Nothing from a finished purchase can be approved again.
+    await expect(panel(page).getByRole("button", { name: "Approve and buy" })).toHaveCount(0);
+    await expect(panel(page).getByRole("button", { name: "Get a new quote" })).toBeVisible();
   });
 });

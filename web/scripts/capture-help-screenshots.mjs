@@ -731,6 +731,25 @@ const CRATE_TARGETS = [
       return {};
     },
   },
+  {
+    // #1964: the quote panel the DJ approves before one signature buys the crate.
+    file: "crate-digger-quote.png",
+    viewportHeight: 1300,
+    prepare: async (page) => {
+      await page.goto(`${BASE_URL}/crates`, { waitUntil: "networkidle", timeout: 90000 });
+      await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+      await page.getByRole("button", { name: "Build crate" }).click();
+      await page.waitForURL(`**/crates/${CRATE_ID}`, { timeout: 45000 });
+      await page.getByText("6 of 8 found").waitFor({ timeout: 45000 });
+      const panel = page.getByRole("region", { name: "Buy this crate" });
+      await panel.getByRole("button", { name: "Get a quote" }).click();
+      await panel.getByRole("heading", { name: "Your quote" }).waitFor({ timeout: 45000 });
+      // A second stem on one line, so the picture shows more than the default.
+      await panel.locator('.crates-quote-line[data-track-id="track-glass-harbour"]').getByLabel("Drums").click();
+      await panel.getByText("2.5 USDC (about $2.50)").waitFor({ timeout: 45000 });
+      return { locator: panel };
+    },
+  },
 ];
 
 async function captureCrates(browser) {
