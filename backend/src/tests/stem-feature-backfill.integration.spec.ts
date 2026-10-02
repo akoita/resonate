@@ -444,7 +444,8 @@ describe("StemFeatureBackfillService (integration)", () => {
     const rev1Id = ID("rf_rev1");
     const rev2Id = ID("rf_rev2");
     const badRevId = ID("rf_badrev");
-    const ourIds = [nullId, rev1Id, rev2Id, badRevId];
+    const currentId = ID("rf_current");
+    const ourIds = [nullId, rev1Id, rev2Id, badRevId, currentId];
     const features = (tempoBpm: number, extra: Record<string, unknown> = {}) => ({
       ...WORKER_FEATURES,
       tempoBpm,
@@ -485,6 +486,11 @@ describe("StemFeatureBackfillService (integration)", () => {
         where: { id: rev2Id },
         data: { audioFeatures: features(95, { analysisRevision: 2 }) },
       });
+      // Revision 2 is outdated since #2018; revision 3 is the current one.
+      await prisma.stem.update({
+        where: { id: currentId },
+        data: { audioFeatures: features(98, { analysisRevision: 3 }) },
+      });
       // A non-numeric revision counts as revision 1.
       await prisma.stem.update({
         where: { id: badRevId },
@@ -508,7 +514,7 @@ describe("StemFeatureBackfillService (integration)", () => {
       expect(result.remainingByType.bass).toBe(1);
     });
 
-    it("pubsub refresh targets missing and older revisions but not the current one", async () => {
+    it("pubsub refresh targets missing and older revisions (including 2) but not the current one", async () => {
       delete process.env.DEMUCS_WORKER_URL;
       publisher.isAvailable.mockReturnValue(true);
 
@@ -518,12 +524,14 @@ describe("StemFeatureBackfillService (integration)", () => {
         refresh: true,
       });
 
-      expect(dispatchedIds().sort()).toEqual([nullId, rev1Id, badRevId].sort());
+      expect(dispatchedIds().sort()).toEqual(
+        [nullId, rev1Id, rev2Id, badRevId].sort(),
+      );
       expect(result).toEqual(
         expect.objectContaining({ transport: "pubsub", status: "dispatched" }),
       );
-      expect(result.remaining).toBe(3);
-      expect(result.remainingByType.bass).toBe(3);
+      expect(result.remaining).toBe(4);
+      expect(result.remainingByType.bass).toBe(4);
       // The type filter applies to the selection: refresh with another type
       // does not dispatch bass stems.
       publisher.publishAnalysisJob.mockClear();
@@ -543,7 +551,7 @@ describe("StemFeatureBackfillService (integration)", () => {
 
       expect(dispatchedIds()).toEqual([badRevId, nullId].sort());
       expect(result.scanned).toBe(2);
-      expect(result.remaining).toBe(3);
+      expect(result.remaining).toBe(4);
     });
 
     it("status counts the refresh set separately from the default set", async () => {
@@ -551,8 +559,8 @@ describe("StemFeatureBackfillService (integration)", () => {
       expect(plain.remaining).toBe(1);
 
       const refresh = await service.status({ types: ["bass"], refresh: true });
-      expect(refresh.remaining).toBe(3);
-      expect(refresh.remainingByType.bass).toBe(3);
+      expect(refresh.remaining).toBe(4);
+      expect(refresh.remainingByType.bass).toBe(4);
       // Encrypted stems never count.
       const encrypted = await prisma.stem.count({
         where: { type: "bass", isEncrypted: true, trackId: TRACK_ID },
@@ -566,7 +574,7 @@ describe("StemFeatureBackfillService (integration)", () => {
         status: 200,
         json: async () => ({
           status: "success",
-          features: { ...WORKER_FEATURES, analysisRevision: 2 },
+          features: { ...WORKER_FEATURES, analysisRevision: 3 },
         }),
       } as any);
 
@@ -576,19 +584,19 @@ describe("StemFeatureBackfillService (integration)", () => {
         refresh: true,
       });
 
-      expect(result.updated).toBe(3);
+      expect(result.updated).toBe(4);
       expect(result.remaining).toBe(0);
-      for (const id of [nullId, rev1Id, badRevId]) {
+      for (const id of [nullId, rev1Id, rev2Id, badRevId]) {
         expect(await featuresOf(id)).toEqual(
-          expect.objectContaining({ tempoBpm: 110.2, analysisRevision: 2 }),
+          expect.objectContaining({ tempoBpm: 110.2, analysisRevision: 3 }),
         );
       }
-      expect((await featuresOf(rev2Id))?.tempoBpm).toBe(95);
+      expect((await featuresOf(currentId))?.tempoBpm).toBe(98);
       const analyzed = fetchSpy.mock.calls
         .filter(([url]) => String(url).endsWith("/analyze"))
         .map(([, init]) => (((init as RequestInit).body as FormData).get("file") as File).name);
       expect(analyzed.sort()).toEqual(
-        [nullId, rev1Id, badRevId].map((id) => `${id}.audio`).sort(),
+        [nullId, rev1Id, rev2Id, badRevId].map((id) => `${id}.audio`).sort(),
       );
     });
 
@@ -599,30 +607,34 @@ describe("StemFeatureBackfillService (integration)", () => {
     });
 
     it("applyAnalysisResults upgrades older revisions but never rewrites the current one", async () => {
-      const revision2 = (tempoBpm: number) => ({
+      const revision3 = (tempoBpm: number) => ({
         ...WORKER_FEATURES,
         tempoBpm,
-        analysisRevision: 2,
+        analysisRevision: 3,
       });
       const outcome = await service.applyAnalysisResults({
         kind: "analysis",
         jobId: "analyze_rf_1",
         status: "completed",
         results: [
-          { stemId: nullId, features: revision2(120) },
-          { stemId: rev1Id, features: revision2(121) },
-          { stemId: badRevId, features: revision2(122) },
-          { stemId: rev2Id, features: revision2(123) },
+          { stemId: nullId, features: revision3(120) },
+          { stemId: rev1Id, features: revision3(121) },
+          { stemId: badRevId, features: revision3(122) },
+          { stemId: rev2Id, features: revision3(123) },
+          { stemId: currentId, features: revision3(124) },
         ],
       });
-      // The stored revision-2 row is not rewritten by another revision-2 result.
-      expect(outcome).toEqual({ updated: 3, failed: 0, malformed: 0 });
+      // The stored revision-3 row is not rewritten by another revision-3 result.
+      expect(outcome).toEqual({ updated: 4, failed: 0, malformed: 0 });
       expect(await featuresOf(nullId)).toEqual(
-        expect.objectContaining({ tempoBpm: 120, analysisRevision: 2 }),
+        expect.objectContaining({ tempoBpm: 120, analysisRevision: 3 }),
       );
       expect((await featuresOf(rev1Id))?.tempoBpm).toBe(121);
       expect((await featuresOf(badRevId))?.tempoBpm).toBe(122);
-      expect((await featuresOf(rev2Id))?.tempoBpm).toBe(95);
+      expect(await featuresOf(rev2Id)).toEqual(
+        expect.objectContaining({ tempoBpm: 123, analysisRevision: 3 }),
+      );
+      expect((await featuresOf(currentId))?.tempoBpm).toBe(98);
 
       // Redelivery of the same message is a no-op.
       const again = await service.applyAnalysisResults({
@@ -630,8 +642,8 @@ describe("StemFeatureBackfillService (integration)", () => {
         jobId: "analyze_rf_1",
         status: "completed",
         results: [
-          { stemId: nullId, features: revision2(130) },
-          { stemId: rev1Id, features: revision2(131) },
+          { stemId: nullId, features: revision3(130) },
+          { stemId: rev1Id, features: revision3(131) },
         ],
       });
       expect(again.updated).toBe(0);

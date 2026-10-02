@@ -73,7 +73,7 @@ class ExtractStemFeaturesTest(unittest.TestCase):
             features = extract_stem_features(path)
 
         self.assertEqual(features["analysisRevision"], ANALYSIS_REVISION)
-        self.assertEqual(ANALYSIS_REVISION, 2)
+        self.assertEqual(ANALYSIS_REVISION, 3)
 
     def test_key_of_a_drum_heavy_progression_at_44k(self):
         # Production loads at the native rate; the key must still resolve
@@ -87,7 +87,8 @@ class ExtractStemFeaturesTest(unittest.TestCase):
         self.assertEqual(features["sampleRate"], 44100)
         self.assertIsNotNone(features["key"])
         self.assertEqual((features["key"]["tonic"], features["key"]["mode"]), ("C", "major"))
-        self.assertGreaterEqual(features["key"]["confidence"], 0.1)
+        # 0.05 is the backend's usability cutoff from revision 3 (#2018).
+        self.assertGreaterEqual(features["key"]["confidence"], 0.05)
 
     def test_click_track_tempo_within_tolerance(self):
         with tempfile.TemporaryDirectory() as tmp:

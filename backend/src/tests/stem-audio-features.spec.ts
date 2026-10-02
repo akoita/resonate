@@ -1,6 +1,8 @@
 import {
   CAMELOT_MIN_KEY_CONFIDENCE,
   CURRENT_STEM_ANALYSIS_REVISION,
+  KEY_MIN_CONFIDENCE_FROM_REVISION_3,
+  keyConfidenceCutoff,
   camelotCode,
   sanitizeStemAudioFeatures,
   stemAnalysisRevision,
@@ -140,7 +142,7 @@ describe("analysisRevision (#2016)", () => {
   });
 
   it("stemAnalysisRevision returns the stored revision or 1", () => {
-    expect(CURRENT_STEM_ANALYSIS_REVISION).toBe(2);
+    expect(CURRENT_STEM_ANALYSIS_REVISION).toBe(3);
     expect(stemAnalysisRevision({ analysisRevision: 3 })).toBe(3);
     expect(stemAnalysisRevision(validFeatures)).toBe(1);
     expect(stemAnalysisRevision(null)).toBe(1);
@@ -244,6 +246,45 @@ describe("camelotCode / withCamelot (#1959)", () => {
         confidence: CAMELOT_MIN_KEY_CONFIDENCE,
       }),
     ).toBe("8B");
+  });
+
+  it("keyConfidenceCutoff is 0.1 before revision 3 and 0.05 from it (#2018)", () => {
+    expect(KEY_MIN_CONFIDENCE_FROM_REVISION_3).toBe(0.05);
+    expect(keyConfidenceCutoff(1)).toBe(CAMELOT_MIN_KEY_CONFIDENCE);
+    expect(keyConfidenceCutoff(2)).toBe(CAMELOT_MIN_KEY_CONFIDENCE);
+    expect(keyConfidenceCutoff(3)).toBe(KEY_MIN_CONFIDENCE_FROM_REVISION_3);
+    expect(keyConfidenceCutoff(4)).toBe(KEY_MIN_CONFIDENCE_FROM_REVISION_3);
+  });
+
+  it("camelotCode applies the revision-aware cutoff (#2018)", () => {
+    const keyAt = (confidence: number) => ({
+      tonic: "C",
+      mode: "major" as const,
+      confidence,
+    });
+    expect(camelotCode(keyAt(0.07), 3)).toBe("8B");
+    expect(camelotCode(keyAt(0.07), 2)).toBeNull();
+    expect(camelotCode(keyAt(0.07), 1)).toBeNull();
+    expect(camelotCode(keyAt(0.07))).toBeNull();
+    expect(camelotCode(keyAt(0.04), 3)).toBeNull();
+    for (const revision of [1, 2, 3]) {
+      expect(camelotCode(keyAt(0.12), revision)).toBe("8B");
+    }
+  });
+
+  it("withCamelot uses the payload's revision for the cutoff (#2018)", () => {
+    const lowMargin = { ...validFeatures, key: { tonic: "C", mode: "major", confidence: 0.07 } };
+    const at = (analysisRevision?: number) =>
+      withCamelot(
+        sanitizeStemAudioFeatures({
+          ...lowMargin,
+          ...(analysisRevision === undefined ? {} : { analysisRevision }),
+        })!,
+      ).camelot;
+    expect(at(3)).toBe("8B");
+    expect(at(2)).toBeNull();
+    expect(at(1)).toBeNull();
+    expect(at()).toBeNull();
   });
 
   it("withCamelot adds the code without changing other fields", () => {

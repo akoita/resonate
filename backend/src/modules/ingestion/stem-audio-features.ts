@@ -12,10 +12,12 @@ export const STEM_AUDIO_FEATURES_SCHEMA_VERSION = "stem-audio-features/v1";
 /**
  * Revision of the extraction method that produced a feature payload (#2016).
  * Revision 2 computes the key chroma on the harmonic part of the signal.
+ * Revision 3 matches that chroma against Albrecht-Shanahan key profiles, whose
+ * confidence margins sit lower (see `keyConfidenceCutoff`, #2018).
  * Payloads without the field were produced by revision 1. The schema version
  * stays v1 because the shape is unchanged.
  */
-export const CURRENT_STEM_ANALYSIS_REVISION = 2;
+export const CURRENT_STEM_ANALYSIS_REVISION = 3;
 
 const BPM_MIN = 30;
 const BPM_MAX = 300;
@@ -135,10 +137,26 @@ export function sanitizeStemAudioFeatures(
 }
 
 /**
- * Minimum key confidence for a Camelot code. The extractor's confidence is a
- * best-vs-runner-up correlation margin, so low values mean an ambiguous key.
+ * Minimum key confidence for a Camelot code on revisions 1-2. The extractor's
+ * confidence is a best-vs-runner-up correlation margin, so low values mean an
+ * ambiguous key.
  */
 export const CAMELOT_MIN_KEY_CONFIDENCE = 0.1;
+
+/** Minimum key confidence for a Camelot code from analysis revision 3 on. */
+export const KEY_MIN_CONFIDENCE_FROM_REVISION_3 = 0.05;
+
+/**
+ * Key confidence cutoff for a payload of the given analysis revision.
+ * Albrecht-Shanahan margins sit lower than the earlier profiles' margins;
+ * 0.05 was chosen on GiantSteps + FMA so that more keys are shown and shown
+ * keys are more accurate than revisions 1-2 at 0.1 (#2018).
+ */
+export function keyConfidenceCutoff(revision: number): number {
+  return revision >= 3
+    ? KEY_MIN_CONFIDENCE_FROM_REVISION_3
+    : CAMELOT_MIN_KEY_CONFIDENCE;
+}
 
 export type StoredStemAudioFeatures = SanitizedStemAudioFeatures & {
   camelot: string | null;
@@ -189,15 +207,17 @@ function normalizeTonic(tonic: string): string {
 /**
  * Camelot wheel code for a detected key (e.g. "8B" for C major, "8A" for A
  * minor), or null when the key is missing, the tonic is unrecognized, or the
- * key confidence is absent or below CAMELOT_MIN_KEY_CONFIDENCE.
+ * key confidence is absent or below `keyConfidenceCutoff(revision)`. The
+ * revision defaults to 1 (the stricter, pre-#2018 cutoff).
  */
 export function camelotCode(
   key: SanitizedStemAudioFeatures["key"],
+  revision = 1,
 ): string | null {
   if (!key) return null;
   if (
     key.confidence === null ||
-    key.confidence < CAMELOT_MIN_KEY_CONFIDENCE
+    key.confidence < keyConfidenceCutoff(revision)
   ) {
     return null;
   }
@@ -214,5 +234,8 @@ export function camelotCode(
 export function withCamelot(
   features: SanitizedStemAudioFeatures,
 ): StoredStemAudioFeatures {
-  return { ...features, camelot: camelotCode(features.key) };
+  return {
+    ...features,
+    camelot: camelotCode(features.key, stemAnalysisRevision(features)),
+  };
 }
