@@ -12,6 +12,8 @@ import type { CrateCandidateFacts, CrateLicenseType } from "./crate.types";
  */
 
 export type CrateStemRow = {
+  /** Stem id; the crate DTO needs it for previews and quality ratings. */
+  id?: string;
   type: string;
   isCurrent: boolean;
   /** Raw `Stem.audioFeatures` JSON; only the current `original` stem's is read. */

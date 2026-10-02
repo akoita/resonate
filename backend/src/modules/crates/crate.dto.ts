@@ -1,4 +1,20 @@
-import { IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from "class-validator";
+import type { CrateLicenseOptionDto } from "./crate_license_rights";
 import type { CrateTransitionFacts } from "./crate_ordering";
 import type { CrateEntitlements } from "./crate-entitlements";
 import {
@@ -44,6 +60,56 @@ export class CreateCrateRequestDto {
   count?: number;
 }
 
+/** Longest crate title, after trimming. */
+export const CRATE_TITLE_MAX_LENGTH = 80;
+
+export const CRATE_STATUSES = ["draft", "saved"] as const;
+export type CrateStatus = (typeof CRATE_STATUSES)[number];
+
+/** One line of a `PATCH /crates/:id` body. */
+export class UpdateCrateItemDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  trackId!: string;
+
+  /** Omitted keeps the line's current value. */
+  @IsOptional()
+  @IsBoolean()
+  locked?: boolean;
+}
+
+/**
+ * `PATCH /crates/:id` (#1963). `items`, when present, is the full new order of
+ * the crate: every current line exactly once, nothing added (omitting a line
+ * removes it). The service enforces that and answers 400 `invalid_items`.
+ */
+export class UpdateCrateDto {
+  /** Trimmed by the service; empty or null clears the title. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(CRATE_TITLE_MAX_LENGTH)
+  title?: string | null;
+
+  @IsOptional()
+  @IsIn([...CRATE_STATUSES])
+  status?: CrateStatus;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(25)
+  @ValidateNested({ each: true })
+  @Type(() => UpdateCrateItemDto)
+  items?: UpdateCrateItemDto[];
+}
+
+/** A current non-original, non-master stem of a crate line. */
+export type CrateItemStemDto = {
+  type: string;
+  /** Rounded mean of the stem's quality ratings; null when unrated. */
+  qualityScore: number | null;
+};
+
 export type CrateItemDto = {
   /** 0-based order in the set path. */
   position: number;
@@ -61,6 +127,12 @@ export type CrateItemDto = {
   camelot: string | null;
   energy: number | null;
   stemTypes: string[];
+  /** The track's current `original` stem, for previews; null when it has none. */
+  originalStemId: string | null;
+  /** Current stems (never original or master), sorted by type. */
+  stems: CrateItemStemDto[];
+  /** One entry per tier the track lists or prices, in license-tier order. */
+  licenseOptions: CrateLicenseOptionDto[];
   listedLicenseTypes: string[];
   /** Indicative USD price per tier; a tier with no StemPricing is absent. */
   indicativePriceUsd: Partial<Record<CrateLicenseType, number>>;
@@ -105,3 +177,19 @@ export type CreateCrateResponse = {
   request: CrateRequestDto;
   coverage: CrateCoverage;
 };
+
+/** One crate in `GET /crates`. */
+export type CrateSummaryDto = {
+  id: string;
+  title: string | null;
+  status: string;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** `GET /crates`: the caller's crates, newest `updatedAt` first. */
+export type ListCratesResponse = { crates: CrateSummaryDto[] };
+
+/** `POST /crates/:id/items/:trackId/swap`. */
+export type SwapCrateItemResponse = { crate: CrateDto; swapped: boolean };

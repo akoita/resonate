@@ -586,6 +586,138 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["discover-music", "playing-music", "marketplace-buy", "settings-privacy", "how-recommendations-work"],
   },
   {
+    slug: "crate-digger",
+    title: "Crate Digger",
+    summary:
+      "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, with tempo, key, energy, stems and license options on every line.",
+    category: "discover",
+    audiences: ["listener", "curator"],
+    status: "partial",
+    keywords: ["crate digger", "crate", "dj set", "dj", "set", "bpm", "key", "camelot", "energy", "stems", "license", "transition", "crossfade", "more like this", "reorder", "lock", "swap", "playlist builder"],
+    sections: [
+      {
+        id: "build",
+        heading: "Build a crate",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Crate Digger turns what your set needs into a crate of tracks. Type it in your own words, for example the tempo range, the key, how much energy you want, the stems you need and what you can spend. Choose how many lines you want, from 1 to 25.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Open Crate Digger and describe your set.",
+              "Choose how many lines you want and press Build crate.",
+              "Check the banner at the top of your crate. It tells you how many tracks were found out of how many you asked for, and which parts of your request held tracks back.",
+              "If part of your request could not be understood, it is shown back to you word for word so nothing is silently ignored.",
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/crate-digger-request.png`,
+              alt: "The Crate Digger page with a 'What does your set need?' box holding a sentence about melodic house tracks around 122 to 128 BPM, a Lines field set to 8, a Build crate button, and a Your crates list with two earlier crates below.",
+              caption: "Describe your set in your own words, choose how many lines you want, and press Build crate. Your earlier crates are listed underneath.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "paragraph",
+            text: "You can also start from a track you like. On a stem page, choose Start a crate from this track to get a crate of tracks that sit close to it.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Fully AI-generated tracks stay out unless you allow them",
+            text: "A crate leaves out tracks declared fully AI-generated unless your request allows them. Paying for a listing never moves a track up your crate.",
+          },
+        ],
+      },
+      {
+        id: "shape",
+        heading: "Shape your crate",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Your crate is ordered like a set, moving through energy and keys that fit together. Make it yours:",
+          },
+          {
+            kind: "list",
+            items: [
+              "Move a line up or down with its buttons.",
+              "Lock a line to keep it exactly where it is. Locked lines stay put when you move other lines around them, and they are not swapped out.",
+              "Swap for similar replaces a line with another track that fits the same filters. If nothing fits better, you are told and the line stays.",
+              "Remove a line you do not want. You are asked to confirm first.",
+              "Give the crate a title and press Save crate. Changes are kept only when you save.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "The filters above your crate show what it was built with. Remove a filter or change the tempo range or number of lines, then build a new crate from them. Your original crate stays in your list.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/crate-digger-crate.png`,
+              alt: "A saved crate titled Friday warm-up. A banner says 6 of 8 found and lists what held lines back and the part of the request that could not be read. Below are filter chips such as 122-128 BPM and Key 8A, a title box with a Saved button, and the first line, Neon Drift, showing tempo, key, energy, stems with quality scores, open license options with what each license grants, and Move up, Move down, Lock, Swap for similar and Remove buttons.",
+              caption: "A crate: the match banner, the filters it was built with, your title, and each line with its measured details, stems and license options.",
+              width: 1440,
+              height: 1376,
+              source: LOCAL,
+            },
+          },
+        ],
+      },
+      {
+        id: "lines",
+        heading: "What each line shows",
+        blocks: [
+          {
+            kind: "definitions",
+            items: [
+              { term: "Tempo, key and energy", description: "Measured from the audio. When something could not be measured it says unknown instead of guessing." },
+              { term: "Stems", description: "The parts you can license, such as vocals, drums or bass, each with a quality score where one has been measured." },
+              { term: "License options", description: "For each license type, what it lets you do and an indicative price. If a license has no standard terms yet, the line says so and asks you to check the listing before buying." },
+              { term: "Unavailable", description: "A track that is no longer available stays in your crate, clearly marked, until you remove or swap it." },
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Prices are indicative",
+            text: "Prices in a crate are a guide. The quote you get when you buy sets the final price.",
+          },
+        ],
+      },
+      {
+        id: "transitions",
+        heading: "Preview a transition",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Between two lines you can press Preview transition to hear a short crossfade from the end of one track into the start of the next. The preview matches the two tempos a little, within a small limit, and blends over about eight beats. It only mixes the two tracks' own audio, and nothing is generated or saved. Lines without a preview available do not show the button.",
+          },
+        ],
+      },
+      {
+        id: "coming-soon",
+        heading: "What is coming soon",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Building and editing crates works today. Buying a whole crate, exporting it and watching for new tracks that fit it are coming soon.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Crate Digger", href: "/crates", description: "Build and shape a crate for your next set." },
+    ],
+    related: ["ai-dj", "how-recommendations-work", "playing-music", "marketplace-buy"],
+  },
+  {
     slug: "how-recommendations-work",
     title: "How recommendations work",
     summary:

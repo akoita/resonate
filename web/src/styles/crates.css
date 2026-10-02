@@ -1,0 +1,380 @@
+/* Crate Digger (#1963). Obsidian Frequency tokens only. */
+
+.crates-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-lg);
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--r-lg) var(--r-md) var(--r-2xl);
+  color: var(--r-on-surface);
+}
+
+.crates-page h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.crates-page h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.crates-lede {
+  margin: 0;
+  color: var(--r-on-surface-variant);
+}
+
+.crates-panel {
+  background: var(--r-surface-low);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  padding: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-sm);
+}
+
+.crates-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crates-field label {
+  font-size: 0.875rem;
+  color: var(--r-on-surface-variant);
+}
+
+.crates-textarea,
+.crates-number,
+.crates-title-input {
+  background: var(--r-surface-lowest);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  color: var(--r-on-surface);
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.crates-textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.crates-number {
+  width: 6rem;
+}
+
+.crates-textarea:focus-visible,
+.crates-number:focus-visible,
+.crates-title-input:focus-visible,
+.crates-btn:focus-visible,
+.crates-chip button:focus-visible,
+.crates-line summary:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.crates-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-xs);
+  align-items: center;
+}
+
+/* A row of labelled fields and a button: line the button up with the inputs. */
+.crates-row--fields {
+  align-items: flex-end;
+}
+
+.crates-row--end {
+  justify-content: flex-end;
+}
+
+.crates-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  /* --r-on-surface-muted is below 4.5:1 on the panel surfaces at this size. */
+  color: var(--r-on-surface-variant);
+}
+
+.crates-error {
+  margin: 0;
+  color: var(--r-error);
+}
+
+.crates-btn {
+  background: var(--r-chrome-glass);
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-sm);
+  color: var(--r-on-surface);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 8px 12px;
+  min-height: 36px;
+}
+
+.crates-btn:hover:not(:disabled) {
+  background: var(--r-chrome-hover);
+}
+
+.crates-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.crates-btn--primary {
+  background: var(--r-primary);
+  border-color: var(--r-primary);
+  color: var(--r-on-primary);
+}
+
+.crates-btn--primary:hover:not(:disabled) {
+  background: var(--r-primary-container);
+}
+
+.crates-btn--danger {
+  color: var(--r-error);
+}
+
+.crates-btn[aria-pressed="true"] {
+  background: var(--r-chrome-active);
+  border-color: var(--r-primary-soft);
+}
+
+.crates-banner {
+  border: 1px solid var(--r-outline);
+  border-left: 4px solid var(--r-info);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-mid);
+  padding: var(--r-sm) var(--r-md);
+}
+
+.crates-banner--short {
+  border-left-color: var(--r-warning);
+}
+
+.crates-banner p,
+.crates-banner ul {
+  margin: 4px 0 0;
+}
+
+.crates-banner ul {
+  padding-left: 1.25rem;
+}
+
+.crates-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-xs);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.crates-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--r-surface-high);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
+  padding: 2px 4px 2px 12px;
+  font-size: 0.875rem;
+}
+
+.crates-chip button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-radius-full);
+  color: var(--r-on-surface-variant);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.crates-chip button:hover {
+  background: var(--r-chrome-hover);
+  color: var(--r-on-surface);
+}
+
+.crates-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-sm);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.crates-list-link {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--r-sm);
+  color: var(--r-on-surface);
+  text-decoration: none;
+  padding: var(--r-sm) var(--r-md);
+  background: var(--r-surface-low);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+}
+
+.crates-list-link:hover {
+  background: var(--r-surface-mid);
+}
+
+.crates-list-link:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.crates-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-sm);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.crates-line {
+  background: var(--r-surface-low);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  padding: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-xs);
+}
+
+.crates-line--locked {
+  border-color: var(--r-primary-soft);
+}
+
+.crates-line--unavailable {
+  border-style: dashed;
+  background: var(--r-surface-lowest);
+}
+
+.crates-line-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--r-xs);
+}
+
+.crates-line-pos {
+  color: var(--r-on-surface-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+}
+
+.crates-line-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.crates-line-artist {
+  color: var(--r-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.crates-badge {
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
+  color: var(--r-on-surface-variant);
+  font-size: 0.75rem;
+  padding: 1px 8px;
+}
+
+.crates-badge--warn {
+  border-color: var(--r-warning);
+  color: var(--r-warning);
+}
+
+.crates-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.crates-stem-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crates-stem-chip {
+  background: var(--r-surface-high);
+  border-radius: var(--r-radius-xs);
+  font-size: 0.8125rem;
+  padding: 2px 8px;
+}
+
+.crates-license summary {
+  cursor: pointer;
+  color: var(--r-on-surface-variant);
+}
+
+.crates-license-options {
+  list-style: none;
+  margin: var(--r-xs) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--r-xs);
+}
+
+.crates-license-option {
+  background: var(--r-surface-mid);
+  border-radius: var(--r-radius-sm);
+  padding: var(--r-xs) var(--r-sm);
+}
+
+.crates-license-option h4 {
+  margin: 0;
+  font-size: 0.9375rem;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--r-xs);
+}
+
+.crates-license-option ul {
+  margin: 4px 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+}
+
+.crates-license-option p {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  color: var(--r-on-surface-variant);
+}
+
+.crates-transition {
+  border-top: 1px dashed var(--r-outline);
+  padding-top: var(--r-xs);
+  color: var(--r-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.crates-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

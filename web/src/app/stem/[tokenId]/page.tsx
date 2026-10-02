@@ -452,6 +452,14 @@ export default function StemDetailPage() {
                                 Your Listing · Manage
                             </Link>
                         )}
+                        {catalogTrackId && (
+                            <Link
+                                href={`/crates?referenceTrackId=${encodeURIComponent(catalogTrackId)}`}
+                                className="px-7 py-3 rounded-lg font-semibold bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+                            >
+                                Start a crate from this track
+                            </Link>
+                        )}
                         {catalogTrackId && catalogStemId && (
                             <RemixCta
                                 key={`remix-${refreshNonce}`}

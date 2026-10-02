@@ -87,6 +87,15 @@ const PRIMARY_ITEMS = [
     )
   },
   {
+    name: "Crate Digger",
+    href: "/crates",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 8v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8" /><path d="M23 3H1v5h22z" /><path d="M10 12h4" />
+      </svg>
+    )
+  },
+  {
     name: "Sonic Radar",
     href: "/sonic-radar",
     icon: (

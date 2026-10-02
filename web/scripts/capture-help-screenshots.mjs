@@ -19,6 +19,9 @@
  *     (web/tests/fixtures/remix-studio-mock.mjs), so no backend or staging
  *     data is needed and every run draws the same pictures. The overview is
  *     annotated with numbered callouts drawn into the image.
+ *   - CRATE DIGGER pass (#1963, opt-in): the Crate Digger guide images from a
+ *     fully mocked crate API (web/tests/fixtures/crate-digger-mock.mjs, shared
+ *     with the Playwright flow), so no backend or catalog data is needed.
  *
  * Usage:
  *   # Public pass against staging (default):
@@ -42,6 +45,10 @@
  *   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_REMIX=true \
  *     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
  *
+ *   # Crate Digger pass (a local dev server with mock auth is enough):
+ *   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_CRATES=true \
+ *     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+ *
  * Requirements: a Chromium browser for Playwright
  *   npx playwright install chromium
  *   (or set CHROMIUM_EXECUTABLE_PATH to an installed Chromium binary)
@@ -54,6 +61,12 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 import { PROJECT_ID as REMIX_PROJECT_ID, mockRemixApi } from "../tests/fixtures/remix-studio-mock.mjs";
+import {
+  CRATE_ID,
+  CRATE_REQUEST_TEXT,
+  mockCrate,
+  mockCrateApi,
+} from "../tests/fixtures/crate-digger-mock.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "https://staging.resonate.pydes.xyz";
 const API_BASE_URL = (process.env.API_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -61,6 +74,7 @@ const CAPTURE_PUBLIC = process.env.CAPTURE_PUBLIC !== "false";
 const CAPTURE_AUTH = process.env.CAPTURE_AUTH !== "false";
 const CAPTURE_OWNER = process.env.CAPTURE_OWNER === "true";
 const CAPTURE_REMIX = process.env.CAPTURE_REMIX === "true";
+const CAPTURE_CRATES = process.env.CAPTURE_CRATES === "true";
 const OWNER_USER_ID = "e2e-user-00000000-0000-0000-0000-000000000001";
 const OWNER_WALLET_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const OUT_DIR = path.resolve(
@@ -676,6 +690,84 @@ async function captureRemix(browser) {
   await ctx.close();
 }
 
+// ── Crate Digger pass (#1963) ────────────────────────────────────────────
+// Two earlier crates for the list under the request box. Fixed dates and a
+// pinned locale and time zone keep the list text identical on every run.
+const CRATE_LIST_SAMPLES = [
+  mockCrate("guide-crate-saved", {
+    title: "Sunday sunset set",
+    status: "saved",
+    items: mockCrate("sample").items.slice(0, 5),
+  }),
+  mockCrate("guide-crate-draft", { items: mockCrate("sample").items.slice(0, 4) }),
+];
+
+// file -> { viewportHeight, prepare(page) => { locator } | { clip } | {} }
+const CRATE_TARGETS = [
+  {
+    file: "crate-digger-request.png",
+    prepare: async (page) => {
+      await page.goto(`${BASE_URL}/crates`, { waitUntil: "networkidle", timeout: 90000 });
+      await page.getByRole("link", { name: /Sunday sunset set/ }).waitFor({ timeout: 45000 });
+      await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+      return {};
+    },
+  },
+  {
+    file: "crate-digger-crate.png",
+    viewportHeight: 1376,
+    prepare: async (page) => {
+      await page.goto(`${BASE_URL}/crates`, { waitUntil: "networkidle", timeout: 90000 });
+      await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+      await page.getByRole("button", { name: "Build crate" }).click();
+      await page.waitForURL(`**/crates/${CRATE_ID}`, { timeout: 45000 });
+      await page.getByText("6 of 8 found").waitFor({ timeout: 45000 });
+      // A saved, titled crate, with the first line's license grants open.
+      await page.getByLabel("Crate title").fill("Friday warm-up");
+      await page.getByRole("button", { name: "Save crate" }).click();
+      await page.getByText("Crate saved").waitFor();
+      await page.getByText("Crate saved").waitFor({ state: "hidden", timeout: 15000 });
+      await page.locator(".crates-line").first().getByText(/^License options/).click();
+      return {};
+    },
+  },
+];
+
+async function captureCrates(browser) {
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    locale: "en-US",
+    timezoneId: "UTC",
+    reducedMotion: "reduce",
+  });
+  await ctx.addInitScript((auth) => {
+    localStorage.setItem("resonate.token", auth.token);
+    localStorage.setItem("resonate.address", auth.address);
+    localStorage.setItem("resonate.mock_auth", "true");
+    sessionStorage.setItem("resonate.agent_onboarding_dismissed", "1");
+  }, MOCK_AUTH);
+  for (const target of CRATE_TARGETS) {
+    if (process.env.CAPTURE_ONLY && target.file !== process.env.CAPTURE_ONLY) continue;
+    // A fresh page per target: routes and crate state never leak between shots.
+    const page = await ctx.newPage();
+    await mockCrateApi(page, { savedCrates: CRATE_LIST_SAMPLES });
+    await page.setViewportSize({ width: 1440, height: target.viewportHeight ?? 900 });
+    const shot = await target.prepare(page);
+    await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(1500);
+    const out = path.join(OUT_DIR, target.file);
+    if (shot.locator) await shot.locator.screenshot({ path: out });
+    else if (shot.clip) await page.screenshot({ path: out, clip: shot.clip });
+    else await page.screenshot({ path: out });
+    console.log(`✓ [crates] ${target.file}`);
+    await page.close();
+  }
+  await ctx.close();
+}
+
 async function main() {
   // CHROMIUM_EXECUTABLE_PATH: use an already-installed Chromium whose build
   // differs from the one this Playwright version expects.
@@ -724,6 +816,7 @@ async function main() {
     }
 
     if (CAPTURE_REMIX) await captureRemix(browser);
+    if (CAPTURE_CRATES) await captureCrates(browser);
   } finally {
     await browser.close();
   }

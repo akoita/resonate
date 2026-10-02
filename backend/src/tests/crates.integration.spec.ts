@@ -15,11 +15,17 @@
  *        --testPathPattern='crates.integration'
  */
 
-import { BadRequestException, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { AgentLearningService } from "../modules/agents/agent_learning.service";
 import { CrateEntitlementsService } from "../modules/crates/crate-entitlements";
 import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../modules/crates/crate.types";
+import { CRATE_LICENSE_RIGHTS } from "../modules/crates/crate_license_rights";
 import { defaultCrateFilters } from "../modules/crates/crate_filters";
 import { deterministicCrateRequestParser } from "../modules/crates/crate_request_parser";
 import { CratesService } from "../modules/crates/crates.service";
@@ -29,6 +35,8 @@ import { DiscoveryRankingService } from "../modules/recommendations/discovery-ra
 const TEST_PREFIX = `crates_${Date.now()}_`;
 const DJ = `${TEST_PREFIX}dj`;
 const OTHER_DJ = `${TEST_PREFIX}otherdj`;
+/** Owns the crates the list, edit and swap scenarios work on. */
+const EDITOR = `${TEST_PREFIX}editor`;
 const HUMAN_USER = `${TEST_PREFIX}humanartist`;
 const PLAIN_USER = `${TEST_PREFIX}plainartist`;
 const A_HUMAN = `${TEST_PREFIX}artist_human`;
@@ -145,7 +153,7 @@ describe("CratesService (integration)", () => {
       new AgentLearningService(),
     );
 
-    for (const userId of [DJ, OTHER_DJ, HUMAN_USER, PLAIN_USER]) {
+    for (const userId of [DJ, OTHER_DJ, EDITOR, HUMAN_USER, PLAIN_USER]) {
       await prisma.user.create({ data: { id: userId, email: `${userId}@test.resonate` } });
     }
     await prisma.artist.create({
@@ -248,6 +256,25 @@ describe("CratesService (integration)", () => {
       });
     await listing("t3_bass", 9_000_001, "remix", 30);
     await listing("t2_vocals", 9_000_002, "commercial", -1);
+
+    // Stem quality ratings (#1963): t1 drums is rated by two curators (mean
+    // 85.5 rounds to 86), t3 bass by one, t2 vocals is unrated.
+    const rating = (stemKey: string, curatorUserId: string, score: number) =>
+      prisma.stemQualityRating.create({
+        data: {
+          stemId: id(stemKey),
+          curatorUserId,
+          score,
+          rmsEnergy: 0.1,
+          spectralDensity: 0.5,
+          silenceRatio: 0.01,
+          musicalSalience: 0.6,
+          analysisMethod: "test",
+        },
+      });
+    await rating("t1_drums", DJ, 80);
+    await rating("t1_drums", OTHER_DJ, 91);
+    await rating("t3_bass", DJ, 70);
   });
 
   afterAll(async () => {
@@ -260,6 +287,9 @@ describe("CratesService (integration)", () => {
     await prisma.crateItem.deleteMany({ where: ownedBy }).catch(() => {});
     await prisma.crateRequest.deleteMany({ where: ownedBy }).catch(() => {});
     await prisma.crate.deleteMany({ where: ownedBy }).catch(() => {});
+    await prisma.stemQualityRating
+      .deleteMany({ where: { stemId: { in: stemIds } } })
+      .catch(() => {});
     await prisma.stemListing.deleteMany({ where: { stemId: { in: stemIds } } }).catch(() => {});
     await prisma.stemPricing.deleteMany({ where: { stemId: { in: stemIds } } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { id: { in: stemIds } } }).catch(() => {});
@@ -704,6 +734,421 @@ describe("CratesService (integration)", () => {
           data: { status: "published", withdrawnAt: null },
         });
       }
+    });
+  });
+
+  describe("line enrichment (#1963)", () => {
+    const filters = { count: 25, bpm: BPM_WINDOW };
+
+    it("returns the original stem id, rated stems and license options on every line", async () => {
+      const created = await service.createFromRequest(DJ, { filters });
+      const fetched = await service.getCrate(DJ, created.crate.id);
+
+      for (const response of [created, fetched]) {
+        const byId = new Map(response.crate.items.map((item) => [item.trackId, item]));
+
+        const t1 = byId.get(id("t1"));
+        expect(t1?.originalStemId).toBe(id("t1_original"));
+        // The mean of 80 and 91, rounded; the original stem is never listed.
+        expect(t1?.stems).toEqual([{ type: "drums", qualityScore: 86 }]);
+        expect(t1?.licenseOptions).toEqual([
+          {
+            licenseType: "personal",
+            listed: false,
+            indicativePriceUsd: 0.05,
+            standardTerms: true,
+            grants: [...CRATE_LICENSE_RIGHTS.personal],
+          },
+          {
+            licenseType: "remix",
+            listed: false,
+            indicativePriceUsd: 8,
+            standardTerms: true,
+            grants: [...CRATE_LICENSE_RIGHTS.remix],
+          },
+          {
+            licenseType: "commercial",
+            listed: false,
+            indicativePriceUsd: 20,
+            standardTerms: true,
+            grants: [...CRATE_LICENSE_RIGHTS.commercial],
+          },
+        ]);
+
+        // Unrated stem: null score. Expired commercial listing: not an option.
+        const t2 = byId.get(id("t2"));
+        expect(t2?.originalStemId).toBe(id("t2_original"));
+        expect(t2?.stems).toEqual([{ type: "vocals", qualityScore: null }]);
+        expect(t2?.licenseOptions.map((option) => option.licenseType)).toEqual([
+          "personal",
+          "remix",
+          "commercial",
+        ]);
+        expect(t2?.licenseOptions.every((option) => !option.listed)).toBe(true);
+
+        // Listed but unpriced tier: an option with a null price.
+        const t3 = byId.get(id("t3"));
+        expect(t3?.stems).toEqual([{ type: "bass", qualityScore: 70 }]);
+        expect(t3?.licenseOptions).toEqual([
+          {
+            licenseType: "remix",
+            listed: true,
+            indicativePriceUsd: null,
+            standardTerms: true,
+            grants: [...CRATE_LICENSE_RIGHTS.remix],
+          },
+        ]);
+        // Compatibility fields stay.
+        expect(t3?.listedLicenseTypes).toEqual(["remix"]);
+        expect(t3?.stemTypes).toEqual(["bass"]);
+      }
+    });
+  });
+
+  describe("list, edit and swap (#1963)", () => {
+    const FILTERS = {
+      count: 25,
+      bpm: BPM_WINDOW,
+      keys: ["8A"],
+      includeCamelotNeighbors: true,
+    };
+
+    /**
+     * A crate seeded directly for `EDITOR` with exactly `lines`, in order, so
+     * the scenarios do not depend on what the ranker would pick.
+     */
+    async function freshCrate(
+      overrides: Record<string, unknown> = FILTERS,
+      lines = [id("t1"), id("t2"), id("t3")],
+      owner = EDITOR,
+    ) {
+      const filters = { ...defaultCrateFilters(), ...overrides };
+      const created = await prisma.crate.create({
+        data: { userId: owner, title: null, status: "draft", filters: filters as never },
+      });
+      await prisma.crateItem.createMany({
+        data: lines.map((trackId, position) => ({
+          crateId: created.id,
+          userId: owner,
+          trackId,
+          position,
+        })),
+      });
+      const { crate } = await service.getCrate(owner, created.id);
+      expect(crate.items.map((item) => item.trackId)).toEqual(lines);
+      return crate;
+    }
+
+    const order = (crate: { items: Array<{ trackId: string }> }) =>
+      crate.items.map((item) => item.trackId);
+
+    async function errorBody(promise: Promise<unknown>) {
+      const error = await promise.catch((caught) => caught);
+      expect(error).toBeInstanceOf(Error);
+      return {
+        error,
+        body: (error as { getResponse(): { code?: string } }).getResponse(),
+      };
+    }
+
+    describe("GET /crates", () => {
+      it("lists only the caller's own crates, newest update first, with item counts", async () => {
+        const mine = await freshCrate();
+        const theirs = (await freshCrate(FILTERS, [id("t1")], OTHER_DJ));
+        const latest = await freshCrate(FILTERS, [id("t1")]);
+
+        const { crates } = await service.listCrates(EDITOR);
+        const ids = crates.map((crate) => crate.id);
+        expect(ids).not.toContain(theirs.id);
+        expect(ids).toContain(mine.id);
+        expect(ids[0]).toBe(latest.id);
+
+        const summary = crates.find((crate) => crate.id === mine.id);
+        expect(summary).toEqual({
+          id: mine.id,
+          title: null,
+          status: "draft",
+          itemCount: 3,
+          createdAt: mine.createdAt,
+          updatedAt: expect.any(String),
+        });
+        expect(crates.find((crate) => crate.id === latest.id)?.itemCount).toBe(1);
+
+        const updated = crates.map((crate) => Date.parse(crate.updatedAt));
+        expect([...updated].sort((a, b) => b - a)).toEqual(updated);
+        expect(crates.length).toBeLessThanOrEqual(50);
+
+        const others = await service.listCrates(OTHER_DJ);
+        expect(others.crates.map((crate) => crate.id)).toContain(theirs.id);
+        expect(others.crates.map((crate) => crate.id)).not.toContain(mine.id);
+      });
+
+      it("a user with no crates gets an empty list", async () => {
+        expect(await service.listCrates(id("nobody"))).toEqual({ crates: [] });
+      });
+    });
+
+    describe("PATCH a crate", () => {
+      it("reorders the lines and rewrites positions 0..n-1", async () => {
+        const crate = await freshCrate();
+        const reversed = [id("t3"), id("t2"), id("t1")];
+        const response = await service.updateCrate(EDITOR, crate.id, {
+          items: reversed.map((trackId) => ({ trackId })),
+        });
+        expect(order(response.crate)).toEqual(reversed);
+        expect(response.crate.items.map((item) => item.position)).toEqual([0, 1, 2]);
+        // Transitions follow the new order; the last line has none.
+        expect(response.crate.items[2].transitionToNext).toBeNull();
+        expect(response.crate.items[0].transitionToNext).not.toBeNull();
+
+        const stored = await prisma.crateItem.findMany({
+          where: { crateId: crate.id },
+          orderBy: { position: "asc" },
+        });
+        expect(stored.map((item) => item.trackId)).toEqual(reversed);
+        expect(stored.map((item) => item.position)).toEqual([0, 1, 2]);
+        expect(stored.every((item) => item.userId === EDITOR)).toBe(true);
+
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual(reversed);
+      });
+
+      it("omitting a line removes it", async () => {
+        const crate = await freshCrate();
+        const response = await service.updateCrate(EDITOR, crate.id, {
+          items: [{ trackId: id("t3") }, { trackId: id("t1") }],
+        });
+        expect(order(response.crate)).toEqual([id("t3"), id("t1")]);
+        expect(response.crate.items.map((item) => item.position)).toEqual([0, 1]);
+        expect(await prisma.crateItem.count({ where: { crateId: crate.id } })).toBe(2);
+
+        const emptied = await service.updateCrate(EDITOR, crate.id, { items: [] });
+        expect(emptied.crate.items).toEqual([]);
+      });
+
+      it("locks and unlocks lines; a missing locked keeps the current value", async () => {
+        const crate = await freshCrate();
+        const locked = await service.updateCrate(EDITOR, crate.id, {
+          items: [{ trackId: id("t1"), locked: true }, { trackId: id("t2") }, { trackId: id("t3") }],
+        });
+        expect(locked.crate.items.map((item) => item.locked)).toEqual([true, false, false]);
+
+        const reordered = await service.updateCrate(EDITOR, crate.id, {
+          items: [{ trackId: id("t2") }, { trackId: id("t1") }, { trackId: id("t3") }],
+        });
+        expect(reordered.crate.items.map((item) => [item.trackId, item.locked])).toEqual([
+          [id("t2"), false],
+          [id("t1"), true],
+          [id("t3"), false],
+        ]);
+
+        const unlocked = await service.updateCrate(EDITOR, crate.id, {
+          items: [{ trackId: id("t2") }, { trackId: id("t1"), locked: false }, { trackId: id("t3") }],
+        });
+        expect(unlocked.crate.items.every((item) => !item.locked)).toBe(true);
+      });
+
+      it("sets, trims and clears the title", async () => {
+        const crate = await freshCrate();
+        const titled = await service.updateCrate(EDITOR, crate.id, { title: "  Friday set  " });
+        expect(titled.crate.title).toBe("Friday set");
+        // Not touching the title or the items leaves both alone.
+        const same = await service.updateCrate(EDITOR, crate.id, { status: "draft" });
+        expect(same.crate.title).toBe("Friday set");
+        expect(order(same.crate)).toEqual(order(crate));
+
+        expect((await service.updateCrate(EDITOR, crate.id, { title: "   " })).crate.title).toBeNull();
+        await service.updateCrate(EDITOR, crate.id, { title: "again" });
+        expect((await service.updateCrate(EDITOR, crate.id, { title: null })).crate.title).toBeNull();
+
+        const stored = await prisma.crate.findUniqueOrThrow({ where: { id: crate.id } });
+        expect(stored.title).toBeNull();
+        const max = await service.updateCrate(EDITOR, crate.id, { title: "x".repeat(80) });
+        expect(max.crate.title).toHaveLength(80);
+      });
+
+      it("saves a crate and moves it back to draft; the update bumps updatedAt", async () => {
+        const crate = await freshCrate();
+        const saved = await service.updateCrate(EDITOR, crate.id, { status: "saved" });
+        expect(saved.crate.status).toBe("saved");
+        expect(Date.parse(saved.crate.updatedAt)).toBeGreaterThanOrEqual(Date.parse(crate.updatedAt));
+        expect(order(saved.crate)).toEqual(order(crate));
+
+        const listed = (await service.listCrates(EDITOR)).crates.find((entry) => entry.id === crate.id);
+        expect(listed?.status).toBe("saved");
+
+        const draft = await service.updateCrate(EDITOR, crate.id, { status: "draft" });
+        expect(draft.crate.status).toBe("draft");
+      });
+
+      it("never denies saving while the policy is free for everyone", async () => {
+        // Past the free allowance of saved crates: still allowed today.
+        for (let index = 0; index < 5; index += 1) {
+          const crate = await freshCrate(FILTERS, [id("t1")]);
+          const saved = await service.updateCrate(EDITOR, crate.id, { status: "saved" });
+          expect(saved.crate.status).toBe("saved");
+        }
+      });
+
+      it("rejects items that are not exactly the crate's lines with invalid_items", async () => {
+        const crate = await freshCrate();
+        const cases: Array<Array<{ trackId: string }>> = [
+          // An unknown track.
+          [{ trackId: id("t1") }, { trackId: id("does_not_exist") }],
+          // A real track that is not a line of this crate: no additions.
+          [{ trackId: id("t1") }, { trackId: id("t5") }],
+          // A duplicate.
+          [{ trackId: id("t1") }, { trackId: id("t1") }, { trackId: id("t2") }],
+        ];
+        for (const items of cases) {
+          const { error, body } = await errorBody(service.updateCrate(EDITOR, crate.id, { items }));
+          expect(error).toBeInstanceOf(BadRequestException);
+          expect(body.code).toBe("invalid_items");
+        }
+        // Nothing was applied.
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual(order(crate));
+      });
+
+      it("another user's crate and an unknown id are a 404", async () => {
+        const crate = await freshCrate();
+        await expect(
+          service.updateCrate(OTHER_DJ, crate.id, { title: "mine now" }),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        await expect(
+          service.updateCrate(EDITOR, id("no_such_crate"), { title: "x" }),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect((await service.getCrate(EDITOR, crate.id)).crate.title).toBeNull();
+      });
+
+      it("the enriched line DTO comes back from PATCH too", async () => {
+        const crate = await freshCrate();
+        const response = await service.updateCrate(EDITOR, crate.id, { title: "enriched" });
+        const t1 = response.crate.items.find((item) => item.trackId === id("t1"));
+        expect(t1?.originalStemId).toBe(id("t1_original"));
+        expect(t1?.stems).toEqual([{ type: "drums", qualityScore: 86 }]);
+        expect(t1?.licenseOptions.map((option) => option.licenseType)).toEqual([
+          "personal",
+          "remix",
+          "commercial",
+        ]);
+      });
+    });
+
+    describe("swap a line", () => {
+      it("replaces the line with a passing candidate not already in the crate, in place", async () => {
+        // t1 (8A) and t3 (9A) are in the crate; t2 is the other passing track.
+        const crate = await freshCrate(FILTERS, [id("t3"), id("t1")]);
+        const response = await service.swapItem(EDITOR, crate.id, id("t1"));
+
+        expect(response.swapped).toBe(true);
+        const ids = order(response.crate);
+        expect(ids).not.toContain(id("t1"));
+        expect(ids[0]).toBe(id("t3"));
+        // The replacement is a track that was not in the crate and passes the
+        // crate's stored filters (t2: 8A, inside the BPM window).
+        expect(ids[1]).toBe(id("t2"));
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(response.crate.items.map((item) => item.position)).toEqual([0, 1]);
+        expect(response.crate.items[1].locked).toBe(false);
+        expect(response.crate.items[1].originalStemId).toBe(id("t2_original"));
+
+        const stored = await prisma.crateItem.findMany({
+          where: { crateId: crate.id },
+          orderBy: { position: "asc" },
+        });
+        expect(stored.map((item) => [item.trackId, item.position, item.locked])).toEqual([
+          [id("t3"), 0, false],
+          [id("t2"), 1, false],
+        ]);
+        expect(stored.every((item) => item.userId === EDITOR)).toBe(true);
+
+        // It persisted: a fresh read shows the same crate.
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual(ids);
+      });
+
+      it("never swaps in a track that fails the crate's filters", async () => {
+        // Neighbours off: only 8A passes, so t3 (9A) is never a candidate, and
+        // t4 (8A) is fully AI.
+        const crate = await freshCrate({ ...FILTERS, includeCamelotNeighbors: false }, [
+          id("t3"),
+          id("t2"),
+        ]);
+        const response = await service.swapItem(EDITOR, crate.id, id("t3"));
+        expect(response.swapped).toBe(true);
+        expect(order(response.crate)).toEqual([id("t1"), id("t2")]);
+      });
+
+      it("a locked line is a 409 line_locked and nothing changes", async () => {
+        const crate = await freshCrate(FILTERS, [id("t3"), id("t1")]);
+        await service.updateCrate(EDITOR, crate.id, {
+          items: [{ trackId: id("t3"), locked: true }, { trackId: id("t1") }],
+        });
+        const { error, body } = await errorBody(service.swapItem(EDITOR, crate.id, id("t3")));
+        expect(error).toBeInstanceOf(ConflictException);
+        expect(body.code).toBe("line_locked");
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual([id("t3"), id("t1")]);
+      });
+
+      it("a track that is not a line of the crate is a 404", async () => {
+        const crate = await freshCrate(FILTERS, [id("t3"), id("t1")]);
+        await expect(service.swapItem(EDITOR, crate.id, id("t2"))).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      });
+
+      it("another user's crate and an unknown id are a 404", async () => {
+        const crate = await freshCrate(FILTERS, [id("t3"), id("t1")]);
+        await expect(service.swapItem(OTHER_DJ, crate.id, id("t1"))).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        await expect(
+          service.swapItem(EDITOR, id("no_such_crate"), id("t1")),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(order((await service.getCrate(EDITOR, crate.id)).crate)).toEqual([id("t3"), id("t1")]);
+      });
+
+      it("with no candidate left the crate is unchanged and swapped is false", async () => {
+        // Every passing track is already in the crate.
+        const crate = await freshCrate(FILTERS, [id("t1"), id("t2"), id("t3")]);
+        const response = await service.swapItem(EDITOR, crate.id, id("t2"));
+        expect(response.swapped).toBe(false);
+        expect(order(response.crate)).toEqual([id("t1"), id("t2"), id("t3")]);
+        const stored = await prisma.crateItem.findMany({
+          where: { crateId: crate.id },
+          orderBy: { position: "asc" },
+        });
+        expect(stored.map((item) => item.trackId)).toEqual([id("t1"), id("t2"), id("t3")]);
+      });
+
+      it("keeps the crate within maxTotalUsd; unknown prices do not fit", async () => {
+        const budget = { count: 25, bpm: BPM_WINDOW, licenseType: "remix", maxTotalUsd: 10 };
+        // t1 costs 8. The candidates are t2 (12, over budget) and t3 (no known
+        // price), so nothing fits.
+        const crate = await freshCrate(budget, [id("t1")]);
+        const none = await service.swapItem(EDITOR, crate.id, id("t1"));
+        expect(none.swapped).toBe(false);
+        expect(order(none.crate)).toEqual([id("t1")]);
+
+        // Alone in the crate, t2 (12) is over a 10 budget but fits a 15 one.
+        const roomy = await freshCrate({ ...budget, maxTotalUsd: 15 }, [id("t1")]);
+        const swapped = await service.swapItem(EDITOR, roomy.id, id("t1"));
+        expect(swapped.swapped).toBe(true);
+        expect(order(swapped.crate)).toEqual([id("t2")]);
+      });
+
+      it("counts the other lines against the budget", async () => {
+        const budget = { count: 25, bpm: BPM_WINDOW, licenseType: "remix", maxTotalUsd: 15 };
+        // t1 (8) stays; swapping t3 for t2 (12) would total 20 > 15.
+        const over = await freshCrate(budget, [id("t1"), id("t3")]);
+        const refused = await service.swapItem(EDITOR, over.id, id("t3"));
+        expect(refused.swapped).toBe(false);
+        expect(order(refused.crate)).toEqual([id("t1"), id("t3")]);
+
+        // t2 (12) stays; t1 (8) fills the budget of 20 exactly.
+        const exact = await freshCrate({ ...budget, maxTotalUsd: 20 }, [id("t3"), id("t2")]);
+        const swapped = await service.swapItem(EDITOR, exact.id, id("t3"));
+        expect(swapped.swapped).toBe(true);
+        expect(order(swapped.crate)).toEqual([id("t1"), id("t2")]);
+      });
     });
   });
 });
