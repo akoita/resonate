@@ -569,7 +569,10 @@ describe("CratesController (http)", () => {
     });
 
     it("GET /crates/:id/export and /export/manifest -> 401 without JWT", async () => {
-      await request(app.getHttpServer()).get("/crates/crate-1/export?format=rekordbox&folder=/Music").expect(401);
+      await request(app.getHttpServer())
+        .post("/crates/crate-1/export")
+        .send({ format: "rekordbox", folder: "/Music" })
+        .expect(401);
       await request(app.getHttpServer()).get("/crates/crate-1/export/manifest").expect(401);
       expect(mockExport.exportFile).not.toHaveBeenCalled();
       expect(mockExport.getManifest).not.toHaveBeenCalled();
@@ -585,11 +588,11 @@ describe("CratesController (http)", () => {
       expect(mockCrates.getCrate).not.toHaveBeenCalled();
     });
 
-    it("GET /crates/:id/export -> rekordbox XML headers, body and the JWT user, format and folder passed on", async () => {
+    it("POST /crates/:id/export -> 200, rekordbox XML headers, body and the JWT user, format and folder passed on", async () => {
       const res = await request(app.getHttpServer())
-        .get("/crates/crate-1/export")
-        .query({ format: "rekordbox", folder: "C:\\Users\\dj\\My Music", userId: "someone-else" })
+        .post("/crates/crate-1/export")
         .set("Authorization", `Bearer ${token}`)
+        .send({ format: "rekordbox", folder: "C:\\Users\\dj\\My Music", userId: "someone-else" })
         .expect(200);
 
       expect(res.headers["content-type"]).toBe("application/xml; charset=utf-8");
@@ -606,7 +609,7 @@ describe("CratesController (http)", () => {
       expect(mockCrates.getCrate).not.toHaveBeenCalled();
     });
 
-    it("GET /crates/:id/export -> Serato bytes as application/octet-stream", async () => {
+    it("POST /crates/:id/export -> Serato bytes as application/octet-stream", async () => {
       const bytes = Buffer.from([0x76, 0x72, 0x73, 0x6e, 0x00, 0xff]);
       mockExport.exportFile.mockResolvedValueOnce({
         fileName: "Crate.crate",
@@ -614,9 +617,9 @@ describe("CratesController (http)", () => {
         body: bytes,
       });
       const res = await request(app.getHttpServer())
-        .get("/crates/crate-1/export")
-        .query({ format: "serato", folder: "/Volumes/DJ/Music" })
+        .post("/crates/crate-1/export")
         .set("Authorization", `Bearer ${token}`)
+        .send({ format: "serato", folder: "/Volumes/DJ/Music" })
         .buffer(true)
         .parse((response, done) => {
           const chunks: Buffer[] = [];
@@ -639,9 +642,9 @@ describe("CratesController (http)", () => {
       for (const [error, status, code] of cases) {
         mockExport.exportFile.mockRejectedValueOnce(error);
         const file = await request(app.getHttpServer())
-          .get("/crates/other/export")
-          .query({ format: "serato", folder: "/Music" })
+          .post("/crates/other/export")
           .set("Authorization", `Bearer ${token}`)
+          .send({ format: "serato", folder: "/Music" })
           .expect(status);
         expect(file.body.code).toBe(code);
 
@@ -653,7 +656,7 @@ describe("CratesController (http)", () => {
       }
     });
 
-    describe("query validation (real export service, no database reached)", () => {
+    describe("body validation (real export service, no database reached)", () => {
       let realApp: INestApplication;
 
       beforeAll(async () => {
@@ -669,20 +672,36 @@ describe("CratesController (http)", () => {
         await realApp.close();
       });
 
-      const get = (query: Record<string, string | string[]>) =>
-        request(realApp.getHttpServer())
-          .get("/crates/crate-1/export")
-          .query(query)
+      const post = (body: Record<string, unknown> | undefined) => {
+        const call = request(realApp.getHttpServer())
+          .post("/crates/crate-1/export")
           .set("Authorization", `Bearer ${token}`);
+        return body === undefined ? call : call.send(body);
+      };
 
       it.each([
         ["missing", {}],
         ["unknown", { format: "traktor" }],
         ["empty", { format: "" }],
-        ["repeated", { format: ["rekordbox", "serato"] }],
+        ["a list", { format: ["rekordbox", "serato"] }],
+        ["a number", { format: 1 }],
         ["wrong case", { format: "Rekordbox" }],
       ])("-> 400 invalid_format when the format is %s", async (_label, extra) => {
-        const res = await get({ folder: "/Users/dj/Music", ...extra }).expect(400);
+        const res = await post({ folder: "/Users/dj/Music", ...extra }).expect(400);
+        expect(res.body.code).toBe("invalid_format");
+      });
+
+      it("-> 400 invalid_format for an empty body and for no body at all", async () => {
+        expect((await post({}).expect(400)).body.code).toBe("invalid_format");
+        expect((await post(undefined).expect(400)).body.code).toBe("invalid_format");
+      });
+
+      it("-> ignores the URL: a folder in the query string is not read", async () => {
+        const res = await request(realApp.getHttpServer())
+          .post("/crates/crate-1/export?format=rekordbox&folder=/Users/dj/Music")
+          .set("Authorization", `Bearer ${token}`)
+          .send({})
+          .expect(400);
         expect(res.body.code).toBe("invalid_format");
       });
 
@@ -692,7 +711,7 @@ describe("CratesController (http)", () => {
           reason: "subscription_required",
           policyVersion: "crate-pro-policy/v2",
         });
-        const res = await get({ format: "serato", folder: "/Music" }).expect(403);
+        const res = await post({ format: "serato", folder: "/Music" }).expect(403);
         expect(res.body.code).toBe("pro_required");
         denied.mockRestore();
       });
@@ -705,11 +724,12 @@ describe("CratesController (http)", () => {
         ["parent segment", "/Users/dj/../root"],
         ["a control character", "/Users/dj\u0007/Music"],
         ["over 400 characters", `/${"a".repeat(400)}`],
-        ["repeated", ["/a", "/b"]],
+        ["a list", ["/a", "/b"]],
+        ["a number", 42],
       ])("-> 400 invalid_folder when the folder is %s, without echoing it", async (_label, folder) => {
-        const query: Record<string, string | string[]> = { format: "rekordbox" };
-        if (folder !== undefined) query.folder = folder;
-        const res = await get(query).expect(400);
+        const body: Record<string, unknown> = { format: "rekordbox" };
+        if (folder !== undefined) body.folder = folder;
+        const res = await post(body).expect(400);
         expect(res.body.code).toBe("invalid_folder");
         const secret = typeof folder === "string" ? folder : "";
         if (secret.length > 3) expect(JSON.stringify(res.body)).not.toContain(secret);

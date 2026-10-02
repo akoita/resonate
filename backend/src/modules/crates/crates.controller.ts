@@ -2,10 +2,10 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
-  Query,
   Req,
   Res,
   StreamableFile,
@@ -22,7 +22,7 @@ import type {
   SwapCrateItemResponse,
 } from "./crate.dto";
 import { contentDisposition } from "./crate_export";
-import type { CrateExportManifestDto } from "./crate_export.dto";
+import { ExportCrateDto, type CrateExportManifestDto } from "./crate_export.dto";
 import { CrateExportService } from "./crate_export.service";
 import { CrateQuoteService } from "./crate_quote.service";
 import { CreateCrateQuoteDto, SettleCrateQuoteDto } from "./crate_quote.dto";
@@ -168,22 +168,27 @@ export class CratesController {
 
   /**
    * The crate as a rekordbox XML or a Serato crate (#1965), listing the stems
-   * the caller owns under a standard license. `folder` is the absolute path of
-   * the directory the DJ saved the stems in; it is written into the file and
-   * is never stored or logged. Export never grants a right: the stems are
-   * downloaded through the licensed `POST /encryption/download` path.
+   * the caller owns under a standard license. The body is `{ format, folder }`:
+   * `folder` is the absolute path of the directory the DJ saved the stems in.
+   * It is written into the file and is never stored or logged. It travels in
+   * the body, not the URL, because proxies and load balancers log URLs. Export
+   * never grants a right: the stems are downloaded through the licensed
+   * `POST /encryption/download` path. Answers 200 with the file.
    */
   @UseGuards(AuthGuard("jwt"))
   @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
-  @Get(":id/export")
+  @Post(":id/export")
+  @HttpCode(200)
   async exportCrate(
     @Req() req: any,
     @Param("id") id: string,
-    @Query("format") format: unknown,
-    @Query("folder") folder: unknown,
+    @Body() body: ExportCrateDto,
     @Res({ passthrough: true }) res: { set(headers: Record<string, string | number>): unknown },
   ): Promise<StreamableFile> {
-    const file = await this.crateExports.exportFile(req.user.userId, id, { format, folder });
+    const file = await this.crateExports.exportFile(req.user.userId, id, {
+      format: body?.format,
+      folder: body?.folder,
+    });
     res.set({
       "Content-Type": file.contentType,
       "Content-Length": file.body.length,

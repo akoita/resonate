@@ -91,7 +91,7 @@ export class CrateExportService {
   }
 
   // -------------------------------------------------------------------------
-  // GET /crates/:id/export?format=&folder=
+  // POST /crates/:id/export  { format, folder }
   // -------------------------------------------------------------------------
 
   async exportFile(

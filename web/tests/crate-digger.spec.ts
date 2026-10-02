@@ -579,8 +579,8 @@ test.describe("Crate export (#1965)", () => {
     expect((await seratoDownload).suggestedFilename()).toBe("Friday warm-up.crate");
 
     expect(exportRequests).toEqual([
-      { crateId: SAVED_ID, format: "rekordbox", folder: FOLDER },
-      { crateId: SAVED_ID, format: "serato", folder: FOLDER },
+      { crateId: SAVED_ID, format: "rekordbox", folder: FOLDER, urlHasQuery: false },
+      { crateId: SAVED_ID, format: "serato", folder: FOLDER, urlHasQuery: false },
     ]);
     // The folder can hold a username: it is never written to the console.
     expect(consoleText.filter((text) => text.includes("dj/Music"))).toEqual([]);

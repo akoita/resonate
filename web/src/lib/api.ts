@@ -1164,9 +1164,11 @@ export async function getCrateExportManifest(token: string, crateId: string) {
 /**
  * Downloads the crate as a rekordbox XML or a Serato crate. `folder` is the
  * absolute path the DJ saved the stems in; the backend writes it into the file
- * and keeps nothing. This deliberately does not go through `apiRequest`, which
- * logs every request path: the folder can contain the DJ's username and must
- * never reach a log. Errors carry the backend's `code` like `apiRequest` errors.
+ * and keeps nothing. It is sent in the POST body, never in the URL, because
+ * proxies and load balancers log URLs and the folder can contain the DJ's
+ * username. This does not go through `apiRequest` because that returns JSON (a
+ * file is needed) and logs its calls; nothing here is logged. Errors carry the
+ * backend's `code` like `apiRequest` errors.
  */
 export async function downloadCrateExport(
   token: string,
@@ -1174,11 +1176,12 @@ export async function downloadCrateExport(
   format: CrateExportFormat,
   folder: string,
 ): Promise<{ blob: Blob; contentDisposition: string | null }> {
-  const search = new URLSearchParams({ format, folder });
-  const response = await fetch(
-    `${API_BASE}/crates/${encodeURIComponent(crateId)}/export?${search.toString()}`,
-    { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
-  );
+  const response = await fetch(`${API_BASE}/crates/${encodeURIComponent(crateId)}/export`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ format, folder }),
+  });
   if (!response.ok) {
     let detail = "";
     try {

@@ -33,7 +33,7 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
   show per stem and come back when the crate is reopened. `StemPurchase` is
   indexed per `Sold` log, so a batch of N buys records N purchases.
 - **Export to rekordbox and Serato (#1965).**
-  `GET /crates/:id/export?format=rekordbox|serato&folder=...` builds the file
+  `POST /crates/:id/export` with `{ format, folder }` builds the file
   from the stems the DJ owns for the crate's tracks; `GET /crates/:id/export/manifest`
   lists them with the names to save them under, and the lines left out with a
   reason. The crate page's **Export to rekordbox or Serato** panel downloads
@@ -218,7 +218,7 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
        UTF-16BE (POSIX drops the leading `/`, and `Volumes/<name>/` for a mounted
        volume; Windows drops the drive). Serato reads tempo, key and cues from
        its own analysis or the file's tags, so the crate carries none of them.
-    7. *Routes.* `format` is validated first (400 `invalid_format`), then the
+    7. *Routes.* The file route is `POST` with a JSON body `{ format, folder }` (a class DTO whose fields the service checks, so a missing, mistyped or repeated value still answers the fixed code). `format` is validated first (400 `invalid_format`), then the
        folder (400 `invalid_folder`), then the entitlement, the crate (another
        user's is a 404), the wallet (409 `no_wallet`) and the entries (409
        `nothing_to_export` for the file routes; the manifest still answers 200
@@ -232,10 +232,9 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
 ## Privacy
 
 The export folder, which can contain the DJ's username, is only written into
-the generated file. The API never stores or logs it (its request log records
-the path without the query string) and the web helper does not use the logging
-request wrapper. Request logs outside the application (a proxy or load
-balancer) are a deployment matter: see `resonate-iac`. The request text is never stored or logged; `CrateRequest` keeps only the
+the generated file. It travels in the `POST` body, never in a URL, so proxy and
+load balancer URL logs cannot capture it. The API never stores or logs it and
+the web helper does not use the logging request wrapper. The request text is never stored or logged; `CrateRequest` keeps only the
 filters, the number of unparsed phrases and the unmet filter keys. Crates,
 crate lines and crate requests are included in the personal data export and
 deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
@@ -253,7 +252,7 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | `GET /crates/:id/quotes/:quoteId` | Read a quote with its receipts; other users' quotes return 404 (JWT) |
 | `POST /crates/:id/quotes/:quoteId/settle` | Report the transaction and verify it from the chain; 202 while pending, 409 `already_submitted` (JWT) |
 | `GET /crates/:id/export/manifest` | The stems you own for the crate with their download names, the lines left out and why, and notes; 200 even when empty; 404 / 409 `no_wallet` / 403 `pro_required` (JWT) |
-| `GET /crates/:id/export?format=rekordbox\|serato&folder=...` | The rekordbox XML or Serato crate for the stems you own; 400 `invalid_format` / `invalid_folder`, 404, 409 `no_wallet` / `nothing_to_export`, 403 `pro_required` (JWT) |
+| `POST /crates/:id/export` `{ format: "rekordbox"\|"serato", folder }` | The rekordbox XML or Serato crate for the stems you own (200 with the file). The folder is in the body, not the URL: #1965 first said `GET` with a query string, changed for privacy because proxies and load balancers log URLs. 400 `invalid_format` / `invalid_folder`, 404, 409 `no_wallet` / `nothing_to_export`, 403 `pro_required` (JWT) |
 | `GET /crates/:id` `latestQuote` | The crate's most recent quote, or null |
 | `/crates`, `/crates/:id` | Crate Digger request box, crate list and crate page with the quote and purchase panel |
 

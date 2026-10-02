@@ -615,7 +615,7 @@ export async function mockCrateApi(page, options = {}) {
   const swaps = [];
   let swapped = false;
   let nextId = 1;
-  /** @type {Array<{ crateId: string; format: string | null; folder: string | null }>} */
+  /** @type {Array<{ crateId: string; format: string | null; folder: string | null; urlHasQuery: boolean }>} */
   const exportRequests = [];
   /** @type {Array<{ stemId: string; walletAddress: string }>} */
   const stemDownloads = [];
@@ -746,10 +746,18 @@ export async function mockCrateApi(page, options = {}) {
   });
 
   await page.route(apiPath(/^\/crates\/[^/]+\/export$/), async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
     const url = new URL(route.request().url());
     const crateId = decodeURIComponent(url.pathname.split("/")[2] ?? "");
-    const format = url.searchParams.get("format");
-    exportRequests.push({ crateId, format, folder: url.searchParams.get("folder") });
+    // The folder travels in the body, never in the URL.
+    const body = route.request().postDataJSON() ?? {};
+    const format = typeof body.format === "string" ? body.format : null;
+    exportRequests.push({
+      crateId,
+      format,
+      folder: typeof body.folder === "string" ? body.folder : null,
+      urlHasQuery: url.search !== "",
+    });
     if (exportFailure) return route.fulfill(exportFailure);
     const crate = crates.get(crateId);
     if (!crate) return route.fulfill({ status: 404, json: { message: "Crate not found" } });
@@ -806,7 +814,7 @@ export async function mockCrateApi(page, options = {}) {
     created,
     crates,
     quoteRequests,
-    /** Every export request: the crate, the format and the folder the page sent. */
+    /** Every export request: the crate, the format and the folder the page sent in the body. */
     exportRequests,
     /** Every stem download: the stem and the wallet address the page sent. */
     stemDownloads,

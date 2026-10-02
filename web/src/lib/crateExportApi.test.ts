@@ -36,7 +36,7 @@ describe("crate export API helpers", () => {
     log.mockRestore();
   });
 
-  it("downloads the export with the format and folder in the query, and the file name header", async () => {
+  it("posts the format and folder in the body, never in the URL, and reads the file name header", async () => {
     const blob = new Blob(["<xml/>"]);
     mockFetch.mockResolvedValue({
       ok: true,
@@ -51,9 +51,16 @@ describe("crate export API helpers", () => {
     const [url, init] = mockFetch.mock.calls[0];
     const parsed = new URL(String(url));
     expect(parsed.pathname).toBe("/crates/c1/export");
-    expect(parsed.searchParams.get("format")).toBe("rekordbox");
-    expect(parsed.searchParams.get("folder")).toBe("C:\\Users\\you\\My Music");
-    expect(new Headers((init as RequestInit).headers).get("Authorization")).toBe("Bearer jwt");
+    expect(parsed.search).toBe("");
+    expect(String(url)).not.toContain("Users");
+    expect((init as RequestInit).method).toBe("POST");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      format: "rekordbox",
+      folder: "C:\\Users\\you\\My Music",
+    });
+    const headers = new Headers((init as RequestInit).headers);
+    expect(headers.get("Authorization")).toBe("Bearer jwt");
+    expect(headers.get("Content-Type")).toBe("application/json");
   });
 
   it("never logs the folder, on success or on failure", async () => {

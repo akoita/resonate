@@ -1,17 +1,34 @@
+import { IsOptional } from "class-validator";
 import type { CrateExportLicenseType, CrateExportSkipReason } from "./crate_export";
 
 /**
  * HTTP contracts for exporting a crate to rekordbox or Serato (#1965,
  * docs/features/crate_digger.md).
  *
- * `GET /crates/:id/export?format=rekordbox|serato&folder=<absolute path>`
- * answers with the file itself; `GET /crates/:id/export/manifest` answers with
- * {@link CrateExportManifestDto}. Both validate their query in the service
- * (`format`, `folder`), since the global ValidationPipe only checks class DTOs,
- * and answer with the fixed codes below. The folder is the DJ's own path on
+ * `POST /crates/:id/export` with `{ format: "rekordbox" | "serato", folder:
+ * "<absolute path>" }` answers with the file itself (the folder is in the body,
+ * not the URL, because proxies and load balancers log URLs; the issue text said
+ * GET); `GET /crates/:id/export/manifest` answers with
+ * {@link CrateExportManifestDto}. The file route validates `format` and
+ * `folder` in the service, so every bad value (missing, wrong type, repeated)
+ * answers with the fixed codes below rather than a generic pipe error. The folder is the DJ's own path on
  * their disk: it is written into the file and nowhere else, never stored and
  * never logged.
  */
+
+/**
+ * Body of `POST /crates/:id/export`. The fields are deliberately untyped for
+ * the pipe (`unknown`): the service checks them and answers `invalid_format` /
+ * `invalid_folder`.
+ */
+export class ExportCrateDto {
+  @IsOptional()
+  format?: unknown;
+
+  /** The DJ's own path; never stored, never logged, never echoed. */
+  @IsOptional()
+  folder?: unknown;
+}
 
 /** One stem the DJ owns under a standard license, in crate order. */
 export type CrateExportEntryDto = {
