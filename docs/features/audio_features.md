@@ -48,6 +48,7 @@ the field is revision 1.
 | --- | --- |
 | 1 | Tempo, onsets, energy and key all measured on the whole signal. |
 | 2 ([#2016](https://github.com/akoita/resonate/issues/2016)) | Key chroma measured at 22.05 kHz on the harmonic component (`librosa.effects.harmonic`, margin 3). Files load at their native rate (usually 44.1 or 48 kHz), where the 2048-sample chroma window has half the frequency resolution and low notes smear across pitch classes; percussion also flattens the pitch-class profile of a full mix. Tempo, onsets and energy are unchanged and still use the native-rate signal. |
+| 3 ([#2018](https://github.com/akoita/resonate/issues/2018)) | Same chroma as revision 2, matched against the Albrecht–Shanahan (2013) key profiles instead of Krumhansl–Schmuckler. Key cutoff 0.05. |
 
 On a 25-track evaluation set of full mixes loaded as in production, revision 2
 raised keys with confidence of at least 0.1 from 15 to 19, and the first and
@@ -56,6 +57,18 @@ the 15 previously confident keys moved a fifth (C minor to G minor), a known
 ambiguity that cannot be settled without a reference key. The evaluation and
 the rejected variants are in #2016.
 
+Against labelled keys (#2018), loading audio as production does:
+
+| Method | GiantSteps Key (566 EDM, expert labels): exact / shown / accuracy of shown | FMA (300 multi-genre, Spotify labels): exact / shown / accuracy of shown |
+| --- | --- | --- |
+| Revision 1, cutoff 0.1 | 45.2% / 70.5% / 51.4% | 30.0% / 63.0% / 30.7% |
+| Revision 2, cutoff 0.1 | 49.3% / 69.8% / 57.2% | 35.7% / 70.7% / 37.7% |
+| Revision 3, cutoff 0.05 | 56.9% / 81% / 61% | 42.7% / 83% / 47% |
+
+Revision 3 shows more keys and more accurate keys on both sets. Raising
+coverage by also accepting a key whenever two methods agree was evaluated and
+rejected: it shows more keys only by showing more wrong ones.
+
 ## Camelot code
 
 `camelot` is derived in the backend (`camelotCode` in
@@ -63,10 +76,13 @@ the rejected variants are in #2016.
 worker. Major keys map to the `B` ring and minor keys to the `A` ring: C major
 is `8B`, A minor is `8A`. Sharp spellings and the flat spellings Db, Eb, Gb, Ab
 and Bb are accepted. The code is null when the key is missing, the tonic is not
-recognized, or key confidence is null or below `CAMELOT_MIN_KEY_CONFIDENCE`
-(0.1). The extractor's confidence is a best-versus-runner-up correlation
-margin, so a low value means the key is ambiguous and a code would be
-misleading.
+recognized, or key confidence is null or below the cutoff for the payload's
+`analysisRevision` (`keyConfidenceCutoff`): 0.1 for revisions 1 and 2, 0.05
+from revision 3. The extractor's confidence is a best-versus-runner-up
+correlation margin, so a low value means the key is ambiguous and a code would
+be misleading. Revision 3's key templates produce smaller margins, so the
+cutoff that keeps shown keys accurate is lower; ranking uses the same cutoff
+for the measured key.
 
 ## Failure behavior
 
@@ -125,6 +141,8 @@ page holds no environment URLs or schedules.
 
 ## Tests
 
+- Key-detection evaluation against labelled keys (dev tool, needs the public
+  datasets; see its docstring): `cd workers/demucs && python tools/key_eval.py giantsteps <data_home> out.json`
 - Worker: `cd workers/demucs && python3 -m unittest test_main`
 - Backend unit: `cd backend && npx jest src/tests/stem-audio-features.spec.ts src/tests/maintenance.controller.http.spec.ts`
 - Backend integration (Docker):
