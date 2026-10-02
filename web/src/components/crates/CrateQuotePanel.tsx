@@ -437,7 +437,7 @@ export function CrateQuotePanel({
                   </li>
                 ))}
               </ul>
-              <QuoteTotals quote={quote} />
+              <QuoteTotals quote={quote} label="Total to pay" />
               {budget ? <p className="crates-error">{budget}</p> : null}
               <p className="crates-hint">
                 You sign once. If a stem can no longer be bought, you will be told before anything

@@ -209,32 +209,36 @@ export function CrateQuoteView({
   );
 }
 
-export function QuoteTotals({ quote }: { quote: CrateQuote }) {
+export function QuoteTotals({ quote, label = "Quote total" }: { quote: CrateQuote; label?: string }) {
   return (
-    <dl className="crates-quote-totals" aria-label="Quote total">
-      {quote.totals.length === 0 ? (
-        <div>
-          <dt>Total</dt>
-          <dd>Nothing to buy</dd>
-        </div>
-      ) : (
-        quote.totals.map((total) => (
-          <div key={total.paymentToken}>
-            <dt>Total in {total.symbol}</dt>
+    <section aria-label={label}>
+      <dl className="crates-quote-totals">
+        {quote.totals.length === 0 ? (
+          <div>
+            <dt>Total</dt>
+            <dd>Nothing to buy</dd>
+          </div>
+        ) : (
+          quote.totals.map((total) => (
+            <div key={total.paymentToken}>
+              <dt>Total in {total.symbol}</dt>
+              <dd>
+                {total.total} {total.symbol}
+                {total.totalUsd ? ` (about ${formatUsdDecimal(total.totalUsd)})` : ""}
+              </dd>
+            </div>
+          ))
+        )}
+        {quote.totals.length > 1 ? (
+          <div>
+            <dt>Total in USD</dt>
             <dd>
-              {total.total} {total.symbol}
-              {total.totalUsd ? ` (about ${formatUsdDecimal(total.totalUsd)})` : ""}
+              {quote.totalUsd === null ? "Not known for every currency" : formatUsdDecimal(quote.totalUsd)}
             </dd>
           </div>
-        ))
-      )}
-      {quote.totals.length > 1 ? (
-        <div>
-          <dt>Total in USD</dt>
-          <dd>{quote.totalUsd === null ? "Not known for every currency" : formatUsdDecimal(quote.totalUsd)}</dd>
-        </div>
-      ) : null}
-    </dl>
+        ) : null}
+      </dl>
+    </section>
   );
 }
 
