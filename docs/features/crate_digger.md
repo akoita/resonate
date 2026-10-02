@@ -193,7 +193,8 @@ tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
   `Wallet.address` is rewritten at every passkey sign-in, but
   `WalletService.refreshWallet` (the `/wallet/aa/enable`, `/wallet/aa/refresh`
   and `/wallet/agent/enable` routes) can overwrite it with a derived
-  pseudo-address until the next sign-in. That is tracked separately and not
+  pseudo-address until the next sign-in. That is tracked in
+  [#2023](https://github.com/akoita/resonate/issues/2023) and not
   changed here; the `buyerAddress` check is what protects a quote from it.
 - If the chain cannot be read when settling, the quote stays `submitted` and
   the web retries.
