@@ -115,13 +115,11 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       "Guidelines:",
       "- Use catalog_search to find tracks matching EACH of the user's genre/mood preferences.",
       "- Search for each genre separately to get comprehensive results.",
-      "- Use pricing_quote to check if tracks fit within the remaining budget.",
       "- Choose tracks only by how well they fit the listener's taste, mood and energy.",
       "- hasListing is purchase availability data, not a quality signal: never prefer or avoid a track because of it.",
       "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
       "- If a genre search returns no tracks, treat that as no match for that genre.",
       "- Avoid recommending tracks the user has recently listened to.",
-      "- Stay within the user's budget.",
       "",
       "After using tools, respond with a concise ranked shortlist of matching tracks.",
       "List each track on its own line using this exact format:",
@@ -138,7 +136,6 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
   private buildUserMessage(input: AgentRuntimeInput): string {
     const parts: string[] = [
       `Session: ${input.sessionId}`,
-      `Budget remaining: $${input.budgetRemainingUsd.toFixed(2)}`,
       `Selection target: up to ${getAgentTrackLimit()} tracks`,
     ];
     if (input.preferences.mood) {
@@ -171,7 +168,6 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
     const trackPattern = /TRACK:\s*(.+?)\s*\|\s*LICENSE:\s*(\w+)\s*\|\s*PRICE:\s*\$?([\d.]+)/gi;
     const picks: LlmTrackPick[] = [];
     const pickLimit = getAgentTrackLimit();
-    let budgetLeft = input.budgetRemainingUsd;
     let match: RegExpExecArray | null;
 
     while (picks.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
@@ -179,9 +175,9 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       const licenseType = (match[2].trim().toLowerCase()) as "personal" | "remix" | "commercial";
       const priceUsd = parseFloat(match[3]);
 
-      if (trackId && priceUsd <= budgetLeft) {
+      // Listening picks are not budget-limited (ADR-TE-1).
+      if (trackId) {
         picks.push({ trackId, licenseType, priceUsd });
-        budgetLeft -= priceUsd;
       }
     }
 
@@ -195,9 +191,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       if (trackId) {
         const licenseType = (licenseMatch?.[1]?.trim() ?? "personal") as "personal" | "remix" | "commercial";
         const priceUsd = priceMatch ? parseFloat(priceMatch[1]) : 0;
-        if (priceUsd <= input.budgetRemainingUsd) {
-          picks.push({ trackId, licenseType, priceUsd });
-        }
+        picks.push({ trackId, licenseType, priceUsd });
       }
     }
 

@@ -8,7 +8,6 @@ export type SessionPreset = {
   intent: string;
   name: string;
   description: string;
-  tempo: string;
   input: string;
   output: string;
   gradient: string;
@@ -22,11 +21,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
     intent: "Focus",
     name: "Neural Flow",
     description: "Steady, low-friction selections for deep work or coding.",
-    tempo: "118-128 BPM",
     input: "Ambient, lo-fi, restrained drums",
     output: "A calm queue with minimal vocal interruptions",
     gradient: "linear-gradient(135deg, #5667ff 0%, #7447ff 100%)",
-    preferences: { mood: "Focus", energy: "medium", genres: ["Ambient", "Lo-fi", "Electronic"], licenseType: "personal" },
+    preferences: { mood: "Focus", energy: "medium", genres: ["Ambient", "Lo-fi", "Electronic"] },
     searchVibes: ["Ambient", "Lo-fi", "Electronic"],
     queueStyle: "Stable pacing",
   },
@@ -34,11 +32,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
     intent: "Hype",
     name: "Pulse Raid",
     description: "High-energy discoveries when the room needs momentum.",
-    tempo: "130-150 BPM",
     input: "Bass, club, trap, percussive edits",
     output: "Bigger drops, faster cuts, brighter stems",
     gradient: "linear-gradient(135deg, #ff3ea5 0%, #f04438 100%)",
-    preferences: { mood: "Hype", energy: "high", genres: ["Bass", "Club", "Trap"], licenseType: "remix" },
+    preferences: { mood: "Hype", energy: "high", genres: ["Bass", "Club", "Trap"] },
     searchVibes: ["Bass", "Club", "Trap"],
     queueStyle: "Fast cuts",
   },
@@ -46,11 +43,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
     intent: "Chill",
     name: "Liquid Sky",
     description: "Soft transitions for browsing, winding down, or late work.",
-    tempo: "80-105 BPM",
     input: "Soul, jazz, downtempo, warm pads",
     output: "A smooth listening lane with lighter drums",
     gradient: "linear-gradient(135deg, #38bdf8 0%, #7c5cff 100%)",
-    preferences: { mood: "Chill", energy: "low", genres: ["Soul", "Jazz", "Downtempo"], licenseType: "personal" },
+    preferences: { mood: "Chill", energy: "low", genres: ["Soul", "Jazz", "Downtempo"] },
     searchVibes: ["Soul", "Jazz", "Downtempo"],
     queueStyle: "Soft transitions",
   },
@@ -58,11 +54,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
     intent: "Dark",
     name: "Abyss Shift",
     description: "Moody, underground choices with more tension and texture.",
-    tempo: "110-135 BPM",
     input: "Industrial, drill, minor-key electronics",
     output: "Shadowy tracks and heavier low-end movement",
     gradient: "linear-gradient(135deg, #2d033b 0%, #160014 100%)",
-    preferences: { mood: "Dark", energy: "high", genres: ["Industrial", "Drill", "Electronic"], licenseType: "remix" },
+    preferences: { mood: "Dark", energy: "high", genres: ["Industrial", "Drill", "Electronic"] },
     searchVibes: ["Industrial", "Drill", "Electronic"],
     queueStyle: "Tension build",
   },
@@ -70,11 +65,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
     intent: "Zen",
     name: "Static Calm",
     description: "Minimal, spacious sessions for reset moments.",
-    tempo: "60-90 BPM",
     input: "Drone, piano, field recordings, sparse beats",
     output: "A slower queue with room to breathe",
     gradient: "linear-gradient(135deg, #f59e0b 0%, #7c3aed 100%)",
-    preferences: { mood: "Zen", energy: "low", genres: ["Drone", "Piano", "Ambient"], licenseType: "personal" },
+    preferences: { mood: "Zen", energy: "low", genres: ["Drone", "Piano", "Ambient"] },
     searchVibes: ["Drone", "Piano", "Ambient"],
     queueStyle: "Long blends",
   },
@@ -105,8 +99,8 @@ export default function AgentSessionPresets({
           <div>
             <h2>Tell the DJ what this session is for.</h2>
             <p>
-              Pick an intent to tune mood, tempo, and queue style. Analytics can compare the chosen intent with skips,
-              saves, replays, and purchases.
+              Pick an intent to steer the mood, energy, and queue style of this session. Your saved vibes in Settings stay
+              as they are. Analytics can compare the chosen intent with skips, saves, and replays.
             </p>
           </div>
           {showOpenLink ? (
@@ -138,10 +132,6 @@ export default function AgentSessionPresets({
                 <p>{preset.description}</p>
               </div>
               <dl className="agent-session-details">
-                <div>
-                  <dt>Tempo target</dt>
-                  <dd>{preset.tempo}</dd>
-                </div>
                 <div>
                   <dt>Queue style</dt>
                   <dd>{preset.queueStyle}</dd>

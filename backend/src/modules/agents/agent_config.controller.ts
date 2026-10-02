@@ -10,6 +10,7 @@ import {
     isAgentSignalAction,
     type AgentSignalAction,
 } from "./agent_learning.service";
+import { mergeSessionGenres } from "./agent_session_genres";
 import { EventBus } from "../shared/event_bus";
 
 @Controller("agents/config")
@@ -267,9 +268,16 @@ export class AgentConfigController {
                 sessionId: session.id,
                 userId: req.user.userId,
                 recentTrackIds: [] as string[],
+                // Wire-contract field only: listening sessions are not
+                // budget-limited (ADR-TE-1), so this never reduces the picks.
                 budgetRemainingUsd: config.monthlyCapUsd,
                 preferences: {
-                    genres: sessionPreferences.genres,
+                    // Saved vibes plus this session's genres; learned favorites
+                    // are merged in below once the taste profile resolves.
+                    genres: mergeSessionGenres({
+                        vibes: config.vibes,
+                        sessionGenres: body?.preferences?.genres,
+                    }),
                     stemTypes: config.stemTypes,
                     learnedGenreWeights: {} as Record<string, number>,
                     mood: sessionPreferences.mood,
@@ -286,7 +294,11 @@ export class AgentConfigController {
             tasteProfilePromise
                 .then((profile) => {
                     if (profile) {
-                        runtimeInput.preferences.genres = this.learningService.mergeLearnedGenres(config.vibes, profile);
+                        runtimeInput.preferences.genres = this.learningService.mergeLearnedGenres(
+                            config.vibes,
+                            profile,
+                            body?.preferences?.genres ?? [],
+                        );
                         runtimeInput.preferences.learnedGenreWeights = profile.genreWeights;
                     }
                     return this.runtimeService.run(runtimeInput);
@@ -296,38 +308,24 @@ export class AgentConfigController {
                         // Orchestrator pipeline result (local mode)
                         for (const track of result.tracks) {
                             try {
+                                // The DJ pick log, not a purchase: a License row
+                                // records "this session holds this track" for
+                                // history, dedupe, and next-pick exclusion. It
+                                // never carries a price, and the DJ records no
+                                // taste signal for a pick; only the listener's
+                                // own play, skip, and save actions do.
                                 await prisma.license.create({
                                     data: {
                                         sessionId: session.id,
                                         trackId: track.trackId,
-                                        type: track.negotiation.licenseType,
-                                        priceUsd: track.negotiation.priceUsd,
+                                        type: track.pick?.licenseType ?? "personal",
+                                        priceUsd: 0,
                                         durationSeconds: 0,
                                     },
                                 });
-                                await this.learningService.recordSignal({
-                                    userId: req.user.userId,
-                                    sessionId: session.id,
-                                    trackId: track.trackId,
-                                    action: "accept",
-                                    metadata: buildAgentSignalMetadata({
-                                        source: "agent_session",
-                                        sessionIntent: sessionPreferences.sessionIntent,
-                                        sessionIntentName: sessionPreferences.sessionIntentName,
-                                        mood: sessionPreferences.mood,
-                                        energy: sessionPreferences.energy,
-                                        genres: sessionPreferences.genres,
-                                        licenseType: sessionPreferences.licenseType,
-                                        queueStyle: sessionPreferences.queueStyle,
-                                        startSource: sessionPreferences.source,
-                                        recommendation: track.negotiation.recommendation ?? null,
-                                        reason: track.negotiation.reason,
-                                        outcome: { type: "first_pick_accept", firstPick: true },
-                                    }),
-                                });
                                 this.logger.log(`[Agent] Recorded pick ${track.trackId} (curate session; no purchase)`);
                             } catch (err) {
-                                this.logger.error(`Failed to persist license for ${track.trackId}:`, err);
+                                this.logger.error(`Failed to persist pick for ${track.trackId}:`, err);
                             }
                         }
                     } else {
@@ -342,43 +340,19 @@ export class AgentConfigController {
                         );
                         for (const pick of picks) {
                             try {
+                                // DJ pick log, not a purchase (see above): never
+                                // priced, and no taste signal until the listener acts.
                                 await prisma.license.create({
                                     data: {
                                         sessionId: session.id,
                                         trackId: pick.trackId,
                                         type: pick.licenseType,
-                                        priceUsd: pick.priceUsd,
+                                        priceUsd: 0,
                                         durationSeconds: 0,
                                     },
                                 });
-                                await this.learningService.recordSignal({
-                                    userId: req.user.userId,
-                                    sessionId: session.id,
-                                    trackId: pick.trackId,
-                                    action: "accept",
-                                    metadata: buildAgentSignalMetadata({
-                                        source: "agent_session",
-                                        sessionIntent: sessionPreferences.sessionIntent,
-                                        sessionIntentName: sessionPreferences.sessionIntentName,
-                                        mood: sessionPreferences.mood,
-                                        energy: sessionPreferences.energy,
-                                        genres: sessionPreferences.genres,
-                                        licenseType: pick.licenseType,
-                                        queueStyle: sessionPreferences.queueStyle,
-                                        startSource: sessionPreferences.source,
-                                        runtime: "llm",
-                                        // Same shape as the deterministic path: the
-                                        // policy step's reasonCode + vocabulary copy.
-                                        recommendation: pick.reasonCode || pick.explanation
-                                            ? { score: pick.score, explanation: pick.explanation, reasonCode: pick.reasonCode }
-                                            : undefined,
-                                        reason: result.reason ?? "llm",
-                                        reasoning: result.reasoning,
-                                        outcome: { type: "first_pick_accept", firstPick: true },
-                                    }),
-                                });
                             } catch (err) {
-                                this.logger.error(`Failed to persist license for ${pick.trackId}:`, err);
+                                this.logger.error(`Failed to persist pick for ${pick.trackId}:`, err);
                             }
                         }
                         // Publish decision event with LLM reasoning
@@ -389,7 +363,6 @@ export class AgentConfigController {
                             sessionId: session.id,
                             trackId: picks.map(p => p.trackId).join(","),
                             licenseType: picks[0]?.licenseType,
-                            priceUsd: 0,
                             reason: result.reason ?? "llm",
                             reasoning: result.reasoning,
                             latencyMs: result.latencyMs,

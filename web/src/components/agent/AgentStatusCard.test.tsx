@@ -22,7 +22,6 @@ function render(config: AgentConfig) {
       onToggle={async () => {}}
       sessionCount={0}
       trackCount={0}
-      totalSpend={0}
     />,
   );
 }
@@ -38,5 +37,17 @@ describe("AgentStatusCard session mode", () => {
     const html = render({ ...baseConfig, sessionMode: "buy" } as AgentConfig);
     expect(html).not.toContain("Buy Stems");
     expect(html).not.toContain("Curate Only");
+  });
+});
+
+describe("AgentStatusCard listening stats", () => {
+  it("shows sessions and tracks but no spend", () => {
+    const html = renderToStaticMarkup(
+      <AgentStatusCard config={baseConfig} onToggle={async () => {}} sessionCount={3} trackCount={12} />,
+    );
+    expect(html).toContain("Sessions");
+    expect(html).toContain("Tracks");
+    expect(html).not.toContain("Spent");
+    expect(html).not.toContain("$");
   });
 });

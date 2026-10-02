@@ -163,7 +163,8 @@ describe('SessionsService (integration)', () => {
     // Next picks join the session history once each, like session-start picks.
     const licenses = await prisma.license.findMany({ where: { sessionId: session.id } });
     expect(licenses.map((license) => license.trackId)).toEqual([`${TEST_PREFIX}track`]);
-    expect(licenses[0]).toMatchObject({ type: 'remix', priceUsd: 5, durationSeconds: 0 });
+    // The pick log, not a purchase: never priced, whatever the runtime reported.
+    expect(licenses[0]).toMatchObject({ type: 'remix', priceUsd: 0, durationSeconds: 0 });
   });
 
   it('skips next-pick ids the catalog does not hold', async () => {
@@ -193,8 +194,8 @@ describe('SessionsService (integration)', () => {
     };
     const agentLearningService = {
       resolveTasteProfile: jest.fn().mockResolvedValue({ favoredGenres: ['hip hop'], genreWeights: { 'hip hop': 1 } }),
-      mergeLearnedGenres: (vibes: string[], profile: { favoredGenres: string[] }) =>
-        Array.from(new Set([...profile.favoredGenres, ...vibes])),
+      mergeLearnedGenres: (vibes: string[], profile: { favoredGenres: string[] }, sessionGenres: string[] = []) =>
+        Array.from(new Set([...profile.favoredGenres, ...vibes, ...sessionGenres])),
     };
     const { service } = makeService(runtimeService, agentLearningService);
     const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
@@ -215,6 +216,63 @@ describe('SessionsService (integration)', () => {
         preferences: expect.objectContaining({ genres: ['hip hop', 'Ambient', 'Lo-fi'], mood: 'Focus' }),
       }),
     );
+  });
+
+  it('records next picks priced 0 and records no taste signal', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({
+        status: 'approved',
+        tracks: [{ trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0.02, reason: 'selected' }],
+        primaryTrack: { trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0.02, reason: 'selected' },
+      }),
+    };
+    const agentLearningService = {
+      resolveTasteProfile: jest.fn().mockResolvedValue({ favoredGenres: [], genreWeights: {} }),
+      mergeLearnedGenres: (vibes: string[], profile: { favoredGenres: string[] }, sessionGenres: string[] = []) =>
+        Array.from(new Set([...profile.favoredGenres, ...vibes, ...sessionGenres])),
+      recordSignal: jest.fn(),
+    };
+    const { service } = makeService(runtimeService, agentLearningService);
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    const result = await service.agentNext({ sessionId: session.id }) as any;
+
+    expect(result.status).toBe('ok');
+    const licenses = await prisma.license.findMany({ where: { sessionId: session.id } });
+    expect(licenses).toHaveLength(1);
+    expect(licenses[0]).toMatchObject({ priceUsd: 0, durationSeconds: 0 });
+    expect(agentLearningService.recordSignal).not.toHaveBeenCalled();
+    expect(await prisma.agentSignal.count({ where: { sessionId: session.id } })).toBe(0);
+  });
+
+  it('keeps the session genres and saved vibes in the next-pick search', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({ status: 'no_tracks', tracks: [], shortfall: 5 }),
+    };
+    const agentLearningService = {
+      resolveTasteProfile: jest.fn().mockResolvedValue({ favoredGenres: ['hip hop'], genreWeights: {} }),
+      mergeLearnedGenres: (vibes: string[], profile: { favoredGenres: string[] }, sessionGenres: string[] = []) =>
+        Array.from(new Set([...profile.favoredGenres, ...vibes, ...sessionGenres])),
+    };
+    await prisma.agentConfig.create({
+      data: { userId: `${TEST_PREFIX}user`, vibes: ['Focus'], monthlyCapUsd: 10 },
+    });
+    try {
+      const { service } = makeService(runtimeService, agentLearningService);
+      const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+      await service.agentNext({ sessionId: session.id, preferences: { genres: ['Dark', 'Industrial'] } });
+
+      expect(runtimeService.runCommerce).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preferences: expect.objectContaining({ genres: ['hip hop', 'Focus', 'Dark', 'Industrial'] }),
+        }),
+      );
+      const config = await prisma.agentConfig.findUnique({ where: { userId: `${TEST_PREFIX}user` } });
+      expect(config?.vibes).toEqual(['Focus']);
+    } finally {
+      await prisma.agentConfig.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
+    }
   });
 
   it('returns only current stems in playlist track summaries', async () => {

@@ -41,7 +41,6 @@ export class AgentEvaluationService {
     const results = [];
     let approved = 0;
     let rejected = 0;
-    let totalPrice = 0;
     let totalLatencyMs = 0;
     let repeatCount = 0;
     const seenTracks = new Set<string>();
@@ -56,7 +55,6 @@ export class AgentEvaluationService {
           const result = await this.runtimeService.run(session);
           if (result.status === "approved") {
             approved += 1;
-            totalPrice += (result as any).priceUsd ?? 0;
             sessionAccepted.push(true);
           } else {
             rejected += 1;
@@ -76,12 +74,8 @@ export class AgentEvaluationService {
       } else {
         const result = await this.orchestrator.orchestrate(session);
         for (const track of result.tracks) {
-          if (track.negotiation) {
-            approved += 1;
-            totalPrice += track.negotiation.priceUsd ?? 0;
-          } else {
-            rejected += 1;
-          }
+          // Every returned track is a selected pick; picks carry no price.
+          approved += 1;
           if (seenTracks.has(track.trackId)) {
             repeatCount += 1;
           }
@@ -114,7 +108,9 @@ export class AgentEvaluationService {
       earlyAcceptanceRate,
       lateAcceptanceRate,
       acceptanceRateImprovement: late.length ? lateAcceptanceRate - earlyAcceptanceRate : 0,
-      avgPriceUsd: approved ? totalPrice / approved : 0,
+      // Listening picks are never priced (ADR-TE-1); kept at 0 so the
+      // agent.evaluation_completed event shape stays stable.
+      avgPriceUsd: 0,
       repeatRate: sessions.length ? repeatCount / sessions.length : 0,
       ...(useRuntime
         ? { avgLatencyMs: sessions.length ? totalLatencyMs / sessions.length : 0 }

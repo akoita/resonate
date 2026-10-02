@@ -347,4 +347,62 @@ describe("EventsGateway", () => {
     }));
     gateway.onModuleDestroy();
   });
+
+  describe("AI DJ live feed", () => {
+    it("announces curation completion without spend text", () => {
+      const { gateway, eventBus, emit } = createGateway();
+
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackCount: 5,
+        reason: "approved",
+      });
+
+      expect(emit).toHaveBeenCalledWith("agent.event", expect.objectContaining({
+        type: "agent.decision_made",
+        message: "Curation complete: 5 tracks selected",
+      }));
+      gateway.onModuleDestroy();
+    });
+
+    it("shows no price on an LLM decision message", () => {
+      const { gateway, eventBus, emit } = createGateway();
+
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackId: "track-1",
+        priceUsd: 0.05,
+        reason: "llm",
+        latencyMs: 1200,
+      } as any);
+
+      const message = emit.mock.calls.find(([name]) => name === "agent.event")?.[1].message;
+      expect(message).toBe("AI selected track (1.2s)");
+      gateway.onModuleDestroy();
+    });
+
+    it("no longer broadcasts negotiation messages", () => {
+      const { gateway, eventBus, emit } = createGateway();
+
+      eventBus.publish({
+        eventName: "agent.negotiated",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackId: "track-1",
+        licenseType: "personal",
+        priceUsd: 0.02,
+        reason: "ok",
+      });
+
+      expect(emit).not.toHaveBeenCalled();
+      gateway.onModuleDestroy();
+    });
+  });
 });

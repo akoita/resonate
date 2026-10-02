@@ -90,7 +90,6 @@ describe("agent recommendation adapters", () => {
       sessionId: "session-1",
       userId: "user-1",
       recentTrackIds: ["track-2"],
-      budgetRemainingUsd: 1,
       preferences: {
         genres: ["Hip Hop"],
         mood: "Focus",
@@ -139,7 +138,6 @@ describe("agent recommendation adapters", () => {
       sessionId: "session-1",
       userId: "user-1",
       recentTrackIds: [],
-      budgetRemainingUsd: 1,
       preferences: { genres: ["Reggaeton"] },
       limit: 3,
     });
@@ -221,7 +219,6 @@ describe("agent recommendation adapters", () => {
       sessionId: "session-1",
       userId: "user-1",
       recentTrackIds: [],
-      budgetRemainingUsd: 1,
       preferences: { genres: ["Hip Hop"], mood: "Focus" },
       limit: 1,
     });
@@ -293,7 +290,6 @@ describe("agent recommendation adapters", () => {
       sessionId: "session-1",
       userId: "user-1",
       recentTrackIds: [],
-      budgetRemainingUsd: 1,
       preferences: { genres: ["Reggaeton"] },
       limit: 3,
     });
@@ -326,7 +322,6 @@ describe("agent recommendation adapters", () => {
       sessionId: "session-1",
       userId: "user-1",
       recentTrackIds: [],
-      budgetRemainingUsd: 1,
       preferences: { genres: ["Hip Hop"] },
       limit: 1,
     });
@@ -353,7 +348,6 @@ describe("agent recommendation adapters", () => {
       sessionId: "session-1",
       userId: "user-1",
       recentTrackIds: [],
-      budgetRemainingUsd: 1,
       preferences: { genres: ["Hip Hop"] },
       limit: 1,
     });
@@ -413,7 +407,6 @@ describe("agent recommendation adapters", () => {
       sessionId: "session-1",
       userId: "user-1",
       recentTrackIds: [],
-      budgetRemainingUsd: 1,
       preferences: { genres: ["Hip Hop"] },
       limit: 3,
     });

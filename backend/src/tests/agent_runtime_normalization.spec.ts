@@ -8,10 +8,11 @@ describe("normalizeAgentRuntimeResult", () => {
         {
           trackId: "track-1",
           mixPlan: { transition: "crossfade" },
-          negotiation: {
+          pick: {
             licenseType: "remix",
-            priceUsd: 5,
-            reason: "within_budget",
+            priceUsd: 0,
+            reason: "selected",
+            recommendation: { score: 42, reasonCode: "taste_match" },
           },
         },
       ],
@@ -23,14 +24,16 @@ describe("normalizeAgentRuntimeResult", () => {
       expect.objectContaining({
         trackId: "track-1",
         licenseType: "remix",
-        priceUsd: 5,
-        reason: "within_budget",
+        priceUsd: 0,
+        reason: "selected",
+        score: 42,
+        reasonCode: "taste_match",
       }),
     );
     expect(result.shortfall).toBe(4);
   });
 
-  it("normalizes adapter picks into the same commerce envelope", () => {
+  it("normalizes adapter picks into the same unpriced envelope", () => {
     const result = normalizeAgentRuntimeResult({
       status: "approved",
       picks: [
@@ -46,12 +49,12 @@ describe("normalizeAgentRuntimeResult", () => {
       expect.objectContaining({
         trackId: "track-1",
         licenseType: "commercial",
-        priceUsd: 25,
+        priceUsd: 0,
       }),
       expect.objectContaining({
         trackId: "track-2",
         licenseType: "personal",
-        priceUsd: 0.05,
+        priceUsd: 0,
       }),
     ]);
     expect(result.reasoning).toBe("fits the listener budget");
@@ -71,7 +74,7 @@ describe("normalizeAgentRuntimeResult", () => {
       expect.objectContaining({
         trackId: "track-1",
         licenseType: "remix",
-        priceUsd: 5,
+        priceUsd: 0,
         reason: "single_pick",
       }),
     );

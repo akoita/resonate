@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455, 2005, 2003, 2006]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455, 2005, 2003, 2006, 2036]
 ---
 
 # Agent Taste Intelligence
@@ -33,6 +33,20 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > a session in place. DJ preferences (DJ name, vibes, first-time setup) live in
 > Settings → **AI DJ** (`/settings?section=dj`). The ERC-8004 identity and
 > reputation actions are no longer shown to listeners. The AI DJ never buys.
+
+> **Listening sessions are price-free and keep your vibes (#2036).** Vision-neutral
+> infrastructure/quality: no money, payout or fee changes. A listening session
+> shows no prices, spend or budget anywhere in the AI DJ UI and negotiates
+> nothing; its pick-log rows (`License` rows, kept as the "tracks picked" log)
+> are recorded at price 0, a session start no longer writes an auto-`accept`
+> signal for the DJ's own picks, and session budgets and spend limits no longer
+> apply. Starting a session from a preset, the Home tuner or a Home feed prompt
+> never overwrites the vibes saved in Settings → AI DJ: the web sends the
+> session's genres as session preferences only, and the backend searches learned
+> favorite genres, then the saved vibes, then the session's requested genres
+> (in that order, de-duplicated). Preset cards no longer show a "Tempo target"
+> because selection never used it, and listening presets carry no license tier.
+> Only a first-time Home start, which creates the DJ, seeds the saved vibes.
 
 > **Session playback.** Starting a session from the AI DJ section plays the
 > session's first picks in the player once they are recorded (the panel polls

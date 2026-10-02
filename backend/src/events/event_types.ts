@@ -893,7 +893,6 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   sessionId: string;
   trackId?: string;
   trackCount?: number;
-  totalSpend?: number;
   licenseType?: "personal" | "remix" | "commercial";
   priceUsd?: number;
   reason: string;
@@ -953,6 +952,11 @@ export interface AgentMixPlannedEvent extends BaseEvent {
   transition: string;
 }
 
+/**
+ * @deprecated Retired: listening sessions never negotiate or price (ADR-TE-1;
+ * purchases go through Crate Digger quotes), so nothing emits this event. The
+ * type remains so historical events still parse.
+ */
 export interface AgentNegotiatedEvent extends BaseEvent {
   eventName: "agent.negotiated";
   sessionId: string;

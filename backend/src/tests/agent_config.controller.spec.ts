@@ -27,6 +27,7 @@ jest.mock("../db/prisma", () => ({
 }));
 
 import { AgentConfigController } from "../modules/agents/agent_config.controller";
+import { mergeSessionGenres } from "../modules/agents/agent_session_genres";
 
 function makeController(overrides: { runResult?: unknown; identity?: unknown; learningService?: unknown } = {}) {
   return new AgentConfigController(
@@ -125,7 +126,8 @@ describe("AgentConfigController", () => {
       expect.objectContaining({
         sessionId: "session_1",
         preferences: expect.objectContaining({
-          genres: ["Soul", "Jazz", "Downtempo"],
+          // Saved vibes first, then the session's own genres.
+          genres: ["Focus", "Soul", "Jazz", "Downtempo"],
           mood: "Chill",
           energy: "low",
           licenseType: "personal",
@@ -139,14 +141,8 @@ describe("AgentConfigController", () => {
   });
   describe("curate-only sessions (ADR-TE-1.4)", () => {
     const req = { user: { userId: "user_1" } };
-    const negotiation = {
-      allowed: true,
-      licenseType: "personal",
-      priceUsd: 2,
-      reason: "ok",
-      listings: [{ listingId: 1n, tokenId: 1n, pricePerUnit: 1n, stemType: "drums" }],
-    };
-    const orchestratorResult = { tracks: [{ trackId: "track_1", negotiation }] };
+    const pick = { licenseType: "personal", priceUsd: 0, reason: "selected" };
+    const orchestratorResult = { tracks: [{ trackId: "track_1", mixPlan: {}, pick }] };
     const llmResult = {
       status: "picked",
       reason: "llm",
@@ -172,7 +168,29 @@ describe("AgentConfigController", () => {
       await jest.advanceTimersByTimeAsync(0);
     }
 
-    it("records the policy step's reasonCode on the LLM pick's accept signal (#1456)", async () => {
+    it("records no taste signal when the DJ picks a track (orchestrator path)", async () => {
+      const learningService = {
+        resolveTasteProfile: jest.fn().mockResolvedValue(null),
+        mergeLearnedGenres: jest.fn(),
+        recordSignal: jest.fn(),
+      };
+      const ctrl = makeController({ learningService, runResult: orchestratorResult });
+
+      await runSession(ctrl);
+
+      expect(createLicense).toHaveBeenCalledWith({
+        data: {
+          sessionId: "session_1",
+          trackId: "track_1",
+          type: "personal",
+          priceUsd: 0,
+          durationSeconds: 0,
+        },
+      });
+      expect(learningService.recordSignal).not.toHaveBeenCalled();
+    });
+
+    it("records LLM picks as unpriced pick-log rows and no taste signal (#1456)", async () => {
       const learningService = {
         resolveTasteProfile: jest.fn().mockResolvedValue(null),
         mergeLearnedGenres: jest.fn(),
@@ -197,16 +215,52 @@ describe("AgentConfigController", () => {
 
       await runSession(ctrl);
 
-      expect(learningService.recordSignal).toHaveBeenCalledWith(
+      expect(createLicense).toHaveBeenCalledWith({
+        data: expect.objectContaining({ trackId: "track_1", priceUsd: 0, durationSeconds: 0 }),
+      });
+      expect(learningService.recordSignal).not.toHaveBeenCalled();
+    });
+
+    it("keeps the preset's genres after merging learned favorites and saved vibes, without writing vibes", async () => {
+      const learningService = {
+        resolveTasteProfile: jest.fn().mockResolvedValue({
+          favoredGenres: ["Hip Hop", "Focus"],
+          genreWeights: { "Hip Hop": 1 },
+        }),
+        mergeLearnedGenres: jest.fn((vibes: string[], profile: any, sessionGenres: string[] = []) =>
+          mergeSessionGenres({ learnedGenres: profile.favoredGenres, vibes, sessionGenres }),
+        ),
+        recordSignal: jest.fn(),
+      };
+      const ctrl = makeController({ learningService });
+
+      await ctrl.startSession(req, { preferences: { genres: ["Soul", "Jazz"] } });
+      await jest.advanceTimersByTimeAsync(500);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect((ctrl as any).runtimeService.run).toHaveBeenCalledWith(
         expect.objectContaining({
-          metadata: expect.objectContaining({
-            runtime: "llm",
-            recommendation: {
-              score: 48,
-              explanation: ["Selected vibe match"],
-              reasonCode: "taste_match",
-            },
+          preferences: expect.objectContaining({
+            genres: ["Hip Hop", "Focus", "Soul", "Jazz"],
+            learnedGenreWeights: { "Hip Hop": 1 },
           }),
+        }),
+      );
+      for (const [args] of updateAgentConfig.mock.calls) {
+        expect(args.data).toEqual({ isActive: true });
+      }
+    });
+
+    it("falls back to saved vibes plus the session's genres when no taste profile resolves", async () => {
+      const ctrl = makeController();
+
+      await ctrl.startSession(req, { preferences: { genres: ["Soul"] } });
+      await jest.advanceTimersByTimeAsync(500);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect((ctrl as any).runtimeService.run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preferences: expect.objectContaining({ genres: ["Focus", "Soul"] }),
         }),
       );
     });
@@ -230,7 +284,10 @@ describe("AgentConfigController", () => {
       expect(createLicense).toHaveBeenCalledTimes(1);
       expect(updateSession).not.toHaveBeenCalled();
       expect((ctrl as any).eventBus.publish).toHaveBeenCalledWith(
-        expect.objectContaining({ eventName: "agent.decision_made", priceUsd: 0 }),
+        expect.objectContaining({ eventName: "agent.decision_made" }),
+      );
+      expect((ctrl as any).eventBus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: "agent.decision_made", priceUsd: expect.anything() }),
       );
     });
 

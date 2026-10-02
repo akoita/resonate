@@ -22,15 +22,6 @@ function formatDuration(startedAt: string, endedAt: string | null) {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
-function licenseIcon(type: string) {
-    switch (type) {
-        case "personal": return "\u{1F3A7}";
-        case "remix": return "\u{1F39B}\uFE0F";
-        case "commercial": return "\u{1F4BC}";
-        default: return "\u{1F4C4}";
-    }
-}
-
 function recommendationText(recommendation: AgentSession["licenses"][number]["recommendation"]) {
     const summary = recommendation?.recommendation;
     if (summary?.explanation?.length) {
@@ -106,7 +97,6 @@ export default function AgentHistoryCard({ sessions, isLoading }: Props) {
                                     <span className="aid-history-tracks">
                                         {session.licenses.length} track{session.licenses.length !== 1 ? "s" : ""}
                                     </span>
-                                    <span className="aid-history-spend">${session.spentUsd.toFixed(2)}</span>
                                 </div>
                                 {!session.endedAt && <span className="aid-live-badge">LIVE</span>}
                                 <svg className="aid-history-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -144,15 +134,11 @@ export default function AgentHistoryCard({ sessions, isLoading }: Props) {
                                                 </span>
                                             </div>
                                             <div className="aid-history-lic-meta">
-                                                <span className="aid-lic-badge">
-                                                    {licenseIcon(lic.type)} {lic.type}
-                                                </span>
                                                 {typeof lic.recommendation?.recommendation?.score === "number" && (
                                                     <span className="aid-lic-badge">
                                                         score {lic.recommendation.recommendation.score}
                                                     </span>
                                                 )}
-                                                <span className="aid-history-lic-price">${lic.priceUsd.toFixed(2)}</span>
                                             </div>
                                             <svg className="aid-history-lic-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                 <polyline points="9 18 15 12 9 6" />

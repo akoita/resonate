@@ -94,7 +94,11 @@ vi.mock("../../hooks/useAgentHistory", () => ({
 }));
 
 // Capture the status card's toggle so the Start/Stop handler can be invoked.
-const captured: { onToggle?: () => void; onPick?: () => Promise<void> } = {};
+const captured: {
+  onToggle?: () => void;
+  onPick?: () => Promise<void>;
+  onStart?: (preset: SessionPreset) => Promise<void>;
+} = {};
 vi.mock("./AgentStatusCard", () => ({
   default: (props: { onToggle: () => void }) => {
     captured.onToggle = props.onToggle;
@@ -108,10 +112,21 @@ vi.mock("./AgentNextPickCard", () => ({
     return null;
   },
 }));
+vi.mock("./AgentSessionPresets", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./AgentSessionPresets")>();
+  return {
+    ...actual,
+    default: (props: { onStart: (preset: SessionPreset) => Promise<void> }) => {
+      captured.onStart = props.onStart;
+      return null;
+    },
+  };
+});
 vi.mock("./AgentHistoryCard", () => ({ default: () => null }));
 vi.mock("./AgentSetupWizard", () => ({ default: () => null }));
 
 import AgentSessionPanel from "./AgentSessionPanel";
+import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
 
 function config(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
@@ -159,6 +174,7 @@ describe("AgentSessionPanel", () => {
     hookState.historyLoading = false;
     captured.onToggle = undefined;
     captured.onPick = undefined;
+    captured.onStart = undefined;
   });
 
   afterEach(() => {
@@ -203,6 +219,28 @@ describe("AgentSessionPanel", () => {
       expect.objectContaining({ payload: expect.objectContaining({ surface: "home" }) }),
     );
     expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Session Started" }));
+  });
+
+  it("starts a preset without overwriting the saved vibes (#2036)", async () => {
+    hookState.config = config({ isActive: false, vibes: ["Jazz"] });
+    render();
+    const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype");
+    expect(preset).toBeDefined();
+
+    await captured.onStart?.(preset!);
+
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(startSession).toHaveBeenCalledTimes(1);
+    const [input] = startSession.mock.calls[0] as unknown as [{ preferences: Record<string, unknown> }];
+    expect(input.preferences).toEqual(
+      expect.objectContaining({
+        genres: preset!.searchVibes,
+        mood: "Hype",
+        energy: "high",
+        sessionIntent: "Hype",
+      }),
+    );
+    expect(input.preferences).not.toHaveProperty("licenseType");
   });
 
   it("stops a live session", async () => {
@@ -259,7 +297,7 @@ describe("AgentSessionPanel", () => {
       expect(startIndex).toBe(0);
       expect(saveTracksMetadata).toHaveBeenCalledWith(queue, "remote");
       expect(addToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "AI Pick Ready", message: expect.stringContaining("Playing Main") }),
+        expect.objectContaining({ title: "AI Pick Ready", message: "Playing Main" }),
       );
     });
 

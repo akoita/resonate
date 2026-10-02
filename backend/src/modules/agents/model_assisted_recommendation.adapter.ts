@@ -336,7 +336,6 @@ export class ModelAssistedRecommendationAdapter implements AgentRecommendationAd
         learnedGenreWeights: input.preferences.learnedGenreWeights ?? {},
         allowExplicit: input.preferences.allowExplicit ?? false,
       },
-      budgetRemainingUsd: input.budgetRemainingUsd,
       recentTrackIds: input.recentTrackIds,
       targetTrackCount: input.limit,
       candidates: candidates.map((candidate) => ({

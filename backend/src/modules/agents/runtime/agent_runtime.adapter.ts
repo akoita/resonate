@@ -2,6 +2,10 @@ export interface AgentRuntimeInput {
   sessionId: string;
   userId: string;
   recentTrackIds: string[];
+  /**
+   * Wire-contract field kept for the remote runtime worker. Listening runs are
+   * not priced or budget-limited (ADR-TE-1); it must not reduce the picks.
+   */
   budgetRemainingUsd: number;
   preferences: {
     mood?: string;

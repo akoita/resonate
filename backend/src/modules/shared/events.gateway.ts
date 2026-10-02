@@ -16,7 +16,7 @@ import {
     StemsFailedEvent, GenerationStartedEvent, GenerationProgressEvent, GenerationCompletedEvent,
     GenerationFailedEvent, RealtimeAudioEvent, RealtimeDisconnectedEvent, MarketplaceListingNotifyEvent,
     SessionStartedEvent, SessionEndedEvent, AgentSelectionEvent, AgentMixPlannedEvent,
-    AgentNegotiatedEvent, AgentDecisionMadeEvent, ContractStemListedEvent, ContractStemSoldEvent,
+    AgentDecisionMadeEvent, ContractStemListedEvent, ContractStemSoldEvent,
     ContractListingCancelledEvent, NotificationCreatedEvent, ReleaseRightsRequestUpdatedEvent,
     ContractDisputeFiledEvent, ContractDisputeResolvedEvent, ContractDisputeAppealedEvent,
 } from '../../events/event_types';
@@ -189,19 +189,6 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
             }
         }));
 
-        this.subscriptions.push(this.eventBus.subscribe('agent.negotiated', (event: AgentNegotiatedEvent) => {
-            if (this.server) {
-                const title = event.trackTitle ?? event.trackId;
-                this.server.emit('agent.event', {
-                    id: `${event.sessionId}-neg-${event.trackId}`,
-                    type: 'agent.negotiated',
-                    sessionId: event.sessionId,
-                    message: `Negotiated "${title}": $${event.priceUsd} (${event.licenseType})`,
-                    timestamp: event.occurredAt,
-                });
-            }
-        }));
-
         this.subscriptions.push(this.eventBus.subscribe('agent.decision_made', (event: AgentDecisionMadeEvent) => {
             if (this.server) {
                 let msg: string;
@@ -211,17 +198,15 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     msg = 'Curation encountered an error';
                 } else if (event.reasoning || event.latencyMs != null) {
                     const latency = event.latencyMs != null ? ` (${(event.latencyMs / 1000).toFixed(1)}s)` : '';
-                    const price = event.priceUsd != null ? ` — $${Number(event.priceUsd).toFixed(2)}` : '';
                     msg = event.trackId
-                        ? `AI selected track${price}${latency}`
+                        ? `AI selected track${latency}`
                         : `AI could not find a suitable track${latency}`;
                     if (event.reasoning) {
                         msg += `: ${event.reasoning}`;
                     }
                 } else {
                     const count = event.trackCount ?? 0;
-                    const spend = event.totalSpend != null ? `$${event.totalSpend.toFixed(2)}` : '';
-                    msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected${spend ? `, ${spend} total` : ''}`;
+                    msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected`;
                 }
                 this.server.emit('agent.event', {
                     id: `${event.sessionId}-dec-${Date.now()}`,

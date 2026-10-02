@@ -31,7 +31,8 @@ export interface AgentRuntimeCommerceTrack {
   signals?: Array<{ label: string; weight: number; reason: string }>;
   audioFeatures?: unknown;
   mixPlan?: unknown;
-  negotiation?: unknown;
+  /** The orchestrator's pick record; never a priced negotiation (ADR-TE-1). */
+  pick?: unknown;
 }
 
 export interface AgentRuntimeCommerceResult {
@@ -56,42 +57,38 @@ function normalizeLicenseType(value: unknown): AgentLicenseType {
   return value === "remix" || value === "commercial" ? value : "personal";
 }
 
-function normalizePriceUsd(value: unknown): number {
-  const price = Number(value ?? 0);
-  return Number.isFinite(price) && price >= 0 ? price : 0;
-}
-
 export function normalizeAgentRuntimeResult(
   result: AgentRuntimeRunResult,
 ): AgentRuntimeCommerceResult {
   if ("tracks" in result) {
     const tracks = result.tracks.map((track) => {
-      const negotiation = track.negotiation as
+      // Listening picks are never priced (ADR-TE-1): the pick record carries
+      // no price, and the normalized price is always 0.
+      const pick = track.pick as
         | {
             licenseType?: unknown;
-          priceUsd?: unknown;
-          reason?: string;
-          recommendation?: {
-            score?: number;
-            explanation?: string[];
-            reasonCode?: string;
-            signals?: Array<{ label: string; weight: number; reason: string }>;
-            audioFeatures?: unknown;
-          };
-        }
+            reason?: string;
+            recommendation?: {
+              score?: number;
+              explanation?: string[];
+              reasonCode?: string;
+              signals?: Array<{ label: string; weight: number; reason: string }>;
+              audioFeatures?: unknown;
+            };
+          }
         | undefined;
       return {
         trackId: track.trackId,
-        licenseType: normalizeLicenseType(negotiation?.licenseType),
-        priceUsd: normalizePriceUsd(negotiation?.priceUsd),
-        reason: negotiation?.reason,
-        score: negotiation?.recommendation?.score,
-        explanation: negotiation?.recommendation?.explanation,
-        reasonCode: negotiation?.recommendation?.reasonCode,
-        signals: negotiation?.recommendation?.signals,
-        audioFeatures: negotiation?.recommendation?.audioFeatures,
+        licenseType: normalizeLicenseType(pick?.licenseType),
+        priceUsd: 0,
+        reason: pick?.reason,
+        score: pick?.recommendation?.score,
+        explanation: pick?.recommendation?.explanation,
+        reasonCode: pick?.recommendation?.reasonCode,
+        signals: pick?.recommendation?.signals,
+        audioFeatures: pick?.recommendation?.audioFeatures,
         mixPlan: track.mixPlan,
-        negotiation: track.negotiation,
+        pick: track.pick,
       };
     });
 
@@ -111,14 +108,16 @@ export function normalizeAgentRuntimeResult(
             {
               trackId: result.trackId,
               licenseType: normalizeLicenseType(result.licenseType),
-              priceUsd: normalizePriceUsd(result.priceUsd),
+              priceUsd: 0,
             },
           ]
         : [];
+  // Like the orchestrator path: a price the model reports is ignored, because
+  // listening picks are never priced (ADR-TE-1).
   const tracks = picks.map((pick) => ({
     trackId: pick.trackId,
     licenseType: normalizeLicenseType(pick.licenseType),
-    priceUsd: normalizePriceUsd(pick.priceUsd),
+    priceUsd: 0,
     reason: result.reason,
     // Present once the runtime policy step has scored the pick (same shape as
     // the deterministic path's recommendation).

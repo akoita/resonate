@@ -4,7 +4,6 @@ import { AgentBigQueryTasteSignalService } from "./agent_bigquery_taste_signal.s
 import { AgentGoldenEvalService } from "./agent_golden_eval.service";
 import { AgentLearningService } from "./agent_learning.service";
 import { AgentMixerService } from "./agent_mixer.service";
-import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentObservabilityService } from "./agent_observability.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentPolicyService } from "./agent_policy.service";
@@ -49,7 +48,6 @@ export const AGENT_RUNTIME_CORE_PROVIDERS = [
   DeterministicRecommendationAdapter,
   ModelAssistedRecommendationAdapter,
   AgentMixerService,
-  AgentNegotiatorService,
   AgentOrchestratorService,
   VertexAiAdapter,
   AdkAdapter,
