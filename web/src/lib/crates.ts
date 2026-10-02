@@ -139,6 +139,116 @@ export type CrateDto = {
   items: CrateItemDto[];
 };
 
+/* ------------------------------------------------------------------ */
+/* Quote and settlement receipts (#1964)                               */
+/* ------------------------------------------------------------------ */
+
+/** Mirrors `backend/src/modules/crates/crate_quote.dto.ts`. */
+export type CrateQuoteStatus = "open" | "submitted" | "settled" | "partial" | "failed";
+export type CrateQuoteItemStatus = "quoted" | "dropped" | "settled" | "failed";
+
+/** Why the browser left a quoted stem out of the transaction it sent. */
+export const CRATE_QUOTE_SETTLE_DROP_REASONS = [
+  "simulation_failed",
+  "insufficient_balance",
+  "listing_changed",
+  "deselected",
+] as const;
+export type CrateQuoteSettleDropReason = (typeof CRATE_QUOTE_SETTLE_DROP_REASONS)[number];
+
+export type CrateQuoteReceipt = {
+  transactionHash: string;
+  logIndex: number;
+  totalPaidUnits: string;
+  purchaseId: string | null;
+};
+
+export type CrateQuoteItem = {
+  quoteLineId: string;
+  stemId: string;
+  stemType: string;
+  status: CrateQuoteItemStatus | string;
+  reason: string | null;
+  listingId: string | null;
+  tokenId: string | null;
+  paymentToken: string | null;
+  symbol: string | null;
+  decimals: number | null;
+  /** Total price in payment-token units, as a decimal string (parse with BigInt). */
+  totalUnits: string | null;
+  total: string | null;
+  totalUsd: string | null;
+  artistShareUnits: string | null;
+  platformFeeUnits: string | null;
+  receipt: CrateQuoteReceipt | null;
+};
+
+export type CrateQuoteRights = {
+  licenseType: string;
+  standardTerms: boolean;
+  grants: string[];
+};
+
+export type CrateQuoteLine = {
+  position: number;
+  trackId: string;
+  title: string | null;
+  artistName: string | null;
+  licenseType: string;
+  rights: CrateQuoteRights;
+  items: CrateQuoteItem[];
+};
+
+export type CrateQuoteTotal = {
+  paymentToken: string;
+  symbol: string;
+  decimals: number;
+  totalUnits: string;
+  total: string;
+  totalUsd: string | null;
+};
+
+export type CrateQuote = {
+  id: string;
+  crateId: string;
+  status: CrateQuoteStatus | string;
+  chainId: number;
+  marketplaceAddress: string;
+  buyerAddress: string;
+  expiresAt: string;
+  transactionHash: string | null;
+  lines: CrateQuoteLine[];
+  totals: CrateQuoteTotal[];
+  totalUsd: string | null;
+  budgetUsd: number | null;
+  overBudget: boolean;
+};
+
+/** A per-line choice sent back to the quote route. */
+export type CrateQuoteLineRequest = {
+  trackId: string;
+  licenseType?: CrateLicenseType;
+  stemTypes?: CrateStemType[];
+};
+
+export type CreateCrateQuoteBody = {
+  /** The smart account the page will sign with. Always sent. */
+  buyerAddress: string;
+  /** Omitted: every line of the crate. Given: only these lines. */
+  lines?: CrateQuoteLineRequest[];
+};
+
+export type SettleCrateQuoteBody = {
+  transactionHash: string;
+  dropped?: Array<{ quoteLineId: string; reason: CrateQuoteSettleDropReason }>;
+};
+
+/** 200 when the quote reached a final state, 202 while the transaction is pending. */
+export type SettleCrateQuoteResult = { status: 200 | 202; quote: CrateQuote };
+
+/** `GET /crates/:id`: the crate plus its most recent quote (any status), or null. */
+export type GetCrateResponse = { crate: CrateDto; latestQuote?: CrateQuote | null };
+
 export type CrateRequestInfo = {
   id: string;
   source: CrateRequestSource;
