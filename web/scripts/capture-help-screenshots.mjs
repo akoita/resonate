@@ -100,7 +100,7 @@ const PUBLIC_TARGETS = [
   ["/catalog", "catalog.png"],
   ["/shows", "shows.png"],
   ["/shows/sennarin-paris", "show-campaign.png"],
-  ["/marketplace", "marketplace.png"],
+  ["/crates?tab=stems", "marketplace.png"],
   ["/drops", "drops.png"],
   ["/player", "player.png"],
   ["/wallet", "wallet.png"],
@@ -126,7 +126,7 @@ const AUTH_TARGETS = [
       await page.getByRole("heading", { name: "Tell us what you want more or less of" }).scrollIntoViewIfNeeded();
     },
   }],
-  ["/agent", "ai-dj.png", { prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); } }],
+  ["/#ai-dj", "ai-dj.png", { prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); } }],
   ["/sonic-radar", "sonic-radar.png", {
     // ADR-TE-5: the discovery journal, drawn from a fixed sample journal.
     mockDiscoveries: true,

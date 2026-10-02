@@ -204,7 +204,7 @@ export function DropsBrowseView({
           <p>
             Discover scarce, non-commercial keepsakes cut from the lines fans
             remember. Looking for music you can build with?{" "}
-            <Link href="/marketplace">License the ingredients</Link>.
+            <Link href="/crates?tab=stems">License the ingredients</Link>.
           </p>
         </header>
 

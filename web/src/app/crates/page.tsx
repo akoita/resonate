@@ -2,9 +2,10 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
+import { MarketplaceBrowse } from "../../components/marketplace/MarketplaceBrowse";
 import { createCrateRequest, listCrates } from "../../lib/api";
 import {
   clampCount,
@@ -103,15 +104,19 @@ function CratesHome() {
   };
 
   return (
-    <div className="crates-page">
-      <header>
-        <h1>{referenceTrackId ? "More like this track" : "Crate Digger"}</h1>
+    <div className="crates-tab-content">
+      {referenceTrackId ? (
+        <header>
+          <h2>More like this track</h2>
+          <p className="crates-lede">
+            Building a crate of tracks that sit close to the one you chose.
+          </p>
+        </header>
+      ) : (
         <p className="crates-lede">
-          {referenceTrackId
-            ? "Building a crate of tracks that sit close to the one you chose."
-            : "Say what your set needs. You get a crate you can reorder, lock, swap and save."}
+          Say what your set needs. You get a crate you can reorder, lock, swap and save.
         </p>
-      </header>
+      )}
 
       {referenceTrackId ? (
         <div className="crates-panel" aria-live="polite">
@@ -221,12 +226,106 @@ function CratesHome() {
   );
 }
 
+type CratesTab = "build" | "stems";
+
+const TABS: ReadonlyArray<{ id: CratesTab; label: string }> = [
+  { id: "build", label: "Build a crate" },
+  { id: "stems", label: "Browse stems" },
+];
+
+function CratesAndStems() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tabRefs = useRef<Record<CratesTab, HTMLButtonElement | null>>({ build: null, stems: null });
+  // A reference track builds on arrival, so it always means the build tab.
+  const tab: CratesTab =
+    searchParams.get("referenceTrackId") === null && searchParams.get("tab") === "stems"
+      ? "stems"
+      : "build";
+
+  const selectTab = useCallback(
+    (next: CratesTab) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "stems") {
+        params.set("tab", "stems");
+        // Leaving the build tab abandons the reference-track arrival.
+        params.delete("referenceTrackId");
+      } else {
+        params.delete("tab");
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % TABS.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + TABS.length) % TABS.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = TABS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const next = TABS[nextIndex].id;
+    selectTab(next);
+    tabRefs.current[next]?.focus();
+  };
+
+  return (
+    <div className={`crates-page${tab === "stems" ? " crates-page--wide" : ""}`}>
+      <header>
+        <h1>Crates &amp; Stems</h1>
+        <p className="crates-lede">
+          Build a crate from a sentence, or browse stems to license on their own.
+        </p>
+      </header>
+
+      <div className="crates-tabs" role="tablist" aria-label="Crates and stems">
+        {TABS.map((item, index) => (
+          <button
+            key={item.id}
+            ref={(node) => {
+              tabRefs.current[item.id] = node;
+            }}
+            type="button"
+            role="tab"
+            id={`crates-tab-${item.id}`}
+            aria-selected={tab === item.id}
+            aria-controls={`crates-panel-${item.id}`}
+            tabIndex={tab === item.id ? 0 : -1}
+            className="crates-tab"
+            onClick={() => selectTab(item.id)}
+            onKeyDown={(event) => onTabKeyDown(event, index)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        role="tabpanel"
+        id={`crates-panel-${tab}`}
+        aria-labelledby={`crates-tab-${tab}`}
+        className="crates-tabpanel"
+      >
+        {tab === "stems" ? (
+          <MarketplaceBrowse headingLevel={2} />
+        ) : (
+          <AuthGate title="Connect your wallet to build a crate.">
+            <CratesHome />
+          </AuthGate>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CratesPage() {
   return (
-    <AuthGate title="Connect your wallet to build a crate.">
-      <Suspense fallback={<div className="crates-page">Loading…</div>}>
-        <CratesHome />
-      </Suspense>
-    </AuthGate>
+    <Suspense fallback={<div className="crates-page">Loading…</div>}>
+      <CratesAndStems />
+    </Suspense>
   );
 }

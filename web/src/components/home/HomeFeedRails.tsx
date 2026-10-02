@@ -90,7 +90,7 @@ export function HomeFeedRails({
             kickerTone={kicker.tone}
             title={rail.title}
             description={rail.explanation}
-            action={rail.kind === "because_genre" ? { href: "/agent", label: "Open AI DJ" } : undefined}
+            action={rail.kind === "because_genre" ? { href: "#ai-dj", label: "Start an AI DJ session" } : undefined}
             railKind={rail.kind}
             itemWidth={196}
           >

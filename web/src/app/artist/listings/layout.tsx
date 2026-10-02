@@ -1,7 +1,7 @@
 import { privateMetadata } from "../../../lib/seo";
 
-export const metadata = privateMetadata({ title: "Manage listings" });
+export const metadata = privateMetadata({ title: "Listings" });
 
-export default function MarketplaceManageLayout({ children }: { children: React.ReactNode }) {
+export default function ArtistListingsLayout({ children }: { children: React.ReactNode }) {
   return children;
 }

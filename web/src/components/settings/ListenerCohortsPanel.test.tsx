@@ -85,9 +85,9 @@ function detail(overrides: Partial<CommunityCohortDetailResponse> = {}): Communi
     actions: [
       {
         id: "browse_marketplace",
-        label: "Browse marketplace",
+        label: "Browse stems",
         description: "Explore stems and releases while this cohort context is fresh.",
-        href: "/marketplace",
+        href: "/crates?tab=stems",
         status: "available",
       },
     ],
@@ -313,8 +313,8 @@ describe("ListenerCohortsPanel", () => {
     );
 
     expect(html).toContain("Cohort detail");
-    expect(html).toContain("Browse marketplace");
-    expect(html).toContain("href=\"/marketplace\"");
+    expect(html).toContain("Browse stems");
+    expect(html).toContain("href=\"/crates?tab=stems\"");
     expect(html).toContain("10+ listeners");
     expect(html).toContain("Only opted-in public or community profile summaries can appear.");
     expect(html).toContain("Private, hidden, left, and non-joined members stay anonymous.");
@@ -486,7 +486,7 @@ describe("ListenerCohortsPanel", () => {
 
     expect(html).toContain("Loading cohort detail...");
     expect(html).toContain("Loading privacy-safe cohort context...");
-    expect(html).not.toContain("Browse marketplace");
+    expect(html).not.toContain("Browse stems");
   });
 
   it("humanizes membership status labels for display", () => {

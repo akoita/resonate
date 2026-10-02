@@ -10,7 +10,8 @@ const DISMISSED_KEY = "resonate.agent_onboarding_dismissed";
 /**
  * Renders the AgentSetupWizard overlay automatically when a user
  * first connects their wallet and has no AgentConfig.
- * Placed in AppShell so it works on every page, not just /agent.
+ * Placed in AppShell so it works on every page, not just the Home AI DJ
+ * section (`/#ai-dj`) or Settings → AI DJ, which also offer "Set up your DJ".
  */
 export default function AgentOnboardingGate() {
     const { status, token } = useAuth();

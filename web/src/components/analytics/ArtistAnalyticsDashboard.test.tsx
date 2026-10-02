@@ -331,7 +331,7 @@ const dashboard: ArtistAnalyticsDashboardData = {
       },
       cta: {
         label: "Review remix supply",
-        href: "/marketplace/manage?status=active",
+        href: "/artist/listings?status=active",
       },
       privacy: {
         aggregateOnly: true,
@@ -355,7 +355,7 @@ const dashboard: ArtistAnalyticsDashboardData = {
       },
       cta: {
         label: "Review active listings",
-        href: "/marketplace/manage?status=active",
+        href: "/artist/listings?status=active",
       },
       privacy: {
         aggregateOnly: true,
@@ -401,7 +401,7 @@ const dashboard: ArtistAnalyticsDashboardData = {
       },
       cta: {
         label: "Open expired listings",
-        href: "/marketplace/manage?status=expired",
+        href: "/artist/listings?status=expired",
       },
       privacy: {
         aggregateOnly: true,
@@ -423,7 +423,7 @@ const dashboard: ArtistAnalyticsDashboardData = {
       },
       cta: {
         label: "Review active listings",
-        href: "/marketplace/manage?status=active",
+        href: "/artist/listings?status=active",
       },
       privacy: {
         aggregateOnly: true,

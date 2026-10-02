@@ -110,8 +110,8 @@ export default function AgentSessionPresets({
             </p>
           </div>
           {showOpenLink ? (
-            <Link href="/agent" className="agent-session-link">
-              Open AI DJ
+            <Link href="/#ai-dj" className="agent-session-link">
+              Go to your AI DJ
             </Link>
           ) : null}
         </div>

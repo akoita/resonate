@@ -2833,9 +2833,9 @@ export default function ReleaseDetails() {
                     : "Mint and list your stems as NFTs"}
                 </p>
               </div>
-              <a href="/marketplace" className="nft-link">
-                View Marketplace →
-              </a>
+              <Link href="/crates?tab=stems" className="nft-link">
+                Browse stems →
+              </Link>
             </div>
 
             <div className="nft-tracks-scroll-container">

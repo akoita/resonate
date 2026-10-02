@@ -300,7 +300,7 @@ export function RemixCta({
         onGetLicense();
         return;
       }
-      router.push("/marketplace");
+      router.push("/crates?tab=stems");
       return;
     }
     if (state.kind === "signed_out") {

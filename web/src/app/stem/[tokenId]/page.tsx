@@ -382,7 +382,7 @@ export default function StemDetailPage() {
                         Token #{tokenId.toString()} does not exist or has not been minted.
                     </p>
                     <Link
-                        href="/marketplace"
+                        href="/crates?tab=stems"
                         className="text-emerald-500 hover:text-emerald-400"
                     >
                         Browse Marketplace →
@@ -446,7 +446,7 @@ export default function StemDetailPage() {
                         )}
                         {primaryListing && isOwnListing && (
                             <Link
-                                href="/marketplace/manage"
+                                href="/artist/listings"
                                 className="px-7 py-3 rounded-lg font-semibold bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 transition-colors"
                             >
                                 Your Listing · Manage

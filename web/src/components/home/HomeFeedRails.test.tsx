@@ -68,6 +68,13 @@ describe("HomeFeedRails", () => {
     expect(html).toContain('href="/release/rel_1"');
   });
 
+  it("points the genre rail action at the Home AI DJ section", () => {
+    const html = renderToStaticMarkup(<HomeFeedRails feed={feed([rail()])} />);
+    expect(html).toContain('href="#ai-dj"');
+    expect(html).toContain("Start an AI DJ session");
+    expect(html).not.toContain('href="/agent"');
+  });
+
   it("marks the exploration rail and its fresh-find items", () => {
     const html = renderToStaticMarkup(
       <HomeFeedRails

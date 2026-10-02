@@ -30,7 +30,7 @@ test.describe("Crate Digger (#1963)", () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/crates");
 
-    await expect(page.getByRole("heading", { name: "Crate Digger", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Crates & Stems", level: 1 })).toBeVisible();
     await expect(page.getByText("No crates yet.")).toBeVisible();
     const build = page.getByRole("button", { name: "Build crate" });
     await expect(build).toBeDisabled();
@@ -167,7 +167,7 @@ test.describe("Crate Digger (#1963)", () => {
   }) => {
     const { created } = await mockCrateApi(page);
     await page.goto("/crates");
-    await expect(page.getByRole("heading", { name: "Crate Digger", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Crates & Stems", level: 1 })).toBeVisible();
     // The stem page links here with the catalog track id.
     await page.goto(`/crates?referenceTrackId=${encodeURIComponent(REFERENCE_TRACK_ID)}`);
     await page.waitForURL(`**/crates/${REFERENCE_CRATE_ID}`);
@@ -177,7 +177,7 @@ test.describe("Crate Digger (#1963)", () => {
 
     // Back returns to where the link was followed from, not into another build.
     await page.goBack();
-    await expect(page.getByRole("heading", { name: "Crate Digger", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Crates & Stems", level: 1 })).toBeVisible();
     await page.waitForTimeout(500);
     expect(created).toHaveLength(1);
   });
@@ -296,7 +296,7 @@ test.describe("Crate Digger (#1963)", () => {
     };
 
     await page.goto("/crates");
-    await expect(page.getByRole("heading", { name: "Crate Digger", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Crates & Stems", level: 1 })).toBeVisible();
     await expect(page.getByText("No crates yet.")).toBeVisible();
     expect(await blocking()).toEqual([]);
 
