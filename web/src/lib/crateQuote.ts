@@ -12,6 +12,7 @@
 import type { Address } from "viem";
 import {
   CRATE_LICENSE_TYPES,
+  CRATE_QUOTE_SETTLE_DROP_REASONS,
   CRATE_STEM_TYPES,
   crateErrorCode,
   crateErrorMessage,
@@ -23,6 +24,7 @@ import {
   type CrateQuoteItem,
   type CrateQuoteLine,
   type CrateQuoteLineRequest,
+  type CrateQuoteSettleDropReason,
   type CrateStemType,
 } from "./crates";
 import { formatListingPrice } from "./listingPricing";
@@ -555,4 +557,79 @@ export function totalsForStems(quote: CrateQuote, quoteLineIds: readonly string[
     else sums.set(key, { symbol: item.symbol, decimals: item.decimals, units });
   }
   return [...sums.values()].map((sum) => formatTokenUnits(sum.units, sum.symbol, sum.decimals));
+}
+
+/* ------------------------------------------------------------------ */
+/* A sent purchase that is not settled yet (survives a closed page)    */
+/* ------------------------------------------------------------------ */
+
+export type PendingSettle = {
+  transactionHash: string;
+  dropped: Array<{ quoteLineId: string; reason: CrateQuoteSettleDropReason }>;
+};
+
+type PendingStore = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+const PENDING_KEY_PREFIX = "resonate.crate.pending-settle.";
+
+function browserStore(): PendingStore | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remember the transaction of a quote the moment it was sent, before the
+ * backend has been told. If the page closes in between, the quote still reads
+ * `open`; this record lets the panel finish settling it instead of offering the
+ * same stems for purchase a second time.
+ */
+export function storePendingSettle(
+  quoteId: string,
+  pending: PendingSettle,
+  store: PendingStore | null = browserStore(),
+): void {
+  if (!store) return;
+  try {
+    store.setItem(`${PENDING_KEY_PREFIX}${quoteId}`, JSON.stringify(pending));
+  } catch {
+    // Storage full or blocked: the in-memory state still guards this visit.
+  }
+}
+
+export function readPendingSettle(
+  quoteId: string,
+  store: PendingStore | null = browserStore(),
+): PendingSettle | null {
+  if (!store) return null;
+  try {
+    const raw = store.getItem(`${PENDING_KEY_PREFIX}${quoteId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingSettle> | null;
+    if (!parsed || typeof parsed.transactionHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(parsed.transactionHash)) {
+      return null;
+    }
+    const dropped = Array.isArray(parsed.dropped)
+      ? parsed.dropped.filter(
+          (entry) =>
+            entry
+            && typeof entry.quoteLineId === "string"
+            && (CRATE_QUOTE_SETTLE_DROP_REASONS as readonly string[]).includes(entry.reason),
+        )
+      : [];
+    return { transactionHash: parsed.transactionHash, dropped };
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingSettle(quoteId: string, store: PendingStore | null = browserStore()): void {
+  if (!store) return;
+  try {
+    store.removeItem(`${PENDING_KEY_PREFIX}${quoteId}`);
+  } catch {
+    // Nothing to do: a stale record only offers "Check again".
+  }
 }

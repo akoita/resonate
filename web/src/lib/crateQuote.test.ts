@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   choicesFromQuote,
+  clearPendingSettle,
+  readPendingSettle,
+  storePendingSettle,
   crateReasonText,
   formatCountdown,
   formatTokenUnits,
@@ -310,5 +313,55 @@ describe("stem labels and totals", () => {
       ],
     });
     expect(totalsForStems(quote, ["q1", "q2"])).toEqual(["1.5 ETH", "2 USDC"]);
+  });
+});
+
+describe("pending settlement handoff", () => {
+  function memoryStore() {
+    const data = new Map<string, string>();
+    return {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => void data.set(key, value),
+      removeItem: (key: string) => void data.delete(key),
+    };
+  }
+  const hash = `0x${"ab".repeat(32)}`;
+
+  it("remembers a sent transaction and the left-out lines until it is settled", () => {
+    const store = memoryStore();
+    expect(readPendingSettle("q1", store)).toBeNull();
+    storePendingSettle("q1", { transactionHash: hash, dropped: [{ quoteLineId: "a", reason: "listing_changed" }] }, store);
+    expect(readPendingSettle("q1", store)).toEqual({
+      transactionHash: hash,
+      dropped: [{ quoteLineId: "a", reason: "listing_changed" }],
+    });
+    expect(readPendingSettle("q2", store)).toBeNull();
+    clearPendingSettle("q1", store);
+    expect(readPendingSettle("q1", store)).toBeNull();
+  });
+
+  it("ignores a record that is not a transaction hash with known reasons", () => {
+    const store = memoryStore();
+    store.setItem("resonate.crate.pending-settle.q1", "not json");
+    expect(readPendingSettle("q1", store)).toBeNull();
+    store.setItem("resonate.crate.pending-settle.q1", JSON.stringify({ transactionHash: "0x12", dropped: [] }));
+    expect(readPendingSettle("q1", store)).toBeNull();
+    store.setItem(
+      "resonate.crate.pending-settle.q1",
+      JSON.stringify({
+        transactionHash: hash,
+        dropped: [{ quoteLineId: "a", reason: "nope" }, { quoteLineId: "b", reason: "deselected" }],
+      }),
+    );
+    expect(readPendingSettle("q1", store)).toEqual({
+      transactionHash: hash,
+      dropped: [{ quoteLineId: "b", reason: "deselected" }],
+    });
+  });
+
+  it("does nothing without storage", () => {
+    expect(() => storePendingSettle("q1", { transactionHash: hash, dropped: [] }, null)).not.toThrow();
+    expect(readPendingSettle("q1", null)).toBeNull();
+    expect(() => clearPendingSettle("q1", null)).not.toThrow();
   });
 });

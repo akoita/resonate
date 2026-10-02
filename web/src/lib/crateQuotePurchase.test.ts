@@ -63,6 +63,19 @@ describe("runCrateQuotePurchase", () => {
     if (outcome.kind === "sent") expect(outcome.settlement.kind).toBe("final");
   });
 
+  it("tells the caller about the transaction before it asks settlement", async () => {
+    const order: string[] = [];
+    const { deps: d } = deps({
+      onSent: (hash, dropped) => order.push(`sent:${hash.slice(0, 6)}:${dropped.length}`),
+      settle: vi.fn(async () => {
+        order.push("settle");
+        return settled(makeQuote());
+      }),
+    });
+    await runCrateQuotePurchase(d);
+    expect(order).toEqual(["sent:0xabab:0", "settle"]);
+  });
+
   it("sends nothing for a quote that must not be signed", async () => {
     const cases: Array<[Partial<PurchaseDeps>, string]> = [
       [{ quote: makeQuote({ status: "submitted" }) }, "not_open"],

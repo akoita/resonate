@@ -73,6 +73,11 @@ export type PurchaseDeps = {
   settle: (body: SettleCrateQuoteBody) => Promise<SettleCrateQuoteResult>;
   sleep: (ms: number) => Promise<void>;
   onStage?: (stage: PurchaseStage) => void;
+  /**
+   * Called with the transaction hash the moment it exists, before the backend is
+   * told, so a page that closes in between can still finish settling it.
+   */
+  onSent?: (transactionHash: string, dropped: PreflightDrop[]) => void;
   isCancelled?: () => boolean;
 };
 
@@ -211,6 +216,7 @@ export async function runCrateQuotePurchase(deps: PurchaseDeps): Promise<Purchas
   }
 
   // 4. Report what was sent, and which lines were left out of it.
+  deps.onSent?.(transactionHash, dropped);
   deps.onStage?.("settling");
   const body: SettleCrateQuoteBody = { transactionHash, dropped: settleDrops(dropped) };
   const settlement = await settleWithBackoff({
