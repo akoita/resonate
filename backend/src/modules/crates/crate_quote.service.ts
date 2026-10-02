@@ -49,6 +49,7 @@ import {
   settlementStatus,
   sumUsd,
   type CrateQuoteDropReason,
+  type CrateQuoteFailReason,
   type CrateQuoteSettleDropReason,
   type DecorateUnits,
   type QuoteListingCandidate,
@@ -86,6 +87,7 @@ export const CRATE_QUOTE_ERROR_CODES = {
   noWallet: "no_wallet",
   marketplaceUnavailable: "marketplace_unavailable",
   alreadySubmitted: "already_submitted",
+  transactionAlreadyUsed: "transaction_already_used",
 } as const;
 
 /** How many chain reads run at once while quoting. */
@@ -179,6 +181,15 @@ export class CrateQuoteService {
       });
     }
     if (!this.reader.isConfigured()) {
+      throw new MarketplaceUnavailableException();
+    }
+
+    // The chain head before any listing is read: a transaction mined at or before
+    // it cannot be the purchase of this quote.
+    let quotedAtBlock: bigint;
+    try {
+      quotedAtBlock = await this.reader.getBlockNumber();
+    } catch {
       throw new MarketplaceUnavailableException();
     }
 
@@ -317,6 +328,7 @@ export class CrateQuoteService {
           marketplaceAddress,
           buyerAddress,
           expiresAt,
+          quotedAtBlock,
         },
       });
       if (drafts.length > 0) {
@@ -504,20 +516,33 @@ export class CrateQuoteService {
           message: "dropped must name lines of this quote, each at most once",
         });
       }
-      await prisma.$transaction(async (tx) => {
-        // Dropped lines first, so they are never matched against a log.
-        for (const entry of dropped) {
-          await tx.crateQuoteLine.updateMany({
-            where: { id: entry.quoteLineId, quoteId, status: "quoted" },
-            data: { status: "dropped", reason: entry.reason },
-          });
-        }
-        // Only one request wins the open -> submitted transition.
-        await tx.crateQuote.updateMany({
-          where: { id: quoteId, status: "open" },
-          data: { status: "submitted", transactionHash, submittedAt: new Date() },
-        });
+      // One transaction settles at most one quote: it could otherwise be
+      // replayed against every quote that quotes the same listings.
+      const usedBy = await prisma.crateQuote.findFirst({
+        where: { transactionHash, NOT: { id: quoteId } },
+        select: { id: true },
       });
+      if (usedBy) throw transactionAlreadyUsed();
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Dropped lines first, so they are never matched against a log.
+          for (const entry of dropped) {
+            await tx.crateQuoteLine.updateMany({
+              where: { id: entry.quoteLineId, quoteId, status: "quoted" },
+              data: { status: "dropped", reason: entry.reason },
+            });
+          }
+          // Only one request wins the open -> submitted transition.
+          await tx.crateQuote.updateMany({
+            where: { id: quoteId, status: "open" },
+            data: { status: "submitted", transactionHash, submittedAt: new Date() },
+          });
+        });
+      } catch (error) {
+        // A concurrent request claimed the hash for another quote first.
+        if ((error as { code?: unknown } | null)?.code === "P2002") throw transactionAlreadyUsed();
+        throw error;
+      }
       // A concurrent request may have submitted a different hash first.
       const fresh = await this.requireQuote(userId, crateId, quoteId);
       if (fresh.transactionHash?.toLowerCase() !== transactionHash) {
@@ -545,7 +570,7 @@ export class CrateQuoteService {
     } catch (error) {
       // The chain could not be read: stay submitted so the web retries.
       this.logger.warn(`Crate quote ${quoteId}: receipt could not be read from the chain`);
-      receipt = { status: "pending", logs: [] };
+      receipt = { status: "pending", logs: [], blockNumber: null };
     }
     if (receipt.status === "pending") {
       return this.loadQuoteDto(userId, crateId, quoteId);
@@ -555,7 +580,15 @@ export class CrateQuoteService {
       .filter((line) => line.status === "quoted")
       .sort(compareQuoteLines);
 
-    if (receipt.status === "reverted") {
+    // Nothing in a transaction mined at or before the quote's block can be the
+    // purchase of this quote (the DJ only saw it afterwards).
+    const failReason: CrateQuoteFailReason | null =
+      receipt.status === "reverted"
+        ? "transaction_reverted"
+        : receipt.blockNumber !== null && receipt.blockNumber <= submitted.quotedAtBlock
+          ? "transaction_before_quote"
+          : null;
+    if (failReason) {
       await prisma.$transaction(async (tx) => {
         const claimed = await tx.crateQuote.updateMany({
           where: { id: quoteId, status: "submitted" },
@@ -564,7 +597,7 @@ export class CrateQuoteService {
         if (claimed.count !== 1) return;
         await tx.crateQuoteLine.updateMany({
           where: { quoteId, status: "quoted" },
-          data: { status: "failed", reason: "transaction_reverted" },
+          data: { status: "failed", reason: failReason },
         });
       });
       return this.loadQuoteDto(userId, crateId, quoteId);
@@ -821,6 +854,14 @@ class MarketplaceUnavailableException extends ServiceUnavailableException {
       message: "The marketplace is not available",
     });
   }
+}
+
+/** 409: the transaction already settled (or is submitted for) another quote. */
+function transactionAlreadyUsed(): ConflictException {
+  return new ConflictException({
+    code: CRATE_QUOTE_ERROR_CODES.transactionAlreadyUsed,
+    message: "This transaction was already used for another quote",
+  });
 }
 
 /** Page order of a quote's stems: crate position, then stem type, then id. */

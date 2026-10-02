@@ -71,6 +71,11 @@ describe("createViemMarketplaceReader", () => {
     ).toBe(false);
   });
 
+  it("reads the chain head", async () => {
+    const getBlockNumber = jest.fn().mockResolvedValue(1234n);
+    await expect(reader({ getBlockNumber }).getBlockNumber()).resolves.toBe(1234n);
+  });
+
   it("reads a listing as lower-case addresses and bigints", async () => {
     const readContract = jest.fn().mockResolvedValue({
       seller: SELLER.toUpperCase().replace("0X", "0x"),
@@ -119,6 +124,7 @@ describe("createViemMarketplaceReader", () => {
     await expect(reader({ getTransactionReceipt }).getSoldLogs("0x" + "1".repeat(64))).resolves.toEqual({
       status: "pending",
       logs: [],
+      blockNumber: null,
     });
   });
 
@@ -132,16 +138,18 @@ describe("createViemMarketplaceReader", () => {
   it("reports a reverted transaction with no logs", async () => {
     const getTransactionReceipt = jest
       .fn()
-      .mockResolvedValue({ status: "reverted", logs: [soldLog(MARKETPLACE, 1n, 0, 5n)] });
+      .mockResolvedValue({ status: "reverted", blockNumber: 42n, logs: [soldLog(MARKETPLACE, 1n, 0, 5n)] });
     await expect(reader({ getTransactionReceipt }).getSoldLogs("0x" + "1".repeat(64))).resolves.toEqual({
       status: "reverted",
       logs: [],
+      blockNumber: 42n,
     });
   });
 
   it("decodes only Sold logs emitted by the marketplace, in log order", async () => {
     const getTransactionReceipt = jest.fn().mockResolvedValue({
       status: "success",
+      blockNumber: 77n,
       logs: [
         soldLog(MARKETPLACE, 2n, 9, 200n),
         royaltyLog(MARKETPLACE, 8),
@@ -152,6 +160,7 @@ describe("createViemMarketplaceReader", () => {
     });
     const result = await reader({ getTransactionReceipt }).getSoldLogs("0x" + "1".repeat(64));
     expect(result.status).toBe("success");
+    expect(result.blockNumber).toBe(77n);
     expect(result.logs).toEqual([
       { listingId: 1n, buyer: BUYER, amount: 1n, totalPaid: 100n, logIndex: 4 },
       { listingId: 2n, buyer: BUYER, amount: 1n, totalPaid: 200n, logIndex: 9 },

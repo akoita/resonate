@@ -58,6 +58,8 @@ export type MarketplaceSoldLogs = {
   /** `pending` when the transaction has no receipt yet. */
   status: "success" | "reverted" | "pending";
   logs: MarketplaceSoldLog[];
+  /** Block the transaction was mined in; null while pending. */
+  blockNumber: bigint | null;
 };
 
 export interface CrateMarketplaceReader {
@@ -66,6 +68,8 @@ export interface CrateMarketplaceReader {
   readonly chainId: number;
   /** Lower-case marketplace address; empty when unconfigured. */
   readonly marketplaceAddress: string;
+  /** The current chain head; throws when the chain cannot be read. */
+  getBlockNumber(): Promise<bigint>;
   /** Throws when the chain cannot be read. */
   getListing(listingId: bigint): Promise<MarketplaceListing>;
   /** Throws when the chain cannot be read. */
@@ -84,7 +88,7 @@ const MARKETPLACE_ABI = parseAbi([
   "event Sold(uint256 indexed listingId, address indexed buyer, uint256 amount, uint256 totalPaid)",
 ]);
 
-type ReaderClient = Pick<PublicClient, "readContract" | "getTransactionReceipt">;
+type ReaderClient = Pick<PublicClient, "readContract" | "getTransactionReceipt" | "getBlockNumber">;
 
 export type ViemMarketplaceReaderOptions = {
   /** Test seam: a client to use instead of one built from the configuration. */
@@ -140,6 +144,10 @@ export function createViemMarketplaceReader(
       return marketplace !== null && (options.client !== undefined || Boolean(resolved.rpcUrl));
     },
 
+    async getBlockNumber(): Promise<bigint> {
+      return client().getBlockNumber();
+    },
+
     async getListing(listingId: bigint): Promise<MarketplaceListing> {
       const listing = await client().readContract({
         address: requireMarketplace(),
@@ -173,10 +181,12 @@ export function createViemMarketplaceReader(
       try {
         receipt = await client().getTransactionReceipt({ hash: transactionHash as `0x${string}` });
       } catch (error) {
-        if (isReceiptNotFound(error)) return { status: "pending", logs: [] };
+        if (isReceiptNotFound(error)) return { status: "pending", logs: [], blockNumber: null };
         throw error;
       }
-      if (receipt.status !== "success") return { status: "reverted", logs: [] };
+      if (receipt.status !== "success") {
+        return { status: "reverted", logs: [], blockNumber: receipt.blockNumber };
+      }
 
       const logs: MarketplaceSoldLog[] = [];
       for (const log of receipt.logs) {
@@ -200,7 +210,7 @@ export function createViemMarketplaceReader(
         }
       }
       logs.sort((a, b) => a.logIndex - b.logIndex);
-      return { status: "success", logs };
+      return { status: "success", logs, blockNumber: receipt.blockNumber };
     },
   };
 }

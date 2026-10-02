@@ -55,7 +55,11 @@ export const CRATE_QUOTE_SETTLE_DROP_REASONS = [
 export type CrateQuoteSettleDropReason = (typeof CRATE_QUOTE_SETTLE_DROP_REASONS)[number];
 
 /** Why a quoted stem did not settle. */
-export const CRATE_QUOTE_FAIL_REASONS = ["transaction_reverted", "not_in_transaction"] as const;
+export const CRATE_QUOTE_FAIL_REASONS = [
+  "transaction_reverted",
+  "transaction_before_quote",
+  "not_in_transaction",
+] as const;
 export type CrateQuoteFailReason = (typeof CRATE_QUOTE_FAIL_REASONS)[number];
 
 /** The tier a line falls back to when the track has no active listing at all. */

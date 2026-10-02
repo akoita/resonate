@@ -1574,8 +1574,13 @@ model CrateQuote {
   /// Offer expiry: the earlier of the quote TTL and the soonest on-chain
   /// listing expiry. A mined transaction is settled even after it passes.
   expiresAt          DateTime
-  /// The user operation's transaction, once the web reports it.
-  transactionHash    String?
+  /// The chain head when the quote was priced. A transaction mined at or before
+  /// this block cannot be the DJ's purchase of this quote, so settlement fails
+  /// it (`transaction_before_quote`) instead of reusing an older purchase.
+  quotedAtBlock      BigInt
+  /// The user operation's transaction, once the web reports it. Unique: one
+  /// transaction settles at most one quote.
+  transactionHash    String?          @unique
   submittedAt        DateTime?
   settledAt          DateTime?
   createdAt          DateTime         @default(now())

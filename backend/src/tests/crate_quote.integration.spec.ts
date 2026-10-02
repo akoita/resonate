@@ -66,11 +66,22 @@ class FakeMarketplaceReader implements CrateMarketplaceReader {
   readonly marketplaceAddress = MARKETPLACE.toLowerCase();
   configured = true;
   readonly listings = new Map<bigint, MarketplaceListing | Error>();
-  readonly receipts = new Map<string, MarketplaceSoldLogs | Error>();
+  /** The chain head; a receipt without an explicit block is mined one past it. */
+  head = 5_000n;
+  headError: Error | null = null;
+  readonly receipts = new Map<
+    string,
+    (Omit<MarketplaceSoldLogs, "blockNumber"> & { blockNumber?: bigint | null }) | Error
+  >();
   readonly receiptReads: string[] = [];
 
   isConfigured(): boolean {
     return this.configured;
+  }
+
+  async getBlockNumber(): Promise<bigint> {
+    if (this.headError) throw this.headError;
+    return this.head;
   }
 
   async getListing(listingId: bigint): Promise<MarketplaceListing> {
@@ -106,7 +117,8 @@ class FakeMarketplaceReader implements CrateMarketplaceReader {
     this.receiptReads.push(transactionHash);
     const receipt = this.receipts.get(transactionHash.toLowerCase());
     if (receipt instanceof Error) throw receipt;
-    return receipt ?? { status: "pending", logs: [] };
+    if (!receipt || receipt.status === "pending") return { status: "pending", logs: [], blockNumber: null };
+    return { ...receipt, blockNumber: receipt.blockNumber ?? this.head + 1n };
   }
 }
 
@@ -181,10 +193,14 @@ const listingFor = (trackKey: string, stemType: string, tier = "personal") => {
   return found;
 };
 
+type FakeReceipt = Omit<MarketplaceSoldLogs, "blockNumber"> & { blockNumber?: bigint | null };
+
 const fake = new FakeMarketplaceReader();
 
 function resetChain() {
   fake.configured = true;
+  fake.head = 5_000n;
+  fake.headError = null;
   fake.listings.clear();
   fake.receipts.clear();
   fake.receiptReads.length = 0;
@@ -674,7 +690,7 @@ describe("CrateQuoteService (integration)", () => {
       quote: CrateQuoteDto,
       pick: (item: ReturnType<typeof allItems>[number]) => boolean = () => true,
       buyer = DJ_WALLET.toLowerCase(),
-    ): MarketplaceSoldLogs {
+    ): FakeReceipt {
       return {
         status: "success",
         logs: allItems(quote)
@@ -895,6 +911,92 @@ describe("CrateQuoteService (integration)", () => {
       expect((noHash as BadRequestException).getResponse()).toMatchObject({ code: "invalid_transaction_hash" });
     });
 
+    it("stores the chain head at quote time", async () => {
+      fake.head = 7_777n;
+      const { quote } = await quoteOf(["tB"]);
+      expect((await prisma.crateQuote.findUniqueOrThrow({ where: { id: quote.id } })).quotedAtBlock).toBe(7_777n);
+    });
+
+    it("answers 503 when the chain head cannot be read while quoting", async () => {
+      fake.headError = new Error("rpc down");
+      const crateId = await makeCrate(DJ, ["tB"]);
+      await expect(service.createQuote(DJ, crateId, {})).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(await prisma.crateQuote.count({ where: { crateId } })).toBe(0);
+    });
+
+    it("fails a quote whose transaction was mined at or before the quote's block, and learns nothing", async () => {
+      for (const minedAt of [4_999n, 5_000n]) {
+        const { crateId, quote } = await quoteOf(["tA"]);
+        const hash = hex(`tx_old_${minedAt}_${quote.id}`);
+        // A perfectly matching purchase, but older than the quote (head is 5000).
+        fake.receipts.set(hash, { ...receiptFor(quote), blockNumber: minedAt });
+
+        const settled = await service.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+        expect(settled.status).toBe("failed");
+        expect(
+          allItems(settled).every((item) => item.status === "failed" && item.reason === "transaction_before_quote" && item.receipt === null),
+        ).toBe(true);
+        expect(signalSpy).not.toHaveBeenCalled();
+        expect(validationSpy).not.toHaveBeenCalled();
+      }
+    });
+
+    it("settles a transaction mined after the quote's block", async () => {
+      const { crateId, quote } = await quoteOf(["tB"]);
+      const hash = hex(`tx_new_${quote.id}`);
+      fake.receipts.set(hash, { ...receiptFor(quote), blockNumber: 5_001n });
+      expect((await service.settleQuote(DJ, crateId, quote.id, { transactionHash: hash })).status).toBe("settled");
+    });
+
+    it("fails every line when a successful bundle transaction has no Sold logs (the user operation reverted inside it)", async () => {
+      const { crateId, quote } = await quoteOf(["tA"]);
+      const hash = hex(`tx_bundle_${quote.id}`);
+      fake.receipts.set(hash, { status: "success", logs: [] });
+
+      const settled = await service.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+      expect(settled.status).toBe("failed");
+      expect(allItems(settled).every((item) => item.status === "failed" && item.reason === "not_in_transaction")).toBe(true);
+      expect(signalSpy).not.toHaveBeenCalled();
+      expect(validationSpy).not.toHaveBeenCalled();
+    });
+
+    it("lets one transaction settle at most one quote (409 transaction_already_used)", async () => {
+      const first = await quoteOf(["tB"]);
+      const second = await quoteOf(["tB"]);
+      const hash = hex(`tx_shared_${first.quote.id}`);
+      fake.receipts.set(hash, receiptFor(first.quote));
+      expect((await service.settleQuote(DJ, first.crateId, first.quote.id, { transactionHash: hash })).status).toBe("settled");
+
+      const error = await service
+        .settleQuote(DJ, second.crateId, second.quote.id, { transactionHash: hash.toUpperCase().replace("0X", "0x") })
+        .catch((caught) => caught);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({ code: "transaction_already_used" });
+      // The refused quote is untouched and nothing was learned twice.
+      const untouched = await prisma.crateQuote.findUniqueOrThrow({ where: { id: second.quote.id } });
+      expect(untouched).toMatchObject({ status: "open", transactionHash: null });
+      expect(signalSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses the same transaction for two quotes settled at the same time", async () => {
+      const first = await quoteOf(["tB"]);
+      const second = await quoteOf(["tB"]);
+      const hash = hex(`tx_race_${first.quote.id}`);
+      fake.receipts.set(hash, receiptFor(first.quote));
+
+      const results = await Promise.allSettled([
+        service.settleQuote(DJ, first.crateId, first.quote.id, { transactionHash: hash }),
+        service.settleQuote(DJ, second.crateId, second.quote.id, { transactionHash: hash }),
+      ]);
+      const fulfilled = results.filter((result) => result.status === "fulfilled");
+      const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(ConflictException);
+      expect((rejected[0].reason as ConflictException).getResponse()).toMatchObject({ code: "transaction_already_used" });
+      expect(await prisma.crateQuote.count({ where: { id: { in: [first.quote.id, second.quote.id] }, transactionHash: hash } })).toBe(1);
+    });
+
     it("settles one of two lines for the same listing when the transaction has one log", async () => {
       const crateId = await makeCrate(DJ, ["tB"]);
       const listing = listingFor("tB", "vocals");
@@ -907,6 +1009,7 @@ describe("CrateQuoteService (integration)", () => {
           marketplaceAddress: MARKETPLACE.toLowerCase(),
           buyerAddress: DJ_WALLET.toLowerCase(),
           expiresAt: new Date(Date.now() + 600_000),
+          quotedAtBlock: fake.head,
         },
       });
       const line = (position: number) => ({

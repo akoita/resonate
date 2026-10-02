@@ -16,6 +16,7 @@ CREATE TABLE "CrateQuote" (
     "marketplaceAddress" TEXT NOT NULL,
     "buyerAddress" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
+    "quotedAtBlock" BIGINT NOT NULL,
     "transactionHash" TEXT,
     "submittedAt" TIMESTAMP(3),
     "settledAt" TIMESTAMP(3),
@@ -51,6 +52,9 @@ CREATE TABLE "CrateQuoteLine" (
 
     CONSTRAINT "CrateQuoteLine_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CrateQuote_transactionHash_key" ON "CrateQuote"("transactionHash");
 
 -- CreateIndex
 CREATE INDEX "CrateQuote_crateId_createdAt_idx" ON "CrateQuote"("crateId", "createdAt");

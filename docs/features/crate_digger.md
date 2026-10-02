@@ -126,7 +126,8 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
     one matches the quoted stems to the marketplace `Sold` logs of the DJ's own
     account by listing and amount, each log once. The quote becomes `settled`,
     `partial` or `failed`; unmatched stems are `failed` with
-    `not_in_transaction`. Only then is the taste purchase signal recorded once
+    `not_in_transaction`; a transaction mined before the quote fails it with
+    `transaction_before_quote`. Only then is the taste purchase signal recorded once
     per settled track and the stem quality validation once per settled stem.
     The chain is the truth: an expired quote still settles a mined transaction.
 11. **Transition preview.** The browser crossfades the two lines' previews over
@@ -182,9 +183,10 @@ tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
 - A track that is no longer publicly playable is reported as not listed. A
   requested stem type the track does not have is left out of the quote.
 - Receipts are verified from the chain: a stem counts as bought only when the
-  marketplace emitted a `Sold` log to the quote's buyer. Settlement cannot tell
-  a log of this operation from an identical earlier purchase of the same
-  listing by the same account in the transaction the browser reports.
+  marketplace emitted a `Sold` log to the quote's buyer. The quote records the
+  chain head when it was priced; a transaction mined at or before that block
+  fails the quote (`transaction_before_quote`), and one transaction can settle at
+  most one quote (409 `transaction_already_used`).
 - If the chain cannot be read when settling, the quote stays `submitted` and
   the web retries.
 
