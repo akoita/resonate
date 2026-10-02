@@ -105,7 +105,7 @@ export function linePriceUsd(facts: CrateCandidateFacts, filters: CrateFilters):
  * either means the tier is on the table. Requiring a listing alone would hide
  * priced tracks whose listing is still being set up.
  */
-function offersLicense(facts: CrateCandidateFacts, tier: CrateLicenseType): boolean {
+export function offersLicense(facts: CrateCandidateFacts, tier: CrateLicenseType): boolean {
   const listed = facts.listedLicenseTypes.some((type) => type.toLowerCase() === tier);
   return listed || knownPrice(facts.indicativePriceUsd[tier]) !== null;
 }

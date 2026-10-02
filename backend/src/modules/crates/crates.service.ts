@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -22,11 +24,16 @@ import {
 } from "../recommendations/discovery-ranking.service";
 import { TasteMemoryService } from "../recommendations/taste_memory.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
-import type {
-  CrateDto,
-  CrateItemDto,
-  CreateCrateResponse,
-  GetCrateResponse,
+import {
+  CRATE_TITLE_MAX_LENGTH,
+  type CrateDto,
+  type CrateItemDto,
+  type CrateItemStemDto,
+  type CreateCrateResponse,
+  type GetCrateResponse,
+  type ListCratesResponse,
+  type SwapCrateItemResponse,
+  type UpdateCrateDto,
 } from "./crate.dto";
 import {
   CRATE_MAX_COUNT,
@@ -37,9 +44,10 @@ import {
   type CrateFilters,
   type CrateRequestSource,
 } from "./crate.types";
-import { CrateEntitlementsService } from "./crate-entitlements";
+import { canCreateCrate, CrateEntitlementsService } from "./crate-entitlements";
 import { candidateFactsFromRow, type CrateTrackRow } from "./crate_candidates";
 import { sanitizeCrateFilters } from "./crate_filters";
+import { crateLicenseOptions } from "./crate_license_rights";
 import { orderCrateAsSetPath, transitionFacts } from "./crate_ordering";
 import {
   CRATE_REQUEST_PARSER,
@@ -85,7 +93,14 @@ export const CRATE_REQUEST_ERROR_CODES = {
   invalidReferenceTrackId: "invalid_reference_track_id",
   invalidCount: "invalid_count",
   invalidFilters: "invalid_filters",
+  invalidItems: "invalid_items",
+  proRequired: "pro_required",
+  lineLocked: "line_locked",
+  lineChanged: "line_changed",
 } as const;
+
+/** Most crates `GET /crates` returns. */
+export const CRATE_LIST_LIMIT = 50;
 
 /**
  * The service validates "exactly one of": the HTTP DTO makes every field
@@ -116,6 +131,12 @@ type CrateLine = {
   explanation?: string[];
 };
 
+/** A playable candidate with its facts, before the filters run. */
+type ConsideredCandidate = { row: CrateTrackRow; facts: CrateCandidateFacts };
+
+/** Stem types that are not a usable stem for a DJ. */
+const NON_STEM_TYPES = new Set(["original", "master"]);
+
 /** Everything the crate pipeline reads about a track. */
 function crateTrackSelect(now: Date) {
   return {
@@ -142,6 +163,7 @@ function crateTrackSelect(now: Date) {
     stems: {
       where: { isCurrent: true },
       select: {
+        id: true,
         type: true,
         isCurrent: true,
         audioFeatures: true,
@@ -188,24 +210,8 @@ export class CratesService {
     const { filters, source, referenceTrackId, parserStrategy, unparsed } = resolved;
     const now = new Date();
 
-    const rows = await this.loadCandidateRows(now, referenceTrackId);
-    const playable = rows.filter((row) =>
-      isPlayableAvailability(classifyTrackAvailability(row)),
-    );
-    const verifiedHumanArtistIds = await this.loadVerifiedHumanArtistIds(
-      playable.map((row) => row.release.artistId),
-    );
-    const considered = playable.map((row) => ({
-      row,
-      facts: candidateFactsFromRow(row, verifiedHumanArtistIds, now),
-    }));
-
-    // Fully AI recordings appear only when the request allows them; then keep
-    // what passes every filter. Only these are ranked.
-    const passing = considered.filter(
-      ({ facts }) =>
-        !isExcludedAsFullyAi(facts, filters) && failedFilters(facts, filters).length === 0,
-    );
+    const considered = await this.loadConsidered(now, referenceTrackId ? [referenceTrackId] : []);
+    const passing = this.passingFilters(considered, filters);
     const rankedPassing = await this.rankPassing(userId, passing);
 
     const selection = selectCrateLinesWithStats(rankedPassing, filters);
@@ -278,9 +284,23 @@ export class CratesService {
     });
     if (!crate) throw new NotFoundException("Crate not found");
 
-    const now = new Date();
+    const lines = await this.loadCrateLines(crate.items.map((item) => item.trackId), new Date());
+    const filters = sanitizeCrateFilters(crate.filters).filters;
+    const lockedByTrack = new Map(crate.items.map((item) => [item.trackId, item.locked]));
+
+    return {
+      crate: await this.toCrateDto(userId, crate, filters, lines, lockedByTrack),
+    };
+  }
+
+  /**
+   * The lines of a stored crate in `trackIds` order, rebuilt from the current
+   * catalog. A line whose track is no longer playable stays, marked
+   * unavailable, instead of silently disappearing.
+   */
+  private async loadCrateLines(trackIds: string[], now: Date): Promise<CrateLine[]> {
     const rows = await prisma.track.findMany({
-      where: { id: { in: crate.items.map((item) => item.trackId) } },
+      where: { id: { in: trackIds } },
       select: crateTrackSelect(now),
     });
     const rowById = new Map(rows.map((row) => [row.id, row as CrateTrackRow]));
@@ -288,11 +308,9 @@ export class CratesService {
       rows.map((row) => row.release.artistId),
     );
 
-    // Rebuilt from the current catalog. A line whose track is no longer
-    // playable stays, marked unavailable, instead of silently disappearing.
     const lines: CrateLine[] = [];
-    for (const item of crate.items) {
-      const row = rowById.get(item.trackId);
+    for (const trackId of trackIds) {
+      const row = rowById.get(trackId);
       if (!row) continue;
       lines.push({
         row,
@@ -301,12 +319,208 @@ export class CratesService {
         score: 0,
       });
     }
-    const filters = sanitizeCrateFilters(crate.filters).filters;
-    const lockedByTrack = new Map(crate.items.map((item) => [item.trackId, item.locked]));
+    return lines;
+  }
 
+  // -------------------------------------------------------------------------
+  // GET /crates
+  // -------------------------------------------------------------------------
+
+  /** The caller's own crates, most recently updated first. */
+  async listCrates(userId: string): Promise<ListCratesResponse> {
+    const crates = await prisma.crate.findMany({
+      where: { userId },
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      take: CRATE_LIST_LIMIT,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { items: true } },
+      },
+    });
     return {
-      crate: await this.toCrateDto(userId, crate, filters, lines, lockedByTrack),
+      crates: crates.map((crate) => ({
+        id: crate.id,
+        title: crate.title,
+        status: crate.status,
+        itemCount: crate._count.items,
+        createdAt: crate.createdAt.toISOString(),
+        updatedAt: crate.updatedAt.toISOString(),
+      })),
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // PATCH /crates/:id
+  // -------------------------------------------------------------------------
+
+  /**
+   * Edits the caller's crate: title, draft/saved status, and the lines (order,
+   * removal, lock). `items` is the full new order, applied in one transaction.
+   * Never deletes or hides anything because of an entitlement.
+   */
+  async updateCrate(
+    userId: string,
+    crateId: string,
+    input: UpdateCrateDto,
+  ): Promise<GetCrateResponse> {
+    const title = normalizeTitle(input.title);
+    const requested = input.items ?? undefined;
+
+    await prisma.$transaction(async (tx) => {
+      // Someone else's crate and an unknown id look identical: 404, never 403.
+      const crate = await tx.crate.findFirst({
+        where: { id: crateId, userId },
+        include: { items: true },
+      });
+      if (!crate) throw new NotFoundException("Crate not found");
+
+      if (requested !== undefined) {
+        const current = new Set(crate.items.map((item) => item.trackId));
+        const seen = new Set<string>();
+        for (const entry of requested) {
+          if (
+            !entry
+            || typeof entry.trackId !== "string"
+            || !current.has(entry.trackId)
+            || seen.has(entry.trackId)
+          ) {
+            throw new BadRequestException({
+              code: CRATE_REQUEST_ERROR_CODES.invalidItems,
+              message: "items must list current lines of the crate, each at most once",
+            });
+          }
+          seen.add(entry.trackId);
+        }
+      }
+
+      if (input.status === "saved" && crate.status !== "saved") {
+        const existingCrates = await tx.crate.count({ where: { userId, status: "saved" } });
+        const decision = canCreateCrate({
+          existingCrates,
+          pro: await this.entitlements.pro(userId),
+        });
+        if (!decision.allowed) {
+          throw new ForbiddenException({
+            code: CRATE_REQUEST_ERROR_CODES.proRequired,
+            message: "Saving more crates needs Crate Digger Pro",
+          });
+        }
+      }
+
+      if (requested !== undefined) {
+        const lockedByTrack = new Map(crate.items.map((item) => [item.trackId, item.locked]));
+        await tx.crateItem.deleteMany({
+          where: { crateId, trackId: { notIn: requested.map((entry) => entry.trackId) } },
+        });
+        // Positions are not unique, so rewriting them one by one cannot clash.
+        for (const [position, entry] of requested.entries()) {
+          await tx.crateItem.update({
+            where: { crateId_trackId: { crateId, trackId: entry.trackId } },
+            data: { position, locked: entry.locked ?? lockedByTrack.get(entry.trackId) ?? false },
+          });
+        }
+      }
+
+      await tx.crate.update({
+        where: { id: crateId },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(input.status ? { status: input.status } : {}),
+          // Items live in another table; bump the crate so lists sort by edits.
+          updatedAt: new Date(),
+        },
+      });
+    });
+
+    return this.getCrate(userId, crateId);
+  }
+
+  // -------------------------------------------------------------------------
+  // POST /crates/:id/items/:trackId/swap
+  // -------------------------------------------------------------------------
+
+  /**
+   * Replaces one unlocked line with the best-ranked candidate that passes the
+   * crate's stored filters, is not already in the crate and keeps the crate
+   * within `maxTotalUsd`. The line keeps its position. When nothing fits the
+   * crate is unchanged and `swapped` is false.
+   */
+  async swapItem(
+    userId: string,
+    crateId: string,
+    trackId: string,
+  ): Promise<SwapCrateItemResponse> {
+    const crate = await prisma.crate.findFirst({
+      where: { id: crateId, userId },
+      include: { items: { orderBy: { position: "asc" } } },
+    });
+    if (!crate) throw new NotFoundException("Crate not found");
+    const item = crate.items.find((entry) => entry.trackId === trackId);
+    if (!item) throw new NotFoundException("Crate line not found");
+    if (item.locked) {
+      throw new ConflictException({
+        code: CRATE_REQUEST_ERROR_CODES.lineLocked,
+        message: "The line is locked; unlock it to swap",
+      });
+    }
+
+    const filters = sanitizeCrateFilters(crate.filters).filters;
+    const now = new Date();
+
+    // Whole cents, so a long sum never drifts past the budget. A remaining line
+    // with no known price adds nothing: it was already accepted into the crate.
+    let othersCents = 0;
+    if (filters.maxTotalUsd !== null) {
+      const lines = await this.loadCrateLines(
+        crate.items.filter((entry) => entry.id !== item.id).map((entry) => entry.trackId),
+        now,
+      );
+      for (const line of lines) {
+        const price = linePriceUsd(line.facts, filters);
+        if (price !== null) othersCents += Math.round(price * 100);
+      }
+    }
+    const budgetCents =
+      filters.maxTotalUsd === null ? null : Math.round(filters.maxTotalUsd * 100);
+
+    const considered = await this.loadConsidered(
+      now,
+      crate.items.map((entry) => entry.trackId),
+    );
+    const ranked = await this.rankPassing(userId, this.passingFilters(considered, filters));
+    const replacement = ranked.find((line) => {
+      if (budgetCents === null) return true;
+      const price = linePriceUsd(line.facts, filters);
+      return price !== null && othersCents + Math.round(price * 100) <= budgetCents;
+    });
+
+    if (replacement) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          const updated = await tx.crateItem.updateMany({
+            where: { id: item.id, crateId, trackId, locked: false },
+            data: { trackId: replacement.facts.trackId, locked: false, addedAt: new Date() },
+          });
+          if (updated.count !== 1) throw new SwapRaceError();
+          await tx.crate.update({ where: { id: crateId }, data: { updatedAt: new Date() } });
+        });
+      } catch (error) {
+        // The line changed under us, or the replacement was added concurrently.
+        if (error instanceof SwapRaceError || isUniqueViolation(error)) {
+          throw new ConflictException({
+            code: CRATE_REQUEST_ERROR_CODES.lineChanged,
+            message: "The crate changed; reload it and try again",
+          });
+        }
+        throw error;
+      }
+    }
+
+    return { ...(await this.getCrate(userId, crateId)), swapped: replacement !== undefined };
   }
 
   // -------------------------------------------------------------------------
@@ -425,11 +639,11 @@ export class CratesService {
    */
   private async loadCandidateRows(
     now: Date,
-    excludeTrackId: string | null,
+    excludeTrackIds: readonly string[],
   ): Promise<CrateTrackRow[]> {
     const rows = await prisma.track.findMany({
       where: {
-        ...(excludeTrackId ? { id: { not: excludeTrackId } } : {}),
+        ...(excludeTrackIds.length > 0 ? { id: { notIn: [...excludeTrackIds] } } : {}),
         contentStatus: "clean",
         release: {
           status: { in: [...WITHDRAWABLE_RELEASE_STATUSES] },
@@ -441,6 +655,41 @@ export class CratesService {
       select: crateTrackSelect(now),
     });
     return rows as CrateTrackRow[];
+  }
+
+  /**
+   * The playable candidates (never `excludeTrackIds`) with their facts. Shared
+   * by creating a crate and swapping a line.
+   */
+  private async loadConsidered(
+    now: Date,
+    excludeTrackIds: readonly string[],
+  ): Promise<ConsideredCandidate[]> {
+    const rows = await this.loadCandidateRows(now, excludeTrackIds);
+    const playable = rows.filter((row) =>
+      isPlayableAvailability(classifyTrackAvailability(row)),
+    );
+    const verifiedHumanArtistIds = await this.loadVerifiedHumanArtistIds(
+      playable.map((row) => row.release.artistId),
+    );
+    return playable.map((row) => ({
+      row,
+      facts: candidateFactsFromRow(row, verifiedHumanArtistIds, now),
+    }));
+  }
+
+  /**
+   * Fully AI recordings appear only when the request allows them; then keep
+   * what passes every filter. Only these are ranked.
+   */
+  private passingFilters(
+    considered: ConsideredCandidate[],
+    filters: CrateFilters,
+  ): ConsideredCandidate[] {
+    return considered.filter(
+      ({ facts }) =>
+        !isExcludedAsFullyAi(facts, filters) && failedFilters(facts, filters).length === 0,
+    );
   }
 
   /**
@@ -528,6 +777,24 @@ export class CratesService {
   // DTO
   // -------------------------------------------------------------------------
 
+  /**
+   * Rounded mean quality score per stem, in one batched query. A stem with no
+   * rating is absent.
+   */
+  private async loadStemQualityScores(stemIds: string[]): Promise<Map<string, number>> {
+    const scores = new Map<string, number>();
+    if (stemIds.length === 0) return scores;
+    const groups = await prisma.stemQualityRating.groupBy({
+      by: ["stemId"],
+      where: { stemId: { in: [...new Set(stemIds)] } },
+      _avg: { score: true },
+    });
+    for (const group of groups) {
+      if (group._avg.score !== null) scores.set(group.stemId, Math.round(group._avg.score));
+    }
+    return scores;
+  }
+
   private async toCrateDto(
     userId: string,
     crate: { id: string; status: string; title: string | null; createdAt: Date; updatedAt: Date },
@@ -535,9 +802,19 @@ export class CratesService {
     lines: CrateLine[],
     lockedByTrack: ReadonlyMap<string, boolean> = new Map(),
   ): Promise<CrateDto> {
+    const scores = await this.loadStemQualityScores(
+      lines.flatMap((line) => lineStems(line.row).map((stem) => stem.id)),
+    );
     const items: CrateItemDto[] = lines.map((line, position) => {
       const next = lines[position + 1];
       const { facts } = line;
+      const original = line.row.stems.find(
+        (stem) => stem.isCurrent && stem.type.toLowerCase() === "original" && stem.id,
+      );
+      const stems: CrateItemStemDto[] = lineStems(line.row).map((stem) => ({
+        type: stem.type,
+        qualityScore: scores.get(stem.id) ?? null,
+      }));
       return {
         position,
         locked: lockedByTrack.get(facts.trackId) ?? false,
@@ -550,6 +827,9 @@ export class CratesService {
         camelot: facts.camelot,
         energy: facts.energy,
         stemTypes: facts.stemTypes,
+        originalStemId: original?.id ?? null,
+        stems,
+        licenseOptions: crateLicenseOptions(facts),
         listedLicenseTypes: facts.listedLicenseTypes,
         indicativePriceUsd: facts.indicativePriceUsd,
         linePriceUsd: linePriceUsd(facts, filters),
@@ -580,4 +860,36 @@ function creditedArtistName(row: CrateTrackRow): string | null {
     primaryArtist: row.release.primaryArtist,
     accountDisplayName: row.release.artist?.displayName ?? null,
   });
+}
+
+/** Current non-original, non-master stems with an id, sorted by type then id. */
+function lineStems(row: CrateTrackRow): Array<{ id: string; type: string }> {
+  const stems: Array<{ id: string; type: string }> = [];
+  for (const stem of row.stems) {
+    const type = stem.type.toLowerCase();
+    if (!stem.isCurrent || !stem.id || NON_STEM_TYPES.has(type)) continue;
+    stems.push({ id: stem.id, type });
+  }
+  return stems.sort((a, b) => a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
+}
+
+/** Trimmed title; empty or null clears it; undefined leaves it unchanged. */
+function normalizeTitle(title: string | null | undefined): string | null | undefined {
+  if (title === undefined) return undefined;
+  if (title === null) return null;
+  const trimmed = title.trim();
+  if (trimmed.length > CRATE_TITLE_MAX_LENGTH) {
+    throw new BadRequestException({ code: "invalid_title", message: "title is too long" });
+  }
+  return trimmed === "" ? null : trimmed;
+}
+
+class SwapRaceError extends Error {}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object"
+    && error !== null
+    && (error as { code?: unknown }).code === "P2002"
+  );
 }
