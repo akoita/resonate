@@ -313,6 +313,7 @@ export class AgentRuntimePolicyService {
         sessionIntent: input.preferences.sessionIntent,
         mood: input.preferences.mood,
         queueStyle: input.preferences.queueStyle,
+        tempoBpm: input.preferences.tempoBpm,
       });
       const pickedIds = new Set(surviving.map((entry) => entry.trackId));
       const artistCounts = new Map<string, number>();

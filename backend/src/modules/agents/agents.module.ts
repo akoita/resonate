@@ -22,6 +22,8 @@ import { SharedModule } from "../shared/shared.module";
 import { RecommendationsModule } from "../recommendations/recommendations.module";
 import { CommunityModule } from "../community/community.module";
 import { EmbeddingsModule } from "../embeddings/embeddings.module";
+import { createCrateRequestParser } from "../crates/model_crate_request_parser";
+import { AGENT_SESSION_REQUEST_PARSER } from "./agent_session_request";
 
 @Module({
   imports: [
@@ -48,6 +50,9 @@ import { EmbeddingsModule } from "../embeddings/embeddings.module";
     AgentStemQualityService,
     AgentWalletService,
     AgentPurchaseService,
+    // The Crate Digger request parser, built here because CratesModule imports
+    // this module. Same CRATE_REQUEST_PARSER_STRATEGY switch as crate requests.
+    { provide: AGENT_SESSION_REQUEST_PARSER, useFactory: () => createCrateRequestParser() },
   ],
   exports: [
     AgentRuntimeService,

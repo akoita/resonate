@@ -64,6 +64,36 @@ describe("agent recommendation adapters", () => {
     })).toEqual(["Focus"]);
   });
 
+  it("adds every described mood as a query, deduped case-insensitively (#2037)", () => {
+    expect(buildAgentRecommendationQueries({
+      genres: ["Deep House"],
+      mood: "Dark",
+      moods: ["dark", "Moody", " ", "moody"],
+    })).toEqual(["Deep House", "Dark", "Moody"]);
+
+    // Without moods the queries are what they were.
+    expect(buildAgentRecommendationQueries({ genres: ["Soul"] })).toEqual(["Soul"]);
+  });
+
+  it("passes the requested tempo range on to the selector (#2037)", async () => {
+    const selector = {
+      select: jest.fn().mockResolvedValue({ candidates: [], selected: [], rejected: [], reason: "empty" }),
+    };
+    const adapter = new DeterministicRecommendationAdapter(selector as any);
+
+    await adapter.recommend({
+      sessionId: "s1",
+      userId: "u1",
+      recentTrackIds: [],
+      preferences: { genres: ["Deep House"], tempoBpm: { min: 120, max: 125 } },
+      limit: 5,
+    });
+
+    expect(selector.select).toHaveBeenCalledWith(
+      expect.objectContaining({ tempoBpm: { min: 120, max: 125 } }),
+    );
+  });
+
   it("routes deterministic recommendation requests through the selector contract", async () => {
     const selector = {
       select: jest.fn().mockResolvedValue({

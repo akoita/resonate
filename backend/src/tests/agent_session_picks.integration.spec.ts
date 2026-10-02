@@ -12,6 +12,7 @@
 import { prisma } from "../db/prisma";
 import { AgentConfigController } from "../modules/agents/agent_config.controller";
 import { AgentLearningService } from "../modules/agents/agent_learning.service";
+import { defaultCrateFilters } from "../modules/crates/crate_filters";
 import { EventBus } from "../modules/shared/event_bus";
 
 const TEST_PREFIX = `agpick_${Date.now()}_`;
@@ -67,7 +68,7 @@ describe("AI DJ session picks (integration)", () => {
     await prisma.user.deleteMany({ where: { id: USER_ID } }).catch(() => {});
   });
 
-  function makeController(runResult: unknown) {
+  function makeController(runResult: unknown, parser?: { parse: jest.Mock }) {
     const runtimeService = { run: jest.fn().mockResolvedValue(runResult) };
     const learningService = new AgentLearningService();
     const recordSignal = jest.spyOn(learningService, "recordSignal");
@@ -77,6 +78,7 @@ describe("AI DJ session picks (integration)", () => {
       {} as any,
       learningService,
       new EventBus(),
+      parser as any,
     );
     return { controller, runtimeService, recordSignal };
   }
@@ -137,6 +139,86 @@ describe("AI DJ session picks (integration)", () => {
       expect(license).toMatchObject({ priceUsd: 0, durationSeconds: 0 });
       expect(recordSignal).not.toHaveBeenCalled();
       expect(await prisma.agentSignal.count({ where: { userId: USER_ID } })).toBe(0);
+    });
+  });
+
+  describe("a described session (#2037)", () => {
+    const SENTENCE = "dark deep house for a late-night drive, 120-125 bpm";
+
+    async function rowCounts() {
+      return {
+        sessions: await prisma.session.count({ where: { userId: USER_ID } }),
+        licenses: await prisma.license.count({ where: { trackId: TRACK_ID } }),
+        signals: await prisma.agentSignal.count({ where: { userId: USER_ID } }),
+      };
+    }
+
+    it("parsing writes nothing: no Session, License or AgentSignal row, and AgentConfig.vibes unchanged", async () => {
+      const parser = {
+        parse: jest.fn().mockResolvedValue({
+          filters: { ...defaultCrateFilters(), genres: ["Deep House"], bpm: { min: 120, max: 125 } },
+          unparsed: [],
+          strategy: "deterministic",
+        }),
+      };
+      const { controller } = makeController({ status: "approved", tracks: [] }, parser);
+      const before = await rowCounts();
+
+      const parsed = await controller.parseSession({ text: SENTENCE });
+
+      expect(parsed.request).toEqual({
+        genres: ["Deep House"],
+        moods: [],
+        energy: null,
+        bpm: { min: 120, max: 125 },
+      });
+      expect(await rowCounts()).toEqual(before);
+      const config = await prisma.agentConfig.findUnique({ where: { userId: USER_ID } });
+      expect(config?.vibes).toEqual(["Focus"]);
+    });
+
+    it("starts a session from a request without touching AgentConfig.vibes and keeps the sentence out of every row", async () => {
+      const { controller, runtimeService, recordSignal } = makeController({
+        status: "approved",
+        tracks: [
+          {
+            trackId: TRACK_ID,
+            mixPlan: {},
+            pick: { licenseType: "personal", priceUsd: 0, reason: "selected" },
+          },
+        ],
+        shortfall: 4,
+        requestCoverage: { picks: 1, gaps: [{ filter: "bpm", matched: 0 }] },
+      });
+      const request = { genres: ["Deep House"], moods: ["Dark"], energy: "high", bpm: { min: 120, max: 125 } };
+
+      const started = (await controller.startSession(
+        { user: { userId: USER_ID } },
+        { preferences: { request } },
+      )) as { sessionId: string };
+
+      await waitFor(() =>
+        prisma.license.findFirst({ where: { sessionId: started.sessionId, trackId: TRACK_ID } }),
+      );
+      const input = runtimeService.run.mock.calls[0][0];
+      expect(input.preferences.genres).toEqual(expect.arrayContaining(["Focus", "Deep House"]));
+      expect(input.preferences.mood).toBe("Dark");
+      expect(input.preferences.tempoBpm).toEqual({ min: 120, max: 125 });
+      expect(input.preferences.request).toEqual(request);
+
+      const config = await prisma.agentConfig.findUnique({ where: { userId: USER_ID } });
+      expect(config?.vibes).toEqual(["Focus"]);
+      expect(recordSignal).not.toHaveBeenCalled();
+      expect(await prisma.agentSignal.count({ where: { userId: USER_ID } })).toBe(0);
+
+      // Only filters ever reach the server's rows; the sentence never does.
+      const rows = JSON.stringify({
+        sessions: await prisma.session.findMany({ where: { userId: USER_ID } }),
+        licenses: await prisma.license.findMany({ where: { trackId: TRACK_ID } }),
+        config,
+      });
+      expect(rows).not.toContain("late-night");
+      expect(rows).not.toContain(SENTENCE);
     });
   });
 });

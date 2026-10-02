@@ -275,6 +275,81 @@ describe('SessionsService (integration)', () => {
     }
   });
 
+  it('applies a described request to the next pick, reports its coverage, and a new request replaces the old one (#2037)', async () => {
+    const requestCoverage = { picks: 1, gaps: [{ filter: 'bpm', matched: 0 }] };
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({
+        status: 'approved',
+        tracks: [{ trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 }],
+        primaryTrack: { trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 },
+        requestCoverage,
+      }),
+    };
+    const { service } = makeService(runtimeService);
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+    const request = {
+      genres: ['Deep House'],
+      moods: ['Dark', 'Moody'],
+      energy: 'high' as const,
+      bpm: { min: 120, max: 125 },
+    };
+
+    const first = await service.agentNext({
+      sessionId: session.id,
+      preferences: { genres: ['Soul'], mood: 'Chill', energy: 'low', request },
+    }) as any;
+
+    expect(first.requestCoverage).toEqual(requestCoverage);
+    expect(runtimeService.runCommerce).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        preferences: expect.objectContaining({
+          genres: ['Soul', 'Deep House'],
+          mood: 'Chill',
+          moods: ['Dark', 'Moody'],
+          energy: 'high',
+          tempoBpm: { min: 120, max: 125 },
+          request,
+        }),
+      }),
+    );
+
+    // A new request replaces the old one (a mid-session chip edit re-plans).
+    await service.agentNext({
+      sessionId: session.id,
+      preferences: { request: { genres: ['Techno'], moods: [], energy: null, bpm: null } },
+    });
+    const replaced = runtimeService.runCommerce.mock.calls[1][0].preferences;
+    expect(replaced.genres).toEqual(['Soul', 'Techno']);
+    expect(replaced.request).toEqual({ genres: ['Techno'], moods: [], energy: null, bpm: null });
+    expect(replaced).not.toHaveProperty('tempoBpm');
+
+    // Omitting the request keeps it; sending one with no valid filter clears it.
+    await service.agentNext({ sessionId: session.id });
+    expect(runtimeService.runCommerce.mock.calls[2][0].preferences.genres).toEqual(['Soul', 'Techno']);
+    await service.agentNext({ sessionId: session.id, preferences: { request: { genres: 'junk' } as any } });
+    const cleared = runtimeService.runCommerce.mock.calls[3][0].preferences;
+    expect(cleared.genres).toEqual(['Soul']);
+    expect(cleared.request).toBeUndefined();
+    expect(cleared).not.toHaveProperty('moods');
+  });
+
+  it('leaves the response without requestCoverage when the runtime reports none (#2037)', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({
+        status: 'approved',
+        tracks: [{ trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 }],
+        primaryTrack: { trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 },
+      }),
+    };
+    const { service } = makeService(runtimeService);
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    const result = await service.agentNext({ sessionId: session.id }) as any;
+
+    expect(result.status).toBe('ok');
+    expect(result).not.toHaveProperty('requestCoverage');
+  });
+
   it('returns only current stems in playlist track summaries', async () => {
     const currentStemId = `${TEST_PREFIX}current_stem`;
     const historicalStemId = `${TEST_PREFIX}historical_stem`;

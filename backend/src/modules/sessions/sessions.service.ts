@@ -8,6 +8,11 @@ import { AgentRuntimeService } from "../agents/agent_runtime.service";
 import { djPickVariantFields } from "./dj_pick_variant";
 import { AgentLearningService } from "../agents/agent_learning.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
+import {
+  requestRankingPreferences,
+  sanitizeSessionRequest,
+  type AgentSessionRequest,
+} from "../agents/agent_session_request";
 
 export interface AgentPreferences {
   mood?: string;
@@ -21,6 +26,11 @@ export interface AgentPreferences {
   sessionIntentName?: string;
   queueStyle?: string;
   source?: string;
+  /**
+   * Listening filters parsed from the listener's own words (#2037). Never the
+   * text itself. Sent again on a mid-session edit, it replaces the old request.
+   */
+  request?: AgentSessionRequest;
 }
 
 @Injectable()
@@ -226,7 +236,15 @@ export class SessionsService {
       return { status: "session_inactive" };
     }
 
-    const preferences = this.mergeAgentPreferences(input.sessionId, input.preferences);
+    const preferences = this.mergeAgentPreferences(
+      input.sessionId,
+      sanitizeIncomingRequest(input.preferences),
+    );
+    // The described session (#2037); without a request nothing below changes.
+    const requested = requestRankingPreferences(preferences);
+    const sessionGenres = requested.request
+      ? [...(preferences.genres ?? []), ...requested.sessionGenres]
+      : preferences.genres;
     const recentTrackIds = await this.sessionTrackIds(input.sessionId);
     // Wire-contract field only: listening runs are not budget-limited
     // (ADR-TE-1), so the remaining budget never reduces the picks.
@@ -238,7 +256,16 @@ export class SessionsService {
       budgetRemainingUsd,
       preferences: {
         ...preferences,
-        genres: await this.withLearnedGenres(session.userId, preferences.genres),
+        genres: await this.withLearnedGenres(session.userId, sessionGenres),
+        ...(requested.request
+          ? {
+              mood: requested.mood,
+              energy: requested.energy,
+              moods: requested.moods,
+              ...(requested.tempoBpm ? { tempoBpm: requested.tempoBpm } : {}),
+              request: requested.request,
+            }
+          : {}),
       },
     });
 
@@ -345,6 +372,8 @@ export class SessionsService {
         signals: item.signals,
       })),
       shortfall: result.shortfall,
+      // #2037: how well the picks matched the described session; deterministic path only.
+      ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
     };
   }
 
@@ -438,6 +467,16 @@ export class SessionsService {
       [trackId, ...recent.filter((id) => id !== trackId)].slice(0, 20),
     );
   }
+}
+
+/**
+ * Sanitizes `preferences.request` before it is merged and remembered (#2037).
+ * A request sent without any valid filter clears the session's request (the
+ * listener removed every filter); omitting the key leaves it as it was.
+ */
+function sanitizeIncomingRequest(preferences?: AgentPreferences): AgentPreferences | undefined {
+  if (!preferences || !("request" in preferences)) return preferences;
+  return { ...preferences, request: sanitizeSessionRequest(preferences.request) };
 }
 
 function cohortInfluenceFromSignals(signals?: Array<{ label: string; reason: string }>) {

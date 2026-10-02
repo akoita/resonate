@@ -26,10 +26,14 @@ jest.mock("../db/prisma", () => ({
   },
 }));
 
+import { Logger } from "@nestjs/common";
 import { AgentConfigController } from "../modules/agents/agent_config.controller";
+import { defaultCrateFilters } from "../modules/crates/crate_filters";
 import { mergeSessionGenres } from "../modules/agents/agent_session_genres";
 
-function makeController(overrides: { runResult?: unknown; identity?: unknown; learningService?: unknown } = {}) {
+function makeController(
+  overrides: { runResult?: unknown; identity?: unknown; learningService?: unknown; parser?: unknown } = {},
+) {
   return new AgentConfigController(
     {} as any,
     {
@@ -49,6 +53,7 @@ function makeController(overrides: { runResult?: unknown; identity?: unknown; le
       recordSignal: jest.fn(),
     }) as any,
     { publish: jest.fn() } as any,
+    overrides.parser as any,
   );
 }
 
@@ -139,6 +144,180 @@ describe("AgentConfigController", () => {
       }),
     );
   });
+  describe("POST /agents/config/session/parse (#2037)", () => {
+    const req = { user: { userId: "user_1" } };
+    const SENTENCE = "dark deep house for a late drive, 120-125 bpm, under $20";
+
+    function parserReturning(filters: object = {}) {
+      return {
+        parse: jest.fn().mockResolvedValue({
+          filters: {
+            ...defaultCrateFilters(),
+            genres: ["Deep House"],
+            moods: ["Dark"],
+            bpm: { min: 120, max: 125 },
+            maxTotalUsd: 20,
+            ...filters,
+          },
+          unparsed: ["late drive"],
+          strategy: "deterministic",
+        }),
+      };
+    }
+
+    it("returns the listening filters, unparsed phrases, ignored keys and strategy", async () => {
+      const parser = parserReturning();
+      const ctrl = makeController({ parser });
+
+      const result = await ctrl.parseSession({ text: `  ${SENTENCE}  ` });
+
+      expect(parser.parse).toHaveBeenCalledWith(SENTENCE);
+      expect(result).toEqual({
+        request: { genres: ["Deep House"], moods: ["Dark"], energy: null, bpm: { min: 120, max: 125 } },
+        unparsed: ["late drive"],
+        ignored: ["maxTotalUsd"],
+        strategy: "deterministic",
+      });
+    });
+
+    it("rejects text that is only whitespace with 400", async () => {
+      const parser = parserReturning();
+      const ctrl = makeController({ parser });
+      await expect(ctrl.parseSession({ text: "   \n " })).rejects.toMatchObject({ status: 400 });
+      expect(parser.parse).not.toHaveBeenCalled();
+    });
+
+    it("never persists, publishes or logs the text", async () => {
+      const logSpies = (["log", "warn", "error", "debug", "verbose"] as const).map((level) =>
+        jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined),
+      );
+      const ctrl = makeController({ parser: parserReturning() });
+
+      await ctrl.parseSession({ text: SENTENCE });
+
+      expect((ctrl as any).eventBus.publish).not.toHaveBeenCalled();
+      for (const call of [
+        findUniqueAgentConfig,
+        updateAgentConfig,
+        createSession,
+        updateSession,
+        findFirstWallet,
+        updateWallet,
+        createLicense,
+      ]) {
+        expect(call).not.toHaveBeenCalled();
+      }
+      for (const spy of logSpies) {
+        expect(JSON.stringify(spy.mock.calls)).not.toContain("deep house");
+        expect(JSON.stringify(spy.mock.calls)).not.toContain(SENTENCE);
+        spy.mockRestore();
+      }
+    });
+  });
+
+  describe("session start with a described request (#2037)", () => {
+    const req = { user: { userId: "user_1" } };
+    const request = {
+      genres: ["Deep House"],
+      moods: ["Dark", "Moody"],
+      energy: "high",
+      bpm: { min: 120, max: 125 },
+    };
+
+    async function start(ctrl: AgentConfigController, preferences: object) {
+      await ctrl.startSession(req, { preferences: preferences as any });
+      await jest.advanceTimersByTimeAsync(500);
+      await jest.advanceTimersByTimeAsync(0);
+    }
+
+    it("joins request genres to the session genres and derives mood, energy, tempo", async () => {
+      const ctrl = makeController();
+
+      await start(ctrl, { genres: ["Soul"], request });
+
+      expect((ctrl as any).runtimeService.run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preferences: expect.objectContaining({
+            genres: ["Focus", "Soul", "Deep House"],
+            mood: "Dark",
+            moods: ["Dark", "Moody"],
+            energy: "high",
+            tempoBpm: { min: 120, max: 125 },
+            request,
+          }),
+        }),
+      );
+      for (const [args] of updateAgentConfig.mock.calls) {
+        expect(args.data).toEqual({ isActive: true });
+      }
+    });
+
+    it("merges request genres after learned favorites and saved vibes", async () => {
+      const learningService = {
+        resolveTasteProfile: jest.fn().mockResolvedValue({
+          favoredGenres: ["Hip Hop"],
+          genreWeights: { "Hip Hop": 1 },
+        }),
+        mergeLearnedGenres: jest.fn((vibes: string[], profile: any, sessionGenres: string[] = []) =>
+          mergeSessionGenres({ learnedGenres: profile.favoredGenres, vibes, sessionGenres }),
+        ),
+        recordSignal: jest.fn(),
+      };
+      const ctrl = makeController({ learningService });
+
+      await start(ctrl, { request });
+
+      expect((ctrl as any).runtimeService.run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preferences: expect.objectContaining({ genres: ["Hip Hop", "Focus", "Deep House"] }),
+        }),
+      );
+    });
+
+    it("keeps the mood as sent and falls back to the energy as sent", async () => {
+      const ctrl = makeController();
+
+      await start(ctrl, {
+        mood: "Chill",
+        energy: "low",
+        request: { genres: ["Soul"], moods: ["Dark"], energy: null, bpm: null },
+      });
+
+      const preferences = (ctrl as any).runtimeService.run.mock.calls[0][0].preferences;
+      expect(preferences.mood).toBe("Chill");
+      expect(preferences.energy).toBe("low");
+      expect(preferences.moods).toEqual(["Dark"]);
+      expect(preferences).not.toHaveProperty("tempoBpm");
+    });
+
+    it("drops an invalid request and runs exactly like a start without one", async () => {
+      const withGarbage = makeController();
+      await start(withGarbage, { genres: ["Soul"], mood: "Chill", request: { genres: "nope", energy: "wild" } });
+      const garbageInput = (withGarbage as any).runtimeService.run.mock.calls[0][0];
+
+      jest.clearAllMocks();
+      createSession.mockResolvedValue({ id: "session_1" });
+      findUniqueAgentConfig.mockResolvedValue({
+        id: "agent_1",
+        userId: "user_1",
+        name: "booba",
+        vibes: ["Focus"],
+        stemTypes: ["all"],
+        monthlyCapUsd: 10,
+        sessionMode: "curate",
+      });
+      updateAgentConfig.mockResolvedValue({});
+      findFirstWallet.mockResolvedValue(null);
+      const plain = makeController();
+      await start(plain, { genres: ["Soul"], mood: "Chill" });
+      const plainInput = (plain as any).runtimeService.run.mock.calls[0][0];
+
+      expect(garbageInput).toEqual(plainInput);
+      expect(garbageInput.preferences).not.toHaveProperty("request");
+      expect(garbageInput.preferences).not.toHaveProperty("moods");
+    });
+  });
+
   describe("curate-only sessions (ADR-TE-1.4)", () => {
     const req = { user: { userId: "user_1" } };
     const pick = { licenseType: "personal", priceUsd: 0, reason: "selected" };

@@ -14,6 +14,7 @@ import {
 import { ToolRegistry } from "../tools/tool_registry";
 import { getToolDeclarations, executeTool } from "../tools/tool_declarations";
 import { getAgentTrackLimit } from "../agent_runtime.config";
+import { describeTempoRange } from "../agent_session_request";
 
 const MAX_TOOL_ROUNDS = 6;
 const TIMEOUT_MS = 30_000;
@@ -143,6 +144,13 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
     }
     if (input.preferences.energy) {
       parts.push(`Energy: ${input.preferences.energy}`);
+    }
+    if (input.preferences.moods?.length) {
+      parts.push(`Moods: ${input.preferences.moods.join(", ")}`);
+    }
+    if (input.preferences.tempoBpm) {
+      const tempo = describeTempoRange(input.preferences.tempoBpm);
+      if (tempo) parts.push(`Tempo: ${tempo}`);
     }
     if (input.preferences.genres?.length) {
       parts.push(`Genres: ${input.preferences.genres.join(", ")}`);

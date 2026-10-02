@@ -1,4 +1,5 @@
 import type { OrchestratedTrack } from "./agent_orchestrator.service";
+import type { AgentRequestCoverage } from "./agent_session_request";
 import type { AgentRuntimeResult } from "./runtime/agent_runtime.adapter";
 
 export type AgentLicenseType = "personal" | "remix" | "commercial";
@@ -7,6 +8,8 @@ export type AgentRuntimeOrchestratorResult = {
   status: string;
   tracks: OrchestratedTrack[];
   shortfall?: number;
+  /** Coverage of the listener's described session (#2037); deterministic path only. */
+  requestCoverage?: AgentRequestCoverage;
 };
 
 export type AgentRuntimeRunResult =
@@ -44,6 +47,8 @@ export interface AgentRuntimeCommerceResult {
   latencyMs?: number;
   /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
   shortfall?: number;
+  /** How well the picks matched the listener's described session (#2037). Absent for LLM picks. */
+  requestCoverage?: AgentRequestCoverage;
 }
 
 function normalizeStatus(status: string): AgentRuntimeCommerceStatus {
@@ -97,6 +102,7 @@ export function normalizeAgentRuntimeResult(
       tracks,
       primaryTrack: tracks[0],
       shortfall: result.shortfall,
+      ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
     };
   }
 

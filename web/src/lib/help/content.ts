@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage"],
     sections: [
       {
         id: "sessions",
@@ -503,11 +503,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Go to Home and find the Your AI DJ section. Sign in if you haven't already; signed out, you can still see the session intents.",
               "The first time, set up your DJ from there or in Settings → AI DJ, where you give it a name and choose your vibes. You can change them later in the same place.",
-              "Choose a session intent to set the direction, then start the session. Starting a session from the Home tuner or a feed prompt begins it in place. A session intent or Home pick only steers that session: the vibes you saved in Settings → AI DJ are kept as they are.",
+              "Under What's this session for?, type a sentence about the session, or choose one of the quick starts, then start the session. Starting a session from the Home tuner or a feed prompt begins it in place. What you type or choose only steers that session: the vibes you saved in Settings → AI DJ are kept as they are.",
               "When you start a session from the Your AI DJ section, the DJ takes a few seconds to choose its first picks and then plays them in the player. If it finds nothing to play, you'll see a message; try Next AI Pick or another intent.",
               "Watch the status, activity and history in the same section. Use Next AI Pick to get a new pick, which starts playing right away, and your feedback shapes future picks.",
               "Keep listening wherever you are in the app. As the queue runs low, the DJ adds more picks, for as long as the session is live. Stop the session whenever you like; stopping it means no new picks are added (what is already in your queue stays).",
             ],
+          },
+          {
+            kind: "paragraph",
+            text: "You can also just start a session without typing or choosing anything; the DJ then draws on your saved vibes and taste.",
           },
           {
             kind: "callout",
@@ -531,6 +535,32 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 900,
               source: LOCAL,
             },
+          },
+        ],
+      },
+      {
+        id: "describe-session",
+        heading: "Describe the session in your own words",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Type what the session is for, for example \"Warm deep house around 122 BPM for cooking\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. The five quick starts, Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift and Static Calm, fill in the same kind of chips for you.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Remove a chip with its × to drop that filter, or change the energy chip between low, medium and high. Any change you make is yours: the chips no longer count as a quick start.",
+              "While a session is live, editing a chip re-plans the upcoming picks. The tracks you've already heard, the one playing now, and anything you queued yourself stay as they are; the DJ's not-yet-played picks are replaced with ones that follow your filters. Rapid edits re-plan once. Use Update session to apply what you typed straight away.",
+              "Didn't catch lists parts of your sentence the DJ couldn't turn into a filter. Rephrase them or add a filter by typing again.",
+              "Not used for listening lists things you mentioned, such as a key, stems, a license, a price, or verified human artists only, that don't apply to a listening session. They are shown so you know they were left out; they have no effect on the DJ's picks.",
+              "While a session is live, the DJ notes when its picks only partly match, for example Only 1 of 5 picks matched 120–125 BPM. A tempo only counts for tracks whose tempo has been measured, so some good picks may not count toward it.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Your sentence isn't saved",
+            text: "The sentence is read once to set the filters. It is not stored, not shared, and not used for analytics; only the filters it produced steer the session. If the DJ can't read it right now, your current filters stay as they are and you can start with them or try again.",
           },
         ],
       },

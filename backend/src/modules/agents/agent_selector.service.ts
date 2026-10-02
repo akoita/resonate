@@ -41,6 +41,11 @@ export interface AgentSelectorInput {
   /** Requested mood; matched like the intent when it is not already a query. */
   mood?: string;
   queueStyle?: string;
+  /**
+   * Requested tempo range in BPM (#2037). A ranking boost on tracks whose tempo
+   * was measured; never a filter, and an inferred tempo never counts.
+   */
+  tempoBpm?: { min: number | null; max: number | null };
 }
 
 export interface AgentSelectionSignal {
@@ -253,6 +258,7 @@ export class AgentSelectorService {
         // hard-excluded below.
         recentTrackIds: [...new Set([...input.recentTrackIds, ...servedHistory])],
         energy: input.energy,
+        tempoBpm: input.tempoBpm,
         sessionIntent,
         tastePolicy: policy,
         audioFeaturesByTrack,

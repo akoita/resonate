@@ -208,12 +208,17 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     const count = event.trackCount ?? 0;
                     msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected`;
                 }
+                // #2037: what the picks did not match of the described session.
+                if (event.coverageSummary) {
+                    msg += ` · ${event.coverageSummary}`;
+                }
                 this.server.emit('agent.event', {
                     id: `${event.sessionId}-dec-${Date.now()}`,
                     type: 'agent.decision_made',
                     sessionId: event.sessionId,
                     message: msg,
                     timestamp: event.occurredAt,
+                    ...(event.coverage ? { coverage: event.coverage } : {}),
                 });
             }
         }));
