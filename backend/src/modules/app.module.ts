@@ -19,6 +19,7 @@ import { IngestionModule } from "./ingestion/ingestion.module";
 import { MaintenanceModule } from "./maintenance/maintenance.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { RecommendationsModule } from "./recommendations/recommendations.module";
+import { CratesModule } from "./crates/crates.module";
 import { RemixModule } from "./remix/remix.module";
 import { SessionsModule } from "./sessions/sessions.module";
 import { PlaylistModule } from "./playlist/playlist.module";
@@ -96,6 +97,7 @@ import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.mo
     PrivacyModule,
     ManagementModule,
     DiscoveryJournalModule,
+    CratesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
