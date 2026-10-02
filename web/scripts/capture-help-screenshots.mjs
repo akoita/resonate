@@ -752,6 +752,23 @@ const CRATE_TARGETS = [
       return { locator: panel };
     },
   },
+  {
+    // #1965: the export panel, with the stems owned, a folder typed and the
+    // two format buttons ready.
+    file: "crate-digger-export.png",
+    viewportHeight: 2600,
+    prepare: async (page) => {
+      await page.goto(`${BASE_URL}/crates`, { waitUntil: "networkidle", timeout: 90000 });
+      await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+      await page.getByRole("button", { name: "Build crate" }).click();
+      await page.waitForURL(`**/crates/${CRATE_ID}`, { timeout: 45000 });
+      await page.getByText("6 of 8 found").waitFor({ timeout: 45000 });
+      const panel = page.getByRole("region", { name: "Export to rekordbox or Serato" });
+      await panel.getByRole("heading", { name: /^Stems you can export/ }).waitFor({ timeout: 45000 });
+      await panel.getByLabel("Folder where you saved these files").fill("/Users/you/Music/Resonate");
+      return { locator: panel };
+    },
+  },
 ];
 
 async function captureCrates(browser) {

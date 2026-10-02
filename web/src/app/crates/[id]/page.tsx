@@ -511,7 +511,7 @@ function CrateEditor({ crateId }: { crateId: string }) {
         crateId={crate.id}
         crateTitle={crate.title}
         hasUnsavedChanges={dirty}
-        refreshKey={exportRefresh}
+        refreshKey={`${exportRefresh}:${crate.items.map((line) => line.trackId).join(",")}`}
       />
 
       <ConfirmDialog

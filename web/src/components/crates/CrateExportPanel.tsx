@@ -24,8 +24,8 @@ export type CrateExportPanelProps = {
   crateTitle: string | null;
   /** The export reads the saved crate; unsaved edits are flagged, not exported. */
   hasUnsavedChanges: boolean;
-  /** Changes after a purchase, so the list of stems you own is read again. */
-  refreshKey: number;
+  /** Changes after a purchase or when the saved lines change, so the list is read again. */
+  refreshKey: string | number;
 };
 
 /**
@@ -75,7 +75,8 @@ export function CrateExportPanel({
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    setLoadState("loading");
+    // A refresh keeps the list on screen until the new one arrives.
+    setLoadState((state) => (state === "ready" ? state : "loading"));
     getCrateExportManifest(token, crateId)
       .then((result) => {
         if (cancelled) return;
