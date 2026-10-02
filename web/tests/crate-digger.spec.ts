@@ -39,7 +39,8 @@ test.describe("Crate Digger (#1963)", () => {
     await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
     await build.click();
     await page.waitForURL(`**/crates/${CRATE_ID}`);
-    expect(created).toEqual([{ text: CRATE_REQUEST_TEXT, count: 8 }]);
+    // Lines left empty: the number in the sentence (or the default) decides.
+    expect(created).toEqual([{ text: CRATE_REQUEST_TEXT }]);
 
     // Coverage banner and filter chips.
     await expect(page.getByRole("heading", { name: "Untitled crate", level: 1 })).toBeVisible();
@@ -185,8 +186,10 @@ test.describe("Crate Digger (#1963)", () => {
     const { created, patches } = await mockCrateApi(page);
     await page.goto("/crates");
     await page.getByLabel("What does your set need?").fill(CRATE_REQUEST_TEXT);
+    await page.getByLabel("Lines").fill("5");
     await page.getByRole("button", { name: "Build crate" }).click();
     await page.waitForURL(`**/crates/${CRATE_ID}`);
+    expect(created[0]).toEqual({ text: CRATE_REQUEST_TEXT, count: 5 });
 
     const rebuild = page.getByRole("button", { name: "Build a new crate with these filters" });
     await expect(rebuild).toBeDisabled();

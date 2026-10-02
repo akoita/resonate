@@ -31,7 +31,9 @@ function CratesHome() {
   const referenceTrackId = searchParams.get("referenceTrackId");
 
   const [text, setText] = useState("");
-  const [count, setCount] = useState(CRATE_DEFAULT_COUNT);
+  // Empty means "not set": the backend then uses the number in the sentence
+  // ("4 tracks"), or its default. Sending a value always overrides the text.
+  const [count, setCount] = useState("");
   // A reference track builds on arrival, so the page starts in the building state.
   const [building, setBuilding] = useState(referenceTrackId !== null);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +98,8 @@ function CratesHome() {
     if (!trimmed || building) return;
     setBuilding(true);
     setError(null);
-    void build({ text: trimmed, count: clampCount(count) });
+    const lines = count.trim() === "" ? Number.NaN : Number(count);
+    void build(Number.isFinite(lines) ? { text: trimmed, count: clampCount(lines) } : { text: trimmed });
   };
 
   return (
@@ -153,7 +156,7 @@ function CratesHome() {
             <p id="crate-request-hint" className="crates-hint">
               Tempo, key, energy, genre, mood, stems, license and budget all work. Up to{" "}
               {CRATE_REQUEST_MAX_TEXT_LENGTH} characters; anything we cannot read is shown back to
-              you.
+              you. Leave Lines empty to use the number in your sentence.
             </p>
           </div>
           <div className="crates-row crates-row--fields">
@@ -166,8 +169,10 @@ function CratesHome() {
                 inputMode="numeric"
                 min={CRATE_MIN_COUNT}
                 max={CRATE_MAX_COUNT}
+                placeholder={String(CRATE_DEFAULT_COUNT)}
+                aria-describedby="crate-request-hint"
                 value={count}
-                onChange={(event) => setCount(Number(event.target.value))}
+                onChange={(event) => setCount(event.target.value)}
               />
             </div>
             <button

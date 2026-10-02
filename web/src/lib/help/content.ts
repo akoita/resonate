@@ -601,13 +601,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Crate Digger turns what your set needs into a crate of tracks. Type it in your own words, for example the tempo range, the key, how much energy you want, the stems you need and what you can spend. Choose how many lines you want, from 1 to 25.",
+            text: "Crate Digger turns what your set needs into a crate of tracks. Type it in your own words, for example the tempo range, the key, how much energy you want, the stems you need and what you can spend. Choose how many lines you want, from 1 to 25, in the Lines box or in your sentence (\"4 tracks\"). Leave Lines empty to use the number in your sentence, or 8.",
           },
           {
             kind: "steps",
             items: [
               "Open Crate Digger and describe your set.",
-              "Choose how many lines you want and press Build crate.",
+              "Choose how many lines you want, or leave Lines empty to use the number in your sentence, and press Build crate.",
               "Check the banner at the top of your crate. It tells you how many tracks were found out of how many you asked for, and which parts of your request held tracks back.",
               "If part of your request could not be understood, it is shown back to you word for word so nothing is silently ignored.",
             ],
@@ -616,7 +616,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/crate-digger-request.png`,
-              alt: "The Crate Digger page with a 'What does your set need?' box holding a sentence about melodic house tracks around 122 to 128 BPM, a Lines field set to 8, a Build crate button, and a Your crates list with two earlier crates below.",
+              alt: "The Crate Digger page with a 'What does your set need?' box holding a sentence about melodic house tracks around 122 to 128 BPM, a Lines field showing 8, a Build crate button, and a Your crates list with two earlier crates below.",
               caption: "Describe your set in your own words, choose how many lines you want, and press Build crate. Your earlier crates are listed underneath.",
               width: 1440,
               height: 900,

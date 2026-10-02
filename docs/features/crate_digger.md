@@ -75,7 +75,10 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
 ## How It Works
 
 1. **Request.** One of `{ text }`, `{ referenceTrackId }` or `{ filters }`, with
-   an optional `count` (1 to 25, default 8). Text is limited to 500 characters.
+   an optional `count` (1 to 25, default 8). An explicit `count` overrides the
+   number in the text, so the request page sends it only when the DJ fills the
+   Lines box; left empty, "4 tracks" in the sentence decides. Text is limited to
+   500 characters.
    - Text goes through the deterministic parser (numbers, keys, stem names,
      license words, genre and mood vocabulary). Phrases it cannot read are
      returned as `unparsed`, never guessed. With
