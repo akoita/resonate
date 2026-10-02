@@ -2,7 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
-issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455, 2005, 2003, 2006, 2036]
+issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1958, 1960, 1452, 1455, 2005, 2003, 2006, 2036, 2037]
 ---
 
 # Agent Taste Intelligence
@@ -47,6 +47,36 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > (in that order, de-duplicated). Preset cards no longer show a "Tempo target"
 > because selection never used it, and listening presets carry no license tier.
 > Only a first-time Home start, which creates the DJ, seeds the saved vibes.
+
+> **Describe the session in your own words (#2037).** Vision-neutral
+> infrastructure/quality: no money, payout or fee changes. The AI DJ section on
+> Home has a "What's this session for?" box ("dark deep house, 120 to 125 BPM,
+> high energy"). The text is read by the same request parser Crate
+> Digger uses (`POST /agents/config/session/parse`, signed in, 500 characters,
+> 20 requests a minute) into visible listening filters: genres and moods from
+> the catalog vocabulary, an energy band (low, medium, high) and a tempo range.
+> The listener sees each filter as a chip, can remove or edit any of them, and
+> starts the session from the filters. The five presets are quick-start chips:
+> one fills the box and the chips without parsing and starts the same session
+> the preset started before. Anything the parser could not read is listed under
+> "Didn't catch", and Crate Digger-only terms (keys, stems, license tier, price
+> limits, verified human only) under "Not used for listening". The filters then shape ranking: the requested genres join
+> the session's genres, every mood is also searched, the energy band overrides
+> the preset's energy, and a requested tempo range gives a ranking boost to
+> tracks whose tempo was **measured** (an inferred tempo never counts, #1960).
+> Filters are boosts, not guarantees: after each set the AI DJ reports, in the
+> live feed and as `requestCoverage` on Next AI Pick, which requested filters
+> some picks did not match ("not matched: 120-125 BPM (1 of 5)"). Coverage is
+> computed for the deterministic ranking path; an LLM runtime path (`AGENT_RUNTIME`
+> set) is told the moods and tempo in its prompt but reports no coverage. Editing
+> the chips mid-session sends a new request with the next pick, which replaces
+> the old one (an empty request clears it), and the web swaps the DJ's upcoming
+> picks in the queue for new ones; the playing track and tracks the listener
+> queued themselves stay. Privacy: the sentence exists only in the parse request body. It is
+> never stored, logged, published on the event bus, put into session or signal
+> rows, kept in browser storage or sent to analytics; only the parsed filters
+> (genres, moods, energy, tempo) travel on to the session, and analytics carry
+> filter keys and counts only. The saved vibes in Settings are never written.
 
 > **Session playback.** Starting a session from the AI DJ section plays the
 > session's first picks in the player once they are recorded (the panel polls

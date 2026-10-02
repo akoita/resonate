@@ -111,6 +111,11 @@ export interface DiscoveryRankingContext {
   cohortContext?: CommunityCohortDiscoveryContext[];
   recentTrackIds?: string[];
   energy?: "low" | "medium" | "high";
+  /**
+   * Requested tempo range in BPM (#2037, DJ). Boosts a candidate whose tempo
+   * was measured and falls inside it; an inferred tempo never counts.
+   */
+  tempoBpm?: { min: number | null; max: number | null };
   /** Session intent as request context (DJ). Never stored as taste. */
   sessionIntent?: DiscoverySessionIntent;
   tastePolicy?: TasteMemoryPolicy;
@@ -353,6 +358,15 @@ export class DiscoveryRankingService {
           });
           explanation.push(energyMatchExplanation(context.energy));
         }
+        const tempoMatch = measuredTempoMatch(audioFeatures, context.tempoBpm);
+        if (tempoMatch) {
+          signals.push({
+            label: "tempo_match",
+            weight: TEMPO_MATCH_WEIGHT,
+            reason: tempoMatch,
+          });
+          explanation.push(tempoMatch);
+        }
       }
     }
 
@@ -381,6 +395,34 @@ export class DiscoveryRankingService {
       ...(tasteScore ? { trace: { bigQueryTasteScore: tasteScore } } : {}),
     };
   }
+}
+
+/** Weight of a requested-tempo match (#2037): same size as the energy match. */
+export const TEMPO_MATCH_WEIGHT = 10;
+
+/**
+ * `120–125 BPM match` when the track's MEASURED tempo is inside the requested
+ * range, else undefined. The inferred tempo is a metadata hash, so it never
+ * matches (#1960).
+ */
+function measuredTempoMatch(
+  features: AgentAudioFeatures,
+  range: DiscoveryRankingContext["tempoBpm"],
+): string | undefined {
+  if (!range || (range.min === null && range.max === null)) return undefined;
+  if (features.featureSources?.tempo !== "measured") return undefined;
+  const bpm = features.tempoBpm;
+  if (typeof bpm !== "number" || !Number.isFinite(bpm)) return undefined;
+  if (range.min !== null && bpm < range.min) return undefined;
+  if (range.max !== null && bpm > range.max) return undefined;
+  if (range.min !== null && range.max !== null) {
+    return range.min === range.max
+      ? `${Math.round(range.min)} BPM match`
+      : `${Math.round(range.min)}\u2013${Math.round(range.max)} BPM match`;
+  }
+  return range.max !== null
+    ? `under ${Math.round(range.max)} BPM match`
+    : `over ${Math.round(range.min as number)} BPM match`;
 }
 
 /**

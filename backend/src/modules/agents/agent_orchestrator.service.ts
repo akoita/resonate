@@ -1,8 +1,18 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { AgentMixerService } from "./agent_mixer.service";
+import type { AgentAudioFeatures } from "./agent_audio_feature.service";
 import { AgentRecommendationService } from "./agent_recommendation.service";
 import { getAgentTrackLimit } from "./agent_runtime.config";
+import {
+  computeRequestCoverage,
+  describeCoverageGaps,
+  hasRequestFilters,
+  sanitizeSessionRequest,
+  type AgentRequestCoverage,
+  type AgentSessionRequest,
+  type AgentSessionTempoRange,
+} from "./agent_session_request";
 
 export interface AgentOrchestratorInput {
   sessionId: string;
@@ -26,6 +36,12 @@ export interface AgentOrchestratorInput {
     sessionIntent?: string;
     sessionIntentName?: string;
     queueStyle?: string;
+    /** Every mood the listener described (#2037); also search queries. */
+    moods?: string[];
+    /** Requested tempo range in BPM (#2037); boosts measured tempo only. */
+    tempoBpm?: AgentSessionTempoRange;
+    /** Listening filters parsed from the listener's words (#2037), for coverage. */
+    request?: AgentSessionRequest;
   };
 }
 
@@ -73,6 +89,8 @@ export class AgentOrchestratorService {
     tracks: OrchestratedTrack[];
     /** Tracks requested minus tracks returned. Never filled by generation. */
     shortfall: number;
+    /** How well the picks matched the listener's described session (#2037); absent without filters. */
+    requestCoverage?: AgentRequestCoverage;
   }> {
     const requestedLimit = getAgentTrackLimit();
     const selection = await this.recommendations.recommend({
@@ -156,6 +174,7 @@ export class AgentOrchestratorService {
     // explicit shortfall; audio is never generated to fill it.
     const shortfall = Math.max(0, requestedLimit - tracks.length);
     const status = tracks.length > 0 ? "approved" : "all_rejected";
+    const coverage = buildRequestCoverage(input.preferences.request, selection.selected ?? []);
     this.eventBus.publish({
       eventName: "agent.decision_made",
       eventVersion: 1,
@@ -166,10 +185,53 @@ export class AgentOrchestratorService {
       ...(shortfall > 0
         ? { shortfall, unmetIntent: buildUnmetIntent(input.preferences) }
         : {}),
+      ...(coverage
+        ? {
+            coverage: coverage.coverage,
+            ...(coverage.summary ? { coverageSummary: coverage.summary } : {}),
+          }
+        : {}),
     });
 
-    return { status, tracks, shortfall };
+    return {
+      status,
+      tracks,
+      shortfall,
+      ...(coverage ? { requestCoverage: coverage.coverage } : {}),
+    };
   }
+}
+
+/**
+ * Coverage of the selected tracks against the listener's described session
+ * (#2037): genre and moods from the release, energy from the audio features,
+ * and tempo only when it was measured (the inferred tempo is a metadata hash).
+ * Undefined without a request, without filters, or without picks.
+ */
+function buildRequestCoverage(
+  rawRequest: unknown,
+  selected: Array<{
+    release?: { genre?: string | null; moods?: string[] | null };
+    agentRecommendation?: { audioFeatures?: AgentAudioFeatures };
+  }>,
+): { coverage: AgentRequestCoverage; summary: string } | undefined {
+  const request = sanitizeSessionRequest(rawRequest);
+  if (!request || !hasRequestFilters(request)) return undefined;
+  const coverage = computeRequestCoverage(
+    request,
+    selected.map((track) => {
+      const features = track.agentRecommendation?.audioFeatures;
+      return {
+        genre: track.release?.genre ?? null,
+        moods: track.release?.moods ?? [],
+        energyBand: features?.energyBand,
+        tempoBpm: features?.tempoBpm,
+        tempoMeasured: features?.featureSources?.tempo === "measured",
+      };
+    }),
+  );
+  if (!coverage) return undefined;
+  return { coverage, summary: describeCoverageGaps(request, coverage) };
 }
 
 function buildUnmetIntent(

@@ -456,7 +456,8 @@ describe("AgentSessionPanel", () => {
 
       captured.prompt?.onTextChange("   ");
       render();
-      expect(captured.prompt?.request).toBeNull();
+      // An empty request (not null), so a live session's next picks drop the old filters.
+      expect(captured.prompt?.request).toEqual({ genres: [], moods: [], energy: null, bpm: null });
       await captured.onToggle?.();
       expect(startSession).toHaveBeenCalledWith(undefined);
     });

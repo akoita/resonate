@@ -1,5 +1,7 @@
-import { BadRequestException, Body, Controller, Get, Logger, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, Optional, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Throttle } from "@nestjs/throttler";
+import { IsString, MaxLength } from "class-validator";
 import { prisma } from "../../db/prisma";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
@@ -11,7 +13,30 @@ import {
     type AgentSignalAction,
 } from "./agent_learning.service";
 import { mergeSessionGenres } from "./agent_session_genres";
+import {
+    AGENT_SESSION_REQUEST_PARSER,
+    listeningRequestFromCrateParse,
+    requestRankingPreferences,
+    type AgentSessionParseResponse,
+} from "./agent_session_request";
 import { EventBus } from "../shared/event_bus";
+import { minutes } from "../shared/rate_limits";
+import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../crates/crate.types";
+import type { CrateRequestParser } from "../crates/crate_request_parser";
+import { createCrateRequestParser } from "../crates/model_crate_request_parser";
+
+/** Tracked per signed-in person where the guard has resolved them, else per IP. */
+const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
+
+/**
+ * Body of `POST /agents/config/session/parse` (#2037): the listener's own words.
+ * The text is read, parsed and dropped: never stored, logged or published.
+ */
+export class ParseSessionRequestDto {
+    @IsString()
+    @MaxLength(CRATE_REQUEST_MAX_TEXT_LENGTH)
+    text!: string;
+}
 
 @Controller("agents/config")
 export class AgentConfigController {
@@ -22,7 +47,10 @@ export class AgentConfigController {
         private readonly runtimeService: AgentRuntimeService,
         private readonly identityService: AgentIdentityService,
         private readonly learningService: AgentLearningService,
-        private readonly eventBus: EventBus
+        private readonly eventBus: EventBus,
+        @Optional()
+        @Inject(AGENT_SESSION_REQUEST_PARSER)
+        private requestParser?: CrateRequestParser,
     ) { }
 
     @Get()
@@ -178,6 +206,24 @@ export class AgentConfigController {
         };
     }
 
+    /**
+     * Reads the listener's own description of a session (#2037) into visible,
+     * editable listening filters with the Crate Digger parser. Nothing is
+     * stored, logged or published: the text exists only in this request.
+     */
+    @Post("session/parse")
+    @HttpCode(200)
+    @UseGuards(AuthGuard("jwt"))
+    @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+    async parseSession(@Body() body: ParseSessionRequestDto): Promise<AgentSessionParseResponse> {
+        const text = typeof body?.text === "string" ? body.text.trim() : "";
+        if (!text) {
+            throw new BadRequestException({ reason: "text_required" });
+        }
+        this.requestParser ??= createCrateRequestParser();
+        return listeningRequestFromCrateParse(await this.requestParser.parse(text));
+    }
+
     @Post("session")
     @UseGuards(AuthGuard("jwt"))
     async startSession(
@@ -193,6 +239,8 @@ export class AgentConfigController {
                 sessionIntentName?: string;
                 queueStyle?: string;
                 source?: string;
+                /** Listening filters parsed from the listener's own words (#2037). Sanitized here. */
+                request?: unknown;
             };
         }
     ) {
@@ -202,11 +250,24 @@ export class AgentConfigController {
         if (!config) {
             return { status: "not_configured" };
         }
-        const sessionPreferences = {
-            genres: body?.preferences?.genres ?? config.vibes,
-            stemTypes: config.stemTypes,
+        // The described session (#2037): invalid fields are dropped, and with
+        // no request every derived value below is exactly what it was before.
+        const requested = requestRankingPreferences({
             mood: body?.preferences?.mood,
             energy: body?.preferences?.energy,
+            request: body?.preferences?.request,
+        });
+        // Request genres count as session genres, after the ones sent.
+        const sessionGenres = requested.request
+            ? [...(body?.preferences?.genres ?? []), ...requested.sessionGenres]
+            : body?.preferences?.genres;
+        const sessionPreferences = {
+            genres: requested.request
+                ? [...(body?.preferences?.genres ?? config.vibes), ...requested.sessionGenres]
+                : body?.preferences?.genres ?? config.vibes,
+            stemTypes: config.stemTypes,
+            mood: requested.mood,
+            energy: requested.energy,
             allowExplicit: body?.preferences?.allowExplicit,
             licenseType: body?.preferences?.licenseType ?? "personal",
             sessionIntent: body?.preferences?.sessionIntent,
@@ -276,7 +337,7 @@ export class AgentConfigController {
                     // are merged in below once the taste profile resolves.
                     genres: mergeSessionGenres({
                         vibes: config.vibes,
-                        sessionGenres: body?.preferences?.genres,
+                        sessionGenres,
                     }),
                     stemTypes: config.stemTypes,
                     learnedGenreWeights: {} as Record<string, number>,
@@ -288,6 +349,14 @@ export class AgentConfigController {
                     sessionIntentName: sessionPreferences.sessionIntentName,
                     queueStyle: sessionPreferences.queueStyle,
                     source: sessionPreferences.source,
+                    // The described session (#2037); absent without a request.
+                    ...(requested.request
+                        ? {
+                            moods: requested.moods,
+                            ...(requested.tempoBpm ? { tempoBpm: requested.tempoBpm } : {}),
+                            request: requested.request,
+                        }
+                        : {}),
                 },
             };
 
@@ -297,7 +366,7 @@ export class AgentConfigController {
                         runtimeInput.preferences.genres = this.learningService.mergeLearnedGenres(
                             config.vibes,
                             profile,
-                            body?.preferences?.genres ?? [],
+                            sessionGenres ?? [],
                         );
                         runtimeInput.preferences.learnedGenreWeights = profile.genreWeights;
                     }

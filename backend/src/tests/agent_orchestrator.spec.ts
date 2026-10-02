@@ -167,4 +167,91 @@ describe("AgentOrchestratorService (listening picks)", () => {
 
     expect(result).toEqual({ status: "no_tracks", tracks: [], shortfall: 5 });
   });
+
+  describe("request coverage (#2037)", () => {
+    const measured = (tempoBpm: number) => ({
+      energyBand: "high",
+      tempoBpm,
+      featureSources: { tempo: "measured", key: "unavailable", energy: "measured" },
+    });
+    const track = (
+      index: number,
+      release: { genre: string | null; moods: string[] },
+      audioFeatures: object,
+    ) => ({
+      id: `track-${index}`,
+      title: `Track ${index}`,
+      release,
+      agentRecommendation: { score: 50, explanation: [], reasonCode: "taste_match", audioFeatures },
+    });
+    const request = {
+      genres: ["Deep House"],
+      moods: ["Dark"],
+      energy: "high" as const,
+      bpm: { min: 120, max: 125 },
+    };
+
+    it("puts coverage on the decision event and the result", async () => {
+      const { orchestrator, events } = build([
+        track(1, { genre: "Deep House", moods: ["Dark"] }, measured(122)),
+        track(2, { genre: "Deep House", moods: ["Bright"] }, measured(130)),
+        track(3, { genre: "Techno", moods: ["Dark"] }, { ...measured(122), featureSources: { tempo: "inferred" } }),
+      ] as any);
+
+      const result = await orchestrator.orchestrate({
+        sessionId: "s1",
+        userId: "u1",
+        recentTrackIds: [],
+        preferences: { genres: ["Deep House"], request },
+      });
+
+      expect(result.requestCoverage).toEqual({
+        picks: 3,
+        gaps: [
+          { filter: "bpm", matched: 1 },
+          { filter: "genres", matched: 2 },
+          { filter: "moods", matched: 2 },
+        ],
+      });
+      const decision = events.find((event) => event.eventName === "agent.decision_made");
+      expect(decision.coverage).toEqual(result.requestCoverage);
+      expect(decision.coverageSummary).toBe(
+        "not matched: 120\u2013125 BPM (1 of 3), Deep House (2 of 3), Dark (2 of 3)",
+      );
+    });
+
+    it("reports full coverage without a summary when every pick matches", async () => {
+      const { orchestrator, events } = build([
+        track(1, { genre: "Deep House", moods: ["Dark"] }, measured(122)),
+      ] as any);
+
+      const result = await orchestrator.orchestrate({
+        sessionId: "s1",
+        userId: "u1",
+        recentTrackIds: [],
+        preferences: { request },
+      });
+
+      expect(result.requestCoverage).toEqual({ picks: 1, gaps: [] });
+      const decision = events.find((event) => event.eventName === "agent.decision_made");
+      expect(decision.coverage).toEqual({ picks: 1, gaps: [] });
+      expect(decision).not.toHaveProperty("coverageSummary");
+    });
+
+    it("adds nothing without a request, or with a request that has no filters", async () => {
+      for (const preferences of [{}, { request: { genres: [], moods: [], energy: null, bpm: null } }]) {
+        const { orchestrator, events } = build(makeTracks(2));
+        const result = await orchestrator.orchestrate({
+          sessionId: "s1",
+          userId: "u1",
+          recentTrackIds: [],
+          preferences,
+        });
+        expect(result).not.toHaveProperty("requestCoverage");
+        const decision = events.find((event) => event.eventName === "agent.decision_made");
+        expect(decision).not.toHaveProperty("coverage");
+        expect(decision).not.toHaveProperty("coverageSummary");
+      }
+    });
+  });
 });

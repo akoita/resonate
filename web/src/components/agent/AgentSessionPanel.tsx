@@ -19,6 +19,7 @@ import {
 import { resolveDjQueue } from "../../lib/agentDjPlayback";
 import { getDjSet, setDjSet } from "../../lib/agentDjSet";
 import {
+    emptyRequest,
     hasFilters,
     removeChip,
     requestFilterKeys,
@@ -122,6 +123,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         return (
             buildSessionPreferences({ activePreset, request, fallbackGenres: config?.vibes }) ?? {
                 genres: config?.vibes,
+                // Every chip removed: an empty request tells the DJ to drop the
+                // session's earlier filters (omitting the key would keep them).
+                ...(request ? { request } : {}),
             }
         );
     }, [activePreset, request, config?.vibes]);
@@ -307,7 +311,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         parseTimerRef.current = null;
         const sequence = ++parseSeqRef.current;
         if (!value.trim()) {
-            setRequest(null);
+            // Empty, not null: a live session's next picks then drop the old filters.
+            setRequest(emptyRequest());
             setUnparsed([]);
             setIgnored([]);
             setParseError(null);

@@ -1,3 +1,5 @@
+import type { AgentSessionRequest, AgentSessionTempoRange } from "../agent_session_request";
+
 export interface AgentRuntimeInput {
   sessionId: string;
   userId: string;
@@ -19,6 +21,12 @@ export interface AgentRuntimeInput {
     sessionIntentName?: string;
     queueStyle?: string;
     source?: string;
+    /** Every mood the listener described (#2037); each is also a search query. */
+    moods?: string[];
+    /** Requested tempo range in BPM (#2037); a ranking boost on measured tempo only. */
+    tempoBpm?: AgentSessionTempoRange;
+    /** The listening filters parsed from the listener's own words (#2037); never the text. */
+    request?: AgentSessionRequest;
   };
 }
 

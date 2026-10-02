@@ -7,6 +7,7 @@ import {
   PlaybackIntentOutcome,
   PlaybackSource,
 } from "./playback_intents.service";
+import type { AgentSessionRequest } from "../agents/agent_session_request";
 import { SessionsService } from "./sessions.service";
 
 @Controller("sessions")
@@ -67,6 +68,8 @@ export class SessionsController {
         sessionIntentName?: string;
         queueStyle?: string;
         source?: string;
+        /** Listening filters parsed from the listener's own words (#2037). Sanitized by the service. */
+        request?: AgentSessionRequest;
       };
     }
   ) {

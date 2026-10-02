@@ -16,6 +16,13 @@ export function buildAgentRecommendationQueries(
   if (preferences.mood && !queries.includes(preferences.mood)) {
     queries.push(preferences.mood);
   }
+  // Every mood the listener described is also a search query (#2037).
+  for (const mood of preferences.moods ?? []) {
+    const trimmed = mood?.trim();
+    if (!trimmed) continue;
+    if (queries.some((query) => query.toLowerCase() === trimmed.toLowerCase())) continue;
+    queries.push(trimmed);
+  }
   return queries;
 }
 
@@ -40,6 +47,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       sessionIntent: input.preferences.sessionIntent,
       mood: input.preferences.mood,
       queueStyle: input.preferences.queueStyle,
+      tempoBpm: input.preferences.tempoBpm,
     });
 
     return {

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { ToolRegistry } from "../tools/tool_registry";
 import type { AgentRuntimeInput } from "./agent_runtime.adapter";
 import { getAgentTrackLimit } from "../agent_runtime.config";
+import { describeTempoRange } from "../agent_session_request";
 
 // ---------------------------------------------------------------------------
 // Tool definitions — each delegates to the existing ToolRegistry
@@ -156,6 +157,13 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
   }
   if (input.preferences.energy) {
     parts.push(`Energy: ${input.preferences.energy}`);
+  }
+  if (input.preferences.moods?.length) {
+    parts.push(`Moods: ${input.preferences.moods.join(", ")}`);
+  }
+  if (input.preferences.tempoBpm) {
+    const tempo = describeTempoRange(input.preferences.tempoBpm);
+    if (tempo) parts.push(`Tempo: ${tempo}`);
   }
   if (input.preferences.genres?.length) {
     parts.push(`Genres: ${input.preferences.genres.join(", ")}`);

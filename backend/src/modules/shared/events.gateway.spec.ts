@@ -387,6 +387,55 @@ describe("EventsGateway", () => {
       gateway.onModuleDestroy();
     });
 
+    it("appends what the picks did not match of the described session (#2037)", () => {
+      const { gateway, eventBus, emit } = createGateway();
+      const coverage = {
+        picks: 5,
+        gaps: [
+          { filter: "genres", matched: 0 },
+          { filter: "bpm", matched: 1 },
+        ],
+      };
+
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackCount: 5,
+        reason: "approved",
+        coverage,
+        coverageSummary: "not matched: deep house (0 of 5), 120\u2013125 BPM (1 of 5)",
+      } as any);
+
+      expect(emit).toHaveBeenCalledWith("agent.event", expect.objectContaining({
+        type: "agent.decision_made",
+        message:
+          "Curation complete: 5 tracks selected \u00b7 not matched: deep house (0 of 5), 120\u2013125 BPM (1 of 5)",
+        coverage,
+      }));
+      gateway.onModuleDestroy();
+    });
+
+    it("keeps the message and omits coverage when nothing was requested or missed", () => {
+      const { gateway, eventBus, emit } = createGateway();
+
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackCount: 5,
+        reason: "approved",
+        coverage: { picks: 5, gaps: [] },
+      } as any);
+
+      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      expect(payload.message).toBe("Curation complete: 5 tracks selected");
+      expect(payload.coverage).toEqual({ picks: 5, gaps: [] });
+      gateway.onModuleDestroy();
+    });
+
     it("no longer broadcasts negotiation messages", () => {
       const { gateway, eventBus, emit } = createGateway();
 

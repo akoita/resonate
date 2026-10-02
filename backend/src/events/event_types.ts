@@ -902,6 +902,13 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   shortfall?: number;
   /** What the listener asked for when the catalog could not fill the request. */
   unmetIntent?: { genres?: string[]; mood?: string; energy?: string };
+  /** How well the picks matched the session the listener described (#2037); filter keys and counts only. */
+  coverage?: {
+    picks: number;
+    gaps: Array<{ filter: "genres" | "moods" | "energy" | "bpm"; matched: number }>;
+  };
+  /** Pre-rendered "not matched: ..." line for the live feed; set only when coverage has gaps. */
+  coverageSummary?: string;
 }
 
 /**
