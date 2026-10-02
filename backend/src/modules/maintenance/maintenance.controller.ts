@@ -29,7 +29,8 @@ export class MaintenanceController {
    * worker when DEMUCS_WORKER_URL is set (result carries `updated`), else an
    * analysis message through the Pub/Sub/Cloud Run Job dispatch (result is
    * `status: "dispatched"`; poll `remaining` or the GET route). With neither,
-   * `status: "worker_unavailable"`.
+   * `status: "worker_unavailable"`. Body `refresh: true` also re-measures
+   * stems analyzed with an older analysis revision (#2016).
    */
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
@@ -40,14 +41,20 @@ export class MaintenanceController {
 
   /**
    * Remaining stems lacking audio features, without calling any worker (#2013).
-   * `types` is a comma-separated list, e.g. `?types=original`.
+   * `types` is a comma-separated list, e.g. `?types=original`. With
+   * `?refresh=true` it also counts stems whose stored features come from an
+   * older analysis revision (#2016), matching a `refresh: true` backfill.
    */
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Get("stems/backfill-audio-features")
-  async getStemAudioFeatureBackfillStatus(@Query("types") types?: string) {
+  async getStemAudioFeatureBackfillStatus(
+    @Query("types") types?: string,
+    @Query("refresh") refresh?: string,
+  ) {
     return this.stemFeatureBackfillService.status({
       types: typeof types === "string" && types ? types.split(",").map((t) => t.trim()) : undefined,
+      refresh: refresh === "true",
     });
   }
 

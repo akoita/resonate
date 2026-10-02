@@ -37,8 +37,24 @@ also exposes `POST /analyze`, which the admin backfill uses.
 `schemaVersion`, `extractor { name, version }`, `sampleRate`,
 `durationSeconds`, `tempoBpm` (30-300, else null), `tempoConfidence`,
 `beatCount`, `firstBeatSec`, `key { tonic, mode, confidence }`, `energyRms`,
-`onsetDensity`, plus the derived `camelot` code. Every field except the schema
-version and extractor name may be null.
+`onsetDensity`, `analysisRevision`, plus the derived `camelot` code. Every field
+except the schema version and extractor name may be null.
+
+`analysisRevision` records which extraction method produced the payload. The
+shape is unchanged, so the schema version stays `v1`, and a payload without
+the field is revision 1.
+
+| Revision | Method |
+| --- | --- |
+| 1 | Tempo, onsets, energy and key all measured on the whole signal. |
+| 2 ([#2016](https://github.com/akoita/resonate/issues/2016)) | Key chroma measured at 22.05 kHz on the harmonic component (`librosa.effects.harmonic`, margin 3). Files load at their native rate (usually 44.1 or 48 kHz), where the 2048-sample chroma window has half the frequency resolution and low notes smear across pitch classes; percussion also flattens the pitch-class profile of a full mix. Tempo, onsets and energy are unchanged and still use the native-rate signal. |
+
+On a 25-track evaluation set of full mixes loaded as in production, revision 2
+raised keys with confidence of at least 0.1 from 15 to 19, and the first and
+second halves of a track agreed on the key for 20 tracks instead of 13. One of
+the 15 previously confident keys moved a fifth (C minor to G minor), a known
+ambiguity that cannot be settled without a reference key. The evaluation and
+the rejected variants are in #2016.
 
 ## Camelot code
 
@@ -80,6 +96,10 @@ Request body:
   `["original"]` to fill full mixes first. Accepted values are `original`,
   `master`, `vocals`, `drums`, `bass`, `other`, `piano`, `guitar`. Unknown
   values are ignored; an empty or absent list targets every type.
+- `refresh`: when `true`, also re-measure stems whose stored features come from
+  an older `analysisRevision` than the current one. Without it, only stems
+  with no features are selected. Results never overwrite features of the same
+  or a newer revision, so redelivered or older results are no-ops.
 
 Response: `transport`, `status` (`ok`, `dispatched` or `worker_unavailable`),
 `scanned`, `updated`, `dispatched`, `skipped[]`, `remaining` (stems still
@@ -87,7 +107,8 @@ lacking features for the requested filter) and `remainingByType` (the count per
 stem type across all types, so the operator sees the whole picture). Over HTTP,
 re-run until `remaining` reaches 0. With the `pubsub` transport, `remaining`
 still counts the stems in flight. Call the POST once per batch, then poll
-`GET /admin/stems/backfill-audio-features?types=original` (same admin guard;
+`GET /admin/stems/backfill-audio-features?types=original` (add `&refresh=true`
+to count outdated stems too; same admin guard;
 returns `remaining` and `remainingByType` without analyzing anything) until it
 stops falling, before dispatching the next batch. Re-dispatching a batch that
 is still in flight is harmless but wasted work: results only fill stems that

@@ -437,4 +437,229 @@ describe("StemFeatureBackfillService (integration)", () => {
       ).resolves.toEqual({ updated: 0, failed: 0, malformed: 0 });
     });
   });
+
+  describe("refresh of older analysis revisions (#2016)", () => {
+    const ID = (name: string) => `${TEST_PREFIX}${name}`;
+    const nullId = ID("rf_null");
+    const rev1Id = ID("rf_rev1");
+    const rev2Id = ID("rf_rev2");
+    const badRevId = ID("rf_badrev");
+    const ourIds = [nullId, rev1Id, rev2Id, badRevId];
+    const features = (tempoBpm: number, extra: Record<string, unknown> = {}) => ({
+      ...WORKER_FEATURES,
+      tempoBpm,
+      camelot: "10B",
+      ...extra,
+    });
+    const featuresOf = async (id: string) =>
+      (
+        await prisma.stem.findUnique({
+          where: { id },
+          select: { audioFeatures: true },
+        })
+      )?.audioFeatures as { tempoBpm?: number; analysisRevision?: number } | null;
+
+    beforeAll(async () => {
+      // "bass" is used by no other test here (the seeded bass stem is encrypted).
+      await prisma.stem.createMany({
+        data: ourIds.map((id) => ({
+          id,
+          trackId: TRACK_ID,
+          type: "bass",
+          uri: "db://bytes",
+          data: Buffer.from("fake-audio"),
+        })),
+      });
+    });
+
+    beforeEach(async () => {
+      await prisma.stem.update({
+        where: { id: nullId },
+        data: { audioFeatures: Prisma.DbNull },
+      });
+      await prisma.stem.update({
+        where: { id: rev1Id },
+        data: { audioFeatures: features(90) },
+      });
+      await prisma.stem.update({
+        where: { id: rev2Id },
+        data: { audioFeatures: features(95, { analysisRevision: 2 }) },
+      });
+      // A non-numeric revision counts as revision 1.
+      await prisma.stem.update({
+        where: { id: badRevId },
+        data: { audioFeatures: features(100, { analysisRevision: "2" }) },
+      });
+    });
+
+    const dispatchedIds = () =>
+      (
+        publisher.publishAnalysisJob.mock.calls[0]?.[0]?.stems ?? []
+      ).map((s: { stemId: string }) => s.stemId);
+
+    it("without refresh only stems lacking features are targeted", async () => {
+      delete process.env.DEMUCS_WORKER_URL;
+      publisher.isAvailable.mockReturnValue(true);
+
+      const result = await service.backfill({ limit: 50, types: ["bass"] });
+
+      expect(dispatchedIds()).toEqual([nullId]);
+      expect(result.remaining).toBe(1);
+      expect(result.remainingByType.bass).toBe(1);
+    });
+
+    it("pubsub refresh targets missing and older revisions but not the current one", async () => {
+      delete process.env.DEMUCS_WORKER_URL;
+      publisher.isAvailable.mockReturnValue(true);
+
+      const result = await service.backfill({
+        limit: 50,
+        types: ["bass"],
+        refresh: true,
+      });
+
+      expect(dispatchedIds().sort()).toEqual([nullId, rev1Id, badRevId].sort());
+      expect(result).toEqual(
+        expect.objectContaining({ transport: "pubsub", status: "dispatched" }),
+      );
+      expect(result.remaining).toBe(3);
+      expect(result.remainingByType.bass).toBe(3);
+      // The type filter applies to the selection: refresh with another type
+      // does not dispatch bass stems.
+      publisher.publishAnalysisJob.mockClear();
+      await service.backfill({ limit: 50, types: ["original"], refresh: true });
+      expect(dispatchedIds()).not.toEqual(expect.arrayContaining([rev1Id]));
+    });
+
+    it("pubsub refresh honours the limit in id order", async () => {
+      delete process.env.DEMUCS_WORKER_URL;
+      publisher.isAvailable.mockReturnValue(true);
+
+      const result = await service.backfill({
+        limit: 2,
+        types: ["bass"],
+        refresh: true,
+      });
+
+      expect(dispatchedIds()).toEqual([badRevId, nullId].sort());
+      expect(result.scanned).toBe(2);
+      expect(result.remaining).toBe(3);
+    });
+
+    it("status counts the refresh set separately from the default set", async () => {
+      const plain = await service.status({ types: ["bass"] });
+      expect(plain.remaining).toBe(1);
+
+      const refresh = await service.status({ types: ["bass"], refresh: true });
+      expect(refresh.remaining).toBe(3);
+      expect(refresh.remainingByType.bass).toBe(3);
+      // Encrypted stems never count.
+      const encrypted = await prisma.stem.count({
+        where: { type: "bass", isEncrypted: true, trackId: TRACK_ID },
+      });
+      expect(encrypted).toBe(1);
+    });
+
+    it("http refresh overwrites older revisions and leaves the current one", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "success",
+          features: { ...WORKER_FEATURES, analysisRevision: 2 },
+        }),
+      } as any);
+
+      const result = await service.backfill({
+        limit: 50,
+        types: ["bass"],
+        refresh: true,
+      });
+
+      expect(result.updated).toBe(3);
+      expect(result.remaining).toBe(0);
+      for (const id of [nullId, rev1Id, badRevId]) {
+        expect(await featuresOf(id)).toEqual(
+          expect.objectContaining({ tempoBpm: 110.2, analysisRevision: 2 }),
+        );
+      }
+      expect((await featuresOf(rev2Id))?.tempoBpm).toBe(95);
+      const analyzed = fetchSpy.mock.calls
+        .filter(([url]) => String(url).endsWith("/analyze"))
+        .map(([, init]) => (((init as RequestInit).body as FormData).get("file") as File).name);
+      expect(analyzed.sort()).toEqual(
+        [nullId, rev1Id, badRevId].map((id) => `${id}.audio`).sort(),
+      );
+    });
+
+    it("http without refresh leaves older revisions alone", async () => {
+      await service.backfill({ limit: 50, types: ["bass"] });
+      expect((await featuresOf(rev1Id))?.tempoBpm).toBe(90);
+      expect((await featuresOf(nullId))?.tempoBpm).toBe(110.2);
+    });
+
+    it("applyAnalysisResults upgrades older revisions but never rewrites the current one", async () => {
+      const revision2 = (tempoBpm: number) => ({
+        ...WORKER_FEATURES,
+        tempoBpm,
+        analysisRevision: 2,
+      });
+      const outcome = await service.applyAnalysisResults({
+        kind: "analysis",
+        jobId: "analyze_rf_1",
+        status: "completed",
+        results: [
+          { stemId: nullId, features: revision2(120) },
+          { stemId: rev1Id, features: revision2(121) },
+          { stemId: badRevId, features: revision2(122) },
+          { stemId: rev2Id, features: revision2(123) },
+        ],
+      });
+      // The stored revision-2 row is not rewritten by another revision-2 result.
+      expect(outcome).toEqual({ updated: 3, failed: 0, malformed: 0 });
+      expect(await featuresOf(nullId)).toEqual(
+        expect.objectContaining({ tempoBpm: 120, analysisRevision: 2 }),
+      );
+      expect((await featuresOf(rev1Id))?.tempoBpm).toBe(121);
+      expect((await featuresOf(badRevId))?.tempoBpm).toBe(122);
+      expect((await featuresOf(rev2Id))?.tempoBpm).toBe(95);
+
+      // Redelivery of the same message is a no-op.
+      const again = await service.applyAnalysisResults({
+        kind: "analysis",
+        jobId: "analyze_rf_1",
+        status: "completed",
+        results: [
+          { stemId: nullId, features: revision2(130) },
+          { stemId: rev1Id, features: revision2(131) },
+        ],
+      });
+      expect(again.updated).toBe(0);
+      expect((await featuresOf(nullId))?.tempoBpm).toBe(120);
+      expect((await featuresOf(rev1Id))?.tempoBpm).toBe(121);
+    });
+
+    it("applyAnalysisResults never downgrades to a revision-1 result", async () => {
+      const outcome = await service.applyAnalysisResults({
+        kind: "analysis",
+        jobId: "analyze_rf_2",
+        status: "completed",
+        results: [
+          { stemId: rev2Id, features: { ...WORKER_FEATURES, tempoBpm: 140 } },
+          // Equal revision (1 vs 1): not an upgrade, stays untouched.
+          { stemId: rev1Id, features: { ...WORKER_FEATURES, tempoBpm: 141 } },
+          // A revision-1 result still fills a missing row.
+          { stemId: nullId, features: { ...WORKER_FEATURES, tempoBpm: 142 } },
+        ],
+      });
+      expect(outcome.updated).toBe(1);
+      expect(await featuresOf(rev2Id)).toEqual(
+        expect.objectContaining({ tempoBpm: 95, analysisRevision: 2 }),
+      );
+      expect((await featuresOf(rev1Id))?.tempoBpm).toBe(90);
+      const filled = await featuresOf(nullId);
+      expect(filled?.tempoBpm).toBe(142);
+      expect(filled).not.toHaveProperty("analysisRevision");
+    });
+  });
 });

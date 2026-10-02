@@ -19,6 +19,19 @@ from typing import Optional, Union
 logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "stem-audio-features/v1"
+# Which extraction method produced a payload; the shape is unchanged, so the
+# schema version stays v1. Payloads without the field are revision 1.
+#   2 (#2016): key chroma measured at KEY_SAMPLE_RATE on the harmonic
+#     component (HPSS), so drums no longer flatten the pitch-class profile of
+#     a full mix.
+ANALYSIS_REVISION = 2
+# Files load at their native rate (usually 44.1/48 kHz), where chroma_stft's
+# 2048-sample window has half the frequency resolution it has at 22.05 kHz and
+# low notes smear across pitch classes. The key is measured at this rate.
+KEY_SAMPLE_RATE = 22050
+# HPSS margin for the key chroma: >1 leaves ambiguous bins out of the harmonic
+# part, which is what clears percussion out of dense full mixes.
+KEY_HARMONIC_MARGIN = 3.0
 
 # Krumhansl-Schmuckler key profiles (major/minor pitch-class weightings).
 KRUMHANSL_MAJOR = [
@@ -90,6 +103,7 @@ def extract_stem_features(path: Union[str, Path]) -> dict:
 
     features: dict = {
         "schemaVersion": SCHEMA_VERSION,
+        "analysisRevision": ANALYSIS_REVISION,
         "extractor": {"name": "librosa", "version": str(librosa.__version__)},
         "sampleRate": int(sr),
         "durationSeconds": _finite(round(duration, 3)),
@@ -138,7 +152,12 @@ def extract_stem_features(path: Union[str, Path]) -> dict:
         density = _finite(float(len(onsets)) / duration)
         features["onsetDensity"] = round(density, 4) if density is not None else None
 
-        chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+        # Key only (#2016): downsample for pitch resolution, then drop the
+        # percussion that flattens the pitch-class profile.
+        key_sr = min(int(sr), KEY_SAMPLE_RATE)
+        y_key = librosa.resample(y, orig_sr=sr, target_sr=key_sr) if key_sr != sr else y
+        harmonic = librosa.effects.harmonic(y_key, margin=KEY_HARMONIC_MARGIN)
+        chroma = librosa.feature.chroma_stft(y=harmonic, sr=key_sr)
         features["key"] = _estimate_key(np.mean(chroma, axis=1))
 
     return features

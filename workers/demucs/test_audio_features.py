@@ -16,7 +16,7 @@ import soundfile as sf
 # main.py creates OUTPUT_DIR at import time; keep tests inside a tmp dir.
 os.environ.setdefault("OUTPUT_DIR", tempfile.mkdtemp(prefix="resonate-demucs-test-"))
 
-from audio_features import SCHEMA_VERSION, extract_stem_features
+from audio_features import ANALYSIS_REVISION, SCHEMA_VERSION, extract_stem_features
 
 SR = 22050
 
@@ -48,7 +48,47 @@ def _pitched_tone(freq: float, seconds: float, sr: int = SR) -> np.ndarray:
     ).astype(np.float32)
 
 
+def _chord(freqs, seconds: float, sr: int = SR) -> np.ndarray:
+    return sum(_pitched_tone(f, seconds, sr) for f in freqs) / len(freqs)
+
+
+def _progression_with_drums(sr: int) -> np.ndarray:
+    """I-IV-V-I in C major with noise-burst percussion on every beat (#2016)."""
+    c = (130.81, 261.63, 329.63, 392.0)
+    f = (174.61, 261.63, 349.23, 440.0)
+    g = (98.0, 246.94, 293.66, 392.0)
+    harmony = np.concatenate([_chord(ch, 2.0, sr) for ch in (c, f, g, c, c, f, g, c)]) * 0.5
+    drums = np.zeros_like(harmony)
+    interval = int(sr * 60.0 / 120.0)
+    hit = np.random.default_rng(2016).standard_normal(4096) * 3.0 * np.exp(-np.arange(4096) / 800)
+    for start in range(0, len(drums) - len(hit), interval):
+        drums[start : start + len(hit)] += hit
+    return (harmony + drums).astype(np.float32)
+
+
 class ExtractStemFeaturesTest(unittest.TestCase):
+    def test_payload_records_analysis_revision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_wav(Path(tmp) / "click.wav", _click_track(120.0, 4.0))
+            features = extract_stem_features(path)
+
+        self.assertEqual(features["analysisRevision"], ANALYSIS_REVISION)
+        self.assertEqual(ANALYSIS_REVISION, 2)
+
+    def test_key_of_a_drum_heavy_progression_at_44k(self):
+        # Production loads at the native rate; the key must still resolve
+        # with usable confidence through percussion (#2016).
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_wav(
+                Path(tmp) / "progression.wav", _progression_with_drums(44100), sr=44100
+            )
+            features = extract_stem_features(path)
+
+        self.assertEqual(features["sampleRate"], 44100)
+        self.assertIsNotNone(features["key"])
+        self.assertEqual((features["key"]["tonic"], features["key"]["mode"]), ("C", "major"))
+        self.assertGreaterEqual(features["key"]["confidence"], 0.1)
+
     def test_click_track_tempo_within_tolerance(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_wav(Path(tmp) / "click.wav", _click_track(120.0, 8.0))
