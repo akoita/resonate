@@ -74,6 +74,10 @@ vi.mock("../../lib/playerContext", () => ({ usePlayer: () => ({ playQueue }) }))
 vi.mock("../../lib/localLibrary", () => ({
   saveTracksMetadata: (...args: unknown[]) => saveTracksMetadata(...(args as [unknown[]])),
 }));
+const setDjSet = vi.fn();
+vi.mock("../../lib/agentDjSet", () => ({
+  setDjSet: (...args: unknown[]) => setDjSet(...args),
+}));
 vi.mock("../../lib/agentDjPlayback", () => ({
   resolveDjQueue: (...args: unknown[]) => resolveDjQueue(...(args as [string[], string])),
 }));
@@ -257,6 +261,66 @@ describe("AgentSessionPanel", () => {
       expect(addToast).toHaveBeenCalledWith(
         expect.objectContaining({ title: "AI Pick Ready", message: expect.stringContaining("Playing Main") }),
       );
+    });
+
+    it("records the DJ set once playback starts so the set can keep going", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      getAgentNextPick.mockResolvedValueOnce({
+        status: "ok",
+        track: { id: "t-main", title: "Main", artistId: "a-1" },
+        tracks: [{ trackId: "t-extra", licenseType: "personal", priceUsd: 0 }],
+      });
+      render();
+
+      await captured.onPick?.();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Next AI Pick and the continuation use the same preferences.
+      const requested = (getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: unknown }])[1];
+      expect(setDjSet).toHaveBeenCalledTimes(1);
+      expect(setDjSet).toHaveBeenCalledWith({
+        sessionId: "s-open",
+        preferences: requested.preferences,
+        trackIds: ["t-main", "t-extra"],
+      });
+      expect(playQueue.mock.invocationCallOrder[0]).toBeLessThan(setDjSet.mock.invocationCallOrder[0]);
+    });
+
+    it("does not record a DJ set when nothing could be played", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      getAgentNextPick.mockResolvedValueOnce({
+        status: "ok",
+        track: { id: "t-main", title: "Main", artistId: "a-1" },
+      });
+      playQueue.mockRejectedValueOnce(new Error("audio blocked"));
+      render();
+
+      await captured.onPick?.();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(setDjSet).not.toHaveBeenCalled();
+    });
+
+    it("records the DJ set for a started session's first picks and clears it on stop", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      await captured.onToggle?.();
+
+      hookState.sessions = [session("s-1", ["t-1", "t-2"])];
+      render();
+      effects.forEach((run) => run());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(setDjSet).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "s-1", trackIds: ["t-1", "t-2"] }),
+      );
+
+      hookState.config = config({ isActive: true });
+      render();
+      await captured.onToggle?.();
+      expect(stopSession).toHaveBeenCalledTimes(1);
+      expect(setDjSet).toHaveBeenLastCalledWith(null);
     });
 
     it("does not touch the player when Next AI Pick returns nothing", async () => {

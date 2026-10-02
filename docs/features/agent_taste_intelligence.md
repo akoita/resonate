@@ -40,7 +40,13 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > its pick at once. Next AI Pick searches the same genres session start does
 > (the listener's learned favorite genres plus the session's own) and excludes
 > every track the session already picked, including the picks session start
-> recorded as licenses.
+> recorded as licenses. The set is continuous: one DJ run picks
+> `AGENT_TRACK_LIMIT` tracks (default 5), and when the player reaches the last
+> two tracks of the DJ's queue on any page (`AgentDjContinuation`, mounted in
+> `AppShell`) the web asks for the next picks and appends them while the
+> session is live. Every next-pick track is recorded on the session like the
+> start picks, so session history counts the whole set and refills never
+> repeat a track.
 
 ## Status
 

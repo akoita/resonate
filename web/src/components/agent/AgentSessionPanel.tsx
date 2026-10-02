@@ -12,6 +12,7 @@ import {
     type AgentNextPreferences,
 } from "../../lib/api";
 import { resolveDjQueue } from "../../lib/agentDjPlayback";
+import { setDjSet } from "../../lib/agentDjSet";
 import { saveTracksMetadata } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
@@ -78,14 +79,33 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         setAwaitingAutoplayId(null);
     }, []);
 
+    const selectedIntentPreferences = useMemo(() => {
+        return selectedPreset ? toIntentPreferences(selectedPreset) : null;
+    }, [selectedPreset]);
+
+    /** The preferences a next-pick request carries; also what the continuation reuses to keep the set going. */
+    const buildNextPickPreferences = useCallback((): AgentNextPreferences => {
+        return {
+            ...(selectedIntentPreferences ?? {}),
+            genres: selectedIntentPreferences?.genres ?? config?.vibes,
+            licenseType: selectedIntentPreferences?.licenseType ?? "personal",
+        };
+    }, [selectedIntentPreferences, config?.vibes]);
+
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
-        async (trackIds: string[]): Promise<number> => {
+        async (sessionId: string, trackIds: string[]): Promise<number> => {
             try {
                 const queue = await resolveDjQueue(trackIds, token);
                 if (queue.length === 0) return 0;
                 await saveTracksMetadata(queue, "remote");
                 await playQueue(queue, 0);
+                // Let the DJ keep adding picks as this queue runs out (AgentDjContinuation).
+                setDjSet({
+                    sessionId,
+                    preferences: buildNextPickPreferences(),
+                    trackIds: queue.map((track) => track.catalogTrackId || track.id),
+                });
                 return queue.length;
             } catch (error) {
                 addToast({
@@ -96,7 +116,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 return 0;
             }
         },
-        [token, playQueue, addToast],
+        [token, playQueue, addToast, buildNextPickPreferences],
     );
 
     const openSessionId = useMemo(() => {
@@ -138,7 +158,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         const session = sessions.find((candidate) => candidate.id === sessionId);
         if (!session || session.licenses.length === 0) return;
         clearAwaitingAutoplay();
-        void playDjTracks(session.licenses.map((license) => license.trackId));
+        void playDjTracks(sessionId, session.licenses.map((license) => license.trackId));
     }, [sessions, playDjTracks, clearAwaitingAutoplay]);
 
     useEffect(() => {
@@ -153,10 +173,6 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             },
         });
     }, [config?.id, token]);
-
-    const selectedIntentPreferences = useMemo(() => {
-        return selectedPreset ? toIntentPreferences(selectedPreset) : null;
-    }, [selectedPreset]);
 
     const handleWizardComplete = async (data: {
         name: string;
@@ -187,6 +203,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             const stoppedSessionId = openSessionId;
             const stoppedSession = stoppedSessionId ? sessions.find((session) => session.id === stoppedSessionId) : null;
             await stopSession();
+            // Stopping the session stops the DJ adding picks to the player.
+            setDjSet(null);
             clearAwaitingAutoplay();
             setActiveSessionId(null);
             setNextPick(null);
@@ -279,11 +297,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         try {
             const result = await getAgentNextPick(token, {
                 sessionId: openSessionId,
-                preferences: {
-                    ...(selectedIntentPreferences ?? {}),
-                    genres: selectedIntentPreferences?.genres ?? config.vibes,
-                    licenseType: selectedIntentPreferences?.licenseType ?? "personal",
-                },
+                preferences: buildNextPickPreferences(),
             });
             void recordProductAnalytics(token, "agent.next_pick_requested", {
                 source: "agent_next_pick_card",
@@ -309,7 +323,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     title: "AI Pick Ready",
                     message: `Playing ${result.track.title} · ${result.licenseType ?? "personal"} · $${(result.priceUsd ?? 0).toFixed(2)}`,
                 });
-                void playDjTracks([result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
+                void playDjTracks(openSessionId, [result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
             } else {
                 addToast({
                     type: "info",
