@@ -589,11 +589,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "crate-digger",
     title: "Crate Digger",
     summary:
-      "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, then get a quote and buy the stems with one signature, and export the stems you own to rekordbox or Serato.",
+      "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, then get a quote and buy the stems with one signature, export the stems you own to rekordbox or Serato, and watch a saved crate for new tracks that fit it.",
     category: "discover",
     audiences: ["listener", "curator"],
     status: "partial",
-    keywords: ["export", "rekordbox", "serato", "rekordbox xml", "serato crate", "cue", "download stems", "crate digger", "crate", "dj set", "dj", "set", "bpm", "key", "camelot", "energy", "stems", "license", "transition", "crossfade", "more like this", "reorder", "lock", "swap", "playlist builder", "quote", "buy", "receipt", "budget", "one signature"],
+    keywords: ["export", "rekordbox", "serato", "rekordbox xml", "serato crate", "cue", "download stems", "crate digger", "crate", "dj set", "dj", "set", "bpm", "key", "camelot", "energy", "stems", "license", "transition", "crossfade", "more like this", "reorder", "lock", "swap", "playlist builder", "quote", "buy", "receipt", "budget", "one signature", "watch", "notify", "new releases", "notification"],
     sections: [
       {
         id: "build",
@@ -790,12 +790,47 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "watch",
+        heading: "Watch a crate",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Once a crate is saved, Watch for new releases can tell you when a new track fits its filters. Choose Notify me and how long to watch (30 days, 90 days, 180 days or a year). When a newly released track fits every filter, you get a notification that opens the crate, and the track appears under Recent matches with a link to its release.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/crate-digger-watch.png`,
+              alt: "The Watch for new releases panel of a saved crate. Notify me is selected next to a Stop watching button, a line says watching until Dec 27, 2026, and below it reads 3 new matches this month with a Recent matches list of three tracks, each linking to its release.",
+              caption: "Watching: the end date, this month's matches and the newest tracks that fit.",
+              width: 929,
+              height: 308,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "steps",
+            items: [
+              "Save the crate. A draft crate says Save the crate to watch it.",
+              "Under Watch for new releases, pick how long to watch and choose Notify me.",
+              "To stop, press Stop watching at any time. Watching also stops by itself on the date shown.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Watching only tells you; it never buys",
+            text: "A match is a prompt to open the crate and ask for a quote, which you approve as usual. You get at most 20 match notifications a day; further matches still appear on the crate. Tracks you released yourself, tracks already in the crate and fully AI-generated tracks (unless the crate allows them) are never matches. The month's count is worked out when you open the crate; there is no emailed summary.",
+          },
+        ],
+      },
+      {
         id: "coming-soon",
         heading: "What is coming soon",
         blocks: [
           {
             kind: "paragraph",
-            text: "Building, editing, buying and exporting a crate works today. Watching for new tracks that fit a crate is coming soon.",
+            text: "Building, editing, buying, exporting and watching a crate for new matches works today. Buying a match automatically, within a limit you set, is not available yet: watching only notifies you.",
           },
         ],
       },

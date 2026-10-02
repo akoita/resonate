@@ -10,6 +10,8 @@ import {
   mockCrate,
   mockCrateApi,
   settledQuote,
+  WATCH_DENIED,
+  watchingWatch,
 } from "./fixtures/crate-digger-mock.mjs";
 
 /**
@@ -644,6 +646,130 @@ test.describe("Crate export (#1965)", () => {
     };
     expect(await blocking()).toEqual([]);
     await panel(page).getByLabel("Folder where you saved these files").fill(FOLDER);
+    expect(await blocking()).toEqual([]);
+  });
+});
+
+test.describe("Crate watching (#1967)", () => {
+  const SAVED_ID = "e2e-watch";
+  const NOW = Date.UTC(2026, 8, 28, 9, 0, 0);
+
+  const panel = (page: import("@playwright/test").Page) =>
+    page.getByRole("region", { name: "Watch for new releases" });
+
+  async function open(
+    page: import("@playwright/test").Page,
+    overrides: Record<string, unknown> = {},
+    id = SAVED_ID,
+  ) {
+    const crate = mockCrate(id, { title: "Friday warm-up", status: "saved", ...overrides });
+    const mock = await mockCrateApi(page, { savedCrates: [crate], now: NOW });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/crates/${id}`);
+    await expect(page.getByRole("heading", { name: "Friday warm-up", level: 1 })).toBeVisible();
+    return mock;
+  }
+
+  test("turns watching on with a length, shows the expiry, and stops it in one click", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await open(page);
+    await expect(panel(page).getByTestId("crate-watch-status")).toHaveText("Not watching");
+    await expect(panel(page).getByText("No new matches this month yet")).toBeVisible();
+    await expect(panel(page).getByRole("button", { name: "Stop watching" })).toHaveCount(0);
+
+    await panel(page).getByLabel("Watch for").selectOption("30");
+    await panel(page).getByLabel("Notify me").click();
+    await expect(panel(page).getByTestId("crate-watch-status")).toHaveText("Watching until Oct 28, 2026");
+    // Only the watch is sent: no title, no lines.
+    expect(patches).toEqual([
+      { crateId: SAVED_ID, body: { watch: { mode: "notify", expiresInDays: 30 } } },
+    ]);
+
+    await panel(page).getByRole("button", { name: "Stop watching" }).click();
+    await expect(panel(page).getByTestId("crate-watch-status")).toHaveText("Not watching");
+    expect(patches[1]).toEqual({ crateId: SAVED_ID, body: { watch: { mode: "off" } } });
+    await expect(panel(page).getByRole("button", { name: "Stop watching" })).toHaveCount(0);
+  });
+
+  test("shows the month's summary and the recent matches with links to the release", async ({
+    authenticatedPage: page,
+  }) => {
+    await open(page, { watch: watchingWatch() });
+    await expect(panel(page).getByTestId("crate-watch-status")).toHaveText("Watching until Dec 27, 2026");
+    await expect(panel(page).getByText("3 new matches this month")).toBeVisible();
+    const matches = panel(page).getByTestId("crate-watch-match");
+    await expect(matches).toHaveCount(3);
+    await expect(matches.first().getByRole("link", { name: "Harbour Lights by Aya Volt" })).toHaveAttribute(
+      "href",
+      "/release/release-new-1",
+    );
+    await expect(matches.nth(2)).toContainText("Paper Moons");
+  });
+
+  test("a draft crate asks to be saved first, and watching starts after saving", async ({
+    authenticatedPage: page,
+  }) => {
+    await open(page, { status: "draft" }, "e2e-watch-draft");
+    await expect(panel(page).getByTestId("crate-watch-draft")).toHaveText("Save the crate to watch it.");
+    await expect(panel(page).getByLabel("Notify me")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Save crate" }).click();
+    await expect(page.getByText("Crate saved")).toBeVisible();
+    await expect(panel(page).getByLabel("Notify me")).toBeVisible();
+    await expect(panel(page).getByTestId("crate-watch-draft")).toHaveCount(0);
+  });
+
+  test("shows a plain Crate Pro note instead of the control when the entitlement denies", async ({
+    authenticatedPage: page,
+  }) => {
+    await open(page, {
+      entitlements: {
+        pro: { allowed: true, reason: "free_for_everyone", policyVersion: "v1" },
+        export: { allowed: true, reason: "free_for_everyone", policyVersion: "v1" },
+        watch: WATCH_DENIED,
+      },
+    });
+    await expect(panel(page).getByTestId("crate-watch-denied")).toHaveText(
+      "Watching a crate is part of Crate Pro.",
+    );
+    await expect(panel(page).getByLabel("Notify me")).toHaveCount(0);
+    // Everything else on the page still works: the crate and its lines stay.
+    await expect(page.locator(".crates-line").first()).toBeVisible();
+  });
+
+  test("a watching crate can always be stopped, even when the entitlement now denies", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await open(page, {
+      watch: watchingWatch(),
+      entitlements: {
+        pro: { allowed: false, reason: "subscription_required", policyVersion: "v2" },
+        export: { allowed: false, reason: "subscription_required", policyVersion: "v2" },
+        watch: WATCH_DENIED,
+      },
+    });
+    await panel(page).getByRole("button", { name: "Stop watching" }).click();
+    await expect(panel(page).getByTestId("crate-watch-status")).toHaveText("Not watching");
+    expect(patches[0].body).toEqual({ watch: { mode: "off" } });
+  });
+
+  test("the watch panel has no serious automated accessibility violations", async ({
+    authenticatedPage: page,
+  }) => {
+    await open(page, { watch: watchingWatch() });
+    const blocking = async () => {
+      const results = await new AxeBuilder({ page })
+        .include(".crates-watch-panel")
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+        .analyze();
+      return results.violations
+        .filter((v) => v.impact === "serious" || v.impact === "critical")
+        .map((v) => ({ id: v.id, nodes: v.nodes.slice(0, 3).map((n) => n.html) }));
+    };
+    expect(await blocking()).toEqual([]);
+    await panel(page).getByRole("button", { name: "Stop watching" }).click();
+    await expect(panel(page).getByTestId("crate-watch-status")).toHaveText("Not watching");
     expect(await blocking()).toEqual([]);
   });
 });
