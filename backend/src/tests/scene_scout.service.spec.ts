@@ -216,6 +216,102 @@ describe("SceneScout city aggregation", () => {
     expect(sceneScoutMeetsServingThreshold(rows[0])).toBe(false);
   });
 
+  it("counts confirmed pledge IDs while deduplicating people across signals and applying consent/reset gates", () => {
+    const days = 24 * 60 * 60 * 1000;
+    const identity = identityContext(["listener-a", "listener-b", "listener-c", "listener-reset"]);
+    identity.tastePolicies.set("user:listener-reset", {
+      resetAt: new Date(NOW.getTime() - 2 * days),
+      agentPlaybackTrainingEnabled: true,
+    });
+    const pledges: NonNullable<AggregateInput["pledges"]> = [
+      {
+        pledgeId: "pledge-a1",
+        userId: "listener-a",
+        releaseId: RELEASE,
+        releaseTitle: "Northern Lights",
+        citySlug: "montreal",
+        countryCode: "CA",
+        declaredAt: new Date(NOW.getTime() - 8 * days),
+        confirmedAt: new Date(NOW.getTime() - 7 * days),
+      },
+      {
+        pledgeId: "pledge-a2",
+        userId: "listener-a",
+        releaseId: RELEASE,
+        releaseTitle: "Northern Lights",
+        citySlug: "montreal",
+        countryCode: "CA",
+        declaredAt: new Date(NOW.getTime() - 3 * days),
+        confirmedAt: new Date(NOW.getTime() - 2 * days),
+      },
+      {
+        pledgeId: "pledge-b1",
+        userId: "listener-b",
+        releaseId: RELEASE,
+        releaseTitle: "Northern Lights",
+        citySlug: "montreal",
+        countryCode: "CA",
+        declaredAt: new Date(NOW.getTime() - 9 * days),
+        confirmedAt: new Date(NOW.getTime() - 8 * days),
+      },
+      {
+        pledgeId: "pledge-c1",
+        userId: "listener-c",
+        releaseId: RELEASE,
+        releaseTitle: "Northern Lights",
+        citySlug: "montreal",
+        countryCode: "CA",
+        declaredAt: new Date(NOW.getTime() - 1 * days),
+        confirmedAt: new Date(NOW.getTime() - 1 * days),
+      },
+      {
+        pledgeId: "pledge-reset",
+        userId: "listener-reset",
+        releaseId: RELEASE,
+        releaseTitle: "Northern Lights",
+        citySlug: "montreal",
+        countryCode: "CA",
+        declaredAt: new Date(NOW.getTime() - 3 * days),
+        confirmedAt: new Date(NOW.getTime() - 1 * days),
+      },
+      {
+        pledgeId: "pledge-no-consent",
+        userId: "listener-no-consent",
+        releaseId: RELEASE,
+        releaseTitle: "Northern Lights",
+        citySlug: "montreal",
+        countryCode: "CA",
+        declaredAt: new Date(NOW.getTime() - 1 * days),
+        confirmedAt: new Date(NOW.getTime() - 1 * days),
+      },
+      {
+        pledgeId: "pledge-owner",
+        userId: "owner",
+        releaseId: RELEASE,
+        releaseTitle: "Northern Lights",
+        citySlug: "montreal",
+        countryCode: "CA",
+        declaredAt: new Date(NOW.getTime() - 1 * days),
+        confirmedAt: new Date(NOW.getTime() - 1 * days),
+      },
+    ];
+    const rows = aggregateSceneScoutEvents({
+      artistId: ARTIST,
+      events: [],
+      pledges,
+      catalogTracks: new Map([[TRACK, { releaseId: RELEASE, releaseTitle: "Northern Lights" }]]),
+      identity,
+      canonicalPurchases: new Map(),
+      now: NOW,
+    });
+    const week = rows.find((row) => row.windowDays === 7);
+    const month = rows.find((row) => row.windowDays === 28);
+    expect(week).toEqual(expect.objectContaining({ uniqueListeners: 2, pledges: 3, signalCount: 3 }));
+    expect(month).toEqual(expect.objectContaining({ uniqueListeners: 3, pledges: 4, signalCount: 4 }));
+    expect(JSON.stringify(rows)).not.toContain("pledge-a1");
+    expect(JSON.stringify(rows)).not.toContain("listener-a");
+  });
+
   it("uses a strict positive integer privacy threshold", () => {
     const previous = process.env.DISCOVERY_MIN_AUDIENCE;
     try {

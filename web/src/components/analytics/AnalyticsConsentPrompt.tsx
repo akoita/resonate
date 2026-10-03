@@ -138,7 +138,10 @@ export function AnalyticsConsentBanner({
             We would like to record which parts of Resonate you use — starting a track, saving
             something to your library, searching, opening a listing — to improve discovery and
             recommendations, understand which features help, give artists aggregate insights, and
-            decide what to build next.
+            decide what to build next. If you choose to share your city with a show pledge, we also
+            use that city and the confirmed pledge in aggregate artist demand insights. We do not
+            infer your location from a wallet, IP address or campaign city. Your city declaration
+            expires after 28 days and is removed if you turn usage measurement off.
           </p>
           <p>
             This is entirely optional. Saying no does not disable any feature, change any price, or

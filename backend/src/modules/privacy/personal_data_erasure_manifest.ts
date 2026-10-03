@@ -405,6 +405,11 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Money pledged into an escrow campaign, possibly still refundable; a financial record with an on-chain counterpart.",
   },
   {
+    model: "ShowPledgeDemandContext",
+    disposition: "delete",
+    reason: "A person's consented, user-linked pledge city has no use after erasure and expires after 28 days in ordinary retention.",
+  },
+  {
     model: "ShowCampaignEvent",
     disposition: "retain",
     reason: "The escrow state-transition log for a campaign holding other people's money.",

@@ -24,8 +24,9 @@ Sprint 31 remains in progress: staging acceptance is tracked in
 warehouse scheduling and live checks in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
 Canonical follow demand remains unavailable until a follow ledger event exists;
-pledge demand remains excluded until release attribution and governed listener
-geography are available together. See the [sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
+pledge demand requires a consent-qualified city declaration captured at intent
+creation and an indexer-confirmed pledge linked to a release. The browser pledge
+flow does not yet collect a backer city. See the [sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
 
 ADR-BM-6: **Line 2, Artist Pro, phase 2**, behind a currently free entitlement
 seam. Suggestions convert into **Line 1, Shows (6%)** and **Line 3, marketplace
@@ -49,10 +50,31 @@ count verified x402 settlements for a catalog track only when the envelope
 also has a governed user-declared city and a known listener identity. The
 existing purchase bridge does not infer location from a payer or campaign.
 
-Shows drafts can retain a validated source release, but pledges remain zero
-until a canonical pledge contribution also carries governed listener geography.
-A campaign target city cannot stand in for listener geography. These remaining
-signal families stay tracked by the open #1968 issue.
+Shows drafts retain a validated source release. Pledges can contribute when the
+intent API receives a user-declared city from the authenticated backer under the
+current analytics consent policy. A separate, private context retains only the
+city, country, consent version and declaration time. It stops contributing after
+28 days; bounded cleanup removes expired rows on demand reads, pledge writes and
+retention runs. It is excluded from campaign and pledge responses, included in
+the backer’s personal-data export, and deleted on refusal or account erasure.
+Renewed consent cannot revive a deleted declaration.
+
+Demand uses the indexer’s matching wallet, amount, transaction and block proof,
+current consent, and a ready or published, unwithdrawn release owned by the
+selected artist. Refundable, refunded, cancelled or failed contributions are
+excluded, as are the artist’s own activity and declarations predating a taste
+reset. Seven- and 28-day windows use the confirmation time; distinct people
+share the audience count with listening signals. Incomplete bounded reads clear
+old snapshots and show thin data. A campaign target city never locates a backer.
+
+This is an API-backed slice: the browser pledge flow still sends no city.
+Browser city entry and canonical follows remain tracked in open #1968. The
+analytics consent wording now explicitly covers optional pledge city demand;
+older decisions require renewal before optional analytics resumes. Affirmative
+grants must include the version bound to the client’s displayed wording
+(`consentTextVersion`), so legacy clients cannot merely echo a fetched server
+version and silently agree to new processing. Refusal remains available without
+that field.
 
 Rows below `DISCOVERY_MIN_AUDIENCE` unique listeners are never written to the
 city snapshot table. Cards also require the cockpit's five-signal floor. Thin
@@ -148,6 +170,10 @@ Run the focused Scene Scout backend unit/integration tests, the artist
 analytics card tests and the Shows prefill/form tests. Integration fixtures
 prove small audiences are absent from storage and responses, invalid consent
 and campaign-target geo are excluded, and withdrawals remove their contribution.
+The pledge integration tests cover capture and consent-refusal concurrency,
+matching escrow proof, pledge-only demand, cross-signal identity deduplication,
+expiry, reset, refunds and shared read-cap suppression. Personal-data tests
+prove city-context export isolation and deletion without financial pledge loss.
 The source-release integration tests cover persistence, omission, explicit
 clearing, artist attribution and invalid catalog references. The Scene Scout
 browser test follows a city card through an editable draft and checks the saved

@@ -438,10 +438,34 @@ export class PersonalDataErasureService {
     const erasedAt = new Date();
 
     // 3. Everything else, atomically.
-    const counts = await prisma.$transaction(
-      async (tx) => this.applyManifest(tx, identifiers, newUserId, erasedAt),
+    const transactionResult = await prisma.$transaction(
+      async (tx) => {
+        // Pledge capture and consent updates acquire the same user lock first.
+        // A capture already in progress finishes before this manifest runs;
+        // one starting later observes the rotated/missing account.
+        const lockedUsers = await tx.$queryRaw<Array<{ id: string; erasedAt: Date | null }>>(Prisma.sql`
+          SELECT "id", "erasedAt"
+          FROM "User"
+          WHERE "id" = ${userId}
+          FOR UPDATE
+        `);
+        const lockedUser = lockedUsers[0];
+        if (!lockedUser) return { counts: null, alreadyErasedAt: null };
+        if (lockedUser.erasedAt) return { counts: null, alreadyErasedAt: lockedUser.erasedAt };
+        return {
+          counts: await this.applyManifest(tx, identifiers, newUserId, erasedAt),
+          alreadyErasedAt: null,
+        };
+      },
       { timeout: TRANSACTION_TIMEOUT_MS, maxWait: TRANSACTION_MAX_WAIT_MS },
     );
+    if (!transactionResult.counts) {
+      if (transactionResult.alreadyErasedAt) {
+        return alreadyErasedSummary(userId, transactionResult.alreadyErasedAt);
+      }
+      throw new NotFoundException(`User ${userId} not found`);
+    }
+    const counts = transactionResult.counts;
 
     const summary: AccountErasureSummary = {
       status: "erased",

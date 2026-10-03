@@ -94,6 +94,13 @@ describe("personal data export manifest", () => {
       });
     });
 
+    it("exports a pledge's consented city only to the backer's own account", () => {
+      expect(EXPORTED_MODELS.find((entry) => entry.model === "ShowPledgeDemandContext")).toMatchObject({
+        primaryKey: "id",
+        keys: [{ kind: "userId", column: "userId" }],
+      });
+    });
+
     it("keeps operator claim-decision history out of personal exports", () => {
       expect(NOT_EXPORTED_MODELS.ArtistClaimDecisionEvent).toContain(
         "historical free-text review notes are not exposed through an operator's personal export",

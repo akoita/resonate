@@ -109,6 +109,29 @@ async function seed(person: Seed) {
       salt: `${TEST_PREFIX}salt_${person.suffix}`,
     },
   });
+  // Purpose-bound demand is personal data; the financial pledge is retained separately.
+  await prisma.showCampaign.create({
+    data: {
+      id: own("demand_campaign"), slug: own("demand_campaign"),
+      artistDisplayName: "Privacy fixture", title: "Privacy fixture",
+      city: "Paris", country: "FR", deadline: new Date("2027-01-01"),
+      goalAmountUnits: "1000000", chainId: 11155111,
+    },
+  });
+  await prisma.showPledge.create({
+    data: {
+      id: own("demand_pledge"), campaignId: own("demand_campaign"),
+      userId: person.userId, walletAddress: person.walletChecksummed,
+      amountUnits: "1000000", chainId: 11155111,
+      demandContext: { create: {
+        userId: person.userId, countryCode: "CA",
+        citySlug: person.suffix === "a" ? "montreal" : "quebec-city",
+        consentPolicyVersion: "analytics-consent:2026-10-03",
+        declaredAt: new Date("2026-05-31"), expiresAt: new Date("2026-06-28"),
+      } },
+    },
+  });
+
   await prisma.passkeyIdentity.create({
     data: {
       id: own("passkey"),
@@ -685,6 +708,12 @@ describe("PersonalDataErasureService integration", () => {
   afterAll(async () => {
     await cleanup();
     await prisma.$disconnect();
+  });
+
+  it("deletes demand context while retaining the financial pledge and the other person's context", async () => {
+    expect(await prisma.showPledgeDemandContext.findUnique({ where: { pledgeId: id("demand_pledge", "a") } })).toBeNull();
+    expect(await prisma.showPledge.findUnique({ where: { id: id("demand_pledge", "a") } })).toMatchObject({ userId: newUserId, amountUnits: "1000000" });
+    expect(await prisma.showPledgeDemandContext.findUnique({ where: { pledgeId: id("demand_pledge", "b") } })).toMatchObject({ userId: USER_B, citySlug: "quebec-city" });
   });
 
   it("settles the closure request it ran", async () => {

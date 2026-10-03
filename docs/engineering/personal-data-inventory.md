@@ -134,6 +134,14 @@ Deleting a claim cascades to its decision events.
 
 ## Scene Scout aggregate snapshots (#1968)
 
+`ShowPledgeDemandContext` holds an authenticated backer’s optional city and
+country declaration, consent policy version, declaration time and 28-day expiry.
+It is separate from retained financial pledges and excluded from their responses.
+The personal-data export includes the holder’s rows; account erasure and consent
+refusal delete them. Bounded cleanup runs on demand reads, pledge intent writes
+and analytics retention runs. Current consent and taste reset controls also gate
+aggregate use. The browser pledge flow does not yet collect this declaration.
+
 `SceneScoutCityDemand` contains only thresholded release/city counts and catalog
 labels. It is exported to the owning artist by `artistId`, never as a listener
 history. The artist profile survives account erasure, and its aggregate follows
@@ -193,8 +201,8 @@ verifying it is set before the first real erasure request.
 ## Category 1 — reachable by relation
 
 These declare a `User` relation, so Prisma knows about them and a cascade
-reaches them. **Eleven do not use `userId` as the foreign key**, which is the
-trap: a scan for `userId` finds 26 of 37 and looks thorough.
+reaches them. Some do not use `userId` as the foreign key: a scan for that
+column name alone misses the alternate keys listed below.
 
 The non-obvious keys: `authorId` (CommunityMessage), `claimantUserId` and
 `reviewerUserId` (ArtistClaimRequest), `actorUserId`
@@ -214,7 +222,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `AgentSignal`, `FirstListenerExposure`, `ListenerTasteMemorySettings`, `ListenerTasteSignalControl`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
-`ShowPledge`, `ShowCampaignEvent`, `PunchlineCollectible`,
+`ShowPledge`, `ShowPledgeDemandContext`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
 `CrateWatchMatch`.

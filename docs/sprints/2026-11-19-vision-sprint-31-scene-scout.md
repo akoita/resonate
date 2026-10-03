@@ -26,8 +26,10 @@ admitted.
 
 - **#1968:** city-demand backend, cockpit card and editable Shows prefill are
   merged in [PR #2044](https://github.com/akoita/resonate/pull/2044), with privacy, API, browser and help coverage.
-  The continuation preserves validated catalog release context when saving
-  and editing a Show draft; it does not yet enable pledge demand.
+  [PR #2054](https://github.com/akoita/resonate/pull/2054) preserves validated
+  release context when saving and editing a Show draft. The next continuation
+  adds consent-governed API pledge city declarations and indexer-qualified demand;
+  browser city entry remains deferred.
 - **#1969:** categorical request/session shortfalls and catalog supply actions
   are merged in [PR #2046](https://github.com/akoita/resonate/pull/2046).
 - **#1970:** taste-fitting fresh release selection and day-seven reception are
@@ -44,8 +46,8 @@ Staging acceptance remains open in
 warehouse scheduling and live checks remain open in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). Canonical
 follows are still unavailable without a follow ledger event; pledge demand
-remains excluded until canonical release attribution and governed listener
-geography qualify the same contribution. The linked parent
+requires canonical release attribution, an indexer-confirmed pledge and a
+consent-governed backer city declaration. Browser city entry remains open. The linked parent
 feature remains open until acceptance and its remaining signal families are
 resolved.
 

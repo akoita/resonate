@@ -5,6 +5,9 @@ import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
 import { normalizeAnalyticsGeoDimension } from "../analytics/analytics_event";
 import { ANALYTICS_CONSENT_POLICY_VERSION } from "../analytics/analytics_consent.service";
 import { findResonance } from "../discovery_journal/discovery_journal.service";
+import {
+  deleteExpiredShowPledgeDemandContexts,
+} from "./show_pledge_demand";
 
 export const SCENE_SCOUT_SOURCE = Symbol("SCENE_SCOUT_SOURCE");
 
@@ -149,6 +152,17 @@ interface CanonicalPurchaseLoad {
   incomplete: boolean;
 }
 
+interface PledgeDemandContribution {
+  pledgeId: string;
+  userId: string;
+  releaseId: string;
+  releaseTitle: string;
+  citySlug: string;
+  countryCode: string;
+  declaredAt: Date;
+  confirmedAt: Date;
+}
+
 function jsonObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonObject)
@@ -247,6 +261,7 @@ export function sceneScoutMeetsServingThreshold(row: Pick<SceneScoutCityDemandRo
 export function aggregateSceneScoutEvents(input: {
   artistId: string;
   events: LedgerEvent[];
+  pledges?: PledgeDemandContribution[];
   catalogTracks: Map<string, CatalogTrack>;
   identity: ListenerIdentityContext;
   canonicalPurchases: Map<string, CanonicalPurchase>;
@@ -357,6 +372,24 @@ export function aggregateSceneScoutEvents(input: {
     resonanceGroups.set(groupKey, group);
   }
 
+  for (const pledge of input.pledges ?? []) {
+    const actorId = input.identity.canonicalActorIds.get(pledge.userId) ?? `user:${pledge.userId.toLowerCase()}`;
+    if (actorId === input.identity.ownerActorId || !input.identity.grantedConsentActors.has(actorId)) continue;
+    const tastePolicy = input.identity.tastePolicies.get(actorId);
+    if (tastePolicy?.resetAt && (pledge.declaredAt <= tastePolicy.resetAt || pledge.confirmedAt <= tastePolicy.resetAt)) {
+      continue;
+    }
+    const city = { citySlug: pledge.citySlug, countryCode: pledge.countryCode };
+    const confirmedAt = pledge.confirmedAt.getTime();
+    for (const windowDays of WINDOW_DAYS) {
+      const from = windowsFrom.get(windowDays)!;
+      if (confirmedAt < from.getTime() || confirmedAt > input.now.getTime()) continue;
+      const accumulator = accumulatorFor(pledge.releaseId, pledge.releaseTitle, city, windowDays);
+      accumulator.uniqueActors.add(actorId);
+      accumulator.pledgeContributions.add(pledge.pledgeId);
+    }
+  }
+
   for (const group of resonanceGroups.values()) {
     for (const windowDays of WINDOW_DAYS) {
       const found = findResonance({
@@ -389,7 +422,7 @@ export function aggregateSceneScoutEvents(input: {
         // The current analytics event model has no canonical listener-follow event.
         follows: aggregate.followContributions.size,
         purchases: aggregate.purchaseContributions.size,
-        // Current pledges are campaign-scoped and have no canonical release/track link.
+        // Confirmed pledges use a separate consented, expiring campaign/release context.
         pledges: aggregate.pledgeContributions.size,
         uniqueListeners: aggregate.uniqueActors.size,
         signalCount: signalCount(aggregate),
@@ -427,6 +460,7 @@ export class SceneScoutService implements SceneScoutSource {
     }
 
     const now = options.now ?? new Date();
+    await deleteExpiredShowPledgeDemandContexts(prisma, now);
     const from = new Date(now.getTime() - 28 * DAY_MS);
     const artist = await prisma.artist.findUnique({
       where: { id: artistId },
@@ -469,11 +503,29 @@ export class SceneScoutService implements SceneScoutSource {
         cityDemand: [],
       };
     }
-    if (ledger.events.length === 0) {
+    const catalogReleases = [...new Map(
+      [...catalogTracks.values()].map((track) => [track.releaseId, track]),
+    ).values()];
+    const pledgeDemand = await this.readBoundedPledgeDemand(
+      artistId,
+      catalogReleases.map((release) => release.releaseId),
+      from,
+      now,
+      SCENE_SCOUT_READ_CAP - ledger.events.length,
+    );
+    if (pledgeDemand.truncated) {
       await this.replaceSnapshots(artistId, []);
       return {
         status: "thin_data",
-        reason: "Not enough recent listening data yet to show city demand.",
+        reason: "Scene Scout could not read the full recent signal window, so no city estimates are shown.",
+        cityDemand: [],
+      };
+    }
+    if (ledger.events.length === 0 && pledgeDemand.pledges.length === 0) {
+      await this.replaceSnapshots(artistId, []);
+      return {
+        status: "thin_data",
+        reason: "Not enough recent listening or pledge data yet to show city demand.",
         cityDemand: [],
       };
     }
@@ -494,6 +546,7 @@ export class SceneScoutService implements SceneScoutSource {
     const rows = aggregateSceneScoutEvents({
       artistId,
       events: ledger.events,
+      pledges: pledgeDemand.pledges,
       catalogTracks,
       identity: identity.context,
       canonicalPurchases: canonicalPurchases.purchases,
@@ -525,6 +578,69 @@ export class SceneScoutService implements SceneScoutSource {
       tracks.set(row.id, { releaseId: row.releaseId, releaseTitle: row.release.title });
     }
     return { tracks, truncated: false };
+  }
+
+  private async readBoundedPledgeDemand(
+    artistId: string,
+    catalogReleaseIds: string[],
+    from: Date,
+    now: Date,
+    remainingReadCapacity: number,
+  ): Promise<{ pledges: PledgeDemandContribution[]; truncated: boolean }> {
+    if (catalogReleaseIds.length === 0) return { pledges: [], truncated: false };
+    const remaining = Math.max(0, remainingReadCapacity);
+    const rows = await prisma.$queryRaw<PledgeDemandContribution[]>(Prisma.sql`
+      SELECT context."pledgeId" AS "pledgeId",
+             pledge."userId" AS "userId",
+             release."id" AS "releaseId",
+             release."title" AS "releaseTitle",
+             context."citySlug" AS "citySlug",
+             context."countryCode" AS "countryCode",
+             context."declaredAt" AS "declaredAt",
+             pledge."confirmedAt" AS "confirmedAt"
+      FROM "ShowPledgeDemandContext" context
+      JOIN "ShowPledge" pledge ON pledge."id" = context."pledgeId"
+      JOIN "ShowCampaign" campaign ON campaign."id" = pledge."campaignId"
+      JOIN "Release" release ON release."id" = campaign."sourceReleaseId"
+      WHERE context."userId" = pledge."userId"
+        AND context."consentPolicyVersion" = ${ANALYTICS_CONSENT_POLICY_VERSION}
+        AND context."expiresAt" > ${now}
+        AND context."declaredAt" <= pledge."confirmedAt"
+        AND pledge."confirmedAt" >= ${from}
+        AND pledge."confirmedAt" <= ${now}
+        AND pledge."status"::text IN ('confirmed', 'released')
+        AND pledge."confirmationStatus"::text = 'confirmed'
+        AND pledge."refundedAt" IS NULL
+        AND pledge."refundAvailableAt" IS NULL
+        AND pledge."failedAt" IS NULL
+        AND campaign."status"::text IN (
+          'active', 'funded', 'booking_confirmed', 'deposit_released',
+          'fulfilled', 'released'
+        )
+        AND campaign."artistId" = ${artistId}
+        AND release."id" IN (${Prisma.join(catalogReleaseIds)})
+        AND release."artistId" = ${artistId}
+        AND release."status" IN ('ready', 'published')
+        AND release."withdrawnAt" IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM "ShowCampaignEvent" proof
+          WHERE proof."pledgeId" = pledge."id"
+            AND proof."campaignId" = campaign."id"
+            AND proof."eventType"::text = 'pledge_confirmed'
+            AND proof."metadata"->>'source' = 'escrow-indexer'
+            AND proof."transactionHash" = pledge."transactionHash"
+            AND proof."blockNumber" = pledge."blockNumber"
+            AND LOWER(proof."actorWalletAddress") = LOWER(pledge."walletAddress")
+            AND proof."metadata"->>'onChainAmountUnits' = pledge."amountUnits"
+        )
+      ORDER BY pledge."confirmedAt" ASC, pledge."id" ASC
+      LIMIT ${remaining + 1}
+    `);
+    if (rows.length > remaining) {
+      return { pledges: rows.slice(0, remaining), truncated: true };
+    }
+    return { pledges: rows, truncated: false };
   }
 
   private async readBoundedLedgerEvents(trackIds: string[], from: Date, now: Date) {

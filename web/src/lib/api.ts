@@ -1683,7 +1683,7 @@ export type AnalyticsConsentUpdateResult =
 
 export async function updateAnalyticsConsent(
   token: string,
-  input: { productAnalytics: boolean; policyVersion: string },
+  input: { productAnalytics: boolean; policyVersion: string; consentTextVersion: string },
 ): Promise<AnalyticsConsentUpdateResult> {
   try {
     const decision = await apiRequest<AnalyticsConsentResponse>(

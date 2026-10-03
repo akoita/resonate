@@ -57,6 +57,7 @@ model User {
   showCampaignEvents          ShowCampaignEvent[]           @relation("ShowCampaignEventActor")
   showCampaignDisputes        ShowCampaignDispute[]         @relation("ShowCampaignDisputeInitiator")
   showPledges                 ShowPledge[]
+  showPledgeDemandContexts    ShowPledgeDemandContext[]
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
   remixPartTakes              RemixPartTake[]
@@ -2281,6 +2282,7 @@ model ShowPledge {
   campaign             ShowCampaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   tier                 ShowCampaignTier?            @relation(fields: [tierId], references: [id], onDelete: SetNull)
   user                 User?                        @relation(fields: [userId], references: [id])
+  demandContext        ShowPledgeDemandContext?
   events               ShowCampaignEvent[]
 
   @@unique([transactionHash, chainId])
@@ -2289,6 +2291,24 @@ model ShowPledge {
   @@index([userId, createdAt])
   @@index([walletAddress, chainId])
   @@index([confirmationStatus])
+}
+
+/// Short-lived, user-linked city context for privacy-gated pledge demand.
+/// Financial pledge records remain durable and do not carry this geography.
+model ShowPledgeDemandContext {
+  id                    String     @id @default(uuid()) @db.Uuid
+  pledgeId              String     @unique
+  userId                String
+  countryCode           String     @db.Char(2)
+  citySlug              String     @db.VarChar(80)
+  consentPolicyVersion  String
+  declaredAt            DateTime
+  expiresAt             DateTime
+  pledge                ShowPledge @relation(fields: [pledgeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model ShowCampaignEvent {

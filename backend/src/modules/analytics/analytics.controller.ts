@@ -40,7 +40,7 @@ type ProductEventRequest = Partial<ProductAnalyticsInput> & {
   clientEventId?: unknown;
 };
 type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
-type ConsentRequest = { productAnalytics?: unknown; policyVersion?: unknown };
+type ConsentRequest = { productAnalytics?: unknown; policyVersion?: unknown; consentTextVersion?: unknown };
 
 // #1772: the basis stamped on client-emitted telemetry that was collected after
 // an explicit grant. Server-emitted domain records keep their own basis.
@@ -286,7 +286,12 @@ export class AnalyticsController {
     if (!policyVersion || policyVersion.length > MAX_POLICY_VERSION_LENGTH) {
       throw new BadRequestException("policyVersion is required");
     }
-    if (policyVersion !== ANALYTICS_CONSENT_POLICY_VERSION) {
+    // The server version alone is insufficient: older browser bundles echo it
+    // while still rendering older consent copy. A grant must also name the
+    // version embedded alongside the browser's actual wording. Refusal never
+    // depends on the new field.
+    if (policyVersion !== ANALYTICS_CONSENT_POLICY_VERSION ||
+      (body.productAnalytics && body.consentTextVersion !== ANALYTICS_CONSENT_POLICY_VERSION)) {
       throw new ConflictException({
         error: "policy_version_stale",
         currentVersion: ANALYTICS_CONSENT_POLICY_VERSION,
