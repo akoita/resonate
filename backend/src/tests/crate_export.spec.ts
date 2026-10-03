@@ -220,6 +220,18 @@ describe("file names", () => {
     expect(name.length - ".mp3".length).toBeLessThanOrEqual(150);
   });
 
+  it("does not repeat an artist the title already starts with", () => {
+    expect(
+      stemFileName({ artistName: "The Game", title: "The Game - How We Do (ft 50 Cent)", stemType: "bass" }),
+    ).toBe("The Game - How We Do (ft 50 Cent) (Bass).mp3");
+    expect(stemFileName({ artistName: "the game", title: "THE GAME - Dreams", stemType: "vocals" })).toBe(
+      "the game - Dreams (Vocals).mp3",
+    );
+    // A title that is only the prefix, or merely starts with the artist's name, keeps it.
+    expect(stemFileName({ artistName: "Ada", title: "Ada - ", stemType: "drums" })).toBe("Ada - Ada - (Drums).mp3");
+    expect(stemFileName({ artistName: "Ada", title: "Adagio", stemType: "piano" })).toBe("Ada - Adagio (Piano).mp3");
+  });
+
   it("labels stem types", () => {
     expect(stemLabel("vocals")).toBe("Vocals");
     expect(stemLabel("OTHER")).toBe("Other");
@@ -296,7 +308,7 @@ describe("measured features", () => {
     ...overrides,
   });
 
-  it("uses the stem's own measured tempo, key and first beat", () => {
+  it("uses the stem's own measured tempo, key and first beat when the mix has none", () => {
     expect(exportFeatures(features({}), null)).toEqual({
       bpm: 128,
       key: "Am",
@@ -305,14 +317,29 @@ describe("measured features", () => {
     });
   });
 
-  it("falls back to the track's measured features, first beat included, when the stem has no tempo", () => {
-    const stem = features({ tempoBpm: null, tempoConfidence: null, firstBeatSec: 9, key: null });
-    const track = features({ tempoBpm: 100, firstBeatSec: 0.5, key: { tonic: "C", mode: "major", confidence: 0.4 } });
-    expect(exportFeatures(stem, track)).toEqual({
+  it("prefers the mix's measured features, so every stem of a track shares one grid", () => {
+    // A lone bass stem measured at double time with a late first beat, as on a
+    // real export: the mix's tempo, key and first beat win.
+    const bass = features({ tempoBpm: 184.57, firstBeatSec: 9.648, key: { tonic: "G", mode: "major", confidence: 0.4 } });
+    const mix = features({ tempoBpm: 92.29, firstBeatSec: 0.5, key: { tonic: "E", mode: "minor", confidence: 0.4 } });
+    expect(exportFeatures(bass, mix)).toEqual({
+      bpm: 92.29,
+      key: "Em",
+      camelot: "9A",
+      firstBeatSec: 0.5,
+    });
+  });
+
+  it("takes the tempo and first beat together from one source", () => {
+    // The mix has a key but no confident tempo: tempo and first beat come from
+    // the stem, the key from the mix.
+    const stem = features({ tempoBpm: 100, firstBeatSec: 0.2 });
+    const mix = features({ tempoConfidence: 0.1, firstBeatSec: 7, key: { tonic: "C", mode: "major", confidence: 0.4 } });
+    expect(exportFeatures(stem, mix)).toEqual({
       bpm: 100,
       key: "C",
       camelot: "8B",
-      firstBeatSec: 0.5,
+      firstBeatSec: 0.2,
     });
   });
 
