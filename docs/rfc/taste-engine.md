@@ -125,6 +125,15 @@ Taste Memory shows safe summaries from the same governed computation. The
 profile reads no inferred audio features and recomputes at read time to apply
 current decay and controls.
 
+Listening lanes (#2064) group repeated sessions by governed catalog genre/mood
+and coarse context, merge similar groups deterministically, and expose up to
+six lanes with strength and measured energy. Two natural lanes satisfy the
+separate-habits fixture; the implementation does not fabricate a third.
+Insufficient evidence retains the single-profile fallback. Hidden values are
+excluded and listeners can hide a lane from future mixes in Taste Memory.
+See the [implemented lane contract](../features/agent_taste_intelligence.md#listening-lanes-2064)
+for thresholds, cache lifecycle and the remaining My Mix slice (#2065).
+
 Manipulation protection (ADR-TE-2.5): signals from accounts younger than the
 trust threshold or flagged as anomalous are down-weighted; self-plays and
 self-purchases never count toward the artist's own reach; commitment signals

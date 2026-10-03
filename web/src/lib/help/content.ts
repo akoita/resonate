@@ -2975,6 +2975,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
+            text: "Your listening lanes show the different sides of your taste once you have enough repeated listening across sessions. Each card uses music labels and broad times, such as weekday evenings. Choose Hide from mixes to leave that lane out, or Restore to mixes to bring it back. Mixes are coming later; you can already review these patterns and save your choices. Reset clears learned lanes and their hide choices, while keeping the preferences you explicitly saved.",
+          },
+          {
+            kind: "paragraph",
             text: "Prefer to just say it? Under Taste Memory, type what you want in your own words — for example \"less drill, more live instruments\" — and choose Preview changes. We list exactly what would change as plain statements such as \"Show less Drill\". Untick, switch between more and less, or remove any line, then choose Apply. Nothing is saved until you apply, and anything we could not understand is shown as such and is never saved.",
           },
           {
@@ -2990,10 +2994,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/settings.png`,
-              alt: "The Settings page with its list of sections on the left and the Taste Memory section open on the right: a summary of your taste, the privacy toggles, and the \"Tell us what you want more or less of\" box with a preview listing \"Show less Drill\", \"Show more Jazz\" and a calmer-energy preference, each with Switch and Remove buttons, plus an Apply button.",
+              alt: "The Settings page with its list of sections on the left and the Taste Memory section open on the right: a summary of your taste, listening lane cards, the privacy toggles, and the \"Tell us what you want more or less of\" box with a preview listing \"Show less Drill\", \"Show more Jazz\" and a calmer-energy preference, each with Switch and Remove buttons, plus an Apply button.",
               caption: "In Settings, pick Taste Memory, type what you want in your own words, and review the proposed changes before you apply them.",
               width: 1440,
-              height: 1800,
+              height: 2800,
               source: LOCAL,
             },
           },

@@ -27,6 +27,7 @@ export const TASTE_SIGNAL_TYPES = [
   "novelty",
   "replay",
   "commerce",
+  "lane",
   // Declared-only types (#1961, ADR-TE-5): written through confirmed taste
   // edits, never through the manual signal control route.
   "energy",
@@ -45,6 +46,7 @@ const MANUAL_SIGNAL_TYPES: readonly TasteSignalType[] = [
   "novelty",
   "replay",
   "commerce",
+  "lane",
 ];
 const MANUAL_SIGNAL_ACTIONS: readonly TasteSignalAction[] = ["hidden", "downranked"];
 
@@ -159,7 +161,11 @@ export class TasteMemoryService {
     const policy = buildPolicy(settingsDto(settings), controls.map(controlDto));
     // Resolve lazily to avoid a module cycle: learning also reads taste controls.
     const { computeTasteProfileFromHistory } = await import("../agents/agent_learning.service");
-    const profile = await computeTasteProfileFromHistory(userId, { policy });
+    const { getListeningLaneSummary } = await import("../agents/listening_lanes.service");
+    const [profile, listeningLanes] = await Promise.all([
+      computeTasteProfileFromHistory(userId, { policy }),
+      getListeningLaneSummary(userId, { policy }),
+    ]);
     const labels = (weights: Record<string, number> = {}) => Object.entries(weights)
       .filter(([label, weight]) => Number.isFinite(weight) && weight > 0 && normalizeSignalValue(label) === label)
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -202,6 +208,7 @@ export class TasteMemoryService {
         favoredEnergyBands: labels(profile.energyBandWeights),
         favoredTempoBands: labels(profile.tempoBandWeights),
         contexts,
+        listeningLanes,
         recentIntents: rankedLabels(intentWeights, policy, "intent"),
         noveltyPattern: noveltyPattern(replayWeight, skipWeight),
         commercePreference: commercePreference(commerceWeight, libraryWeight),
@@ -263,22 +270,24 @@ export class TasteMemoryService {
 
   async resetTasteMemory(userId: string) {
     await this.ensureUser(userId);
-    const settings = await prisma.listenerTasteMemorySettings.upsert({
-      where: { userId },
-      update: { resetAt: new Date() },
-      create: {
-        userId,
-        ...DEFAULT_SETTINGS,
-        resetAt: new Date(),
-      },
-    });
-    await prisma.agentConfig.updateMany({
-      where: { userId },
-      data: {
-        learnedTasteProfile: Prisma.JsonNull,
-        tasteScore: 0,
-        tasteUpdatedAt: null,
-      },
+    const settings = await prisma.$transaction(async (tx) => {
+      // Serialize against learning writes so a reset cannot leave a newly
+      // persisted stale profile behind. The reset and lane cleanup are atomic.
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+      const resetAt = new Date();
+      const settings = await tx.listenerTasteMemorySettings.upsert({
+        where: { userId },
+        update: { resetAt },
+        create: { userId, ...DEFAULT_SETTINGS, resetAt },
+      });
+      await tx.agentConfig.updateMany({
+        where: { userId },
+        data: { learnedTasteProfile: Prisma.JsonNull, tasteScore: 0, tasteUpdatedAt: null },
+      });
+      // Lane hides describe learned groups. Declared preferences and ordinary
+      // catalog controls remain intact.
+      await tx.listenerTasteSignalControl.deleteMany({ where: { userId, signalType: "lane" } });
+      return settings;
     });
     this.publish("taste_memory.reset", userId, { resetAt: settings.resetAt?.toISOString() ?? null });
     return settingsDto(settings);
@@ -302,6 +311,16 @@ export class TasteMemoryService {
     // (#1961): the manual route keeps its original hide/downrank contract.
     if (!MANUAL_SIGNAL_TYPES.includes(signalType) || !MANUAL_SIGNAL_ACTIONS.includes(action)) {
       throw new BadRequestException("This signal can only be set through taste edits");
+    }
+
+    if (signalType === "lane") {
+      if ((input.action !== undefined && input.action !== "hidden") || action !== "hidden" || !/^lane_[a-f0-9]{32}$/.test(value)) {
+        throw new BadRequestException("Listening lanes can only be hidden by their lane identifier");
+      }
+      const { getListeningLaneSummary } = await import("../agents/listening_lanes.service");
+      if (!(await getListeningLaneSummary(userId)).some((lane) => lane.id === value)) {
+        throw new BadRequestException("Listening lane not found");
+      }
     }
 
     const control = await prisma.listenerTasteSignalControl.upsert({

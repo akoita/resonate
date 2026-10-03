@@ -20,6 +20,8 @@ const mockRecommendationsService = {
 
 const mockTasteMemoryService = {
   getTasteMemory: jest.fn().mockResolvedValue({}),
+  upsertSignalControl: jest.fn().mockResolvedValue({ id: "lane-control" }),
+  removeSignalControl: jest.fn().mockResolvedValue({ status: "restored" }),
   previewTasteEdits: jest.fn().mockResolvedValue({ items: [] }),
   applyTasteEdits: jest.fn().mockResolvedValue({ controls: [] }),
 };
@@ -101,6 +103,26 @@ describe('RecommendationsController home feed (e2e)', () => {
     await request(app.getHttpServer()).post('/recommendations/preferences')
       .set('Authorization', `Bearer ${token}`).send({ userId: 'another-user', preferences: { genres: ['Jazz'] } }).expect(403);
     expect(mockRecommendationsService.setPreferences).not.toHaveBeenCalled();
+  });
+
+  describe('listening lane controls (#2064)', () => {
+    it('requires authentication for reads and lane hides/restores', async () => {
+      await request(app.getHttpServer()).get('/recommendations/taste-memory').expect(401);
+      await request(app.getHttpServer()).post('/recommendations/taste-memory/signals')
+        .send({ signalType: 'lane', value: 'lane_' + 'a'.repeat(32) }).expect(401);
+      await request(app.getHttpServer()).delete('/recommendations/taste-memory/signals/lane-control').expect(401);
+      expect(mockTasteMemoryService.upsertSignalControl).not.toHaveBeenCalled();
+      expect(mockTasteMemoryService.removeSignalControl).not.toHaveBeenCalled();
+    });
+    it('takes authority from JWT even if a body claims another listener', async () => {
+      const body = { userId: 'another-user', signalType: 'lane', value: 'lane_' + 'a'.repeat(32), action: 'hidden' };
+      await request(app.getHttpServer()).post('/recommendations/taste-memory/signals')
+        .set('Authorization', `Bearer ${token}`).send(body).expect(201);
+      expect(mockTasteMemoryService.upsertSignalControl).toHaveBeenCalledWith('user-1', body);
+      await request(app.getHttpServer()).delete('/recommendations/taste-memory/signals/lane-control')
+        .set('Authorization', `Bearer ${token}`).expect(200);
+      expect(mockTasteMemoryService.removeSignalControl).toHaveBeenCalledWith('user-1', 'lane-control');
+    });
   });
 
   describe('taste edits (#1961)', () => {

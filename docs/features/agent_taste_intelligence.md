@@ -312,7 +312,7 @@ dimensions. No time zone or exact local time is collected.
 
 Home's `recommendation.served` and `recommendation.clicked` events remain the
 measurement base for discovery outcomes. The profile now computes decayed multidimensional weights (#2063), described
-below. Listening lanes, My Mix, ordering and measurement remain tracked in [#2064–#2067](https://github.com/akoita/resonate/issues/2061)
+below. My Mix, ordering and measurement remain tracked in [#2065–#2067](https://github.com/akoita/resonate/issues/2061)
 and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 
 ### Verification
@@ -327,8 +327,8 @@ and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 ## Habit profile v2 (#2063)
 
 Status: implemented locally, dependent on #2062. Vision-neutral infrastructure
-(ADR-BM-6), enabling Line 4 Listener Pro, phase 4. Listening lanes and My Mix
-remain planned under #2064–#2067.
+(ADR-BM-6), enabling Line 4 Listener Pro, phase 4. Listening lanes are implemented locally in #2064; My Mix, ordering and
+measurement remain planned under #2065–#2067.
 
 `agent-taste-profile/v2` keeps the existing score, tier, favored genres and
 `genreWeights` fields consumed by Home and the AI DJ. It adds aggregate maps:
@@ -364,6 +364,54 @@ Verification: fixed-clock learning tests cover decay, controls, reset, bounds
 and compatibility; real Postgres tests cover feature provenance, persistence,
 profile resolution and safe summaries. Component tests cover older responses,
 new summary rows and reset. See the [implementation plan](../../.agents/plans/2063-habit-profile-v2.md).
+
+## Listening lanes (#2064)
+
+Status: implemented locally on the #2063 dependency; the parent feature remains
+partial. Vision-neutral infrastructure (ADR-BM-6), enabling Line 4 Listener Pro,
+phase 4. Lane summaries and controls in Taste Memory remain free. My Mix and
+quota editing follow in [#2065](https://github.com/akoita/resonate/issues/2065).
+
+A lane captures a repeated side of a listener's taste, such as weekday-evening
+Soul or weekend Dancehall. The deterministic computation groups governed genre,
+mood and coarse context evidence by session and assigns sorted groups to
+similar centroids. Similarity compares normalized category proportions; signed
+weights retain evidence strength, so skips and removals reduce matching habits.
+This bounded greedy method does not seek a globally optimal partition. It uses
+catalog vocabulary from `taste_edit_vocabulary.ts`; aliases normalize to catalog
+terms and unsupported labels are omitted. No model or embeddings name lanes.
+Energy bands require measured full-mix features.
+
+Evidence uses the v2 decay, reset and hidden/downrank/boost policies. A lane
+requires at least two sessions and the configured minimum decayed weight.
+Missing session identity cannot establish repeated evidence. At most six lanes
+are returned; two observed lanes are valid and the system does not invent a
+third. Insufficient evidence returns no lanes, allowing callers to use the
+existing single-profile fallback. Thresholds live in
+`backend/src/config/agent_learning.ts`.
+
+`GET /recommendations/taste-memory` adds optional `summary.listeningLanes` cards
+with catalog genre/mood weights, a strength share, coarse contextual weights,
+measured energy and an opaque ID. Cards include hidden state for restoration.
+`POST /recommendations/taste-memory/signals` accepts a current listener-owned
+lane ID with `signalType: "lane"` and `action: "hidden"`; downranking lanes is
+rejected. The existing owned-control DELETE restores it. Mix-facing
+`resolveListeningLanes` excludes hidden lanes. This slice does not change Home
+or DJ ranking and does not launch mixes.
+
+Derived summaries are cached per user and profile version in a bounded
+128-entry process-local cache. The version covers bounded history, catalog
+features, sessions and controls, with an hourly epoch for silent decay. Reads
+still query bounded history to detect edits; cache entries retain derived
+summaries only. Reset clears lane cards and lane hides while preserving declared
+preferences and ordinary catalog controls. No raw sessions, tracks or precise
+listening timestamps appear in lane summaries.
+
+Verification covers fixed-history determinism, evidence thresholds, catalog
+labels, hidden values, measured energy and bounded computation. Real Postgres
+checks cover cache invalidation, user isolation, hide/restore and reset; mounted
+browser checks cover the corresponding cards. See the
+[implementation plan](../../.agents/plans/2064-listening-lanes.md).
 
 ## Unified Ranking Core (#1448 WS-1)
 

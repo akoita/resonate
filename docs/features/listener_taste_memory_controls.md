@@ -266,6 +266,21 @@ itemized listening history. Existing clients can continue reading the original
 summary fields. See [habit profile v2](agent_taste_intelligence.md#habit-profile-v2-2063)
 for source, decay and history limits.
 
+## Your listening lanes (#2064)
+
+Taste Memory shows up to six repeated listening patterns as catalog-labelled
+cards with coarse times. At least two sessions and sufficient decayed evidence
+are required; a new listener may see no cards. Measured energy is shown only
+when available. Cards contain no track list or exact listening times.
+
+**Hide from mixes** saves a lane hide; **Restore to mixes** removes it. These
+controls prepare for My Mix in #2065, which is not launched by this slice.
+Hidden lanes remain visible here for restoration but are excluded from the
+mix-facing resolver. Hiding a genre, mood or artist rebuilds the affected lanes.
+Reset clears learned lanes and their hides while preserving explicitly declared
+preferences. See [listening lanes](agent_taste_intelligence.md#listening-lanes-2064)
+for the API, evidence thresholds and caching contract.
+
 ## Verification
 
 Focused coverage:
@@ -279,6 +294,10 @@ Focused coverage:
 - `backend/src/tests/agent_learning.spec.ts`
 - `backend/src/tests/agent_learning.integration.spec.ts`
 - `backend/src/tests/taste_memory_profile_v2.integration.spec.ts`
+- `backend/src/tests/listening_lanes.spec.ts`
+- `backend/src/tests/listening_lanes.integration.spec.ts`
+- `web/src/components/settings/TasteMemorySettingsPanel.test.tsx`
+- `web/tests/taste-memory-habits.spec.ts`
 - `web/src/lib/api.test.ts`
 - `web/src/components/settings/tasteEdits.test.ts`
 - `web/src/components/settings/TasteEditSection.test.tsx`
