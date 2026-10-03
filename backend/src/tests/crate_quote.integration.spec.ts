@@ -30,6 +30,7 @@ import type {
 import { CRATE_QUOTE_TTL_MS } from "../modules/crates/crate_quote";
 import type { CrateQuoteDto } from "../modules/crates/crate_quote.dto";
 import { CrateQuoteService } from "../modules/crates/crate_quote.service";
+import type { CrateTransactionIndexer } from "../modules/crates/crate_transaction_indexer";
 import { deterministicCrateRequestParser } from "../modules/crates/crate_request_parser";
 import { CratesService } from "../modules/crates/crates.service";
 import { DiscoveryPolicyContextService } from "../modules/recommendations/discovery-policy-context.service";
@@ -119,6 +120,54 @@ class FakeMarketplaceReader implements CrateMarketplaceReader {
     if (receipt instanceof Error) throw receipt;
     if (!receipt || receipt.status === "pending") return { status: "pending", logs: [], blockNumber: null };
     return { ...receipt, blockNumber: receipt.blockNumber ?? this.head + 1n };
+  }
+}
+
+/**
+ * Stands in for the contract indexer. Like the real handler chain it records one
+ * `StemPurchase` per Sold log of the fake receipt, asynchronously (the real rows
+ * are written by an EventBus subscriber after `indexTransaction` returns).
+ */
+class FakeTransactionIndexer implements CrateTransactionIndexer {
+  readonly calls: Array<{ txHash: string; chainId: number }> = [];
+  error: Error | null = null;
+  /** Delay before the rows appear, to exercise the wait. */
+  writeDelayMs = 50;
+  /** Never write the rows (the real handler is slow or failed). */
+  skipWrite = false;
+
+  constructor(private readonly chain: FakeMarketplaceReader) {}
+
+  async indexTransaction(txHash: string, chainId: number): Promise<unknown> {
+    this.calls.push({ txHash, chainId });
+    if (this.error) throw this.error;
+    const receipt = this.chain.receipts.get(txHash.toLowerCase());
+    if (!receipt || receipt instanceof Error) return { processed: 0 };
+    const write = async () => {
+      for (const log of receipt.logs) {
+        const listing = seeded.find((entry) => entry.listingId === log.listingId);
+        if (!listing) continue;
+        await prisma.stemPurchase.create({
+          data: {
+            listingId: listing.rowId,
+            buyerAddress: log.buyer,
+            amount: log.amount,
+            totalPaid: log.totalPaid.toString(),
+            royaltyPaid: "0",
+            protocolFeePaid: "0",
+            sellerReceived: "0",
+            transactionHash: txHash,
+            logIndex: log.logIndex,
+            blockNumber: 1n,
+            purchasedAt: new Date(),
+          },
+        });
+      }
+    };
+    if (this.skipWrite) return { processed: receipt.logs.length };
+    if (this.writeDelayMs <= 0) await write();
+    else setTimeout(() => void write().catch(() => {}), this.writeDelayMs);
+    return { processed: receipt.logs.length };
   }
 }
 
@@ -815,6 +864,87 @@ describe("CrateQuoteService (integration)", () => {
       validationSpy.mockRejectedValueOnce(new Error("quality down"));
       const settled = await service.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
       expect(settled.status).toBe("settled");
+    });
+
+    describe("recording purchases at settlement", () => {
+      let indexer: FakeTransactionIndexer;
+      let indexed: CrateQuoteService;
+
+      beforeEach(() => {
+        indexer = new FakeTransactionIndexer(fake);
+        indexed = new CrateQuoteService(fake, learning, stemQuality, indexer);
+        indexed.purchaseWait = { timeoutMs: 1_000, intervalMs: 10 };
+      });
+
+      it("indexes the purchase transaction once on settlement, so the purchases exist when the receipts show", async () => {
+        const { crateId, quote } = await quoteOf(["tA", "tB"]);
+        const hash = hex(`tx_${quote.id}`);
+        fake.receipts.set(hash, receiptFor(quote));
+
+        const settled = await indexed.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+        expect(settled.status).toBe("settled");
+        expect(indexer.calls).toEqual([{ txHash: hash, chainId: CHAIN_ID }]);
+
+        const purchases = await prisma.stemPurchase.findMany({ where: { transactionHash: hash } });
+        expect(purchases).toHaveLength(allItems(settled).length);
+        for (const item of allItems(settled)) {
+          expect(item.receipt?.purchaseId).toEqual(expect.any(String));
+        }
+
+        // A second settle of the settled quote does not index again.
+        await indexed.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+        expect(indexer.calls).toHaveLength(1);
+      });
+
+      it("does not index while the transaction is pending, when it reverted, or when no service indexer is set", async () => {
+        const { crateId, quote } = await quoteOf(["tB"]);
+        const hash = hex(`tx_${quote.id}`);
+
+        const pending = await indexed.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+        expect(pending.status).toBe("submitted");
+        expect(indexer.calls).toHaveLength(0);
+
+        fake.receipts.set(hash, { status: "reverted", logs: [] });
+        const failed = await indexed.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+        expect(failed.status).toBe("failed");
+        expect(indexer.calls).toHaveLength(0);
+
+        // The default service has no indexer and still settles.
+        const second = await quoteOf(["tB"]);
+        const secondHash = hex(`tx_${second.quote.id}`);
+        fake.receipts.set(secondHash, receiptFor(second.quote));
+        const settled = await service.settleQuote(DJ, second.crateId, second.quote.id, {
+          transactionHash: secondHash,
+        });
+        expect(settled.status).toBe("settled");
+        expect(indexer.calls).toHaveLength(0);
+      });
+
+      it("still returns settled receipts when the indexer throws", async () => {
+        const { crateId, quote } = await quoteOf(["tB"]);
+        const hash = hex(`tx_${quote.id}`);
+        fake.receipts.set(hash, receiptFor(quote));
+        indexer.error = new Error("rpc down");
+
+        const settled = await indexed.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+        expect(settled.status).toBe("settled");
+        expect(indexer.calls).toHaveLength(1);
+        for (const item of allItems(settled)) expect(item.receipt?.purchaseId).toBeNull();
+      });
+
+      it("gives up waiting after the timeout and still settles", async () => {
+        const { crateId, quote } = await quoteOf(["tB"]);
+        const hash = hex(`tx_${quote.id}`);
+        fake.receipts.set(hash, receiptFor(quote));
+        // The rows never appear within the (short) wait.
+        indexer.skipWrite = true;
+        indexed.purchaseWait = { timeoutMs: 100, intervalMs: 10 };
+
+        const started = Date.now();
+        const settled = await indexed.settleQuote(DJ, crateId, quote.id, { transactionHash: hash });
+        expect(Date.now() - started).toBeLessThan(2_000);
+        expect(settled.status).toBe("settled");
+      });
     });
 
     it("partly settles when the transaction carried only some lines", async () => {

@@ -21,6 +21,10 @@ import {
 } from "../payments/payment-asset-metadata";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import {
+  CRATE_TRANSACTION_INDEXER,
+  type CrateTransactionIndexer,
+} from "./crate_transaction_indexer";
+import {
   CRATE_LICENSE_TYPES,
   CRATE_STEM_TYPES,
   type CrateLicenseType,
@@ -129,6 +133,9 @@ type DraftItem = {
 
 const ZERO_ADDRESS = ZERO_PAYMENT_TOKEN;
 
+/** How long settlement waits for the indexed purchases, and how often it looks. */
+export const CRATE_PURCHASE_WAIT_DEFAULTS = { timeoutMs: 3_000, intervalMs: 200 } as const;
+
 @Injectable()
 export class CrateQuoteService {
   private readonly logger = new Logger(CrateQuoteService.name);
@@ -139,7 +146,14 @@ export class CrateQuoteService {
     // learns nothing from the purchase.
     @Optional() private readonly learning?: AgentLearningService,
     @Optional() private readonly stemQuality?: AgentStemQualityService,
+    // Optional: without it purchases appear when the background indexer catches up.
+    @Optional()
+    @Inject(CRATE_TRANSACTION_INDEXER)
+    private readonly indexer?: CrateTransactionIndexer,
   ) {}
+
+  /** Wait/poll timings of {@link recordPurchasesNow}; tests shorten them. */
+  purchaseWait: { timeoutMs: number; intervalMs: number } = { ...CRATE_PURCHASE_WAIT_DEFAULTS };
 
   // -------------------------------------------------------------------------
   // POST /crates/:id/quote
@@ -653,8 +667,16 @@ export class CrateQuoteService {
       return true;
     });
 
-    // Learn from the purchase once, on the transition, and only now.
     if (transitioned && matched.length > 0) {
+      // Record the purchases now so the stems count as owned (export, downloads)
+      // without waiting for the background indexer.
+      await this.recordPurchasesNow(
+        transactionHash,
+        submitted.chainId,
+        matched.map((entry) => entry.log.logIndex),
+      );
+
+      // Learn from the purchase once, on the transition, and only now.
       const settledIds = new Set(matched.map((entry) => entry.lineId));
       await this.recordPurchaseSignals(
         userId,
@@ -665,6 +687,37 @@ export class CrateQuoteService {
     }
 
     return this.loadQuoteDto(userId, crateId, quoteId);
+  }
+
+  /**
+   * Indexes the purchase transaction so its `Sold` logs become `StemPurchase`
+   * rows now, then waits briefly for them (the rows are written by an async
+   * EventBus subscriber). Best effort: it never throws, and the background
+   * indexer remains the fallback.
+   */
+  private async recordPurchasesNow(
+    transactionHash: string,
+    chainId: number,
+    logIndexes: number[],
+  ): Promise<void> {
+    if (!this.indexer) return;
+    try {
+      await this.indexer.indexTransaction(transactionHash, chainId);
+      const { timeoutMs, intervalMs } = this.purchaseWait;
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const recorded = await prisma.stemPurchase.count({
+          where: {
+            transactionHash: { equals: transactionHash, mode: "insensitive" },
+            logIndex: { in: logIndexes },
+          },
+        });
+        if (recorded >= logIndexes.length || Date.now() >= deadline) return;
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    } catch (error) {
+      this.logger.warn(`Crate purchase ${transactionHash} not indexed at settlement: ${error}`);
+    }
   }
 
   /**
