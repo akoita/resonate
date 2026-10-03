@@ -1,6 +1,7 @@
 "use client";
 
 import type { AgentConfig, AgentNextPickResponse } from "../../lib/api";
+import { humanPickReason } from "../../lib/agentPickReason";
 
 type Props = {
     config: AgentConfig;
@@ -13,13 +14,6 @@ type Props = {
 function humanStatus(status?: string) {
     if (!status) return "Runtime";
     return status.replace(/_/g, " ");
-}
-
-function humanReason(status?: string, reason?: string) {
-    if (status === "no_tracks") return "No matching tracks found for the selected taste profile.";
-    if (status === "all_rejected") return "Matching tracks were found, but none passed the DJ's policy checks.";
-    if (reason === "no_matching_taste_candidates") return "No catalog candidates matched the selected vibes.";
-    return reason ? humanStatus(reason) : "No runtime pick returned.";
 }
 
 export default function AgentNextPickCard({ config, activeSessionId, pick, isLoading, onPick }: Props) {
@@ -79,7 +73,7 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                 ) : emptyStatus ? (
                     <div className="aid-np-empty">
                         <p className="aid-np-kicker">{humanStatus(pick!.status)}</p>
-                        <p className="aid-np-hint">{humanReason(pick!.status, pick!.reason)}</p>
+                        <p className="aid-np-hint">{humanPickReason(pick!.status, pick!.reason)}</p>
                     </div>
                 ) : (
                     <div className="aid-np-empty">

@@ -806,7 +806,11 @@ describe("AgentSessionPanel", () => {
       await vi.advanceTimersByTimeAsync(0);
 
       expect(playQueue).not.toHaveBeenCalled();
-      expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "No Pick Returned" }));
+      // Plain words, never the raw status code (#2056).
+      expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
+        title: "No new pick",
+        message: "You've heard everything that fits this session. Try other filters or another quick start.",
+      }));
     });
 
     it("toasts when the DJ's picks cannot be played", async () => {

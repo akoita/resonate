@@ -35,6 +35,7 @@ import { useToast } from "../ui/Toast";
 import AgentActivityFeed from "./AgentActivityFeed";
 import AgentHistoryCard from "./AgentHistoryCard";
 import AgentNextPickCard from "./AgentNextPickCard";
+import { humanPickReason } from "../../lib/agentPickReason";
 import AgentSessionPrompt from "./AgentSessionPrompt";
 import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
 import AgentSetupWizard from "./AgentSetupWizard";
@@ -591,8 +592,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             } else {
                 addToast({
                     type: "info",
-                    title: "No Pick Returned",
-                    message: result.reason ?? result.status,
+                    title: "No new pick",
+                    message: humanPickReason(result.status, result.reason),
                 });
             }
             void refetchHistory();

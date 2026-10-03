@@ -10,6 +10,8 @@ export type AgentRuntimeOrchestratorResult = {
   shortfall?: number;
   /** Coverage of the listener's described session (#2037); deterministic path only. */
   requestCoverage?: AgentRequestCoverage;
+  /** The selector's categorical reason when nothing was returned (#2056). */
+  reason?: string;
 };
 
 export type AgentRuntimeRunResult =
@@ -103,6 +105,7 @@ export function normalizeAgentRuntimeResult(
       primaryTrack: tracks[0],
       shortfall: result.shortfall,
       ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
+      ...(result.reason ? { reason: result.reason } : {}),
     };
   }
 

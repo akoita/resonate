@@ -29,7 +29,7 @@ describe("AgentNextPickCard", () => {
       />,
     );
 
-    expect(html).toContain("No matching tracks found for the selected taste profile.");
+    expect(html).toContain("Nothing in the catalog matches this session&#x27;s filters yet.");
   });
 
   it("shows recommendation explanations and audio signal details", () => {

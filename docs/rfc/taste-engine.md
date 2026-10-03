@@ -172,7 +172,13 @@ every surface calls and tests assert:
    one track) for verified human artists the listener has never played,
    chosen by taste fit.
 4. Apply diversity caps (at most two tracks per artist per page or per 10
-   session tracks).
+   session tracks). A listening session that would otherwise dead-end (#2056)
+   relaxes only the 10-track session window, never the per-page cap; then,
+   mid session and only once every matching track has played, it widens to
+   the newest catalog-wide tracks. A request nothing in the catalog matches is
+   never widened: the session says so and the gap is recorded as demand
+   (ADR-TE-4). Session tracks are never repeated, and rules 1, 2 and 3 are
+   never relaxed.
 5. Attach a categorical explanation to every item (§3.5).
 6. Never read payment, placement or partner data. The policy stage has no
    input through which ranking could be bought (ADR-TE-2.1). Commercial

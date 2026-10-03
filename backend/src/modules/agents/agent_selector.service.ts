@@ -55,7 +55,25 @@ export interface AgentSelectorInput {
    * was measured; never a filter, and an inferred tempo never counts.
    */
   tempoBpm?: { min: number | null; max: number | null };
+  /**
+   * Listening sessions only (#2056): when the strict pass finds nothing, drop
+   * the per-session artist window (keeping two per artist per pick), then, mid
+   * session and only once the matching tracks are used up, widen to the whole
+   * catalog. A session track is never repeated, and hidden taste, AI content
+   * and exploration rules are never relaxed.
+   */
+  fallback?: boolean;
 }
+
+/**
+ * One selection pass. `strict` is the normal pass; `relaxed` drops the "two
+ * per artist per 10 session tracks" window but keeps the per-pick cap;
+ * `widened` is `relaxed` plus the newest catalog-wide tracks.
+ */
+type SelectionPass = "strict" | "relaxed" | "widened";
+
+/** How many newest catalog-wide tracks a widened pass adds. */
+const CATALOG_WIDE_CANDIDATES = 50;
 
 export interface AgentSelectionSignal {
   label: string;
@@ -119,7 +137,31 @@ export class AgentSelectorService {
     private readonly firstListenerDiscovery?: FirstListenerDiscoveryService,
   ) { }
 
+  /**
+   * The ranked, policy-checked shortlist for one request. With `fallback`
+   * (listening sessions, #2056) an empty strict pass is retried, so a small
+   * catalog does not dead-end after one pick; `fallback` on the result says
+   * which pass served:
+   *  1. `relaxed_artist_window`: same matching tracks, without the per-session
+   *     artist window (two per artist per pick still holds);
+   *  2. `widened`: mid session only, once the strict pass found matching
+   *     tracks and every one is used up, the newest catalog-wide tracks too.
+   * A request nothing in the catalog matches is never widened: the session
+   * says so and the gap stays recorded as unmet demand (ADR-TE-4).
+   */
   async select(input: AgentSelectorInput) {
+    const strict = await this.selectPass(input, "strict");
+    // Nothing matched at all: no relaxation can help, and widening would hide the gap.
+    if (!input.fallback || strict.selected.length > 0 || strict.candidates.length === 0) return strict;
+    const relaxed = await this.selectPass(input, "relaxed");
+    if (relaxed.selected.length > 0) return { ...relaxed, fallback: "relaxed_artist_window" as const };
+    if (input.recentTrackIds.length === 0) return strict;
+    const widened = await this.selectPass(input, "widened");
+    if (widened.selected.length > 0) return { ...widened, fallback: "widened" as const };
+    return strict;
+  }
+
+  private async selectPass(input: AgentSelectorInput, pass: SelectionPass) {
     const policy = input.userId ? await this.tasteMemoryService?.getPolicy(input.userId) : undefined;
     const originalQueries = (input.queries ?? [])
       .filter(Boolean)
@@ -134,11 +176,13 @@ export class AgentSelectorService {
     // Gather candidates from all vibes/queries
     const byId = new Map<string, AgentCandidateTrack & { matchedQueries: string[] }>();
 
-    for (const query of queries.length > 0 ? queries : [""]) {
+    // A widened pass also searches the whole catalog ("" = newest tracks).
+    const searchQueries = queries.length === 0 || pass === "widened" ? [...queries, ""] : queries;
+    for (const query of searchQueries) {
       const tool = this.tools.get("catalog.search");
       const result = await tool.run({
         query,
-        limit: 20,
+        limit: query === "" && pass === "widened" ? CATALOG_WIDE_CANDIDATES : 20,
         allowExplicit: input.allowExplicit ?? false,
       });
       const items = (result.items as any[]) ?? [];
@@ -373,7 +417,8 @@ export class AgentSelectorService {
         ? policyContext.verifiedHumanArtistIds
         : new Set<string>(),
       playedArtistIds: policyContext.playedArtistIds,
-      priorSessionArtistKeys: policyContext.priorSessionArtistKeys,
+      // Relaxed and widened passes keep two per artist per pick but drop the session window.
+      priorSessionArtistKeys: pass === "strict" ? policyContext.priorSessionArtistKeys : undefined,
       priorExplorationCount: policyContext.priorExplorationCount,
     };
     let policyInput = fresh;
