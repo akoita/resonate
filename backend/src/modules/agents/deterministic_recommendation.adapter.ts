@@ -26,6 +26,25 @@ export function buildAgentRecommendationQueries(
   return queries;
 }
 
+/**
+ * What the session itself asked for (#2059): its own genres plus its mood(s),
+ * never the learned favourites or saved vibes merged into `genres`.
+ */
+export function requestedTermsFor(
+  preferences: AgentRecommendationInput["preferences"],
+): { requestedTerms?: string[] } {
+  const terms = [
+    ...(preferences.sessionGenres ?? []),
+    ...(preferences.mood ? [preferences.mood] : []),
+    ...(preferences.moods ?? []),
+  ]
+    .map((term) => term?.trim())
+    .filter((term): term is string => Boolean(term));
+  const seen = new Set<string>();
+  const unique = terms.filter((term) => !seen.has(term.toLowerCase()) && Boolean(seen.add(term.toLowerCase())));
+  return unique.length ? { requestedTerms: unique } : {};
+}
+
 @Injectable()
 export class DeterministicRecommendationAdapter implements AgentRecommendationAdapter {
   readonly name = "deterministic" as const;
@@ -50,6 +69,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       tempoBpm: input.preferences.tempoBpm,
       // Listening sessions never dead-end while an unplayed track fits (#2056).
       fallback: true,
+      ...requestedTermsFor(input.preferences),
     });
 
     return {

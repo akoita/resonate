@@ -3,8 +3,8 @@
  *
  * The backend has no single canonical genre or mood list: catalog genres are
  * free text chosen by artists at upload, with the upload form's suggestion list
- * (`web/src/app/artist/upload/page.tsx`, `MOOD_TAG_OPTIONS`) as the de-facto
- * vocabulary. This file mirrors that list so the parser proposes only values a
+ * (`web/src/lib/catalogVocabulary.ts`: `CATALOG_GENRE_OPTIONS`,
+ * `MOOD_TAG_OPTIONS`) as the de-facto vocabulary. This file mirrors that list so the parser proposes only values a
  * listener can actually meet in the catalog. Keep it in step with the upload
  * form when genres or mood tags are added there (tracked as a follow-up to move
  * both onto one shared list).

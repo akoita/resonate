@@ -134,6 +134,7 @@ const LABEL_PRIORITY = [
   "taste_match",
   "expanded_taste_match",
   "declared_preference",
+  "session_request",
   "declared_note_match",
   "learned_preference",
   "bigquery_taste_score",
@@ -166,6 +167,8 @@ function codeForSignal(signal: ReasonSignal): DiscoveryReasonCode | null {
       return "similar_sound";
     case "energy_match":
     case "session_intent_fit":
+    // A genre or mood this DJ session asked for (#2059).
+    case "session_request":
       return "session_fit";
     case "cohort_context":
       return "scene";
