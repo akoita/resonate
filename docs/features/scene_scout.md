@@ -166,6 +166,14 @@ partial audience as a complete picture.
 
 ## Verification
 
+When staging has no qualifying city card, use the guarded
+[city-card acceptance fixture procedure](../operations/scene_scout_acceptance.md)
+to prepare synthetic demand for an explicitly selected artist release. The tool
+preserves real consent and catalog records, uses the normal audience thresholds,
+and provides scoped cleanup. Synthetic evidence can validate the card-to-draft
+flow; it does not prove real listener geography capture or the other Scene Scout
+acceptance scenarios.
+
 Run the focused Scene Scout backend unit/integration tests, the artist
 analytics card tests and the Shows prefill/form tests. Integration fixtures
 prove small audiences are absent from storage and responses, invalid consent
@@ -174,6 +182,7 @@ The pledge integration tests cover capture and consent-refusal concurrency,
 matching escrow proof, pledge-only demand, cross-signal identity deduplication,
 expiry, reset, refunds and shared read-cap suppression. Personal-data tests
 prove city-context export isolation and deletion without financial pledge loss.
+
 The source-release integration tests cover persistence, omission, explicit
 clearing, artist attribution and invalid catalog references. The Scene Scout
 browser test follows a city card through an editable draft and checks the saved
