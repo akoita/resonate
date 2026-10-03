@@ -13,10 +13,19 @@ creating a show campaign or changing their catalog.
 
 ## Delivery and revenue line
 
-Milestone [33](https://github.com/akoita/resonate/milestone/33) delivers city
-demand (#1968), unmet crate/session demand (#1969), and first-listener reception
-(#1970). Their status is tracked in the
-[sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md).
+Milestone [33](https://github.com/akoita/resonate/milestone/33) application
+work is merged: city demand (#1968, [PR #2044](https://github.com/akoita/resonate/pull/2044)),
+popularity snapshots (#1450, [PR #2045](https://github.com/akoita/resonate/pull/2045)),
+unmet crate/session demand (#1969, [PR #2046](https://github.com/akoita/resonate/pull/2046)),
+first-listener reception (#1970, [PR #2047](https://github.com/akoita/resonate/pull/2047)),
+and UI polish ([PR #2048](https://github.com/akoita/resonate/pull/2048)).
+Sprint 31 remains in progress: staging acceptance is tracked in
+[resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
+warehouse scheduling and live checks in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
+Canonical follow demand remains unavailable until a follow ledger event exists;
+pledge demand remains excluded without an authoritative release link. See the
+[sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
 
 ADR-BM-6: **Line 2, Artist Pro, phase 2**, behind a currently free entitlement
 seam. Suggestions convert into **Line 1, Shows (6%)** and **Line 3, marketplace
@@ -135,13 +144,11 @@ prove small audiences are absent from storage and responses, invalid consent
 and campaign-target geo are excluded, and withdrawals remove their contribution.
 The User Guide's artist analytics article describes the same behavior.
 
-Warehouse popularity marts are tracked separately in
-[#1450](https://github.com/akoita/resonate/issues/1450). External staging
-verification is tracked in
+External staging verification remains open in
 [resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
-warehouse scheduling in
-[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). This page
-makes no claim about their deployed state.
+warehouse scheduling and live checks remain open in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). This
+page makes no claim about their deployed state.
 
 ## Related documents
 

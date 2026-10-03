@@ -1,7 +1,7 @@
 # Vision Sprint 30: Crate Digger v1
 
-**Status:** Planned 2026-09-30, starts after Sprint 29 closes (indicative
-2026-10-29 to 2026-11-18).
+**Status:** Application implementation is merged; acceptance remains in
+progress (originally planned 2026-10-29 to 2026-11-18).
 **Milestone:** [32](https://github.com/akoita/resonate/milestone/32).
 **Goal:** A DJ describes what their set needs and gets a quoted, rights-clear
 crate they can buy with one signature.
@@ -26,6 +26,15 @@ smart account can batch several marketplace calls; if a contract change turns
 out to be needed, it becomes its own issue under the `contracts/AGENTS.md`
 ladder and the sprint may split. #1966 lands before #1965 and #1967, which sit
 behind it.
+
+## Delivery status
+
+The application work for #1962–#1966 and notification-only crate watching
+(#1967) is merged. The export implementation and correction in [PR #2043](https://github.com/akoita/resonate/pull/2043)
+are merged; manual rekordbox acceptance remains open in #1965. Optional capped
+auto-buy is tracked separately in [#2027](https://github.com/akoita/resonate/issues/2027)
+and is outside the delivered scope. Sprint 30 remains open until its acceptance
+criteria are verified.
 
 ## Exit criteria
 

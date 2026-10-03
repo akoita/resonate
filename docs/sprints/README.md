@@ -48,9 +48,11 @@ Every sprint plan passes the **Business Model Conformance** check in
 ## Sprint index
 
 Latest closed: [Vision Sprint 29 — Audio-aware discovery foundations](2026-10-15-vision-sprint-29-audio-aware-discovery.md),
-the second of four taste engine sprints (28 to 31) sequenced in the
-[Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md); its
-staging exit checks follow deployment. Next: [Vision Sprint 30 — Crate Digger v1](2026-10-29-vision-sprint-30-crate-digger.md).
+the second of four original taste engine sprints (28 to 31) in the
+[Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md).
+Sprints 30 and 31 have merged application work but remain in acceptance. The
+owner-approved [Vision Sprint 32 — Purchased stems ready to remix](2026-10-03-vision-sprint-32-purchased-stems.md)
+is queued after that acceptance.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -82,7 +84,8 @@ staging exit checks follow deployment. Next: [Vision Sprint 30 — Crate Digger 
 | [2026-09-23](2026-09-23-vision-sprint-25-artist-management.md) | Vision Sprint 25 — artist management with reliable catalog status | ✅ Closed 2026-09-23 — 3/3; catalog status refresh, scoped artist management, and listener library removal |
 | [2026-09-23](2026-09-23-vision-sprint-26-safer-artist-claims.md) | Vision Sprint 26 — safer artist profile claims | ✅ Closed 2026-09-23 — #1856 merged, release evidence recorded, milestone changelog published |
 | [2026-09-23](2026-09-23-vision-sprint-27-artist-enrichment.md) | Vision Sprint 27 — trustworthy artist profile enrichment | ✅ Closed 2026-09-23 — #1763 merged, staging deployment verified, milestone changelog published |
-| [2026-10-01](2026-10-01-vision-sprint-28-refocus-ai-dj.md) | Vision Sprint 28 — refocus the AI DJ (no autonomous spend or generation; Sonic Radar as a discovery journal) | ✅ Closed 2026-09-30 — all six items merged (#1954, #1955, #1956, #1456, #1957, #1958); staging exit checks follow deployment |
-| [2026-10-15](2026-10-15-vision-sprint-29-audio-aware-discovery.md) | Vision Sprint 29 — audio-aware discovery foundations (full-mix features, embeddings, measurement) | ✅ Closed 2026-10-02 — all five items merged (#1959, #1960, #1452, #1455, #1961) with follow-ups #2003, #2005, #2006, #2013, #2016, #2018; staging exit checks follow deployment |
-| [2026-10-29](2026-10-29-vision-sprint-30-crate-digger.md) | Vision Sprint 30 — Crate Digger v1 (quoted, rights-clear crates for DJs) | 🗓 Planned 2026-09-30 |
-| [2026-11-19](2026-11-19-vision-sprint-31-scene-scout.md) | Vision Sprint 31 — Scene Scout v1 (qualified demand and next actions for artists) | 🗓 Planned 2026-09-30 |
+| [2026-10-01](2026-10-01-vision-sprint-28-refocus-ai-dj.md) | Vision Sprint 28 — refocus the AI DJ (no autonomous spend or generation; Sonic Radar as a discovery journal) | ✅ Closed 2026-09-30 — all six items merged; [milestone-30 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-30-vision-sprint-28-refocus-ai-dj) records the application milestone, not a deployment |
+| [2026-10-15](2026-10-15-vision-sprint-29-audio-aware-discovery.md) | Vision Sprint 29 — audio-aware discovery foundations (full-mix features, embeddings, measurement) | ✅ Closed 2026-10-02 — all five approved items merged; follow-ups remain separately tracked; [milestone-31 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-31-vision-sprint-29-audio-aware-discovery) records the application milestone, not a deployment |
+| [2026-10-29](2026-10-29-vision-sprint-30-crate-digger.md) | Vision Sprint 30 — Crate Digger v1 (quoted, rights-clear crates for DJs) | ◐ Acceptance in progress — application work merged; #1965 manual rekordbox acceptance remains open; optional auto-buy is tracked separately in #2027 |
+| [2026-11-19](2026-11-19-vision-sprint-31-scene-scout.md) | Vision Sprint 31 — Scene Scout v1 (qualified demand and next actions for artists) | ◐ Acceptance in progress — PRs #2044–#2048 merged; staging resonate-iac#264, warehouse resonate-iac#263, canonical follows and pledge attribution remain open |
+| [2026-10-03](2026-10-03-vision-sprint-32-purchased-stems.md) | Vision Sprint 32 — Purchased stems ready to remix | 🗓 Owner-approved; queued after Sprints 30 and 31 acceptance; no start date or capacity estimate |

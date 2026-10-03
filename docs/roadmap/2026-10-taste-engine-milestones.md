@@ -1,9 +1,11 @@
 # Roadmap — Taste engine: refocused AI DJ, Crate Digger, Scene Scout (2026-10-01 → 2026-12-09)
 
-**Status:** in progress. Vision Sprints 28 and 29 are closed; 30 and 31 are
-planned. The owner approved Vision Sprints 28 to 31 on 2026-09-30;
-each has a sprint doc under [`docs/sprints/`](../sprints/README.md) and one
-GitHub milestone. ADR-TE-1…6 were accepted as written on 2026-09-30
+**Status:** in progress. Vision Sprints 28 and 29 are closed; application work
+for 30 and 31 is merged, with acceptance still in progress. Owner-approved
+Sprint 32 is queued after the current acceptance; no start date or capacity
+estimate is set. Sprints 28 to 31 were approved on 2026-09-30, and each has a
+sprint doc under [`docs/sprints/`](../sprints/README.md) and one GitHub
+milestone. ADR-TE-1…6 were accepted as written on 2026-09-30
 ([#1953](https://github.com/akoita/resonate/issues/1953)); a later change to a
 decision re-scopes the affected sprint in its doc.
 **Owner:** [@akoita](https://github.com/akoita) (solo + AI-assisted)
@@ -12,19 +14,21 @@ decision re-scopes the affected sprint in its doc.
 [RFC: Taste Engine](../rfc/taste-engine.md)
 **Umbrella epic:** [#1952](https://github.com/akoita/resonate/issues/1952) · **Decision issue:** [#1953](https://github.com/akoita/resonate/issues/1953)
 
-Four sprints, Vision Sprints 28 to 31, deliver the pro tools inside ADR-BM-6
-phase 2 (Oct–Dec 2026). The Session DJ stays tracked but without a milestone
-until the Listener Pro gate. The order is refocus, then audio-aware
-foundations, then the Crate Digger, then Scene Scout, because each one needs
-the one before: the Crate Digger needs measured track features, and Scene
-Scout reads the searches the Crate Digger records.
+The original sequence of Vision Sprints 28 to 31 delivers the pro tools inside
+ADR-BM-6 phase 2 (Oct–Dec 2026). The Session DJ stays tracked but without a
+milestone until the Listener Pro gate. The order is refocus, audio-aware
+foundations, the Crate Digger, then Scene Scout, because each one needs the one
+before: the Crate Digger needs measured track features, and Scene Scout reads
+the searches the Crate Digger records. Sprint 32 is a separately approved
+buyer-experience increment after Sprint 30 and 31 acceptance.
 
 ```mermaid
 flowchart LR
   VS28["VS28 · Refocus the AI DJ<br/>Oct 1–14"] --> VS29["VS29 · Audio-aware foundations<br/>Oct 15–28"]
   VS29 --> VS30["VS30 · Crate Digger v1<br/>Oct 29–Nov 18"]
   VS30 --> VS31["VS31 · Scene Scout v1<br/>Nov 19–Dec 9"]
-  VS31 -.-> LATER["Later · Session DJ + pay-per-play<br/>gate: Listener Pro WAU"]
+  VS31 --> VS32["VS32 · Purchased stems ready to remix<br/>after 30/31 acceptance"]
+  VS32 -.-> LATER["Later · Session DJ + pay-per-play<br/>gate: Listener Pro WAU"]
 ```
 
 Dates are indicative (about 10 working days per sprint; Sprint 30 is longer
@@ -98,7 +102,7 @@ track-level measurement is new work ([RFC §3.2](../rfc/taste-engine.md)).
 infrastructure for lines 3 and 4. Embedding calls are metered and bounded to
 backfill plus on-ingest.
 
-## Vision Sprint 30 — Crate Digger v1 (planned, Oct 29–Nov 18)
+## Vision Sprint 30 — Crate Digger v1 (implementation merged; acceptance in progress)
 
 **Sprint doc:** [Vision Sprint 30](../sprints/2026-10-29-vision-sprint-30-crate-digger.md)
 
@@ -114,6 +118,13 @@ crate they can buy with one signature.
 | P1 | `crate.pro` entitlement seam, free for now, same pattern as Remix Studio Pro mode ([#1903](https://github.com/akoita/resonate/issues/1903)) | [#1966](https://github.com/akoita/resonate/issues/1966) | S |
 | P2 | Bounded watching: alert when new releases match a saved crate; optional auto-buy under a cap with the existing session keys (ADR-TE-1.3) | [#1967](https://github.com/akoita/resonate/issues/1967) | M |
 
+**Delivery status:** Application work for #1962–#1966 and notification-only
+watching (#1967) is merged. Export implementation and the correction in
+[PR #2043](https://github.com/akoita/resonate/pull/2043) are merged; manual
+rekordbox acceptance remains open in #1965. Optional capped auto-buy is tracked
+separately in [#2027](https://github.com/akoita/resonate/issues/2027). Sprint 30
+stays open pending acceptance.
+
 **Exit criteria**
 
 - On staging, a DJ goes from a sentence to a paid, receipted crate without
@@ -125,7 +136,7 @@ crate they can buy with one signature.
 **Revenue line:** line 3, marketplace take-rate 10%, phase 2. Artist share
 stays at least 85%; purchases are voluntary and quoted (ADR-BM-4).
 
-## Vision Sprint 31 — Scene Scout v1 (planned, Nov 19–Dec 9)
+## Vision Sprint 31 — Scene Scout v1 (application work merged; acceptance in progress)
 
 **Sprint doc:** [Vision Sprint 31](../sprints/2026-11-19-vision-sprint-31-scene-scout.md)
 
@@ -139,6 +150,14 @@ concrete next action for it.
 | P1 | First listeners: each new verified-artist release gets a slot in the exploration share for listeners whose taste fits, then a reception summary | [#1970](https://github.com/akoita/resonate/issues/1970) | M |
 | P2 | Popularity and engagement marts replace the interim in-process aggregation | [#1450](https://github.com/akoita/resonate/issues/1450) | M |
 
+Application PRs [#2044](https://github.com/akoita/resonate/pull/2044) through
+[#2048](https://github.com/akoita/resonate/pull/2048) are merged. Staging
+acceptance remains open in [resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264);
+warehouse scheduling and live checks remain open in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
+Canonical follows and pledge attribution remain unavailable; see the
+[Scene Scout feature page](../features/scene_scout.md) for the current limits.
+
 **Exit criteria**
 
 - On staging, a demand card links to a prefilled Shows campaign draft for that
@@ -149,6 +168,41 @@ concrete next action for it.
 **Revenue line:** line 2, Artist Pro, phase 2; it drives conversions into
 Shows (6%) and the marketplace (10%). Artist Pro billing does not exist yet, so
 the pro features ship behind an entitlement seam, free for now.
+
+## Vision Sprint 32 — Purchased stems ready to remix (approved; queued after current acceptance)
+
+**Sprint doc:** [Vision Sprint 32](../sprints/2026-10-03-vision-sprint-32-purchased-stems.md)
+· **Milestone:** [34](https://github.com/akoita/resonate/milestone/34)
+
+**Goal:** Buyers can find their purchased stems in the library, see the license
+they bought, and open eligible stems in Remix Studio.
+
+| Order | Issue | Outcome |
+| --- | --- | --- |
+| First | [#2023](https://github.com/akoita/resonate/issues/2023) | Preserve the buyer's passkey smart-account wallet address through wallet refresh |
+| Then | [#2042](https://github.com/akoita/resonate/issues/2042) | Give buyers a clear purchase handoff, license-aware library entry and eligible Remix Studio actions |
+
+The order is a preference, not a hard dependency: buyer-library work can
+proceed independently of wallet preservation. Keep #2042's open choice between
+improving Library › Stems and a separate buyer page for implementation review.
+Issues [#2041](https://github.com/akoita/resonate/issues/2041),
+[#2030](https://github.com/akoita/resonate/issues/2030),
+[#1976](https://github.com/akoita/resonate/issues/1976), and
+[#2012](https://github.com/akoita/resonate/issues/2012) remain deferred from
+this sprint. No start date or capacity estimate is set.
+
+**Exit criteria**
+
+- After purchase, the buyer can reach the owned stem from the purchase handoff
+  and a buyer-facing entry point.
+- The library identifies each owned stem's license and offers Remix Studio
+  actions only where the purchased license allows remixing.
+- The in-app User Guide explains where purchased stems live and how license
+  eligibility controls the remix action.
+
+**Revenue line:** Line 3, marketplace take-rate, phase 2. Purchases stay
+voluntary and quoted; artists receive at least 85%. No fee, split, or payout
+change (ADR-BM-4).
 
 ## Later — tracked under the umbrella epic, no milestone
 
@@ -175,8 +229,9 @@ only when its gate is met.
 
 ## Sprint artifacts
 
-Approved by the owner on 2026-09-30. Following recent sprints, issues carry the
-milestone and no `sprint:` label. The milestones were created on 2026-09-30.
+Sprints 28 to 31 were approved by the owner on 2026-09-30; Sprint 32 was
+approved separately. Issues carry the milestone and no `sprint:` label.
+Milestones 30 to 33 were created on 2026-09-30; milestone 34 tracks Sprint 32.
 
 | Sprint | Sprint doc | Milestone | Issues |
 | --- | --- | --- | --- |
@@ -184,6 +239,7 @@ milestone and no `sprint:` label. The milestones were created on 2026-09-30.
 | Vision Sprint 29: Audio-aware discovery foundations | [doc](../sprints/2026-10-15-vision-sprint-29-audio-aware-discovery.md) | [31](https://github.com/akoita/resonate/milestone/31) | [#1959](https://github.com/akoita/resonate/issues/1959), [#1960](https://github.com/akoita/resonate/issues/1960), [#1452](https://github.com/akoita/resonate/issues/1452), [#1455](https://github.com/akoita/resonate/issues/1455), [#1961](https://github.com/akoita/resonate/issues/1961) |
 | Vision Sprint 30: Crate Digger v1 | [doc](../sprints/2026-10-29-vision-sprint-30-crate-digger.md) | [32](https://github.com/akoita/resonate/milestone/32) | [#1962](https://github.com/akoita/resonate/issues/1962), [#1963](https://github.com/akoita/resonate/issues/1963), [#1964](https://github.com/akoita/resonate/issues/1964), [#1965](https://github.com/akoita/resonate/issues/1965), [#1966](https://github.com/akoita/resonate/issues/1966), [#1967](https://github.com/akoita/resonate/issues/1967) |
 | Vision Sprint 31: Scene Scout v1 | [doc](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) | [33](https://github.com/akoita/resonate/milestone/33) | [#1968](https://github.com/akoita/resonate/issues/1968), [#1969](https://github.com/akoita/resonate/issues/1969), [#1970](https://github.com/akoita/resonate/issues/1970), [#1450](https://github.com/akoita/resonate/issues/1450) |
+| Vision Sprint 32: Purchased stems ready to remix | [doc](../sprints/2026-10-03-vision-sprint-32-purchased-stems.md) | [34](https://github.com/akoita/resonate/milestone/34) | [#2023](https://github.com/akoita/resonate/issues/2023), [#2042](https://github.com/akoita/resonate/issues/2042) |
 
 The "Later" items keep no milestone until their gate is met.
 
