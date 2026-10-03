@@ -199,3 +199,13 @@ optimization beyond intent-without-settlement and checkout-intent review,
 fan-question triage, and reviewed agent draft actions. Those should keep the
 same privacy boundary: artist-owned data or aggregate-only listener/community
 signals with explicit thresholds.
+
+### Pledge demand qualification
+
+Scene Scout can include indexer-confirmed, release-linked pledges when the
+authenticated backer supplied a user-declared city under the current analytics
+consent policy. Optional city context expires after 28 days and never appears
+in artist or pledge responses. Refunds, cancellations, current consent and taste
+reset controls govern eligibility. The browser pledge flow still sends no city;
+canonical follows and browser city entry remain tracked in [#1968](https://github.com/akoita/resonate/issues/1968).
+See [Scene Scout](scene_scout.md#city-demand) for the full qualification rules.

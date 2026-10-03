@@ -72,6 +72,29 @@ async function seed(person: Seed) {
     },
   });
 
+  // Purpose-bound demand is personal data; the financial pledge is retained separately.
+  await prisma.showCampaign.create({
+    data: {
+      id: id("demand_campaign"), slug: id("demand_campaign"),
+      artistDisplayName: "Privacy fixture", title: "Privacy fixture",
+      city: "Paris", country: "FR", deadline: new Date("2027-01-01"),
+      goalAmountUnits: "1000000", chainId: 11155111,
+    },
+  });
+  await prisma.showPledge.create({
+    data: {
+      id: id("demand_pledge"), campaignId: id("demand_campaign"),
+      userId: person.userId, walletAddress: person.wallet,
+      amountUnits: "1000000", chainId: 11155111,
+      demandContext: { create: {
+        userId: person.userId, countryCode: "CA",
+        citySlug: person.suffix === "a" ? "montreal" : "quebec-city",
+        consentPolicyVersion: "analytics-consent:2026-10-03",
+        declaredAt: new Date("2026-05-31"), expiresAt: new Date("2026-06-28"),
+      } },
+    },
+  });
+
   // A plain userId-keyed model.
   await prisma.playlist.create({
     data: { id: id("playlist"), userId: person.userId, name: `${TEST_PREFIX}playlist_${person.suffix}` },
@@ -202,6 +225,7 @@ async function cleanup() {
   await prisma.communityMessage.deleteMany({ where });
   await prisma.communityRoom.deleteMany({ where });
   await prisma.playlist.deleteMany({ where });
+  await prisma.showCampaign.deleteMany({ where });
   await prisma.wallet.deleteMany({ where });
   await prisma.user.deleteMany({ where });
 }
@@ -285,6 +309,18 @@ describe("PersonalDataExportService integration", () => {
     // revise its status code, so absence is the truncation signal.
     expect(documentA.complete).toBe(true);
     expect(textA.trimEnd().endsWith('"complete":true}')).toBe(true);
+  });
+
+  it("exports only the person's purpose-bound pledge demand context", () => {
+    expect(documentA.counts.ShowPledgeDemandContext).toBe(1);
+    expect(documentA.data.ShowPledgeDemandContext).toEqual([
+      expect.objectContaining({
+        userId: USER_A, pledgeId: `${TEST_PREFIX}demand_pledge_a`,
+        countryCode: "CA", citySlug: "montreal",
+        consentPolicyVersion: "analytics-consent:2026-10-03",
+        declaredAt: "2026-05-31T00:00:00.000Z", expiresAt: "2026-06-28T00:00:00.000Z",
+      }),
+    ]);
   });
 
   it("names every identifier it searched by", () => {

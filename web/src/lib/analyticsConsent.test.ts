@@ -7,6 +7,7 @@ vi.mock("./api", () => ({
 
 import { getAnalyticsConsent, updateAnalyticsConsent } from "./api";
 import {
+  ANALYTICS_CONSENT_TEXT_VERSION,
   isProductAnalyticsAllowed,
   loadAnalyticsConsent,
   noteServerRefusal,
@@ -15,7 +16,7 @@ import {
   subscribeToAnalyticsConsent,
 } from "./analyticsConsent";
 
-const CURRENT_VERSION = "analytics-consent:2026-09-17";
+const CURRENT_VERSION = ANALYTICS_CONSENT_TEXT_VERSION;
 
 const granted = {
   productAnalytics: true,
@@ -57,6 +58,14 @@ describe("analytics consent state (#1772)", () => {
     await loadAnalyticsConsent("token-1");
 
     expect(isProductAnalyticsAllowed()).toBe(true);
+  });
+
+  it("does not emit on an older grant that needs a new decision", async () => {
+    vi.mocked(getAnalyticsConsent).mockResolvedValue({
+      ...granted, policyVersion: "analytics-consent:2026-09-17", needsDecision: true,
+    });
+    await loadAnalyticsConsent("token-1");
+    expect(isProductAnalyticsAllowed()).toBe(false);
   });
 
   it("keeps the gate shut for a recorded refusal, and does not call it undecided", async () => {
@@ -132,6 +141,7 @@ describe("analytics consent state (#1772)", () => {
     expect(updateAnalyticsConsent).toHaveBeenCalledWith("token-1", {
       productAnalytics: true,
       policyVersion: CURRENT_VERSION,
+      consentTextVersion: ANALYTICS_CONSENT_TEXT_VERSION,
     });
     expect(result.status).toBe("recorded");
     expect(isProductAnalyticsAllowed()).toBe(true);

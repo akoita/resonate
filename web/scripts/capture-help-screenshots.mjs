@@ -109,6 +109,15 @@ const PUBLIC_TARGETS = [
 ];
 
 const AUTH_TARGETS = [
+  ["/artist/analytics", "analytics-consent-banner.png", {
+    mockSceneScout: true,
+    mockAnalyticsConsent: true,
+    selectors: [".analytics-consent-banner"],
+    screenshotSelector: ".analytics-consent-banner",
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+    },
+  }],
   ["/artist/analytics", "scene-scout-demand.png", {
     mockSceneScout: "demand",
     selectors: [".artist-action-card"],
@@ -306,6 +315,12 @@ async function capture(page, targets, passName) {
   for (const [route, file, ready] of targets) {
     if (process.env.CAPTURE_ONLY && file !== process.env.CAPTURE_ONLY) continue;
     if (ready?.mockSceneScout) await mockSceneScoutApi(page, typeof ready.mockSceneScout === "string" ? ready.mockSceneScout : "city");
+    if (ready?.mockAnalyticsConsent) {
+      await page.route("**/analytics/consent", (request) => request.fulfill({ json: {
+        productAnalytics: false, decided: false, needsDecision: true,
+        currentPolicyVersion: "analytics-consent:2026-10-03",
+      } }));
+    }
     if (ready?.mockLibrary) {
       const createdAt = "2026-09-01T12:00:00.000Z";
       await page.route("**/library/tracks", (request) => request.fulfill({
@@ -506,7 +521,8 @@ async function capture(page, targets, passName) {
     if (ready?.prepare) await ready.prepare(page);
     // Let fonts, artwork, and async client data settle before the shot.
     await page.waitForTimeout(3200);
-    await page.screenshot({ path: path.join(OUT_DIR, file) });
+    const screenshotTarget = ready?.screenshotSelector ? page.locator(ready.screenshotSelector) : page;
+    await screenshotTarget.screenshot({ path: path.join(OUT_DIR, file) });
     console.log(`✓ [${passName}] ${route} -> public/help/screenshots/${file}`);
   }
 }

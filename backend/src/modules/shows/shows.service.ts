@@ -13,12 +13,15 @@ import type {
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import {
-  AnalyticsGeoDimension,
-  normalizeAnalyticsGeoDimension,
-} from "../analytics/analytics_event";
+import { AnalyticsGeoDimension } from "../analytics/analytics_event";
 import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
 import { AnalyticsInstrumentationService } from "../analytics/analytics_instrumentation.service";
+import { ANALYTICS_CONSENT_POLICY_VERSION } from "../analytics/analytics_consent.service";
+import {
+  deleteExpiredShowPledgeDemandContexts,
+  normalizeShowPledgeDemandGeo,
+  showPledgeDemandContextFields,
+} from "../scene_scout/show_pledge_demand";
 import { StorageProvider } from "../storage/storage_provider";
 import {
   getShowsVisualMaxBytes,
@@ -2608,53 +2611,100 @@ export class ShowsService {
       createdAt: createdAt.toISOString(),
     } satisfies Prisma.InputJsonObject;
 
-    const pledge = await prisma.showPledge.create({
-      data: {
-        campaignId: campaign.id,
-        tierId: tier?.id,
-        userId: actor.userId,
-        walletAddress,
-        amountUnits,
-        currency: tier?.currency ?? campaign.currency,
-        paymentAssetId,
-        paymentAssetSymbol,
-        paymentAssetDecimals,
-        paymentTokenAddress,
-        chainId,
-        status: "intent_created",
-        confirmationStatus: "not_submitted",
-        receiptId,
-        receipt,
-        events: {
-          create: {
-            campaignId: campaign.id,
-            eventType: "pledge_intent_created",
-            actorUserId: actor.userId,
-            actorWalletAddress: walletAddress,
-            nextStatus: "intent_created",
-            metadata: {
-              tierId: tier?.id ?? null,
-              amountUnits,
-              paymentAssetSymbol,
-              chainId,
-              ...(metadata !== undefined ? { clientMetadata: metadata } : {}),
+    const declaredGeo = normalizeShowPledgeDemandGeo(input.geo);
+    // Expiry cleanup is independent from this payment transaction. Keep its
+    // bounded deletion outside the per-user lock so one intent never locks
+    // unrelated listeners' contexts while it creates a pledge.
+    const demandDeclaredAt = new Date();
+    await deleteExpiredShowPledgeDemandContexts(prisma, demandDeclaredAt);
+    const pledge = await prisma.$transaction(async (tx) => {
+      const lockedUsers = await tx.$queryRaw<Array<{ id: string; closedAt: Date | null; erasedAt: Date | null }>>(Prisma.sql`
+        SELECT "id", "closedAt", "erasedAt"
+        FROM "User"
+        WHERE "id" = ${actor.userId}
+        FOR UPDATE
+      `);
+      const lockedUser = lockedUsers[0];
+      if (!lockedUser || lockedUser.closedAt || lockedUser.erasedAt) {
+        throw new ForbiddenException("A closed or erased account cannot create a pledge");
+      }
+
+      const consentRows = await tx.$queryRaw<Array<{ productAnalytics: boolean; policyVersion: string }>>(Prisma.sql`
+        SELECT "productAnalytics", "policyVersion"
+        FROM "AnalyticsConsent"
+        WHERE "userId" = ${actor.userId}
+        FOR UPDATE
+      `);
+      const consent = consentRows[0];
+      const canCaptureCity = Boolean(
+        declaredGeo &&
+        consent?.productAnalytics === true &&
+        consent.policyVersion === ANALYTICS_CONSENT_POLICY_VERSION,
+      );
+      const created = await tx.showPledge.create({
+        data: {
+          campaignId: campaign.id,
+          tierId: tier?.id,
+          userId: actor.userId,
+          walletAddress,
+          amountUnits,
+          currency: tier?.currency ?? campaign.currency,
+          paymentAssetId,
+          paymentAssetSymbol,
+          paymentAssetDecimals,
+          paymentTokenAddress,
+          chainId,
+          status: "intent_created",
+          confirmationStatus: "not_submitted",
+          receiptId,
+          receipt,
+          events: {
+            create: {
+              campaignId: campaign.id,
+              eventType: "pledge_intent_created",
+              actorUserId: actor.userId,
+              actorWalletAddress: walletAddress,
+              nextStatus: "intent_created",
+              metadata: {
+                tierId: tier?.id ?? null,
+                amountUnits,
+                paymentAssetSymbol,
+                chainId,
+                ...(metadata !== undefined ? { clientMetadata: metadata } : {}),
+              },
             },
           },
         },
-      },
-      include: {
-        campaign: true,
-        tier: true,
-        events: { orderBy: { createdAt: "desc" }, take: 5 },
-      },
-    });
+        include: {
+          campaign: true,
+          tier: true,
+          events: { orderBy: { createdAt: "desc" }, take: 5 },
+        },
+      });
+      if (canCaptureCity) {
+        await tx.showPledgeDemandContext.create({
+          data: {
+            pledgeId: created.id,
+            ...showPledgeDemandContextFields({
+              userId: actor.userId,
+              policyVersion: consent!.policyVersion,
+              geo: declaredGeo!,
+              now: demandDeclaredAt,
+            }),
+          },
+        });
+      }
+      return created;
+    }, { timeout: 30_000, maxWait: 10_000 });
     await this.recordShowAnalytics("shows.pledge_intent_created", actor, campaign, {
       pledgeId: pledge.id,
       tierId: tier?.id,
       amountUnits,
       paymentAssetSymbol,
       chainId,
-      geo: normalizeAnalyticsGeoDimension(input.geo) ?? campaignTargetGeo(campaign),
+      // The ledger retains only the campaign target. Listener-declared city is
+      // stored separately and only when the current consent gate allows it.
+      geo: campaignTargetGeo(campaign),
     });
 
     return {

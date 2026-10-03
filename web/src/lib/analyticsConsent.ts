@@ -4,6 +4,9 @@ import {
   type AnalyticsConsentResponse,
 } from "./api";
 
+/** Version of the actual consent wording bundled with this browser. */
+export const ANALYTICS_CONSENT_TEXT_VERSION = "analytics-consent:2026-10-03";
+
 /**
  * #1772: the browser's view of the analytics consent decision.
  *
@@ -30,8 +33,8 @@ export type AnalyticsConsentState = {
   needsDecision: boolean;
   /**
    * The version of the consent text the server last told us it is serving.
-   * A decision is submitted against this, so the recorded agreement always
-   * matches the wording that was displayed.
+   * A decision also includes ANALYTICS_CONSENT_TEXT_VERSION, which is bound to
+   * bundled wording rather than copied from a response.
    */
   currentPolicyVersion: string | null;
 };
@@ -89,7 +92,7 @@ export function subscribeToAnalyticsConsent(listener: Listener): () => void {
  * collecting it before consent, just on a delay.
  */
 export function isProductAnalyticsAllowed(): boolean {
-  return state.known && state.productAnalytics;
+  return state.known && state.productAnalytics && !state.needsDecision;
 }
 
 /**
@@ -176,7 +179,7 @@ export async function recordAnalyticsConsentDecision(
     return { status: "reask", state: loaded };
   }
 
-  const result = await updateAnalyticsConsent(token, { productAnalytics, policyVersion });
+  const result = await updateAnalyticsConsent(token, { productAnalytics, policyVersion, consentTextVersion: ANALYTICS_CONSENT_TEXT_VERSION });
   if (result.status === "recorded") {
     cachedToken = token;
     publish(fromResponse(result.decision));

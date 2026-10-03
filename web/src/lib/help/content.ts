@@ -2249,7 +2249,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. Your saved draft keeps the release connection while the selected artist is credited on it; choosing an artist who isn't credited removes that connection. A suggestion does not create or publish a campaign, and it does not predict income. Follow and pledge counts are not available for releases yet.",
+            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. Your saved draft keeps the release connection while the selected artist is credited on it; choosing an artist who isn't credited removes that connection. A suggestion does not create or publish a campaign, and it does not predict income. Follow counts remain unavailable. Pledges count only with confirmed payment, a release connection, and a city the backer chose to share with usage measurement on. The app does not yet ask backers for a city, so ordinary app pledges do not add city demand.",
           },
           {
             kind: "figure",
@@ -3053,16 +3053,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "The first time you sign in, Resonate asks one question: may we record how you use the app? If you say yes, we note which parts you use and when — for example starting a track, saving something to your library, running a search, or opening a listing. These signals can help improve discovery and recommendations, show artists aggregate patterns, reveal which features are useful, and guide what Resonate builds next.",
+            text: "The first time you sign in, Resonate asks one question: may we record how you use the app? If you say yes, we note which parts you use and when — for example starting a track, saving something to your library, running a search, or opening a listing. These signals can help improve discovery and recommendations, show artists aggregate patterns, reveal which features are useful, and guide what Resonate builds next. If you choose to share your city with a show pledge, we can use that city and the confirmed pledge in aggregate artist demand insights. We never infer your location from an IP address, wallet or campaign city.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/analytics-consent-banner.png`,
               alt: "The Resonate analytics consent banner explains optional usage measurement and gives equally prominent No, do not measure and Yes, measure my use buttons.",
-              caption: "The choice appears after sign-in. Saying no and saying yes are presented with equal weight.",
+              caption: "The choice explains optional usage measurement and city demand. Saying no and saying yes have equal weight.",
               width: 544,
-              height: 329,
+              height: 411,
               source: LOCAL,
             },
           },
@@ -3098,7 +3098,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Your answer is never final. Open Settings and choose Privacy: it shows what you chose and lets you switch it either way, as often as you like. Turning it off stops the collection from that moment.",
+            text: "Your answer is never final. Open Settings and choose Privacy: it shows what you chose and lets you switch it either way, as often as you like. Turning it off stops the collection from that moment and removes optional pledge city declarations. Those declarations expire after 28 days even if you keep measurement on; payment records remain.",
           },
           {
             kind: "steps",

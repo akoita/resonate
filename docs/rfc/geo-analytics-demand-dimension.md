@@ -53,7 +53,8 @@ geo: {
 - Product payload sanitization drops raw location-tracking keys such as IP,
   GPS, latitude, and longitude fields.
 - Shows campaign creation and pledge events emit `shows.*` analytics with
-  campaign-target geo, or user-declared geo when supplied on pledge intent.
+  campaign-target geo. Optional user-declared pledge city data is captured in
+  the separate consent-governed Scene Scout context described below.
 - Warehouse export and Dataflow preserve coarse geo fields in clean rows and
   fact dimensions:
   - `geoCountryCode`
@@ -79,3 +80,17 @@ the user's own account or a privileged operator view.
 - Should campaign creation require country codes only, or support country names
   with an explicit normalization table?
 - Which privacy review should approve any future `ip_coarse` resolver?
+
+## Scene Scout pledge demand (#1968)
+
+The intent API may receive a backer-declared city, but a campaign target city
+cannot locate its backers. Optional listener city data is captured separately
+from the financial pledge and its general analytics event, only under current
+affirmative analytics consent. The browser pledge flow does not yet collect it.
+
+The private context expires 28 days after declaration and is exported to its
+account holder, erased with the account and deleted on consent refusal. Current
+consent and taste reset controls are checked again on reads. A contribution
+requires matching escrow-indexer confirmation and a canonical, unwithdrawn
+source release; refunds and cancellations remove eligibility. Aggregates retain
+only thresholded city/release totals, with no backer identifiers.

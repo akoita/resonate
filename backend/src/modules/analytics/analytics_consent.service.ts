@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 
 /**
@@ -27,7 +28,7 @@ import { prisma } from "../../db/prisma";
  * whole reason the version exists: it must mean "what we do with your data
  * changed", never "we edited the copy".
  */
-export const ANALYTICS_CONSENT_POLICY_VERSION = "analytics-consent:2026-09-17";
+export const ANALYTICS_CONSENT_POLICY_VERSION = "analytics-consent:2026-10-03";
 
 export interface AnalyticsConsentDecision {
   productAnalytics: boolean;
@@ -100,11 +101,23 @@ export class AnalyticsConsentService {
   async record(userId: string, productAnalytics: boolean): Promise<AnalyticsConsentDecision> {
     const decidedAt = new Date();
     const policyVersion = ANALYTICS_CONSENT_POLICY_VERSION;
-    const record = await prisma.analyticsConsent.upsert({
-      where: { userId },
-      create: { userId, productAnalytics, policyVersion, decidedAt },
-      update: { productAnalytics, policyVersion, decidedAt },
-      select: { productAnalytics: true, policyVersion: true, decidedAt: true },
+    const record = await prisma.$transaction(async (tx) => {
+      // Pledge capture and account erasure acquire this same lock first. It
+      // serializes a refusal with any optional context insert even when the
+      // consent row does not exist yet.
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE
+      `);
+      const saved = await tx.analyticsConsent.upsert({
+        where: { userId },
+        create: { userId, productAnalytics, policyVersion, decidedAt },
+        update: { productAnalytics, policyVersion, decidedAt },
+        select: { productAnalytics: true, policyVersion: true, decidedAt: true },
+      });
+      if (!productAnalytics) {
+        await tx.showPledgeDemandContext.deleteMany({ where: { userId } });
+      }
+      return saved;
     });
 
     return {

@@ -2124,7 +2124,7 @@ describe('API Client', () => {
             productAnalytics: false,
             decided: false,
             needsDecision: true,
-            currentPolicyVersion: 'analytics-consent:2026-09-17',
+            currentPolicyVersion: 'analytics-consent:2026-10-03',
           }),
       });
 
@@ -2134,7 +2134,7 @@ describe('API Client', () => {
       expect(url).toBe('http://test-api:3000/analytics/consent');
       expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
       expect(decision.needsDecision).toBe(true);
-      expect(decision.currentPolicyVersion).toBe('analytics-consent:2026-09-17');
+      expect(decision.currentPolicyVersion).toBe('analytics-consent:2026-10-03');
     });
 
     it('sends the policy version the client displayed', async () => {
@@ -2146,21 +2146,23 @@ describe('API Client', () => {
             productAnalytics: true,
             decided: true,
             needsDecision: false,
-            policyVersion: 'analytics-consent:2026-09-17',
-            currentPolicyVersion: 'analytics-consent:2026-09-17',
+            policyVersion: 'analytics-consent:2026-10-03',
+            currentPolicyVersion: 'analytics-consent:2026-10-03',
           }),
       });
 
       const result = await api.updateAnalyticsConsent('listener-token', {
         productAnalytics: true,
-        policyVersion: 'analytics-consent:2026-09-17',
+        policyVersion: 'analytics-consent:2026-10-03',
+        consentTextVersion: 'analytics-consent:2026-10-03',
       });
 
       const [, opts] = mockFetch.mock.calls[0];
       expect(opts.method).toBe('PUT');
       expect(JSON.parse(opts.body)).toEqual({
         productAnalytics: true,
-        policyVersion: 'analytics-consent:2026-09-17',
+        policyVersion: 'analytics-consent:2026-10-03',
+        consentTextVersion: 'analytics-consent:2026-10-03',
       });
       expect(result.status).toBe('recorded');
     });
@@ -2179,7 +2181,8 @@ describe('API Client', () => {
 
       const result = await api.updateAnalyticsConsent('listener-token', {
         productAnalytics: true,
-        policyVersion: 'analytics-consent:2026-09-17',
+        policyVersion: 'analytics-consent:2026-10-03',
+        consentTextVersion: 'analytics-consent:2026-10-03',
       });
 
       expect(result).toEqual({

@@ -381,6 +381,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     ],
   },
   {
+    model: "ShowPledgeDemandContext",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "The person's optional, consented city attached to a pledge intent and expires after 28 days; expired rows await bounded cleanup.",
+  },
+  {
     model: "ShowCampaignEvent",
     primaryKey: "id",
     keys: [

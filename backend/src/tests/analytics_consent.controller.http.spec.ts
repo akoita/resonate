@@ -214,6 +214,7 @@ describe("Analytics consent gate (HTTP)", () => {
       .send({
         productAnalytics: true,
         policyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
+        consentTextVersion: ANALYTICS_CONSENT_POLICY_VERSION,
         userId: "victim-1",
         actorUserId: "victim-1",
       })
@@ -259,6 +260,17 @@ describe("Analytics consent gate (HTTP)", () => {
       error: "policy_version_stale",
       currentVersion: ANALYTICS_CONSENT_POLICY_VERSION,
     });
+    expect(consentService.record).not.toHaveBeenCalled();
+  });
+
+  it("refuses a grant from an old bundle that only echoes the fetched server version", async () => {
+    const token = `Bearer ${authToken("listener-1", "listener")}`;
+    for (const consentTextVersion of [undefined, "analytics-consent:2026-09-17"]) {
+      await request(app.getHttpServer()).put("/analytics/consent")
+        .set("Authorization", token)
+        .send({ productAnalytics: true, policyVersion: ANALYTICS_CONSENT_POLICY_VERSION, consentTextVersion })
+        .expect(409);
+    }
     expect(consentService.record).not.toHaveBeenCalled();
   });
 

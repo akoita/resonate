@@ -45,6 +45,14 @@ Behaviour events are keyed to a **pseudonymous actor identifier**, derived with
 a secret salt, rather than to your email. Artists see aggregate audience
 figures; they never see your identifier or your raw activity.
 
+**Optional pledge city demand.** If you choose to share a city when pledging
+and agree to the current usage-measurement wording, we keep that city and
+country for aggregate artist demand insights. We do not infer your location
+from your IP address, wallet or the campaign’s city. The declaration is kept
+separately from payment history, expires after 28 days, is included in your
+personal-data export, and is deleted when you refuse usage measurement or erase
+your account. Artists receive only totals above the audience threshold.
+
 **Content you create.** Uploads, community posts and messages, disputes you
 raise, and the metadata attached to them.
 

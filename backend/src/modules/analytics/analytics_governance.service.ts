@@ -16,6 +16,7 @@ import {
   WarehouseErasureResult,
   analyticsWarehouseGovernanceFromEnv,
 } from "./analytics_warehouse_governance";
+import { deleteExpiredShowPledgeDemandContexts } from "../scene_scout/show_pledge_demand";
 
 type RetentionTier = "personal" | "sensitive" | "pseudonymous";
 
@@ -93,6 +94,7 @@ export class AnalyticsGovernanceService {
       redacted: 0,
       lineageRecords: 0,
       demandObservationsDeleted: 0,
+      showPledgeDemandContextsDeleted: 0,
       policy,
       ranAt: now.toISOString(),
     };
@@ -113,6 +115,7 @@ export class AnalyticsGovernanceService {
       });
       result.demandObservationsDeleted = deleted.count;
     }
+    result.showPledgeDemandContextsDeleted = await deleteExpiredShowPledgeDemandContexts(prisma, now);
 
     for (const tier of ["sensitive", "personal", "pseudonymous"] as RetentionTier[]) {
       const cutoff = new Date(now.getTime() - retentionDays(policy, tier) * 24 * 60 * 60 * 1000);

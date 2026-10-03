@@ -96,7 +96,10 @@ export default function AnalyticsConsentSettingsPanel({ token, addToast }: Props
             to your library, searching, opening a listing — so we can see what helps and fix what does
             not. It is optional, and Resonate works exactly the same either way. Your purchases,
             uploads, and payouts are kept whatever you choose here, because they are records of what
-            happened.
+            happened. If you choose to share your city with a show pledge, that city and the confirmed
+            pledge can contribute to aggregate artist demand insights. We do not infer your location
+            from your wallet, IP address or the campaign city. The city declaration expires after
+            28 days and is removed when you turn measurement off.
           </p>
         </div>
         <Button
