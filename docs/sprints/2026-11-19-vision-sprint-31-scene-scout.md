@@ -31,7 +31,8 @@ admitted.
   are implemented in [draft PR #2046](https://github.com/akoita/resonate/pull/2046).
   Staging acceptance remains tracked in the open issue and private counterpart.
 - **#1970:** taste-fitting fresh release selection and day-seven reception are
-  implemented in this branch with exposure/privacy coverage, building on PR #2046.
+  implemented in [draft PR #2047](https://github.com/akoita/resonate/pull/2047)
+  with exposure/privacy coverage, building on PR #2046.
   Canonical follows and staging acceptance remain tracked by the open issue and
   [Scene Scout feature page](../features/scene_scout.md).
 - **#1450:** application materialization/export is in [draft PR #2045](https://github.com/akoita/resonate/pull/2045).
