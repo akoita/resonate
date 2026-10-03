@@ -10,22 +10,35 @@ owner: "@akoita"
 
 `partial`
 
-The fan-funded campaign loop is implemented end to end and validated on
-**test/staging** (CI green on `main` across lint, contracts
-unit/fuzz/invariant, blocking Halmos, backend unit + integration, e2e, and
-build). The current Base Sepolia UUPS proxy has passed both the automatic
-refund path and the full 6%-fee/release path with backend indexer
-reconciliation. It is **not yet in production for real users** — production
-(real-user) launch is separately gated in
-[#1583](https://github.com/akoita/resonate/issues/1583). A fan can discover a campaign, read its
-artist-approved immutable terms, pledge on-chain into the campaign-specific
-`ShowCampaignEscrow` through their smart account, receive a durable receipt
-reconciled from the indexed `Pledged` event, and claim an automatic refund when
-a campaign fails or is cancelled. Artists and operators can create, activate,
-and manage campaigns, confirm booking and fulfillment, and run the off-chain
-dispute workflow. Funded never means released: payout stays gated by artist
-authority, booking/fulfillment evidence, and the on-chain dispute-window
-time-lock.
+The fan-funded campaign loop supports discovery, artist-approved immutable
+terms, on-chain pledges, reconciled receipts and refunds. Production launch
+acceptance remains tracked in [#1583](https://github.com/akoita/resonate/issues/1583);
+deployment evidence and platform wiring belong in `resonate-iac`. Artists and
+operators can create and manage campaigns, confirm booking and fulfillment,
+and run the off-chain dispute workflow. Funded never means released: payout
+stays gated by artist authority, booking/fulfillment evidence and the on-chain
+dispute window.
+
+## Release context on a draft
+
+A Scene Scout suggestion can attach its catalog release to a Shows draft.
+The optional `sourceReleaseId` survives saving and later draft edits. The
+backend validates that the release is ready or published, is not withdrawn,
+and has canonical main or primary credit for the selected artist. An omitted
+field preserves the existing association on update; explicit `null` clears it.
+The editor clears the association when the selected artist is not credited on
+the release.
+
+This reference provides context for the show; it does not grant artist
+authority, change approved financial terms or determine payouts. It also does
+not locate backers. Release-linked pledge demand still requires a canonical
+contribution with governed listener geography, tracked in
+[#1968](https://github.com/akoita/resonate/issues/1968).
+
+Validate this flow with `shows_source_release.integration.spec.ts`, the Shows
+helper/form tests and `web/tests/scene-scout.spec.ts`.
+
+## Campaign surfaces
 
 Surfaces: home campaign hero, `/shows`, `/shows/create`, `/shows/:slug/edit`,
 and the campaign detail page (for example `/shows/sennarin-paris`). The web app
@@ -36,11 +49,15 @@ the API cannot be reached, never when the API answers with an empty list
 "Fans bring the show." invitation (Start a campaign → `/shows/create`, Browse
 shows → `/shows`) and `/shows` shows an empty state with a Create campaign
 link; while campaigns load, the home hero is a neutral skeleton in the same
-frame. Contract explorer links follow each
+frame.
+
+Contract explorer links follow each
 campaign's recorded chain, using its configured explorer when available and
 otherwise the chain's standard explorer. Blockscout links open the contract
 view for verified source code, transactions, and events. Campaigns without a
-linked on-chain escrow show no explorer action and cannot accept pledges. The campaign trust model and fund-release
+linked on-chain escrow show no explorer action and cannot accept pledges.
+
+The campaign trust model and fund-release
 policy are defined in
 [Show Campaign Trust And Escrow Policy](../rfc/show-campaign-trust-escrow.md);
 show attendance credential boundaries are defined in

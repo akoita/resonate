@@ -2249,7 +2249,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. A suggestion does not create or publish a campaign, and it does not predict income. Follow and pledge counts are not available for releases yet.",
+            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. Your saved draft keeps the release connection while the selected artist is credited on it; choosing an artist who isn't credited removes that connection. A suggestion does not create or publish a campaign, and it does not predict income. Follow and pledge counts are not available for releases yet.",
           },
           {
             kind: "figure",

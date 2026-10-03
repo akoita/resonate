@@ -3,6 +3,7 @@ import {
   discoverShowCampaignOnChain,
   buildCatalogArtistCandidates,
   campaignArtistHref,
+  createShowCampaignDraft,
   findArtistCampaigns,
   releaseCampaignArtistIdentity,
   campaignDisplayInitial,
@@ -26,6 +27,9 @@ import {
   validateCampaignDeadlines,
   getCampaign,
   listCampaigns,
+  sourceReleaseArtistOptionIds,
+  sourceReleaseIdForArtistChoice,
+  updateShowCampaignDraft,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -274,6 +278,68 @@ describe("Shows campaign explorer mapping", () => {
     expect(campaign?.etherscanUrl).toBe(
       `https://base-sepolia.blockscout.com/address/${contractAddress}?tab=contract`,
     );
+  });
+
+  it("maps and sends the source release association on draft create and update", async () => {
+    const returned = { ...backendCampaign, sourceReleaseId: "release-source-1" };
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => returned })) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+    const draft = {
+      artistDisplayName: "Test Artist",
+      sourceReleaseId: "release-source-1",
+      city: "Paris",
+      country: "FR",
+      deadline: "2026-09-01T00:00:00.000Z",
+      goalAmountUnits: "1000000",
+      currency: "EUR" as const,
+      paymentAssetSymbol: "USDC",
+      paymentAssetDecimals: 6,
+      tiers: [],
+    };
+
+    const created = await createShowCampaignDraft({ token: "test-token", draft });
+    expect(created.sourceReleaseId).toBe("release-source-1");
+    const campaign = { backendId: "campaign-1" } as Campaign;
+    const updated = await updateShowCampaignDraft({ campaign, token: "test-token", draft });
+    expect(updated.sourceReleaseId).toBe("release-source-1");
+    const calls = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][0]).toContain("/shows/campaigns");
+    expect(JSON.parse(calls[0][1].body as string)).toMatchObject({ sourceReleaseId: "release-source-1" });
+    expect(calls[1][1].method).toBe("PATCH");
+    expect(JSON.parse(calls[1][1].body as string)).toMatchObject({ sourceReleaseId: "release-source-1" });
+  });
+
+  it("associates every non-ambiguous main collaborator with a release", () => {
+    const release = {
+      id: "collab-release",
+      artistId: "owner-profile",
+      title: "Collaboration",
+      status: "ready",
+      type: "single",
+      explicit: false,
+      createdAt: "2026-10-03T00:00:00.000Z",
+      primaryArtist: "Unrelated primary artist",
+      artist: { id: "owner-profile", displayName: "Release Owner" },
+      artistCredits: [
+        { id: "credit-a", releaseId: "collab-release", artistId: "artist-a", role: "main", displayName: "Artist A", identityStatus: "selected", sortOrder: 0 },
+        { id: "credit-b", releaseId: "collab-release", artistId: "artist-b", role: "primary", displayName: "Artist B", identityStatus: "reviewed", sortOrder: 1 },
+        { id: "credit-ambiguous", releaseId: "collab-release", artistId: "artist-c", role: "main", displayName: "Artist C", identityStatus: "ambiguous", sortOrder: 2 },
+      ],
+    } as unknown as Release;
+    const candidates = buildCatalogArtistCandidates([release]);
+
+    expect(sourceReleaseArtistOptionIds(release, candidates)).toEqual([
+      "profile:artist-a",
+      "profile:artist-b",
+    ]);
+  });
+
+  it("preserves an existing binding for a credited artist and clears it for an unrelated artist", () => {
+    expect(sourceReleaseIdForArtistChoice("saved-release", ["profile:artist-a"], "profile:artist-a"))
+      .toBe("saved-release");
+    expect(sourceReleaseIdForArtistChoice("saved-release", ["profile:artist-a"], "profile:artist-b"))
+      .toBeNull();
   });
 
   it("does not substitute a contract or explorer link when the backend address is absent", async () => {

@@ -1,7 +1,7 @@
 # Vision Sprint 31: Scene Scout v1
 
-**Status:** Application implementation is merged; acceptance remains in
-progress. The original sprint window was indicative (2026-11-19 to 2026-12-09).
+**Status:** Initial application slices are merged; remaining signal work and
+acceptance are in progress. The original sprint window was indicative (2026-11-19 to 2026-12-09).
 **Milestone:** [33](https://github.com/akoita/resonate/milestone/33).
 **Goal:** An artist sees where real demand for a release is and gets one
 concrete next action for it.
@@ -26,6 +26,8 @@ admitted.
 
 - **#1968:** city-demand backend, cockpit card and editable Shows prefill are
   merged in [PR #2044](https://github.com/akoita/resonate/pull/2044), with privacy, API, browser and help coverage.
+  The continuation preserves validated catalog release context when saving
+  and editing a Show draft; it does not yet enable pledge demand.
 - **#1969:** categorical request/session shortfalls and catalog supply actions
   are merged in [PR #2046](https://github.com/akoita/resonate/pull/2046).
 - **#1970:** taste-fitting fresh release selection and day-seven reception are
@@ -42,7 +44,8 @@ Staging acceptance remains open in
 warehouse scheduling and live checks remain open in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). Canonical
 follows are still unavailable without a follow ledger event; pledge demand
-remains excluded without an authoritative release link. The linked parent
+remains excluded until canonical release attribution and governed listener
+geography qualify the same contribution. The linked parent
 feature remains open until acceptance and its remaining signal families are
 resolved.
 

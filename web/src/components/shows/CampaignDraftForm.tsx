@@ -19,9 +19,12 @@ import type { ShowDemandPrefill } from "../../lib/showDemandPrefill";
 import {
   createShowCampaignDraft,
   buildCatalogArtistCandidates,
+  catalogArtistOptionId,
   deleteShowCampaignVisual,
   replaceShowCampaignVisual,
   reorderShowCampaignVisuals,
+  sourceReleaseIdForArtistChoice,
+  sourceReleaseArtistOptionIds,
   updateShowCampaignDraft,
   uploadShowCampaignVisuals,
   validateCampaignDeadlines,
@@ -136,7 +139,16 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
   const [artistHasCatalogContent, setArtistHasCatalogContent] = useState<boolean | null>(null);
   const [artistCandidates, setArtistCandidates] = useState<CatalogArtistCandidate[]>([]);
   const [artistCandidatesLoaded, setArtistCandidatesLoaded] = useState(false);
-  const [selectedArtistId, setSelectedArtistId] = useState(campaign?.artistId ? `profile:${campaign.artistId}` : "");
+  const initialSourceArtistOptionId = campaign?.sourceReleaseId
+    ? catalogArtistOptionId({ artistId: campaign.artistId ?? null, name: campaign.artistName })
+    : null;
+  const [selectedArtistId, setSelectedArtistId] = useState(
+    campaign?.artistId ? `profile:${campaign.artistId}` : initialSourceArtistOptionId ?? "",
+  );
+  const [sourceReleaseId, setSourceReleaseId] = useState<string | null>(campaign?.sourceReleaseId ?? null);
+  const [sourceReleaseCandidateIds, setSourceReleaseCandidateIds] = useState<string[]>(
+    () => initialSourceArtistOptionId ? [initialSourceArtistOptionId] : [],
+  );
   const [artistDisplayName, setArtistDisplayName] = useState(campaign?.artistName ?? "");
   const [title, setTitle] = useState(campaign?.title ?? "");
   const [description, setDescription] = useState(campaign?.tagline ?? "");
@@ -283,6 +295,24 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
         }
         const candidates = buildCatalogArtistCandidates(visibleReleases);
         setArtistCandidates(candidates);
+        const sourceRelease = campaign?.sourceReleaseId
+          ? visibleReleases.find((release) => release.id === campaign.sourceReleaseId)
+          : demandRelease;
+        let associatedCandidateIds = sourceReleaseArtistOptionIds(sourceRelease, candidates);
+        if (campaign?.sourceReleaseId && associatedCandidateIds.length === 0) {
+          // Existing drafts were validated when saved. Preserve their stored
+          // association for the current artist if the release is no longer in
+          // the actor's visible catalog; the server revalidates on save.
+          const currentCampaignArtist = candidates.find((candidate) => candidate.artistId === campaign.artistId)
+            ?? candidates.find((candidate) => candidate.name.trim().toLowerCase() === campaign.artistName.trim().toLowerCase());
+          associatedCandidateIds = currentCampaignArtist
+            ? [currentCampaignArtist.optionId]
+            : initialSourceArtistOptionId ? [initialSourceArtistOptionId] : [];
+        }
+        setSourceReleaseCandidateIds(associatedCandidateIds);
+        if (!campaign) {
+          setSourceReleaseId(demandRelease && associatedCandidateIds.length > 0 ? demandRelease.id : null);
+        }
         if (!isPrivileged) {
           setArtistHasCatalogContent(candidates.length > 0);
         }
@@ -316,7 +346,7 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
     return () => {
       active = false;
     };
-  }, [campaign, demandPrefill, isPrivileged, status, token]);
+  }, [campaign, demandPrefill, initialSourceArtistOptionId, isPrivileged, status, token]);
 
   useEffect(() => {
     if (!selectedArtistId) return;
@@ -513,6 +543,7 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
           ? "wallet" as const
           : null,
         authorityEvidenceBundleId: authorityEvidenceBundleId.trim() || null,
+        sourceReleaseId: sourceReleaseIdForArtistChoice(sourceReleaseId, sourceReleaseCandidateIds, selectedArtistId),
         tiers: normalizedTiers,
       };
 
@@ -633,7 +664,13 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
           Artist {!isPrivileged ? "(from your managed catalog)" : ""}
           <select
             value={selectedArtistId}
-            onChange={(event) => setSelectedArtistId(event.target.value)}
+            onChange={(event) => {
+              const nextArtistId = event.target.value;
+              setSelectedArtistId(nextArtistId);
+              if (sourceReleaseId && !sourceReleaseCandidateIds.includes(nextArtistId)) {
+                setSourceReleaseId(null);
+              }
+            }}
             disabled={!artistCandidatesLoaded}
           >
             <option value="">Select a catalog artist</option>

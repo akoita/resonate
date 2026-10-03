@@ -105,6 +105,7 @@ type CreateSignalInput = CampaignBaseInput & {
 
 type CreateCampaignInput = CampaignBaseInput & {
   campaignLevel?: ShowCampaignLevel;
+  sourceReleaseId?: unknown;
   artistAuthorityStatus?: ShowArtistAuthorityStatus;
   authorityCredentialId?: string | null;
   authorityEvidenceBundleId?: string | null;
@@ -881,6 +882,7 @@ export function serializePublicShowCampaign(campaign: any) {
     id: campaign.id,
     slug: campaign.slug,
     artistId: campaign.artistId ?? null,
+    sourceReleaseId: campaign.sourceReleaseId ?? null,
     artistDisplayName: campaign.artistDisplayName,
     artistImageUrl: campaign.artistImageUrl ?? null,
     heroImageUrl: campaign.heroImageUrl ?? null,
@@ -1159,6 +1161,11 @@ export class ShowsService {
       throw new BadRequestException("Use /shows/signals for fan-proposed demand signals");
     }
     await this.assertCampaignCatalogSubject(actor, normalized, artistIdentity);
+    const sourceReleaseId = await this.normalizeDraftSourceReleaseId(
+      input.sourceReleaseId,
+      artistIdentity,
+      normalized.artistDisplayName,
+    );
 
     const depositReleaseBps = input.depositReleaseBps ?? 0;
     if (!Number.isSafeInteger(depositReleaseBps) || depositReleaseBps < 0 || depositReleaseBps > 3000) {
@@ -1222,6 +1229,7 @@ export class ShowsService {
     const campaign = await prisma.showCampaign.create({
       data: {
         ...normalized,
+        sourceReleaseId,
         slug,
         title,
         status: "draft",
@@ -1284,6 +1292,11 @@ export class ShowsService {
       },
     );
     await this.assertCampaignCatalogSubject(actor, normalized, artistIdentity);
+    const sourceReleaseId = await this.normalizeDraftSourceReleaseId(
+      input.sourceReleaseId === undefined ? campaign.sourceReleaseId : input.sourceReleaseId,
+      artistIdentity,
+      normalized.artistDisplayName,
+    );
     const depositReleaseBps = input.depositReleaseBps ?? campaign.depositReleaseBps;
     if (!Number.isSafeInteger(depositReleaseBps) || depositReleaseBps < 0 || depositReleaseBps > 3000) {
       throw new BadRequestException("depositReleaseBps must be between 0 and 3000");
@@ -1344,6 +1357,7 @@ export class ShowsService {
         where: { id: campaign.id },
         data: {
           ...normalized,
+          sourceReleaseId,
           title,
           beneficiaryAddress: beneficiary.address,
           beneficiaryType: beneficiary.type,
@@ -3520,6 +3534,82 @@ export class ShowsService {
         "active escrow campaigns must select a catalog artist with at least one ready or published release",
       );
     }
+  }
+
+  private async normalizeDraftSourceReleaseId(
+    value: unknown,
+    artist: Pick<Artist, "id" | "displayName"> | null,
+    artistDisplayName: string,
+  ): Promise<string | null> {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new BadRequestException("sourceReleaseId must be a non-empty string or null");
+    }
+
+    const releaseId = value.trim();
+    const artistName = requireText(artist?.displayName ?? artistDisplayName, "artistDisplayName");
+    const artistCreditWhere: Prisma.ReleaseWhereInput = artist
+      ? {
+          OR: [
+            {
+              artistCredits: {
+                some: {
+                  artistId: artist.id,
+                  role: { in: ["main", "primary"] },
+                  identityStatus: { not: "ambiguous" },
+                },
+              },
+            },
+            {
+              AND: [
+                { artistId: artist.id },
+                {
+                  OR: [
+                    { primaryArtist: null },
+                    { primaryArtist: "" },
+                    { primaryArtist: { equals: artistName, mode: "insensitive" } },
+                  ],
+                },
+              ],
+            },
+          ],
+        }
+      : {
+          OR: [
+            {
+              artistCredits: {
+                some: {
+                  displayName: { equals: artistName, mode: "insensitive" },
+                  role: { in: ["main", "primary"] },
+                  identityStatus: { not: "ambiguous" },
+                },
+              },
+            },
+            { primaryArtist: { equals: artistName, mode: "insensitive" } },
+            {
+              AND: [
+                { OR: [{ primaryArtist: null }, { primaryArtist: "" }] },
+                { artist: { displayName: { equals: artistName, mode: "insensitive" } } },
+              ],
+            },
+          ],
+        };
+
+    const release = await prisma.release.findFirst({
+      where: {
+        id: releaseId,
+        status: { in: SHOWS_CATALOG_CONTENT_STATUSES },
+        withdrawnAt: null,
+        ...artistCreditWhere,
+      },
+      select: { id: true },
+    });
+    if (!release) {
+      throw new BadRequestException(
+        "sourceReleaseId must reference a ready or published, unwithdrawn release credited to the selected artist",
+      );
+    }
+    return release.id;
   }
 
   private withPlatformArtistIdentity<T extends CampaignBaseInput>(input: T, artist: Artist | null): T {
