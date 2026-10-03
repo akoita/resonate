@@ -48,6 +48,8 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       mood: input.preferences.mood,
       queueStyle: input.preferences.queueStyle,
       tempoBpm: input.preferences.tempoBpm,
+      // Listening sessions never dead-end while an unplayed track fits (#2056).
+      fallback: true,
     });
 
     return {

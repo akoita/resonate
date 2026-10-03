@@ -78,6 +78,25 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > (genres, moods, energy, tempo) travel on to the session, and analytics carry
 > filter keys and counts only. The saved vibes in Settings are never written.
 
+> **Next AI Pick keeps going on a small catalog (#2056).** Vision-neutral
+> quality: no money, payout or fee changes. A listening session used to
+> dead-end with `no_tracks` after one Next Pick on a catalog with few artists:
+> every matching track was already in the session, or every artist already
+> had two tracks in the last ten. When the strict pass finds nothing,
+> `AgentSelectorService.select` (with `fallback`, set by the deterministic
+> adapter for session start and Next Pick) retries in order: (1) the same
+> matching tracks without the per-session artist window, keeping two per
+> artist per pick (`fallback: "relaxed_artist_window"`); (2) mid session only,
+> once the strict pass found matching tracks and every one is used, the 50
+> newest catalog-wide tracks too (`fallback: "widened"`). A request nothing in
+> the catalog matches is never widened, so the session says so and the unmet
+> intent stays recorded (ADR-TE-4). Session tracks are never repeated, and
+> hidden taste, the AI-content rule and the exploration share are never
+> relaxed. The orchestrator now returns the selector's reason with
+> `no_tracks`, and the web shows plain words instead of the status code:
+> "You've heard everything that fits this session" or "Nothing in the catalog
+> matches this session's filters yet".
+
 > **Everyday genre quick starts (#2052).** Vision-neutral UX quality: no money,
 > payout or fee changes. The quick starts come in two labelled rows. **Genres**
 > holds seven everyday presets (Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats &

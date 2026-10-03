@@ -152,7 +152,7 @@ describe('AgentOrchestratorService (integration)', () => {
       preferences: { genres: [UNMATCHED_GENRE] },
     });
 
-    expect(result).toEqual({ status: 'no_tracks', tracks: [], shortfall: 5 });
+    expect(result).toEqual({ status: 'no_tracks', tracks: [], shortfall: 5, reason: 'no_matching_taste_candidates' });
     expect(decisions).toHaveLength(1);
     expect(decisions[0]).toEqual(
       expect.objectContaining({
@@ -161,6 +161,35 @@ describe('AgentOrchestratorService (integration)', () => {
         unmetIntent: { genres: [UNMATCHED_GENRE] },
       }),
     );
+  });
+
+  it('keeps a session going once its matching tracks are played, without repeating one (#2056)', async () => {
+    // Both SparseGenre tracks are already in the session: the next pick used to
+    // dead-end with no_tracks. It now widens to the catalog instead.
+    const played = [`${TEST_PREFIX}sparse1`, `${TEST_PREFIX}sparse2`];
+    const result = await buildOrchestrator().orchestrate({
+      sessionId: 'session-ran-dry',
+      userId: 'user-1',
+      recentTrackIds: played,
+      budgetRemainingUsd: 10,
+      preferences: { genres: [SPARSE_GENRE] },
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.tracks.length).toBeGreaterThan(0);
+    for (const track of result.tracks) expect(played).not.toContain(track.trackId);
+  });
+
+  it('still says no_tracks mid session when nothing in the catalog ever matched (ADR-TE-4)', async () => {
+    const result = await buildOrchestrator().orchestrate({
+      sessionId: 'session-unmatched-mid',
+      userId: 'user-1',
+      recentTrackIds: [`${TEST_PREFIX}track1`],
+      budgetRemainingUsd: 10,
+      preferences: { genres: [UNMATCHED_GENRE] },
+    });
+
+    expect(result).toEqual({ status: 'no_tracks', tracks: [], shortfall: 5, reason: 'no_matching_taste_candidates' });
   });
 
   it('omits shortfall and unmetIntent from the decision event when the limit is met', async () => {

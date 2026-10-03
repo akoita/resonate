@@ -165,7 +165,8 @@ describe("AgentOrchestratorService (listening picks)", () => {
       preferences: {},
     });
 
-    expect(result).toEqual({ status: "no_tracks", tracks: [], shortfall: 5 });
+    // The selector's reason travels with the empty result (#2056).
+    expect(result).toEqual({ status: "no_tracks", tracks: [], shortfall: 5, reason: "test" });
   });
 
   describe("request coverage (#2037)", () => {

@@ -91,6 +91,11 @@ export class AgentOrchestratorService {
     shortfall: number;
     /** How well the picks matched the listener's described session (#2037); absent without filters. */
     requestCoverage?: AgentRequestCoverage;
+    /**
+     * Why nothing was returned (#2056): the selector's categorical reason, so
+     * the listener can tell "nothing matches" from "everything matching was played".
+     */
+    reason?: string;
   }> {
     const requestedLimit = getAgentTrackLimit();
     const selection = await this.recommendations.recommend({
@@ -116,7 +121,12 @@ export class AgentOrchestratorService {
         shortfall,
         unmetIntent: buildUnmetIntent(input.preferences),
       });
-      return { status: "no_tracks", tracks: [], shortfall };
+      return {
+        status: "no_tracks",
+        tracks: [],
+        shortfall,
+        ...(selection.reason ? { reason: selection.reason } : {}),
+      };
     }
 
     if (selectedCount > 0) {

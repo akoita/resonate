@@ -141,6 +141,8 @@ describe("agent recommendation adapters", () => {
       learnedGenreWeights: { "Hip Hop": 3 },
       // Session context for the ranking core (WS-9): mood doubles as intent.
       mood: "Focus",
+      // Listening sessions retry wider before dead-ending (#2056).
+      fallback: true,
     });
     expect(result).toEqual(expect.objectContaining({
       strategy: "deterministic",
