@@ -279,7 +279,12 @@ describe("consented show pledge demand (integration)", () => {
 
   afterAll(async () => {
     await prisma.sceneScoutCityDemand.deleteMany({ where: { artistId: ARTIST_ID } });
-    await prisma.analyticsEvent.deleteMany({ where: { subjectId: { startsWith: TEST_PREFIX } } });
+    await prisma.analyticsEvent.deleteMany({ where: { OR: [
+      { subjectId: { startsWith: TEST_PREFIX } },
+      // Save fixtures identify their track in payload, without a subjectId.
+      { eventId: { startsWith: TEST_PREFIX } },
+    ] } });
+    expect(await prisma.analyticsEvent.count({ where: { eventId: { startsWith: TEST_PREFIX } } })).toBe(0);
     await prisma.showCampaign.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.showCampaignTier.deleteMany({ where: { campaignId: { startsWith: TEST_PREFIX } } });
     await prisma.track.deleteMany({ where: { releaseId: { startsWith: TEST_PREFIX } } });
@@ -353,7 +358,6 @@ describe("consented show pledge demand (integration)", () => {
   });
 
   it("serves pledge-only demand from exact indexer proof and deduplicates the same person across ledger and pledge signals", async () => {
-    const now = new Date(Date.now() + 1_000);
     const acceptedPledges: string[] = [];
     const counts = [2, 2, 1];
     for (const [userIndex, count] of counts.entries()) {
@@ -393,7 +397,8 @@ describe("consented show pledge demand (integration)", () => {
       }
     }
 
-    const pledgeOnly = await sceneScout.getArtistSceneScout(ARTIST_ID, { now });
+    // Read after all confirmations exist; fixture writes may take over a second.
+    const pledgeOnly = await sceneScout.getArtistSceneScout(ARTIST_ID, { now: new Date() });
     expect(pledgeOnly.status).toBe("ready");
     const week = pledgeOnly.cityDemand.find((row) => row.windowDays === 7 && row.citySlug === "montreal");
     expect(week).toEqual(expect.objectContaining({
