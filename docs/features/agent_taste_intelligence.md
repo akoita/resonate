@@ -312,8 +312,8 @@ dimensions. No time zone or exact local time is collected.
 
 Home's `recommendation.served` and `recommendation.clicked` events remain the
 measurement base for discovery outcomes. The profile now computes decayed multidimensional weights (#2063), described
-below. My Mix is implemented in #2065; ordering and measurement remain tracked
-in [#2066–#2067](https://github.com/akoita/resonate/issues/2061)
+below. My Mix and habit ordering are implemented in #2065–#2066; measurement remains tracked
+in [#2067](https://github.com/akoita/resonate/issues/2067)
 and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 
 ### Verification
@@ -329,7 +329,7 @@ and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 
 Status: merged with #2062. Vision-neutral infrastructure (ADR-BM-6), enabling
 Line 4 Listener Pro, phase 4. Listening lanes are merged in #2064; My Mix is
-implemented in #2065. Ordering and measurement remain tracked by #2066–#2067.
+implemented in #2065, with habit-aware ordering in #2066. Measurement remains tracked by #2067.
 
 `agent-taste-profile/v2` keeps the existing score, tier, favored genres and
 `genreWeights` fields consumed by Home and the AI DJ. It adds aggregate maps:
@@ -461,10 +461,56 @@ does not introduce a new model tool or authorize purchases.
 Revenue alignment: ADR-BM-6 Line 4, Listener Pro phase 4 candidate, with free
 basic mixes supporting Line 1 engagement. The advanced entitlement seam is OFF;
 saved named mixes, per-lane energy arcs and length/order controls are not
-available. Learned ordering remains in #2066 and evaluation in #2067. No fees,
+available. Default habit ordering is described below; evaluation remains in #2067. No fees,
 royalty shares, payouts, deployment wiring or contract behavior change.
 
 Verification and API details: [implementation plan](../../.agents/plans/2065-my-mix.md).
+
+## Habit-aware ordering (#2066)
+
+My Mix keeps its selected tracks and quotas, then groups picks into short lane
+runs before planning transitions. Default ordering is free (ADR-BM-6 Line 4,
+Listener Pro phase 4 candidate; free basics support Line 1 engagement). No fee,
+payout, purchase or entitlement activation changes.
+
+The owner-scoped ordering service derives decayed lane-pair counts from the
+existing, bounded `AgentSignal` history. Only trusted playback telemetry with
+current analytics consent and enabled playback training teaches transitions.
+An actual playback start establishes an episode; completion, replay or a save
+supports its incoming transition, while a skip within 30 seconds and the first
+quarter of a known duration counts against it. Retries count once, delayed
+outcomes attach to their original episode, and unmatched or currently hidden
+music breaks the chain. Reset and current hidden controls apply on every read.
+No new raw history, persistent transition table or public taste payload is added.
+
+Central defaults require three decayed transitions overall and one for a lane
+pair. Short runs aim for three tracks, with a maximum of four where a suitable
+switch exists. Learned ordering avoids a habitually skipped transition when an
+alternative exists; sparse evidence uses lane strength, measured energy
+continuity and original rank. Only measured features constrain energy jumps.
+A jump of two energy bands needs three decayed positive examples and a positive
+share of at least 75%, unless no compatible remaining pick exists.
+
+Across batches, the boundary comes from actual started playback associated
+with the DJ session, rather than queued picks. Ordering returns a permutation
+of the exact selected objects, preserving exploration, artist diversity,
+explicit/AI/hidden filters, lane assignments, coverage and pick explanations.
+An unavailable history read falls back to neutral ordering. Ordinary sessions
+keep their existing rank order.
+
+Owner-only session history can include `mixTrackIds`, the ordered latest batch
+from the existing bounded My Mix cache. Initial autoplay uses these IDs instead
+of unordered pick-log rows. Cache loss retains the existing history fallback;
+this field does not store actual playback or transition counts.
+
+Verification covers deterministic ties, duplicate track IDs, exact permutations,
+short runs and actual playback boundaries, decayed evidence, early skips,
+measured versus inferred energy, owner isolation and current consent/reset/hidden
+controls. See the [implementation plan](../../.agents/plans/2066-habit-ordering.md).
+Measurement remains tracked in [#2067](https://github.com/akoita/resonate/issues/2067).
+Advanced ordering styles remain behind the OFF Listener Pro seam; tempo,
+Camelot and DSP sequencing remain gated future work in
+[#1971](https://github.com/akoita/resonate/issues/1971).
 
 ## Unified Ranking Core (#1448 WS-1)
 

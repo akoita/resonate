@@ -905,7 +905,7 @@ describe("AgentSessionPanel", () => {
       );
     });
 
-    it("records the DJ set once playback starts so the set can keep going", async () => {
+    it("records the DJ set before playback starts so starts carry session provenance", async () => {
       hookState.config = config({ isActive: true });
       hookState.sessions = [session("s-open", [])];
       getAgentNextPick.mockResolvedValueOnce({
@@ -926,23 +926,27 @@ describe("AgentSessionPanel", () => {
         preferences: requested.preferences,
         trackIds: ["t-main", "t-extra"],
       });
-      expect(playQueue.mock.invocationCallOrder[0]).toBeLessThan(setDjSet.mock.invocationCallOrder[0]);
+      expect(setDjSet.mock.invocationCallOrder[0]).toBeLessThan(playQueue.mock.invocationCallOrder[0]);
     });
 
-    it("does not record a DJ set when nothing could be played", async () => {
+    it("restores the previous DJ set when playback fails", async () => {
       hookState.config = config({ isActive: true });
       hookState.sessions = [session("s-open", [])];
       getAgentNextPick.mockResolvedValueOnce({
         status: "ok",
         track: { id: "t-main", title: "Main", artistId: "a-1" },
       });
+      const previous = { sessionId: "previous-session", preferences: {}, trackIds: ["old-track"] };
+      hookState.djSet = previous;
+      setDjSet.mockImplementationOnce((set) => { hookState.djSet = set; });
       playQueue.mockRejectedValueOnce(new Error("audio blocked"));
       render();
 
       await captured.onPick?.();
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(setDjSet).not.toHaveBeenCalled();
+      expect(setDjSet).toHaveBeenCalledTimes(2);
+      expect(setDjSet).toHaveBeenLastCalledWith(previous);
     });
 
     it("records the DJ set for a started session's first picks and clears it on stop", async () => {
@@ -1026,6 +1030,18 @@ describe("AgentSessionPanel", () => {
       effects.forEach((run) => run());
       await vi.advanceTimersByTimeAsync(0);
       expect(playQueue).toHaveBeenCalledTimes(1);
+    });
+
+    it("autoplays the cached My Mix batch order instead of unordered pick-log rows", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      await captured.onToggle?.();
+      hookState.sessions = [{ ...session("s-1", ["t-2"]), mixTrackIds: ["t-1", "t-3", "t-2"] }];
+      render();
+      effects.forEach((run) => run());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(resolveDjQueue).toHaveBeenCalledWith(["t-1", "t-3", "t-2"], "tok");
+      expect(setDjSet.mock.invocationCallOrder[0]).toBeLessThan(playQueue.mock.invocationCallOrder[0]);
     });
 
     it("does not autoplay a session that was not started from this panel", async () => {

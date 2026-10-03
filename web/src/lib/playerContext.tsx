@@ -1,4 +1,5 @@
 "use client";
+import { getDjSet } from "./agentDjSet";
 import { getAddress } from "viem";
 import { sanitizeStemUrl } from "./urlUtils";
 
@@ -86,6 +87,7 @@ import {
     buildPlaybackLifecyclePayload,
     createPlaybackAnalyticsInstanceId,
     getPlaybackAnalyticsSessionId,
+    getPlaybackDjSessionId,
     getPlaybackPlaylistId,
     PLAYBACK_HEARTBEAT_SECONDS,
     type PlaybackLifecycleAction,
@@ -578,6 +580,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             action,
             track: activeTrack,
             sessionId: getPlaybackAnalyticsSessionId(),
+            agentSessionId: getPlaybackDjSessionId(activeTrack.catalogTrackId || activeTrack.id, getDjSet()),
             playbackInstanceId,
             currentTimeSeconds: currentTimeOverride ?? audio?.currentTime ?? 0,
             durationSeconds: audio?.duration,
@@ -1100,6 +1103,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                     currentTimeSeconds: audio.currentTime,
                     durationSeconds: audio.duration,
                     sessionId: getPlaybackAnalyticsSessionId(),
+                    agentSessionId: getPlaybackDjSessionId(activeTrack.catalogTrackId || activeTrack.id, getDjSet()),
                     playbackInstanceId: playbackInstanceIdRef.current ?? undefined,
                     repeatMode: repeatModeRef.current,
                     playlistId: getPlaybackPlaylistId(activeTrack, queueSourceRef.current),

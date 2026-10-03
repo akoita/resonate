@@ -626,6 +626,9 @@ export class AgentConfigController {
         });
 
         for (const session of sessions) {
+            // Initial playback must use the ordered batch, not unordered pick-log rows.
+            const mixTrackIds = this.runtimeService.getMyMixTrackOrder?.(req.user.userId, session.id);
+            if (mixTrackIds) Object.assign(session, { mixTrackIds });
             const signalByTrack = new Map(session.agentSignals.map((signal) => [signal.trackId, signal.metadata]));
             // @ts-ignore - hydrating dynamic props for frontend
             session.licenses = session.licenses.map((license) => ({

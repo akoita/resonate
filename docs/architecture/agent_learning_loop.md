@@ -153,7 +153,7 @@ See [learning from listening habits](../features/agent_taste_intelligence.md#lea
 for the complete mappings and privacy boundaries. Stopping an AI DJ session
 annotates existing signals from that session with a coarse duration outcome.
 
-## Lane sessions (#2064–#2065)
+## Lane sessions (#2064–#2066)
 
 Listening lanes derive catalog genre/mood patterns from repeated, governed
 sessions. Bounded cached summaries contain no raw playback history. Taste
@@ -170,6 +170,31 @@ missing lane. Existing consent-gated unmet-demand recording consumes those
 lane gaps. The model runtime cannot supply lane names, quotas or coverage.
 
 Basic mixes are free. The advanced Listener Pro entitlement seam remains off;
-ordering and evaluation remain tracked in #2066 and #2067. These are ADR-BM-6
-Line 4 phase 4 candidates, with free basics supporting Line 1 engagement.
+advanced ordering styles remain unavailable. Evaluation stays tracked in #2067.
+These are ADR-BM-6 Line 4 phase 4 candidates, with free basics supporting Line 1
+engagement.
 See [My Mix](../features/agent_taste_intelligence.md#my-mix-2065).
+
+### Ordering after selection
+
+`HabitOrderingService` reorders only the My Mix selector's approved batch,
+before `AgentOrchestratorService` plans each transition. A pure episode reducer
+maps existing trusted, owner-scoped playback starts and matched outcomes into
+decayed lane-pair counts. Current analytics consent, playback training, reset
+and hidden controls govern every read. Unknown music breaks adjacency; delayed
+saves do not become new starts. Aggregates contain lane IDs and counts only.
+
+The existing active DJ set supplies playback's optional `agentSessionId`,
+which the lifecycle mirror now preserves alongside completion provenance.
+Actual started playback provides the across-batch lane and measured-energy
+boundary; queued License records never teach transitions or establish that
+boundary. The existing bounded private My Mix cache also retains ordered pick
+IDs for initial autoplay through owner-only session history (`mixTrackIds`).
+Cache loss falls back to the ordinary history behavior.
+
+With sparse evidence or unavailable history, deterministic neutral ordering
+uses lane strength, measured energy continuity and rank. Learning can avoid
+bad transitions or permit repeatedly successful measured energy jumps. The
+output is an exact permutation, retaining quota coverage and global policy.
+The future gated #1971 sequencer can refine tempo/key order within lane runs;
+this slice introduces neither model input nor DSP audio processing.

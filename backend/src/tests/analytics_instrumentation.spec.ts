@@ -296,6 +296,7 @@ describe("AnalyticsInstrumentationService", () => {
       artistId: "artist-1",
       actorUserId: "user-1",
       sessionId: "browser-session-1",
+      agentSessionId: "dj-session-1",
       playbackInstanceId: "playback-instance-1",
       playlistId: "playlist-1",
       localHourBucket: "afternoon",
@@ -307,6 +308,7 @@ describe("AnalyticsInstrumentationService", () => {
         action: "accept",
         trackId: "track-1",
         metadata: expect.objectContaining({
+          agentSessionId: "dj-session-1",
           playlistId: "playlist-1",
           localHourBucket: "afternoon",
           weekdayKind: "weekend",

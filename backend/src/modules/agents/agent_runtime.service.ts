@@ -31,6 +31,7 @@ type SessionMixSnapshot = {
   sessionId: string;
   coverage: MixCoverage;
   demand: MyMixLaneDemandObservation[];
+  trackIds: string[];
 };
 
 const MY_MIX_SESSION_CACHE_LIMIT = 128;
@@ -79,6 +80,13 @@ export class AgentRuntimeService {
     this.myMixSessions.delete(key);
     this.myMixSessions.set(key, cached);
     return structuredClone(cached.coverage);
+  }
+
+  /** Latest ordered batch; private, owner-bound and ephemeral like coverage. */
+  getMyMixTrackOrder(userId: string, sessionId: string): string[] | undefined {
+    const cached = this.myMixSessions.get(this.sessionCacheKey(userId, sessionId));
+    if (!cached || cached.userId !== userId || cached.sessionId !== sessionId) return undefined;
+    return [...cached.trackIds];
   }
 
   takeMyMixDemandObservations(userId: string, sessionId: string): MyMixLaneDemandObservation[] {
@@ -171,7 +179,7 @@ export class AgentRuntimeService {
     }));
     const key = this.sessionCacheKey(userId, sessionId);
     this.myMixSessions.delete(key);
-    this.myMixSessions.set(key, { userId, sessionId, coverage, demand });
+    this.myMixSessions.set(key, { userId, sessionId, coverage, demand, trackIds: result.tracks.map((track) => track.trackId) });
     if (this.myMixSessions.size > MY_MIX_SESSION_CACHE_LIMIT) {
       this.myMixSessions.delete(this.myMixSessions.keys().next().value!);
     }
