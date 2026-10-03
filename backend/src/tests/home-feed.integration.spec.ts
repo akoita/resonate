@@ -8,7 +8,9 @@
  *       played-item references in explanation strings)
  *   (c) artist diversity cap: max 2 items per artist per rail; feed-wide
  *       dedupe: a track appears in at most one rail
- *   (d) exploration slice present and flagged, drawn from low-data tracks
+ *   (d) exploration slice present and flagged, drawn from low-data tracks:
+ *       fewer than the audience floor of real listeners, whatever the
+ *       popularity tables hold, and one card per release (#2050)
  *   (e) impression rotation: rendered ids enter served history, and a second
  *       render sinks previously-served items to the rail tail
  *   (f) a genuinely COLD user gets the explicit "Catalog signal" rail (or an
@@ -247,6 +249,78 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
     for (const item of exploration.items) {
       expect(item.reasons).toContain("exploration:fresh");
     }
+  });
+
+  it("exploration never shows two tracks from one release (#2050)", async () => {
+    await prisma.recommendationProfile.update({
+      where: { userId: WARM_USER },
+      data: { servedTrackIds: [] },
+    });
+    const { homeFeed } = newService();
+    const feed = await homeFeed.getHomeFeed(WARM_USER);
+    const exploration = feed.rails.find((rail) => rail.kind === "exploration")!;
+    const releaseIds = exploration.items.map((item) => item.releaseId);
+    expect(new Set(releaseIds).size).toBe(releaseIds.length);
+    // The three-track fresh release fills at most one card.
+    expect(
+      exploration.items.filter((item) => item.releaseId === `${TEST_PREFIX}fresh_release`).length,
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it("exploration tests real listening, not a missing popularity row (#2050)", async () => {
+    // Two brand-new releases with no TrackPopularity row: one already heard by
+    // the audience floor (3 distinct listeners), one heard by a single person.
+    const heard = `${TEST_PREFIX}heard_release`;
+    const quiet = `${TEST_PREFIX}quiet_release`;
+    for (const id of [heard, quiet]) {
+      await prisma.release.create({
+        data: {
+          id,
+          artistId: FRESH_ARTIST,
+          title: `Release ${id}`,
+          status: "ready",
+          genre: `${TEST_PREFIX}underground`,
+        },
+      });
+      await prisma.track.create({
+        data: { id: `${id}_track`, releaseId: id, title: "Lead", position: 1, explicit: false },
+      });
+    }
+    const play = (track: string, actor: string, n: number) => ({
+      eventId: `${TEST_PREFIX}audience_${track}_${n}`,
+      eventName: "playback.started",
+      eventVersion: 1,
+      occurredAt: new Date(),
+      receivedAt: new Date(),
+      producer: "playback-service",
+      environment: "test",
+      privacyTier: "pseudonymous",
+      consentBasis: "consent",
+      subjectType: "track",
+      subjectId: track,
+      actorId: actor,
+      payload: { trackId: track },
+      envelope: {},
+    });
+    await prisma.analyticsEvent.createMany({
+      data: [
+        ...["a", "b", "c"].map((actor, n) => play(`${heard}_track`, `${TEST_PREFIX}listener_${actor}`, n)),
+        play(`${quiet}_track`, `${TEST_PREFIX}listener_a`, 9),
+      ],
+    });
+    expect(await prisma.trackPopularity.count({
+      where: { trackId: { in: [`${heard}_track`, `${quiet}_track`] } },
+    })).toBe(0);
+
+    await prisma.recommendationProfile.update({
+      where: { userId: WARM_USER },
+      data: { servedTrackIds: [] },
+    });
+    const { homeFeed } = newService();
+    const feed = await homeFeed.getHomeFeed(WARM_USER);
+    const ids = feed.rails.find((rail) => rail.kind === "exploration")!.items.map((item) => item.id);
+    expect(ids).not.toContain(`${heard}_track`);
+    expect(ids).toContain(`${quiet}_track`);
   });
 
   it("impression rotation: rendered ids enter served history and sink on re-render", async () => {
