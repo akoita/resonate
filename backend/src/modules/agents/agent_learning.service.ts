@@ -60,6 +60,8 @@ export type AgentTasteSignalInput = {
   /** Unknown persisted actions are valid when they carry a finite stored weight. */
   action: string;
   trackId: string;
+  /** Internal user-scoped session grouping; never returned in taste summaries. */
+  sessionKey?: string;
   createdAt?: Date;
   weight?: number;
   genre?: string | null;
@@ -899,7 +901,7 @@ function applyLegacyProfilePolicy(profile: AgentTasteProfile, policy?: TasteMemo
   };
 }
 
-async function readTasteHistory(
+export async function readTasteHistory(
   userId: string,
   options: {
     policy: TasteMemoryPolicy;
@@ -973,6 +975,9 @@ async function readTasteHistory(
     return {
       action: signal.action,
       trackId: signal.trackId,
+      sessionKey: signal.sessionId ? `agent:${signal.sessionId}` :
+        /^playback_[a-f0-9]{32}$/.test(jsonString(metadata.playbackSessionId) ?? "")
+          ? jsonString(metadata.playbackSessionId) : undefined,
       weight: signal.weight,
       createdAt: signal.createdAt,
       genre: release.genre,

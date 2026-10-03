@@ -152,7 +152,7 @@ const AUTH_TARGETS = [
     // less of" box and a previewed edit, drawn from a fixed taste memory so the
     // picture does not need a backend.
     mockTasteMemory: true,
-    viewportHeight: 2400,
+    viewportHeight: 2800,
     prepare: async (page) => {
       await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
       await page.locator(".settings-nav button").filter({ hasText: "Taste Memory" }).first().click();
@@ -332,6 +332,16 @@ async function capture(page, targets, passName) {
     }
     if (ready?.mockTasteMemory) {
       const createdAt = "2026-09-20T09:00:00.000Z";
+      const laneContexts = (weights) => ({
+        "night:weekday": weights.nightWeekday ?? 0,
+        "night:weekend": weights.nightWeekend ?? 0,
+        "morning:weekday": weights.morningWeekday ?? 0,
+        "morning:weekend": weights.morningWeekend ?? 0,
+        "afternoon:weekday": weights.afternoonWeekday ?? 0,
+        "afternoon:weekend": weights.afternoonWeekend ?? 0,
+        "evening:weekday": weights.eveningWeekday ?? 0,
+        "evening:weekend": weights.eveningWeekend ?? 0,
+      });
       await page.route("**/recommendations/taste-memory", (request) => request.fulfill({
         json: {
           schemaVersion: "listener-taste-memory/v1",
@@ -362,6 +372,28 @@ async function capture(page, targets, passName) {
                 favoredMoods: ["Calm"],
               },
             ],
+            listeningLanes: [
+              {
+                id: "lane_0123456789abcdef0123456789abcdef",
+                label: "Soul · Warm",
+                genreWeights: { Soul: 0.8, Jazz: 0.5 },
+                moodWeights: { Warm: 0.7 },
+                strength: 0.9,
+                contexts: laneContexts({ eveningWeekday: 0.9, nightWeekend: 0.3 }),
+                energyBand: "low",
+                hidden: false,
+              },
+              {
+                id: "lane_fedcba9876543210fedcba9876543210",
+                label: "Ambient · Zen",
+                genreWeights: { Ambient: 0.9 },
+                moodWeights: { Zen: 0.8 },
+                strength: 0.8,
+                contexts: laneContexts({ nightWeekend: 0.95 }),
+                energyBand: null,
+                hidden: true,
+              },
+            ],
             recentIntents: [],
             noveltyPattern: "Likes a mix of familiar and new",
             commercePreference: "Not enough signal yet",
@@ -370,6 +402,7 @@ async function capture(page, targets, passName) {
           controls: [
             { id: "guide-control-1", signalType: "genre", value: "Jazz", action: "boosted", source: "declared_text_edit", createdAt },
             { id: "guide-control-2", signalType: "mood", value: "Dark", action: "downranked", source: null, createdAt },
+            { id: "guide-lane-control-1", signalType: "lane", value: "lane_fedcba9876543210fedcba9876543210", action: "hidden", source: "settings", createdAt },
           ],
           privacy: {
             socialMatching: "disabled",

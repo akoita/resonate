@@ -3777,7 +3777,8 @@ export type TasteSignalControl = {
     | "replay"
     | "commerce"
     | "energy"
-    | "note";
+    | "note"
+    | "lane";
   value: string;
   /** `boosted` and `declared` only come from confirmed taste edits (#1961). */
   action: "hidden" | "downranked" | "boosted" | "declared";
@@ -3829,6 +3830,27 @@ export type TasteMemoryContextSummary = {
   favoredMoods: string[];
 };
 
+export type ListeningLaneContextKey =
+  | "night:weekday"
+  | "night:weekend"
+  | "morning:weekday"
+  | "morning:weekend"
+  | "afternoon:weekday"
+  | "afternoon:weekend"
+  | "evening:weekday"
+  | "evening:weekend";
+
+export type ListeningLane = {
+  id: string;
+  label: string;
+  genreWeights: Record<string, number>;
+  moodWeights: Record<string, number>;
+  strength: number;
+  contexts: Partial<Record<ListeningLaneContextKey, number>>;
+  energyBand: "low" | "medium" | "high" | null;
+  hidden: boolean;
+};
+
 export type TasteMemoryResponse = {
   schemaVersion: "listener-taste-memory/v1";
   settings: TasteMemorySettings;
@@ -3839,6 +3861,7 @@ export type TasteMemoryResponse = {
     favoredEnergyBands?: string[];
     favoredTempoBands?: string[];
     contexts?: TasteMemoryContextSummary[];
+    listeningLanes?: ListeningLane[];
     recentIntents: string[];
     noveltyPattern: string;
     commercePreference: string;

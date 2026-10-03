@@ -1,8 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resetTasteMemory as resetTasteMemoryApi, type TasteMemoryResponse } from "../../lib/api";
+import {
+  resetTasteMemory as resetTasteMemoryApi,
+  type ListeningLane,
+  type TasteMemoryResponse,
+  type TasteSignalControl,
+} from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
+  DECLARED_TEXT_EDIT_SOURCE: "declared_text_edit",
   getTasteMemory: vi.fn(),
   removeTasteSignalControl: vi.fn(),
   resetTasteMemory: vi.fn(),
@@ -14,7 +20,10 @@ vi.mock("../../lib/api", () => ({
 vi.mock("../../lib/productAnalytics", () => ({ recordProductAnalytics: vi.fn() }));
 
 import TasteMemorySettingsPanel, {
+  filterGenericTasteControls,
+  ListeningLaneSection,
   resetTasteMemoryState,
+  TasteSignalControlList,
   TasteMemorySummary,
 } from "./TasteMemorySettingsPanel";
 
@@ -50,6 +59,39 @@ function memory(summary: TasteMemoryResponse["summary"] = legacySummary): TasteM
     },
   };
 }
+
+const laneId = "lane_0123456789abcdef0123456789abcdef";
+const listeningLane: ListeningLane = {
+  id: laneId,
+  label: "Soul · Warm",
+  genreWeights: { Soul: 0.8 },
+  moodWeights: { Warm: 0.7 },
+  strength: 0.9,
+  contexts: {
+    "night:weekend": 0.3,
+    "evening:weekday": 0.8,
+  },
+  energyBand: "medium",
+  hidden: true,
+};
+
+const laneControl: TasteSignalControl = {
+  id: "control-hidden-lane",
+  signalType: "lane",
+  value: laneId,
+  action: "hidden",
+  source: "settings",
+  createdAt: "2026-10-03T10:00:00.000Z",
+};
+
+const declaredControl: TasteSignalControl = {
+  id: "control-declared-jazz",
+  signalType: "genre",
+  value: "Jazz",
+  action: "boosted",
+  source: "declared_text_edit",
+  createdAt: "2026-10-03T10:00:00.000Z",
+};
 
 describe("TasteMemorySettingsPanel", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -95,8 +137,55 @@ describe("TasteMemorySettingsPanel", () => {
     expect(html).not.toContain("Mornings · weekends");
   });
 
+  it("renders lane catalog labels and coarse context without exposing opaque IDs", () => {
+    const html = renderToStaticMarkup(
+      <ListeningLaneSection
+        lanes={[listeningLane]}
+        controls={[laneControl]}
+        saving={false}
+        onHide={vi.fn()}
+        onRestore={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("Your listening lanes");
+    expect(html).toContain("Soul · Warm");
+    expect(html).toContain("Weekday evenings");
+    expect(html).toContain("Weekend nights");
+    expect(html).toContain("Typical energy: Medium");
+    expect(html).toContain("Restore to mixes");
+    expect(html).toContain("future mixes");
+    expect(html).not.toContain(laneId);
+  });
+
+  it("shows repeated-session guidance when no lanes have been learned", () => {
+    const html = renderToStaticMarkup(
+      <ListeningLaneSection lanes={[]} controls={[]} saving={false} onHide={vi.fn()} onRestore={vi.fn()} />,
+    );
+
+    expect(html).toContain("Repeated listening sessions are needed");
+    expect(html).toContain("Mixes are not available yet");
+  });
+
+  it("keeps lane controls out of the generic editor and gives orphan hides a safe restore row", () => {
+    const orphanId = "lane_fedcba9876543210fedcba9876543210";
+    const orphanControl = { ...laneControl, id: "orphan-lane-control", value: orphanId };
+    const controls = [laneControl, orphanControl, declaredControl];
+    const visibleControls = filterGenericTasteControls(controls, [listeningLane]);
+    const html = renderToStaticMarkup(
+      <TasteSignalControlList controls={visibleControls} savingKey={null} onRestore={vi.fn()} />,
+    );
+
+    expect(visibleControls).toEqual([orphanControl, declaredControl]);
+    expect(html).toContain("Hidden listening lane");
+    expect(html).toContain('aria-label="Restore hidden listening lane"');
+    expect(html).toContain("Jazz");
+    expect(html).not.toContain(laneId);
+    expect(html).not.toContain(orphanId);
+  });
+
   it("clears every taste dimension after the mocked reset API succeeds", async () => {
-    const populatedMemory = memory({
+    const populatedSummary: TasteMemoryResponse["summary"] = {
       ...legacySummary,
       favoredEnergyBands: ["low"],
       favoredTempoBands: ["mid"],
@@ -106,7 +195,12 @@ describe("TasteMemorySettingsPanel", () => {
         favoredGenres: ["Soul"],
         favoredMoods: ["Warm"],
       }],
-    });
+      listeningLanes: [listeningLane],
+    };
+    const populatedMemory: TasteMemoryResponse = {
+      ...memory(populatedSummary),
+      controls: [declaredControl, laneControl],
+    };
     const resetSettings = { ...settings, resetAt: "2026-10-03T10:00:00.000Z" };
     vi.mocked(resetTasteMemoryApi).mockResolvedValueOnce(resetSettings);
     const setMemory = vi.fn();
@@ -127,10 +221,12 @@ describe("TasteMemorySettingsPanel", () => {
       favoredEnergyBands: [],
       favoredTempoBands: [],
       contexts: [],
+      listeningLanes: [],
       recentIntents: [],
       noveltyPattern: "Balanced discovery",
       commercePreference: "Listening first",
     });
+    expect(updatedMemory.controls).toEqual([declaredControl]);
   });
 
   it("keeps the training toggle label and explains playback and library learning consent", () => {

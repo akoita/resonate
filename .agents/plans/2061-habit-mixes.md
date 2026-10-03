@@ -41,7 +41,8 @@ infrastructure (ADR-BM-6), enabling Line 4 Listener Pro, phase 4.
 
 - #2063: decayed, multidimensional taste profile — implemented locally on
   `feat/2063-habit-profile-v2`; see [its plan](2063-habit-profile-v2.md).
-- #2064: deterministic listening lanes — planned.
+- #2064: deterministic listening lanes — implemented and verified locally on
+  `feat/2064-listening-lanes`; see [its plan](2064-listening-lanes.md).
 - #2065: My Mix and editable lane quotas — planned.
 - #2066: learned ordering — planned.
 - #2067: measurement and promotion evidence — planned.
