@@ -330,6 +330,30 @@ The warehouse export and Dataflow transform accept `player.segment_loop_*` and
 settings; these events do not increment play counts or payouts. The shared event
 fixture covers all six control events in both transforms.
 
+## Listening habit context (#2062)
+
+Consented playback lifecycle and completion events include optional
+`localHourBucket` (`night`: 0–5, `morning`: 6–11, `afternoon`: 12–17,
+`evening`: 18–23) and `weekdayKind` (`weekday`, `weekend`). These categories are
+computed in the browser and validated at the API boundary. Exact local time and
+time zone are never sent or stored. The existing UTC envelope timestamps remain.
+Both warehouse transforms retain the categories in fact dimensions.
+
+Completion events now carry `playbackInstanceId` for retry deduplication and
+`repeatMode`. Playlist playback carries `playlistId` on lifecycle events and on
+its existing `accept` signal, without mirroring `playlist.played` a second time.
+A recent completed play yields a `replay` signal on the next completion;
+segment-loop enable and finite-repeat set yield one `loop` reinforcement per
+track/browser session; library removal yields `unsave`. Updates, clears and
+heartbeats do not reinforce habits. These mappings change learning signals,
+without increasing play counts or altering payout mechanics.
+
+Persistence requires current product-analytics consent and enabled playback
+training, and uses durable user-scoped retry keys. See
+[Agent Taste Intelligence](agent_taste_intelligence.md#learning-from-listening-habits-2062)
+for weights, replay eligibility, session isolation and remaining epic work.
+This is vision-neutral infrastructure (ADR-BM-6).
+
 ## Verification
 
 Current verification:

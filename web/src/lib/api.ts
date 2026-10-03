@@ -1321,6 +1321,9 @@ export type ClientTelemetryRefused = {
 
 export type ClientTelemetryResponse = ClientTelemetryRecorded | ClientTelemetryRefused;
 
+export type PlaybackLocalHourBucket = "night" | "morning" | "afternoon" | "evening";
+export type PlaybackWeekdayKind = "weekday" | "weekend";
+
 export function isClientTelemetryRefused(
   response: ClientTelemetryResponse | null | undefined,
 ): response is ClientTelemetryRefused {
@@ -1332,6 +1335,7 @@ export type PlaybackCompletedAnalyticsInput = {
   artistId?: string;
   releaseId?: string;
   sessionId?: string;
+  playbackInstanceId?: string;
   source?: string;
   initiator?: "listener" | "external_agent" | "ai_dj";
   agentOriginated?: boolean;
@@ -1341,6 +1345,10 @@ export type PlaybackCompletedAnalyticsInput = {
   railId?: string;
   /** #1455: ranker variant of the listener who was served the rail. */
   rankerVariant?: string;
+  playlistId?: string;
+  repeatMode?: "none" | "one" | "all";
+  localHourBucket?: PlaybackLocalHourBucket;
+  weekdayKind?: PlaybackWeekdayKind;
   completionRatio: number;
   durationMs?: number;
 };
@@ -1379,6 +1387,9 @@ export type PlaybackLifecycleAnalyticsInput = {
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
+  playlistId?: string;
+  localHourBucket?: PlaybackLocalHourBucket;
+  weekdayKind?: PlaybackWeekdayKind;
   /** #1455: Home rail the play came from (label only). */
   railId?: string;
   /** #1455: ranker variant of the listener who was served the rail. */

@@ -177,7 +177,9 @@ export class AgentConfigController {
         @Req() req: any,
         @Body() body: { trackId: string; action: string; sessionId?: string; metadata?: Record<string, unknown> }
     ) {
-        if (!body.trackId || !isAgentSignalAction(body.action)) {
+        // Habit-only actions enter through consented analytics instrumentation,
+        // where browser-session deduplication and training controls are enforced.
+        if (!body.trackId || !isAgentSignalAction(body.action) || body.action === "loop" || body.action === "unsave") {
             throw new BadRequestException({
                 reason: "trackId and valid action are required",
                 acceptedActions: ["accept", "skip", "complete", "save", "replay", "add_to_playlist", "purchase"],

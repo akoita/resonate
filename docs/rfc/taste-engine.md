@@ -90,12 +90,12 @@ Three code facts shape the design:
 | --- | --- | --- | --- |
 | **Commitment** | Purchase, Shows pledge (settled), collected moment, published remix of a track, follow | `purchase` in `AGENT_SIGNAL_WEIGHTS`; others new | Highest; slow decay |
 | **Declared** | Hide, downrank, reset (#1009); "less of this"; written preferences; passport edits | Taste memory controls | Overrides inference (ADR-TE-2.6) |
-| **Behavioral** | Full play, replay, save, playlist add, skip, early skip | `AgentSignal` (#1449) | Current weights; normal decay |
-| **Context** | Session intent, time of day, device, session position | Session request | Applied at ranking time only; never stored as taste |
+| **Behavioral** | Full play, replay, loop intent, save/removal, playlist add, skip, early skip | `AgentSignal` (#1449, #2062) | Configured weights; normal decay planned in #2063 |
+| **Context** | Session intent, coarse time of day/week, session position | Session request and bounded signal metadata (#2062) | Current request steers ranking; coarse contextual affinities are planned in #2063, without changing declared taste |
 | **Scene** | City and community aggregates above `DISCOVERY_MIN_AUDIENCE` | Popularity marts (#1451) | Lowest; cold start and exploration only |
 
 Proposed additions to `AGENT_SIGNAL_WEIGHTS`
-(`backend/src/modules/agents/agent_learning.service.ts`), as starting values
+(`backend/src/config/agent_learning.ts`, re-exported by the learning service), as starting values
 to tune with the offline evaluation (#978, #1455):
 
 | Action | Weight | Notes |
@@ -106,6 +106,15 @@ to tune with the offline evaluation (#978, #1455):
 | `remix_published` | 6 | On the source track |
 | `follow` | 4 | On the artist's catalog |
 | `less_of_this` | −4 | Declared; also written to taste memory as a downrank |
+
+Habit telemetry [#2062](https://github.com/akoita/resonate/issues/2062) adds
+configured `loop` (+2.5) and `unsave` (−2) weights. Loop intent is capped once
+per track/browser session across segment loops and finite repeat counts; a
+completion within seven days of an earlier completed play maps to the existing
+`replay` (+2) weight. The browser sends only hour and weekday categories,
+never a time zone or exact local clock. These categories are retained as bounded
+signal metadata and warehouse dimensions, under analytics consent and the
+playback-training setting. See the [learning-loop contract](../features/agent_taste_intelligence.md#learning-from-listening-habits-2062).
 
 Decay: behavioral signals use a 60-day half-life, commitment signals 365 days,
 declared signals never decay until the listener removes them. Weights and

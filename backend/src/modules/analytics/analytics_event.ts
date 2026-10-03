@@ -95,21 +95,21 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "completionRatio", "durationMs", "source", "railId", "rankerVariant", "experimentKey", "surface"],
+    payloadFields: ["trackId", "artistId", "releaseId", "completionRatio", "durationMs", "source", "railId", "rankerVariant", "experimentKey", "surface", "localHourBucket", "weekdayKind", "playlistId", "playbackInstanceId", "repeatMode"],
   },
   {
     eventName: "playback.started",
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "source", "railId", "rankerVariant", "experimentKey", "surface"],
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "source", "railId", "rankerVariant", "experimentKey", "surface", "localHourBucket", "weekdayKind", "playlistId"],
   },
   {
     eventName: "playback.heartbeat",
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs"],
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "localHourBucket", "weekdayKind", "playlistId"],
   },
   {
     // #1449 WS-2: explicit deliberate-skip signal, distinct from a short
@@ -118,7 +118,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "playback-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason", "railId", "rankerVariant", "experimentKey", "surface"],
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason", "railId", "rankerVariant", "experimentKey", "surface", "localHourBucket", "weekdayKind", "playlistId"],
   },
   {
     eventName: "onboarding.step_completed",

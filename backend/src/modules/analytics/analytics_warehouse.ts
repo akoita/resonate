@@ -354,6 +354,8 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       geoSource: clean.geoSource,
       geoPrecision: clean.geoPrecision,
       playlistId: stringPayload(clean.payload, "playlistId"),
+      localHourBucket: stringPayload(clean.payload, "localHourBucket"),
+      weekdayKind: stringPayload(clean.payload, "weekdayKind"),
       step: stringPayload(clean.payload, "step"),
       phase: stringPayload(clean.payload, "phase"),
       status: stringPayload(clean.payload, "status"),

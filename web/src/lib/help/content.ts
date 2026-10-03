@@ -2967,7 +2967,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "You decide how much your activity personalizes Resonate. From Settings you can view a plain-language summary of your taste, opt in or out of social taste matching, control city/scene discovery, choose whether AI DJ playback trains your taste, hide or downrank signals, and reset your taste inputs — without ever exposing your raw history.",
+            text: "You decide how much your activity personalizes Resonate. From Settings you can view a plain-language summary of your taste, opt in or out of social taste matching, control city/scene discovery, choose whether AI DJ playback trains your taste, hide or downrank signals, and reset your taste inputs — without ever exposing your raw history. Turning off AI DJ playback trains taste also pauses learning from player starts, skips, completions, loops, library saves and removals, and playlist additions. This feedback is used only with your permission for optional usage measurement. Playback sends only broad time-of-day and weekday/weekend categories, never your time zone or exact local time.",
           },
           {
             kind: "paragraph",
