@@ -1,12 +1,8 @@
-js {
-  const cfg = require("includes/agent_taste_config");
-}
-
 config {
   type: "view",
   name: "agent_taste_materialization_report",
   tags: ["agent_taste", "verification"],
-  dependencies: [cfg.scoresTableName(dataform.projectConfig), cfg.trainingTableName(dataform.projectConfig)]
+  dependencies: [require("includes/agent_taste_config").scoresTableName(dataform.projectConfig), require("includes/agent_taste_config").trainingTableName(dataform.projectConfig)]
 }
 
 SELECT
@@ -19,7 +15,7 @@ SELECT
   MAX(recommendation_score) AS max_recommendation_score,
   MAX(updated_at) AS newest_score_at,
   TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(updated_at), HOUR) AS newest_age_hours
-FROM ${ref(cfg.scoresTableName(dataform.projectConfig))}
+FROM ${ref(require("includes/agent_taste_config").scoresTableName(dataform.projectConfig))}
 
 UNION ALL
 
@@ -33,5 +29,5 @@ SELECT
   NULL AS max_recommendation_score,
   MAX(occurred_at) AS newest_score_at,
   TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(occurred_at), HOUR) AS newest_age_hours
-FROM ${ref(cfg.trainingTableName(dataform.projectConfig))}
+FROM ${ref(require("includes/agent_taste_config").trainingTableName(dataform.projectConfig))}
 GROUP BY signal_type

@@ -139,7 +139,10 @@ class AgentTasteSqlTest(unittest.TestCase):
 
         scores_sqlx = (DATAFORM_DEFINITIONS / "user_track_recommendation_scores.sqlx").read_text()
         self.assertIn('tags: ["agent_taste", "baseline", "serving"]', scores_sqlx)
-        self.assertIn('ref(cfg.trainingTableName(dataform.projectConfig))', scores_sqlx)
+        self.assertIn(
+            'ref(require("includes/agent_taste_config").trainingTableName(dataform.projectConfig))',
+            scores_sqlx,
+        )
         self.assertIn('ref("track_intelligence_features")', scores_sqlx)
 
     def test_dataform_template_uses_compilation_variables_not_environment_literals(self):

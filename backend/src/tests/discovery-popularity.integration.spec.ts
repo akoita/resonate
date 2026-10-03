@@ -17,11 +17,13 @@
 
 import { prisma } from "../db/prisma";
 import { DiscoveryPopularityService } from "../modules/catalog/discovery-popularity.service";
+import { createHash } from "crypto";
 
 const TEST_PREFIX = `pop_${Date.now()}_`;
 const GENRE = `${TEST_PREFIX}hiphop`; // unique genre isolates rank assertions
 const QUIET_GENRE = `${TEST_PREFIX}jazz`; // below-threshold everywhere
 const CLAIMED_GENRE = `${TEST_PREFIX}pop`; // credited name == account displayName
+const PURCHASE_GENRE = `${TEST_PREFIX}purchase`; // keeps purchase scoring out of the play-ranking fixture
 const USER_ID = `${TEST_PREFIX}owner`;
 const HOT_ARTIST = `${TEST_PREFIX}hot_artist`; // manager account; displayName "Hot Artist"
 const HOT_CREDITED_ID = `${TEST_PREFIX}hot_credited_artist`;
@@ -31,6 +33,7 @@ const STALE_DUPLICATE_ARTIST = `${TEST_PREFIX}stale_duplicate_artist`;
 const HOT_RELEASE = `${TEST_PREFIX}hot_release`;
 const QUIET_RELEASE = `${TEST_PREFIX}quiet_release`;
 const CLAIMED_RELEASE = `${TEST_PREFIX}claimed_release`;
+const PURCHASE_RELEASE = `${TEST_PREFIX}purchase_release`;
 // Credited artist for HOT_RELEASE — DIFFERENT from the manager account label.
 const HOT_CREDITED = `${TEST_PREFIX}Hot Credited`;
 // Self-managed artist whose account displayName IS the credited name.
@@ -40,6 +43,12 @@ const TRACK_B = `${TEST_PREFIX}track_b`; // 3 listeners + a playlist save
 const TRACK_C = `${TEST_PREFIX}track_c`; // 2 listeners — below threshold
 const TRACK_D = `${TEST_PREFIX}track_d`; // 3 listeners — claimed artist, no primaryArtist
 const TRACK_AI = `${TEST_PREFIX}track_ai`; // fully AI-generated — never promotional
+const TRACK_UNTRUSTED = `${TEST_PREFIX}track_untrusted`;
+const TRACK_PURCHASE = `${TEST_PREFIX}track_purchase`;
+
+function trustedActor(label: string) {
+  return `user_${createHash("sha256").update(`${TEST_PREFIX}${label}`).digest("hex").slice(0, 32)}`;
+}
 
 let eventSeq = 0;
 async function seedEvent(
@@ -47,6 +56,12 @@ async function seedEvent(
   trackId: string,
   actorId: string,
   payloadExtra: Record<string, unknown> = {},
+  options: {
+    actorId?: string;
+    privacyTier?: string;
+    consentBasis?: string | null;
+    omitDiscoveryFlags?: boolean;
+  } = {},
 ) {
   eventSeq += 1;
   await prisma.analyticsEvent.create({
@@ -58,9 +73,14 @@ async function seedEvent(
       receivedAt: new Date(),
       producer: "backend",
       environment: "test",
-      privacyTier: "internal",
-      actorId,
-      payload: { trackId, ...payloadExtra },
+      privacyTier: options.privacyTier ?? "pseudonymous",
+      consentBasis: options.consentBasis === undefined ? "consent" : options.consentBasis,
+      actorId: options.actorId ?? trustedActor(actorId),
+      payload: {
+        trackId,
+        ...(options.omitDiscoveryFlags ? {} : { aiDisclosureLevel: "NONE", selfEngagement: false }),
+        ...payloadExtra,
+      },
       envelope: {},
     },
   });
@@ -127,12 +147,23 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
         },
       },
     });
+    await prisma.release.create({
+      data: {
+        id: PURCHASE_RELEASE,
+        artistId: HOT_ARTIST,
+        title: "Purchase Release",
+        status: "ready",
+        genre: PURCHASE_GENRE,
+      },
+    });
     await prisma.track.createMany({
       data: [
         { id: TRACK_A, releaseId: HOT_RELEASE, title: "Anthem", position: 1, explicit: false },
         { id: TRACK_B, releaseId: HOT_RELEASE, title: "Deep Cut", position: 2, explicit: false },
         { id: TRACK_C, releaseId: QUIET_RELEASE, title: "Quiet Tune", position: 1, explicit: false },
         { id: TRACK_D, releaseId: CLAIMED_RELEASE, title: "Claimed Anthem", position: 1, explicit: false },
+        { id: TRACK_UNTRUSTED, releaseId: HOT_RELEASE, title: "Untrusted Events", position: 4, explicit: false },
+        { id: TRACK_PURCHASE, releaseId: PURCHASE_RELEASE, title: "Settled Support", position: 1, explicit: false },
         {
           id: TRACK_AI,
           releaseId: HOT_RELEASE,
@@ -175,7 +206,30 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     for (const listener of ["l1", "l2", "l3", "l4", "l5"]) {
       await seedEvent("playback.completed", TRACK_AI, `${TEST_PREFIX}ai_${listener}`, {
         completionRatio: 1,
+        aiDisclosureLevel: "ALL",
       });
+    }
+
+    // Unknown or invalid trust metadata never contributes to audience counts.
+    await seedEvent("playback.completed", TRACK_UNTRUSTED, "wrong_basis", { completionRatio: 1 }, {
+      consentBasis: "platform_analytics:v1",
+    });
+    await seedEvent("playback.completed", TRACK_UNTRUSTED, "anonymous", { completionRatio: 1 }, {
+      actorId: "anonymous",
+    });
+    await seedEvent("playback.completed", TRACK_UNTRUSTED, "missing_flags", { completionRatio: 1 }, {
+      omitDiscoveryFlags: true,
+    });
+    await seedEvent("playback.completed", TRACK_UNTRUSTED, "self_engagement", {
+      completionRatio: 1,
+      selfEngagement: true,
+    });
+
+    // Settled purchases are counted only under an explicit contract basis.
+    for (const [index, listener] of ["l1", "l2", "l3"].entries()) {
+      await seedEvent("commerce.settled", TRACK_PURCHASE, `${TEST_PREFIX}${listener}`, {
+        paymentId: `${TEST_PREFIX}purchase_${index}`,
+      }, { consentBasis: "performance_of_contract" });
     }
 
     await service.refresh("7d");
@@ -228,6 +282,23 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
       where: { trackId: TRACK_AI },
     });
     expect(rows).toHaveLength(0);
+  });
+
+  it("fails closed on untrusted actors, missing flags, self-engagement, and other bases", async () => {
+    const rows = await prisma.trackPopularity.findMany({
+      where: { trackId: TRACK_UNTRUSTED },
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("counts settled contract purchases without treating them as plays", async () => {
+    const row = await prisma.trackPopularity.findUnique({
+      where: { trackId_window_genre: { trackId: TRACK_PURCHASE, window: "7d", genre: "" } },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.purchases).toBe(3);
+    expect(row!.plays).toBe(0);
+    expect(row!.uniqueListeners).toBe(3);
   });
 
   it("counts playlist saves into score and the saves column", async () => {
@@ -321,7 +392,9 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
       },
     });
     for (const listener of ["l1", "l2", "l3"]) {
-      await seedEvent("playback.completed", trackId, `${TEST_PREFIX}ambiguous_${listener}`);
+      await seedEvent("playback.completed", trackId, `${TEST_PREFIX}ambiguous_${listener}`, {
+        completionRatio: 1,
+      });
     }
     await service.refresh("24h");
     expect(await prisma.trackPopularity.findFirst({ where: { trackId, genre } })).not.toBeNull();
@@ -353,7 +426,9 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
       },
     });
     for (const listener of ["l1", "l2", "l3"]) {
-      await seedEvent("playback.completed", trackId, `${TEST_PREFIX}joint_${listener}`);
+      await seedEvent("playback.completed", trackId, `${TEST_PREFIX}joint_${listener}`, {
+        completionRatio: 1,
+      });
     }
     await service.refresh("24h");
     const rows = await prisma.artistEngagement.findMany({ where: { window: "24h", genre } });

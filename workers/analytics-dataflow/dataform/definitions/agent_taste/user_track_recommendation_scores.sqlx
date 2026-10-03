@@ -1,12 +1,8 @@
-js {
-  const cfg = require("includes/agent_taste_config");
-}
-
 config {
   type: "table",
-  name: cfg.scoresTableName(dataform.projectConfig),
+  name: require("includes/agent_taste_config").scoresTableName(dataform.projectConfig),
   tags: ["agent_taste", "baseline", "serving"],
-  dependencies: ["track_intelligence_features", cfg.trainingTableName(dataform.projectConfig)]
+  dependencies: ["track_intelligence_features", require("includes/agent_taste_config").trainingTableName(dataform.projectConfig)]
 }
 
 WITH user_track AS (
@@ -28,7 +24,7 @@ WITH user_track AS (
     ARRAY_AGG(DISTINCT session_intent_name IGNORE NULLS LIMIT 5) AS session_intent_names,
     ARRAY_AGG(DISTINCT queue_style IGNORE NULLS LIMIT 5) AS queue_styles,
     MAX(occurred_at) AS last_signal_at
-  FROM ${ref(cfg.trainingTableName(dataform.projectConfig))}
+  FROM ${ref(require("includes/agent_taste_config").trainingTableName(dataform.projectConfig))}
   GROUP BY user_id, track_id
 ),
 scored AS (
@@ -92,7 +88,7 @@ SELECT
     agent_selected_count,
     intent_context_count
   ) AS explanation,
-  '${cfg.modelVersion(dataform.projectConfig)}' AS model_version,
+  '${require("includes/agent_taste_config").modelVersion(dataform.projectConfig)}' AS model_version,
   CURRENT_TIMESTAMP() AS updated_at
 FROM normalized
 WHERE recommendation_score > 0

@@ -1,0 +1,61 @@
+config {
+  type: "table",
+  name: require("includes/discovery_popularity_config").trackPopularityTableName(dataform.projectConfig),
+  tags: ["discovery_popularity", "serving"],
+  description: "Trusted track popularity snapshots by 24h/7d/30d window and genre. Rows below minimum audience are omitted.",
+  bigquery: {
+    partitionBy: "DATE(computed_at)",
+    clusterBy: ["window", "genre", "track_id"],
+  },
+}
+
+/*
+ * Cost note: each rebuild reads the 30-day trusted event view, which filters
+ * clean rows on occurredDate and raw consent basis on occurredAt. Physical
+ * pruning of events_raw depends on its configured partition column; verify the
+ * partition and dry-run bytes before enabling warehouse refreshes. The Postgres
+ * exporter reads this precomputed table only, with its own byte and row caps.
+ */
+WITH windows AS (
+  SELECT '24h' AS window, 24 * 60 * 60 AS window_seconds
+  UNION ALL SELECT '7d', 7 * 24 * 60 * 60
+  UNION ALL SELECT '30d', 30 * 24 * 60 * 60
+),
+genre_rows AS (
+  SELECT event_id, event_name, occurred_at, track_id, actor_id, '' AS genre, signal_kind, signal_id, completion_ratio
+  FROM ${ref(require("includes/discovery_popularity_config").eligibleEventsTableName(dataform.projectConfig))}
+  UNION ALL
+  SELECT event_id, event_name, occurred_at, track_id, actor_id, genre, signal_kind, signal_id, completion_ratio
+  FROM ${ref(require("includes/discovery_popularity_config").eligibleEventsTableName(dataform.projectConfig))}
+  WHERE genre != ''
+),
+windowed AS (
+  SELECT
+    g.*,
+    windows.window,
+    GREATEST(
+      0.1,
+      1.0 - SAFE_DIVIDE(
+        GREATEST(0, TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), g.occurred_at, SECOND)),
+        windows.window_seconds
+      )
+    ) AS decay
+  FROM genre_rows AS g
+  CROSS JOIN windows
+  WHERE g.occurred_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL windows.window_seconds SECOND)
+)
+SELECT
+  track_id,
+  window,
+  genre,
+  SUM(CASE WHEN signal_kind = 'play' THEN LEAST(1.5, GREATEST(0.0, completion_ratio)) * decay ELSE 0 END)
+    + ${require("includes/discovery_popularity_config").saveWeight(dataform.projectConfig)} * SUM(IF(signal_kind = 'save', decay, 0))
+    + ${require("includes/discovery_popularity_config").purchaseWeight(dataform.projectConfig)} * SUM(IF(signal_kind = 'purchase', decay, 0)) AS score,
+  COUNTIF(signal_kind = 'play') AS plays,
+  COUNT(DISTINCT actor_id) AS unique_listeners,
+  COUNTIF(signal_kind = 'save') AS saves,
+  COUNTIF(signal_kind = 'purchase') AS purchases,
+  CURRENT_TIMESTAMP() AS computed_at
+FROM windowed
+GROUP BY track_id, window, genre
+HAVING COUNT(DISTINCT actor_id) >= ${require("includes/discovery_popularity_config").minimumAudience(dataform.projectConfig)}

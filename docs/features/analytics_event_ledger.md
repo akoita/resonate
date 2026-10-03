@@ -143,6 +143,17 @@ Pipeline loss visibility is exposed through admin health checks and structured
 logs so quarantine, freshness, and missing identifier problems are visible
 before they damage future reports.
 
+## Discovery serving marts
+
+Playback, save and settled-purchase envelopes receive server-owned catalog
+eligibility dimensions before persistence and publication. Dataform discovery
+marts require trusted consent/contract bases, pseudonymous listeners and
+non-self, non-fully-AI metadata; unknown legacy dimensions fail closed.
+The bounded exporter replaces Postgres popularity snapshots and rotates Redis
+cache generations. Online discovery reads serving storage only. See
+[Discovery popularity and engagement](discovery_popularity.md) for the snapshot
+contract and private deployment tracking.
+
 ## Who It Is For
 
 - Product and growth teams measuring adoption, funnels, retention, demand, and
@@ -387,8 +398,8 @@ counts. See the [event taxonomy](../architecture/analytics_event_taxonomy_v1.md#
 Real authenticated staging verification passed on 2026-09-06: impressions and
 selections returned 201, and retries retained the event ID without growing the
 ledger. See the [Sprint 20 evidence](../sprints/2026-09-06-vision-sprint-20-player-action-telemetry.md#staging-outcome).
-No active Dataflow job existed in that staging project; the live check proves
-browser-to-ledger behavior, not streaming warehouse activation.
+That check proves browser-to-ledger behavior; streaming warehouse activation
+requires separate deployment verification.
 
 ## Follow-Up Work
 

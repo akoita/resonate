@@ -2884,6 +2884,7 @@ model TrackPopularity {
   plays           Int
   uniqueListeners Int
   saves           Int
+  purchases        Int      @default(0)
   computedAt      DateTime @default(now())
 
   @@unique([trackId, window, genre])
@@ -2899,6 +2900,7 @@ model ArtistEngagement {
   plays           Int
   uniqueListeners Int
   saves           Int
+  purchases        Int      @default(0)
   computedAt      DateTime @default(now())
 
   @@unique([artistId, window, genre])
