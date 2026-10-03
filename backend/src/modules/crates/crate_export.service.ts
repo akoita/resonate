@@ -16,6 +16,7 @@ import {
   CRATE_EXPORT_UNKNOWN_ARTIST,
   crateFileName,
   exportFeatures,
+  stemKeyConsensus,
   isCrateExportFormat,
   parseExportFolder,
   stemTypeRank,
@@ -235,6 +236,10 @@ export class CrateExportService {
             a.id.localeCompare(b.id),
         );
 
+      // Measured over every stem of the track, owned or not: the key is a fact
+      // about the song, and more measurements make agreement more telling.
+      const keyConsensus = stemKeyConsensus(stems.map((stem) => stem.audioFeatures));
+
       let ownedAny = false;
       let exported = 0;
       for (const stem of stems) {
@@ -250,7 +255,7 @@ export class CrateExportService {
         seenStems.add(stem.id);
         exported += 1;
 
-        const features = exportFeatures(stem.audioFeatures, original?.audioFeatures);
+        const features = exportFeatures(stem.audioFeatures, original?.audioFeatures, keyConsensus);
         drafts.push({
           position: item.position,
           trackId: track.id,

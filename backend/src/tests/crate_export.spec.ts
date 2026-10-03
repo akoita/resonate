@@ -16,6 +16,9 @@ import {
   contentDisposition,
   crateFileName,
   exportFeatures,
+  stemKeyConsensus,
+  rekordboxTrackName,
+  titleWithoutArtist,
   keyName,
   parseExportFolder,
   rekordboxLocation,
@@ -232,6 +235,23 @@ describe("file names", () => {
     expect(stemFileName({ artistName: "Ada", title: "Adagio", stemType: "piano" })).toBe("Ada - Adagio (Piano).mp3");
   });
 
+  it("does not repeat the artist in the rekordbox title either (#1965)", () => {
+    // rekordbox shows Artist next to Title, so the title drops the same prefix.
+    expect(
+      rekordboxTrackName({
+        artistName: "The Game",
+        title: "The Game - How We Do (ft 50 Cent) (Prod. by Dr. Dre & Mike Elizondo)",
+        stemType: "guitar",
+      }),
+    ).toBe("How We Do (ft 50 Cent) (Prod. by Dr. Dre & Mike Elizondo) (Guitar)");
+    expect(rekordboxTrackName({ artistName: "Ada & Bob", title: "Night Drive", stemType: "bass" })).toBe(
+      "Night Drive (Bass)",
+    );
+    expect(titleWithoutArtist("Ada", "Ada - ")).toBe("Ada - ");
+    expect(titleWithoutArtist("Ada", "Adagio")).toBe("Adagio");
+    expect(titleWithoutArtist("the game", "THE GAME - Dreams")).toBe("Dreams");
+  });
+
   it("labels stem types", () => {
     expect(stemLabel("vocals")).toBe("Vocals");
     expect(stemLabel("OTHER")).toBe("Other");
@@ -341,6 +361,31 @@ describe("measured features", () => {
       camelot: "8B",
       firstBeatSec: 0.2,
     });
+  });
+
+  it("gives every stem the key its measured siblings agree on when the mix has none (#1965)", () => {
+    // A real export: no confident mix key, Bass and Piano measured Em, Guitar's
+    // own key below the cutoff. All three are the same song.
+    const em = { tonic: "E", mode: "minor", confidence: 0.4 };
+    const weakKey = { tonic: "G", mode: "major", confidence: 0.01 };
+    const consensus = stemKeyConsensus([features({ key: em }), features({ key: em }), features({ key: weakKey })]);
+    expect(consensus).toEqual({ key: "Em", camelot: "9A" });
+    const mixWithoutKey = features({ key: null });
+    expect(exportFeatures(features({ key: weakKey }), mixWithoutKey, consensus).key).toBe("Em");
+    // The mix's own measured key still wins over the stems.
+    const mix = features({ key: { tonic: "C", mode: "major", confidence: 0.4 } });
+    expect(exportFeatures(features({ key: em }), mix, consensus).key).toBe("C");
+  });
+
+  it("finds no consensus from one stem, from disagreeing stems, or from unmeasured ones", () => {
+    const em = { tonic: "E", mode: "minor", confidence: 0.4 };
+    const g = { tonic: "G", mode: "major", confidence: 0.4 };
+    expect(stemKeyConsensus([features({ key: em })])).toBeNull();
+    expect(stemKeyConsensus([features({ key: em }), features({ key: g })])).toBeNull();
+    expect(stemKeyConsensus([features({ key: em }), features({ key: em }), features({ key: g })])).toBeNull();
+    expect(stemKeyConsensus([null, { garbage: true }, features({ key: null })])).toBeNull();
+    // Without a consensus a stem keeps its own measurement, as before.
+    expect(exportFeatures(features({ key: g }), null, null).key).toBe("G");
   });
 
   it("never guesses: a low-confidence tempo or key and a missing first beat stay null", () => {
