@@ -17,9 +17,9 @@ as the off-chain precursor to ERC-8004 attestations.
 - `sessionId`
 - `trackId`
 - `action`: `accept`, `skip`, `complete`, `save`, `replay`,
-  `add_to_playlist`, or `purchase`
+  `loop`, `unsave`, `add_to_playlist`, or `purchase`
 - `weight`: `purchase=5`, `save=3`, `add_to_playlist=3`, `replay=2`,
-  `complete=1.5`, `accept=1`, `skip=-1`
+  `complete=1.5`, `accept=1`, `skip=-1`, `loop=2.5`, `unsave=-2`
 - optional `metadata` using `agent-signal-metadata/v1`
 
 Signal metadata is intentionally bounded and privacy-safe. The stable fields
@@ -54,16 +54,33 @@ sequenceDiagram
   UI->>API: POST /agents/config/signals
   API->>Learn: recordSignal(user, track, action)
   UI->>API: playback/product analytics
-  API->>Learn: mirror completion/save/playlist outcomes when track context exists
-  Learn->>Learn: aggregate weighted genre profile
+  API->>Learn: mirror consented listener habits and coarse local context
+  Learn->>Learn: aggregate decayed multidimensional profile
   Learn->>API: persisted taste profile
   API->>UI: updated config/profile
   API->>Selector: genres + session intent (context)
-  Selector->>Learn: resolveTasteProfile() (persisted profile)
+  Selector->>Learn: resolveTasteProfile() (fresh bounded history)
   Selector->>Selector: shared ranking core, then the policy stage
   Identity->>Learn: computeTasteProfile()
   Identity->>Identity: reputation snapshot + credential export
 ```
+
+## Profile dimensions and bounds (#2063)
+
+The v2 aggregate retains v1 fields and adds `moodWeights`, `artistWeights`,
+`energyBandWeights`, `tempoBandWeights` and `contextWeights`. Context keys join
+an hour bucket and weekday kind; each contains genre and mood weights. Release
+metadata supplies genre/moods and credited artists; current original full-mix
+features supply audio bands through the measured-feature reader. Inferred
+metadata cannot supply audio preferences.
+
+Configuration bounds reads to 500 newest signals within 730 days and sets
+half-lives of 60 days for behavioral signals and 365 days for purchase, pledge
+and collect. Controls apply before aggregation: reset filters history, hidden
+genre/artist tracks are excluded, hidden moods are removed, and declared
+multipliers govern each applicable dimension and context. Read-time computation
+keeps decay and controls current. No schema migration or new raw history store
+is required. See [habit profile v2](../features/agent_taste_intelligence.md#habit-profile-v2-2063).
 
 ## Scoring
 
@@ -85,13 +102,14 @@ The learned profile is not DJ-private. The AI DJ selector and the Home feed
 1. **One ranking core.** Both score candidates with `DiscoveryRankingService`.
    Nothing about payment, placement or stems for sale is an input (ADR-TE-2
    rule 6), so a listing never changes a listener's ranking on either surface.
-2. **One taste profile.** `resolveAgentTasteProfile` returns the persisted
-   `AgentConfig.learnedTasteProfile` (written by `recordSignal`, cleared by a
-   taste-memory reset) or, when none is stored, computes it from `AgentSignal`
-   history. The DJ and Home pass the same `genreWeights` to the core, so one
-   listener gets one set of learned genre weights. Session start in
-   `AgentConfigController` resolves it the same way, then merges `favoredGenres`
-   into the session's queries as before.
+2. **One taste profile.** `resolveAgentTasteProfile` computes v2 weights from
+   bounded signal history with current controls and time decay. Signal writes
+   persist the aggregate on `AgentConfig.learnedTasteProfile`; a valid v1
+   snapshot remains readable when no history exists to upgrade it. The DJ and
+   Home pass the same `genreWeights` to the core. Session start merges the same
+   `favoredGenres` into queries. Mood, credited artist, measured energy/tempo
+   and coarse contextual weights enrich the profile and Taste Memory summaries;
+   this slice does not add new ranking dimensions or listening lanes.
 3. **One served history.** Home writes `RecommendationProfile.servedTrackIds`;
    the DJ reads it and demotes already-served tracks (not an exclusion).
 4. **Session intent is context.** Intent, mood and queue style travel with the

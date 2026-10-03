@@ -311,9 +311,8 @@ with 400. Only the bounded categories reach signal metadata and warehouse fact
 dimensions. No time zone or exact local time is collected.
 
 Home's `recommendation.served` and `recommendation.clicked` events remain the
-measurement base for discovery outcomes. The profile still aggregates genre
-weights; decayed multidimensional profiles, listening lanes, My Mix, ordering
-and measurement remain tracked in [#2063–#2067](https://github.com/akoita/resonate/issues/2061)
+measurement base for discovery outcomes. The profile now computes decayed multidimensional weights (#2063), described
+below. Listening lanes, My Mix, ordering and measurement remain tracked in [#2064–#2067](https://github.com/akoita/resonate/issues/2061)
 and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 
 ### Verification
@@ -324,6 +323,47 @@ and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 - Web: fixed-clock playback context boundaries and payload/provenance tests.
 - Dataflow: `python -B -m unittest test_analytics_transform` verifies fact
   dimensions; shared playback fixtures keep TypeScript/Python transforms aligned.
+
+## Habit profile v2 (#2063)
+
+Status: implemented locally, dependent on #2062. Vision-neutral infrastructure
+(ADR-BM-6), enabling Line 4 Listener Pro, phase 4. Listening lanes and My Mix
+remain planned under #2064–#2067.
+
+`agent-taste-profile/v2` keeps the existing score, tier, favored genres and
+`genreWeights` fields consumed by Home and the AI DJ. It adds aggregate maps:
+
+| Dimension | Source |
+| --- | --- |
+| Genre and mood | Release genre and mood labels |
+| Artist | Credited artist labels, with catalog artist metadata as fallback |
+| Energy band and tempo band | Current original full-mix measurements; missing, inferred or unreliable tempo is omitted |
+| Context | Eight possible hour-bucket × weekday/weekend combinations, each with genre and mood weights |
+
+Behavioral weights halve every 60 days. Purchase, pledge and collect weights
+halve every 365 days; this profile does not introduce new commerce ingestion.
+History is bounded to the newest 500 signals within 730 days. These limits and
+half-lives live in `backend/src/config/agent_learning.ts`. Declared controls do
+not decay. Hidden genre/artist tracks are excluded, hidden moods are removed,
+and downrank/boost multipliers apply to their dimension and contextual weights.
+Reset excludes signals at or before its marker across all dimensions.
+
+Signal writes persist the v2 profile on `AgentConfig.learnedTasteProfile`.
+Shared profile reads recompute bounded history so time decay and current
+controls take effect without another play. A valid legacy v1 snapshot remains
+readable where no signal history exists to upgrade it. Older clients can keep
+using genre fields; additional maps are optional in client types.
+
+In **Settings → Taste Memory**, safe summaries show top genres, moods, credited
+artists, measured energy/tempo bands, and contextual preferences such as
+evenings on weekdays. Summaries contain no itemized playback history, track IDs,
+exact local timestamps or time zones. Empty dimensions say there is not enough
+signal yet. Reset clears every learned summary while retaining declared edits.
+
+Verification: fixed-clock learning tests cover decay, controls, reset, bounds
+and compatibility; real Postgres tests cover feature provenance, persistence,
+profile resolution and safe summaries. Component tests cover older responses,
+new summary rows and reset. See the [implementation plan](../../.agents/plans/2063-habit-profile-v2.md).
 
 ## Unified Ranking Core (#1448 WS-1)
 

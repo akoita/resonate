@@ -3,7 +3,7 @@
  * (Testcontainers, real Prisma).
  *
  * One seeded listener, both surfaces, the same catalog:
- *  - the DJ and Home resolve the SAME persisted taste profile (same learned
+ *  - the DJ and Home resolve the SAME freshly computed taste profile (same learned
  *    genre weights, so the same track gets the same score on both);
  *  - both consult the SAME served history (Home writes it, the DJ reads it);
  *  - both pass their output through the shared policy stage (two per artist,
@@ -46,6 +46,7 @@ const tid = (name: string) => `${P}track_${name}`;
 
 const LEARNED_WEIGHT = 4; // -> learned_preference signal of min(18, 4 * 2) = 8
 const EXPECTED_SCORE = 40 + 8; // taste_match + learned_preference
+const NOW = new Date("2026-06-01T12:00:00.000Z");
 
 describe("Home and the AI DJ on one ranking core (integration)", () => {
   const eventBus = new EventBus();
@@ -105,6 +106,21 @@ describe("Home and the AI DJ on one ranking core (integration)", () => {
   }
 
   beforeAll(async () => {
+    jest.useFakeTimers({
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "clearImmediate",
+        "setInterval",
+        "clearInterval",
+        "setTimeout",
+        "clearTimeout",
+        "queueMicrotask",
+        "hrtime",
+        "performance",
+      ],
+    });
+    jest.setSystemTime(NOW);
     for (const id of [LISTENER, COMPUTED_LISTENER, VERIFIED_OWNER]) {
       await prisma.user.create({ data: { id, email: `${id}@test.resonate` } });
     }
@@ -126,8 +142,8 @@ describe("Home and the AI DJ on one ranking core (integration)", () => {
     await seedTrack("new1", A_NEW);
     await seedTrack("played1", A_PLAYED);
 
-    // The persisted profile BOTH surfaces must read (kept current by
-    // `recordSignal` in production).
+    // A legacy snapshot to upgrade from recorded history; both surfaces now
+    // resolve the same freshly computed profile.
     await prisma.agentConfig.create({
       data: {
         userId: LISTENER,
@@ -145,13 +161,30 @@ describe("Home and the AI DJ on one ranking core (integration)", () => {
           diversity: 0.1,
           depth: 0.1,
           consistency: 1,
-          updatedAt: new Date().toISOString(),
+          updatedAt: NOW.toISOString(),
         },
       },
     });
-    // The listener has played one artist before, so it is not "new" to them.
-    await prisma.agentSignal.create({
-      data: { userId: LISTENER, trackId: tid("played1"), action: "skip", weight: -1 },
+    // Fresh bounded history supersedes the stale v1 snapshot while preserving
+    // its weight (purchase +5, playback skip -1). The skip also marks an artist
+    // as played so the discovery policy can preserve its existing behavior.
+    await prisma.agentSignal.createMany({
+      data: [
+        {
+          userId: LISTENER,
+          trackId: tid("played1"),
+          action: "skip",
+          weight: -1,
+          createdAt: NOW,
+        },
+        {
+          userId: LISTENER,
+          trackId: tid("c1"),
+          action: "purchase",
+          weight: 5,
+          createdAt: NOW,
+        },
+      ],
     });
     await home.setPreferences(LISTENER, { genres: [GENRE] });
   });
@@ -173,9 +206,10 @@ describe("Home and the AI DJ on one ranking core (integration)", () => {
     await prisma.release.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.artist.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: P } } });
+    jest.useRealTimers();
   });
 
-  it("the DJ ranks with the persisted taste profile and passes the policy stage", async () => {
+  it("the DJ ranks with the freshly computed taste profile and passes the policy stage", async () => {
     djBefore = await dj.select({
       userId: LISTENER,
       queries: [GENRE],
@@ -184,7 +218,7 @@ describe("Home and the AI DJ on one ranking core (integration)", () => {
     });
     const picks = djBefore.selected as any[];
 
-    // Learned weights come from the stored profile, not from the caller.
+    // Learned weights come from recorded history, governed by current controls.
     crowdPicks = picks
       .filter((track) => track.release.artistId === A_CROWD)
       .map((track) => track.id);
@@ -280,7 +314,7 @@ describe("Home and the AI DJ on one ranking core (integration)", () => {
 
   it("a listener with no stored profile gets the same computed weights on both surfaces", async () => {
     await prisma.agentSignal.create({
-      data: { userId: COMPUTED_LISTENER, trackId: tid("c1"), action: "accept", weight: 1 },
+      data: { userId: COMPUTED_LISTENER, trackId: tid("c1"), action: "accept", weight: 1, createdAt: NOW },
     });
     await home.setPreferences(COMPUTED_LISTENER, { genres: [GENRE] });
 

@@ -3,6 +3,7 @@ import {
   AGENT_SIGNAL_WEIGHTS,
   AgentLearningService,
   buildAgentSignalMetadata,
+  resolveAgentTasteProfile,
 } from "../modules/agents/agent_learning.service";
 import { ANALYTICS_CONSENT_POLICY_VERSION } from "../modules/analytics/analytics_consent.service";
 import { TasteMemoryService } from "../modules/recommendations/taste_memory.service";
@@ -15,6 +16,12 @@ const TRACK_ID = `${TEST_PREFIX}track`;
 
 describe("AgentLearningService (integration)", () => {
   const service = new AgentLearningService();
+  function expectWeightsClose(actual: Record<string, number> | undefined, expected: Record<string, number>) {
+    expect(Object.keys(actual ?? {}).sort()).toEqual(Object.keys(expected).sort());
+    for (const [label, weight] of Object.entries(expected)) {
+      expect(actual?.[label]).toBeCloseTo(weight, 5);
+    }
+  }
 
   beforeAll(async () => {
     await prisma.user.create({
@@ -37,6 +44,8 @@ describe("AgentLearningService (integration)", () => {
         artistId: `${TEST_PREFIX}artist`,
         title: "Learning Release",
         genre: "Deep House",
+        primaryArtist: "Release Catalog Artist",
+        moods: ["Focus", "Dreamy"],
         status: "published",
       },
     });
@@ -45,7 +54,32 @@ describe("AgentLearningService (integration)", () => {
         id: TRACK_ID,
         releaseId: `${TEST_PREFIX}release`,
         title: "Learning Track",
+        artist: "Track Artist",
         position: 1,
+      },
+    });
+    await prisma.releaseArtistCredit.create({
+      data: {
+        releaseId: TEST_PREFIX + "release",
+        artistId: TEST_PREFIX + "artist",
+        role: "featured",
+        displayName: "Credited Artist",
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: TEST_PREFIX + "original_stem",
+        trackId: TRACK_ID,
+        type: "original",
+        uri: "learning-test-original.wav",
+        audioFeatures: {
+          schemaVersion: "stem-audio-features/v1",
+          extractor: { name: "test", version: "1" },
+          tempoBpm: 124,
+          tempoConfidence: 0.9,
+          energyRms: 0.15,
+          onsetDensity: 4,
+        },
       },
     });
     await prisma.agentConfig.create({
@@ -80,6 +114,7 @@ describe("AgentLearningService (integration)", () => {
     await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: { in: [PRIMARY_USER_ID, SECONDARY_USER_ID] } } });
     await prisma.agentConfig.deleteMany({ where: { userId: { in: [PRIMARY_USER_ID, SECONDARY_USER_ID] } } });
     await prisma.session.deleteMany({ where: { userId: PRIMARY_USER_ID } });
+    await prisma.stem.deleteMany({ where: { trackId: TRACK_ID } });
     await prisma.track.deleteMany({ where: { id: TRACK_ID } });
     await prisma.release.deleteMany({ where: { id: `${TEST_PREFIX}release` } });
     await prisma.artist.deleteMany({ where: { id: `${TEST_PREFIX}artist` } });
@@ -99,6 +134,8 @@ describe("AgentLearningService (integration)", () => {
         mood: "Focus",
         energy: "low",
         genres: ["Ambient", "Deep House"],
+        localHourBucket: "night",
+        weekdayKind: "weekday",
         outcome: {
           type: "playback_completed",
           completionRatio: 0.9,
@@ -109,6 +146,17 @@ describe("AgentLearningService (integration)", () => {
 
     expect(profile.favoredGenres).toEqual(["Deep House"]);
     expect(profile.score).toBeGreaterThan(0);
+    expect(profile.schemaVersion).toBe("agent-taste-profile/v2");
+    expectWeightsClose(profile.moodWeights, { Dreamy: 1.5, Focus: 1.5 });
+    expectWeightsClose(profile.artistWeights, { "Credited Artist": 1.5 });
+    expectWeightsClose(profile.energyBandWeights, { medium: 1.5 });
+    expectWeightsClose(profile.tempoBandWeights, { fast: 1.5 });
+    expect(Object.keys(profile.contextWeights ?? {})).toEqual(["night:weekday"]);
+    expectWeightsClose(profile.contextWeights?.["night:weekday"]?.genreWeights, { "Deep House": 1.5 });
+    expectWeightsClose(profile.contextWeights?.["night:weekday"]?.moodWeights, {
+      Dreamy: 1.5,
+      Focus: 1.5,
+    });
 
     const signals = await prisma.agentSignal.findMany({
       where: { userId: `${TEST_PREFIX}user` },
@@ -130,7 +178,7 @@ describe("AgentLearningService (integration)", () => {
     });
     expect(config?.tasteScore).toBe(profile.score);
     expect(config?.learnedTasteProfile).toMatchObject({
-      schemaVersion: "agent-taste-profile/v1",
+      schemaVersion: "agent-taste-profile/v2",
       favoredGenres: ["Deep House"],
     });
   });
@@ -336,10 +384,12 @@ describe("AgentLearningService (integration)", () => {
         where: { userId: SECONDARY_USER_ID },
         select: { learnedTasteProfile: true },
       });
-      expect(config.learnedTasteProfile).toMatchObject({
-        signals: 8,
-        genreWeights: { "Deep House": 8 },
-      });
+      const learnedProfile = config.learnedTasteProfile as unknown as {
+        signals: number;
+        genreWeights: Record<string, number>;
+      };
+      expect(learnedProfile.signals).toBe(8);
+      expectWeightsClose(learnedProfile.genreWeights, { "Deep House": 8 });
     });
 
     it("deduplicates loop intent per user, track, and browser session", async () => {
@@ -488,6 +538,71 @@ describe("AgentLearningService (integration)", () => {
         ] } },
       });
       expect(signal.action).toBe("complete");
+    });
+
+    it("keeps a v1 snapshot only without any signal history and prevents stale snapshot resurrection", async () => {
+      const legacySnapshot = {
+        schemaVersion: "agent-taste-profile/v1",
+        score: 40,
+        tier: "Emerging",
+        signals: 4,
+        positiveSignals: 4,
+        negativeSignals: 0,
+        acceptanceRate: 1,
+        genresExplored: ["Deep House", "Ambient"],
+        favoredGenres: ["Deep House", "Ambient"],
+        genreWeights: { "Deep House": 4, Ambient: 2 },
+        diversity: 0.25,
+        depth: 0.5,
+        consistency: 1,
+        updatedAt: new Date().toISOString(),
+      };
+      await prisma.agentConfig.update({
+        where: { userId: SECONDARY_USER_ID },
+        data: { learnedTasteProfile: legacySnapshot },
+      });
+
+      await expect(resolveAgentTasteProfile(SECONDARY_USER_ID)).resolves.toMatchObject({
+        schemaVersion: "agent-taste-profile/v1",
+        genreWeights: { "Deep House": 4, Ambient: 2 },
+      });
+
+      await prisma.listenerTasteSignalControl.create({
+        data: {
+          userId: SECONDARY_USER_ID,
+          signalType: "genre",
+          value: "Deep House",
+          action: "hidden",
+        },
+      });
+      await expect(resolveAgentTasteProfile(SECONDARY_USER_ID)).resolves.toMatchObject({
+        schemaVersion: "agent-taste-profile/v1",
+        genreWeights: { Ambient: 2 },
+        genresExplored: ["Ambient"],
+        favoredGenres: ["Ambient"],
+      });
+
+      await prisma.agentSignal.create({
+        data: {
+          id: TEST_PREFIX + "stale_profile_signal",
+          userId: SECONDARY_USER_ID,
+          trackId: TRACK_ID,
+          action: "accept",
+          weight: 1,
+          createdAt: new Date(Date.now() - 731 * 24 * 60 * 60 * 1000),
+        },
+      });
+      await expect(resolveAgentTasteProfile(SECONDARY_USER_ID)).resolves.toMatchObject({
+        schemaVersion: "agent-taste-profile/v2",
+        signals: 0,
+        genreWeights: {},
+        moodWeights: {},
+        artistWeights: {},
+        energyBandWeights: {},
+        tempoBandWeights: {},
+        contextWeights: {},
+        genresExplored: [],
+      });
     });
   });
 });

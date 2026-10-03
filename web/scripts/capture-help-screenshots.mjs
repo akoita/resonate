@@ -152,7 +152,7 @@ const AUTH_TARGETS = [
     // less of" box and a previewed edit, drawn from a fixed taste memory so the
     // picture does not need a backend.
     mockTasteMemory: true,
-    viewportHeight: 1800,
+    viewportHeight: 2400,
     prepare: async (page) => {
       await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
       await page.locator(".settings-nav button").filter({ hasText: "Taste Memory" }).first().click();
@@ -346,6 +346,22 @@ async function capture(page, targets, passName) {
             favoredGenres: ["Amapiano", "Soul"],
             favoredMoods: ["Warm"],
             favoredArtists: ["Felicia Angels"],
+            favoredEnergyBands: ["low", "medium"],
+            favoredTempoBands: ["slow", "mid", "fast"],
+            contexts: [
+              {
+                localHourBucket: "evening",
+                weekdayKind: "weekday",
+                favoredGenres: ["Jazz", "Soul"],
+                favoredMoods: ["Warm"],
+              },
+              {
+                localHourBucket: "night",
+                weekdayKind: "weekend",
+                favoredGenres: ["Ambient"],
+                favoredMoods: ["Calm"],
+              },
+            ],
             recentIntents: [],
             noveltyPattern: "Likes a mix of familiar and new",
             commercePreference: "Not enough signal yet",
