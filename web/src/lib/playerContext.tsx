@@ -86,6 +86,7 @@ import {
     buildPlaybackLifecyclePayload,
     createPlaybackAnalyticsInstanceId,
     getPlaybackAnalyticsSessionId,
+    getPlaybackPlaylistId,
     PLAYBACK_HEARTBEAT_SECONDS,
     type PlaybackLifecycleAction,
     shouldReportPlaybackCompleted,
@@ -450,6 +451,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const [finiteRepeat, setFiniteRepeatState] = useState<FiniteRepeat | null>(null);
     const finiteRepeatRef = useRef<FiniteRepeat | null>(null);
     const [queueSource, setQueueSource] = useState<QueueSource>(null);
+    const queueSourceRef = useRef<QueueSource>(null);
     const [queue, setQueue] = useState<LocalTrack[]>([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -585,6 +587,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             queueLength: queueRef.current.length || undefined,
             repeatMode: repeatModeRef.current,
             shuffle: shuffleRef.current,
+            playlistId: getPlaybackPlaylistId(activeTrack, queueSourceRef.current),
         });
         if (!payload) {
             return;
@@ -624,7 +627,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                     const hydratedIndex = savedActiveId
                         ? hydratedQueue.findIndex((track) => track.id === savedActiveId)
                         : hydratedQueue.length > 0 ? 0 : -1;
-                    setQueueSource(saved.queueSource ?? null);
+                    queueSourceRef.current = saved.queueSource ?? null;
+                    setQueueSource(queueSourceRef.current);
                     setQueue(hydratedQueue);
                     setCurrentIndex(hydratedIndex);
                     queueRef.current = hydratedQueue;
@@ -876,12 +880,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
         if (!options?.navigation) {
             if (finiteRepeatRef.current) clearFiniteRepeat();
-            setQueueSource(options?.playlistId ? {
+            queueSourceRef.current = options?.playlistId ? {
                 playlistId: options.playlistId,
                 publicPlaylist: options.publicPlaylist,
                 trackIds: (options.sourceTrackIds ?? normalizedList.map(track => track.id)).map(id =>
                     normalizedList.find(track => track.id === id || track.catalogTrackId === id)?.id ?? id),
-            } : null);
+            } : null;
+            setQueueSource(queueSourceRef.current);
         }
         setQueue(normalizedList);
         setCurrentIndex(normalizedIndex);
@@ -1095,6 +1100,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                     currentTimeSeconds: audio.currentTime,
                     durationSeconds: audio.duration,
                     sessionId: getPlaybackAnalyticsSessionId(),
+                    playbackInstanceId: playbackInstanceIdRef.current ?? undefined,
+                    repeatMode: repeatModeRef.current,
+                    playlistId: getPlaybackPlaylistId(activeTrack, queueSourceRef.current),
                 });
                 if (!payload) {
                     return;
@@ -1476,6 +1484,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             clearFiniteRepeat();
             segmentLoopRef.current = null;
             setSegmentLoopState(null);
+            queueSourceRef.current = null;
             setQueueSource(null);
             setQueue([]);
             setCurrentIndex(-1);

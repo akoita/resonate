@@ -7,7 +7,16 @@ import {
 } from "./analytics_event";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
-import { AgentLearningService, buildAgentSignalMetadata, type AgentSignalAction } from "../agents/agent_learning.service";
+import {
+  AgentLearningService,
+  buildAgentSignalMetadata,
+  type AgentSignalAction,
+  type AgentSignalTelemetryDescriptor,
+} from "../agents/agent_learning.service";
+
+type LocalHourBucket = "night" | "morning" | "afternoon" | "evening";
+type WeekdayKind = "weekday" | "weekend";
+type PlaybackRepeatMode = "none" | "one" | "all";
 
 export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped";
 
@@ -35,11 +44,16 @@ interface PlaybackCatalogAnalyticsInput {
   // #1772: set by the authenticated telemetry routes when the person has an
   // explicit, granted consent decision. Server-side callers leave it unset.
   consentBasis?: string;
+  localHourBucket?: LocalHourBucket;
+  weekdayKind?: WeekdayKind;
+  playlistId?: string;
 }
 
 export interface PlaybackCompletedAnalyticsInput extends PlaybackCatalogAnalyticsInput {
   completionRatio: number;
   durationMs?: number;
+  playbackInstanceId?: string;
+  repeatMode?: PlaybackRepeatMode;
 }
 
 export interface PlaybackLifecycleAnalyticsInput extends PlaybackCatalogAnalyticsInput {
@@ -50,7 +64,7 @@ export interface PlaybackLifecycleAnalyticsInput extends PlaybackCatalogAnalytic
   heartbeatIntervalMs?: number;
   queueIndex?: number;
   queueLength?: number;
-  repeatMode?: "none" | "one" | "all";
+  repeatMode?: PlaybackRepeatMode;
   shuffle?: boolean;
   /** Why a `skipped` happened (enum-like token such as "next_clicked"). */
   reason?: string;
@@ -127,6 +141,7 @@ interface ResolvedProductArtist {
 // the map is bounded so a long-lived process cannot grow without limit.
 const PRODUCT_ARTIST_CACHE_TTL_MS = 5 * 60 * 1000;
 const PRODUCT_ARTIST_CACHE_MAX_ENTRIES = 2000;
+const LOOP_INTENT_EVENTS = new Set(["player.segment_loop_enabled", "player.repeat_count_set"]);
 
 @Injectable()
 export class AnalyticsInstrumentationService {
@@ -173,35 +188,55 @@ export class AnalyticsInstrumentationService {
         ...(input.rankerVariant ? { rankerVariant: input.rankerVariant } : {}),
         ...(input.experimentKey ? { experimentKey: input.experimentKey } : {}),
         ...(input.surface ? { surface: input.surface } : {}),
+        ...(input.localHourBucket ? { localHourBucket: input.localHourBucket } : {}),
+        ...(input.weekdayKind ? { weekdayKind: input.weekdayKind } : {}),
+        ...(input.playbackInstanceId ? { playbackInstanceId: input.playbackInstanceId } : {}),
+        ...(input.playlistId ? { playlistId: input.playlistId } : {}),
+        ...(input.repeatMode ? { repeatMode: input.repeatMode } : {}),
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
         ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
         ...(input.playbackCommandId ? { playbackCommandId: input.playbackCommandId } : {}),
+        ...(input.playbackInstanceId ? { playbackInstanceId: input.playbackInstanceId } : {}),
         trackId: input.trackId,
+        ...(input.playlistId ? { playlistId: input.playlistId } : {}),
         ...(catalog.releaseId ? { releaseId: catalog.releaseId } : {}),
       },
     });
-    await this.recordAgentOutcome({
-      userId: input.actorUserId,
-      sessionId: input.sessionId,
-      trackId: input.trackId,
-      action: "complete",
-      metadata: buildAgentSignalMetadata({
-        source: input.source ?? "web_player",
-        initiator: input.initiator ?? "listener",
-        agentOriginated: input.agentOriginated ?? false,
-        agentSessionId: input.agentSessionId,
-        playbackCommandId: input.playbackCommandId,
-        outcome: {
-          type: "playback_completed",
-          completionRatio: input.completionRatio,
-          durationMs: input.durationMs,
-          agentOriginated: input.agentOriginated ?? false,
+    if (!input.agentOriginated) {
+      await this.recordAgentOutcome({
+        userId: input.actorUserId,
+        sessionId: input.sessionId,
+        trackId: input.trackId,
+        action: "complete",
+        metadata: buildAgentSignalMetadata({
+          source: input.source ?? "web_player",
+          initiator: input.initiator ?? "listener",
+          agentOriginated: false,
+          agentSessionId: input.agentSessionId,
+          playbackCommandId: input.playbackCommandId,
+          playbackInstanceId: input.playbackInstanceId,
+          playlistId: input.playlistId,
+          localHourBucket: input.localHourBucket,
+          weekdayKind: input.weekdayKind,
+          repeatMode: input.repeatMode,
+          outcome: {
+            type: "playback_completed",
+            completionRatio: input.completionRatio,
+            durationMs: input.durationMs,
+            agentOriginated: false,
+          },
+        }),
+        telemetry: {
+          playbackSessionId: input.sessionId,
+          ...(input.playbackInstanceId
+            ? { dedupKey: signalDedupKey("playback", input.trackId, "complete", input.playbackInstanceId) }
+            : {}),
         },
-      }),
-    });
+      });
+    }
     return result;
   }
 
@@ -247,6 +282,9 @@ export class AnalyticsInstrumentationService {
         ...(input.rankerVariant ? { rankerVariant: input.rankerVariant } : {}),
         ...(input.experimentKey ? { experimentKey: input.experimentKey } : {}),
         ...(input.surface ? { surface: input.surface } : {}),
+        ...(input.localHourBucket ? { localHourBucket: input.localHourBucket } : {}),
+        ...(input.weekdayKind ? { weekdayKind: input.weekdayKind } : {}),
+        ...(input.playlistId ? { playlistId: input.playlistId } : {}),
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -254,6 +292,7 @@ export class AnalyticsInstrumentationService {
         ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
         ...(input.playbackCommandId ? { playbackCommandId: input.playbackCommandId } : {}),
         ...(input.playbackInstanceId ? { playbackInstanceId: input.playbackInstanceId } : {}),
+        ...(input.playlistId ? { playlistId: input.playlistId } : {}),
         action: input.action,
         trackId: input.trackId,
         ...(catalog.releaseId ? { releaseId: catalog.releaseId } : {}),
@@ -284,12 +323,23 @@ export class AnalyticsInstrumentationService {
             initiator: input.initiator ?? "listener",
             agentOriginated: false,
             playbackCommandId: input.playbackCommandId,
+            playbackInstanceId: input.playbackInstanceId,
+            playlistId: input.playlistId,
+            localHourBucket: input.localHourBucket,
+            weekdayKind: input.weekdayKind,
+            repeatMode: input.repeatMode,
             outcome: {
               type: `playback_${input.action}`,
               positionMs: input.positionMs,
               durationMs: input.durationMs,
             },
           }),
+          telemetry: {
+            playbackSessionId: input.sessionId,
+            ...(input.playbackInstanceId
+              ? { dedupKey: signalDedupKey("playback", input.trackId, input.action, input.playbackInstanceId) }
+              : {}),
+          },
         });
       }
     }
@@ -446,25 +496,52 @@ export class AnalyticsInstrumentationService {
 
     const actionByEvent: Partial<Record<string, AgentSignalAction>> = {
       "library.saved": "save",
+      "library.removed": "unsave",
       "playlist.track_added": "add_to_playlist",
     };
     const action = actionByEvent[input.eventName];
-    if (!action) {
+    const loopIntent = LOOP_INTENT_EVENTS.has(input.eventName);
+    if (!action && !loopIntent) {
+      // `playlist.played` stays an analytics event only. The playback.started
+      // lifecycle mirror already records the playlist start once.
       return;
     }
+    // Loop intent is meaningful only within a browser playback session and is
+    // capped once per track/session even if both loop controls fire.
+    if (loopIntent && !input.sessionId) {
+      return;
+    }
+
+    const playbackInstanceId = payloadString(payload, "playbackInstanceId");
+    const playlistId = payloadString(payload, "playlistId");
+    const clientEventId = input.sourceRefs?.clientEventId;
+    const dedupKey = loopIntent
+      ? signalDedupKey("loop", trackId, input.sessionId as string)
+      : (action === "save" || action === "unsave") && clientEventId
+        ? signalDedupKey("product", input.eventName, trackId, clientEventId)
+        : undefined;
 
     await this.recordAgentOutcome({
       userId: input.actorUserId,
       sessionId: input.sessionId,
       trackId,
-      action,
+      action: loopIntent ? "loop" : action as AgentSignalAction,
       metadata: buildAgentSignalMetadata({
         source: input.source ?? payload.source ?? "web_app",
+        localHourBucket: payload.localHourBucket,
+        weekdayKind: payload.weekdayKind,
+        playbackInstanceId,
+        playlistId,
+        repeatMode: payload.repeatMode,
         outcome: {
           type: input.eventName,
           source: input.source ?? payload.source,
         },
       }),
+      telemetry: {
+        playbackSessionId: input.sessionId,
+        ...(dedupKey ? { dedupKey } : {}),
+      },
     });
   }
 
@@ -474,6 +551,7 @@ export class AnalyticsInstrumentationService {
     trackId: string;
     action: AgentSignalAction;
     metadata: ReturnType<typeof buildAgentSignalMetadata>;
+    telemetry: AgentSignalTelemetryDescriptor;
   }) {
     if (!this.agentLearningService || !input.userId) {
       return;
@@ -485,6 +563,7 @@ export class AnalyticsInstrumentationService {
         trackId: input.trackId,
         action: input.action,
         metadata: input.metadata,
+        telemetry: input.telemetry,
       });
     } catch (error) {
       console.warn(
@@ -633,6 +712,11 @@ export class AnalyticsInstrumentationService {
 function payloadString(payload: Record<string, unknown> | undefined, key: string) {
   const value = payload?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function signalDedupKey(...parts: string[]) {
+  const canonicalKey = JSON.stringify(["analytics-agent-signal:v1", ...parts]);
+  return `agent_signal_${createHash("sha256").update(canonicalKey).digest("hex")}`;
 }
 
 function productTrackId(input: ProductAnalyticsInput) {

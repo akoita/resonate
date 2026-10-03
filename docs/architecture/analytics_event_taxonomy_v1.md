@@ -43,6 +43,33 @@ Every analytics event uses the shared envelope from
 | `payload` | yes | Versioned, compact event facts. |
 | `sourceRefs` | optional | Durable source references for replay, idempotency, and audit. |
 
+## Playback habit fields (#2062)
+
+The additive playback contract accepts the following optional fields on
+`playback.started`, `playback.heartbeat`, `playback.skipped` and
+`playback.completed`:
+
+| Field | Accepted values | Meaning |
+| --- | --- | --- |
+| `localHourBucket` | `night`, `morning`, `afternoon`, `evening` | Browser-local hours 0–5, 6–11, 12–17, 18–23 respectively. |
+| `weekdayKind` | `weekday`, `weekend` | Browser-local Monday–Friday or Saturday–Sunday. |
+| `playlistId` | Short identifier | Playlist provenance for tracks belonging to the source playlist. |
+| `playbackInstanceId` | Short identifier | One play cycle; completion retries keep the same ID. |
+| `repeatMode` | `none`, `one`, `all` | Player repeat setting, also carried by completion events. |
+
+Absent fields remain compatible with older callers. Invalid context enums
+(including null or arbitrary text) return 400 on authenticated telemetry routes.
+The browser sends no time zone or exact local clock. Coarse context reaches
+signal metadata and both warehouse fact transforms; existing UTC envelope
+timestamps are unchanged.
+
+Playback starts retain a single `accept` signal, including playlist context;
+`playlist.played` is not mirrored again. Completion maps to `complete` or
+`replay` based on recent successful history. Segment-loop enable and
+finite-repeat set share one `loop` reinforcement per track/browser session;
+`library.removed` maps to `unsave`. For consent, deduplication, weights and reset
+semantics, see [the learning-loop contract](../features/agent_taste_intelligence.md#learning-from-listening-habits-2062).
+
 ## Naming Rules
 
 - Use lowercase dotted event names: `family.action`.

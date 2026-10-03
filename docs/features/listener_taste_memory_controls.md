@@ -244,8 +244,12 @@ event, including the restore event when it is removed.
 
 Agent-mediated playback analytics can now carry `initiator`,
 `agentOriginated`, `agentSessionId`, and `playbackCommandId` markers. Downstream
-taste learning should continue to respect `agentPlaybackTrainingEnabled` before
-using those agent-originated playback signals.
+analytics-to-taste learning requires both current optional measurement consent
+and `agentPlaybackTrainingEnabled`. Disabling training pauses learning from
+listener starts, skips, completions, loops, saves, removals, and playlist
+additions. Agent-originated playback is excluded from this listener telemetry
+mirror. See [learning from listening habits](agent_taste_intelligence.md#learning-from-listening-habits-2062)
+for weights, deduplication, and coarse local context.
 
 ## Verification
 
@@ -269,8 +273,9 @@ Manual smoke:
 2. Confirm the Taste Memory section renders with empty-state copy when no
    profile exists.
 3. Hide a genre and confirm future recommendation reasons no longer show it.
-4. Disable AI DJ playback training and confirm agent-originated playback does
-   not create new taste signals.
+4. Disable AI DJ playback training and confirm listener playback and library
+   analytics do not create new taste signals. Repeat with optional measurement
+   consent disabled.
 5. Reset taste memory and confirm recommendations fall back until new signals
    are recorded.
 6. Type "less drill, more live instruments", choose Preview changes, and confirm

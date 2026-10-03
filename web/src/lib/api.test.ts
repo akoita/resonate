@@ -452,6 +452,9 @@ describe('API Client', () => {
         queueLength: 4,
         repeatMode: 'all',
         shuffle: true,
+        playlistId: 'playlist-1',
+        localHourBucket: 'night',
+        weekdayKind: 'weekend',
       });
 
       const [url, opts] = mockFetch.mock.calls[0];
@@ -473,8 +476,51 @@ describe('API Client', () => {
         queueLength: 4,
         repeatMode: 'all',
         shuffle: true,
+        playlistId: 'playlist-1',
+        localHourBucket: 'night',
+        weekdayKind: 'weekend',
       });
       expect(result).toEqual({ status: 'ok', eventId: 'evt_playback_lifecycle_1', ingested: 1 });
+    });
+  });
+
+  describe('recordPlaybackCompleted', () => {
+    it('posts bounded local context and playback provenance to the analytics endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ status: 'ok', eventId: 'evt_playback_completed_1', ingested: 1 }),
+      });
+
+      await api.recordPlaybackCompleted('listener-token', {
+        trackId: 'track-1',
+        sessionId: 'session-1',
+        playbackInstanceId: 'instance-1',
+        source: 'web_player',
+        completionRatio: 1,
+        durationMs: 120000,
+        repeatMode: 'all',
+        playlistId: 'playlist-1',
+        localHourBucket: 'night',
+        weekdayKind: 'weekend',
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/playback/completed');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        trackId: 'track-1',
+        sessionId: 'session-1',
+        playbackInstanceId: 'instance-1',
+        source: 'web_player',
+        completionRatio: 1,
+        durationMs: 120000,
+        repeatMode: 'all',
+        playlistId: 'playlist-1',
+        localHourBucket: 'night',
+        weekdayKind: 'weekend',
+      });
     });
   });
 

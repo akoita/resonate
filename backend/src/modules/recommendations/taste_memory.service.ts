@@ -535,10 +535,11 @@ export class TasteMemoryService {
     return found;
   }
 
-  async getPolicy(userId: string): Promise<TasteMemoryPolicy> {
-    const settings = await prisma.listenerTasteMemorySettings.findUnique({ where: { userId } });
-    const controls = await prisma.listenerTasteSignalControl.findMany({ where: { userId } });
-    return buildPolicy(settingsDto(settings ?? defaultSettingsRecord()), controls.map(controlDto));
+  async getPolicy(
+    userId: string,
+    db: Pick<Prisma.TransactionClient, "listenerTasteMemorySettings" | "listenerTasteSignalControl"> = prisma,
+  ): Promise<TasteMemoryPolicy> {
+    return readTasteMemoryPolicy(userId, db);
   }
 
   async shouldTrainAgentPlayback(userId: string, metadata?: SafeSignalMetadata | null) {
@@ -593,6 +594,16 @@ export class TasteMemoryService {
       ...payload,
     } as never);
   }
+}
+
+/** Read controls on the caller's connection, including serialized telemetry writes. */
+export async function readTasteMemoryPolicy(
+  userId: string,
+  db: Pick<Prisma.TransactionClient, "listenerTasteMemorySettings" | "listenerTasteSignalControl"> = prisma,
+): Promise<TasteMemoryPolicy> {
+  const settings = await db.listenerTasteMemorySettings.findUnique({ where: { userId } });
+  const controls = await db.listenerTasteSignalControl.findMany({ where: { userId } });
+  return buildPolicy(settingsDto(settings ?? defaultSettingsRecord()), controls.map(controlDto));
 }
 
 export function filterPreferencesWithPolicy(

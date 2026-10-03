@@ -124,7 +124,12 @@ model-assisted reranker run the full policy in the selector.
 Session Intent presets and Home vibe sessions now write their intent, mood,
 energy, queue style, license posture, and start source into `AgentSignal`
 metadata when the agent accepts a first pick or a user requests the next pick.
-Playback completions and library saves are mirrored from analytics into
-`complete` and `save` signals when the authenticated user and catalog track are
-known. Stopping an AI DJ session annotates existing signals from that session
-with a coarse duration outcome.
+Listener playback and library analytics are mirrored into taste signals only
+with current optional measurement consent and playback training enabled.
+Repeated completions become `replay` signals; finite segment loops and library
+removals produce `loop` and `unsave`. Playlist starts enrich the existing
+`accept` signal. The mirror excludes agent-originated playback and deduplicates
+retries; local context contains only hour buckets and weekday/weekend labels.
+See [learning from listening habits](../features/agent_taste_intelligence.md#learning-from-listening-habits-2062)
+for the complete mappings and privacy boundaries. Stopping an AI DJ session
+annotates existing signals from that session with a coarse duration outcome.

@@ -261,22 +261,69 @@ Optional columns:
 | `model_version` | `STRING` | Training or materialization version. |
 | `updated_at` | `TIMESTAMP` or `STRING` | Freshness marker. |
 
-## Signal Completeness (#1449 WS-2)
+## Learning from listening habits (#2062)
 
-The learning loop now sees the full implicit-feedback set without any client
-POSTing agent signals:
+Status: `implemented` locally; the broader [habit-mixes epic #2061](https://github.com/akoita/resonate/issues/2061)
+remains `in-progress`. This slice is vision-neutral infrastructure (ADR-BM-6),
+enabling Line 4 Listener Pro, phase 4, without fee, payout or purchase changes.
 
-- `playback.started` auto-mirrors into an `accept` (+1) AgentSignal;
-  `playback.completed` already mirrored `complete` (+1.5); the new explicit
-  `playback.skipped` event mirrors `skip` (−1) with the skip `positionMs` —
-  a deliberate early skip is now distinct from a short listen.
-- Agent-originated playback is **excluded** from mirroring (the agent runtime
-  records its own signals — no double-counting), and consent gating
-  (`shouldTrainAgentPlayback`) is enforced inside `recordSignal` on every path.
-- Home emits `recommendation.served` (one per rail render: requestId, railId,
-  trackIds, count) and `recommendation.clicked` (per action: trackId,
-  position) — the measurement base for WS-8 and for training on Home outcomes.
-  The `/recommendations` response carries the correlating `requestId`.
+The player feeds bounded feedback through analytics instrumentation into
+`AgentSignal`. Weights and the seven-day replay lookback live in
+`backend/src/config/agent_learning.ts`.
+
+| Consented action | Signal | Weight |
+| --- | --- | --- |
+| Playback starts, including playlist starts | `accept` | +1 |
+| Deliberate skip | `skip` | −1 |
+| First completion, or no recent completion | `complete` | +1.5 |
+| Completion following a completion/replay in the last seven days | `replay` | +2 |
+| Segment loop enabled or finite repeat count set | `loop` | +2.5 |
+| Library save / removal | `save` / `unsave` | +3 / −2 |
+| Track added to playlist | `add_to_playlist` | +3 |
+
+A replay replaces the completion signal for that occurrence. Repeat-one cycles
+qualify through their preceding completion; merely enabling repeat-one does not
+make the first play a replay. Replay history is scoped to the listener and track
+and excludes pre-reset signals. Heartbeats and loop/repeat updates or clears do
+not create learning signals. Agent-originated playback is excluded from the
+analytics mirror because the agent runtime records its own signals.
+
+Loop intent is capped once per track and browser session across segment loops
+and finite repeat counts. Playback instance IDs and client event IDs suppress
+retries; database-backed deduplication and serialized user writes also cover
+concurrent requests. Playlist starts retain `playlistId` on their existing
+`accept` signal. `playlist.played` is not mirrored again, avoiding two signals
+for one start. Browser session IDs are pseudonymized in metadata, separate from the agent
+`Session` foreign key. `loop` and `unsave` are telemetry-only actions on this
+path; the manual agent-signals endpoint cannot bypass their consent and
+deduplication controls.
+
+The authenticated analytics routes require current product-analytics consent.
+Persistence rechecks that consent and `agentPlaybackTrainingEnabled` for mirrored
+feedback. A refusal or disabled training produces no habit signal. Existing
+Taste Memory hide, downrank and reset controls continue to govern the learned
+profile.
+
+Playback lifecycle and completion payloads carry optional `localHourBucket`
+(`night`, `morning`, `afternoon`, `evening`) and `weekdayKind` (`weekday`,
+`weekend`). The browser computes these locally; the API rejects invalid values
+with 400. Only the bounded categories reach signal metadata and warehouse fact
+dimensions. No time zone or exact local time is collected.
+
+Home's `recommendation.served` and `recommendation.clicked` events remain the
+measurement base for discovery outcomes. The profile still aggregates genre
+weights; decayed multidimensional profiles, listening lanes, My Mix, ordering
+and measurement remain tracked in [#2063–#2067](https://github.com/akoita/resonate/issues/2061)
+and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
+
+### Verification
+
+- Backend: focused analytics controller HTTP, instrumentation, warehouse/parity
+  and agent-habit integration tests. The integration fixtures exercise real
+  Postgres persistence, concurrent retries, consent and training gates.
+- Web: fixed-clock playback context boundaries and payload/provenance tests.
+- Dataflow: `python -B -m unittest test_analytics_transform` verifies fact
+  dimensions; shared playback fixtures keep TypeScript/Python transforms aligned.
 
 ## Unified Ranking Core (#1448 WS-1)
 
@@ -787,8 +834,8 @@ The detailed handoff is documented in
 
 The realtime `AgentSignal` loop now records privacy-safe
 `agent-signal-metadata/v1` context for Session Intent picks and mirrors
-available playback completions plus library saves into `complete` and `save`
-signals. Stop events annotate existing session signals with coarse
+playback, loop intent, library saves/removals and playlist additions into
+weighted signals as described in [Learning from listening habits](#learning-from-listening-habits-2062). Stop events annotate existing session signals with coarse
 `sessionDurationMs`.
 
 ## Quality Dashboard

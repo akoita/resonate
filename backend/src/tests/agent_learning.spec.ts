@@ -20,6 +20,8 @@ describe("agent learning loop", () => {
     expect(AGENT_SIGNAL_WEIGHTS.purchase).toBe(5);
     expect(AGENT_SIGNAL_WEIGHTS.complete).toBe(1.5);
     expect(AGENT_SIGNAL_WEIGHTS.save).toBe(3);
+    expect(AGENT_SIGNAL_WEIGHTS.loop).toBe(2.5);
+    expect(AGENT_SIGNAL_WEIGHTS.unsave).toBe(-2);
     expect(profile.signals).toBe(6);
     expect(profile.positiveSignals).toBe(5);
     expect(profile.negativeSignals).toBe(1);
@@ -125,6 +127,36 @@ describe("agent learning loop", () => {
       "genre-6",
       "genre-7",
     ]);
+  });
+
+  it("keeps only bounded playback context enums and identifiers", () => {
+    const metadata = buildAgentSignalMetadata({
+      localHourBucket: "night",
+      weekdayKind: "weekday",
+      playbackInstanceId: "playback-instance-1",
+      playlistId: "playlist-1",
+      repeatMode: "one",
+    });
+    expect(metadata).toMatchObject({
+      localHourBucket: "night",
+      weekdayKind: "weekday",
+      playbackInstanceId: "playback-instance-1",
+      playlistId: "playlist-1",
+      repeatMode: "one",
+    });
+
+    const invalid = buildAgentSignalMetadata({
+      localHourBucket: "10pm",
+      weekdayKind: "Monday",
+      playbackInstanceId: "instance-".repeat(20),
+      playlistId: "https://example.test/playlist",
+      repeatMode: "forever",
+    });
+    expect(invalid).not.toHaveProperty("localHourBucket");
+    expect(invalid).not.toHaveProperty("weekdayKind");
+    expect(invalid).not.toHaveProperty("playbackInstanceId");
+    expect(invalid).not.toHaveProperty("playlistId");
+    expect(invalid).not.toHaveProperty("repeatMode");
   });
 
   it("falls back to user-selected vibes until enough signals exist", () => {

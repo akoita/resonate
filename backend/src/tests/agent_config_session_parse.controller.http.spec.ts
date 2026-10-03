@@ -50,6 +50,21 @@ describe('AgentConfigController session parse (e2e)', () => {
     });
   });
 
+  it.each(['loop', 'unsave'])('rejects telemetry-only %s on the manual signals route', async (action) => {
+    const response = await request(app.getHttpServer())
+      .post('/agents/config/signals')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ trackId: 'track-1', action, metadata: { telemetryMirror: true } })
+      .expect(400);
+    expect(response.body.acceptedActions).not.toContain(action);
+    expect(eventBus.publish).not.toHaveBeenCalled();
+  });
+
+  it('requires authentication on the manual signals route', async () => {
+    await request(app.getHttpServer()).post('/agents/config/signals')
+      .send({ trackId: 'track-1', action: 'loop' }).expect(401);
+  });
+
   it('POST /agents/config/session/parse → 401 without JWT', async () => {
     await request(app.getHttpServer())
       .post('/agents/config/session/parse')

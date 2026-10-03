@@ -342,6 +342,8 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
                         "geoSource": clean.get("geoSource"),
                         "geoPrecision": clean.get("geoPrecision"),
                         "playlistId": string_payload(payload, "playlistId"),
+                        "localHourBucket": string_payload(payload, "localHourBucket"),
+                        "weekdayKind": string_payload(payload, "weekdayKind"),
                         "step": string_payload(payload, "step"),
                         "phase": string_payload(payload, "phase"),
                         "status": string_payload(payload, "status"),

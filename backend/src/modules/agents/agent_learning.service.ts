@@ -1,7 +1,11 @@
 import { Injectable, Optional } from "@nestjs/common";
+import { createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { AGENT_REPLAY_LOOKBACK_MS, AGENT_SIGNAL_WEIGHTS } from "../../config/agent_learning";
+import { ANALYTICS_CONSENT_POLICY_VERSION } from "../analytics/analytics_consent.service";
 import {
+  readTasteMemoryPolicy,
   scoreMultiplierForSignal,
   TasteMemoryPolicy,
   TasteMemoryService,
@@ -10,15 +14,7 @@ import { DISCOVERY_REASON_CODES } from "../recommendations/discovery-explanation
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 import { mergeSessionGenres } from "./agent_session_genres";
 
-export const AGENT_SIGNAL_WEIGHTS = {
-  accept: 1,
-  skip: -1,
-  complete: 1.5,
-  save: 3,
-  replay: 2,
-  add_to_playlist: 3,
-  purchase: 5,
-} as const;
+export { AGENT_SIGNAL_WEIGHTS } from "../../config/agent_learning";
 
 export type AgentSignalAction = keyof typeof AGENT_SIGNAL_WEIGHTS;
 export type AgentSignalMetadata = Prisma.InputJsonObject;
@@ -72,6 +68,11 @@ export function buildAgentSignalMetadata(input: {
   agentOriginated?: unknown;
   agentSessionId?: unknown;
   playbackCommandId?: unknown;
+  localHourBucket?: unknown;
+  weekdayKind?: unknown;
+  playbackInstanceId?: unknown;
+  playlistId?: unknown;
+  repeatMode?: unknown;
   recommendation?: unknown;
   reason?: unknown;
   reasoning?: unknown;
@@ -97,6 +98,11 @@ export function buildAgentSignalMetadata(input: {
   copyBoolean(metadata, "agentOriginated", input.agentOriginated);
   copyString(metadata, "agentSessionId", input.agentSessionId, 80);
   copyString(metadata, "playbackCommandId", input.playbackCommandId, 80);
+  copyEnum(metadata, "localHourBucket", input.localHourBucket, ["night", "morning", "afternoon", "evening"]);
+  copyEnum(metadata, "weekdayKind", input.weekdayKind, ["weekday", "weekend"]);
+  copyString(metadata, "playbackInstanceId", input.playbackInstanceId, 100);
+  copyString(metadata, "playlistId", input.playlistId, 100);
+  copyEnum(metadata, "repeatMode", input.repeatMode, ["none", "one", "all"]);
   copySafeRecommendation(metadata, input.recommendation);
   copyString(metadata, "reason", input.reason, 160);
   copyString(metadata, "reasoning", input.reasoning, 240);
@@ -264,17 +270,46 @@ function copyBoolean(target: Record<string, unknown>, key: string, value: unknow
   }
 }
 
+function copyEnum<const Values extends readonly string[]>(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+  allowed: Values,
+) {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+    target[key] = value;
+  }
+}
+
+export interface AgentSignalTelemetryDescriptor {
+  /** Stable identity for retry or browser-session deduplication. */
+  dedupKey?: string;
+  /** Browser analytics session, retained only as a user-scoped pseudonym in metadata. */
+  playbackSessionId?: string;
+}
+
+type AgentSignalRecordInput = {
+  userId: string;
+  sessionId?: string | null;
+  trackId: string;
+  action: AgentSignalAction;
+  metadata?: Prisma.InputJsonObject;
+  telemetry?: AgentSignalTelemetryDescriptor;
+};
+
 @Injectable()
 export class AgentLearningService {
   constructor(@Optional() private readonly tasteMemoryService?: TasteMemoryService) {}
 
-  async recordSignal(input: {
-    userId: string;
-    sessionId?: string | null;
-    trackId: string;
-    action: AgentSignalAction;
-    metadata?: Prisma.InputJsonObject;
-  }) {
+  async recordSignal(input: AgentSignalRecordInput & { telemetry: AgentSignalTelemetryDescriptor }): Promise<AgentTasteProfile | null>;
+  async recordSignal(input: AgentSignalRecordInput & { telemetry?: undefined }): Promise<AgentTasteProfile>;
+  async recordSignal(input: AgentSignalRecordInput): Promise<AgentTasteProfile | null> {
+    if (input.telemetry) {
+      return this.recordTelemetrySignal(input as AgentSignalRecordInput & {
+        telemetry: AgentSignalTelemetryDescriptor;
+      });
+    }
+
     const shouldTrain = await this.tasteMemoryService?.shouldTrainAgentPlayback(input.userId, input.metadata);
     if (shouldTrain === false) {
       const config = await prisma.agentConfig.findUnique({
@@ -305,6 +340,99 @@ export class AgentLearningService {
     }
 
     return profile;
+  }
+
+  private async recordTelemetrySignal(input: AgentSignalRecordInput & { telemetry: AgentSignalTelemetryDescriptor }) {
+    const dedupId = signalIdForTelemetry(input.userId, input.telemetry.dedupKey);
+    const playbackSessionId = userScopedPlaybackSessionId(input.userId, input.telemetry.playbackSessionId);
+    const created = await prisma.$transaction(async (tx) => {
+      // AnalyticsConsentService uses the same lock when changing consent, so
+      // refusal and ingestion cannot cross in flight.
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR UPDATE
+      `);
+
+      const consent = await tx.analyticsConsent.findUnique({
+        where: { userId: input.userId },
+        select: { productAnalytics: true, policyVersion: true },
+      });
+      if (
+        !consent?.productAnalytics ||
+        consent.policyVersion !== ANALYTICS_CONSENT_POLICY_VERSION
+      ) {
+        return false;
+      }
+
+      const settings = await tx.listenerTasteMemorySettings.findUnique({
+        where: { userId: input.userId },
+        select: { agentPlaybackTrainingEnabled: true, resetAt: true },
+      });
+      if (settings?.agentPlaybackTrainingEnabled === false) {
+        return false;
+      }
+
+      if (dedupId && await tx.agentSignal.findUnique({ where: { id: dedupId }, select: { id: true } })) {
+        return false;
+      }
+
+      const priorCompletion = input.action === "complete"
+        ? await findPriorTelemetryCompletion(tx, {
+          userId: input.userId,
+          trackId: input.trackId,
+          resetAt: settings?.resetAt,
+          playbackInstanceId: jsonString(jsonObject(input.metadata).playbackInstanceId),
+        })
+        : false;
+      const action = priorCompletion ? "replay" : input.action;
+      const metadata = telemetrySignalMetadata(input.metadata, playbackSessionId);
+
+      await tx.agentSignal.create({
+        data: {
+          ...(dedupId ? { id: dedupId } : {}),
+          userId: input.userId,
+          // Browser sessions are analytics context, never Session foreign keys.
+          sessionId: null,
+          trackId: input.trackId,
+          action,
+          weight: AGENT_SIGNAL_WEIGHTS[action],
+          metadata,
+        },
+      });
+      return true;
+    });
+
+    // Retries and refused telemetry do not recalculate or rewrite the profile.
+    if (!created) {
+      return null;
+    }
+
+    // Keep profile refreshes ordered with telemetry writes. The first
+    // transaction has committed by this point, so this lock protects a fresh
+    // read of every committed signal and prevents an older snapshot from
+    // overwriting a newer profile.
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR UPDATE
+      `);
+      const config = await tx.agentConfig.findUnique({ where: { userId: input.userId } });
+      const policy = await readTasteMemoryPolicy(input.userId, tx);
+      const profile = await computeTasteProfileFromHistory(
+        input.userId,
+        { fallbackGenres: config?.vibes ?? [], policy },
+        tx,
+      );
+      if (config) {
+        await tx.agentConfig.update({
+          where: { id: config.id },
+          data: {
+            learnedTasteProfile: profile,
+            tasteScore: profile.score,
+            tasteUpdatedAt: new Date(profile.updatedAt),
+          },
+        });
+      }
+      return profile;
+    });
   }
 
   async annotateSessionOutcome(input: {
@@ -412,9 +540,10 @@ export async function computeTasteProfileFromHistory(
     policy?: TasteMemoryPolicy;
     take?: number;
   } = {},
+  db: Prisma.TransactionClient = prisma,
 ): Promise<AgentTasteProfile> {
   const { policy } = options;
-  const signals = await prisma.agentSignal.findMany({
+  const signals = await db.agentSignal.findMany({
     where: {
       userId,
       ...(policy?.resetAt ? { createdAt: { gt: policy.resetAt } } : {}),
@@ -486,8 +615,83 @@ export async function resolveAgentTasteProfile(
   return computeTasteProfileFromHistory(userId, options);
 }
 
+function signalIdForTelemetry(userId: string, dedupKey?: string) {
+  if (typeof dedupKey !== "string" || !dedupKey || dedupKey.length > 512) {
+    return undefined;
+  }
+  return `telemetry_${createHash("sha256")
+    .update(JSON.stringify(["agent-signal-telemetry:v1", userId, dedupKey]))
+    .digest("hex")}`;
+}
+
+function userScopedPlaybackSessionId(userId: string, sessionId?: string) {
+  const normalized = typeof sessionId === "string" ? sessionId.trim() : "";
+  if (!normalized || normalized.length > 160 || !/^[A-Za-z0-9_-]+$/.test(normalized)) {
+    return undefined;
+  }
+  return `playback_${createHash("sha256")
+    .update(JSON.stringify(["agent-playback-session:v1", userId, normalized]))
+    .digest("hex")
+    .slice(0, 32)}`;
+}
+
+function telemetrySignalMetadata(
+  metadata: Prisma.InputJsonObject | undefined,
+  playbackSessionId?: string,
+): Prisma.InputJsonObject {
+  const safe: Record<string, unknown> = { ...jsonObject(metadata), telemetryMirror: true };
+  // Session identifiers are pseudonymized by userScopedPlaybackSessionId so a
+  // browser value that resembles an account/session token is never persisted.
+  delete safe.playbackSessionId;
+  if (playbackSessionId) {
+    safe.playbackSessionId = playbackSessionId;
+  }
+  return safe as Prisma.InputJsonObject;
+}
+
+async function findPriorTelemetryCompletion(
+  tx: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    trackId: string;
+    resetAt?: Date | null;
+    playbackInstanceId?: string;
+  },
+) {
+  const lookbackStart = new Date(Date.now() - AGENT_REPLAY_LOOKBACK_MS);
+  const resetFilter = input.resetAt
+    ? Prisma.sql`AND "createdAt" > ${input.resetAt}`
+    : Prisma.empty;
+  const instanceFilter = input.playbackInstanceId
+    ? Prisma.sql`AND "metadata"->>'playbackInstanceId' IS DISTINCT FROM ${input.playbackInstanceId}`
+    : Prisma.empty;
+  const matches = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "AgentSignal"
+    WHERE "userId" = ${input.userId}
+      AND "trackId" = ${input.trackId}
+      AND "action" IN ('complete', 'replay')
+      AND "createdAt" >= ${lookbackStart}
+      ${resetFilter}
+      ${instanceFilter}
+      AND COALESCE("metadata"->>'source', '') <> 'agent_session'
+      AND COALESCE("metadata"->>'agentOriginated', 'false') <> 'true'
+      AND (
+        "metadata"->>'telemetryMirror' = 'true'
+        OR "metadata"->>'source' IN ('web_player', 'web_player_local')
+      )
+      AND "metadata"->'outcome'->>'type' = 'playback_completed'
+    LIMIT 1
+  `);
+  return matches.length > 0;
+}
+
 function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function jsonString(value: unknown) {
+  return typeof value === "string" ? value : undefined;
 }

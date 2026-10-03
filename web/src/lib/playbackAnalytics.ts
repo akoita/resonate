@@ -1,5 +1,7 @@
 import type { LocalTrack } from "./localLibrary";
 import { getDiscoveryAttribution } from "./discoveryAttribution";
+import type { QueueSource } from "./listeningSession";
+import type { PlaybackLocalHourBucket, PlaybackWeekdayKind } from "./api";
 
 export const PLAYBACK_COMPLETED_SECONDS = 30;
 export const PLAYBACK_HEARTBEAT_SECONDS = 30;
@@ -7,14 +9,24 @@ export const SHORT_TRACK_COMPLETION_RATIO = 0.8;
 const SESSION_STORAGE_KEY = "resonate.playback.sessionId";
 export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped";
 
+export type PlaybackLocalContext = {
+  localHourBucket: PlaybackLocalHourBucket;
+  weekdayKind: PlaybackWeekdayKind;
+};
+
 export type PlaybackCompletedPayload = {
   trackId: string;
   artistId?: string;
   releaseId?: string;
   sessionId: string;
+  playbackInstanceId?: string;
   source: string;
   completionRatio: number;
   durationMs?: number;
+  playlistId?: string;
+  repeatMode?: "none" | "one" | "all";
+  localHourBucket: PlaybackLocalHourBucket;
+  weekdayKind: PlaybackWeekdayKind;
   /** #1455: Home rail and ranker variant the track was opened from. */
   railId?: string;
   rankerVariant?: string;
@@ -38,6 +50,9 @@ export type PlaybackLifecyclePayload = {
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
+  playlistId?: string;
+  localHourBucket: PlaybackLocalHourBucket;
+  weekdayKind: PlaybackWeekdayKind;
   /** #1449: why the skip happened (e.g. "next_clicked"). */
   reason?: string;
   /** #1455: Home rail and ranker variant the track was opened from. */
@@ -70,6 +85,19 @@ export function getPlaybackAnalyticsSessionId() {
 
 export function createPlaybackAnalyticsInstanceId() {
   return createPlaybackAnalyticsId("playback_instance");
+}
+
+export function getPlaybackLocalContext(now: Date = new Date()): PlaybackLocalContext {
+  const hour = now.getHours();
+  return {
+    localHourBucket:
+      hour <= 5 ? "night" : hour <= 11 ? "morning" : hour <= 17 ? "afternoon" : "evening",
+    weekdayKind: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
+  };
+}
+
+export function getPlaybackPlaylistId(track: LocalTrack | null, queueSource: QueueSource) {
+  return track && queueSource?.trackIds.includes(track.id) ? queueSource.playlistId : undefined;
 }
 
 function createPlaybackAnalyticsId(prefix: string) {
@@ -118,6 +146,10 @@ export function buildPlaybackCompletedPayload(input: {
   currentTimeSeconds: number;
   durationSeconds?: number | null;
   sessionId: string;
+  playbackInstanceId?: string;
+  repeatMode?: "none" | "one" | "all";
+  playlistId?: string;
+  now?: Date;
 }): PlaybackCompletedPayload | null {
   const trackId = getPlaybackAnalyticsTrackId(input.track);
   const artistId = input.track.artistId?.trim() || undefined;
@@ -142,9 +174,13 @@ export function buildPlaybackCompletedPayload(input: {
     ...(artistId ? { artistId } : {}),
     ...(releaseId ? { releaseId } : {}),
     sessionId: input.sessionId,
+    ...(input.playbackInstanceId ? { playbackInstanceId: input.playbackInstanceId } : {}),
     source: input.track.source === "remote" ? "web_player" : "web_player_local",
     completionRatio,
     durationMs: durationSeconds ? Math.round(durationSeconds * 1000) : undefined,
+    ...(input.playlistId ? { playlistId: input.playlistId } : {}),
+    ...(input.repeatMode ? { repeatMode: input.repeatMode } : {}),
+    ...getPlaybackLocalContext(input.now),
     ...getDiscoveryAttribution(trackId),
   };
 }
@@ -162,6 +198,8 @@ export function buildPlaybackLifecyclePayload(input: {
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
+  playlistId?: string;
+  now?: Date;
 }): PlaybackLifecyclePayload | null {
   const trackId = getPlaybackAnalyticsTrackId(input.track);
   const artistId = input.track.artistId?.trim() || undefined;
@@ -197,6 +235,8 @@ export function buildPlaybackLifecyclePayload(input: {
     queueLength: input.queueLength,
     repeatMode: input.repeatMode,
     shuffle: input.shuffle,
+    ...(input.playlistId ? { playlistId: input.playlistId } : {}),
+    ...getPlaybackLocalContext(input.now),
     ...getDiscoveryAttribution(trackId),
   };
 }
