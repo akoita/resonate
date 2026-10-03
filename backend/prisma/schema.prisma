@@ -747,6 +747,7 @@ model Release {
   firstListenerExposures FirstListenerExposure[]
   publishedRemixProject  RemixProject?                 @relation("RemixProjectPublishedRelease")
   sceneScoutCityDemand   SceneScoutCityDemand[]
+  sourceShowCampaigns    ShowCampaign[]                @relation("ShowCampaignSourceRelease")
 
   @@index([rightsRoute])
   @@index([artistId])
@@ -2112,6 +2113,7 @@ model ShowCampaign {
   id                          String                       @id @default(uuid())
   slug                        String                       @unique
   artistId                    String?
+  sourceReleaseId             String?
   artistDisplayName           String
   artistImageUrl              String?
   heroImageUrl                String?
@@ -2188,6 +2190,7 @@ model ShowCampaign {
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
   artist                      Artist?                      @relation(fields: [artistId], references: [id])
+  sourceRelease               Release?                     @relation("ShowCampaignSourceRelease", fields: [sourceReleaseId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   tiers                       ShowCampaignTier[]
   pledges                     ShowPledge[]
   events                      ShowCampaignEvent[]
@@ -2195,6 +2198,7 @@ model ShowCampaign {
   disputes                    ShowCampaignDispute[]
 
   @@index([artistId])
+  @@index([sourceReleaseId])
   @@index([status, deadline])
   @@index([campaignLevel, status])
   @@index([artistAuthorityStatus])

@@ -3,6 +3,34 @@ import { mockSceneScoutApi } from "./fixtures/scene-scout-mock.mjs";
 
 test("city demand card opens an editable draft with the right release", async ({ authenticatedPage: page }) => {
   await mockSceneScoutApi(page);
+  let draftRequest: Record<string, unknown> | undefined;
+  await page.route("**/shows/campaigns", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    draftRequest = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: "scene-scout-draft",
+        slug: "scene-scout-draft",
+        artistId: "test-artist-id",
+        sourceReleaseId: "guide-first-light",
+        artistDisplayName: "Test Artist",
+        title: "Test Artist in Lyon",
+        city: "Lyon",
+        country: "FR",
+        deadline: "2026-12-01T00:00:00.000Z",
+        goalAmountUnits: "10000000000",
+        raisedAmountUnits: "0",
+        currency: "USD",
+        status: "draft",
+        campaignLevel: "active_escrow_campaign",
+        tiers: [],
+      },
+    });
+  });
   await page.goto("/artist/analytics");
   await expect(page.getByRole("heading", { name: "Consider a show in Paris" })).toBeVisible();
   await page.getByRole("link", { name: "Draft a show" }).click();
@@ -14,6 +42,10 @@ test("city demand card opens an editable draft with the right release", async ({
   await expect(page.getByLabel("City", { exact: true })).toHaveValue("Lyon");
   // The notice names what Scene Scout suggested, not whatever the artist types next.
   await expect(page.getByRole("status").filter({ hasText: "Listeners in Paris, FR connected with First Light" })).toBeVisible();
+  const createDraft = page.getByRole("button", { name: "Create draft campaign" });
+  await expect(createDraft).toBeEnabled();
+  await createDraft.click();
+  await expect.poll(() => draftRequest?.sourceReleaseId).toBe("guide-first-light");
 });
 
 test("unmet stem demand opens the owner's actual track without creating a listing", async ({ authenticatedPage: page }) => {

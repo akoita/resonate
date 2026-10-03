@@ -83,6 +83,7 @@ export interface Campaign {
   beneficiaryType?: string | null;
   artistName: string;
   artistId?: string | null;
+  sourceReleaseId?: string | null;
   artistSlug: string;
   artistImage: string;
   artistSummary?: string | null;
@@ -850,6 +851,53 @@ export function buildCatalogArtistCandidates(releases: Release[]): CatalogArtist
   return Array.from(byArtist.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Return the selectable canonical artist options credited to a release.
+ * Ambiguous credits cannot ground a source release. The legacy release-owner
+ * path remains valid when it matches the release's primary-artist metadata.
+ */
+export function sourceReleaseArtistOptionIds(
+  release: Release | undefined,
+  candidates: CatalogArtistCandidate[],
+): string[] {
+  if (!release || release.withdrawnAt || !["ready", "published"].includes(release.status)) return [];
+
+  const mainCredits = mainReleaseCredits(release);
+  const acceptedIds = new Set<string>();
+  if (mainCredits.length === 0) {
+    for (const candidate of buildCatalogArtistCandidates([release])) {
+      acceptedIds.add(candidate.optionId);
+    }
+  } else {
+    for (const credit of mainCredits) {
+      if (credit.identityStatus === "ambiguous") continue;
+      acceptedIds.add(catalogArtistOptionId({
+        artistId: credit.artistId || credit.artist?.id || null,
+        name: credit.displayName,
+      }));
+    }
+
+    const primaryArtist = normalizedArtistCredit(release.primaryArtist);
+    const releaseArtistName = normalizedArtistCredit(release.artist?.displayName);
+    const releaseArtistId = release.artist?.id || release.artistId || null;
+    if (releaseArtistId && (!primaryArtist || primaryArtist === releaseArtistName)) {
+      acceptedIds.add(`profile:${releaseArtistId}`);
+    }
+  }
+
+  return candidates.filter((candidate) => acceptedIds.has(candidate.optionId)).map((candidate) => candidate.optionId);
+}
+
+export function sourceReleaseIdForArtistChoice(
+  sourceReleaseId: string | null | undefined,
+  associatedArtistOptionIds: string[],
+  selectedArtistOptionId: string,
+): string | null {
+  return sourceReleaseId && associatedArtistOptionIds.includes(selectedArtistOptionId)
+    ? sourceReleaseId
+    : null;
+}
+
 export type PledgeContractCall = {
   chainId: number;
   contractAddress: string;
@@ -969,6 +1017,7 @@ export type ShowCampaignDraftTierInput = {
 
 export type ShowCampaignDraftInput = {
   artistId?: string | null;
+  sourceReleaseId?: string | null;
   artistDisplayName: string;
   title?: string | null;
   description?: string | null;
@@ -994,6 +1043,7 @@ type BackendShowCampaign = {
   id: string;
   slug: string;
   artistId?: string | null;
+  sourceReleaseId?: string | null;
   artistDisplayName: string;
   artist?: {
     imageUrl?: string | null;
@@ -2021,6 +2071,7 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     beneficiaryType: campaign.beneficiaryType ?? null,
     artistName: campaign.artistDisplayName,
     artistId: campaign.artistId ?? null,
+    sourceReleaseId: campaign.sourceReleaseId ?? null,
     artistSlug: slugify(campaign.artistDisplayName),
     artistImage: mediaUrl(campaign.artist?.imageUrl),
     artistSummary: campaign.artist?.summary ?? null,

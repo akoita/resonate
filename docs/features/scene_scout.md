@@ -13,8 +13,8 @@ creating a show campaign or changing their catalog.
 
 ## Delivery and revenue line
 
-Milestone [33](https://github.com/akoita/resonate/milestone/33) application
-work is merged: city demand (#1968, [PR #2044](https://github.com/akoita/resonate/pull/2044)),
+Milestone [33](https://github.com/akoita/resonate/milestone/33) initial
+application slices are merged: city demand (#1968, [PR #2044](https://github.com/akoita/resonate/pull/2044)),
 popularity snapshots (#1450, [PR #2045](https://github.com/akoita/resonate/pull/2045)),
 unmet crate/session demand (#1969, [PR #2046](https://github.com/akoita/resonate/pull/2046)),
 first-listener reception (#1970, [PR #2047](https://github.com/akoita/resonate/pull/2047)),
@@ -24,8 +24,8 @@ Sprint 31 remains in progress: staging acceptance is tracked in
 warehouse scheduling and live checks in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
 Canonical follow demand remains unavailable until a follow ledger event exists;
-pledge demand remains excluded without an authoritative release link. See the
-[sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
+pledge demand remains excluded until release attribution and governed listener
+geography are available together. See the [sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
 
 ADR-BM-6: **Line 2, Artist Pro, phase 2**, behind a currently free entitlement
 seam. Suggestions convert into **Line 1, Shows (6%)** and **Line 3, marketplace
@@ -47,9 +47,11 @@ reads consent-governed ledger records within bounded windows. Follow counts
 remain zero until the platform has a canonical follow ledger event. Purchases
 count verified x402 settlements for a catalog track only when the envelope
 also has a governed user-declared city and a known listener identity. The
-existing purchase bridge does not infer location from a payer or campaign. Pledges remain
-zero because campaign-scoped pledges lack an authoritative release link; a
-campaign target city cannot stand in for listener geography. These remaining
+existing purchase bridge does not infer location from a payer or campaign.
+
+Shows drafts can retain a validated source release, but pledges remain zero
+until a canonical pledge contribution also carries governed listener geography.
+A campaign target city cannot stand in for listener geography. These remaining
 signal families stay tracked by the open #1968 issue.
 
 Rows below `DISCOVERY_MIN_AUDIENCE` unique listeners are never written to the
@@ -60,8 +62,12 @@ raw location or wallet identities appear in snapshots or cards.
 The **Draft a show** action opens `/shows/create` with coarse city, country and
 release-reference parameters. The editor resolves the release against the
 signed-in user's visible catalog, initializes the release context and city,
-and keeps the details editable. Campaign ownership, payout eligibility and
-artist authority remain enforced by the existing Shows workflow.
+and keeps the details editable. Saving the draft retains its source release
+while the selected artist matches that release. The backend accepts only a
+ready or published, unwithdrawn release with canonical credit for the selected
+artist. Editing a draft preserves the association; selecting an artist outside
+the release credits clears it in the editor. Campaign ownership, payout eligibility and artist authority
+remain enforced by the existing Shows workflow.
 
 ## Searched but missing demand
 
@@ -142,7 +148,11 @@ Run the focused Scene Scout backend unit/integration tests, the artist
 analytics card tests and the Shows prefill/form tests. Integration fixtures
 prove small audiences are absent from storage and responses, invalid consent
 and campaign-target geo are excluded, and withdrawals remove their contribution.
-The User Guide's artist analytics article describes the same behavior.
+The source-release integration tests cover persistence, omission, explicit
+clearing, artist attribution and invalid catalog references. The Scene Scout
+browser test follows a city card through an editable draft and checks the saved
+release reference. The User Guide's artist analytics article describes the same
+behavior.
 
 External staging verification remains open in
 [resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
