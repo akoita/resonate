@@ -7,8 +7,12 @@ import type { AgentNextPreferences } from "../../lib/api";
 export type SessionPreset = {
   intent: string;
   name: string;
+  /** "genre" presets speak everyday genre language; "mood" presets describe a feel (#2052). */
+  group: "genre" | "mood";
+  /** What the session is for, in plain words. */
   description: string;
   input: string;
+  /** What the listener will hear, shown before they start (#2052). */
   output: string;
   gradient: string;
   preferences: AgentNextPreferences;
@@ -16,13 +20,104 @@ export type SessionPreset = {
   queueStyle: string;
 };
 
+/**
+ * Quick starts for the AI DJ. Genre presets come first so an everyday listener
+ * finds rap, R&B or pop without decoding a mood name (#2052). Every genre is
+ * in the session parser's vocabulary (`taste_edit_vocabulary.ts`), so the
+ * chips a preset shows are the same filters the listener could type.
+ */
 export const SESSION_PRESETS: SessionPreset[] = [
+  {
+    intent: "Hip-Hop",
+    name: "Hip-Hop & Rap",
+    group: "genre",
+    description: "Beats and bars, from classic hip-hop to today's trap.",
+    input: "Hip-hop, rap, trap",
+    output: "Hard-hitting beats with the rapper front and center",
+    gradient: "linear-gradient(135deg, #f97316 0%, #b91c1c 100%)",
+    preferences: { energy: "high", genres: ["Hip-Hop", "Rap", "Trap"] },
+    searchVibes: ["Hip-Hop", "Rap", "Trap"],
+    queueStyle: "Steady bounce",
+  },
+  {
+    intent: "R&B",
+    name: "R&B & Soul",
+    group: "genre",
+    description: "Smooth vocals and slow grooves for any time of day.",
+    input: "R&B, soul, funk",
+    output: "Silky singing over warm, laid-back grooves",
+    gradient: "linear-gradient(135deg, #db2777 0%, #7c3aed 100%)",
+    preferences: { energy: "medium", genres: ["R&B", "Soul", "Funk"] },
+    searchVibes: ["R&B", "Soul", "Funk"],
+    queueStyle: "Smooth blends",
+  },
+  {
+    intent: "Pop",
+    name: "Pop Hits",
+    group: "genre",
+    description: "Catchy songs with big choruses you can sing along to.",
+    input: "Pop, dance, synthpop",
+    output: "Upbeat, radio-friendly songs with memorable hooks",
+    gradient: "linear-gradient(135deg, #ec4899 0%, #f59e0b 100%)",
+    preferences: { energy: "medium", genres: ["Pop", "Dance", "Synthpop"] },
+    searchVibes: ["Pop", "Dance", "Synthpop"],
+    queueStyle: "Hit after hit",
+  },
+  {
+    intent: "Afrobeats",
+    name: "Afrobeats & Amapiano",
+    group: "genre",
+    description: "Dance-floor rhythms from Lagos to Johannesburg.",
+    input: "Afrobeat, Afro-pop, amapiano",
+    output: "Rolling percussion, deep log-drum bass and feel-good vocals",
+    gradient: "linear-gradient(135deg, #16a34a 0%, #ca8a04 100%)",
+    preferences: { energy: "high", genres: ["Afrobeat", "Afro-Pop", "Amapiano"] },
+    searchVibes: ["Afrobeat", "Afro-Pop", "Amapiano"],
+    queueStyle: "Keep it moving",
+  },
+  {
+    intent: "Reggae",
+    name: "Reggae & Dancehall",
+    group: "genre",
+    description: "Laid-back island grooves and dancehall bounce.",
+    input: "Reggae, dancehall, dub",
+    output: "Offbeat guitars, deep bass and sunny vocals",
+    gradient: "linear-gradient(135deg, #15803d 0%, #eab308 100%)",
+    preferences: { energy: "medium", genres: ["Reggae", "Dancehall", "Dub"] },
+    searchVibes: ["Reggae", "Dancehall", "Dub"],
+    queueStyle: "Easy rocking",
+  },
+  {
+    intent: "Latin",
+    name: "Latin & Reggaeton",
+    group: "genre",
+    description: "Party rhythms and Latin pop to get everyone moving.",
+    input: "Latin, reggaeton",
+    output: "Dembow beats, Latin percussion and Spanish-language hooks",
+    gradient: "linear-gradient(135deg, #e11d48 0%, #f97316 100%)",
+    preferences: { energy: "high", genres: ["Latin", "Reggaeton"] },
+    searchVibes: ["Latin", "Reggaeton"],
+    queueStyle: "Party pace",
+  },
+  {
+    intent: "World",
+    name: "World Music",
+    group: "genre",
+    description: "Traditional and modern sounds from around the globe.",
+    input: "World, musiques du monde",
+    output: "Voices and instruments from many cultures, old and new",
+    gradient: "linear-gradient(135deg, #0d9488 0%, #a16207 100%)",
+    preferences: { energy: "medium", genres: ["World", "Musiques du monde"] },
+    searchVibes: ["World", "Musiques du monde"],
+    queueStyle: "Wide journey",
+  },
   {
     intent: "Focus",
     name: "Neural Flow",
+    group: "mood",
     description: "Steady, low-friction selections for deep work or coding.",
     input: "Ambient, lo-fi, restrained drums",
-    output: "A calm queue with minimal vocal interruptions",
+    output: "Calm instrumentals with few vocals to distract you",
     gradient: "linear-gradient(135deg, #5667ff 0%, #7447ff 100%)",
     preferences: { mood: "Focus", energy: "medium", genres: ["Ambient", "Lo-fi", "Electronic"] },
     searchVibes: ["Ambient", "Lo-fi", "Electronic"],
@@ -31,9 +126,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
   {
     intent: "Hype",
     name: "Pulse Raid",
+    group: "mood",
     description: "High-energy discoveries when the room needs momentum.",
     input: "Bass, club, trap, percussive edits",
-    output: "Bigger drops, faster cuts, brighter stems",
+    output: "Loud, fast club tracks with big drops",
     gradient: "linear-gradient(135deg, #ff3ea5 0%, #f04438 100%)",
     preferences: { mood: "Hype", energy: "high", genres: ["Bass", "Club", "Trap"] },
     searchVibes: ["Bass", "Club", "Trap"],
@@ -42,9 +138,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
   {
     intent: "Chill",
     name: "Liquid Sky",
+    group: "mood",
     description: "Soft transitions for browsing, winding down, or late work.",
     input: "Soul, jazz, downtempo, warm pads",
-    output: "A smooth listening lane with lighter drums",
+    output: "Mellow soul and jazz with lighter drums",
     gradient: "linear-gradient(135deg, #38bdf8 0%, #7c5cff 100%)",
     preferences: { mood: "Chill", energy: "low", genres: ["Soul", "Jazz", "Downtempo"] },
     searchVibes: ["Soul", "Jazz", "Downtempo"],
@@ -53,9 +150,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
   {
     intent: "Dark",
     name: "Abyss Shift",
+    group: "mood",
     description: "Moody, underground choices with more tension and texture.",
     input: "Industrial, drill, minor-key electronics",
-    output: "Shadowy tracks and heavier low-end movement",
+    output: "Dark, heavy electronic tracks with deep bass",
     gradient: "linear-gradient(135deg, #2d033b 0%, #160014 100%)",
     preferences: { mood: "Dark", energy: "high", genres: ["Industrial", "Drill", "Electronic"] },
     searchVibes: ["Industrial", "Drill", "Electronic"],
@@ -64,9 +162,10 @@ export const SESSION_PRESETS: SessionPreset[] = [
   {
     intent: "Zen",
     name: "Static Calm",
+    group: "mood",
     description: "Minimal, spacious sessions for reset moments.",
     input: "Drone, piano, field recordings, sparse beats",
-    output: "A slower queue with room to breathe",
+    output: "Slow, quiet piano and ambient sounds with lots of space",
     gradient: "linear-gradient(135deg, #f59e0b 0%, #7c3aed 100%)",
     preferences: { mood: "Zen", energy: "low", genres: ["Drone", "Piano", "Ambient"] },
     searchVibes: ["Drone", "Piano", "Ambient"],

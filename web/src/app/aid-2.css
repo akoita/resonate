@@ -735,6 +735,28 @@
   transition: background 0.18s, border-color 0.18s, transform 0.12s;
 }
 .aid-prompt-preset:hover { background: rgba(124,92,255,0.2); border-color: rgba(196,181,253,0.5); }
+/* #2052: everyday genres and moods as two labelled rows, plus a visible "what you'll hear" note. */
+.aid-prompt-preset-groups { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.aid-prompt-preset-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.aid-prompt-preset-group-label {
+  color: rgba(240,234,255,0.55);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.aid-prompt-preset-about {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(196,181,253,0.18);
+  background: rgba(124,92,255,0.08);
+  color: rgba(240,234,255,0.82);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.aid-prompt-preset-about strong { color: #f5f3ff; }
+.aid-prompt-preset-expect { color: #c4b5fd; }
 .aid-prompt-preset.active {
   background: linear-gradient(135deg, var(--r-agent, #8b5cf6), var(--r-agent-soft, #a78bfa));
   border-color: rgba(167,139,250,0.6);
