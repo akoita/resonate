@@ -148,3 +148,8 @@ no model-supplied lane plan, new tool authority, or purchase instruction. No
 unresolved security finding remains in the reviewed changes. Broader backend
 integration sweeps remain CI scope; no schema, environment, dependency,
 contract, fee, payout, or deployment wiring changed.
+
+CI follow-up: ordinary sessions must not invoke the My Mix demand cache. The
+broad integration sweep exposed an ADK boundary fixture that supplies only the
+ordinary runtime interface. Limit the extra demand read to My Mix sessions;
+the affected Scene Scout integration suite passed all five tests afterward.

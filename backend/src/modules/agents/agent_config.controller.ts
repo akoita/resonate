@@ -417,7 +417,9 @@ export class AgentConfigController {
                         ? result.tracks.map((track) => track.trackId)
                         : (result.picks ?? (result.trackId ? [{ trackId: result.trackId }] : []))
                             .map((pick) => pick.trackId);
-                    await this.recordMyMixDemand(req.user.userId, session.id);
+                    if (sessionPreferences.myMix != null) {
+                        await this.recordMyMixDemand(req.user.userId, session.id);
+                    }
                     if (
                         this.unmetDemand && requested.request &&
                         (resultStatus === "approved" || resultStatus === "no_tracks")
