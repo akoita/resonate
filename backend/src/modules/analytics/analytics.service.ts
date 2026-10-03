@@ -31,6 +31,7 @@ import {
 import { sceneScoutCityCards } from "./analytics_scene_scout";
 import { unmetDemandCards } from "./analytics_unmet_demand";
 import { UNMET_DEMAND_SOURCE, type UnmetDemandSource } from "../scene_scout/unmet_demand.contracts";
+import { FIRST_LISTENER_RECEPTION_SOURCE, firstListenerReceptionCards, type FirstListenerReceptionSource } from "./analytics_first_listener";
 
 interface TrackStats {
   trackId: string;
@@ -82,6 +83,7 @@ export type ArtistActionCardType =
   | "review_show_city_demand"
   | "propose_show_city"
   | "review_unmet_demand"
+  | "review_first_listener_reception"
   | "post_campaign_update"
   | "create_holder_benefit"
   | "invite_holder_collectors"
@@ -273,6 +275,9 @@ export class AnalyticsService {
     @Optional()
     @Inject(UNMET_DEMAND_SOURCE)
     private readonly unmetDemandSource?: UnmetDemandSource,
+    @Optional()
+    @Inject(FIRST_LISTENER_RECEPTION_SOURCE)
+    private readonly firstListenerReceptionSource?: FirstListenerReceptionSource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
@@ -398,6 +403,10 @@ export class AnalyticsService {
       reason: "Request demand is temporarily unavailable. Your other analytics are still available.",
       demand: [],
     }));
+    const reception = await this.firstListenerReceptionSource?.getArtistReception(artistId).catch(() => ({
+      available: false, minimumAudience: 3, releases: [],
+    }));
+    const receptionCards = firstListenerReceptionCards(reception);
 
     return {
       summary: {
@@ -411,7 +420,7 @@ export class AnalyticsService {
       playsOverTime: this.playsOverTime(facts),
       trackPerformance: tracks,
       protection,
-      actions: [...sceneScoutCityCards(sceneScout), ...unmetDemandCards(unmetDemand), ...this.artistActionCards({
+      actions: [...sceneScoutCityCards(sceneScout), ...unmetDemandCards(unmetDemand), ...receptionCards, ...this.artistActionCards({
         artistId,
         totalPlays: summary.totalPlays,
         topTracks,
@@ -421,6 +430,11 @@ export class AnalyticsService {
       })],
       ...(sceneScout ? { sceneScout: { status: sceneScout.status, reason: sceneScout.reason } } : {}),
       ...(unmetDemand ? { unmetDemand: { status: unmetDemand.status, reason: unmetDemand.reason } } : {}),
+      ...(reception ? { firstListenerReception: {
+        status: !reception.available ? "unavailable" : receptionCards.length ? "ready" : "thin_data",
+        reason: !reception.available ? "Discovery reception is temporarily unavailable."
+          : receptionCards.length ? undefined : "Not enough discovery listening yet. Reception appears after seven days when enough listeners have heard the release.",
+      } } : {}),
       listenerGrowth: {
         status: "unavailable",
         reason: "listener and follower growth events are not available in the current analytics event model",

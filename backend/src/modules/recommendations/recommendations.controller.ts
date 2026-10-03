@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { HomeFeedService } from "./home-feed.service";
 import { RecommendationsService, UserPreferences } from "./recommendations.service";
@@ -16,13 +16,15 @@ export class RecommendationsController {
   /** Home feed v2 (#1454 WS-7): multi-rail personalized feed with categorical explanations. */
   @UseGuards(AuthGuard("jwt"))
   @Get(":userId/home-feed")
-  getHomeFeed(@Param("userId") userId: string) {
+  getHomeFeed(@Param("userId") userId: string, @Req() req: any) {
+    this.assertOwnUser(userId, req);
     return this.homeFeedService.getHomeFeed(userId);
   }
 
   @UseGuards(AuthGuard("jwt"))
   @Post("preferences")
-  setPreferences(@Body() body: { userId: string; preferences: UserPreferences }) {
+  setPreferences(@Body() body: { userId: string; preferences: UserPreferences }, @Req() req: any) {
+    this.assertOwnUser(body.userId, req);
     return this.recommendationsService.setPreferences(body.userId, body.preferences);
   }
 
@@ -80,12 +82,14 @@ export class RecommendationsController {
   @Get(":userId")
   getRecommendations(
     @Param("userId") userId: string,
+    @Req() req: any,
     @Query("limit") limit?: string,
     @Query("mood") mood?: string,
     @Query("genres") genres?: string,
     @Query("energy") energy?: "low" | "medium" | "high",
     @Query("allowExplicit") allowExplicit?: string,
   ) {
+    this.assertOwnUser(userId, req);
     const parsed = limit ? Number(limit) : 10;
     const parsedEnergy = energy === "low" || energy === "medium" || energy === "high"
       ? energy
@@ -101,4 +105,11 @@ export class RecommendationsController {
       },
     );
   }
+
+  private assertOwnUser(userId: string, req: { user?: { userId?: string } }) {
+    if (!req?.user?.userId || req.user.userId !== userId) {
+      throw new ForbiddenException("Recommendations are restricted to the authenticated listener");
+    }
+  }
+
 }

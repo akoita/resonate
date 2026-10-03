@@ -11,9 +11,11 @@ import {
   primaryReasonFor,
 } from "../modules/recommendations/discovery-explanations";
 import {
+  applyFirstListenerReservationOutcome,
   applyDiscoveryPolicy,
   DISCOVERY_POLICY_DEFAULTS,
   discoveryArtistKey,
+  hasPositiveFirstListenerTasteSignal,
 } from "../modules/recommendations/discovery-policy";
 import {
   DiscoveryCandidate,
@@ -174,6 +176,22 @@ describe("discovery policy (ADR-TE-2)", () => {
       expect(ids(result.items)).toEqual(["human-new"]);
       expect(result.items[0].reasonCode).toBe("discovery_pick");
     });
+
+    it("never gives a fully AI-generated track exploration priority when AI was requested", () => {
+      const result = applyDiscoveryPolicy(
+        [
+          ranked("requested-ai", 100, {
+            artistId: "a1",
+            aiDisclosureLevel: "ALL",
+            signals: [{ label: "taste_match", weight: 1, reason: "matches taste" }],
+          }),
+        ],
+        { limit: 1, allowAiContent: true, verifiedHumanArtistIds: new Set(["a1"]) },
+      );
+      expect(result.items[0]?.id).toBe("requested-ai");
+      expect(result.items[0]?.reasonCode).not.toBe("discovery_pick");
+      expect(result.exploration.served).toBe(0);
+    });
   });
 
   describe("rule 3: exploration share", () => {
@@ -224,6 +242,148 @@ describe("discovery policy (ADR-TE-2)", () => {
       );
       expect(result.exploration).toEqual({ reserved: 1, served: 0 });
       expect(result.items.some((i) => i.reasonCode === "discovery_pick")).toBe(false);
+    });
+
+    it("prioritizes fresh candidates only inside the reserved share and only with a positive taste signal", () => {
+      const result = applyDiscoveryPolicy(
+        [
+          ranked("ordinary-exploration", 90, { artistId: "new1" }),
+          ranked("first-listener", 20, {
+            artistId: "new2",
+            releaseId: "release-new",
+            firstListenerEligible: true,
+            signals: [{ label: "taste_match", weight: 40, reason: "matches selected taste" }],
+          }),
+          ranked("first-listener-no-signal", 100, {
+            artistId: "new3",
+            releaseId: "release-no-signal",
+            firstListenerEligible: true,
+          }),
+        ],
+        { limit: 5, verifiedHumanArtistIds: verified, playedArtistIds: played },
+      );
+
+      expect(result.exploration).toEqual({ reserved: 1, served: 1 });
+      expect(result.items.find((item) => item.id === "first-listener")?.reasonCode)
+        .toBe("discovery_pick");
+      expect(result.items.find((item) => item.id === "first-listener-no-signal")?.reasonCode)
+        .not.toBe("discovery_pick");
+      expect(result.items.find((item) => item.id === "ordinary-exploration")?.reasonCode)
+        .not.toBe("discovery_pick");
+    });
+
+    it("recognizes only named, positive user taste signals for fresh placements", () => {
+      expect(
+        hasPositiveFirstListenerTasteSignal(
+          ranked("taste", 1, {
+            signals: [{ label: "session_intent_fit", weight: 12, reason: "fits focus" }],
+          }),
+        ),
+      ).toBe(true);
+      expect(
+        hasPositiveFirstListenerTasteSignal(
+          ranked("catalog-only", 100, {
+            signals: [{ label: "catalog_freshness", weight: 100, reason: "new" }],
+          }),
+        ),
+      ).toBe(false);
+      expect(
+        hasPositiveFirstListenerTasteSignal(
+          ranked("negative", 100, {
+            signals: [{ label: "taste_match", weight: -5, reason: "downranked" }],
+          }),
+        ),
+      ).toBe(false);
+    });
+
+    it("does not promote a second fresh candidate after a reservation error", () => {
+      const pool = [
+        ranked("fresh-a", 100, {
+          artistId: "new1",
+          releaseId: "release-a",
+          firstListenerEligible: true,
+          signals: [{ label: "taste_match", weight: 1, reason: "fit" }],
+        }),
+        ranked("fresh-b", 90, {
+          artistId: "new2",
+          releaseId: "release-b",
+          firstListenerEligible: true,
+          signals: [{ label: "taste_match", weight: 1, reason: "fit" }],
+        }),
+        ranked("baseline-a", 80, { artistId: "fam1" }),
+        ranked("baseline-b", 70, { artistId: "fam2" }),
+        ranked("baseline-c", 60, { artistId: "fam3" }),
+      ];
+      const options = { limit: 3, verifiedHumanArtistIds: verified, playedArtistIds: played };
+      const initial = applyDiscoveryPolicy(pool, options);
+      const resolved = applyFirstListenerReservationOutcome(pool, initial, new Set(), options);
+
+      expect(initial.items.find((item) => item.firstListenerEligible)?.reasonCode)
+        .toBe("discovery_pick");
+      expect(ids(resolved.items)).toEqual(["baseline-a", "baseline-b", "baseline-c"]);
+      expect(resolved.items.some((item) => item.firstListenerEligible)).toBe(false);
+    });
+
+    it("fills a cap-denied fresh slot from ordinary candidates without an unreserved fresh pick", () => {
+      const pool = [
+        ranked("fresh-denied", 100, {
+          artistId: "new1",
+          releaseId: "release-denied",
+          firstListenerEligible: true,
+          signals: [{ label: "taste_match", weight: 1, reason: "fit" }],
+        }),
+        ranked("fresh-also-denied", 90, {
+          artistId: "new2",
+          releaseId: "release-also-denied",
+          firstListenerEligible: true,
+          signals: [{ label: "taste_match", weight: 1, reason: "fit" }],
+        }),
+        ranked("baseline-a", 80, { artistId: "fam1" }),
+        ranked("baseline-b", 70, { artistId: "fam2" }),
+        ranked("baseline-c", 60, { artistId: "fam3" }),
+      ];
+      const options = { limit: 3, verifiedHumanArtistIds: verified, playedArtistIds: played };
+      const initial = applyDiscoveryPolicy(pool, options);
+      const resolved = applyFirstListenerReservationOutcome(pool, initial, new Set(), options);
+
+      expect(ids(resolved.items)).toEqual(["baseline-a", "baseline-b", "baseline-c"]);
+      expect(resolved.exploration.served).toBe(0);
+      expect(resolved.items.every((item) => item.reasonCode !== "discovery_pick")).toBe(true);
+    });
+
+    it("keeps accepted reservations and removes all other fresh candidates before filling", () => {
+      const pool = [
+        ranked("fresh-accepted", 100, {
+          artistId: "new1",
+          releaseId: "release-accepted",
+          firstListenerEligible: true,
+          signals: [{ label: "taste_match", weight: 1, reason: "fit" }],
+        }),
+        ranked("fresh-denied", 90, {
+          artistId: "new2",
+          releaseId: "release-denied",
+          firstListenerEligible: true,
+          signals: [{ label: "taste_match", weight: 1, reason: "fit" }],
+        }),
+        ranked("baseline-a", 80, { artistId: "fam1" }),
+        ranked("baseline-b", 70, { artistId: "fam2" }),
+        ranked("baseline-c", 60, { artistId: "fam3" }),
+      ];
+      const options = { limit: 5, verifiedHumanArtistIds: verified, playedArtistIds: played };
+      const initial = applyDiscoveryPolicy(pool, options);
+      const resolved = applyFirstListenerReservationOutcome(
+        pool,
+        initial,
+        new Set(["release-accepted"]),
+        options,
+      );
+
+      expect(ids(resolved.items)).toContain("fresh-accepted");
+      expect(resolved.items.find((item) => item.id === "fresh-accepted")?.reasonCode)
+        .toBe("discovery_pick");
+      expect(ids(resolved.items)).not.toContain("fresh-denied");
+      expect(resolved.items.filter((item) => item.firstListenerEligible))
+        .toEqual([expect.objectContaining({ id: "fresh-accepted" })]);
     });
 
     it("never uses unverified artists, played artists, or candidates with no artist id", () => {

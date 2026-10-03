@@ -68,6 +68,7 @@ model User {
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
   demandObservations          DemandObservation[]
+  firstListenerExposures      FirstListenerExposure[]
   accountClosureRequests      AccountClosureRequest[]
   artistClaimDecisionEvents   ArtistClaimDecisionEvent[]  @relation("ArtistClaimDecisionEventActor")
   managementOwnedArtists       Artist[]                       @relation("ArtistManagementOwner")
@@ -734,6 +735,8 @@ model Release {
   rightsPolicyVersion    String?
   rightsSourceType       String?
   rightsEvaluatedAt      DateTime?
+  /// Monotonic first-listener placement budget; retained when listener rows are erased.
+  firstListenerPlacementsUsed Int                     @default(0)
   artist                 Artist                        @relation(fields: [artistId], references: [id])
   managementOwner        User?                         @relation("ReleaseManagementOwner", fields: [managementOwnerUserId], references: [id], onDelete: Restrict)
   artistCredits          ReleaseArtistCredit[]
@@ -741,6 +744,7 @@ model Release {
   managementGrants       ManagementGrant[]
   rightsUpgradeRequests  ReleaseRightsUpgradeRequest[]
   rightsReassessments    RightsRouteReassessment[]
+  firstListenerExposures FirstListenerExposure[]
   publishedRemixProject  RemixProject?                 @relation("RemixProjectPublishedRelease")
   sceneScoutCityDemand   SceneScoutCityDemand[]
 
@@ -1933,8 +1937,27 @@ model AnalyticsEvent {
   @@index([eventName, occurredAt])
   @@index([producer, occurredAt])
   @@index([privacyTier, occurredAt])
+  @@index([actorId, eventName, occurredAt])
   @@index([subjectType, subjectId])
   @@index([createdAt])
+}
+
+/// Durable first-listener placements. The unique listener/release pair means
+/// one listener cannot receive a second first-listener placement for the same
+/// release; candidate serving is limited to the release's first seven catalog
+/// days. The row stores placement, not a play: reception joins it to consented
+/// playback facts separately.
+model FirstListenerExposure {
+  id        String   @id @default(uuid())
+  userId    String
+  releaseId String
+  placedAt  DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  release   Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, releaseId])
+  @@index([releaseId, placedAt])
+  @@index([userId, placedAt])
 }
 
 model AnalyticsGovernanceLog {

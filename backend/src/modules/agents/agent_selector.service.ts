@@ -5,6 +5,7 @@ import { AgentAudioFeatureService, AgentAudioFeatures } from "./agent_audio_feat
 import { AgentBigQueryTasteSignalService, AgentTasteScore } from "./agent_bigquery_taste_signal.service";
 import { CommunityCohortService } from "../community/community_cohort.service";
 import {
+  applyFirstListenerReservationOutcome,
   applyDiscoveryPolicy,
   DISCOVERY_POLICY_DEFAULTS,
   discoveryArtistKey,
@@ -12,6 +13,8 @@ import {
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import { DiscoveryRankingService } from "../recommendations/discovery-ranking.service";
 import { RecommendationsService } from "../recommendations/recommendations.service";
+import { FirstListenerDiscoveryService } from "../recommendations/first_listener_discovery.service";
+import { FIRST_LISTENER_CANDIDATE_LIMIT } from "../recommendations/first_listener.contracts";
 import {
   hasSignal,
   TasteMemoryPolicy,
@@ -22,6 +25,10 @@ import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
 import { AgentLearningService } from "./agent_learning.service";
 
+// Expanded catalog queries can return many candidates; keep the freshness
+// check bounded and suppress discovery if the full candidate pool will not fit.
+const FIRST_LISTENER_VALIDATION_LIMIT = 200;
+
 export interface AgentSelectorInput {
   userId?: string;
   queries?: string[];
@@ -29,6 +36,8 @@ export interface AgentSelectorInput {
   allowExplicit?: boolean;
   useEmbeddings?: boolean;
   limit?: number;
+  /** Let a caller reserve only the fresh placement it actually returns. */
+  reserveFirstListenerPlacements?: boolean;
   energy?: "low" | "medium" | "high";
   /**
    * Learned genre weights from the caller. The selector prefers the shared
@@ -64,6 +73,9 @@ export interface AgentCandidateTrack {
     moods?: string[] | null;
     artistId?: string | null;
   };
+  releaseId?: string;
+  /** Internal marker used by runtime injection before returning a fresh pick. */
+  firstListenerEligible?: boolean;
   agentRecommendation?: {
     score: number;
     matchedQueries: string[];
@@ -102,6 +114,9 @@ export class AgentSelectorService {
     // Shared served-history source (same one Home reads and writes).
     @Optional()
     private readonly recommendations?: RecommendationsService,
+    // Bounded fresh-release source and transactional placement reservation.
+    @Optional()
+    private readonly firstListenerDiscovery?: FirstListenerDiscoveryService,
   ) { }
 
   async select(input: AgentSelectorInput) {
@@ -144,6 +159,54 @@ export class AgentSelectorService {
             ...item,
             matchedQueries: query ? [query] : [],
           });
+        }
+      }
+    }
+
+    const firstListenerCandidates = input.userId && this.firstListenerDiscovery
+      ? await this.firstListenerDiscovery
+          .getFreshCandidates({
+            userId: input.userId,
+            allowExplicit: input.allowExplicit ?? false,
+          })
+          .catch(() => [])
+      : [];
+    const firstListenerTrackIds = new Set(firstListenerCandidates.map((track) => track.id));
+    for (const track of firstListenerCandidates) {
+      const existing = byId.get(track.id);
+      if (!existing) {
+        byId.set(track.id, { ...track, matchedQueries: [] });
+      } else {
+        byId.set(track.id, {
+          ...existing,
+          releaseId: track.releaseId,
+          release: { ...existing.release, ...track.release },
+        });
+      }
+    }
+
+    let firstListenerVerificationComplete = true;
+    if (input.userId && this.firstListenerDiscovery) {
+      const ordinaryTrackIds = [...byId.keys()].filter((trackId) => !firstListenerTrackIds.has(trackId));
+      if (ordinaryTrackIds.length > FIRST_LISTENER_VALIDATION_LIMIT) {
+        firstListenerVerificationComplete = false;
+      } else {
+        for (let offset = 0; offset < ordinaryTrackIds.length; offset += FIRST_LISTENER_CANDIDATE_LIMIT) {
+          const trackIds = ordinaryTrackIds.slice(
+            offset,
+            offset + FIRST_LISTENER_CANDIDATE_LIMIT,
+          );
+          try {
+            const validated = await this.firstListenerDiscovery.getFreshCandidates({
+              userId: input.userId,
+              allowExplicit: input.allowExplicit ?? false,
+              trackIds,
+            });
+            for (const track of validated) firstListenerTrackIds.add(track.id);
+          } catch {
+            firstListenerVerificationComplete = false;
+            break;
+          }
         }
       }
     }
@@ -229,6 +292,11 @@ export class AgentSelectorService {
         // Artist identity + AI disclosure feed the policy stage: without an
         // artistId no DJ candidate can be an exploration pick.
         artistId: track.release?.artistId ?? null,
+        releaseId: track.releaseId ?? null,
+        firstListenerEligible:
+          firstListenerVerificationComplete &&
+          firstListenerTrackIds.has(track.id) &&
+          aiDisclosureLevelOf(track) !== "ALL",
         aiDisclosureLevel: aiDisclosureLevelOf(track),
         release: {
           genre: track.release?.genre ?? null,
@@ -271,6 +339,9 @@ export class AgentSelectorService {
       const track = byId2.get(entry.id)!;
       return {
         ...track,
+        ...(input.reserveFirstListenerPlacements === false
+          ? { firstListenerEligible: Boolean(entry.firstListenerEligible) }
+          : {}),
         agentRecommendation: {
           score: entry.score,
           matchedQueries: track.matchedQueries,
@@ -295,14 +366,48 @@ export class AgentSelectorService {
     // cap (per 10 session tracks), categorical reason.
     const fresh = ranked.filter((entry) => !sessionTrackIds.has(entry.id));
     const policyContext = await this.loadPolicyContext(input, fresh);
-    const policyResult = applyDiscoveryPolicy(fresh, {
+    const policyOptions = {
       limit,
       tastePolicy: policy,
-      verifiedHumanArtistIds: policyContext.verifiedHumanArtistIds,
+      verifiedHumanArtistIds: firstListenerVerificationComplete
+        ? policyContext.verifiedHumanArtistIds
+        : new Set<string>(),
       playedArtistIds: policyContext.playedArtistIds,
       priorSessionArtistKeys: policyContext.priorSessionArtistKeys,
       priorExplorationCount: policyContext.priorExplorationCount,
-    });
+    };
+    let policyInput = fresh;
+    let policyResult = applyDiscoveryPolicy(policyInput, policyOptions);
+    const firstListenerPicks = policyResult.items.filter(
+      (entry) => entry.firstListenerEligible && entry.reasonCode === "discovery_pick",
+    );
+    if (
+      input.reserveFirstListenerPlacements !== false &&
+      firstListenerPicks.length > 0 &&
+      this.firstListenerDiscovery &&
+      input.userId
+    ) {
+      try {
+        const reserved = await this.firstListenerDiscovery.reservePlacements(
+          input.userId,
+          firstListenerPicks.flatMap((entry) =>
+            entry.releaseId
+              ? [{ trackId: entry.id, releaseId: entry.releaseId }]
+              : [],
+          ),
+          { allowExplicit: input.allowExplicit ?? false },
+        );
+        policyResult = applyFirstListenerReservationOutcome(
+          policyInput,
+          policyResult,
+          reserved,
+          policyOptions,
+        );
+      } catch {
+        policyInput = fresh.filter((entry) => !entry.firstListenerEligible);
+        policyResult = applyDiscoveryPolicy(policyInput, policyOptions);
+      }
+    }
     const selected = policyResult.items.map(toAgentTrack);
     const scored = ranked.map(toAgentTrack);
 

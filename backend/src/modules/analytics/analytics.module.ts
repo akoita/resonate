@@ -29,12 +29,21 @@ import { DiscoveryJournalModule } from "../discovery_journal/discovery_journal.m
 import { DiscoveryJournalService } from "../discovery_journal/discovery_journal.service";
 import { RESONANT_DISCOVERY_SOURCE } from "./analytics_resonant_discovery";
 import { SceneScoutModule } from "../scene_scout/scene_scout.module";
+import { SceneScoutEntitlementsService } from "../scene_scout/scene_scout.service";
+import { FirstListenerModule } from "../recommendations/first_listener.module";
+import { FirstListenerReceptionService } from "../recommendations/first_listener_reception.service";
+import { FIRST_LISTENER_RECEPTION_SOURCE, entitledFirstListenerReceptionSource } from "./analytics_first_listener";
 
 @Module({
-  imports: [SharedModule, AgentsModule, DiscoveryJournalModule, SceneScoutModule],
+  imports: [SharedModule, AgentsModule, DiscoveryJournalModule, SceneScoutModule, FirstListenerModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,
+    {
+      provide: FIRST_LISTENER_RECEPTION_SOURCE,
+      useFactory: entitledFirstListenerReceptionSource,
+      inject: [FirstListenerReceptionService, SceneScoutEntitlementsService],
+    },
     AnalyticsAuthorizationService,
     AnalyticsConsentService,
     AnalyticsIngestService,

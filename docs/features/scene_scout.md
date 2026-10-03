@@ -78,10 +78,46 @@ reviews the supply, rights and terms before confirming; the suggestion never
 publishes or lists automatically. Other gaps link to the artist catalog. Small
 or unavailable samples produce an honest status rather than a sales estimate.
 
+## First listeners and reception
+
+Fresh playable releases enter Home and DJ candidates during their first seven
+catalog days. Freshness uses `Release.createdAt`, because the catalog has no
+publication timestamp; future-dated, withdrawn, unplayable or fully AI releases
+are excluded. A named positive taste signal and verified human artist are
+required for priority inside the existing exploration budget. Listener hides,
+downranking, artist diversity and the existing discovery explanation remain.
+Exposure cannot be purchased and does not affect payouts.
+
+Placement reservations recheck catalog eligibility and verification under a
+release lock. Each listener can receive at most one placement per release;
+a release can receive at most 1,000. An anonymous release counter survives
+listener erasure, so deleting exposure history cannot replenish the budget.
+Denied or failed reservations remove fresh placement privilege before ordinary
+selection fills the remaining page; they cannot promote another uncapped pick.
+
+Model-driven DJ picks and ordinary catalog candidates pass the same bounded,
+authoritative freshness checks. Only the returned fallback replacement reserves
+a placement; other considered candidates do not consume the budget. Incomplete
+eligibility checks suppress discovery privilege, and policy failures strip
+unverified model discovery annotations. Authenticated recommendation routes
+require the requested user to match the JWT.
+
+After seven days, reception counts consent-qualified listeners who actually
+played the same release after placement and within its first week. Full plays
+require at least 90% completion; saves must follow hearing. Current consent,
+resets, agent-training opt-out and self-activity exclusions govern the read.
+Forged release payloads cannot override the canonical track/release relationship.
+Bounded-read overflow suppresses the result. Audience and subcount floors hide
+small samples; a card also requires five heard listeners. Suppressed counts say
+**not enough data**, never zero. Follows remain unavailable until a canonical
+follow event exists. User-linked exposures are scoped in privacy exports and
+explicitly deleted during account erasure.
+
 ## API, analytics and lifecycle
 
 The existing authenticated `GET /analytics/artist/:id/v1` response carries the
-stable cockpit cards, a `sceneScout` city status and an `unmetDemand` status. Artist analytics authorization
+stable cockpit cards, a `sceneScout` city status, an `unmetDemand` status and a
+`firstListenerReception` status. Artist analytics authorization
 protects the read. Scene Scout adds no public audience endpoint.
 
 Cockpit impressions and clicks use the existing `artist.action_card_impression`

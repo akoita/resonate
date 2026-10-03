@@ -20,6 +20,7 @@ import { X402Module } from "../x402/x402.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { SharedModule } from "../shared/shared.module";
 import { RecommendationsModule } from "../recommendations/recommendations.module";
+import { FirstListenerModule } from "../recommendations/first_listener.module";
 import { CommunityModule } from "../community/community.module";
 import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { createCrateRequestParser } from "../crates/model_crate_request_parser";
@@ -34,6 +35,7 @@ import { SceneScoutModule } from "../scene_scout/scene_scout.module";
     X402Module,
     PaymentsModule,
     RecommendationsModule,
+    FirstListenerModule,
     CommunityModule,
     EmbeddingsModule,
     SceneScoutModule,

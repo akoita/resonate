@@ -73,6 +73,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
         <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
         <SceneScoutStatus sceneScout={data.sceneScout} />
         <UnmetDemandStatus demand={data.unmetDemand} />
+      <ReceptionStatus reception={data.firstListenerReception} />
         <EmptyDashboard days={data.meta.timeWindow.days} />
         <SeparatedContentProtection />
       </>
@@ -91,6 +92,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
       <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
       <SceneScoutStatus sceneScout={data.sceneScout} />
       <UnmetDemandStatus demand={data.unmetDemand} />
+      <ReceptionStatus reception={data.firstListenerReception} />
 
       <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
@@ -177,6 +179,18 @@ function UnmetDemandStatus({ demand }: { demand: ArtistAnalyticsDashboardData["u
       <p>{demand.reason ?? (demand.status === "thin_data"
         ? "Not enough request demand yet. Suggestions appear after enough people ask for matching catalog supply."
         : "Request demand is currently unavailable.")}</p>
+    </section>
+  );
+}
+
+function ReceptionStatus({ reception }: { reception: ArtistAnalyticsDashboardData["firstListenerReception"] }) {
+  if (!reception || reception.status === "ready") return null;
+  return (
+    <section className="artist-action-cockpit" aria-label="First-week reception">
+      <h2>First-week reception</h2>
+      <p>{reception.reason ?? (reception.status === "thin_data"
+        ? "Not enough discovery listening yet. Reception appears after seven days when enough listeners have heard the release."
+        : "Discovery reception is currently unavailable.")}</p>
     </section>
   );
 }

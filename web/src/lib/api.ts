@@ -759,6 +759,7 @@ export type ArtistActionCard = {
     | "review_show_city_demand"
     | "propose_show_city"
     | "review_unmet_demand"
+    | "review_first_listener_reception"
     | "post_campaign_update"
     | "create_holder_benefit"
     | "invite_holder_collectors"
@@ -847,6 +848,10 @@ export type ArtistAnalyticsDashboard = {
     reason?: string;
   };
   unmetDemand?: {
+    status: "ready" | "thin_data" | "unavailable";
+    reason?: string;
+  };
+  firstListenerReception?: {
     status: "ready" | "thin_data" | "unavailable";
     reason?: string;
   };

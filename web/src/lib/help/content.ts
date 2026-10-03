@@ -2202,7 +2202,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["analytics", "dashboard", "plays", "payouts", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses"],
+    keywords: ["analytics", "dashboard", "plays", "payouts", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
     sections: [
       {
         id: "dashboard",
@@ -2257,6 +2257,31 @@ export const HELP_ARTICLES: HelpArticle[] = [
               src: `${SHOT}/scene-scout-demand.png`,
               alt: "An artist action card showing aggregate unmet vocals-stem demand for First Light and a Publish this stem link.",
               caption: "Review a catalog gap before preparing supply or confirming a listing.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
+          },
+        ],
+      },
+      {
+        id: "first-listeners",
+        heading: "Scene Scout: your first listeners",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A fresh playable release by a verified human artist can reach listeners whose taste fits it through their existing discovery picks. Listener preferences, hidden artists, diversity and exposure limits still apply. Fully AI-generated releases cannot use this discovery slot, and the artist cannot buy it.",
+          },
+          {
+            kind: "paragraph",
+            text: "After seven catalog days, a reception card can show how many discovery listeners actually heard the release, played at least 90% through or saved it. A placement alone is not a play. Counts need enough consenting listeners; a small sample says Not enough discovery listening yet, and suppressed save or full-play totals say not enough data. Follow totals are not available yet. Choose Review release to decide your next step.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/scene-scout-reception.png`,
+              alt: "An artist first-week reception card for First Light with aggregate heard, full-play and save counts and a Review release link.",
+              caption: "First-week reception counts actual listening after discovery placement.",
               width: 1440,
               height: 900,
               source: LOCAL,

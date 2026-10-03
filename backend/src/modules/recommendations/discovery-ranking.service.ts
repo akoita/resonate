@@ -61,6 +61,10 @@ export interface DiscoveryCandidate {
   hasListing?: boolean;
   /** Artist identity for the policy stage (exploration + diversity caps). */
   artistId?: string | null;
+  /** Release identity for the durable first-listener exposure ledger. */
+  releaseId?: string | null;
+  /** True only when the bounded first-listener source supplied this candidate. */
+  firstListenerEligible?: boolean;
   /** Track AI disclosure level ("NONE" | "PARTLY" | "ALL" | "UNDECLARED"). */
   aiDisclosureLevel?: string | null;
   release?: {

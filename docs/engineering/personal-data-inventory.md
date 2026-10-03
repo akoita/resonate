@@ -211,13 +211,20 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `CommunityMembership`, `CommunityMessage`, `CommunityModerationReport`,
 `PasskeyIdentity`, `Artist`, `ArtistClaimRequest`, `ArtistClaimDecisionEvent`,
 `StemQualityRating`, `RemixProject`, `RemixPartTake`, `Session`,
-`AgentSignal`, `ListenerTasteMemorySettings`, `ListenerTasteSignalControl`,
+`AgentSignal`, `FirstListenerExposure`, `ListenerTasteMemorySettings`, `ListenerTasteSignalControl`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
 `ShowPledge`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
 `CrateWatchMatch`.
+
+First-listener discovery (#1970) adds `FirstListenerExposure`, keyed by the
+listener's `userId`. It records the release and time of a placement, so export
+includes only that person's rows and erasure deletes them before rotating the
+account id. `Release.firstListenerPlacementsUsed` is a separate catalog budget
+counter; it contains no listener identity and stays monotonic after erasure so
+the release cap cannot be replenished.
 
 Crate Digger (#1962) adds three of these, all keyed by `userId`. `Crate` (title,
 filters, status), `CrateItem` (track id, position, locked flag; `userId` is

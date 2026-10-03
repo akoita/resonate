@@ -90,6 +90,19 @@ describe('RecommendationsController home feed (e2e)', () => {
     expect(mockHomeFeedService.getHomeFeed).not.toHaveBeenCalled();
   });
 
+
+  it.each(['/recommendations/another-user/home-feed', '/recommendations/another-user'])('refuses another listener on %s before reading or reserving exposure', async (path) => {
+    await request(app.getHttpServer()).get(path).set('Authorization', `Bearer ${token}`).expect(403);
+    expect(mockRecommendationsService.getRecommendations).not.toHaveBeenCalled();
+    expect(mockHomeFeedService.getHomeFeed).not.toHaveBeenCalled();
+  });
+
+  it('refuses preferences written for another listener', async () => {
+    await request(app.getHttpServer()).post('/recommendations/preferences')
+      .set('Authorization', `Bearer ${token}`).send({ userId: 'another-user', preferences: { genres: ['Jazz'] } }).expect(403);
+    expect(mockRecommendationsService.setPreferences).not.toHaveBeenCalled();
+  });
+
   describe('taste edits (#1961)', () => {
     const validItem = { signalType: 'genre', value: 'Drill', action: 'downranked' };
 

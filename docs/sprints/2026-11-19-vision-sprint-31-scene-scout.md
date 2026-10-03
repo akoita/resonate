@@ -28,10 +28,13 @@ admitted.
 - **#1968:** city-demand backend, cockpit card and editable Shows prefill are
   implemented in [draft PR #2044](https://github.com/akoita/resonate/pull/2044), with privacy, API, browser and help coverage.
 - **#1969:** categorical request/session shortfalls and catalog supply actions
-  are implemented in the draft branch. Staging acceptance remains tracked in
-  the open issue and private counterpart.
-- **#1970:** first-listener selection and reception integration are in progress,
-  tracked by the open issue and [Scene Scout feature page](../features/scene_scout.md).
+  are implemented in [draft PR #2046](https://github.com/akoita/resonate/pull/2046).
+  Staging acceptance remains tracked in the open issue and private counterpart.
+- **#1970:** taste-fitting fresh release selection and day-seven reception are
+  implemented in [draft PR #2047](https://github.com/akoita/resonate/pull/2047)
+  with exposure/privacy coverage, building on PR #2046.
+  Canonical follows and staging acceptance remain tracked by the open issue and
+  [Scene Scout feature page](../features/scene_scout.md).
 - **#1450:** application materialization/export is in [draft PR #2045](https://github.com/akoita/resonate/pull/2045).
   Scheduling and live warehouse checks are tracked privately in
   [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).

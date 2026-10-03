@@ -6,6 +6,7 @@ import { CommunityCohortService } from "../community/community_cohort.service";
 import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import { DiscoveryRankingService } from "../recommendations/discovery-ranking.service";
+import { FirstListenerModule } from "../recommendations/first_listener.module";
 import { RecommendationsService } from "../recommendations/recommendations.service";
 import { TasteMemoryService } from "../recommendations/taste_memory.service";
 import { SharedModule } from "../shared/shared.module";
@@ -41,6 +42,7 @@ const DISCOVERY_POLICY_PROVIDERS = [
     SharedModule,
     CatalogModule,
     EmbeddingsModule,
+    FirstListenerModule,
   ],
   controllers: [AgentRuntimeWorkerController],
   providers: [...AGENT_RUNTIME_CORE_PROVIDERS, ...DISCOVERY_POLICY_PROVIDERS],

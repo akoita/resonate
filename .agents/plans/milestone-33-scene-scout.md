@@ -57,6 +57,6 @@ on 2026-10-03. Workers must prove Luna/max before receiving real tasks.
 | Issue | State |
 | --- | --- |
 | #1968 | draft [PR #2044](https://github.com/akoita/resonate/pull/2044); remaining signal families tracked in the open issue |
-| #1969 | application implemented and locally verified in this branch; depends on PR #2044; external acceptance tracked in resonate-iac#264 |
-| #1970 | in progress in isolated worktree |
+| #1969 | draft [PR #2046](https://github.com/akoita/resonate/pull/2046); depends on PR #2044; external acceptance tracked in resonate-iac#264 |
+| #1970 | draft [PR #2047](https://github.com/akoita/resonate/pull/2047); depends on PR #2046; external acceptance tracked in resonate-iac#264 |
 | #1450 | draft [PR #2045](https://github.com/akoita/resonate/pull/2045); external warehouse acceptance tracked in resonate-iac#263 |

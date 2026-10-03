@@ -12,7 +12,10 @@ import {
   matchingCohortContexts,
   RankedDiscoveryCandidate,
 } from "./discovery-ranking.service";
-import { applyDiscoveryPolicy } from "./discovery-policy";
+import {
+  applyDiscoveryPolicy,
+  applyFirstListenerReservationOutcome,
+} from "./discovery-policy";
 import { discoveryVariantForUser, type DiscoveryVariantAssignment } from "./discovery_experiment";
 import { DiscoveryPolicyContextService } from "./discovery-policy-context.service";
 import { resolveAgentTasteProfile } from "../agents/agent_learning.service";
@@ -24,6 +27,8 @@ import {
   EmbeddingCandidateSource,
 } from "./embedding_candidates";
 import { loadEmbeddingSeedSignals, selectEmbeddingSeeds } from "./embedding_seeds";
+import { FirstListenerDiscoveryService } from "./first_listener_discovery.service";
+import { FIRST_LISTENER_CANDIDATE_LIMIT } from "./first_listener.contracts";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
@@ -38,6 +43,9 @@ const PUBLIC_RELEASE_ROUTES = [
 /** How many served track ids we remember per user (parity with the old Map). */
 const SERVED_HISTORY_CAP = 50;
 const PROFILE_CACHE_TTL_SECONDS = 300;
+// Home's ordinary source ceilings are 50 + 60 + 30 + 50 embedding neighbours.
+const FIRST_LISTENER_VALIDATION_LIMIT = 200;
+const FIRST_LISTENER_VALIDATION_BATCH = FIRST_LISTENER_CANDIDATE_LIMIT;
 
 export interface UserPreferences {
   mood?: string;
@@ -97,6 +105,9 @@ export class RecommendationsService {
     // inert while the embedding provider is disabled: Home is then unchanged.
     @Optional() private readonly trackEmbeddings?: TrackEmbeddingService,
     @Optional() private readonly tasteNoteEmbeddings?: TasteNoteEmbeddingService,
+    // Fresh verified-artist releases are an additive candidate source. Missing
+    // or failing source storage leaves the ordinary recommendation pool intact.
+    @Optional() private readonly firstListenerDiscovery?: FirstListenerDiscoveryService,
   ) { }
 
   // ---------------------------------------------------------------------------
@@ -244,6 +255,8 @@ export class RecommendationsService {
   }): Promise<{
     tracks: CandidateTrack[];
     embeddingSources: Map<string, EmbeddingCandidateSource[]>;
+    firstListenerTrackIds: Set<string>;
+    firstListenerVerificationComplete: boolean;
   }> {
     const where = this.publicCatalogWhere(input.allowExplicit);
     const include = {
@@ -290,7 +303,17 @@ export class RecommendationsService {
         tracks: none,
       }));
 
-    const [fresh, preferenceMatches, cohortMatches, embedding] = await Promise.all([
+    const firstListenerSource = this.firstListenerDiscovery
+      ? this.firstListenerDiscovery
+          .getFreshCandidates({
+            userId: input.userId,
+            allowExplicit: input.allowExplicit,
+          })
+          .then((tracks) => tracks as unknown as CandidateTrack[])
+          .catch(() => none)
+      : Promise.resolve(none);
+
+    const [fresh, preferenceMatches, cohortMatches, embedding, firstListenerTracks] = await Promise.all([
       prisma.track.findMany({
         where,
         include,
@@ -309,26 +332,58 @@ export class RecommendationsService {
             where: { AND: [where, termFilter(input.cohortHints)] },
             include,
             take: 30,
-          }) as Promise<CandidateTrack[]>)
+      }) as Promise<CandidateTrack[]>)
         : Promise.resolve(none),
       embeddingSource,
+      firstListenerSource,
     ]);
 
-    const byId = new Map<string, CandidateTrack>();
-    for (const track of [
+    const ordinaryTracks = [
       ...fresh,
       ...preferenceMatches,
       ...cohortMatches,
       ...embedding.tracks,
-    ]) {
+    ];
+    const byId = new Map<string, CandidateTrack>();
+    for (const track of [...ordinaryTracks, ...firstListenerTracks]) {
       if (!byId.has(track.id)) byId.set(track.id, track);
+    }
+    const firstListenerTrackIds = new Set(firstListenerTracks.map((track) => track.id));
+    let firstListenerVerificationComplete = true;
+    if (this.firstListenerDiscovery) {
+      const sourceTrackIds = new Set(firstListenerTracks.map((track) => track.id));
+      const ordinaryTrackIds = [...new Set(ordinaryTracks.map((track) => track.id))]
+        .filter((trackId) => !sourceTrackIds.has(trackId));
+      if (ordinaryTrackIds.length > FIRST_LISTENER_VALIDATION_LIMIT) {
+        firstListenerVerificationComplete = false;
+      } else {
+        for (let offset = 0; offset < ordinaryTrackIds.length; offset += FIRST_LISTENER_VALIDATION_BATCH) {
+          const trackIds = ordinaryTrackIds.slice(offset, offset + FIRST_LISTENER_VALIDATION_BATCH);
+          try {
+            const validated = await this.firstListenerDiscovery.getFreshCandidates({
+              userId: input.userId,
+              allowExplicit: input.allowExplicit,
+              trackIds,
+            });
+            for (const track of validated) firstListenerTrackIds.add(track.id);
+          } catch {
+            firstListenerVerificationComplete = false;
+            break;
+          }
+        }
+      }
     }
     // Attribution only for tracks that survived the public-catalog join.
     const joined = new Set(embedding.tracks.map((track) => track.id));
     const embeddingSources = new Map(
       [...embedding.sources].filter(([trackId]) => joined.has(trackId)),
     );
-    return { tracks: [...byId.values()], embeddingSources };
+    return {
+      tracks: [...byId.values()],
+      embeddingSources,
+      firstListenerTrackIds,
+      firstListenerVerificationComplete,
+    };
   }
 
   /**
@@ -427,7 +482,12 @@ export class RecommendationsService {
       .filter(Boolean);
     const normalizedMood = prefs.mood?.trim();
 
-    const { tracks: candidates, embeddingSources } = await this.gatherCandidates({
+    const {
+      tracks: candidates,
+      embeddingSources,
+      firstListenerTrackIds,
+      firstListenerVerificationComplete,
+    } = await this.gatherCandidates({
       userId,
       embeddingSeedTrackIds: await this.loadEmbeddingSeedTrackIds(userId, policy),
       allowExplicit,
@@ -464,6 +524,11 @@ export class RecommendationsService {
         artist: track.artist,
         // Artist identity + AI disclosure feed the policy stage.
         artistId: track.release.artistId,
+        releaseId: track.releaseId,
+        firstListenerEligible:
+          firstListenerVerificationComplete &&
+          firstListenerTrackIds.has(track.id) &&
+          track.aiDisclosureLevel !== "ALL",
         aiDisclosureLevel: track.aiDisclosureLevel,
         release: {
           genre: track.release.genre,
@@ -570,16 +635,52 @@ export class RecommendationsService {
       userId,
       preferenceOrdered.map((item) => item.entry.artistId),
     );
-    const policyResult = applyDiscoveryPolicy(
-      preferenceOrdered.map((item) => item.entry),
-      {
-        limit,
-        tastePolicy: policy,
-        verifiedHumanArtistIds: policyContext.verifiedHumanArtistIds,
-        playedArtistIds: policyContext.playedArtistIds,
-      },
+    const policyOptions = {
+      limit,
+      tastePolicy: policy,
+      verifiedHumanArtistIds: firstListenerVerificationComplete
+        ? policyContext.verifiedHumanArtistIds
+        : new Set<string>(),
+      playedArtistIds: policyContext.playedArtistIds,
+    };
+    let policyInput = preferenceOrdered;
+    let policyResult = applyDiscoveryPolicy(
+      policyInput.map((item) => item.entry),
+      policyOptions,
     );
-    const legacyById = new Map(preferenceOrdered.map((item) => [item.entry.id, item]));
+    const firstListenerPicks = policyResult.items.filter(
+      (entry) => entry.firstListenerEligible && entry.reasonCode === "discovery_pick",
+    );
+    if (firstListenerPicks.length > 0 && this.firstListenerDiscovery) {
+      try {
+        const reserved = await this.firstListenerDiscovery.reservePlacements(
+          userId,
+          firstListenerPicks.flatMap((entry) =>
+            entry.releaseId
+              ? [{ trackId: entry.id, releaseId: entry.releaseId }]
+              : [],
+          ),
+          { allowExplicit },
+        );
+        policyResult = applyFirstListenerReservationOutcome(
+          policyInput.map((item) => item.entry),
+          policyResult,
+          reserved,
+          policyOptions,
+        );
+      } catch {
+        // Reservation failure removes the fresh-source candidates from this
+        // response. The usual recommendation sources still rank and serve.
+        policyInput = preferenceOrdered.filter(
+          (item) => !item.entry.firstListenerEligible,
+        );
+        policyResult = applyDiscoveryPolicy(
+          policyInput.map((item) => item.entry),
+          policyOptions,
+        );
+      }
+    }
+    const legacyById = new Map(policyInput.map((item) => [item.entry.id, item]));
     const selected = policyResult.items.map((entry) => ({
       ...legacyById.get(entry.id)!,
       entry,

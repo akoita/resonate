@@ -459,6 +459,16 @@ describe("personal data erasure manifest", () => {
       }
     });
 
+    it("deletes listener-linked first-listener placements while retaining the release budget", () => {
+      expect(ERASURE_RULES_BY_MODEL.FirstListenerExposure).toMatchObject({
+        disposition: "delete",
+      });
+      expect(ERASURE_RULES_BY_MODEL.FirstListenerExposure.note).toContain(
+        "remains monotonic",
+      );
+      expect(cascadingUserColumns("FirstListenerExposure")).toContain("userId");
+    });
+
     it("detaches the artist instead of deleting the catalogue", () => {
       expect(ERASURE_RULES_BY_MODEL.Artist.disposition).toBe("detach");
       expect(ERASURE_RULES_BY_MODEL.Release.disposition).toBe("detach");

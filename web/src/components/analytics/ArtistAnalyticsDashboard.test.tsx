@@ -185,6 +185,13 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Create an artist profile to see analytics");
     expect(html).toContain("/artist/onboarding");
   });
+  it("explains reception that has not reached the day-seven audience floor", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+      data={{ ...dashboard, actions: [], firstListenerReception: { status: "thin_data" } }} onDaysChange={() => {}} />);
+    expect(html).toContain("Not enough discovery listening yet");
+    expect(html).not.toContain("0 saved");
+  });
+
 });
 
 const dashboard: ArtistAnalyticsDashboardData = {

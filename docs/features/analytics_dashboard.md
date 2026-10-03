@@ -76,6 +76,9 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   publishing a stem or listing a license through the existing release controls.
   Cards require enough distinct requesters and at least five requests; identities
   and request text stay out of the artist response.
+- **First-week reception:** after seven catalog days, qualified discovery
+  placements can produce aggregate heard, full-play and save totals. Actual
+  listening is required; small audiences and subcounts stay suppressed.
 - `post_campaign_update` opens `/shows/:campaignIdOrSlug` when aggregate
   supporter update views meet the five-signal floor.
 - `create_holder_benefit` opens `/artist/:id?tab=community` when aggregate
