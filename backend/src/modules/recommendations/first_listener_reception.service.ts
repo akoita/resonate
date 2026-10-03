@@ -21,7 +21,7 @@ interface ExposureForReception {
   release: {
     createdAt: Date;
     managementOwnerUserId: string | null;
-    artist: { userId: string | null };
+    artist: { userId: string | null; managementOwnerUserId: string | null };
   };
   user: {
     analyticsConsent: {
@@ -101,7 +101,7 @@ export class FirstListenerReceptionService {
               select: {
                 createdAt: true,
                 managementOwnerUserId: true,
-                artist: { select: { userId: true } },
+                artist: { select: { userId: true, managementOwnerUserId: true } },
               },
             },
             user: {
@@ -123,6 +123,7 @@ export class FirstListenerReceptionService {
             [
               exposure.release.managementOwnerUserId,
               exposure.release.artist.userId,
+              exposure.release.artist.managementOwnerUserId,
             ].filter((id): id is string => Boolean(id)),
           );
           const validPlacementWindow =

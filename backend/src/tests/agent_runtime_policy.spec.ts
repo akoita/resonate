@@ -64,6 +64,13 @@ const pick = (trackId: string) => ({
   priceUsd: 0.05,
 });
 
+const freshCandidate = (id: string, releaseId: string, artistId: string) => ({
+  id,
+  releaseId,
+  aiDisclosureLevel: "NONE",
+  release: { artistId },
+});
+
 const baseInput = (overrides: Partial<AgentRuntimeInput> = {}): AgentRuntimeInput => ({
   sessionId: "s1",
   userId: "u1",
@@ -84,7 +91,29 @@ function serviceFor(
     /** Prior discovery picks in the session; an Error makes the count unknown. */
     priorDiscoveryPicks?: number | Error;
     /** What the deterministic selector returns as its shortlist. */
-    selectorPicks?: Array<{ id: string; artistId: string; reasonCode: string }>;
+    selectorPicks?: Array<{
+      id: string;
+      artistId: string;
+      reasonCode: string;
+      releaseId?: string;
+      firstListenerEligible?: boolean;
+    }>;
+    /** Authoritative fresh-source matches for known model or fallback picks. */
+    freshCandidates?: Array<{
+      id: string;
+      releaseId: string;
+      aiDisclosureLevel?: string;
+      release: { artistId: string };
+    }>;
+    reservedReleaseIds?: string[];
+    firstListenerLookupError?: Error;
+    firstListenerReservationError?: Error;
+    selectorFreshCandidates?: Array<{
+      id: string;
+      releaseId: string;
+      aiDisclosureLevel?: string;
+      release: { artistId: string };
+    }>;
   } = {},
 ) {
   const policyContext = {
@@ -107,6 +136,8 @@ function serviceFor(
     select: jest.fn().mockResolvedValue({
       selected: (options.selectorPicks ?? []).map((entry) => ({
         id: entry.id,
+        releaseId: entry.releaseId,
+        firstListenerEligible: entry.firstListenerEligible ?? false,
         release: { artistId: entry.artistId },
         agentRecommendation: {
           score: 30,
@@ -130,6 +161,21 @@ function serviceFor(
         }),
       }
     : undefined;
+  const firstListenerDiscovery = options.firstListenerLookupError || options.freshCandidates || options.selectorFreshCandidates
+    ? {
+        getFreshCandidates: jest.fn(async ({ trackIds }: { trackIds?: string[] }) => {
+          if (options.firstListenerLookupError) throw options.firstListenerLookupError;
+          const source = trackIds
+            ? [...(options.freshCandidates ?? []), ...(options.selectorFreshCandidates ?? [])]
+                .filter((candidate) => trackIds.includes(candidate.id))
+            : options.freshCandidates ?? [];
+          return source;
+        }),
+        reservePlacements: options.firstListenerReservationError
+          ? jest.fn().mockRejectedValue(options.firstListenerReservationError)
+          : jest.fn().mockResolvedValue(new Set(options.reservedReleaseIds ?? [])),
+      }
+    : undefined;
   const ranking = new DiscoveryRankingService();
   const service = new AgentRuntimePolicyService(
     ranking,
@@ -139,8 +185,9 @@ function serviceFor(
     undefined,
     undefined,
     selector as any,
+    firstListenerDiscovery as any,
   );
-  return { service, policyContext, ranking, selector };
+  return { service, policyContext, ranking, selector, firstListenerDiscovery };
 }
 
 const ids = (result: { picks?: Array<{ trackId: string }> }) =>
@@ -322,6 +369,38 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
     expect(await service.apply(baseInput(), original)).toBe(original);
   });
 
+  it("strips forged discovery annotations when the policy fails open", async () => {
+    const { service, policyContext } = serviceFor([track("x")]);
+    policyContext.loadTrackCandidates.mockRejectedValue(new Error("db down"));
+    const original = {
+      status: "approved" as const,
+      picks: [
+        {
+          ...pick("x"),
+          score: 100,
+          reasonCode: "discovery_pick",
+          explanation: [DISCOVERY_EXPLANATIONS.discovery_pick],
+          signals: [{ label: "taste_match", weight: 1, reason: "model claim" }],
+        },
+      ],
+    };
+
+    const result = await service.apply(baseInput(), original);
+
+    expect(result).not.toBe(original);
+    expect(result.picks).toEqual([
+      expect.objectContaining({ trackId: "x", licenseType: "personal", priceUsd: 0.05 }),
+    ]);
+    expect(result.picks?.[0]).not.toHaveProperty("score");
+    expect(result.picks?.[0]).not.toHaveProperty("reasonCode");
+    expect(result.picks?.[0]).not.toHaveProperty("explanation");
+    expect(result.picks?.[0]).not.toHaveProperty("signals");
+    const commerce = normalizeAgentRuntimeResult(result);
+    expect(commerce.primaryTrack).not.toHaveProperty("reasonCode");
+    expect(commerce.primaryTrack).not.toHaveProperty("explanation");
+    expect(commerce.primaryTrack).not.toHaveProperty("signals");
+  });
+
   it("passes through untouched when the ranking core is not wired", async () => {
     const service = new AgentRuntimePolicyService();
     const original = { status: "approved" as const, picks: [pick("x")] };
@@ -344,6 +423,175 @@ describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", (
     expect(result.picks?.[1].explanation?.[0]).toBe(DISCOVERY_EXPLANATIONS.discovery_pick);
     expect(result.policy?.exploration).toEqual({ reserved: 1, served: 1, injected: false });
     expect(selector.select).not.toHaveBeenCalled();
+  });
+
+  it("checks model-picked fresh tracks and reserves only a taste-qualified discovery pick", async () => {
+    const { service, firstListenerDiscovery } = serviceFor(
+      [track("ordinary"), track("fresh", { artistId: "verified-fresh" })],
+      {
+        verifiedArtists: ["verified-fresh"],
+        freshCandidates: [freshCandidate("fresh", "release-fresh", "verified-fresh")],
+        reservedReleaseIds: ["release-fresh"],
+      },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("ordinary"), pick("fresh")],
+    });
+
+    expect(ids(result)).toEqual(["ordinary", "fresh"]);
+    expect(result.picks?.[1].reasonCode).toBe("discovery_pick");
+    expect(firstListenerDiscovery?.getFreshCandidates).toHaveBeenCalledWith({
+      userId: "u1",
+      allowExplicit: false,
+      trackIds: ["ordinary", "fresh"],
+    });
+    expect(firstListenerDiscovery?.reservePlacements).toHaveBeenCalledWith(
+      "u1",
+      [{ trackId: "fresh", releaseId: "release-fresh" }],
+      { allowExplicit: false },
+    );
+  });
+
+  it("keeps baseline picks when the fresh placement cap denies the model pick", async () => {
+    const { service, firstListenerDiscovery } = serviceFor(
+      [track("ordinary"), track("fresh", { artistId: "verified-fresh" })],
+      {
+        verifiedArtists: ["verified-fresh"],
+        freshCandidates: [freshCandidate("fresh", "release-fresh", "verified-fresh")],
+      },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("ordinary"), pick("fresh")],
+    });
+
+    expect(ids(result)).toEqual(["ordinary"]);
+    expect(result.picks?.some((entry) => entry.reasonCode === "discovery_pick")).toBe(false);
+    expect(firstListenerDiscovery?.reservePlacements).toHaveBeenCalledTimes(1);
+  });
+
+  it("never grants fresh discovery when source lookup fails, including selector fallback", async () => {
+    const { service, selector, firstListenerDiscovery } = serviceFor(
+      [track("fresh", { artistId: "verified-fresh" }), track("ordinary")],
+      {
+        verifiedArtists: ["verified-fresh"],
+        firstListenerLookupError: new Error("fresh source unavailable"),
+        selectorPicks: [
+          {
+            id: "injected-fresh",
+            artistId: "verified-injected",
+            releaseId: "release-injected",
+            firstListenerEligible: true,
+            reasonCode: "discovery_pick",
+          },
+        ],
+      },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("fresh"), pick("ordinary")],
+    });
+
+    expect(ids(result)).toEqual(["fresh", "ordinary"]);
+    expect(result.picks?.some((entry) => entry.reasonCode === "discovery_pick")).toBe(false);
+    expect(selector.select).toHaveBeenCalledWith(
+      expect.objectContaining({ reserveFirstListenerPlacements: false }),
+    );
+    expect(firstListenerDiscovery?.reservePlacements).not.toHaveBeenCalled();
+  });
+
+  it("removes fresh privilege on reservation failure and keeps ordinary model picks", async () => {
+    const { service, firstListenerDiscovery } = serviceFor(
+      [track("ordinary"), track("fresh", { artistId: "verified-fresh" })],
+      {
+        verifiedArtists: ["verified-fresh"],
+        freshCandidates: [freshCandidate("fresh", "release-fresh", "verified-fresh")],
+        firstListenerReservationError: new Error("reservation unavailable"),
+      },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("ordinary"), pick("fresh")],
+    });
+
+    expect(ids(result)).toEqual(["ordinary"]);
+    expect(result.picks?.some((entry) => entry.reasonCode === "discovery_pick")).toBe(false);
+    expect(firstListenerDiscovery?.reservePlacements).toHaveBeenCalledTimes(1);
+  });
+
+  it("reserves only the actual fallback replacement, not other selector candidates", async () => {
+    const { service, selector, firstListenerDiscovery } = serviceFor(
+      [track("ordinary-a"), track("ordinary-b")],
+      {
+        selectorPicks: [
+          {
+            id: "injected-a",
+            artistId: "verified-a",
+            releaseId: "release-a",
+            firstListenerEligible: true,
+            reasonCode: "discovery_pick",
+          },
+          {
+            id: "injected-b",
+            artistId: "verified-b",
+            releaseId: "release-b",
+            firstListenerEligible: true,
+            reasonCode: "discovery_pick",
+          },
+        ],
+        selectorFreshCandidates: [
+          freshCandidate("injected-a", "release-a", "verified-a"),
+          freshCandidate("injected-b", "release-b", "verified-b"),
+        ],
+        reservedReleaseIds: ["release-a"],
+      },
+    );
+    const result = await service.apply(
+      baseInput({ recentTrackIds: ["prior"] }),
+      {
+        status: "approved",
+        picks: [pick("ordinary-a"), pick("ordinary-b")],
+      },
+    );
+
+    expect(ids(result)).toEqual(["ordinary-a", "injected-a"]);
+    expect(result.picks?.[1]).toMatchObject({ priceUsd: 0, reasonCode: "discovery_pick" });
+    expect(selector.select).toHaveBeenCalledWith(
+      expect.objectContaining({ reserveFirstListenerPlacements: false }),
+    );
+    expect(firstListenerDiscovery?.reservePlacements).toHaveBeenCalledTimes(1);
+    expect(firstListenerDiscovery?.reservePlacements).toHaveBeenCalledWith(
+      "u1",
+      [{ trackId: "injected-a", releaseId: "release-a" }],
+      { allowExplicit: false },
+    );
+    expect(firstListenerDiscovery?.getFreshCandidates).toHaveBeenLastCalledWith({
+      userId: "u1",
+      allowExplicit: false,
+      trackIds: ["injected-a"],
+    });
+  });
+
+  it("never labels or reserves a fully AI-generated model pick as first-listener", async () => {
+    const { service, firstListenerDiscovery } = serviceFor(
+      [track("fully-ai", { artistId: "verified-ai", ai: "ALL" }), track("ordinary")],
+      {
+        verifiedArtists: ["verified-ai"],
+        freshCandidates: [
+          { ...freshCandidate("fully-ai", "release-ai", "verified-ai"), aiDisclosureLevel: "ALL" },
+        ],
+        reservedReleaseIds: ["release-ai"],
+      },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("fully-ai"), pick("ordinary")],
+    });
+
+    expect(ids(result)).toEqual(["ordinary"]);
+    expect(result.policy?.dropped.aiGenerated).toBe(1);
+    expect(firstListenerDiscovery?.reservePlacements).not.toHaveBeenCalled();
   });
 
   it("does not label a pick from an artist the listener already played", async () => {

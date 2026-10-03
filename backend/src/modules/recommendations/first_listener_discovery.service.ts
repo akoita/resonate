@@ -20,21 +20,28 @@ const FIRST_LISTENER_PUBLIC_RELEASE_STATUSES = ["ready", "published"];
  *
  * Freshness is based on `Release.createdAt` because the catalog has no
  * `publishedAt`. `releaseDate` is still checked as a future date is not a
- * playable public release. Candidate retrieval is bounded to 100 releases,
- * picks one playable track per release, and leaves verification, taste,
- * hides, and diversity to the shared discovery policy.
+ * playable public release. The general candidate source is bounded to 100
+ * releases and picks one playable track per release. Targeted validation is
+ * bounded to 100 requested tracks and can return every matching track in a
+ * release. Verification, taste, hides, and diversity stay in shared policy.
  */
 @Injectable()
 export class FirstListenerDiscoveryService {
   async getFreshCandidates(input: {
     userId: string;
     allowExplicit: boolean;
+    trackIds?: readonly string[];
     now?: Date;
   }): Promise<FirstListenerCandidateTrack[]> {
     const now = input.now ?? new Date();
     const freshSince = new Date(now.getTime() - FIRST_LISTENER_WINDOW_MS);
+    const trackIds = input.trackIds === undefined
+      ? undefined
+      : [...new Set(input.trackIds.filter(Boolean))].slice(0, FIRST_LISTENER_CANDIDATE_LIMIT);
+    if (trackIds?.length === 0) return [];
     const playableTrackWhere = {
       ...FIRST_LISTENER_PLAYABLE_TRACK_WHERE,
+      ...(trackIds ? { id: { in: trackIds } } : {}),
       ...(input.allowExplicit ? {} : { explicit: false }),
     };
     const releases = await prisma.release.findMany({
@@ -67,7 +74,7 @@ export class FirstListenerDiscoveryService {
         tracks: {
           where: playableTrackWhere,
           orderBy: [{ position: "asc" }, { id: "asc" }],
-          take: 1,
+          take: trackIds ? trackIds.length : 1,
           select: FIRST_LISTENER_CANDIDATE_TRACK_SELECT,
         },
       },

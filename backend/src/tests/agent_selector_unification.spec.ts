@@ -75,6 +75,9 @@ function selectorWith(
     priorDiscoveryPicks?: number | "error";
     profileWeights?: Record<string, number>;
     served?: string[];
+    firstListenerCandidates?: Array<Item & { releaseId: string }>;
+    reservedReleaseIds?: string[];
+    firstListenerValidationError?: Error;
   } = {},
 ) {
   const registry = tools(catalog);
@@ -110,6 +113,19 @@ function selectorWith(
   const recommendations = options.served
     ? { getServedHistory: jest.fn().mockResolvedValue(options.served) }
     : undefined;
+  const firstListenerDiscovery = options.firstListenerCandidates || options.firstListenerValidationError
+    ? {
+        getFreshCandidates: jest.fn(async (input: { trackIds?: string[] }) => {
+          if (input.trackIds && options.firstListenerValidationError) {
+            throw options.firstListenerValidationError;
+          }
+          return options.firstListenerCandidates ?? [];
+        }),
+        reservePlacements: jest
+          .fn()
+          .mockResolvedValue(new Set(options.reservedReleaseIds ?? [])),
+      }
+    : undefined;
   const selector = new AgentSelectorService(
     registry as any,
     new DiscoveryRankingService(),
@@ -120,8 +136,9 @@ function selectorWith(
     policyContext as any,
     learning as any,
     recommendations as any,
+    firstListenerDiscovery as any,
   );
-  return { selector, registry, policyContext, learning, recommendations };
+  return { selector, registry, policyContext, learning, recommendations, firstListenerDiscovery };
 }
 
 const ids = (tracks: Array<{ id: string }>) => tracks.map((track) => track.id);
@@ -217,6 +234,110 @@ describe("AI DJ selector on the shared core (#1456 WS-9)", () => {
         DISCOVERY_EXPLANATIONS.discovery_pick,
       );
       expect(result.policy?.exploration).toEqual({ reserved: 1, served: 1 });
+    });
+
+    it("can defer placement reservation to a runtime caller while retaining fresh eligibility", async () => {
+      const fresh = {
+        ...item("fresh", {}, { artistId: "fresh-artist" }),
+        releaseId: "fresh-release",
+      };
+      const { selector, firstListenerDiscovery } = selectorWith(
+        [item("fresh"), item("known")],
+        {
+          verified: ["fresh-artist"],
+          firstListenerCandidates: [fresh],
+          reservedReleaseIds: ["fresh-release"],
+        },
+      );
+
+      const result = await selector.select({
+        userId: "u1",
+        queries: ["House"],
+        recentTrackIds: [],
+        limit: 2,
+        reserveFirstListenerPlacements: false,
+      });
+
+      const picked = result.selected.find((candidate) => candidate.id === "fresh");
+      expect(picked).toMatchObject({ firstListenerEligible: true });
+      expect(picked?.agentRecommendation?.reasonCode).toBe("discovery_pick");
+      expect(firstListenerDiscovery?.reservePlacements).not.toHaveBeenCalled();
+    });
+
+    it("reserves first-listener discovery by default", async () => {
+      const fresh = {
+        ...item("fresh", {}, { artistId: "fresh-artist" }),
+        releaseId: "fresh-release",
+      };
+      const { selector, firstListenerDiscovery } = selectorWith(
+        [item("fresh"), item("known")],
+        {
+          verified: ["fresh-artist"],
+          firstListenerCandidates: [fresh],
+          reservedReleaseIds: ["fresh-release"],
+        },
+      );
+
+      const result = await selector.select({
+        userId: "u1",
+        queries: ["House"],
+        recentTrackIds: [],
+        limit: 2,
+      });
+
+      expect(result.selected.find((candidate) => candidate.id === "fresh")?.agentRecommendation?.reasonCode)
+        .toBe("discovery_pick");
+      expect(firstListenerDiscovery?.reservePlacements).toHaveBeenCalledWith(
+        "u1",
+        [{ trackId: "fresh", releaseId: "fresh-release" }],
+        { allowExplicit: false },
+      );
+    });
+
+    it("keeps ordinary taste picks but suppresses discovery when fresh validation is incomplete", async () => {
+      const { selector, firstListenerDiscovery } = selectorWith(
+        [item("fresh", {}, { artistId: "verified-fresh" }), item("ordinary")],
+        {
+          verified: ["verified-fresh"],
+          firstListenerCandidates: [],
+          firstListenerValidationError: new Error("fresh lookup failed"),
+        },
+      );
+
+      const result = await selector.select({
+        userId: "u1",
+        queries: ["House"],
+        recentTrackIds: [],
+        limit: 2,
+      });
+
+      expect(ids(result.selected)).toEqual(["fresh", "ordinary"]);
+      expect(result.selected.some((candidate) => candidate.agentRecommendation?.reasonCode === "discovery_pick"))
+        .toBe(false);
+      expect(firstListenerDiscovery?.reservePlacements).not.toHaveBeenCalled();
+    });
+
+    it("suppresses discovery when the selector candidate pool exceeds its validation bound", async () => {
+      const candidates = Array.from({ length: 201 }, (_, index) =>
+        item(`bounded-${index}`, {}, { artistId: `artist-${index}` }),
+      );
+      const { selector, firstListenerDiscovery } = selectorWith(candidates, {
+        verified: ["artist-0"],
+        firstListenerCandidates: [],
+      });
+
+      const result = await selector.select({
+        userId: "u1",
+        queries: ["House"],
+        recentTrackIds: [],
+        limit: 3,
+      });
+
+      expect(result.selected).toHaveLength(3);
+      expect(result.selected.some((candidate) => candidate.agentRecommendation?.reasonCode === "discovery_pick"))
+        .toBe(false);
+      expect(firstListenerDiscovery?.getFreshCandidates).toHaveBeenCalledTimes(1);
+      expect(firstListenerDiscovery?.reservePlacements).not.toHaveBeenCalled();
     });
 
     describe("exploration share late in a session", () => {

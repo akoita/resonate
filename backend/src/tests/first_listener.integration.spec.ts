@@ -23,10 +23,19 @@ async function createUser(value: string) {
   return userId;
 }
 
-async function createArtist(value: string, userId?: string | null) {
+async function createArtist(
+  value: string,
+  userId?: string | null,
+  managementOwnerUserId?: string | null,
+) {
   const artistId = id(value);
   await prisma.artist.create({
-    data: { id: artistId, userId: userId ?? null, displayName: value },
+    data: {
+      id: artistId,
+      userId: userId ?? null,
+      managementOwnerUserId: managementOwnerUserId ?? null,
+      displayName: value,
+    },
   });
   return artistId;
 }
@@ -344,6 +353,45 @@ describe("first-listener discovery and reception (integration)", () => {
     ).resolves.toBe(1);
   });
 
+  it("validates requested tracks beyond the global release cap and returns requested siblings", async () => {
+    const listener = await createUser("targeted_listener");
+    const artistId = await createArtist("targeted_artist");
+    const olderRelease = await createRelease({
+      value: "targeted_older_release",
+      artistId,
+      createdAt: new Date(NOW.getTime() - DAY),
+    });
+    const olderTrackOne = await createTrack({ value: "targeted_older_track_one", releaseId: olderRelease });
+    const olderTrackTwo = await createTrack({ value: "targeted_older_track_two", releaseId: olderRelease });
+
+    for (let index = 0; index < 100; index += 1) {
+      const releaseId = await createRelease({
+        value: `targeted_newer_release_${index}`,
+        artistId,
+        createdAt: new Date(NOW.getTime() - index),
+      });
+      await createTrack({ value: `targeted_newer_track_${index}`, releaseId });
+    }
+
+    const globalCandidates = await discovery.getFreshCandidates({
+      userId: listener,
+      allowExplicit: false,
+      now: NOW,
+    });
+    expect(globalCandidates.map((candidate) => candidate.id)).not.toContain(olderTrackOne);
+
+    const targetedCandidates = await discovery.getFreshCandidates({
+      userId: listener,
+      allowExplicit: false,
+      trackIds: [olderTrackOne, olderTrackTwo],
+      now: NOW,
+    });
+    expect(targetedCandidates.map((candidate) => candidate.id)).toEqual([
+      olderTrackOne,
+      olderTrackTwo,
+    ]);
+  });
+
   it("serializes concurrent reservations at the 1,000-placement release cap", async () => {
     const creator = await createUser("cap_creator");
     const artistId = await createArtist("cap_artist", creator);
@@ -412,6 +460,7 @@ describe("first-listener discovery and reception (integration)", () => {
     try {
       const artistOwner = await createUser("reception_artist_owner");
       const managementOwner = await createUser("reception_management_owner");
+      const currentArtistManager = await createUser("reception_current_artist_manager");
       const artistId = await createArtist("reception_artist", artistOwner);
       const releaseOneCreated = new Date(NOW.getTime() - 9 * DAY);
       const releaseOne = await createRelease({
@@ -628,6 +677,23 @@ describe("first-listener discovery and reception (integration)", () => {
           save: true,
         });
       }
+      // The artist manager changes after placement; reception still excludes
+      // the current manager using the authoritative Artist relation.
+      await prisma.artist.update({
+        where: { id: artistId },
+        data: { managementOwnerUserId: currentArtistManager },
+      });
+      await grantAnalyticsConsent(currentArtistManager);
+      await createHeardSet({
+        listenerId: currentArtistManager,
+        trackId: trackOne,
+        releaseId: releaseOne,
+        value: "current_artist_manager",
+        placementAt: placementOne,
+        eventAt: heardAtOne,
+        fullPlay: true,
+        save: true,
+      });
 
       const reception = await new FirstListenerReceptionService().getArtistReception(artistId, { now: NOW });
       expect(reception.available).toBe(true);

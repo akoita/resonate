@@ -1,6 +1,8 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { CommunityCohortService } from "../community/community_cohort.service";
+import { DISCOVERY_EXPLANATIONS } from "../recommendations/discovery-explanations";
 import {
+  applyFirstListenerReservationOutcome,
   applyDiscoveryPolicy,
   DISCOVERY_POLICY_DEFAULTS,
   discoveryArtistKey,
@@ -13,6 +15,8 @@ import {
 } from "../recommendations/discovery-ranking.service";
 import { RecommendationsService } from "../recommendations/recommendations.service";
 import { TasteMemoryService } from "../recommendations/taste_memory.service";
+import { FirstListenerDiscoveryService } from "../recommendations/first_listener_discovery.service";
+import { FIRST_LISTENER_CANDIDATE_LIMIT } from "../recommendations/first_listener.contracts";
 import { AgentLearningService } from "./agent_learning.service";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import { buildAgentRecommendationQueries } from "./deterministic_recommendation.adapter";
@@ -53,8 +57,8 @@ import type {
  * swaps: its reserve is only the "at least one" floor, so it would replace
  * every single-track pick.
  *
- * Fail-open: when the ranking core or metadata lookup is unavailable, the
- * result passes through unchanged (the model's own picks, as before).
+ * Fail-open: when the ranking core or metadata lookup is unavailable, ordinary
+ * model picks pass through; any unverified discovery annotations are stripped.
  */
 @Injectable()
 export class AgentRuntimePolicyService {
@@ -69,13 +73,17 @@ export class AgentRuntimePolicyService {
     @Optional() private readonly cohorts?: CommunityCohortService,
     // Source of the discovery pick when the model's picks have none.
     @Optional() private readonly selector?: AgentSelectorService,
+    // Authoritative fresh-source check and placement reservation for runtime picks.
+    @Optional() private readonly firstListenerDiscovery?: FirstListenerDiscoveryService,
   ) {}
 
   async apply(
     input: AgentRuntimeInput,
     result: AgentRuntimeResult,
   ): Promise<AgentRuntimeResult> {
-    if (!this.ranking || !this.policyContext) return result;
+    if (!this.ranking || !this.policyContext) {
+      return stripUnverifiedDiscoveryAnnotations(result);
+    }
     const picks = picksOf(result);
     if (picks.length === 0) return result;
 
@@ -85,7 +93,7 @@ export class AgentRuntimePolicyService {
       this.logger.warn(
         `Runtime policy step unavailable; passing picks through: ${String(error)}`,
       );
-      return result;
+      return stripUnverifiedDiscoveryAnnotations(result);
     }
   }
 
@@ -130,10 +138,35 @@ export class AgentRuntimePolicyService {
 
     // Unknown ids (the model invented one) cannot be ranked or explained.
     const known = ordered.filter((pick) => candidatesById.has(pick.trackId));
+    let freshCandidates: Awaited<ReturnType<FirstListenerDiscoveryService["getFreshCandidates"]>> = [];
+    let freshLookupFailed = false;
+    if (userId && this.firstListenerDiscovery && known.length > FIRST_LISTENER_CANDIDATE_LIMIT) {
+      freshLookupFailed = true;
+    } else if (userId && this.firstListenerDiscovery && known.length > 0) {
+      try {
+        freshCandidates = await this.firstListenerDiscovery.getFreshCandidates({
+          userId,
+          allowExplicit: input.preferences.allowExplicit ?? false,
+          trackIds: known.map((pick) => pick.trackId),
+        });
+      } catch (error) {
+        freshLookupFailed = true;
+        this.logger.warn(`First-listener eligibility unavailable: ${String(error)}`);
+      }
+    }
+    const freshByTrackId = new Map(freshCandidates.map((candidate) => [candidate.id, candidate]));
     const candidates: DiscoveryCandidate[] = known.map((pick) => {
       const candidate = candidatesById.get(pick.trackId)!;
+      const fresh = freshByTrackId.get(pick.trackId);
       return {
         ...candidate,
+        ...(fresh
+          ? {
+              artistId: fresh.release.artistId,
+              releaseId: fresh.releaseId,
+              firstListenerEligible: true,
+            }
+          : {}),
         matchedQueries: matchedQueriesFor(candidate, expandedQueries),
       };
     });
@@ -175,14 +208,43 @@ export class AgentRuntimePolicyService {
       );
 
     const exploration = await this.loadExplorationContext(input, known, candidatesById);
-    const policyResult = applyDiscoveryPolicy(inModelOrder, {
+    const policyOptions = {
       limit: inModelOrder.length,
       tastePolicy: taste,
       priorSessionArtistKeys,
-      verifiedHumanArtistIds: exploration.verifiedHumanArtistIds,
+      // If freshness could not be checked, no runtime pick can safely receive
+      // discovery privilege for this request.
+      verifiedHumanArtistIds: freshLookupFailed
+        ? new Set<string>()
+        : exploration.verifiedHumanArtistIds,
       playedArtistIds: exploration.playedArtistIds,
       priorExplorationCount: exploration.priorExplorationCount,
-    });
+    };
+    let policyResult = applyDiscoveryPolicy(inModelOrder, policyOptions);
+
+    const firstListenerPicks = policyResult.items.filter(
+      (entry) => entry.firstListenerEligible && entry.reasonCode === "discovery_pick",
+    );
+    if (firstListenerPicks.length > 0 && userId && this.firstListenerDiscovery) {
+      let reservedReleaseIds = new Set<string>();
+      try {
+        reservedReleaseIds = await this.firstListenerDiscovery.reservePlacements(
+          userId,
+          firstListenerPicks.flatMap((entry) =>
+            entry.releaseId ? [{ trackId: entry.id, releaseId: entry.releaseId }] : [],
+          ),
+          { allowExplicit: input.preferences.allowExplicit ?? false },
+        );
+      } catch (error) {
+        this.logger.warn(`First-listener placement unavailable: ${String(error)}`);
+      }
+      policyResult = applyFirstListenerReservationOutcome(
+        inModelOrder,
+        policyResult,
+        reservedReleaseIds,
+        policyOptions,
+      );
+    }
 
     const pickById = new Map(known.map((pick) => [pick.trackId, pick]));
     let surviving: LlmTrackPick[] = policyResult.items.map((entry) => ({
@@ -314,6 +376,9 @@ export class AgentRuntimePolicyService {
         mood: input.preferences.mood,
         queueStyle: input.preferences.queueStyle,
         tempoBpm: input.preferences.tempoBpm,
+        // The runtime reserves only the final replacement, after all selector
+        // constraints identify the one track that will actually be returned.
+        reserveFirstListenerPlacements: false,
       });
       const pickedIds = new Set(surviving.map((entry) => entry.trackId));
       const artistCounts = new Map<string, number>();
@@ -330,6 +395,29 @@ export class AgentRuntimePolicyService {
         return (artistCounts.get(key) ?? 0) < DISCOVERY_POLICY_DEFAULTS.maxPerArtist;
       });
       if (!discovery) return undefined;
+
+      if (this.firstListenerDiscovery && input.userId) {
+        const authoritative = await this.firstListenerDiscovery.getFreshCandidates({
+          userId: input.userId,
+          allowExplicit: input.preferences.allowExplicit ?? false,
+          trackIds: [discovery.id],
+        });
+        const fresh = authoritative.find((candidate) => candidate.id === discovery.id);
+        if (fresh) {
+          const reserved = await this.firstListenerDiscovery.reservePlacements(
+            input.userId,
+            [{ trackId: fresh.id, releaseId: fresh.releaseId }],
+            { allowExplicit: input.preferences.allowExplicit ?? false },
+          );
+          if (!reserved.has(fresh.releaseId)) return undefined;
+        } else if (discovery.firstListenerEligible) {
+          // The source's earlier result is stale; never return it with fresh
+          // discovery privilege after a failed authoritative recheck.
+          return undefined;
+        }
+      } else if (discovery.firstListenerEligible) {
+        return undefined;
+      }
 
       const replaced = surviving[surviving.length - 1];
       const recommendation = discovery.agentRecommendation!;
@@ -408,6 +496,28 @@ function picksOf(result: AgentRuntimeResult): LlmTrackPick[] {
     ];
   }
   return [];
+}
+
+/** The model cannot supply a discovery claim when the policy did not verify it. */
+function stripUnverifiedDiscoveryAnnotations(result: AgentRuntimeResult): AgentRuntimeResult {
+  if (!result.picks?.length) return result;
+  let changed = false;
+  const picks = result.picks.map((pick) => {
+    const containsDiscoveryExplanation = pick.explanation?.some(
+      (line) => line === DISCOVERY_EXPLANATIONS.discovery_pick,
+    );
+    if (pick.reasonCode !== "discovery_pick" && !containsDiscoveryExplanation) {
+      return pick;
+    }
+    changed = true;
+    const ordinary = { ...pick };
+    delete ordinary.score;
+    delete ordinary.explanation;
+    delete ordinary.reasonCode;
+    delete ordinary.signals;
+    return ordinary;
+  });
+  return changed ? { ...result, picks } : result;
 }
 
 /**

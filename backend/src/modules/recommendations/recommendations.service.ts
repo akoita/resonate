@@ -28,6 +28,7 @@ import {
 } from "./embedding_candidates";
 import { loadEmbeddingSeedSignals, selectEmbeddingSeeds } from "./embedding_seeds";
 import { FirstListenerDiscoveryService } from "./first_listener_discovery.service";
+import { FIRST_LISTENER_CANDIDATE_LIMIT } from "./first_listener.contracts";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
@@ -42,6 +43,9 @@ const PUBLIC_RELEASE_ROUTES = [
 /** How many served track ids we remember per user (parity with the old Map). */
 const SERVED_HISTORY_CAP = 50;
 const PROFILE_CACHE_TTL_SECONDS = 300;
+// Home's ordinary source ceilings are 50 + 60 + 30 + 50 embedding neighbours.
+const FIRST_LISTENER_VALIDATION_LIMIT = 200;
+const FIRST_LISTENER_VALIDATION_BATCH = FIRST_LISTENER_CANDIDATE_LIMIT;
 
 export interface UserPreferences {
   mood?: string;
@@ -252,6 +256,7 @@ export class RecommendationsService {
     tracks: CandidateTrack[];
     embeddingSources: Map<string, EmbeddingCandidateSource[]>;
     firstListenerTrackIds: Set<string>;
+    firstListenerVerificationComplete: boolean;
   }> {
     const where = this.publicCatalogWhere(input.allowExplicit);
     const include = {
@@ -333,15 +338,40 @@ export class RecommendationsService {
       firstListenerSource,
     ]);
 
-    const byId = new Map<string, CandidateTrack>();
-    for (const track of [
+    const ordinaryTracks = [
       ...fresh,
       ...preferenceMatches,
       ...cohortMatches,
       ...embedding.tracks,
-      ...firstListenerTracks,
-    ]) {
+    ];
+    const byId = new Map<string, CandidateTrack>();
+    for (const track of [...ordinaryTracks, ...firstListenerTracks]) {
       if (!byId.has(track.id)) byId.set(track.id, track);
+    }
+    const firstListenerTrackIds = new Set(firstListenerTracks.map((track) => track.id));
+    let firstListenerVerificationComplete = true;
+    if (this.firstListenerDiscovery) {
+      const sourceTrackIds = new Set(firstListenerTracks.map((track) => track.id));
+      const ordinaryTrackIds = [...new Set(ordinaryTracks.map((track) => track.id))]
+        .filter((trackId) => !sourceTrackIds.has(trackId));
+      if (ordinaryTrackIds.length > FIRST_LISTENER_VALIDATION_LIMIT) {
+        firstListenerVerificationComplete = false;
+      } else {
+        for (let offset = 0; offset < ordinaryTrackIds.length; offset += FIRST_LISTENER_VALIDATION_BATCH) {
+          const trackIds = ordinaryTrackIds.slice(offset, offset + FIRST_LISTENER_VALIDATION_BATCH);
+          try {
+            const validated = await this.firstListenerDiscovery.getFreshCandidates({
+              userId: input.userId,
+              allowExplicit: input.allowExplicit,
+              trackIds,
+            });
+            for (const track of validated) firstListenerTrackIds.add(track.id);
+          } catch {
+            firstListenerVerificationComplete = false;
+            break;
+          }
+        }
+      }
     }
     // Attribution only for tracks that survived the public-catalog join.
     const joined = new Set(embedding.tracks.map((track) => track.id));
@@ -351,7 +381,8 @@ export class RecommendationsService {
     return {
       tracks: [...byId.values()],
       embeddingSources,
-      firstListenerTrackIds: new Set(firstListenerTracks.map((track) => track.id)),
+      firstListenerTrackIds,
+      firstListenerVerificationComplete,
     };
   }
 
@@ -451,7 +482,12 @@ export class RecommendationsService {
       .filter(Boolean);
     const normalizedMood = prefs.mood?.trim();
 
-    const { tracks: candidates, embeddingSources, firstListenerTrackIds } = await this.gatherCandidates({
+    const {
+      tracks: candidates,
+      embeddingSources,
+      firstListenerTrackIds,
+      firstListenerVerificationComplete,
+    } = await this.gatherCandidates({
       userId,
       embeddingSeedTrackIds: await this.loadEmbeddingSeedTrackIds(userId, policy),
       allowExplicit,
@@ -490,7 +526,9 @@ export class RecommendationsService {
         artistId: track.release.artistId,
         releaseId: track.releaseId,
         firstListenerEligible:
-          firstListenerTrackIds.has(track.id) && track.aiDisclosureLevel !== "ALL",
+          firstListenerVerificationComplete &&
+          firstListenerTrackIds.has(track.id) &&
+          track.aiDisclosureLevel !== "ALL",
         aiDisclosureLevel: track.aiDisclosureLevel,
         release: {
           genre: track.release.genre,
@@ -600,7 +638,9 @@ export class RecommendationsService {
     const policyOptions = {
       limit,
       tastePolicy: policy,
-      verifiedHumanArtistIds: policyContext.verifiedHumanArtistIds,
+      verifiedHumanArtistIds: firstListenerVerificationComplete
+        ? policyContext.verifiedHumanArtistIds
+        : new Set<string>(),
       playedArtistIds: policyContext.playedArtistIds,
     };
     let policyInput = preferenceOrdered;

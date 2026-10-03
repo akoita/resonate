@@ -118,6 +118,15 @@ const AUTH_TARGETS = [
       await page.getByRole("heading", { name: "Recommended next actions" }).scrollIntoViewIfNeeded();
     },
   }],
+  ["/artist/analytics", "scene-scout-reception.png", {
+    mockSceneScout: "reception",
+    selectors: [".artist-action-card"],
+    text: ["First-week reception for First Light"],
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.getByRole("heading", { name: "Recommended next actions" }).scrollIntoViewIfNeeded();
+    },
+  }],
   ["/artist/analytics", "scene-scout-city.png", {
     mockSceneScout: true,
     selectors: [".artist-action-card"],
@@ -296,7 +305,7 @@ async function waitForRouteReady(page, route, ready) {
 async function capture(page, targets, passName) {
   for (const [route, file, ready] of targets) {
     if (process.env.CAPTURE_ONLY && file !== process.env.CAPTURE_ONLY) continue;
-    if (ready?.mockSceneScout) await mockSceneScoutApi(page, ready.mockSceneScout === "demand" ? "demand" : "city");
+    if (ready?.mockSceneScout) await mockSceneScoutApi(page, typeof ready.mockSceneScout === "string" ? ready.mockSceneScout : "city");
     if (ready?.mockLibrary) {
       const createdAt = "2026-09-01T12:00:00.000Z";
       await page.route("**/library/tracks", (request) => request.fulfill({

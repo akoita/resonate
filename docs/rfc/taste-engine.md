@@ -351,7 +351,13 @@ current contract and external acceptance tracking.
 
 Each new release by a verified human artist enters the exploration share of
 listeners whose taste fits (§3.4 step 3), and the artist receives a reception
-summary after seven days.
+summary after seven days. The implemented source uses the first seven catalog
+days (`Release.createdAt`), since publication time is not separately stored.
+Reservations enforce one placement per listener/release and 1,000 per release,
+with a durable anonymous counter that survives listener erasure. Reception
+requires actual consent-qualified plays after placement; follows remain
+unavailable. See [Scene Scout](../features/scene_scout.md) for serving thresholds
+and lifecycle behavior.
 
 ## 7. Agent autonomy and money (ADR-TE-1)
 

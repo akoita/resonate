@@ -24,7 +24,7 @@ ALTER TABLE "FirstListenerExposure"
     ADD CONSTRAINT "FirstListenerExposure_releaseId_fkey"
     FOREIGN KEY ("releaseId") REFERENCES "Release"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Account erasure cascades listener identity rows. Keep a monotonic release
+-- Account erasure explicitly deletes listener identity rows. Keep a monotonic release
 -- budget so deletion cannot restore first-listener placements.
 ALTER TABLE "Release"
     ADD COLUMN "firstListenerPlacementsUsed" INTEGER NOT NULL DEFAULT 0;
