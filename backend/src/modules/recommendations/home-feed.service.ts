@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { Injectable, Logger, Optional } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { DiscoveryPopularityService } from "../catalog/discovery-popularity.service";
+import { minimumAudienceFromEnv } from "../catalog/discovery-popularity.math";
 import { RecommendationsService } from "./recommendations.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import {
@@ -31,7 +33,9 @@ import { discoveryVariantForUser } from "./discovery_experiment";
  *   - `trending_genre`  "Trending in <genre>" (WS-4 serving tables)
  *   - `exploration`     a controlled slice of fresh/low-data tracks outside
  *                        the personalized lanes (DISCOVERY_EXPLORATION_COUNT,
- *                        default 4) to escape feedback loops (RFC §10)
+ *                        default 4) to escape feedback loops (RFC §10); one
+ *                        lead track per release, low-data measured on real
+ *                        listening (#2050)
  *
  * Privacy rule (RFC §7): every explanation is CATEGORICAL ("you save a lot of
  * Afrobeat"), never itemized history ("because you played X on Tuesday").
@@ -91,6 +95,8 @@ export interface HomeFeedRail {
 
 const RAIL_SIZE = 8;
 const ARTIST_CAP_PER_RAIL = 2;
+/** Listening window for the exploration rail's low-data test (#2050). */
+const EXPLORATION_AUDIENCE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 function explorationCount(): number {
   const parsed = Number.parseInt(process.env.DISCOVERY_EXPLORATION_COUNT ?? "", 10);
@@ -491,45 +497,50 @@ export class HomeFeedService {
   ): Promise<HomeFeedRail | null> {
     const count = explorationCount();
     if (!count) return null;
-    // Fresh AND low-data: newest public tracks with no popularity row yet —
-    // the items a taste-driven feed would otherwise never surface.
-    const fresh = await prisma.track.findMany({
+    // Fresh AND low-data (#2050). Newest public releases, one lead track each,
+    // so a single release never fills two cards of a four-card rail.
+    const releases = await prisma.release.findMany({
       where: {
-        ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
-        release: { status: { in: ["ready", "published"] } },
-        explicit: false,
-        id: { notIn: [...used] },
-      },
-      include: {
-        release: {
-          select: {
-            id: true,
-            title: true,
-            genre: true,
-            moods: true,
-            artistId: true,
-            artworkMimeType: true,
-            artworkRevision: true,
-            primaryArtist: true,
-            artist: { select: { displayName: true } },
+        status: { in: ["ready", "published"] },
+        tracks: {
+          some: {
+            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+            explicit: false,
+            id: { notIn: [...used] },
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        genre: true,
+        moods: true,
+        artistId: true,
+        artworkMimeType: true,
+        artworkRevision: true,
+        primaryArtist: true,
+        artist: { select: { displayName: true } },
+        tracks: {
+          where: {
+            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+            explicit: false,
+            id: { notIn: [...used] },
+          },
+          orderBy: [{ position: "asc" }, { id: "asc" }],
+          take: 1,
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       take: count * 5,
     });
-    const popular = new Set(
-      (
-        await prisma.trackPopularity.findMany({
-          where: { trackId: { in: fresh.map((track) => track.id) } },
-          select: { trackId: true },
-        })
-      ).map((row) => row.trackId),
+    const fresh = releases.flatMap(({ tracks, ...release }) =>
+      tracks.map((track) => ({ ...track, release })),
     );
+    const listened = await this.tracksWithAudience(fresh.map((track) => track.id));
     const selected = applyCaps(
       "exploration",
       fresh
-        .filter((track) => !popular.has(track.id))
+        .filter((track) => !listened.has(track.id))
         .map((track) => ({
           id: track.id,
           title: track.title,
@@ -560,6 +571,40 @@ export class HomeFeedService {
       explanation: "Fresh, under-the-radar drops with almost no plays yet — be the first ear.",
       items: selected,
     };
+  }
+
+  /**
+   * Tracks that are NOT low-data: they already chart, or at least
+   * `DISCOVERY_MIN_AUDIENCE` distinct listeners played them in the last 30
+   * days (#2050). A missing popularity row alone is not evidence: the serving
+   * tables can be empty or stale, which would make every track look unheard.
+   * Playback facts exist only for listeners who opted in to product analytics.
+   * The count is a yes/no filter here and is never displayed.
+   */
+  private async tracksWithAudience(trackIds: string[]): Promise<Set<string>> {
+    if (!trackIds.length) return new Set();
+    const since = new Date(Date.now() - EXPLORATION_AUDIENCE_WINDOW_MS);
+    const [charting, audiences] = await Promise.all([
+      prisma.trackPopularity.findMany({
+        where: { trackId: { in: trackIds } },
+        select: { trackId: true },
+      }),
+      prisma.$queryRaw<Array<{ trackId: string; listeners: number }>>`
+        SELECT "subjectId" AS "trackId", COUNT(DISTINCT "actorId")::int AS "listeners"
+        FROM "AnalyticsEvent"
+        WHERE "subjectType" = 'track'
+          AND "subjectId" IN (${Prisma.join(trackIds)})
+          AND "eventName" IN ('playback.started', 'playback.completed')
+          AND "actorId" IS NOT NULL
+          AND "occurredAt" >= ${since}
+        GROUP BY "subjectId"
+      `,
+    ]);
+    const floor = minimumAudienceFromEnv();
+    return new Set([
+      ...charting.map((row) => row.trackId),
+      ...audiences.filter((row) => row.listeners >= floor).map((row) => row.trackId),
+    ]);
   }
 
   private async catalogSignalRail(

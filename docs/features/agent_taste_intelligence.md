@@ -532,6 +532,12 @@ re-ranked) from the WS-1 core and WS-4 serving by
 - `trending_genre` — "Trending in \<genre\>" from the WS-4 serving tables.
 - `exploration` — a controlled slice of fresh/low-data tracks
   (`DISCOVERY_EXPLORATION_COUNT`, default 4) to escape feedback loops.
+  Candidates are the newest public releases, one lead track each, so a release
+  fills at most one card. A track is low-data only when fewer than
+  `DISCOVERY_MIN_AUDIENCE` distinct listeners played it in the last 30 days,
+  counted from the consented analytics ledger, and it has no popularity row
+  (#2050). A missing popularity row alone no longer counts, because empty or
+  stale serving tables would make every track look unheard.
 - `catalog_signal` — cold users only (RFC §8), labeled as exactly that.
 
 Rules enforced in composition: every explanation is **categorical** (RFC §7 —
@@ -556,7 +562,8 @@ only and emits one `recommendation.served` per rail plus
 `recommendation.clicked` per action (#1449 measurement base).
 
 Tests: `backend/src/tests/home-feed.integration.spec.ts` (rails, caps,
-rotation, cold/warm, hidden artist removed from every rail),
+rotation, cold/warm, hidden artist removed from every rail, exploration
+low-data and one-per-release rules),
 `home_feed_rail_policy.spec.ts` (rail policy rules),
 `recommendations.controller.http.spec.ts` (routing,
 guard, shape), `web/src/components/home/HomeFeedRails.test.tsx`.
