@@ -3393,13 +3393,18 @@ export default function ReleaseDetails() {
           background: linear-gradient(135deg, var(--color-accent), #fff);
         }
 
-        .artist-name {
+        /* The linked credit renders through <Link>, which styled-jsx does not
+           scope, so reach it through the scoped row. */
+        .artist-name,
+        .release-artist-row :global(a.artist-name) {
           font-weight: 800;
           color: #fff;
-          cursor: pointer;
           transition: color 0.2s;
         }
-        .artist-name:hover {
+        .release-artist-row :global(a.artist-name) {
+          cursor: pointer;
+        }
+        .release-artist-row :global(a.artist-name:hover) {
           color: var(--color-accent);
           text-decoration: underline;
         }
@@ -3832,7 +3837,8 @@ export default function ReleaseDetails() {
           margin: 4px 0 0;
         }
 
-        .nft-link {
+        /* "Browse stems" renders through <Link>; reach it through the scoped header. */
+        .nft-header :global(.nft-link) {
           font-size: 13px;
           color: #10b981;
           text-decoration: none;
@@ -3840,8 +3846,13 @@ export default function ReleaseDetails() {
           transition: color 0.2s;
         }
 
-        .nft-link:hover {
+        .nft-header :global(.nft-link:hover) {
           color: #34d399;
+        }
+
+        .nft-header :global(.nft-link:focus-visible) {
+          outline: 2px solid #34d399;
+          outline-offset: 2px;
         }
 
         .nft-tracks-accordion {
