@@ -733,6 +733,41 @@ describe('API Client', () => {
       expect(result.track?.title).toBe('Runtime Track');
     });
 
+    it('refreshes only My Mix local context at request time using coarse buckets', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 9, 4, 0, 1));
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ status: 'no_tracks' }),
+      });
+
+      try {
+        await api.getAgentNextPick('listener-token', {
+          sessionId: 'session-1',
+          preferences: {
+            source: 'agent_session_prompt',
+            myMix: {
+              context: 'evening:weekday',
+              lanes: [{ id: 'lane-secret', boost: true }],
+              additions: [{ genre: 'Dancehall' }],
+            },
+          },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const [, options] = mockFetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+      expect(body.preferences.myMix).toEqual({
+        context: 'night:weekend',
+        lanes: [{ id: 'lane-secret', boost: true }],
+        additions: [{ genre: 'Dancehall' }],
+      });
+      expect(JSON.stringify(body)).not.toMatch(/timezone|UTC|2026|00:01/i);
+    });
+
     it('remembers the pick variant for DJ attribution only on an ok pick (#2005)', async () => {
       const store = new Map<string, string>();
       vi.stubGlobal('window', {

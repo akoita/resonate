@@ -260,7 +260,14 @@ describe("AnalyticsDomainEventBridgeService", () => {
         sessionId: "session_919",
         userId: "user_919",
         budgetCapUsd: 12,
-        preferences: { mood: "focus", explicit: false, nested: { drop: true } },
+        preferences: {
+          mood: "focus", explicit: false, nested: { drop: true },
+          myMix: {
+            context: "evening:weekday",
+            lanes: [{ id: "lane_private", boost: true }],
+            additions: [{ genre: "Soul" }],
+          },
+        },
       },
       {
         eventName: "license.granted",

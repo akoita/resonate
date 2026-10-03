@@ -312,7 +312,8 @@ dimensions. No time zone or exact local time is collected.
 
 Home's `recommendation.served` and `recommendation.clicked` events remain the
 measurement base for discovery outcomes. The profile now computes decayed multidimensional weights (#2063), described
-below. My Mix, ordering and measurement remain tracked in [#2065–#2067](https://github.com/akoita/resonate/issues/2061)
+below. My Mix is implemented in #2065; ordering and measurement remain tracked
+in [#2066–#2067](https://github.com/akoita/resonate/issues/2061)
 and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 
 ### Verification
@@ -326,9 +327,9 @@ and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 
 ## Habit profile v2 (#2063)
 
-Status: implemented locally, dependent on #2062. Vision-neutral infrastructure
-(ADR-BM-6), enabling Line 4 Listener Pro, phase 4. Listening lanes are implemented locally in #2064; My Mix, ordering and
-measurement remain planned under #2065–#2067.
+Status: merged with #2062. Vision-neutral infrastructure (ADR-BM-6), enabling
+Line 4 Listener Pro, phase 4. Listening lanes are merged in #2064; My Mix is
+implemented in #2065. Ordering and measurement remain tracked by #2066–#2067.
 
 `agent-taste-profile/v2` keeps the existing score, tier, favored genres and
 `genreWeights` fields consumed by Home and the AI DJ. It adds aggregate maps:
@@ -367,10 +368,10 @@ new summary rows and reset. See the [implementation plan](../../.agents/plans/20
 
 ## Listening lanes (#2064)
 
-Status: implemented locally on the #2063 dependency; the parent feature remains
+Status: merged on the #2063 dependency; the parent feature remains
 partial. Vision-neutral infrastructure (ADR-BM-6), enabling Line 4 Listener Pro,
 phase 4. Lane summaries and controls in Taste Memory remain free. My Mix and
-quota editing follow in [#2065](https://github.com/akoita/resonate/issues/2065).
+quota editing are described below in [#2065](https://github.com/akoita/resonate/issues/2065).
 
 A lane captures a repeated side of a listener's taste, such as weekday-evening
 Soul or weekend Dancehall. The deterministic computation groups governed genre,
@@ -396,8 +397,8 @@ measured energy and an opaque ID. Cards include hidden state for restoration.
 `POST /recommendations/taste-memory/signals` accepts a current listener-owned
 lane ID with `signalType: "lane"` and `action: "hidden"`; downranking lanes is
 rejected. The existing owned-control DELETE restores it. Mix-facing
-`resolveListeningLanes` excludes hidden lanes. This slice does not change Home
-or DJ ranking and does not launch mixes.
+`resolveListeningLanes` excludes hidden lanes. Home uses the shared profile;
+the DJ uses lanes when the listener chooses My Mix.
 
 Derived summaries are cached per user and profile version in a bounded
 128-entry process-local cache. The version covers bounded history, catalog
@@ -412,6 +413,58 @@ labels, hidden values, measured energy and bounded computation. Real Postgres
 checks cover cache invalidation, user isolation, hide/restore and reset; mounted
 browser checks cover the corresponding cards. See the
 [implementation plan](../../.agents/plans/2064-listening-lanes.md).
+
+## My Mix (#2065)
+
+My Mix appears first among the AI DJ quick starts when Taste Memory has visible
+listening lanes. It blends those lanes into one free session. Stronger lanes
+receive more picks, and the broad local time context increases the share of
+lanes associated with that time. The client sends only the existing coarse
+time-of-day and weekday/weekend categories. Largest-remainder rounding turns
+the shares into whole-track quotas for each batch.
+
+Before starting or while listening, remove a lane, boost its share, or add a
+catalog genre or mood. These edits affect the session only. Saving a preference
+to Taste Memory is a separate explicit action that saves added categories and
+boosted lanes' catalog terms, leaving removed lanes as session-only choices.
+The editor reads the full vocabulary from the authenticated
+`GET /agents/config/session/mix-vocabulary` route. The server resolves current
+listener-owned visible lanes on every run; client labels and weights cannot
+override hidden taste or invent learned lanes.
+
+Each lane ranks tracks as a session request, then the shared policy applies
+hidden taste, AI-content exclusions, exploration and artist diversity globally.
+My Mix supplies the optional `sessionRequest` ranking context, with its boost
+above the learned-preference cap. Home and ordinary sessions do not supply this
+new context in this slice; the broader preset/request fixes remain in #2059.
+Exploration picks can satisfy a matching lane quota. Missing slots transfer to
+stronger lanes before the existing catalog fallback. Original lane coverage
+remains visible: unrelated fallback tracks never count as covering a lane.
+
+Unmet lane requests use the existing consent-gated unmet-demand mechanism.
+Pick explanations name the actual lane and preserve discovery explanations.
+The existing demand source attributes observations only to verified playable
+catalog owners. A wholly absent genre still appears as missing coverage, but
+does not produce an artist-attributed observation without catalog evidence.
+
+Session start and Next Pick bind lane reads to the authenticated owner.
+`GET /agents/config/session/:sessionId/mix-coverage` returns initial coverage
+from a bounded ephemeral cache; Next Pick includes `mixCoverage` directly.
+Lane labels and IDs never enter the public live event feed. Cache loss means
+initial coverage is unavailable until another pick, rather than stored history.
+
+My Mix uses the deterministic orchestrator even when a model runtime is
+configured, so quotas and coverage do not depend on model output. Without lanes,
+the existing presets and single-profile behavior remain available. This slice
+does not introduce a new model tool or authorize purchases.
+
+Revenue alignment: ADR-BM-6 Line 4, Listener Pro phase 4 candidate, with free
+basic mixes supporting Line 1 engagement. The advanced entitlement seam is OFF;
+saved named mixes, per-lane energy arcs and length/order controls are not
+available. Learned ordering remains in #2066 and evaluation in #2067. No fees,
+royalty shares, payouts, deployment wiring or contract behavior change.
+
+Verification and API details: [implementation plan](../../.agents/plans/2065-my-mix.md).
 
 ## Unified Ranking Core (#1448 WS-1)
 

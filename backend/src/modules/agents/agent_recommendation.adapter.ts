@@ -1,5 +1,7 @@
 import type { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
 import type { AgentCandidateTrack } from "./agent_selector.service";
+import type { ResolvedMyMixPlan } from "./agent_my_mix";
+import type { MixCoverage } from "./agent_my_mix";
 
 export type AgentRecommendationStrategy = "deterministic" | "model-assisted";
 
@@ -14,6 +16,8 @@ export interface AgentRecommendationInput {
   recentTrackIds: string[];
   preferences: AgentRuntimeInput["preferences"];
   limit: number;
+  /** Trusted server-resolved plan; never accepted from runtime wire input. */
+  myMixPlan?: ResolvedMyMixPlan;
 }
 
 export interface AgentRecommendationResult {
@@ -22,6 +26,8 @@ export interface AgentRecommendationResult {
   selected: AgentCandidateTrack[];
   rejected: AgentRejectedCandidate[];
   reason: string;
+  /** Private My Mix coverage; kept inside the owner-bound session response path. */
+  mixCoverage?: MixCoverage;
   trace?: {
     strategy: AgentRecommendationStrategy;
     fallbackReason?: string;

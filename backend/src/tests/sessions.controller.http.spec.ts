@@ -83,6 +83,22 @@ describe('SessionsController (e2e)', () => {
       .expect(201);
 
     expect(res.body.sessionId).toBe('s1');
+    expect(mockSessionsService.startSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1' }),
+    );
+  });
+
+  it('POST /sessions/agent/next binds private next-pick responses to the JWT owner', async () => {
+    await request(app.getHttpServer())
+      .post('/sessions/agent/next')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userId: 'attacker', sessionId: 'owned-session' })
+      .expect(201);
+
+    expect(mockSessionsService.agentNext).toHaveBeenCalledWith({
+      userId: 'user-1',
+      sessionId: 'owned-session',
+    });
   });
 
   it('POST /sessions/stop → 201 with JWT', async () => {

@@ -1,7 +1,7 @@
 # Habit mixes (#2061)
 
-Status: #2062 implemented locally; final verification is recorded below.
-#2063–#2067 remain planned and tracked by the open parent epic. Revenue: vision-neutral
+Status: #2062–#2064 merged in PRs #2068–#2070. #2065 is implemented and locally validated;
+#2066–#2067 remain planned and tracked by the open parent epic. Revenue: vision-neutral
 infrastructure (ADR-BM-6), enabling Line 4 Listener Pro, phase 4.
 
 ## First slice: habit telemetry (#2062)
@@ -39,15 +39,16 @@ infrastructure (ADR-BM-6), enabling Line 4 Listener Pro, phase 4.
 
 ## Remaining epic
 
-- #2063: decayed, multidimensional taste profile — implemented locally on
-  `feat/2063-habit-profile-v2`; see [its plan](2063-habit-profile-v2.md).
-- #2064: deterministic listening lanes — implemented and verified locally on
-  `feat/2064-listening-lanes`; see [its plan](2064-listening-lanes.md).
-- #2065: My Mix and editable lane quotas — planned.
+- #2063: decayed, multidimensional taste profile — merged in #2069;
+  see [its plan](2063-habit-profile-v2.md).
+- #2064: deterministic listening lanes — merged in #2070;
+  see [its plan](2064-listening-lanes.md).
+- #2065: My Mix and editable lane quotas — implemented and locally validated;
+  see [its plan](2065-my-mix.md).
 - #2066: learned ordering — planned.
 - #2067: measurement and promotion evidence — planned.
 
-## Validation and change impact
+## First-slice validation and change impact
 
 Worktree: `/home/koita/dev/web3/resonate-2061`, branch
 `feat/2061-habit-mixes`, based on `5a336a37`. Unrelated Scene Scout work remains

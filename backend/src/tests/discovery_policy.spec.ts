@@ -824,4 +824,72 @@ describe("discovery policy (ADR-TE-2)", () => {
       assertRules(items);
     });
   });
+
+  describe("My Mix quota allocation", () => {
+    it("uses each lane's intent-ranked order", () => {
+      const result = applyDiscoveryPolicy(
+        [ranked("global-high", 100), ranked("lane-high", 90), ranked("lane-request-fit", 10)],
+        {
+          limit: 1,
+          laneQuotas: [{ id: "lane", requested: 1, strength: 1 }],
+          laneMatchesByCandidateId: new Map([
+            ["lane-high", ["lane"]],
+            ["lane-request-fit", ["lane"]],
+          ]),
+          laneCandidateOrderByLaneId: new Map([["lane", ["lane-request-fit", "lane-high"]]]),
+        },
+      );
+      expect(ids(result.items)).toEqual(["lane-request-fit"]);
+      expect(result.laneAssignments).toEqual(new Map([["lane-request-fit", "lane"]]));
+    });
+
+    it("transfers an empty lane's demand to the strongest eligible lane, including zero-quota lanes", () => {
+      const result = applyDiscoveryPolicy(
+        [ranked("weak-only", 100), ranked("strong-secondary", 50), ranked("strong-primary", 5)],
+        {
+          limit: 3,
+          laneQuotas: [
+            { id: "weak", requested: 3, strength: 1 },
+            { id: "strong", requested: 0, strength: 3 },
+          ],
+          laneMatchesByCandidateId: new Map([
+            ["weak-only", ["weak"]],
+            ["strong-secondary", ["strong"]],
+            ["strong-primary", ["strong"]],
+          ]),
+          laneCandidateOrderByLaneId: new Map([
+            ["weak", ["weak-only"]],
+            ["strong", ["strong-primary", "strong-secondary"]],
+          ]),
+        },
+      );
+      expect(result.laneAssignments).toEqual(new Map([
+        ["weak-only", "weak"],
+        ["strong-primary", "strong"],
+        ["strong-secondary", "strong"],
+      ]));
+    });
+
+    it("keeps unrelated widened tracks unassigned while preserving global exploration", () => {
+      const result = applyDiscoveryPolicy(
+        [
+          ranked("unrelated-new", 100, { artistId: "new" }),
+          ranked("lane-fit", 50, { artistId: "familiar" }),
+          ranked("ordinary-fallback", 10, { artistId: "other" }),
+        ],
+        {
+          limit: 2,
+          verifiedHumanArtistIds: new Set(["new"]),
+          laneQuotas: [{ id: "lane", requested: 1, strength: 1 }],
+          laneMatchesByCandidateId: new Map([["lane-fit", ["lane"]]]),
+          laneCandidateOrderByLaneId: new Map([["lane", ["lane-fit"]]]),
+        },
+      );
+      expect(result.laneAssignments?.get("lane-fit")).toBe("lane");
+      expect(result.laneAssignments?.has("unrelated-new")).toBe(false);
+      expect(result.exploration.served).toBe(1);
+      expect(result.items.find((candidate) => candidate.id === "unrelated-new")?.reasonCode).toBe("discovery_pick");
+      expect(ids(result.items)).toEqual(["unrelated-new", "lane-fit"]);
+    });
+  });
 });

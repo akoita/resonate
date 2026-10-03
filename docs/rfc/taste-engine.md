@@ -132,7 +132,11 @@ separate-habits fixture; the implementation does not fabricate a third.
 Insufficient evidence retains the single-profile fallback. Hidden values are
 excluded and listeners can hide a lane from future mixes in Taste Memory.
 See the [implemented lane contract](../features/agent_taste_intelligence.md#listening-lanes-2064)
-for thresholds, cache lifecycle and the remaining My Mix slice (#2065).
+for thresholds and cache lifecycle. My Mix (#2065) blends visible lanes with
+strength/context shares and whole-track quotas. Session edits do not change
+Taste Memory unless explicitly saved; missing lane coverage stays visible even
+when another lane fills its slots. The shared exploration and diversity policy
+still applies. See [My Mix](../features/agent_taste_intelligence.md#my-mix-2065).
 
 Manipulation protection (ADR-TE-2.5): signals from accounts younger than the
 trust threshold or flagged as anomalous are down-weighted; self-plays and

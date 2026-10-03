@@ -29,3 +29,12 @@ export const AGENT_LISTENING_LANE_MIN_SESSIONS = 2;
 export const AGENT_LISTENING_LANE_MAX = 6;
 /** Minimum weighted similarity required to merge two session/context vectors. */
 export const AGENT_LISTENING_LANE_SIMILARITY_THRESHOLD = 0.5;
+
+/** Maximum multiplier from a lane's current coarse playback context. */
+export const AGENT_MIX_CONTEXT_GAIN = 1;
+/** Session-only multiplier for an explicitly boosted lane. */
+export const AGENT_MIX_BOOST_MULTIPLIER = 2;
+/** Bounded number of learned plus user-added lanes in one My Mix request. */
+export const AGENT_MIX_MAX_LANES = 8;
+/** Bounded catalog-vocabulary additions per My Mix request. */
+export const AGENT_MIX_MAX_ADDITIONS = 2;

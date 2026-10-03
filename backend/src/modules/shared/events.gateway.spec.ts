@@ -436,6 +436,26 @@ describe("EventsGateway", () => {
       gateway.onModuleDestroy();
     });
 
+    it("does not broadcast private My Mix lane coverage", () => {
+      const { gateway, eventBus, emit } = createGateway();
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:00.000Z",
+        sessionId: "session-1",
+        trackCount: 5,
+        reason: "approved",
+        mixCoverage: {
+          lanes: [{ id: "lane_private", label: "Private Soul lane", requested: 3, matched: 1 }],
+        },
+      } as any);
+      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      expect(payload.mixCoverage).toBeUndefined();
+      expect(JSON.stringify(payload)).not.toContain("Private Soul lane");
+      expect(JSON.stringify(payload)).not.toContain("lane_private");
+      gateway.onModuleDestroy();
+    });
+
     it("no longer broadcasts negotiation messages", () => {
       const { gateway, eventBus, emit } = createGateway();
 

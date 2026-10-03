@@ -31,6 +31,11 @@ export class AgentRecommendationService {
   ) {}
 
   async recommend(input: AgentRecommendationInput): Promise<AgentRecommendationResult> {
+    // My Mix coverage depends on strict catalog lane assignment, so model
+    // ranking is never allowed to replace the deterministic recommendation.
+    if (input.myMixPlan) {
+      return this.deterministicAdapter.recommend(input);
+    }
     const requested = process.env.AGENT_RECOMMENDATION_STRATEGY;
     const strategy = resolveAgentRecommendationStrategy(requested);
     if (requested && requested.trim().toLowerCase() !== strategy) {

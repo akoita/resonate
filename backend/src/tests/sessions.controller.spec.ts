@@ -39,7 +39,7 @@ describe('SessionsController', () => {
     const ctrl = makeController();
 
     ctrl.start({
-      userId: 'user-1',
+      userId: 'spoofed-user',
       budgetCapUsd: 15,
       preferences: {
         mood: 'Hype',
@@ -51,10 +51,10 @@ describe('SessionsController', () => {
         queueStyle: 'Fast cuts',
         source: 'agent_session_intent',
       },
-    });
+    }, { user: { userId: 'owner-1' } } as any);
 
     expect(mockSessionsService.startSession).toHaveBeenCalledWith({
-      userId: 'user-1',
+      userId: 'owner-1',
       budgetCapUsd: 15,
       preferences: {
         mood: 'Hype',
@@ -84,10 +84,11 @@ describe('SessionsController', () => {
         queueStyle: 'Stable pacing',
         source: 'agent_session_intent',
       },
-    });
+    }, { user: { userId: 'owner-1' } } as any);
 
     expect(mockSessionsService.agentNext).toHaveBeenCalledWith({
       sessionId: 'session-1',
+      userId: 'owner-1',
       preferences: {
         mood: 'Focus',
         energy: 'medium',

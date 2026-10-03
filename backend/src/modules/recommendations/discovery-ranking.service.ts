@@ -19,6 +19,12 @@ import {
   scoreMultiplierForSignal,
   TasteMemoryPolicy,
 } from "./taste_memory.service";
+import {
+  TASTE_EDIT_GENRES,
+  TASTE_EDIT_GENRE_ALIASES,
+  TASTE_EDIT_MOODS,
+  TASTE_EDIT_MOOD_ALIASES,
+} from "./taste_edit_vocabulary";
 
 /**
  * The unified discovery scoring core (#1448 WS-1, RFC
@@ -122,6 +128,8 @@ export interface DiscoveryRankingContext {
   tempoBpm?: { min: number | null; max: number | null };
   /** Session intent as request context (DJ). Never stored as taste. */
   sessionIntent?: DiscoverySessionIntent;
+  /** Explicit, lane-local session request used by My Mix; absent on Home. */
+  sessionRequest?: { genres: string[]; moods: string[] };
   tastePolicy?: TasteMemoryPolicy;
   /**
    * Caller-prefetched audio features per track id (the DJ provides these;
@@ -277,6 +285,16 @@ export class DiscoveryRankingService {
       explanation.push(DISCOVERY_EXPLANATION_VARIANTS.declared_taste);
     }
 
+    const requestFit = sessionRequestMatch(candidate, context.sessionRequest, context.tastePolicy);
+    if (requestFit) {
+      signals.push({
+        label: "session_request",
+        weight: Math.round(DECLARED_PREFERENCE_WEIGHT * requestFit.multiplier),
+        reason: "matches the current mix request",
+      });
+      explanation.push("Fits your current mix request.");
+    }
+
     // Embedding neighbours of what the listener saved or finished, and of what
     // they wrote in a taste note (#2003, #2006). The signal is categorical: it
     // says the track sounds close to the listener's taste, not which track or
@@ -399,6 +417,51 @@ export class DiscoveryRankingService {
       ...(tasteScore ? { trace: { bigQueryTasteScore: tasteScore } } : {}),
     };
   }
+}
+
+function sessionRequestMatch(
+  candidate: DiscoveryCandidate,
+  request: DiscoveryRankingContext["sessionRequest"],
+  policy?: TasteMemoryPolicy,
+): { multiplier: number } | undefined {
+  if (!request) return undefined;
+  const releaseGenre = canonicalCatalogMetadata(candidate.release?.genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
+  const requestedGenres = new Set(request.genres.map((value) => canonicalCatalogMetadata(value, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES)));
+  if (releaseGenre && requestedGenres.has(releaseGenre)) {
+    const multiplier = sessionRequestPolicyMultiplier(policy, "genre", candidate.release?.genre ?? "", releaseGenre);
+    return multiplier > 0 ? { multiplier } : undefined;
+  }
+  const requestedMoods = new Set(request.moods.map((value) => canonicalCatalogMetadata(value, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES)));
+  for (const releaseMood of candidate.release?.moods ?? []) {
+    const canonicalMood = canonicalCatalogMetadata(releaseMood, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES);
+    if (!canonicalMood || !requestedMoods.has(canonicalMood)) continue;
+    const multiplier = sessionRequestPolicyMultiplier(policy, "mood", releaseMood, canonicalMood);
+    if (multiplier > 0) return { multiplier };
+  }
+  return undefined;
+}
+
+function sessionRequestPolicyMultiplier(
+  policy: TasteMemoryPolicy | undefined,
+  signalType: "genre" | "mood",
+  rawValue: string,
+  canonicalValue: string,
+): number {
+  const rawMultiplier = scoreMultiplierForSignal(policy, signalType, rawValue);
+  const canonicalMultiplier = scoreMultiplierForSignal(policy, signalType, canonicalValue);
+  if (rawMultiplier === 0 || canonicalMultiplier === 0) return 0;
+  if (rawMultiplier < 1 || canonicalMultiplier < 1) return Math.min(rawMultiplier, canonicalMultiplier);
+  return Math.max(rawMultiplier, canonicalMultiplier);
+}
+
+function canonicalCatalogMetadata(
+  value: string | null | undefined,
+  catalog: readonly string[],
+  aliases: Readonly<Record<string, string>>,
+): string {
+  const normalized = (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  const canonical = catalog.find((term) => term.toLowerCase() === normalized);
+  return (canonical ?? aliases[normalized] ?? "").toLowerCase();
 }
 
 /** Weight of a requested-tempo match (#2037): same size as the energy match. */

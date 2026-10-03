@@ -32,6 +32,46 @@ describe("AgentNextPickCard", () => {
     expect(html).toContain("Nothing in the catalog matches this session&#x27;s filters yet.");
   });
 
+  it("names My Mix lane shortfalls without exposing lane IDs", () => {
+    const laneId = "lane_0123456789abcdef0123456789abcdef";
+    const html = renderToStaticMarkup(
+      <AgentNextPickCard
+        config={config}
+        activeSessionId="session-1"
+        isLoading={false}
+        pick={{
+          status: "no_tracks",
+          reason: "all_candidates_recently_played",
+          mixCoverage: { lanes: [{ id: laneId, label: "Soul · Warm", requested: 5, matched: 0 }] },
+        }}
+        onPick={async () => {}}
+      />,
+    );
+
+    expect(html).toContain("Not enough new tracks for Soul · Warm yet.");
+    expect(html).not.toContain("You&#x27;ve heard everything that fits this session.");
+    expect(html).not.toContain(laneId);
+  });
+
+  it("suppresses lane coverage outside My Mix", () => {
+    const html = renderToStaticMarkup(
+      <AgentNextPickCard
+        config={config}
+        activeSessionId="session-1"
+        isLoading={false}
+        pick={{
+          status: "ok",
+          track: { id: "track-1", title: "Boom Bap Signal", artistId: "artist-1" },
+          mixCoverage: { lanes: [{ id: "lane_0123456789abcdef0123456789abcdef", label: "Soul · Warm", requested: 5, matched: 0 }] },
+        }}
+        mixCoverage={null}
+        onPick={async () => {}}
+      />,
+    );
+
+    expect(html).not.toContain("Soul · Warm");
+  });
+
   it("shows recommendation explanations and audio signal details", () => {
     const html = renderToStaticMarkup(
       <AgentNextPickCard

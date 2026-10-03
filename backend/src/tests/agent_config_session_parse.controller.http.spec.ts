@@ -73,6 +73,29 @@ describe('AgentConfigController session parse (e2e)', () => {
     expect(parser.parse).not.toHaveBeenCalled();
   });
 
+  it('GET /agents/config/session/mix-vocabulary requires a JWT', async () => {
+    await request(app.getHttpServer())
+      .get('/agents/config/session/mix-vocabulary')
+      .expect(401);
+  });
+
+  it('GET /agents/config/session/:sessionId/mix-coverage requires a JWT', async () => {
+    await request(app.getHttpServer())
+      .get('/agents/config/session/session-1/mix-coverage')
+      .expect(401);
+  });
+
+  it('GET /agents/config/session/mix-vocabulary returns canonical catalog choices', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/agents/config/session/mix-vocabulary')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.genres).toContain('Deep House');
+    expect(response.body.moods).toContain('Warm');
+    expect(response.body.genres).toEqual(expect.arrayContaining(['Afrobeat', 'R&B']));
+  });
+
   it('→ 200 with the listening filters', async () => {
     const res = await request(app.getHttpServer())
       .post('/agents/config/session/parse')

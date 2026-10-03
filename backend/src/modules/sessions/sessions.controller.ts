@@ -8,6 +8,7 @@ import {
   PlaybackSource,
 } from "./playback_intents.service";
 import type { AgentSessionRequest } from "../agents/agent_session_request";
+import type { MyMixPreferences } from "../agents/agent_my_mix";
 import { SessionsService } from "./sessions.service";
 
 @Controller("sessions")
@@ -22,7 +23,7 @@ export class SessionsController {
   start(
     @Body()
     body: {
-      userId: string;
+      userId?: string;
       budgetCapUsd: number;
       preferences?: {
         mood?: string;
@@ -34,10 +35,12 @@ export class SessionsController {
         sessionIntentName?: string;
         queueStyle?: string;
         source?: string;
+        myMix?: MyMixPreferences | null;
       };
-    }
+    },
+    @Request() req: AuthenticatedPlaybackRequest,
   ) {
-    return this.sessionsService.startSession(body);
+    return this.sessionsService.startSession({ ...body, userId: authenticatedUserId(req) });
   }
 
   @UseGuards(AuthGuard("jwt"))
@@ -70,10 +73,12 @@ export class SessionsController {
         source?: string;
         /** Listening filters parsed from the listener's own words (#2037). Sanitized by the service. */
         request?: AgentSessionRequest;
+        myMix?: MyMixPreferences | null;
       };
-    }
+    },
+    @Request() req: AuthenticatedPlaybackRequest,
   ) {
-    return this.sessionsService.agentNext(body);
+    return this.sessionsService.agentNext({ ...body, userId: authenticatedUserId(req) });
   }
 
   @UseGuards(AuthGuard("jwt"))
