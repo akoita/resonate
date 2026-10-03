@@ -525,7 +525,7 @@ describe("AgentSessionPanel", () => {
       effects.forEach((run) => run());
       const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:EDM"));
 
       getAgentNextPick.mockResolvedValueOnce(
         pickResponse(["n1", "n2"], { requestCoverage: { picks: 2, gaps: [{ filter: "energy", matched: 1 }] } }),
@@ -539,7 +539,7 @@ describe("AgentSessionPanel", () => {
         { sessionId: string; preferences: { request: { genres: string[] }; source: string } },
       ];
       expect(body.sessionId).toBe("s-open");
-      expect(body.preferences.request.genres).toEqual(["Club", "Trap"]);
+      expect(body.preferences.request.genres).toEqual(["Trap", "Drum & Bass"]);
       expect(body.preferences.source).toBe("agent_session_prompt");
 
       // Upcoming DJ picks (indices 1 and 2) go, highest first; the listener's own track and the current one stay.
@@ -564,9 +564,9 @@ describe("AgentSessionPanel", () => {
       const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
       await vi.advanceTimersByTimeAsync(300);
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:EDM"));
       await vi.advanceTimersByTimeAsync(300);
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Club"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Drum & Bass"));
       await vi.advanceTimersByTimeAsync(300);
       expect(getAgentNextPick).not.toHaveBeenCalled();
 
@@ -584,7 +584,7 @@ describe("AgentSessionPanel", () => {
       effects.forEach((run) => run());
       const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:EDM"));
 
       getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
       await vi.advanceTimersByTimeAsync(800);
@@ -603,7 +603,7 @@ describe("AgentSessionPanel", () => {
       effects.forEach((run) => run());
       const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Bass"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:EDM"));
       await vi.advanceTimersByTimeAsync(800);
       await vi.advanceTimersByTimeAsync(0);
       expect(getAgentNextPick).not.toHaveBeenCalled();
@@ -612,7 +612,7 @@ describe("AgentSessionPanel", () => {
       getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
       await captured.onPick?.();
       const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { request: { genres: string[] } } }];
-      expect(body.preferences.request.genres).toEqual(["Club", "Trap"]);
+      expect(body.preferences.request.genres).toEqual(["Trap", "Drum & Bass"]);
     });
 
     it("the Update session action re-plans immediately", async () => {

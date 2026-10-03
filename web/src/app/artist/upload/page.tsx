@@ -44,6 +44,7 @@ import {
   paymentAssetSupportsSurface,
 } from "../../../lib/payments";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
+import { CATALOG_GENRE_OPTIONS, MOOD_TAG_OPTIONS } from "../../../lib/catalogVocabulary";
 import { ContentProtectionABI, getAddresses } from "../../../contracts_abi";
 import type { Address } from "viem";
 
@@ -51,7 +52,6 @@ const MAX_FILE_SIZE_MB = 200;
 const MAX_TOTAL_SIZE_MB = 500;
 const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_TOTAL_SIZE = MAX_TOTAL_SIZE_MB * 1024 * 1024;
-const MOOD_TAG_OPTIONS = ["Focus", "Hype", "Chill", "Dark", "Zen", "Club", "Late Night", "Warm"];
 const AI_DISCLOSURE_OPTIONS: Array<{
   level: Exclude<AiDisclosureLevel, "undeclared">;
   label: string;
@@ -1308,92 +1308,9 @@ export default function ArtistUploadPage() {
                       onChange={handleInputChange}
                     />
                     <datalist id="genre-list">
-                      <option value="Acid House" />
-                      <option value="Acid Jazz" />
-                      <option value="Acoustic" />
-                      <option value="Afro-Pop" />
-                      <option value="Afrobeat" />
-                      <option value="Amapiano" />
-                      <option value="Alternative" />
-                      <option value="Ambient" />
-                      <option value="Americana" />
-                      <option value="Baile Funk" />
-                      <option value="Big Room" />
-                      <option value="Bluegrass" />
-                      <option value="Blues" />
-                      <option value="Bossa Nova" />
-                      <option value="Breakbeat" />
-                      <option value="Classical" />
-                      <option value="Country" />
-                      <option value="Dance" />
-                      <option value="Dancehall" />
-                      <option value="Deep House" />
-                      <option value="Disco" />
-                      <option value="Drill" />
-                      <option value="Drum & Bass" />
-                      <option value="Dub" />
-                      <option value="Dubstep" />
-                      <option value="EDM" />
-                      <option value="Electronic" />
-                      <option value="Electro" />
-                      <option value="Experimental" />
-                      <option value="Folk" />
-                      <option value="Funk" />
-                      <option value="Future Bass" />
-                      <option value="Future House" />
-                      <option value="Garage" />
-                      <option value="Glitch" />
-                      <option value="Gospel" />
-                      <option value="Grime" />
-                      <option value="Hardcore" />
-                      <option value="Hardstyle" />
-                      <option value="Heavy Metal" />
-                      <option value="Hip-Hop" />
-                      <option value="House" />
-                      <option value="Hyperpop" />
-                      <option value="IDM" />
-                      <option value="Indie" />
-                      <option value="Industrial" />
-                      <option value="J-Pop" />
-                      <option value="Jazz" />
-                      <option value="Jungle" />
-                      <option value="K-Pop" />
-                      <option value="Kuduro" />
-                      <option value="Latin" />
-                      <option value="Lo-Fi" />
-                      <option value="Melodic Techno" />
-                      <option value="Metal" />
-                      <option value="Minimal" />
-                      <option value="Musiques du monde" />
-                      <option value="New Age" />
-                      <option value="Nu-Disco" />
-                      <option value="Opera" />
-                      <option value="Phonk" />
-                      <option value="Pop" />
-                      <option value="Post-Punk" />
-                      <option value="Psytrance" />
-                      <option value="Psych-Rock" />
-                      <option value="Punk" />
-                      <option value="R&B" />
-                      <option value="Rap" />
-                      <option value="Reggae" />
-                      <option value="Reggaeton" />
-                      <option value="Rock" />
-                      <option value="Ska" />
-                      <option value="Slap House" />
-                      <option value="Soul" />
-                      <option value="Soulful House" />
-                      <option value="Synthpop" />
-                      <option value="Synthwave" />
-                      <option value="Tech House" />
-                      <option value="Techno" />
-                      <option value="Trance" />
-                      <option value="Trap" />
-                      <option value="Trip-Hop" />
-                      <option value="Tropical House" />
-                      <option value="UK Garage" />
-                      <option value="Vaporwave" />
-                      <option value="World" />
+                      {CATALOG_GENRE_OPTIONS.map((genre) => (
+                        <option key={genre} value={genre} />
+                      ))}
                     </datalist>
                   </label>
                   <label>

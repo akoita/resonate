@@ -2,6 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AgentSessionPresets, { SESSION_PRESETS } from "./AgentSessionPresets";
+import { CATALOG_GENRE_OPTIONS, MOOD_TAG_OPTIONS } from "../../lib/catalogVocabulary";
 
 describe("AgentSessionPresets", () => {
   beforeEach(() => {
@@ -59,6 +60,18 @@ describe("AgentSessionPresets", () => {
     for (const preset of SESSION_PRESETS) {
       expect(preset).not.toHaveProperty("tempo");
       expect(preset.preferences).not.toHaveProperty("licenseType");
+    }
+  });
+
+  it("uses only genres and moods an artist can tag at upload, so every preset can match (#2059)", () => {
+    const genres = new Set(CATALOG_GENRE_OPTIONS);
+    const moods = new Set(MOOD_TAG_OPTIONS);
+    for (const preset of SESSION_PRESETS) {
+      for (const genre of preset.searchVibes) expect([preset.name, genres.has(genre)]).toEqual([preset.name, true]);
+      expect(preset.preferences.genres).toEqual(preset.searchVibes);
+      if (preset.preferences.mood) {
+        expect([preset.name, moods.has(preset.preferences.mood)]).toEqual([preset.name, true]);
+      }
     }
   });
 });

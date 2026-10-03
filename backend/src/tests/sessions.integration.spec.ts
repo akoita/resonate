@@ -149,14 +149,16 @@ describe('SessionsService (integration)', () => {
         userId: `${TEST_PREFIX}user`,
         recentTrackIds: [],
         budgetRemainingUsd: 10,
-        preferences: { genres: ['electronic'], licenseType: 'remix' },
+        // The session's own genres travel separately so they outrank learned taste (#2059).
+        preferences: { genres: ['electronic'], licenseType: 'remix', sessionGenres: ['electronic'] },
       }),
     );
     expect(runtimeService.runCommerce).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         recentTrackIds: [`${TEST_PREFIX}track`],
-        preferences: { genres: ['electronic'], licenseType: 'remix' },
+        // The session's own genres travel separately so they outrank learned taste (#2059).
+        preferences: { genres: ['electronic'], licenseType: 'remix', sessionGenres: ['electronic'] },
       }),
     );
     expect(second.status).toBe('ok');

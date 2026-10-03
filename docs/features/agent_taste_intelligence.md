@@ -78,6 +78,23 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > (genres, moods, energy, tempo) travel on to the session, and analytics carry
 > filter keys and counts only. The saved vibes in Settings are never written.
 
+> **The session's own request outranks learned taste (#2059).** Vision-neutral
+> quality. A DJ session searches learned favourites, saved vibes and its own
+> genres together, and learned-genre tracks also carried up to +18
+> `learned_preference`, so a calm preset could play the listener's usual Pop.
+> The session's own genres and moods (preset or described session, sent as
+> `sessionGenres` plus `mood`/`moods`) now give matching tracks a
+> `session_request` signal at the declared-preference weight (20, above the
+> learned cap), reason `session_fit`; learned favourites and saved vibes still
+> fill the remaining slots, and the coverage notes still report misses. Home
+> and sessions without their own request rank as before. Three mood presets
+> used values outside the catalog vocabulary and now use upload-form genres:
+> Pulse Raid (Trap, Drum & Bass, EDM), Liquid Sky (Soul, Jazz, Trip-Hop; mood
+> Chill stays, it is an upload mood tag) and Static Calm (Ambient, New Age,
+> Classical); Neural Flow spells Lo-Fi. The upload form's lists now live in
+> `web/src/lib/catalogVocabulary.ts`, and a test fails if any preset genre or
+> mood leaves them.
+
 > **Next AI Pick keeps going on a small catalog (#2056).** Vision-neutral
 > quality: no money, payout or fee changes. A listening session used to
 > dead-end with `no_tracks` after one Next Pick on a catalog with few artists:

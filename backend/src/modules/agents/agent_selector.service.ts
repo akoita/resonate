@@ -63,6 +63,12 @@ export interface AgentSelectorInput {
    * and exploration rules are never relaxed.
    */
   fallback?: boolean;
+  /**
+   * Genres and moods the session itself asked for (#2059), before learned
+   * favourites and saved vibes are merged into `queries`. Matches rank above
+   * learned taste; the merged queries still fill the remaining slots.
+   */
+  requestedTerms?: string[];
 }
 
 /**
@@ -372,6 +378,7 @@ export class AgentSelectorService {
         energy: input.energy,
         tempoBpm: input.tempoBpm,
         sessionIntent,
+        requestedTerms: input.requestedTerms,
         tastePolicy: policy,
         audioFeaturesByTrack,
       },

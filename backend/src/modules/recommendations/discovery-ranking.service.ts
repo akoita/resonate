@@ -122,6 +122,12 @@ export interface DiscoveryRankingContext {
   tempoBpm?: { min: number | null; max: number | null };
   /** Session intent as request context (DJ). Never stored as taste. */
   sessionIntent?: DiscoverySessionIntent;
+  /**
+   * Genres and moods this DJ session asked for itself (#2059): a preset or a
+   * described session, before learned favourites and saved vibes are merged
+   * in. A match ranks above learned taste (ADR-TE-2 rule 6). Home never sets it.
+   */
+  requestedTerms?: string[];
   tastePolicy?: TasteMemoryPolicy;
   /**
    * Caller-prefetched audio features per track id (the DJ provides these;
@@ -336,6 +342,16 @@ export class DiscoveryRankingService {
       explanation.push(cohort.explanation);
     }
 
+    const requestMatch = sessionRequestMatch(candidate, context.requestedTerms);
+    if (requestMatch) {
+      signals.push({
+        label: "session_request",
+        weight: DECLARED_PREFERENCE_WEIGHT,
+        reason: `matches this session's request for ${requestMatch}`,
+      });
+      explanation.push(DISCOVERY_EXPLANATIONS.session_fit);
+    }
+
     const intentMatch = sessionIntentMatch(candidate, context.sessionIntent);
     if (intentMatch) {
       signals.push({
@@ -482,6 +498,22 @@ export function matchingCohortContexts(
  * semantics as the Home mood match, so both surfaces read a term the same way.
  * At most one signal fires per candidate even when intent and mood coincide.
  */
+/**
+ * The first requested genre or mood (#2059) the candidate's genre or moods
+ * contain, compared case-insensitively like the taste queries.
+ */
+function sessionRequestMatch(
+  candidate: DiscoveryCandidate,
+  requestedTerms?: readonly string[],
+): string | null {
+  const terms = (requestedTerms ?? []).map((term) => term.trim()).filter(Boolean);
+  if (terms.length === 0) return null;
+  const haystack = [candidate.release?.genre ?? "", ...(candidate.release?.moods ?? [])]
+    .map((value) => value.toLowerCase())
+    .filter(Boolean);
+  return terms.find((term) => haystack.some((value) => value.includes(term.toLowerCase()))) ?? null;
+}
+
 function sessionIntentMatch(
   candidate: DiscoveryCandidate,
   sessionIntent?: DiscoverySessionIntent,
