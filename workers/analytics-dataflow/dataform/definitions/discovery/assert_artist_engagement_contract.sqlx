@@ -1,0 +1,28 @@
+config {
+  type: "assertion",
+  name: "assert_artist_engagement_contract",
+  tags: ["discovery_popularity", "assertion"],
+}
+
+WITH invalid_rows AS (
+  SELECT artist_id, window, genre
+  FROM ${ref(require("includes/discovery_popularity_config").artistEngagementTableName(dataform.projectConfig))}
+  WHERE NULLIF(TRIM(artist_id), '') IS NULL
+    OR window NOT IN ('24h', '7d', '30d')
+    OR genre IS NULL
+    OR score IS NULL OR score < 0
+    OR plays IS NULL OR plays < 0
+    OR saves IS NULL OR saves < 0
+    OR purchases IS NULL OR purchases < 0
+    OR unique_listeners IS NULL
+    OR unique_listeners < ${require("includes/discovery_popularity_config").minimumAudience(dataform.projectConfig)}
+    OR computed_at IS NULL
+    OR computed_at > CURRENT_TIMESTAMP()
+    OR TIMESTAMP_ADD(computed_at, INTERVAL ${require("includes/discovery_popularity_config").snapshotMaxAgeMinutes(dataform.projectConfig)} MINUTE) < CURRENT_TIMESTAMP()
+  UNION ALL
+  SELECT artist_id, window, genre
+  FROM ${ref(require("includes/discovery_popularity_config").artistEngagementTableName(dataform.projectConfig))}
+  GROUP BY artist_id, window, genre
+  HAVING COUNT(*) > 1
+)
+SELECT * FROM invalid_rows

@@ -21,6 +21,7 @@ import {
 import { ANALYTICS_EVENT_PUBLISHER, analyticsEventPublisherFromEnv } from "./analytics_event_publisher";
 import { AnalyticsDomainEventBridgeService } from "./analytics_domain_event_bridge.service";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
+import { AnalyticsDiscoveryMetadataService } from "./analytics_discovery_metadata.service";
 import { AnalyticsPipelineObservabilityService } from "./analytics_observability.service";
 import { SharedModule } from "../shared/shared.module";
 import { AgentsModule } from "../agents/agents.module";
@@ -40,6 +41,7 @@ import { SceneScoutModule } from "../scene_scout/scene_scout.module";
     AnalyticsInstrumentationService,
     AnalyticsDomainEventBridgeService,
     AnalyticsCatalogMetadataService,
+    AnalyticsDiscoveryMetadataService,
     AnalyticsPipelineObservabilityService,
     AnalyticsGovernanceService,
     AnalyticsWarehouseExportService,

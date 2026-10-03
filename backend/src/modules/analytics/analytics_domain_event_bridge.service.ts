@@ -614,6 +614,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
   {
     eventName: "payment.settled",
     producer: "payments-service",
+    consentBasis: "performance_of_contract",
     subjectType: "payment",
     subjectIdKeys: ["paymentId"],
     sessionIdKeys: ["sessionId"],

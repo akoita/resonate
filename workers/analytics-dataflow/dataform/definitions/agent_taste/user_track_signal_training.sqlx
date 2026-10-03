@@ -1,10 +1,6 @@
-js {
-  const cfg = require("includes/agent_taste_config");
-}
-
 config {
   type: "table",
-  name: cfg.trainingTableName(dataform.projectConfig),
+  name: require("includes/agent_taste_config").trainingTableName(dataform.projectConfig),
   tags: ["agent_taste", "baseline"]
 }
 
@@ -44,7 +40,7 @@ WITH clean AS (
       JSON_VALUE(payload, '$.preferences.queueStyle')
     ) AS queue_style,
     payload
-  FROM ${cfg.cleanTableRef(dataform.projectConfig)}
+  FROM ${require("includes/agent_taste_config").cleanTableRef(dataform.projectConfig)}
 ),
 session_context AS (
   SELECT

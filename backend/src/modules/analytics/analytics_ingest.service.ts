@@ -15,6 +15,7 @@ import {
   AnalyticsEventPublisher,
   DisabledAnalyticsEventPublisher,
 } from "./analytics_event_publisher";
+import { AnalyticsDiscoveryMetadataService } from "./analytics_discovery_metadata.service";
 
 @Injectable()
 export class AnalyticsIngestService {
@@ -28,13 +29,15 @@ export class AnalyticsIngestService {
     @Optional()
     @Inject(ANALYTICS_EVENT_PUBLISHER)
     eventPublisher?: AnalyticsEventPublisher,
+    @Optional() private readonly discoveryMetadata?: AnalyticsDiscoveryMetadataService,
   ) {
     this.eventStore = eventStore ?? new InMemoryAnalyticsEventStore();
     this.eventPublisher = eventPublisher ?? new DisabledAnalyticsEventPublisher();
   }
 
   async ingest(input: AnalyticsEventInput) {
-    const event = this.normalize(input);
+    const normalized = this.normalize(input);
+    const event = this.discoveryMetadata ? await this.discoveryMetadata.enrich(normalized) : normalized;
     const stored = await this.eventStore.ingest(event);
     await this.eventPublisher.publish(stored);
     const count = await this.eventStore.countEvents();

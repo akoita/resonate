@@ -1,17 +1,16 @@
-# Agent Taste Dataform Workflow
+# Analytics Dataform workflows
 
-This directory is a Dataform-ready template for orchestrating Agent Taste
-Intelligence materialization in BigQuery. It mirrors the manual SQL runner in
-`../run-agent-taste-materialization.sh`, but splits the work into dependency
-aware actions and assertions that can be scheduled by a Dataform workflow
-configuration.
+This directory contains Dataform templates for Agent Taste Intelligence and
+discovery popularity/engagement materialization in BigQuery. The Agent Taste actions mirror the manual SQL runner in
+`../run-agent-taste-materialization.sh`. Each workflow splits materialization
+into dependent actions and assertions.
 
 The template is intentionally kept beside the Dataflow worker because Dataflow
 owns the streaming `events_clean` input and Dataform owns the post-Dataflow
 derived marts. The GCP Dataform repository can either mirror this directory or
 import these files during the `resonate-iac` deployment workflow.
 
-## Actions
+## Agent Taste actions
 
 | Action | Type | Purpose |
 | --- | --- | --- |
@@ -39,25 +38,13 @@ in source code. The important compilation variables are:
 | `model_version` | Version label written to serving rows. |
 | `freshness_hours` | Maximum acceptable score age for assertions. |
 
-## Scheduling Target
+## Scheduling and execution
 
-The production target is:
-
-```text
-Cloud Scheduler
-  -> Workflows
-  -> Dataform workflow invocation tagged agent_taste
-  -> Dataform assertions
-  -> Cloud Logging / Monitoring alert on failed invocation
-```
-
-Recommended cadence:
-
-| Environment | Cadence | Notes |
-| --- | --- | --- |
-| staging | hourly | Cheap confidence that instrumentation is flowing. |
-| production v1 | every 15-60 minutes | Tune after observing BigQuery cost and recommendation freshness. |
-| BQML evaluation | daily | Offline quality gate; never promoted automatically without review. |
+Invoke materialization after warehouse inputs are ready and require its
+assertions before exporting serving data. Environment-specific schedules,
+workload credentials, workflow wiring and alerts belong in `resonate-iac`.
+Discovery popularity deployment is tracked in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
 
 Keep the manual runner for backfills, incident recovery, and local dry-runs:
 
@@ -67,3 +54,37 @@ AGENT_TASTE_MATERIALIZATION_PROJECT_ID="$GCP_PROJECT_ID" \
 AGENT_TASTE_BIGQUERY_DATASET="$ANALYTICS_BIGQUERY_DATASET" \
 ./run-agent-taste-materialization.sh --dry-run --verify
 ```
+
+## Discovery popularity (#1450)
+
+Actions tagged `discovery_popularity` build a trusted recent-event view,
+`track_popularity` and `artist_engagement`, a freshness/row-count sentinel,
+and serving-contract assertions.
+The marts use 24h/7d/30d windows, genre and overall rows, completion-weighted
+plays, saves, settled purchases and distinct listener audiences. Unknown
+eligibility metadata, fully AI-generated tracks and self-engagement fail closed.
+
+Compilation uses the shared `analytics_project`, `analytics_dataset` and
+`clean_table` variables plus:
+
+| Variable | Default / purpose |
+| --- | --- |
+| `raw_table` | `events_raw`, for governed envelope consent basis. |
+| `discovery_popularity_events_table` | `discovery_popularity_eligible_events`. |
+| `track_popularity_table` | `track_popularity`. |
+| `artist_engagement_table` | `artist_engagement`. |
+| `discovery_popularity_snapshot_table` | `discovery_popularity_snapshot`; built after both marts, including empty results. |
+| `discovery_snapshot_max_age_minutes` | `120`; match backend `DISCOVERY_POPULARITY_SNAPSHOT_MAX_AGE_MINUTES`. |
+| `discovery_min_audience` | `3`; match backend `DISCOVERY_MIN_AUDIENCE`. |
+| `discovery_save_score_weight` | `2`; match the local scoring contract. |
+| `discovery_purchase_score_weight` | `5`; match the local scoring contract. |
+
+Check assertions before exporting. The scheduled application exporter reads
+only these precomputed tables and atomically replaces Postgres snapshots,
+then rotates Redis generation. Source partition verification, dry-run cost
+bounds, cadence, credential grants and live acceptance belong in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
+A recent-timestamp predicate alone does not prove physical partition pruning.
+
+See [Discovery popularity and engagement](../../../docs/features/discovery_popularity.md)
+for the serving contract, configuration and failure behavior.

@@ -7,11 +7,28 @@ import {
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { RedisCacheService } from "../shared/redis_cache.service";
-import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import {
+  resolveCreditedArtistIds,
+  resolveCreditedArtistName,
+} from "../shared/artist_attribution";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
 } from "./ai-disclosure.policy";
+import {
+  PopularityWindow,
+  POPULARITY_WINDOWS,
+  audienceActorId,
+  audienceMeetsThreshold,
+  discoveryPopularityConfigFromEnv,
+  eventHasTrustedPopularityMetadata,
+  popularityCacheGeneration,
+  rotatePopularityCacheGeneration,
+  scorePopularitySignals,
+  DISCOVERY_POPULARITY_CACHE_TTL_SECONDS,
+} from "./discovery-popularity.math";
+
+export type { PopularityWindow } from "./discovery-popularity.math";
 
 /**
  * True Trending & Top Artists serving (#1451 WS-4), on the #1450 WS-3
@@ -34,38 +51,14 @@ import {
  * Aggregates are engagement analytics, not payout inputs (ADR-BM-4).
  */
 
-export type PopularityWindow = "24h" | "7d" | "30d";
-
-const WINDOW_HOURS: Record<PopularityWindow, number> = {
-  "24h": 24,
-  "7d": 24 * 7,
-  "30d": 24 * 30,
-};
-
-const CACHE_TTL_SECONDS = 120;
-
-function minAudience(): number {
-  const parsed = Number.parseInt(
-    process.env.DISCOVERY_MIN_AUDIENCE ?? "",
-    10,
-  );
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
-}
-
-function refreshIntervalMs(): number {
-  const parsed = Number.parseInt(
-    process.env.DISCOVERY_POPULARITY_REFRESH_MINUTES ?? "",
-    10,
-  );
-  const minutes = Number.isFinite(parsed) ? parsed : 15;
-  return minutes > 0 ? minutes * 60_000 : 0;
-}
-
 interface TrackAccumulator {
   trackId: string;
-  weightedPlays: number;
-  plays: number;
-  saves: number;
+  signals: Array<{
+    kind: "play" | "save" | "purchase";
+    occurredAt: Date;
+    completionRatio?: number | null;
+    purchaseId?: string | null;
+  }>;
   listeners: Set<string>;
 }
 
@@ -77,12 +70,15 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
   constructor(@Optional() private readonly redisCache?: RedisCacheService) {}
 
   onModuleInit() {
-    const interval = refreshIntervalMs();
+    const config = discoveryPopularityConfigFromEnv();
+    const interval = config.refreshIntervalMs;
+    if (config.source === "warehouse") {
+      this.logger.log("Warehouse popularity source selected; local filler refresh is disabled");
+      return;
+    }
     if (!interval || process.env.NODE_ENV === "test") {
       return;
     }
-    // Interim WS-3 filler: refresh on boot, then on a configurable cadence.
-    // The warehouse export job replaces this scheduler (see #1450).
     void this.refreshAll().catch((error) =>
       this.logger.warn(`Initial popularity refresh failed: ${error?.message}`),
     );
@@ -95,7 +91,8 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
   }
 
   async refreshAll() {
-    for (const window of Object.keys(WINDOW_HOURS) as PopularityWindow[]) {
+    if (discoveryPopularityConfigFromEnv().source !== "local") return;
+    for (const window of Object.keys(POPULARITY_WINDOWS) as PopularityWindow[]) {
       await this.refresh(window);
     }
   }
@@ -108,61 +105,92 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
    * the per-artist rollup of its tracks (listeners unioned, not summed).
    */
   async refresh(window: PopularityWindow) {
-    const hours = WINDOW_HOURS[window];
-    const since = new Date(Date.now() - hours * 3_600_000);
-    const now = Date.now();
+    if (discoveryPopularityConfigFromEnv().source !== "local") {
+      throw new Error("The local popularity filler is disabled when DISCOVERY_POPULARITY_SOURCE=warehouse");
+    }
+    const hours = POPULARITY_WINDOWS[window];
+    const now = new Date();
+    const since = new Date(now.getTime() - hours * 3_600_000);
     const events = await prisma.analyticsEvent.findMany({
       where: {
         eventName: {
-          in: ["playback.completed", "playback.started", "playlist.track_added"],
+          in: [
+            "playback.completed",
+            "library.saved",
+            "playlist.track_added",
+            "commerce.settled",
+            "payment.settled",
+            "x402.purchase",
+            "agent.purchase_completed",
+          ],
         },
-        occurredAt: { gte: since },
+        occurredAt: { gte: since, lte: now },
       },
       select: {
         eventName: true,
         occurredAt: true,
         actorId: true,
+        privacyTier: true,
+        consentBasis: true,
         payload: true,
       },
       orderBy: { occurredAt: "desc" },
-      take: 50_000, // bounded (RFC §4); WS-3 marts remove this ceiling
+      take: 50_001,
     });
+    if (events.length > 50_000) {
+      throw new Error("Local popularity event snapshot exceeded its 50000-event limit");
+    }
 
     const byTrack = new Map<string, TrackAccumulator>();
     for (const event of events) {
       const payload = event.payload as Record<string, unknown> | null;
+      if (!eventHasTrustedPopularityMetadata({
+        eventName: event.eventName,
+        privacyTier: event.privacyTier,
+        actorId: event.actorId,
+        consentBasis: event.consentBasis,
+        payload,
+      })) continue;
+      if (
+        event.eventName === "payment.settled" &&
+        String(payload?.status ?? "").toLowerCase() !== "settled"
+      ) continue;
+
       const trackId =
         typeof payload?.trackId === "string" ? payload.trackId : null;
       if (!trackId) continue;
+      const actorId = audienceActorId(event.actorId);
+      if (!actorId) continue;
       const acc =
         byTrack.get(trackId) ??
         ({
           trackId,
-          weightedPlays: 0,
-          plays: 0,
-          saves: 0,
+          signals: [],
           listeners: new Set<string>(),
         } satisfies TrackAccumulator);
-      const ageMs = now - event.occurredAt.getTime();
-      const decay = Math.max(0.1, 1 - ageMs / (hours * 3_600_000));
-      if (event.eventName === "playlist.track_added") {
-        acc.saves += 1;
-        acc.weightedPlays += 2 * decay;
+      if (event.eventName === "playback.completed") {
+        const completionRatio = Number(payload?.completionRatio);
+        if (!Number.isFinite(completionRatio) || completionRatio < 0 || completionRatio > 1.5) continue;
+        acc.signals.push({ kind: "play", occurredAt: event.occurredAt, completionRatio });
+      } else if (event.eventName === "library.saved" || event.eventName === "playlist.track_added") {
+        acc.signals.push({ kind: "save", occurredAt: event.occurredAt });
       } else {
-        const ratio =
-          event.eventName === "playback.completed"
-            ? Number(payload?.completionRatio ?? 1) || 1
-            : 0.3; // a start without completion counts a little
-        acc.plays += 1;
-        acc.weightedPlays += Math.min(1.5, Math.max(0, ratio)) * decay;
+        const purchaseId = firstNonEmptyString(
+          payload?.paymentId,
+          payload?.txHash,
+          payload?.transactionHash,
+          payload?.receiptId,
+        );
+        if (!purchaseId) continue;
+        acc.signals.push({ kind: "purchase", occurredAt: event.occurredAt, purchaseId });
       }
-      if (event.actorId) acc.listeners.add(event.actorId);
+      acc.listeners.add(actorId);
       byTrack.set(trackId, acc);
     }
 
-    const threshold = minAudience();
+    const threshold = discoveryPopularityConfigFromEnv().minimumAudience;
     const qualifying = [...byTrack.values()].filter(
-      (acc) => acc.listeners.size >= threshold,
+      (acc) => audienceMeetsThreshold(acc.listeners, threshold),
     );
 
     // Resolve genre and credited artist IDs for qualifying tracks in one query.
@@ -205,8 +233,9 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       score: number;
       plays: number;
       saves: number;
+      purchases: number;
       listeners: Set<string>;
-      genres: Map<string, { score: number; plays: number; saves: number; listeners: Set<string> }>;
+      genres: Map<string, { score: number; plays: number; saves: number; purchases: number; listeners: Set<string> }>;
     }
     const byArtist = new Map<string, ArtistAccumulator>();
 
@@ -218,56 +247,33 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       plays: number;
       uniqueListeners: number;
       saves: number;
+      purchases: number;
     }[] = [];
 
     for (const acc of qualifying) {
       const meta = trackMeta.get(acc.trackId);
       if (!meta) continue;
+      const contribution = scorePopularitySignals(acc.signals, window, now);
       const genre = meta.release.genre ?? "";
       const row = {
         trackId: acc.trackId,
         window,
-        score: acc.weightedPlays,
-        plays: acc.plays,
+        score: contribution.score,
+        plays: contribution.plays,
         uniqueListeners: acc.listeners.size,
-        saves: acc.saves,
+        saves: contribution.saves,
+        purchases: contribution.purchases,
       };
       trackRows.push({ ...row, genre: "" });
       if (genre) trackRows.push({ ...row, genre });
 
-      const creditedName = resolveCreditedArtistName({
+      const creditedArtistIds = resolveCreditedArtistIds({
         trackArtist: meta.artist,
         credits: meta.release.artistCredits,
         primaryArtist: meta.release.primaryArtist,
         accountDisplayName: meta.release.artist?.displayName,
       });
-      const mainCredits = meta.release.artistCredits.filter((credit) =>
-        ["main", "primary"].includes(credit.role.toLowerCase()),
-      );
-      const trackArtist = meta.artist?.trim().toLowerCase();
-      const mainCreditNames = mainCredits.map((credit) => credit.displayName.trim().toLowerCase()).join(", ");
-      const matchesMainCredit = Boolean(trackArtist && mainCredits.length > 0 && (
-        trackArtist === mainCreditNames
-        || trackArtist === meta.release.primaryArtist?.trim().toLowerCase()
-      ));
-      const matchingCredits = trackArtist
-        ? matchesMainCredit
-          ? mainCredits
-          : meta.release.artistCredits.filter((credit) =>
-              credit.displayName.trim().toLowerCase() === trackArtist,
-            )
-        : mainCredits.length > 0
-          ? mainCredits
-          : meta.release.artistCredits.filter((credit) =>
-              credit.displayName.trim().toLowerCase() === creditedName?.trim().toLowerCase(),
-            );
-      // Ambiguous credits remain visible in track listings, but do not acquire
-      // a public artist identity or merge another artist's engagement.
-      for (const artistId of new Set(
-        matchingCredits
-          .filter((credit) => credit.identityStatus !== "ambiguous")
-          .map((credit) => credit.artistId),
-      )) {
+      for (const artistId of creditedArtistIds) {
         const artist =
           byArtist.get(artistId) ??
           ({
@@ -275,20 +281,23 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
             score: 0,
             plays: 0,
             saves: 0,
+            purchases: 0,
             listeners: new Set<string>(),
             genres: new Map(),
           } satisfies ArtistAccumulator);
-        artist.score += acc.weightedPlays;
-        artist.plays += acc.plays;
-        artist.saves += acc.saves;
+        artist.score += contribution.score;
+        artist.plays += contribution.plays;
+        artist.saves += contribution.saves;
+        artist.purchases += contribution.purchases;
         for (const listener of acc.listeners) artist.listeners.add(listener);
         if (genre) {
           const g =
             artist.genres.get(genre) ??
-            { score: 0, plays: 0, saves: 0, listeners: new Set<string>() };
-          g.score += acc.weightedPlays;
-          g.plays += acc.plays;
-          g.saves += acc.saves;
+            { score: 0, plays: 0, saves: 0, purchases: 0, listeners: new Set<string>() };
+          g.score += contribution.score;
+          g.plays += contribution.plays;
+          g.saves += contribution.saves;
+          g.purchases += contribution.purchases;
           for (const listener of acc.listeners) g.listeners.add(listener);
           artist.genres.set(genre, g);
         }
@@ -306,6 +315,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       plays: number;
       uniqueListeners: number;
       saves: number;
+      purchases: number;
     }[] = [];
     for (const artist of byArtist.values()) {
       if (artist.listeners.size >= threshold) {
@@ -317,6 +327,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
           plays: artist.plays,
           uniqueListeners: artist.listeners.size,
           saves: artist.saves,
+          purchases: artist.purchases,
         });
       }
       for (const [genre, g] of artist.genres) {
@@ -329,31 +340,36 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
             plays: g.plays,
             uniqueListeners: g.listeners.size,
             saves: g.saves,
+            purchases: g.purchases,
           });
         }
       }
     }
 
     // Replace the window snapshot atomically.
-    await prisma.$transaction([
-      prisma.trackPopularity.deleteMany({ where: { window } }),
-      ...(trackRows.length
-        ? [prisma.trackPopularity.createMany({ data: trackRows })]
-        : []),
-      prisma.artistEngagement.deleteMany({ where: { window } }),
-      ...(artistRows.length
-        ? [prisma.artistEngagement.createMany({ data: artistRows })]
-        : []),
-    ]);
-    await this.redisCache?.del(this.cacheKey("trending", window, ""));
-    await this.redisCache?.del(this.cacheKey("top-artists-v2", window, ""));
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(1450, 1) IS NULL AS locked`;
+      await tx.trackPopularity.deleteMany({ where: { window } });
+      if (trackRows.length) await tx.trackPopularity.createMany({ data: trackRows });
+      await tx.artistEngagement.deleteMany({ where: { window } });
+      if (artistRows.length) await tx.artistEngagement.createMany({ data: artistRows });
+    }, { maxWait: 10_000, timeout: 120_000 });
+    await rotatePopularityCacheGeneration(this.redisCache);
     this.logger.log(
       `Popularity refresh (${window}): ${trackRows.length} track rows, ${artistRows.length} artist rows (threshold ${threshold})`,
     );
   }
 
-  private cacheKey(kind: string, window: string, genre: string) {
-    return `discovery:${kind}:${window}:${genre || "all"}`;
+  private cacheKey(
+    kind: string,
+    window: string,
+    genre: string,
+    limit: number,
+    minimumAudience: number,
+    snapshotMaxAgeMinutes: number,
+    generation: string,
+  ) {
+    return `discovery:${kind}:${window}:${genre || "all"}:${limit}:${minimumAudience}:${snapshotMaxAgeMinutes}:${generation}`;
   }
 
   /** Engagement-ranked trending tracks; empty = below-threshold everywhere. */
@@ -365,76 +381,90 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
     const window: PopularityWindow = options.window ?? "7d";
     const genre = options.genre?.trim() ?? "";
     const limit = Math.min(Math.max(options.limit ?? 10, 1), 50);
-    const cacheKey = `${this.cacheKey("trending", window, genre)}:${limit}`;
-    const cached = await this.redisCache?.getJson<object>(cacheKey);
-    if (cached) return cached;
-
-    const rows = await prisma.trackPopularity.findMany({
-      where: { window, genre },
-      orderBy: { score: "desc" },
-      take: limit,
-    });
-    const tracks = rows.length
-      ? await prisma.track.findMany({
-          where: {
-            id: { in: rows.map((row) => row.trackId) },
-            // Also protect reads from stale serving rows during rollout.
-            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
-          },
-          include: {
-            release: {
-              select: {
-                id: true,
-                title: true,
-                genre: true,
-                artworkUrl: true,
-                artworkMimeType: true,
-                artworkRevision: true,
-                artistId: true,
-                primaryArtist: true,
-                artist: { select: { id: true, displayName: true } },
-              },
-            },
-          },
-        })
-      : [];
-    const trackById = new Map(tracks.map((track) => [track.id, track]));
-    const result = {
+    const config = discoveryPopularityConfigFromEnv();
+    const minimumAudience = config.minimumAudience;
+    const snapshotMaxAgeMinutes = config.snapshotMaxAgeMinutes;
+    return this.readGenerationSnapshot(
+      "trending",
       window,
-      genre: genre || null,
-      minimumAudience: minAudience(),
-      items: rows
-        .map((row, index) => {
-          const track = trackById.get(row.trackId);
-          if (!track) return null;
-          return {
-            rank: index + 1,
-            trackId: row.trackId,
-            title: track.title,
-            // Credited artist (#1492), not the uploader/manager account label.
-            artist: resolveCreditedArtistName({
-              trackArtist: track.artist,
-              primaryArtist: track.release.primaryArtist,
-              accountDisplayName: track.release.artist?.displayName,
-            }),
-            artistId: track.release.artistId,
-            releaseId: track.release.id,
-            releaseTitle: track.release.title,
-            genre: track.release.genre,
-            artworkUrl: track.release.artworkUrl,
-            artworkMimeType: track.release.artworkMimeType,
-            artworkRevision: track.release.artworkRevision,
-            aiDisclosure: toAiDisclosureRecord(track),
-            score: row.score,
-            plays: row.plays,
-            uniqueListeners: row.uniqueListeners,
-            saves: row.saves,
-          };
-        })
-        .filter(Boolean),
-    };
-    await this.redisCache?.setJson(cacheKey, result, CACHE_TTL_SECONDS);
-    return result;
+      genre,
+      limit,
+      minimumAudience,
+      snapshotMaxAgeMinutes,
+      async () => {
+        const now = new Date();
+        const freshSince = new Date(now.getTime() - snapshotMaxAgeMinutes * 60_000);
+        const rows = await prisma.trackPopularity.findMany({
+          where: {
+            window,
+            genre,
+            uniqueListeners: { gte: minimumAudience },
+            computedAt: { gte: freshSince, lte: now },
+          },
+          orderBy: { score: "desc" },
+          take: limit,
+        });
+        const tracks = rows.length
+          ? await prisma.track.findMany({
+              where: {
+                id: { in: rows.map((row) => row.trackId) },
+                // Also protect reads from stale serving rows during rollout.
+                ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+              },
+              include: {
+                release: {
+                  select: {
+                    id: true,
+                    title: true,
+                    genre: true,
+                    artworkUrl: true,
+                    artworkMimeType: true,
+                    artworkRevision: true,
+                    artistId: true,
+                    primaryArtist: true,
+                    artist: { select: { id: true, displayName: true } },
+                  },
+                },
+              },
+            })
+          : [];
+        const trackById = new Map(tracks.map((track) => [track.id, track]));
+        return {
+          window,
+          genre: genre || null,
+          minimumAudience,
+          computedAt: oldestSnapshotTimestamp(rows.map((row) => row.computedAt)),
+          items: rows
+            .flatMap((row) => {
+              const track = trackById.get(row.trackId);
+              if (!track) return [];
+              return [{
+                trackId: row.trackId,
+                title: track.title,
+                // Credited artist (#1492), not the uploader/manager account label.
+                artist: resolveCreditedArtistName({
+                  trackArtist: track.artist,
+                  primaryArtist: track.release.primaryArtist,
+                  accountDisplayName: track.release.artist?.displayName,
+                }),
+                artistId: track.release.artistId,
+                releaseId: track.release.id,
+                releaseTitle: track.release.title,
+                genre: track.release.genre,
+                artworkUrl: track.release.artworkUrl,
+                artworkMimeType: track.release.artworkMimeType,
+                artworkRevision: track.release.artworkRevision,
+                aiDisclosure: toAiDisclosureRecord(track),
+                score: row.score,
+                plays: row.plays,
+                uniqueListeners: row.uniqueListeners,
+                saves: row.saves,
+              }];
+            })
+            .map((item, index) => ({ rank: index + 1, ...item })),
+        };
+      },
+    );
   }
 
   /** Engagement-ranked artists; per-genre when `genre` is set. */
@@ -446,45 +476,127 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
     const window: PopularityWindow = options.window ?? "7d";
     const genre = options.genre?.trim() ?? "";
     const limit = Math.min(Math.max(options.limit ?? 8, 1), 50);
-    const cacheKey = `${this.cacheKey("top-artists-v2", window, genre)}:${limit}`;
-    const cached = await this.redisCache?.getJson<object>(cacheKey);
-    if (cached) return cached;
-
-    const rows = await prisma.artistEngagement.findMany({
-      where: { window, genre },
-      orderBy: { score: "desc" },
-      take: limit,
-    });
-    const profiles = rows.length
-      ? await prisma.artist.findMany({
-          where: { id: { in: rows.map((row) => row.artistId) } },
-          select: { id: true, displayName: true, imageUrl: true },
-        })
-      : [];
-    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
-    const result = {
+    const config = discoveryPopularityConfigFromEnv();
+    const minimumAudience = config.minimumAudience;
+    const snapshotMaxAgeMinutes = config.snapshotMaxAgeMinutes;
+    return this.readGenerationSnapshot(
+      "top-artists-v2",
       window,
-      genre: genre || null,
-      minimumAudience: minAudience(),
-      items: rows.flatMap((row) => {
-        const profile = profilesById.get(row.artistId);
-        if (!profile) return [];
+      genre,
+      limit,
+      minimumAudience,
+      snapshotMaxAgeMinutes,
+      async () => {
+        const now = new Date();
+        const freshSince = new Date(now.getTime() - snapshotMaxAgeMinutes * 60_000);
+        const rows = await prisma.artistEngagement.findMany({
+          where: {
+            window,
+            genre,
+            uniqueListeners: { gte: minimumAudience },
+            computedAt: { gte: freshSince, lte: now },
+          },
+          orderBy: { score: "desc" },
+          take: limit,
+        });
+        const profiles = rows.length
+          ? await prisma.artist.findMany({
+              where: { id: { in: rows.map((row) => row.artistId) } },
+              select: { id: true, displayName: true, imageUrl: true },
+            })
+          : [];
+        const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
         return {
-          name: profile.displayName,
-          artistId: profile.id,
-          imageUrl: profile.imageUrl,
-          score: row.score,
-          plays: row.plays,
-          uniqueListeners: row.uniqueListeners,
-          saves: row.saves,
+          window,
+          genre: genre || null,
+          minimumAudience,
+          computedAt: oldestSnapshotTimestamp(rows.map((row) => row.computedAt)),
+          items: rows.flatMap((row) => {
+            const profile = profilesById.get(row.artistId);
+            if (!profile) return [];
+            return [{
+              name: profile.displayName,
+              artistId: profile.id,
+              imageUrl: profile.imageUrl,
+              score: row.score,
+              plays: row.plays,
+              uniqueListeners: row.uniqueListeners,
+              saves: row.saves,
+            }];
+          }).map((item, index) => ({ rank: index + 1, ...item })),
         };
-      }).map((item, index) => ({ rank: index + 1, ...item })),
-    };
-    await this.redisCache?.setJson(cacheKey, result, CACHE_TTL_SECONDS);
-    return result;
+      },
+    );
+  }
+
+  private async readGenerationSnapshot<T>(
+    kind: string,
+    window: PopularityWindow,
+    genre: string,
+    limit: number,
+    minimumAudience: number,
+    snapshotMaxAgeMinutes: number,
+    loadFromDatabase: () => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const generation = await popularityCacheGeneration(this.redisCache);
+      const cacheKey = this.cacheKey(
+        kind,
+        window,
+        genre,
+        limit,
+        minimumAudience,
+        snapshotMaxAgeMinutes,
+        generation,
+      );
+      const cached = await this.redisCache?.getJson<T>(cacheKey);
+      if (cached !== null && cached !== undefined) {
+        if (
+          cachedSnapshotIsFresh(cached, snapshotMaxAgeMinutes) &&
+          generation === await popularityCacheGeneration(this.redisCache)
+        ) return cached;
+        continue;
+      }
+
+      const result = await loadFromDatabase();
+      if (generation !== await popularityCacheGeneration(this.redisCache)) continue;
+      await this.redisCache?.setJson(cacheKey, result, DISCOVERY_POPULARITY_CACHE_TTL_SECONDS);
+      if (generation === await popularityCacheGeneration(this.redisCache)) return result;
+    }
+    throw new Error("Popularity snapshot changed repeatedly while reading; retry the request");
   }
 
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
   }
+}
+
+function firstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function oldestSnapshotTimestamp(timestamps: Date[]) {
+  if (!timestamps.length) return null;
+  const oldest = timestamps.reduce(
+    (current, timestamp) => Math.min(current, timestamp.getTime()),
+    Number.POSITIVE_INFINITY,
+  );
+  return new Date(oldest).toISOString();
+}
+
+function cachedSnapshotIsFresh(value: unknown, maximumAgeMinutes: number) {
+  if (!value || typeof value !== "object") return false;
+  const computedAt = (value as { computedAt?: unknown }).computedAt;
+  if (computedAt === null || computedAt === undefined) return true;
+  const milliseconds = computedAt instanceof Date
+    ? computedAt.getTime()
+    : typeof computedAt === "string"
+      ? Date.parse(computedAt)
+      : NaN;
+  if (!Number.isFinite(milliseconds)) return false;
+  const ageMs = Date.now() - milliseconds;
+  return ageMs >= 0 && ageMs <= maximumAgeMinutes * 60_000;
 }

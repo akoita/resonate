@@ -70,3 +70,20 @@ export function resolveCreditedArtistName(
 
   return null;
 }
+
+/** Identity attribution follows the public track credit; manager IDs are never a fallback. */
+export function resolveCreditedArtistIds(input: Omit<ResolveCreditedArtistInput, "credits"> & {
+  credits: Array<{ artistId: string; role: string; displayName: string; identityStatus: string }>;
+}): string[] {
+  const main = input.credits.filter((credit) => MAIN_ARTIST_CREDIT_ROLES.has(credit.role.toLowerCase()));
+  const trackArtist = input.trackArtist?.trim().toLowerCase();
+  const mainNames = main.map((credit) => credit.displayName.trim().toLowerCase()).join(", ");
+  const matchesMain = Boolean(trackArtist && main.length && (
+    trackArtist === mainNames || trackArtist === input.primaryArtist?.trim().toLowerCase()
+  ));
+  const displayName = resolveCreditedArtistName(input)?.trim().toLowerCase();
+  const matching = trackArtist
+    ? matchesMain ? main : input.credits.filter((credit) => credit.displayName.trim().toLowerCase() === trackArtist)
+    : main.length ? main : input.credits.filter((credit) => credit.displayName.trim().toLowerCase() === displayName);
+  return [...new Set(matching.filter((credit) => credit.identityStatus !== "ambiguous").map((credit) => credit.artistId))];
+}
