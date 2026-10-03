@@ -47,8 +47,8 @@ UI:
 
 - Open `/settings`.
 - Use the **Taste Memory** section to review safe summaries such as favored
-  genres, moods, artists, recent intents, novelty pattern, and commerce
-  preference.
+  genres, moods, credited artists, measured energy and tempo bands, coarse
+  time-of-day preferences, recent intents, novelty pattern, and commerce preference.
 - Toggle social matching, city/scene discovery, and AI DJ playback training.
 - Add a hidden or downranked signal such as a genre or mood.
 - Under **Tell us what you want more or less of**, type a wish in your own
@@ -251,6 +251,21 @@ additions. Agent-originated playback is excluded from this listener telemetry
 mirror. See [learning from listening habits](agent_taste_intelligence.md#learning-from-listening-habits-2062)
 for weights, deduplication, and coarse local context.
 
+## Habit summaries (#2063)
+
+Taste Memory uses the same decayed, bounded profile as the learning service;
+it does not add a persisted profile to recent signals a second time. Release
+moods and credited artist labels feed summaries. Energy and tempo bands require
+current full-mix measurements, and context uses only hour buckets and
+weekday/weekend categories. Missing evidence leaves an empty summary.
+
+Hide, downrank, boost and reset govern both global and context weights. Reset
+clears every learned dimension while keeping declared controls. The response
+adds `favoredEnergyBands`, `favoredTempoBands` and `contexts` without exposing
+itemized listening history. Existing clients can continue reading the original
+summary fields. See [habit profile v2](agent_taste_intelligence.md#habit-profile-v2-2063)
+for source, decay and history limits.
+
 ## Verification
 
 Focused coverage:
@@ -263,6 +278,7 @@ Focused coverage:
 - `backend/src/tests/taste_edits.integration.spec.ts` (preview writes nothing, apply writes only confirmed items, invalid combinations rejected, boosted preference matching, removal restores; CI only, needs Docker)
 - `backend/src/tests/agent_learning.spec.ts`
 - `backend/src/tests/agent_learning.integration.spec.ts`
+- `backend/src/tests/taste_memory_profile_v2.integration.spec.ts`
 - `web/src/lib/api.test.ts`
 - `web/src/components/settings/tasteEdits.test.ts`
 - `web/src/components/settings/TasteEditSection.test.tsx`

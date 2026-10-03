@@ -11,3 +11,12 @@ export const AGENT_SIGNAL_WEIGHTS = {
 } as const;
 
 export const AGENT_REPLAY_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Maximum recent signal history used by listener habit profiles. */
+export const AGENT_TASTE_HISTORY_LIMIT = 500;
+/** Signals older than this are outside the habit profile's learning window. */
+export const AGENT_TASTE_HISTORY_WINDOW_DAYS = 730;
+/** Behavioral playback signals lose half their influence after this period. */
+export const AGENT_BEHAVIORAL_HALF_LIFE_DAYS = 60;
+/** Purchases and other commitments lose half their influence after this period. */
+export const AGENT_COMMITMENT_HALF_LIFE_DAYS = 365;

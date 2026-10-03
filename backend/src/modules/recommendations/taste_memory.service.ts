@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { AGENT_TASTE_HISTORY_LIMIT, AGENT_TASTE_HISTORY_WINDOW_DAYS } from "../../config/agent_learning";
 import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.service";
 import { EventBus } from "../shared/event_bus";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
@@ -136,66 +137,53 @@ export class TasteMemoryService {
     const settings = await this.getOrCreateSettings(userId);
     const resetAt = settings.resetAt ?? undefined;
 
-    const [controls, config, signals] = await Promise.all([
+    const historyStart = new Date(Date.now() - AGENT_TASTE_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const [controls, signals] = await Promise.all([
       prisma.listenerTasteSignalControl.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.agentConfig.findUnique({
-        where: { userId },
-        select: { learnedTasteProfile: true, vibes: true },
-      }),
       prisma.agentSignal.findMany({
         where: {
           userId,
-          ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        take: 200,
-        include: {
-          track: {
-            select: {
-              artist: true,
-              release: {
-                select: {
-                  genre: true,
-                  primaryArtist: true,
-                  artist: { select: { displayName: true } },
-                },
-              },
-            },
+          createdAt: {
+            gte: historyStart,
+            ...(resetAt ? { gt: resetAt } : {}),
           },
         },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        take: AGENT_TASTE_HISTORY_LIMIT,
       }),
     ]);
 
     const policy = buildPolicy(settingsDto(settings), controls.map(controlDto));
-    const profile = tasteProfile(config?.learnedTasteProfile);
-    const genreWeights = new Map<string, number>();
-    const moodWeights = new Map<string, number>();
-    const artistWeights = new Map<string, number>();
+    // Resolve lazily to avoid a module cycle: learning also reads taste controls.
+    const { computeTasteProfileFromHistory } = await import("../agents/agent_learning.service");
+    const profile = await computeTasteProfileFromHistory(userId, { policy });
+    const labels = (weights: Record<string, number> = {}) => Object.entries(weights)
+      .filter(([label, weight]) => Number.isFinite(weight) && weight > 0 && normalizeSignalValue(label) === label)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 5)
+      .map(([label]) => label);
+    const hourBuckets = ["night", "morning", "afternoon", "evening"] as const;
+    const weekdayKinds = ["weekday", "weekend"] as const;
+    const contexts = hourBuckets.flatMap((localHourBucket) => weekdayKinds.flatMap((weekdayKind) => {
+      const weights = profile.contextWeights?.[`${localHourBucket}:${weekdayKind}`];
+      const favoredGenres = labels(weights?.genreWeights);
+      const favoredMoods = labels(weights?.moodWeights);
+      return favoredGenres.length || favoredMoods.length
+        ? [{ localHourBucket, weekdayKind, favoredGenres, favoredMoods }]
+        : [];
+    }));
     const intentWeights = new Map<string, number>();
     let replayWeight = 0;
     let skipWeight = 0;
     let commerceWeight = 0;
     let libraryWeight = 0;
 
-    for (const [genre, weight] of Object.entries(profile?.genreWeights ?? {})) {
-      addWeighted(genreWeights, genre, Number(weight) || 0, policy, "genre");
-    }
-
     for (const signal of signals) {
       const weight = Number(signal.weight) || 0;
       const metadata = jsonObject(signal.metadata);
-      addWeighted(genreWeights, signal.track.release.genre, weight, policy, "genre");
-      addWeighted(moodWeights, metadata.mood, weight, policy, "mood");
-      addWeighted(
-        artistWeights,
-        signal.track.artist || signal.track.release.primaryArtist || signal.track.release.artist?.displayName,
-        weight,
-        policy,
-        "artist",
-      );
       addWeighted(intentWeights, metadata.sessionIntentName || metadata.sessionIntent, weight, policy, "intent");
 
       if (signal.action === "replay") replayWeight += weight;
@@ -208,9 +196,12 @@ export class TasteMemoryService {
       schemaVersion: "listener-taste-memory/v1",
       settings: settingsDto(settings),
       summary: {
-        favoredGenres: rankedLabels(genreWeights, policy, "genre"),
-        favoredMoods: rankedLabels(moodWeights, policy, "mood"),
-        favoredArtists: rankedLabels(artistWeights, policy, "artist"),
+        favoredGenres: labels(profile.genreWeights),
+        favoredMoods: labels(profile.moodWeights),
+        favoredArtists: labels(profile.artistWeights),
+        favoredEnergyBands: labels(profile.energyBandWeights),
+        favoredTempoBands: labels(profile.tempoBandWeights),
+        contexts,
         recentIntents: rankedLabels(intentWeights, policy, "intent"),
         noveltyPattern: noveltyPattern(replayWeight, skipWeight),
         commercePreference: commercePreference(commerceWeight, libraryWeight),
@@ -824,9 +815,4 @@ function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
-}
-
-function tasteProfile(value: unknown): { genreWeights?: Record<string, number> } | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as { genreWeights?: Record<string, number> };
 }

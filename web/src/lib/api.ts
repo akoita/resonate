@@ -3822,6 +3822,13 @@ export type ConfirmedTasteEdit = {
   action: TasteSignalControl["action"];
 };
 
+export type TasteMemoryContextSummary = {
+  localHourBucket: "night" | "morning" | "afternoon" | "evening";
+  weekdayKind: "weekday" | "weekend";
+  favoredGenres: string[];
+  favoredMoods: string[];
+};
+
 export type TasteMemoryResponse = {
   schemaVersion: "listener-taste-memory/v1";
   settings: TasteMemorySettings;
@@ -3829,6 +3836,9 @@ export type TasteMemoryResponse = {
     favoredGenres: string[];
     favoredMoods: string[];
     favoredArtists: string[];
+    favoredEnergyBands?: string[];
+    favoredTempoBands?: string[];
+    contexts?: TasteMemoryContextSummary[];
     recentIntents: string[];
     noveltyPattern: string;
     commercePreference: string;
@@ -5409,7 +5419,7 @@ export type AgentConfig = {
   identityTxHash: string | null;
   identityCredential: Record<string, unknown> | null;
   learnedTasteProfile: {
-    schemaVersion: "agent-taste-profile/v1";
+    schemaVersion: "agent-taste-profile/v1" | "agent-taste-profile/v2";
     score: number;
     tier: "New" | "Emerging" | "Focused" | "Deep";
     signals: number;
@@ -5419,6 +5429,14 @@ export type AgentConfig = {
     genresExplored: string[];
     favoredGenres: string[];
     genreWeights: Record<string, number>;
+    moodWeights?: Record<string, number>;
+    artistWeights?: Record<string, number>;
+    energyBandWeights?: Record<string, number>;
+    tempoBandWeights?: Record<string, number>;
+    contextWeights?: Record<string, {
+      genreWeights: Record<string, number>;
+      moodWeights: Record<string, number>;
+    }>;
     diversity: number;
     depth: number;
     consistency: number;

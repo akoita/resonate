@@ -2,7 +2,14 @@ import { Injectable, Optional } from "@nestjs/common";
 import { createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import { AGENT_REPLAY_LOOKBACK_MS, AGENT_SIGNAL_WEIGHTS } from "../../config/agent_learning";
+import {
+  AGENT_BEHAVIORAL_HALF_LIFE_DAYS,
+  AGENT_COMMITMENT_HALF_LIFE_DAYS,
+  AGENT_REPLAY_LOOKBACK_MS,
+  AGENT_SIGNAL_WEIGHTS,
+  AGENT_TASTE_HISTORY_LIMIT,
+  AGENT_TASTE_HISTORY_WINDOW_DAYS,
+} from "../../config/agent_learning";
 import { ANALYTICS_CONSENT_POLICY_VERSION } from "../analytics/analytics_consent.service";
 import {
   readTasteMemoryPolicy,
@@ -11,6 +18,7 @@ import {
   TasteMemoryService,
 } from "../recommendations/taste_memory.service";
 import { DISCOVERY_REASON_CODES } from "../recommendations/discovery-explanations";
+import { measuredTrackFeatures } from "./measured_track_features";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 import { mergeSessionGenres } from "./agent_session_genres";
 
@@ -21,8 +29,10 @@ export type AgentSignalMetadata = Prisma.InputJsonObject;
 
 export const AGENT_SIGNAL_METADATA_SCHEMA_VERSION = "agent-signal-metadata/v1";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export type AgentTasteProfile = {
-  schemaVersion: "agent-taste-profile/v1";
+  schemaVersion: "agent-taste-profile/v1" | "agent-taste-profile/v2";
   score: number;
   tier: "New" | "Emerging" | "Focused" | "Deep";
   signals: number;
@@ -32,6 +42,14 @@ export type AgentTasteProfile = {
   genresExplored: string[];
   favoredGenres: string[];
   genreWeights: Record<string, number>;
+  moodWeights?: Record<string, number>;
+  artistWeights?: Record<string, number>;
+  energyBandWeights?: Record<string, number>;
+  tempoBandWeights?: Record<string, number>;
+  contextWeights?: Record<string, {
+    genreWeights: Record<string, number>;
+    moodWeights: Record<string, number>;
+  }>;
   diversity: number;
   depth: number;
   consistency: number;
@@ -39,11 +57,31 @@ export type AgentTasteProfile = {
 };
 
 export type AgentTasteSignalInput = {
-  action: AgentSignalAction;
+  /** Unknown persisted actions are valid when they carry a finite stored weight. */
+  action: string;
   trackId: string;
   createdAt?: Date;
   weight?: number;
   genre?: string | null;
+  moods?: string[];
+  artists?: string[];
+  /** Catalog aliases used only for policy matching, never as extra artist weights. */
+  artistAliases?: Record<string, string[]>;
+  localHourBucket?: string | null;
+  weekdayKind?: string | null;
+  /** Values must carry measured provenance; inferred audio features never train these bands. */
+  audioFeatures?: {
+    energy?: number | null;
+    tempoBpm?: number | null;
+    energySource?: "measured" | "inferred" | "unavailable";
+    tempoSource?: "measured" | "inferred" | "unavailable";
+  };
+};
+
+export type AgentTasteComputationOptions = {
+  policy?: TasteMemoryPolicy;
+  /** Disable time decay for compatibility checks over equal-history fixtures. */
+  decay?: boolean;
 };
 
 export function isAgentSignalAction(action: string): action is AgentSignalAction {
@@ -119,16 +157,63 @@ export function computeAgentTasteProfileFromSignals(
   signals: AgentTasteSignalInput[],
   fallbackGenres: string[] = [],
   now = new Date(),
+  options: AgentTasteComputationOptions = {},
 ): AgentTasteProfile {
   const genreWeights = new Map<string, number>();
+  const moodWeights = new Map<string, number>();
+  const artistWeights = new Map<string, number>();
+  const energyBandWeights = new Map<string, number>();
+  const tempoBandWeights = new Map<string, number>();
+  const contextWeights = new Map<string, { genreWeights: Map<string, number>; moodWeights: Map<string, number> }>();
   let positiveSignals = 0;
   let negativeSignals = 0;
+  let signalCount = 0;
   let positiveWeight = 0;
-  let absoluteWeight = 0;
+  const cutoff = now.getTime() - AGENT_TASTE_HISTORY_WINDOW_DAYS * DAY_MS;
+  const boundedSignals = signals
+    .map((signal) => ({
+      signal,
+      createdAt: validDate(signal.createdAt) ?? now,
+      weight: signal.weight ?? AGENT_SIGNAL_WEIGHTS[signal.action as AgentSignalAction],
+    }))
+    .filter(({ createdAt, weight }) =>
+      createdAt.getTime() >= cutoff &&
+      (!options.policy?.resetAt || createdAt > options.policy.resetAt) &&
+      typeof weight === "number" &&
+      Number.isFinite(weight),
+    )
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, AGENT_TASTE_HISTORY_LIMIT);
 
-  for (const signal of signals) {
-    const weight = signal.weight ?? AGENT_SIGNAL_WEIGHTS[signal.action];
-    absoluteWeight += Math.abs(weight);
+  let latestSignalAt: Date | undefined;
+  for (const { signal, createdAt, weight: storedWeight } of boundedSignals) {
+    const baseWeight = storedWeight as number;
+    const genre = safeTasteLabel(signal.genre);
+    const moods = safeTasteLabels(signal.moods);
+    const artists = safeTasteLabels(signal.artists);
+    const genreMultiplier = scoreMultiplierForSignal(options.policy, "genre", genre);
+    const artistMultipliers = artists.map((artist) =>
+      artistControlMultiplier(options.policy, artist, signal.artistAliases?.[artist]),
+    );
+
+    // Hidden genre or artist controls exclude the whole signal. Hidden moods
+    // remove only mood contributions below, leaving other dimensions intact.
+    if (genreMultiplier <= 0 || artistMultipliers.some((multiplier) => multiplier <= 0)) {
+      continue;
+    }
+
+    const ageMs = Math.max(0, now.getTime() - createdAt.getTime());
+    const halfLifeDays = isCommitmentAction(signal.action)
+      ? AGENT_COMMITMENT_HALF_LIFE_DAYS
+      : AGENT_BEHAVIORAL_HALF_LIFE_DAYS;
+    const decay = options.decay === false
+      ? 1
+      : Math.pow(0.5, ageMs / (halfLifeDays * DAY_MS));
+    const weight = baseWeight * decay;
+    if (!Number.isFinite(weight)) continue;
+    signalCount += 1;
+    latestSignalAt = latestSignalAt && latestSignalAt > createdAt ? latestSignalAt : createdAt;
+
     if (weight > 0) {
       positiveSignals += 1;
       positiveWeight += weight;
@@ -136,9 +221,39 @@ export function computeAgentTasteProfileFromSignals(
       negativeSignals += 1;
     }
 
-    const genre = signal.genre?.trim();
-    if (genre) {
-      genreWeights.set(genre, (genreWeights.get(genre) ?? 0) + weight);
+    addWeightedValue(genreWeights, genre, weight * genreMultiplier);
+    artists.forEach((artist, index) =>
+      addWeightedValue(artistWeights, artist, weight * artistMultipliers[index]),
+    );
+
+    const contextKey = safePlaybackContextKey(signal.localHourBucket, signal.weekdayKind);
+    const moodsWithWeights = moods
+      .map((mood) => ({ mood, multiplier: scoreMultiplierForSignal(options.policy, "mood", mood) }))
+      .filter(({ multiplier }) => multiplier > 0);
+    moodsWithWeights.forEach(({ mood, multiplier }) => addWeightedValue(moodWeights, mood, weight * multiplier));
+
+    const measuredEnergy = signal.audioFeatures?.energySource === "measured"
+      ? finiteUnit(signal.audioFeatures.energy)
+      : undefined;
+    const measuredTempo = signal.audioFeatures?.tempoSource === "measured"
+      ? finiteTempo(signal.audioFeatures.tempoBpm)
+      : undefined;
+    if (measuredEnergy !== undefined) {
+      const band = energyBandFor(measuredEnergy);
+      const multiplier = scoreMultiplierForSignal(options.policy, "energy", band);
+      if (multiplier > 0) addWeightedValue(energyBandWeights, band, weight * multiplier);
+    }
+    if (measuredTempo !== undefined) {
+      addWeightedValue(tempoBandWeights, tempoBandFor(measuredTempo), weight);
+    }
+
+    if (contextKey) {
+      const context = contextWeights.get(contextKey) ?? { genreWeights: new Map(), moodWeights: new Map() };
+      addWeightedValue(context.genreWeights, genre, weight * genreMultiplier);
+      moodsWithWeights.forEach(({ mood, multiplier }) =>
+        addWeightedValue(context.moodWeights, mood, weight * multiplier),
+      );
+      contextWeights.set(contextKey, context);
     }
   }
 
@@ -147,12 +262,16 @@ export function computeAgentTasteProfileFromSignals(
   const positiveGenres = rankedGenres
     .filter(([, weight]) => weight > 0)
     .map(([genre]) => genre);
-  const fallback = fallbackGenres.filter(Boolean);
+  const fallback = options.policy?.resetAt
+    ? []
+    : safeTasteLabels(fallbackGenres).filter((genre) => scoreMultiplierForSignal(options.policy, "genre", genre) > 0);
   const genresExplored = positiveGenres.length > 0
     ? positiveGenres
     : Array.from(new Set(fallback));
   const favoredGenres = positiveGenres.slice(0, 5);
-  const signalsCount = signals.length;
+  // Signals with zero weight still count as observed signals; invalid and
+  // hidden signals do not. Keep the counters compatible with v1 semantics.
+  const signalsCount = signalCount;
   const acceptanceRate = signalsCount === 0
     ? 0
     : positiveSignals / Math.max(1, positiveSignals + negativeSignals);
@@ -170,7 +289,7 @@ export function computeAgentTasteProfileFromSignals(
           "New";
 
   return {
-    schemaVersion: "agent-taste-profile/v1",
+    schemaVersion: "agent-taste-profile/v2",
     score: Math.max(0, Math.min(100, score)),
     tier,
     signals: signalsCount,
@@ -180,11 +299,100 @@ export function computeAgentTasteProfileFromSignals(
     genresExplored,
     favoredGenres,
     genreWeights: Object.fromEntries(rankedGenres),
+    moodWeights: rankedWeightRecord(moodWeights),
+    artistWeights: rankedWeightRecord(artistWeights),
+    energyBandWeights: rankedWeightRecord(energyBandWeights),
+    tempoBandWeights: rankedWeightRecord(tempoBandWeights),
+    contextWeights: Object.fromEntries(
+      Array.from(contextWeights.entries())
+        .map(([key, context]) => [key, {
+          genreWeights: rankedWeightRecord(context.genreWeights),
+          moodWeights: rankedWeightRecord(context.moodWeights),
+        }] as const)
+        .filter(([, context]) => Object.keys(context.genreWeights).length > 0 || Object.keys(context.moodWeights).length > 0),
+    ),
     diversity,
     depth,
     consistency,
-    updatedAt: (signals[0]?.createdAt ?? now).toISOString(),
+    updatedAt: (latestSignalAt ?? now).toISOString(),
   };
+}
+
+function validDate(value?: Date) {
+  return value instanceof Date && Number.isFinite(value.getTime()) ? value : undefined;
+}
+
+function safeTasteLabel(value: unknown) {
+  return sanitizeSignalMetadataString(value, 64);
+}
+
+function safeTasteLabels(values?: unknown[]) {
+  if (!Array.isArray(values)) return [];
+  const labels = new Map<string, string>();
+  for (const value of values.slice(0, 12)) {
+    const label = safeTasteLabel(value);
+    if (label) labels.set(label.toLowerCase(), labels.get(label.toLowerCase()) ?? label);
+  }
+  return [...labels.values()];
+}
+
+function artistControlMultiplier(policy: TasteMemoryPolicy | undefined, label: string, aliases?: unknown[]) {
+  const values = safeTasteLabels([label, ...(Array.isArray(aliases) ? aliases : [])]);
+  const multipliers = values.map((value) => scoreMultiplierForSignal(policy, "artist", value));
+  if (multipliers.some((multiplier) => multiplier <= 0)) return 0;
+  const downranks = multipliers.filter((multiplier) => multiplier < 1);
+  if (downranks.length > 0) return Math.min(...downranks);
+  const boosts = multipliers.filter((multiplier) => multiplier > 1);
+  return boosts.length > 0 ? Math.max(...boosts) : 1;
+}
+
+function addWeightedValue(map: Map<string, number>, label: string | undefined, weight: number) {
+  if (!label || !Number.isFinite(weight)) return;
+  map.set(label, (map.get(label) ?? 0) + weight);
+}
+
+function rankedWeightRecord(map: Map<string, number>) {
+  return Object.fromEntries(
+    [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+  );
+}
+
+function safePlaybackContextKey(hour: unknown, weekday: unknown) {
+  const validHour = ["night", "morning", "afternoon", "evening"].includes(String(hour))
+    ? String(hour)
+    : undefined;
+  const validWeekday = ["weekday", "weekend"].includes(String(weekday))
+    ? String(weekday)
+    : undefined;
+  return validHour && validWeekday ? validHour + ":" + validWeekday : undefined;
+}
+
+function finiteUnit(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : undefined;
+}
+
+function finiteTempo(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 30 && value <= 300
+    ? value
+    : undefined;
+}
+
+function energyBandFor(energy: number): "low" | "medium" | "high" {
+  if (energy >= 0.67) return "high";
+  if (energy >= 0.38) return "medium";
+  return "low";
+}
+
+function tempoBandFor(tempoBpm: number): "slow" | "mid" | "fast" {
+  if (tempoBpm >= 124) return "fast";
+  if (tempoBpm >= 96) return "mid";
+  return "slow";
+}
+
+function isCommitmentAction(action: string) {
+  return action === "purchase" || action === "pledge" || action === "collect";
 }
 
 function sanitizeSignalOutcome(outcome?: Record<string, unknown>) {
@@ -478,17 +686,16 @@ export class AgentLearningService {
   async computeTasteProfile(
     userId: string,
     fallbackGenres: string[] = [],
-    options: { take?: number } = {},
+    options: { take?: number; now?: Date; windowDays?: number } = {},
   ): Promise<AgentTasteProfile> {
-    const policy = await this.tasteMemoryService?.getPolicy(userId);
+    const policy = await this.tasteMemoryService?.getPolicy(userId) ?? await readTasteMemoryPolicy(userId);
     return computeTasteProfileFromHistory(userId, { fallbackGenres, policy, ...options });
   }
 
   /**
-   * The taste profile both discovery surfaces consume (#1456 WS-9): the
-   * persisted `AgentConfig.learnedTasteProfile`, computed from history only
-   * when none is stored. Home and the AI DJ call this same resolver, so one
-   * listener has one set of learned genre weights.
+   * The Home and AI DJ share a live v2 profile over bounded recent history.
+   * V1 snapshots remain a migration fallback only when no source history or
+   * reset marker exists; active controls still filter their genre weights.
    */
   async resolveTasteProfile(
     userId: string,
@@ -529,53 +736,27 @@ export class AgentLearningService {
   }
 }
 
-/**
- * Computes the taste profile from the listener's recorded signals (newest 500
- * by default), honoring the taste-memory reset and genre controls in `policy`.
- */
+/** Computes a bounded, policy-aware profile from the listener's recent signals. */
 export async function computeTasteProfileFromHistory(
   userId: string,
   options: {
     fallbackGenres?: string[];
     policy?: TasteMemoryPolicy;
     take?: number;
+    windowDays?: number;
+    now?: Date;
   } = {},
   db: Prisma.TransactionClient = prisma,
 ): Promise<AgentTasteProfile> {
-  const { policy } = options;
-  const signals = await db.agentSignal.findMany({
-    where: {
-      userId,
-      ...(policy?.resetAt ? { createdAt: { gt: policy.resetAt } } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: options.take ?? 500,
-    include: {
-      track: {
-        select: {
-          release: { select: { genre: true } },
-        },
-      },
-    },
-  });
-
-  return computeAgentTasteProfileFromSignals(
-    signals
-      .map((signal): AgentTasteSignalInput | null => {
-        const genre = signal.track.release.genre;
-        const multiplier = scoreMultiplierForSignal(policy, "genre", genre);
-        if (multiplier <= 0) return null;
-        return {
-          action: signal.action as AgentSignalAction,
-          trackId: signal.trackId,
-          weight: signal.weight * multiplier,
-          createdAt: signal.createdAt,
-          genre,
-        };
-      })
-      .filter((signal): signal is AgentTasteSignalInput => signal !== null),
-    options.fallbackGenres ?? [],
-  );
+  const policy = options.policy ?? await readTasteMemoryPolicy(userId, db);
+  const now = options.now ?? new Date();
+  const history = await readTasteHistory(userId, {
+    policy,
+    now,
+    take: options.take,
+    windowDays: options.windowDays,
+  }, db);
+  return computeAgentTasteProfileFromSignals(history.inputs, options.fallbackGenres ?? [], now, { policy });
 }
 
 /** Validates a stored `AgentConfig.learnedTasteProfile` JSON value. */
@@ -584,35 +765,231 @@ export function parsePersistedAgentTasteProfile(
 ): AgentTasteProfile | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Partial<AgentTasteProfile>;
-  if (candidate.schemaVersion !== "agent-taste-profile/v1") return null;
-  const weights = candidate.genreWeights;
-  if (!weights || typeof weights !== "object" || Array.isArray(weights)) {
+  if (candidate.schemaVersion !== "agent-taste-profile/v1" && candidate.schemaVersion !== "agent-taste-profile/v2") {
     return null;
   }
-  if (!Object.values(weights).every((weight) => Number.isFinite(weight))) {
-    return null;
+  if (
+    typeof candidate.score !== "number" ||
+    !Number.isFinite(candidate.score) ||
+    typeof candidate.signals !== "number" ||
+    !Number.isFinite(candidate.signals) ||
+    typeof candidate.positiveSignals !== "number" ||
+    !Number.isFinite(candidate.positiveSignals) ||
+    typeof candidate.negativeSignals !== "number" ||
+    !Number.isFinite(candidate.negativeSignals) ||
+    typeof candidate.acceptanceRate !== "number" ||
+    !Number.isFinite(candidate.acceptanceRate) ||
+    typeof candidate.diversity !== "number" ||
+    !Number.isFinite(candidate.diversity) ||
+    typeof candidate.depth !== "number" ||
+    !Number.isFinite(candidate.depth) ||
+    typeof candidate.consistency !== "number" ||
+    !Number.isFinite(candidate.consistency) ||
+    typeof candidate.updatedAt !== "string" ||
+    !Number.isFinite(Date.parse(candidate.updatedAt)) ||
+    !["New", "Emerging", "Focused", "Deep"].includes(String(candidate.tier)) ||
+    !safeWeightRecord(candidate.genreWeights) ||
+    !safeStringArray(candidate.genresExplored) ||
+    !safeStringArray(candidate.favoredGenres)
+  ) return null;
+  if (candidate.schemaVersion === "agent-taste-profile/v2") {
+    const optionalWeightRecords = [
+      candidate.moodWeights,
+      candidate.artistWeights,
+      candidate.energyBandWeights,
+      candidate.tempoBandWeights,
+    ];
+    if (optionalWeightRecords.some((weights) => weights !== undefined && !safeWeightRecord(weights))) return null;
+    if (candidate.contextWeights !== undefined && !parseContextWeightRecord(candidate.contextWeights)) return null;
   }
-  if (!Array.isArray(candidate.favoredGenres)) return null;
   return candidate as AgentTasteProfile;
 }
 
 /**
- * The single taste-profile resolver shared by Home and the AI DJ (#1456
- * WS-9): the persisted `AgentConfig.learnedTasteProfile` (kept current by
- * `recordSignal`, cleared by a taste-memory reset), else a profile computed
- * from the listener's signals. Read-only: it never writes the profile back.
+ * Read-only shared resolver. It recomputes v2 dimensions to apply decay and
+ * current controls, retaining only a safe v1/no-history migration fallback.
  */
 export async function resolveAgentTasteProfile(
   userId: string,
-  options: { fallbackGenres?: string[]; policy?: TasteMemoryPolicy } = {},
+  options: { fallbackGenres?: string[]; policy?: TasteMemoryPolicy; now?: Date } = {},
 ): Promise<AgentTasteProfile> {
-  const config = await prisma.agentConfig.findUnique({
-    where: { userId },
-    select: { learnedTasteProfile: true },
-  });
+  const policy = options.policy ?? await readTasteMemoryPolicy(userId);
+  const now = options.now ?? new Date();
+  const [config, history] = await Promise.all([
+    prisma.agentConfig.findUnique({
+      where: { userId },
+      select: { learnedTasteProfile: true },
+    }),
+    readTasteHistory(userId, { policy, now }),
+  ]);
   const persisted = parsePersistedAgentTasteProfile(config?.learnedTasteProfile);
-  if (persisted) return persisted;
-  return computeTasteProfileFromHistory(userId, options);
+  if (persisted?.schemaVersion === "agent-taste-profile/v1" && history.rows.length === 0 && !policy.resetAt) {
+    const anyPriorSignal = await prisma.agentSignal.findFirst({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!anyPriorSignal) return applyLegacyProfilePolicy(persisted, policy);
+  }
+  return computeAgentTasteProfileFromSignals(
+    history.inputs,
+    options.fallbackGenres ?? [],
+    now,
+    { policy },
+  );
+}
+
+function clampInteger(value: number | undefined, maximum: number) {
+  if (value === undefined || !Number.isFinite(value)) return maximum;
+  return Math.max(0, Math.min(maximum, Math.floor(value)));
+}
+
+function safeWeightRecord(value: unknown): value is Record<string, number> {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.entries(value).every(([label, weight]) =>
+      safeTasteLabel(label) === label && typeof weight === "number" && Number.isFinite(weight),
+    ),
+  );
+}
+
+function safeStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string" && safeTasteLabel(item) === item);
+}
+
+function parseContextWeightRecord(value: unknown): value is NonNullable<AgentTasteProfile["contextWeights"]> {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.entries(value).every(([key, context]) => {
+      if (!/^(night|morning|afternoon|evening):(weekday|weekend)$/.test(key) || !context || typeof context !== "object" || Array.isArray(context)) {
+        return false;
+      }
+      const weights = context as Record<string, unknown>;
+      return safeWeightRecord(weights.genreWeights) && safeWeightRecord(weights.moodWeights);
+    }),
+  );
+}
+
+function applyLegacyProfilePolicy(profile: AgentTasteProfile, policy?: TasteMemoryPolicy): AgentTasteProfile {
+  const genreWeights = Object.fromEntries(
+    Object.entries(profile.genreWeights)
+      .map(([genre, weight]) => ({
+        genre: safeTasteLabel(genre),
+        weight: weight * scoreMultiplierForSignal(policy, "genre", genre),
+      }))
+      .filter(({ genre, weight }) => genre && weight !== 0 && Number.isFinite(weight))
+      .map(({ genre, weight }) => [genre as string, weight]),
+  );
+  const positiveGenres = Object.entries(genreWeights)
+    .filter(([, weight]) => weight > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([genre]) => genre);
+  const safeExplored = safeTasteLabels(profile.genresExplored)
+    .filter((genre) => scoreMultiplierForSignal(policy, "genre", genre) > 0);
+  const safeFavored = safeTasteLabels(profile.favoredGenres)
+    .filter((genre) => scoreMultiplierForSignal(policy, "genre", genre) > 0);
+  return {
+    ...profile,
+    genreWeights,
+    genresExplored: positiveGenres.length > 0 ? positiveGenres : safeExplored,
+    favoredGenres: positiveGenres.length > 0 ? positiveGenres.slice(0, 5) : safeFavored,
+  };
+}
+
+async function readTasteHistory(
+  userId: string,
+  options: {
+    policy: TasteMemoryPolicy;
+    now: Date;
+    take?: number;
+    windowDays?: number;
+  },
+  db: Prisma.TransactionClient = prisma,
+) {
+  const take = clampInteger(options.take, AGENT_TASTE_HISTORY_LIMIT);
+  const windowDays = clampInteger(options.windowDays, AGENT_TASTE_HISTORY_WINDOW_DAYS);
+  const historyStart = new Date(options.now.getTime() - windowDays * DAY_MS);
+  const rows = await db.agentSignal.findMany({
+    where: {
+      userId,
+      createdAt: {
+        gte: historyStart,
+        ...(options.policy.resetAt ? { gt: options.policy.resetAt } : {}),
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+    take,
+    include: {
+      track: {
+        select: {
+          artist: true,
+          stems: {
+            where: { isCurrent: true, type: "original" },
+            orderBy: { id: "asc" },
+            take: 1,
+            select: { audioFeatures: true },
+          },
+          release: {
+            select: {
+              genre: true,
+              moods: true,
+              primaryArtist: true,
+              artist: { select: { displayName: true } },
+              artistCredits: {
+                orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                take: 12,
+                select: {
+                  displayName: true,
+                  artist: { select: { displayName: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  const inputs = rows.map((signal): AgentTasteSignalInput => {
+    const { track } = signal;
+    const { release } = track;
+    const metadata = jsonObject(signal.metadata);
+    const measured = measuredTrackFeatures(track.stems[0]?.audioFeatures);
+    const creditedArtistGroups = release.artistCredits
+      .map((credit) => {
+        const label = safeTasteLabel(credit.displayName) ?? safeTasteLabel(credit.artist.displayName);
+        if (!label) return undefined;
+        return {
+          label,
+          aliases: safeTasteLabels([credit.displayName, credit.artist.displayName]),
+        };
+      })
+      .filter((artist): artist is { label: string; aliases: string[] } => Boolean(artist));
+    const fallbackArtist = [track.artist, release.primaryArtist, release.artist.displayName]
+      .map(safeTasteLabel)
+      .find((artist): artist is string => Boolean(artist));
+    return {
+      action: signal.action,
+      trackId: signal.trackId,
+      weight: signal.weight,
+      createdAt: signal.createdAt,
+      genre: release.genre,
+      moods: release.moods,
+      artists: creditedArtistGroups.length > 0 ? creditedArtistGroups.map(({ label }) => label) : fallbackArtist ? [fallbackArtist] : [],
+      artistAliases: Object.fromEntries(creditedArtistGroups.map(({ label, aliases }) => [label, aliases])),
+      localHourBucket: jsonString(metadata.localHourBucket),
+      weekdayKind: jsonString(metadata.weekdayKind),
+      audioFeatures: {
+        energy: measured.energy,
+        energySource: measured.energy === null ? "unavailable" : "measured",
+        tempoBpm: measured.tempoBpm,
+        tempoSource: measured.tempoBpm === null ? "unavailable" : "measured",
+      },
+    };
+  });
+  return { rows, inputs };
 }
 
 function signalIdForTelemetry(userId: string, dedupKey?: string) {

@@ -90,8 +90,8 @@ Three code facts shape the design:
 | --- | --- | --- | --- |
 | **Commitment** | Purchase, Shows pledge (settled), collected moment, published remix of a track, follow | `purchase` in `AGENT_SIGNAL_WEIGHTS`; others new | Highest; slow decay |
 | **Declared** | Hide, downrank, reset (#1009); "less of this"; written preferences; passport edits | Taste memory controls | Overrides inference (ADR-TE-2.6) |
-| **Behavioral** | Full play, replay, loop intent, save/removal, playlist add, skip, early skip | `AgentSignal` (#1449, #2062) | Configured weights; normal decay planned in #2063 |
-| **Context** | Session intent, coarse time of day/week, session position | Session request and bounded signal metadata (#2062) | Current request steers ranking; coarse contextual affinities are planned in #2063, without changing declared taste |
+| **Behavioral** | Full play, replay, loop intent, save/removal, playlist add, skip, early skip | `AgentSignal` (#1449, #2062) | Configured weights; behavioral decay implemented in #2063 |
+| **Context** | Session intent, coarse time of day/week, session position | Session request and bounded signal metadata (#2062) | Current request steers ranking; coarse contextual affinities are implemented in #2063, without changing declared taste |
 | **Scene** | City and community aggregates above `DISCOVERY_MIN_AUDIENCE` | Popularity marts (#1451) | Lowest; cold start and exploration only |
 
 Proposed additions to `AGENT_SIGNAL_WEIGHTS`
@@ -118,7 +118,12 @@ playback-training setting. See the [learning-loop contract](../features/agent_ta
 
 Decay: behavioral signals use a 60-day half-life, commitment signals 365 days,
 declared signals never decay until the listener removes them. Weights and
-half-lives are configuration, not constants in code paths.
+half-lives are configuration, not constants in code paths. The v2 implementation
+(#2063) reads at most 500 newest signals within 730 days, retains v1 genre fields,
+and adds mood, credited artist, measured energy/tempo and coarse context maps.
+Taste Memory shows safe summaries from the same governed computation. The
+profile reads no inferred audio features and recomputes at read time to apply
+current decay and controls.
 
 Manipulation protection (ADR-TE-2.5): signals from accounts younger than the
 trust threshold or flagged as anomalous are down-weighted; self-plays and

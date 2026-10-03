@@ -2971,6 +2971,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
+            text: "Taste Memory shows your top genres, moods and artists, plus energy and pace preferences when the music has measured features. It can also show preferences for mornings, afternoons, evenings or nights on weekdays and weekends. Recent listening matters more as older signals fade. These are summaries, not a list of your plays. Hiding a preference removes it from learned summaries; reset clears all learned summaries and keeps the edits you explicitly saved.",
+          },
+          {
+            kind: "paragraph",
             text: "Prefer to just say it? Under Taste Memory, type what you want in your own words — for example \"less drill, more live instruments\" — and choose Preview changes. We list exactly what would change as plain statements such as \"Show less Drill\". Untick, switch between more and less, or remove any line, then choose Apply. Nothing is saved until you apply, and anything we could not understand is shown as such and is never saved.",
           },
           {

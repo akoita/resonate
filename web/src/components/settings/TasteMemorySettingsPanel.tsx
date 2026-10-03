@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getTasteMemory,
   removeTasteSignalControl,
@@ -8,6 +8,7 @@ import {
   updateTasteMemorySettings,
   upsertTasteSignalControl,
   type ManualTasteSignalAction,
+  type TasteMemoryContextSummary,
   type TasteMemoryResponse,
   type TasteMemorySettings,
   type TasteSignalControl,
@@ -32,6 +33,100 @@ const SIGNAL_TYPES: Array<"genre" | "mood" | "artist" | "scene" | "intent"> = [
   "scene",
   "intent",
 ];
+
+type TasteMemorySummaryData = TasteMemoryResponse["summary"];
+type SummaryItem = { label: string; values: string[]; separator?: string };
+
+const ENERGY_BAND_LABELS: Record<string, string> = { low: "Low", medium: "Medium", high: "High" };
+const TEMPO_BAND_LABELS: Record<string, string> = { slow: "Slow", mid: "Medium", medium: "Medium", fast: "Fast" };
+const LOCAL_HOUR_LABELS: Record<TasteMemoryContextSummary["localHourBucket"], string> = {
+  night: "Nights",
+  morning: "Mornings",
+  afternoon: "Afternoons",
+  evening: "Evenings",
+};
+const MAX_CONTEXT_ROWS = 8;
+const MAX_CONTEXT_VALUES = 5;
+
+function bandLabel(value: string, labels: Record<string, string>) {
+  return labels[value.trim().toLowerCase()] ?? value;
+}
+
+export function buildTasteMemorySummaryItems(summary: TasteMemorySummaryData | null | undefined): SummaryItem[] {
+  if (!summary) return [];
+  const items: SummaryItem[] = [
+    { label: "Genres", values: summary.favoredGenres },
+    { label: "Moods", values: summary.favoredMoods },
+    { label: "Artists", values: summary.favoredArtists },
+    { label: "Energy", values: (summary.favoredEnergyBands ?? []).map((value) => bandLabel(value, ENERGY_BAND_LABELS)) },
+    { label: "Tempo", values: (summary.favoredTempoBands ?? []).map((value) => bandLabel(value, TEMPO_BAND_LABELS)) },
+    { label: "Recent intents", values: summary.recentIntents },
+    { label: "Novelty", values: [summary.noveltyPattern] },
+    { label: "Commerce", values: [summary.commercePreference] },
+  ];
+
+  for (const context of (summary.contexts ?? []).slice(0, MAX_CONTEXT_ROWS)) {
+    const values = [
+      context.favoredGenres.length
+        ? `Genres: ${context.favoredGenres.slice(0, MAX_CONTEXT_VALUES).join(", ")}`
+        : "",
+      context.favoredMoods.length
+        ? `Moods: ${context.favoredMoods.slice(0, MAX_CONTEXT_VALUES).join(", ")}`
+        : "",
+    ].filter(Boolean);
+    items.push({
+      label: `${LOCAL_HOUR_LABELS[context.localHourBucket]} · ${context.weekdayKind === "weekday" ? "weekdays" : "weekends"}`,
+      values,
+      separator: " · ",
+    });
+  }
+
+  return items;
+}
+
+export function clearTasteMemorySummary(summary: TasteMemorySummaryData): TasteMemorySummaryData {
+  return {
+    ...summary,
+    favoredGenres: [],
+    favoredMoods: [],
+    favoredArtists: [],
+    favoredEnergyBands: [],
+    favoredTempoBands: [],
+    contexts: [],
+    recentIntents: [],
+    noveltyPattern: "Balanced discovery",
+    commercePreference: "Listening first",
+  };
+}
+
+export async function resetTasteMemoryState(args: {
+  token: string;
+  memory: TasteMemoryResponse;
+  setMemory: (memory: TasteMemoryResponse) => void;
+}): Promise<TasteMemoryResponse> {
+  const settings = await resetTasteMemory(args.token);
+  const updatedMemory = {
+    ...args.memory,
+    settings,
+    summary: clearTasteMemorySummary(args.memory.summary),
+  };
+  args.setMemory(updatedMemory);
+  return updatedMemory;
+}
+
+export function TasteMemorySummary({ summary }: { summary: TasteMemorySummaryData | null | undefined }) {
+  const items = buildTasteMemorySummaryItems(summary);
+  return (
+    <div className="taste-memory-grid">
+      {items.map((item) => (
+        <div className="taste-memory-stat" key={item.label}>
+          <span>{item.label}</span>
+          <strong>{item.values.length ? item.values.join(item.separator ?? ", ") : "Not enough signal yet"}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
   const [memory, setMemory] = useState<TasteMemoryResponse | null>(null);
@@ -62,19 +157,6 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- token changes are the reload boundary.
   }, [token]);
-
-  const summaryItems = useMemo(() => {
-    const summary = memory?.summary;
-    if (!summary) return [];
-    return [
-      { label: "Genres", values: summary.favoredGenres },
-      { label: "Moods", values: summary.favoredMoods },
-      { label: "Artists", values: summary.favoredArtists },
-      { label: "Recent intents", values: summary.recentIntents },
-      { label: "Novelty", values: [summary.noveltyPattern] },
-      { label: "Commerce", values: [summary.commercePreference] },
-    ];
-  }, [memory]);
 
   const updateSetting = async <K extends keyof Omit<TasteMemorySettings, "resetAt">>(
     key: K,
@@ -158,20 +240,7 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
     if (!token || !memory) return;
     setSavingKey("reset");
     try {
-      const settings = await resetTasteMemory(token);
-      setMemory({
-        ...memory,
-        settings,
-        summary: {
-          ...memory.summary,
-          favoredGenres: [],
-          favoredMoods: [],
-          favoredArtists: [],
-          recentIntents: [],
-          noveltyPattern: "Balanced discovery",
-          commercePreference: "Listening first",
-        },
-      });
+      await resetTasteMemoryState({ token, memory, setMemory });
       void recordProductAnalytics(token, "taste_memory.reset", {
         source: "settings",
         subjectType: "taste_memory",
@@ -200,14 +269,7 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
         </Button>
       </div>
 
-      <div className="taste-memory-grid">
-        {summaryItems.map((item) => (
-          <div className="taste-memory-stat" key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.values.length ? item.values.join(", ") : "Not enough signal yet"}</strong>
-          </div>
-        ))}
-      </div>
+      <TasteMemorySummary summary={memory?.summary} />
 
       <div className="taste-memory-controls">
         <TasteToggle
@@ -226,7 +288,7 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
         />
         <TasteToggle
           label="AI DJ playback trains taste"
-          description="Let AI DJ-originated playback update your listener taste memory."
+          description="Let your playback and library activity shape taste when analytics consent is enabled."
           checked={memory?.settings.agentPlaybackTrainingEnabled ?? true}
           disabled={!memory || savingKey === "agentPlaybackTrainingEnabled"}
           onChange={(checked) => updateSetting("agentPlaybackTrainingEnabled", checked)}
