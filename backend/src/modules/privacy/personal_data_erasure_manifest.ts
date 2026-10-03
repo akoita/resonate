@@ -797,6 +797,11 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "The artist's drop, whose collectibles other people bought and are retained.",
   },
   {
+    model: "SceneScoutCityDemand",
+    disposition: "detach",
+    reason: "Thresholded city/release counts name no listener and follow the detached artist profile; source events remain governed and reads rebuild the snapshot.",
+  },
+  {
     model: "ArtistEngagement",
     disposition: "detach",
     reason: "Aggregate engagement computed about the artist profile; it names no listener and follows the detached profile.",

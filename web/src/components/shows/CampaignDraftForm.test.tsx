@@ -74,6 +74,15 @@ const baseCampaign = {
 const countDisabled = (html: string) => (html.match(/disabled=""/g) ?? []).length;
 
 describe("CampaignDraftForm approved-terms lock (#946)", () => {
+  it("opens an editable city suggestion and preserves existing campaign terms", () => {
+    const demandPrefill = { city: "Lyon", country: "FR", releaseId: "release-1" };
+    const suggested = renderToStaticMarkup(<CampaignDraftForm demandPrefill={demandPrefill} />);
+    expect(suggested).toContain('value="Lyon"');
+    expect(suggested).toContain('value="FR"');
+    const existing = renderToStaticMarkup(<CampaignDraftForm campaign={baseCampaign} demandPrefill={demandPrefill} />);
+    expect(existing).toContain('value="Paris"');
+    expect(existing).not.toContain('value="Lyon"');
+  });
   it("locks the critical term fields once artist authority is approved", () => {
     const html = renderToStaticMarkup(<CampaignDraftForm campaign={baseCampaign} />);
     expect(html).toContain("Approved terms are locked");

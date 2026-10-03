@@ -60,6 +60,7 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { chromium } from "@playwright/test";
+import { mockSceneScoutApi } from "../tests/fixtures/scene-scout-mock.mjs";
 import { PROJECT_ID as REMIX_PROJECT_ID, mockRemixApi } from "../tests/fixtures/remix-studio-mock.mjs";
 import {
   CRATE_ID,
@@ -108,6 +109,15 @@ const PUBLIC_TARGETS = [
 ];
 
 const AUTH_TARGETS = [
+  ["/artist/analytics", "scene-scout-city.png", {
+    mockSceneScout: true,
+    selectors: [".artist-action-card"],
+    text: ["Consider a show in Paris"],
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.getByRole("heading", { name: "Recommended next actions" }).scrollIntoViewIfNeeded();
+    },
+  }],
   ["/artist/upload", "upload.png"],
   ["/create", "create.png"],
   ["/settings", "settings.png", {
@@ -277,6 +287,7 @@ async function waitForRouteReady(page, route, ready) {
 async function capture(page, targets, passName) {
   for (const [route, file, ready] of targets) {
     if (process.env.CAPTURE_ONLY && file !== process.env.CAPTURE_ONLY) continue;
+    if (ready?.mockSceneScout) await mockSceneScoutApi(page);
     if (ready?.mockLibrary) {
       const createdAt = "2026-09-01T12:00:00.000Z";
       await page.route("**/library/tracks", (request) => request.fulfill({

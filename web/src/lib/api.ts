@@ -757,6 +757,7 @@ export type ArtistActionCard = {
     | "start_listener_community"
     | "prepare_marketplace_catalog"
     | "review_show_city_demand"
+    | "propose_show_city"
     | "post_campaign_update"
     | "create_holder_benefit"
     | "invite_holder_collectors"
@@ -840,6 +841,10 @@ export type ArtistAnalyticsDashboard = {
   }>;
   protection: ArtistAnalyticsProtection;
   actions?: ArtistActionCard[];
+  sceneScout?: {
+    status: "ready" | "thin_data" | "unavailable";
+    reason?: string;
+  };
   playsOverTime: ArtistAnalyticsTimePoint[];
   trackPerformance: ArtistAnalyticsTrack[];
   listenerGrowth?: {
