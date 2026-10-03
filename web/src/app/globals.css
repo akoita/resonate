@@ -15067,6 +15067,58 @@ tr[draggable="true"]:hover {
   line-height: 1.4;
 }
 
+/* Scene Scout signals that cannot produce action cards yet */
+.scene-scout-status {
+  gap: var(--space-3);
+  padding: 14px 18px;
+}
+
+.scene-scout-status__help {
+  flex: 0 0 auto;
+  color: var(--r-secondary-soft);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.scene-scout-status__help:hover,
+.scene-scout-status__help:focus-visible {
+  text-decoration: underline;
+}
+
+.scene-scout-status__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scene-scout-status__list li {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) 1fr;
+  gap: var(--space-3);
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.scene-scout-status__list strong {
+  color: var(--r-on-surface);
+  font-weight: 600;
+}
+
+.scene-scout-status__list span {
+  color: var(--r-on-surface-muted);
+}
+
+@media (max-width: 640px) {
+  .scene-scout-status__list li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 @keyframes pulse-dot-green {
   0%, 100% {
     transform: scale(1);

@@ -185,6 +185,26 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Create an artist profile to see analytics");
     expect(html).toContain("/artist/onboarding");
   });
+  it("groups Scene Scout signals that are still gathering into one panel", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30} data={{
+      ...dashboard, actions: [], sceneScout: { status: "thin_data" }, unmetDemand: { status: "unavailable" },
+      firstListenerReception: { status: "ready" },
+    }} onDaysChange={() => {}} />);
+    expect(html.match(/Still gathering signals/g)).toHaveLength(1);
+    expect(html).toContain("City demand");
+    expect(html).toContain("Request demand is currently unavailable.");
+    expect(html).not.toContain("First-week reception");
+    expect(html).toContain("/help/artist-analytics#scene-scout");
+  });
+
+  it("hides the Scene Scout panel when every signal is ready", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30} data={{
+      ...dashboard, sceneScout: { status: "ready" }, unmetDemand: { status: "ready" },
+      firstListenerReception: { status: "ready" },
+    }} onDaysChange={() => {}} />);
+    expect(html).not.toContain("Still gathering signals");
+  });
+
   it("explains reception that has not reached the day-seven audience floor", () => {
     const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
       data={{ ...dashboard, actions: [], firstListenerReception: { status: "thin_data" } }} onDaysChange={() => {}} />);

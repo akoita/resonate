@@ -601,8 +601,15 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
 
   return (
     <section className="shows-create__form" aria-label={isEdit ? "Edit show campaign" : "Create show campaign"}>
-      {demandReleaseTitle ? (
-        <p role="status">Scene Scout suggested {city} for {demandReleaseTitle}. Review the campaign details before saving.</p>
+      {demandReleaseTitle && demandPrefill ? (
+        <div className="shows-create__panel shows-create__panel--wide shows-create__demand-note" role="status">
+          <span className="shows-create__panel-note">Scene Scout suggestion</span>
+          <p>
+            Listeners in {demandPrefill.city}, {demandPrefill.country} connected with {demandReleaseTitle}, so
+            the city and release are filled in below. Nothing is saved or published until you review the
+            details and save the draft.
+          </p>
+        </div>
       ) : null}
       {termsLocked ? (
         <div className="shows-create__panel shows-create__locked-note" role="status">

@@ -2830,18 +2830,43 @@ export default function ReleaseDetails() {
         />
       )}
 
+      {/* Scene Scout supply context - only for the owner arriving from an unmet-demand card */}
+      {demandTrack && demandContext && (() => {
+        const hasListingControls = Boolean(release.tracks?.some((t) => t.stems && t.stems.length > 0));
+        const stemMissing = Boolean(demandContext.stemType) && !demandTrack.stems?.some((stem) =>
+          stem.type.toLowerCase() === demandContext.stemType);
+        const canReviewBelow = hasListingControls && !stemMissing;
+        const supplyLabel = demandContext.stemType
+          ? `${demandContext.stemType} stem`
+          : `${demandContext.licenseType} license`;
+        return (
+          <section id="scene-scout-supply" className="scene-scout-supply glass-panel" aria-labelledby="scene-scout-supply-title">
+            <p className="scene-scout-supply__eyebrow">Scene Scout · searched but missing</p>
+            <h3 id="scene-scout-supply-title" className="nft-title">
+              Review {supplyLabel} supply for {demandTrack.title}
+            </h3>
+            <p className="scene-scout-supply__body">
+              {stemMissing
+                ? "This stem is not ready to list yet. Prepare the track's stems from your catalog first."
+                : canReviewBelow
+                  ? "The track is open in your listing controls below. Choose your terms before confirming a listing."
+                  : "Prepare this track's stems from your catalog before reviewing listing terms."}
+            </p>
+            <p className="scene-scout-supply__note">
+              A Scene Scout suggestion does not publish a stem or create a listing. Your existing rights review and confirmation steps still apply.
+            </p>
+            <div className="scene-scout-supply__actions">
+              {canReviewBelow ? (
+                <a href="#nft-marketplace" className="scene-scout-supply__cta">Review listing controls</a>
+              ) : null}
+              <Link href="/artist/catalog" className={canReviewBelow ? "scene-scout-supply__link" : "scene-scout-supply__cta"}>
+                Open your catalog
+              </Link>
+            </div>
+          </section>
+        );
+      })()}
       {/* NFT Marketplace Section - Only for owners */}
-      {demandTrack && demandContext && (
-        <section id="scene-scout-supply" className="glass-panel" style={{ padding: "20px", marginBottom: "20px" }}>
-          <h3>Review {demandContext.stemType ?? demandContext.licenseType} supply for {demandTrack.title}</h3>
-          <p>{demandContext.stemType && !demandTrack.stems?.some((stem) =>
-            stem.type.toLowerCase() === demandContext.stemType)
-            ? "This stem is not ready to list. Prepare the track's stems in your catalog, then review the listing controls below."
-            : "Review the stem and license options below. Choose your terms before confirming a listing."}</p>
-          <p>A Scene Scout suggestion does not publish a stem or create a listing. Your existing rights review and confirmation steps apply.</p>
-          <Link href="/artist/catalog">Open your catalog</Link>
-        </section>
-      )}
       {
         isOwner && release.tracks && release.tracks.some(t => t.stems && t.stems.length > 0) && (
           <section id="nft-marketplace" className="nft-section glass-panel">
@@ -3703,6 +3728,82 @@ export default function ReleaseDetails() {
           font-size: 24px;
           font-weight: 700;
           color: var(--color-muted);
+        }
+
+        /* Scene Scout supply context */
+        .scene-scout-supply {
+          display: grid;
+          gap: 8px;
+          padding: 20px 24px;
+          margin-bottom: 20px;
+          border-radius: 24px;
+          border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .scene-scout-supply__eyebrow {
+          margin: 0;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #34d399;
+        }
+
+        .scene-scout-supply__body {
+          margin: 0;
+          font-size: 14px;
+          line-height: 1.55;
+          color: rgba(255, 255, 255, 0.78);
+        }
+
+        .scene-scout-supply__note {
+          margin: 0;
+          font-size: 13px;
+          line-height: 1.5;
+          color: #a1a1aa;
+        }
+
+        .scene-scout-supply__actions {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 16px;
+          margin-top: 6px;
+        }
+
+        .scene-scout-supply__actions :global(.scene-scout-supply__cta) {
+          display: inline-flex;
+          align-items: center;
+          min-height: 36px;
+          padding: 0 16px;
+          border-radius: 999px;
+          background: #10b981;
+          color: #04130d;
+          font-size: 13px;
+          font-weight: 700;
+          text-decoration: none;
+        }
+
+        .scene-scout-supply__actions :global(.scene-scout-supply__cta:hover) {
+          background: #34d399;
+        }
+
+        .scene-scout-supply__actions :global(.scene-scout-supply__cta:focus-visible),
+        .scene-scout-supply__actions :global(.scene-scout-supply__link:focus-visible) {
+          outline: 2px solid #34d399;
+          outline-offset: 2px;
+        }
+
+        .scene-scout-supply__actions :global(.scene-scout-supply__link) {
+          font-size: 13px;
+          font-weight: 600;
+          color: #10b981;
+          text-decoration: none;
+        }
+
+        .scene-scout-supply__actions :global(.scene-scout-supply__link:hover) {
+          color: #34d399;
+          text-decoration: underline;
         }
 
         /* NFT Marketplace Accordion Styles */
