@@ -735,6 +735,38 @@
   transition: background 0.18s, border-color 0.18s, transform 0.12s;
 }
 .aid-prompt-preset:hover { background: rgba(124,92,255,0.2); border-color: rgba(196,181,253,0.5); }
+.aid-my-mix-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
+.aid-my-mix { display: flex; flex-direction: column; gap: 12px; width: 100%; padding: 14px; border: 1px solid rgba(196,181,253,0.18); border-radius: 14px; background: rgba(124,92,255,0.055); }
+.aid-my-mix-intro p,
+.aid-my-mix-save p,
+.aid-my-mix-coverage p { margin: 0; color: rgba(240,234,255,0.72); font-size: 0.8rem; line-height: 1.5; }
+.aid-my-mix-intro .aid-my-mix-context { margin-top: 3px; color: #c4b5fd; }
+.aid-my-mix-lanes,
+.aid-my-mix-added { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.aid-my-mix-lane,
+.aid-my-mix-added li { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.aid-my-mix-lane-name { display: flex; align-items: center; gap: 8px; min-width: 0; color: #f0eaff; font-size: 0.88rem; }
+.aid-my-mix-lane-name input { accent-color: var(--r-agent, #8b5cf6); }
+.aid-my-mix-lane-name span { overflow-wrap: anywhere; }
+.aid-my-mix-boost,
+.aid-my-mix-add-button,
+.aid-my-mix-added button,
+.aid-my-mix-save button { min-height: 32px; padding: 4px 10px; border: 1px solid rgba(196,181,253,0.25); border-radius: 9px; background: rgba(124,92,255,0.1); color: #ede9fe; font: inherit; font-size: 0.78rem; cursor: pointer; }
+.aid-my-mix-boost.active { background: rgba(124,92,255,0.28); border-color: rgba(196,181,253,0.5); }
+.aid-my-mix-boost:disabled,
+.aid-my-mix-add-button:disabled,
+.aid-my-mix-save button:disabled { opacity: 0.48; cursor: not-allowed; }
+.aid-my-mix-additions { display: flex; flex-direction: column; gap: 7px; color: rgba(240,234,255,0.82); font-size: 0.82rem; }
+.aid-my-mix-add-row { display: flex; gap: 8px; min-width: 0; }
+.aid-my-mix-add-row select { flex: 1; min-width: 0; min-height: 36px; padding: 5px 9px; border: 1px solid rgba(255,255,255,0.14); border-radius: 9px; background: rgba(8,8,15,0.6); color: #f0eaff; font: inherit; }
+.aid-my-mix-add-row option { background: #171322; color: #f0eaff; }
+.aid-my-mix-hint { margin: 0; color: rgba(240,234,255,0.5); font-size: 0.76rem; }
+.aid-my-mix-added li { color: #f0eaff; font-size: 0.82rem; }
+.aid-my-mix-coverage { display: flex; flex-direction: column; gap: 4px; }
+.aid-my-mix-coverage p { color: #fcd34d; }
+.aid-my-mix-save { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); }
+.aid-my-mix-save button { min-height: 36px; font-weight: 700; }
+.aid-my-mix-save [role="status"] { flex-basis: 100%; }
 /* #2052: everyday genres and moods as two labelled rows, plus a visible "what you'll hear" note. */
 .aid-prompt-preset-groups { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .aid-prompt-preset-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -844,6 +876,9 @@
 @media (max-width: 767px) {
   .aid-prompt { padding: 16px; border-radius: 16px; }
   .aid-prompt-actions .aid-prompt-submit { width: 100%; }
+  .aid-my-mix { padding: 12px; }
+  .aid-my-mix-add-row { flex-direction: column; }
+  .aid-my-mix-add-button { align-self: flex-start; }
   .aid-prompt-presets {
     flex-wrap: nowrap;
     overflow-x: auto;

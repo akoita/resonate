@@ -154,7 +154,7 @@ describe("TasteMemorySettingsPanel", () => {
     expect(html).toContain("Weekend nights");
     expect(html).toContain("Typical energy: Medium");
     expect(html).toContain("Restore to mixes");
-    expect(html).toContain("future mixes");
+    expect(html).toContain("My Mix in the AI DJ");
     expect(html).not.toContain(laneId);
   });
 
@@ -164,7 +164,7 @@ describe("TasteMemorySettingsPanel", () => {
     );
 
     expect(html).toContain("Repeated listening sessions are needed");
-    expect(html).toContain("Mixes are not available yet");
+    expect(html).toContain("listening lanes and My Mix appear");
   });
 
   it("keeps lane controls out of the generic editor and gives orphan hides a safe restore row", () => {

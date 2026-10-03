@@ -274,7 +274,10 @@ are required; a new listener may see no cards. Measured energy is shown only
 when available. Cards contain no track list or exact listening times.
 
 **Hide from mixes** saves a lane hide; **Restore to mixes** removes it. These
-controls prepare for My Mix in #2065, which is not launched by this slice.
+controls apply to My Mix (#2065): hidden lanes are excluded whenever the DJ
+resolves the listener's lanes. My Mix's remove, boost and added-category edits
+affect the current session only; saving to Taste Memory is a separate action.
+See [My Mix](agent_taste_intelligence.md#my-mix-2065).
 Hidden lanes remain visible here for restoration but are excluded from the
 mix-facing resolver. Hiding a genre, mood or artist rebuilds the affected lanes.
 Reset clears learned lanes and their hides while preserving explicitly declared

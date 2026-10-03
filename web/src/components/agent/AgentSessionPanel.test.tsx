@@ -6,6 +6,7 @@ import type {
   AgentNextPickResponse,
   AgentSession,
   AgentSessionRequestParse,
+  ListeningLane,
 } from "../../lib/api";
 import type { AgentEvent } from "../../hooks/useAgentEvents";
 import type { DjSet } from "../../lib/agentDjSet";
@@ -60,6 +61,22 @@ const refetchConfig = vi.fn(async () => undefined);
 const refetchHistory = vi.fn(async () => undefined);
 const addToast = vi.fn();
 const recordProductAnalytics = vi.fn(async () => undefined);
+const myMixLane: ListeningLane = {
+  id: "lane_0123456789abcdef0123456789abcdef",
+  label: "Soul · Warm",
+  genreWeights: { Soul: 0.8 },
+  moodWeights: { Warm: 0.7 },
+  strength: 0.9,
+  contexts: { "evening:weekday": 0.8 },
+  energyBand: "medium",
+  hidden: false,
+};
+const getTasteMemory = vi.fn(async (): Promise<{ summary: { listeningLanes?: ListeningLane[] } }> => ({
+  summary: { listeningLanes: [myMixLane] },
+}));
+const getAgentMixVocabulary = vi.fn(async () => ({ genres: ["Dancehall", "Soul"], moods: ["Warm", "Zen"] }));
+const getAgentMixCoverage = vi.fn(async () => ({ mixCoverage: { lanes: [] } }));
+const applyTasteEdits = vi.fn(async () => ({ edits: { appliedCount: 0, ignoredCount: 0 } }));
 
 vi.mock("../auth/AuthProvider", () => ({ useAuth: () => ({ token: "tok", status: "authenticated" }) }));
 vi.mock("../ui/Toast", () => ({ useToast: () => ({ addToast }) }));
@@ -112,8 +129,12 @@ vi.mock("../../lib/agentDjPlayback", () => ({
   resolveDjQueue: (...args: unknown[]) => resolveDjQueue(...(args as [string[], string])),
 }));
 vi.mock("../../lib/api", () => ({
+  applyTasteEdits: (...args: unknown[]) => applyTasteEdits(...(args as [])),
+  getAgentMixCoverage: (...args: unknown[]) => getAgentMixCoverage(...(args as [])),
+  getAgentMixVocabulary: (...args: unknown[]) => getAgentMixVocabulary(...(args as [])),
   getAgentNextPick: (...args: unknown[]) => getAgentNextPick(...(args as [])),
   parseAgentSessionRequest: (...args: unknown[]) => parseAgentSessionRequest(...(args as [string, string])),
+  getTasteMemory: (...args: unknown[]) => getTasteMemory(...(args as [])),
 }));
 vi.mock("../../hooks/useAgentEvents", () => ({ useAgentEvents: () => hookState.events }));
 vi.mock("../../hooks/useAgentHistory", () => ({
@@ -128,6 +149,7 @@ vi.mock("../../hooks/useAgentHistory", () => ({
 const captured: {
   onToggle?: () => void;
   onPick?: () => Promise<void>;
+  pick?: AgentNextPickResponse | null;
   prompt?: PromptProps;
 } = {};
 vi.mock("./AgentStatusCard", () => ({
@@ -138,8 +160,9 @@ vi.mock("./AgentStatusCard", () => ({
 }));
 vi.mock("./AgentActivityFeed", () => ({ default: () => null }));
 vi.mock("./AgentNextPickCard", () => ({
-  default: (props: { onPick: () => Promise<void> }) => {
+  default: (props: { onPick: () => Promise<void>; pick: AgentNextPickResponse | null }) => {
     captured.onPick = props.onPick;
+    captured.pick = props.pick;
     return null;
   },
 }));
@@ -205,6 +228,7 @@ describe("AgentSessionPanel", () => {
     hookState.historyLoading = false;
     captured.onToggle = undefined;
     captured.onPick = undefined;
+    captured.pick = null;
     captured.prompt = undefined;
     hookState.events = [];
     hookState.queue = [];
@@ -217,6 +241,15 @@ describe("AgentSessionPanel", () => {
     vi.clearAllTimers();
     vi.useRealTimers();
   });
+
+  async function loadMyMixCatalog() {
+    render();
+    effects.forEach((run) => run());
+    await Promise.resolve();
+    await Promise.resolve();
+    render();
+    effects.forEach((run) => run());
+  }
 
   it("with no config shows the empty state and a Set up your DJ action", () => {
     const html = render();
@@ -319,6 +352,47 @@ describe("AgentSessionPanel", () => {
         payload: expect.objectContaining({ startedFrom: "plain", requestFilterKeys: [] }),
       }),
     );
+  });
+
+  it("starts My Mix with coarse session preferences and does not auto-save taste edits", async () => {
+    hookState.config = config({ isActive: false });
+    await loadMyMixCatalog();
+    expect(captured.prompt?.myMix?.lanes).toEqual([myMixLane]);
+
+    captured.prompt?.myMix?.onSelect();
+    render();
+    expect(captured.prompt?.myMix?.preferences).toMatchObject({ context: expect.any(String) });
+    expect(captured.prompt?.myMix?.preferences).not.toHaveProperty("lanes");
+    await captured.onToggle?.();
+
+    const [input] = startSession.mock.calls[0] as unknown as [{ preferences: { myMix: Record<string, unknown> } }];
+    expect(input.preferences.myMix).toMatchObject({ context: expect.any(String) });
+    expect(input.preferences.myMix).not.toHaveProperty("laneLabel");
+    expect(applyTasteEdits).not.toHaveBeenCalled();
+    expect(JSON.stringify(recordProductAnalytics.mock.calls)).not.toContain(myMixLane.id);
+  });
+
+  it("saves only when explicitly requested and persists additions plus boosted lane terms", async () => {
+    hookState.config = config({ isActive: false });
+    await loadMyMixCatalog();
+    captured.prompt?.myMix?.onSelect();
+    render();
+    captured.prompt?.myMix?.onChange({
+      context: "evening:weekday",
+      lanes: [{ id: myMixLane.id, boost: true }],
+      additions: [{ genre: "Dancehall" }],
+    });
+    render();
+
+    expect(applyTasteEdits).not.toHaveBeenCalled();
+    await captured.prompt?.myMix?.onSave();
+
+    expect(applyTasteEdits).toHaveBeenCalledWith("tok", [
+      { signalType: "genre", value: "Dancehall", action: "boosted" },
+      { signalType: "genre", value: "Soul", action: "boosted" },
+      { signalType: "mood", value: "Warm", action: "boosted" },
+    ]);
+    expect(captured.prompt?.myMix?.preferences?.additions).toEqual([{ genre: "Dancehall" }]);
   });
 
   describe("typing what the session is for", () => {
@@ -592,8 +666,102 @@ describe("AgentSessionPanel", () => {
 
       expect(removeFromQueue).not.toHaveBeenCalled();
       expect(addTracksToQueue).not.toHaveBeenCalled();
-      expect(setDjSet).not.toHaveBeenCalled();
+      expect(setDjSet).toHaveBeenCalledWith({
+        ...liveSet(),
+        preferences: expect.objectContaining({ source: "agent_session_prompt" }),
+      });
       expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "No new picks for those filters" }));
+    });
+
+    it("ignores an in-flight replan as soon as a newer My Mix edit arrives", async () => {
+      setUpLiveSet();
+      await loadMyMixCatalog();
+      captured.prompt?.myMix?.onSelect();
+      render();
+      effects.forEach((run) => run());
+      captured.prompt?.myMix?.onChange({ context: "evening:weekday", lanes: [] });
+      render();
+      effects.forEach((run) => run());
+
+      let resolvePick: (value: AgentNextPickResponse) => void = () => undefined;
+      getAgentNextPick.mockImplementationOnce(() => new Promise((resolve) => { resolvePick = resolve; }));
+      await vi.advanceTimersByTimeAsync(800);
+      expect(getAgentNextPick).toHaveBeenCalledTimes(1);
+
+      captured.prompt?.myMix?.onChange({
+        context: "evening:weekday",
+        lanes: [{ id: myMixLane.id, boost: true }],
+      });
+      render();
+      effects.forEach((run) => run());
+      resolvePick(pickResponse(["stale-1", "stale-2"]));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(removeFromQueue).not.toHaveBeenCalled();
+      expect(addTracksToQueue).not.toHaveBeenCalled();
+      expect(setDjSet).not.toHaveBeenCalled();
+    });
+
+    it("ignores in-flight manual picks after a My Mix edit or session change", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      await loadMyMixCatalog();
+      captured.prompt?.myMix?.onSelect();
+      render();
+      effects.forEach((run) => run());
+
+      let resolvePick: (value: AgentNextPickResponse) => void = () => undefined;
+      getAgentNextPick.mockImplementationOnce(() => new Promise((resolve) => { resolvePick = resolve; }));
+      const pendingPick = captured.onPick?.();
+      expect(getAgentNextPick).toHaveBeenCalledTimes(1);
+
+      captured.prompt?.myMix?.onChange({ context: "evening:weekday", lanes: [] });
+      render();
+      effects.forEach((run) => run());
+      resolvePick(pickResponse(["stale-manual-pick"]));
+      await pendingPick;
+      render();
+
+      expect(captured.pick).toBeNull();
+      expect(playQueue).not.toHaveBeenCalled();
+      expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ title: "AI Pick Ready" }));
+      expect(recordProductAnalytics).not.toHaveBeenCalledWith(
+        "tok",
+        "agent.next_pick_requested",
+        expect.anything(),
+      );
+
+      let resolveSessionPick: (value: AgentNextPickResponse) => void = () => undefined;
+      getAgentNextPick.mockImplementationOnce(() => new Promise((resolve) => { resolveSessionPick = resolve; }));
+      const pendingSessionPick = captured.onPick?.();
+      hookState.sessions = [session("s-new", [])];
+      render();
+      effects.forEach((run) => run());
+      resolveSessionPick(pickResponse(["stale-session-pick"]));
+      await pendingSessionPick;
+      render();
+
+      expect(getAgentNextPick).toHaveBeenCalledTimes(2);
+      expect(captured.pick).toBeNull();
+      expect(playQueue).not.toHaveBeenCalled();
+    });
+
+    it("clears remembered My Mix preferences when the listener switches to a regular preset", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      await loadMyMixCatalog();
+      captured.prompt?.myMix?.onSelect();
+      render();
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      captured.prompt?.onSelectPreset(preset);
+      render();
+
+      getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
+      await captured.onPick?.();
+
+      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { myMix?: unknown } }];
+      expect(body.preferences).toHaveProperty("myMix", null);
     });
 
     it("only updates local state when no DJ set is live yet", async () => {

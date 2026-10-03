@@ -2,10 +2,14 @@
 
 import { useId, useState } from "react";
 import type {
+    AgentMixCoverage,
+    AgentMixVocabulary,
+    AgentMyMixPreferences,
     AgentRequestCoverage,
     AgentSessionEnergy,
     AgentSessionRequest,
     AgentSessionRequestIgnoredKey,
+    ListeningLane,
 } from "../../lib/api";
 import {
     SESSION_ENERGY_BANDS,
@@ -15,6 +19,8 @@ import {
     ignoredKeyLabels,
 } from "../../lib/agentSessionRequest";
 import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
+import AgentMyMixEditor from "./AgentMyMixEditor";
+import { selectedMyMixLanes } from "../../lib/agentMyMix";
 
 export const SESSION_PROMPT_PLACEHOLDER = "Warm deep house around 122 BPM for cooking";
 
@@ -50,6 +56,18 @@ type Props = {
     /** A session is live: the main action updates it instead of starting one. */
     isLive?: boolean;
     isBusy?: boolean;
+    myMix?: {
+        lanes: readonly ListeningLane[];
+        vocabulary: AgentMixVocabulary;
+        preferences: AgentMyMixPreferences | null;
+        coverage?: AgentMixCoverage | null;
+        isSaving?: boolean;
+        saveMessage?: string | null;
+        canSave?: boolean;
+        onSelect: () => void;
+        onChange: (next: AgentMyMixPreferences) => void;
+        onSave: () => void;
+    };
     onSubmit: () => void;
 };
 
@@ -73,6 +91,7 @@ export default function AgentSessionPrompt({
     parseError = null,
     isLive = false,
     isBusy = false,
+    myMix,
     onSubmit,
 }: Props) {
     const id = useId();
@@ -88,6 +107,9 @@ export default function AgentSessionPrompt({
     const chips = chipsFromRequest(request);
     const ignoredLabels = ignoredKeyLabels(ignored);
     const notes = coverageNotes(coverage, request);
+    const myMixHasInputs = myMix?.preferences
+        ? selectedMyMixLanes(myMix.preferences, myMix.lanes).length > 0 || (myMix.preferences.additions?.length ?? 0) > 0
+        : false;
     const submitDisabled = isParsing || isBusy;
     const submitLabel = isBusy
         ? isLive ? "Updating…" : "Starting…"
@@ -112,6 +134,32 @@ export default function AgentSessionPrompt({
             <p className="aid-prompt-hint">
                 Your sentence is read once to set the filters below and is not saved.
             </p>
+
+            {myMix && myMix.lanes.some((lane) => !lane.hidden) ? (
+                <div className="aid-my-mix-choice">
+                    <button
+                        type="button"
+                        className={`aid-prompt-preset ${myMix.preferences ? "active" : ""}`}
+                        aria-pressed={Boolean(myMix.preferences)}
+                        onClick={myMix.onSelect}
+                    >
+                        My Mix
+                    </button>
+                    {myMix.preferences ? (
+                        <AgentMyMixEditor
+                            lanes={myMix.lanes}
+                            vocabulary={myMix.vocabulary}
+                            preferences={myMix.preferences}
+                            coverage={myMix.coverage}
+                            isSaving={myMix.isSaving}
+                            saveMessage={myMix.saveMessage}
+                            canSave={myMix.canSave}
+                            onChange={myMix.onChange}
+                            onSave={myMix.onSave}
+                        />
+                    ) : null}
+                </div>
+            ) : null}
 
             <div className="aid-prompt-preset-groups" onMouseLeave={() => setPreviewIntent(null)}>
                 {PRESET_GROUPS.map((group) => {
@@ -157,6 +205,12 @@ export default function AgentSessionPrompt({
                     <strong>{describedPreset.name}.</strong> {describedPreset.description}{" "}
                     <span className="aid-prompt-preset-expect">You&apos;ll hear: {describedPreset.output}.</span>
                 </p>
+            ) : myMix?.preferences ? (
+                <p className="aid-prompt-hint">
+                    {myMixHasInputs
+                        ? "My Mix will blend your selected listening lanes."
+                        : "No lanes selected; the DJ will use your usual taste."}
+                </p>
             ) : (
                 <p className="aid-prompt-hint">Pick a quick start to see what it sounds like, or describe the session above.</p>
             )}
@@ -198,7 +252,7 @@ export default function AgentSessionPrompt({
                             </li>
                         ))}
                     </ul>
-                ) : (
+                ) : myMix?.preferences ? null : (
                     <p className="aid-prompt-hint">
                         {isParsing ? "Reading what you wrote…" : "No filters yet: the DJ will choose from your saved vibes."}
                     </p>

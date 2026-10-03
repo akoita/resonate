@@ -325,6 +325,7 @@ describe("Scene Scout unmet demand (integration)", () => {
     );
     const result = await sessions.agentNext({
       sessionId,
+      userId: SESSION_USER,
       preferences: {
         request: { genres: ["Jazz"], moods: [], energy: null, bpm: null },
       },

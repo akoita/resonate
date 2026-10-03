@@ -1,5 +1,6 @@
 import type { OrchestratedTrack } from "./agent_orchestrator.service";
 import type { AgentRequestCoverage } from "./agent_session_request";
+import type { MixCoverage } from "./agent_my_mix";
 import type { AgentRuntimeResult } from "./runtime/agent_runtime.adapter";
 
 export type AgentLicenseType = "personal" | "remix" | "commercial";
@@ -10,6 +11,8 @@ export type AgentRuntimeOrchestratorResult = {
   shortfall?: number;
   /** Coverage of the listener's described session (#2037); deterministic path only. */
   requestCoverage?: AgentRequestCoverage;
+  /** Private My Mix coverage; returned only through owner-checked session APIs. */
+  mixCoverage?: MixCoverage;
   /** The selector's categorical reason when nothing was returned (#2056). */
   reason?: string;
 };
@@ -51,6 +54,7 @@ export interface AgentRuntimeCommerceResult {
   shortfall?: number;
   /** How well the picks matched the listener's described session (#2037). Absent for LLM picks. */
   requestCoverage?: AgentRequestCoverage;
+  mixCoverage?: MixCoverage;
 }
 
 function normalizeStatus(status: string): AgentRuntimeCommerceStatus {
@@ -105,6 +109,7 @@ export function normalizeAgentRuntimeResult(
       primaryTrack: tracks[0],
       shortfall: result.shortfall,
       ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
+      ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
       ...(result.reason ? { reason: result.reason } : {}),
     };
   }

@@ -10,10 +10,35 @@ import {
 import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
 import { EventBus } from "../shared/event_bus";
 import { discoveryVariantForUser } from "../recommendations/discovery_experiment";
+import { resolveListeningLanes } from "./listening_lanes.service";
+import {
+  MixCoverage,
+  resolveMyMixPlan,
+  ResolvedMyMixPlan,
+} from "./agent_my_mix";
+import { getAgentTrackLimit } from "./agent_runtime.config";
+
+export interface MyMixLaneDemandObservation {
+  laneId: string;
+  requested: number;
+  genres: string[];
+  moods: string[];
+  matchedTrackIds: string[];
+}
+
+type SessionMixSnapshot = {
+  userId: string;
+  sessionId: string;
+  coverage: MixCoverage;
+  demand: MyMixLaneDemandObservation[];
+};
+
+const MY_MIX_SESSION_CACHE_LIMIT = 128;
 
 @Injectable()
 export class AgentRuntimeService {
   private readonly logger = new Logger(AgentRuntimeService.name);
+  private readonly myMixSessions = new Map<string, SessionMixSnapshot>();
 
   constructor(
     private readonly executor: AgentRuntimeExecutorService,
@@ -32,11 +57,39 @@ export class AgentRuntimeService {
    * (`tracks`) already did, inside the selector.
    */
   async run(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
-    const result = await this.execute(input);
+    const plan = await this.resolveMyMix(input);
+    if (!plan) this.clearMyMixSession(input.userId, input.sessionId);
+    const safeInput = withoutMyMix(input);
+    const result = plan
+      ? await this.executor.runWithMyMix(safeInput, plan)
+      : await this.execute(safeInput);
     const final =
       this.policy && !("tracks" in result) ? await this.policy.apply(input, result) : result;
+    if (plan && "tracks" in final) {
+      this.rememberMyMixSession(input.userId, input.sessionId, plan, final);
+    }
     this.recordVariant(input, final);
     return final;
+  }
+
+  getInitialMixCoverage(userId: string, sessionId: string): MixCoverage | undefined {
+    const key = this.sessionCacheKey(userId, sessionId);
+    const cached = this.myMixSessions.get(key);
+    if (!cached || cached.userId !== userId || cached.sessionId !== sessionId) return undefined;
+    this.myMixSessions.delete(key);
+    this.myMixSessions.set(key, cached);
+    return structuredClone(cached.coverage);
+  }
+
+  takeMyMixDemandObservations(userId: string, sessionId: string): MyMixLaneDemandObservation[] {
+    const key = this.sessionCacheKey(userId, sessionId);
+    const cached = this.myMixSessions.get(key);
+    if (!cached || cached.userId !== userId || cached.sessionId !== sessionId) return [];
+    return structuredClone(cached.demand);
+  }
+
+  clearMyMixSession(userId: string, sessionId: string): void {
+    this.myMixSessions.delete(this.sessionCacheKey(userId, sessionId));
   }
 
   /**
@@ -84,7 +137,62 @@ export class AgentRuntimeService {
     }
   }
 
+  private async resolveMyMix(input: AgentRuntimeInput): Promise<ResolvedMyMixPlan | undefined> {
+    if (input.preferences?.myMix == null) return undefined;
+    const visibleLanes = await resolveListeningLanes(input.userId);
+    return resolveMyMixPlan(input.preferences.myMix, visibleLanes, getAgentTrackLimit());
+  }
+
+  private rememberMyMixSession(
+    userId: string,
+    sessionId: string,
+    plan: ResolvedMyMixPlan,
+    result: Extract<AgentRuntimeRunResult, { tracks: unknown[] }>,
+  ) {
+    const trackIdsByLane = new Map<string, string[]>();
+    for (const track of result.tracks as Array<{ trackId: string; mixLaneId?: string }>) {
+      if (!track.mixLaneId) continue;
+      trackIdsByLane.set(track.mixLaneId, [...(trackIdsByLane.get(track.mixLaneId) ?? []), track.trackId]);
+    }
+    const coverage = result.mixCoverage ?? {
+      lanes: plan.lanes.map((lane) => ({
+        id: lane.id,
+        label: lane.label,
+        requested: lane.requested,
+        matched: trackIdsByLane.get(lane.id)?.length ?? 0,
+      })),
+    };
+    const demand = plan.lanes.map((lane) => ({
+      laneId: lane.id,
+      requested: lane.requested,
+      genres: Object.keys(lane.genreWeights),
+      moods: Object.keys(lane.genreWeights).length > 0 ? [] : Object.keys(lane.moodWeights),
+      matchedTrackIds: trackIdsByLane.get(lane.id) ?? [],
+    }));
+    const key = this.sessionCacheKey(userId, sessionId);
+    this.myMixSessions.delete(key);
+    this.myMixSessions.set(key, { userId, sessionId, coverage, demand });
+    if (this.myMixSessions.size > MY_MIX_SESSION_CACHE_LIMIT) {
+      this.myMixSessions.delete(this.myMixSessions.keys().next().value!);
+    }
+  }
+
+  private sessionCacheKey(userId: string, sessionId: string) {
+    return `${userId}\0${sessionId}`;
+  }
+
   async runCommerce(input: AgentRuntimeInput): Promise<AgentRuntimeCommerceResult> {
     return normalizeAgentRuntimeResult(await this.run(input));
   }
+}
+
+function withoutMyMix(input: AgentRuntimeInput): AgentRuntimeInput {
+  const { myMix: _myMix, ...preferences } = input.preferences ?? {};
+  return {
+    sessionId: input.sessionId,
+    userId: input.userId,
+    recentTrackIds: input.recentTrackIds,
+    budgetRemainingUsd: input.budgetRemainingUsd,
+    preferences,
+  };
 }

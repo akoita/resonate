@@ -1,13 +1,16 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { WalletService } from "../identity/wallet.service";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
 import { AgentRuntimeService } from "../agents/agent_runtime.service";
+import type { MyMixPreferences } from "../agents/agent_my_mix";
 import { djPickVariantFields } from "./dj_pick_variant";
 import { AgentLearningService } from "../agents/agent_learning.service";
 import { getAgentTrackLimit } from "../agents/agent_runtime.config";
+import { resolveListeningLanes } from "../agents/listening_lanes.service";
+import { resolveMyMixPlan } from "../agents/agent_my_mix";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
 import {
@@ -33,6 +36,8 @@ export interface AgentPreferences {
    * text itself. Sent again on a mid-session edit, it replaces the old request.
    */
   request?: AgentSessionRequest;
+  /** Session-only preference; explicit null clears it on the next request. */
+  myMix?: MyMixPreferences | null;
 }
 
 @Injectable()
@@ -57,6 +62,13 @@ export class SessionsService {
     budgetCapUsd: number;
     preferences?: AgentPreferences;
   }) {
+    if (input.preferences?.myMix != null) {
+      resolveMyMixPlan(
+        input.preferences.myMix,
+        await resolveListeningLanes(input.userId),
+        getAgentTrackLimit(),
+      );
+    }
     await this.walletService.setBudget({
       userId: input.userId,
       monthlyCapUsd: input.budgetCapUsd,
@@ -78,7 +90,7 @@ export class SessionsService {
       sessionId: session.id,
       userId: input.userId,
       budgetCapUsd: input.budgetCapUsd,
-      preferences: (input.preferences ?? {}) as Record<string, unknown>,
+      preferences: publicSessionPreferences(input.preferences ?? {}),
     });
     return session;
   }
@@ -92,6 +104,7 @@ export class SessionsService {
       where: { id: sessionId },
       data: { endedAt: new Date() },
     });
+    this.agentRuntimeService.clearMyMixSession?.(session.userId, sessionId);
     this.eventBus.publish({
       eventName: "session.ended",
       eventVersion: 1,
@@ -234,10 +247,23 @@ export class SessionsService {
     };
   }
 
-  async agentNext(input: { sessionId: string; preferences?: AgentPreferences }) {
+  async agentNext(input: { sessionId: string; userId: string; preferences?: AgentPreferences }) {
     const session = await prisma.session.findUnique({ where: { id: input.sessionId } });
-    if (!session || session.endedAt) {
+    if (!session || session.userId !== input.userId) {
+      throw new NotFoundException("Session not found");
+    }
+    if (session.endedAt) {
       return { status: "session_inactive" };
+    }
+
+    // Validate edits before remembering them so a rejected request cannot
+    // poison this session's preferences for a later continuation.
+    if (input.preferences?.myMix != null) {
+      resolveMyMixPlan(
+        input.preferences.myMix,
+        await resolveListeningLanes(session.userId),
+        getAgentTrackLimit(),
+      );
     }
 
     const preferences = this.mergeAgentPreferences(
@@ -272,6 +298,8 @@ export class SessionsService {
           : {}),
       },
     });
+
+    await this.recordMyMixDemand(input.sessionId, session.userId);
 
     if (this.unmetDemand && requested.request && (result.status === "approved" || result.status === "no_tracks")) {
       try {
@@ -336,6 +364,7 @@ export class SessionsService {
         tracks: [],
         reason: result.reason,
         shortfall: result.shortfall,
+        ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
       };
     }
 
@@ -348,6 +377,7 @@ export class SessionsService {
         status: "no_tracks",
         tracks: [],
         reason: "selected_track_not_found",
+        ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
       };
     }
 
@@ -363,7 +393,7 @@ export class SessionsService {
       sessionId,
       trackId: track.id,
       strategy: "runtime",
-      preferences: (this.agentPreferences.get(sessionId) ?? {}) as Record<string, unknown>,
+      preferences: publicSessionPreferences(this.agentPreferences.get(sessionId) ?? {}),
       cohortInfluence: cohortInfluenceFromSignals(selected.signals),
     });
 
@@ -398,7 +428,35 @@ export class SessionsService {
       shortfall: result.shortfall,
       // #2037: how well the picks matched the described session; deterministic path only.
       ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
+      ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
     };
+  }
+
+  private async recordMyMixDemand(sessionId: string, userId: string) {
+    if (!this.unmetDemand) return;
+    const observations = this.agentRuntimeService.takeMyMixDemandObservations?.(userId, sessionId) ?? [];
+    for (const observation of observations) {
+      if (observation.requested <= 0 || observation.matchedTrackIds.length >= observation.requested) continue;
+      const request: AgentSessionRequest = {
+        genres: observation.genres,
+        moods: observation.moods,
+        energy: null,
+        bpm: null,
+      };
+      try {
+        await this.unmetDemand.recordSessionShortfall({
+          userId,
+          sessionId,
+          resultStatus: observation.matchedTrackIds.length > 0 ? "approved" : "no_tracks",
+          observedAt: new Date(),
+          request,
+          requestedCount: observation.requested,
+          foundTrackIds: observation.matchedTrackIds,
+        });
+      } catch {
+        this.logger.warn("My Mix unmet-demand observation was skipped after an agent session result.");
+      }
+    }
   }
 
   /**
@@ -514,4 +572,9 @@ function cohortInfluenceFromSignals(signals?: Array<{ label: string; reason: str
     cohortTypes: [...new Set(reasonCodes.map((reason) => reason.split(":", 1)[0]).filter(Boolean))],
     reasonCodes,
   };
+}
+
+function publicSessionPreferences(preferences: AgentPreferences): Record<string, unknown> {
+  const { myMix: _myMix, ...publicPreferences } = preferences;
+  return publicPreferences;
 }

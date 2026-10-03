@@ -109,7 +109,8 @@ The learned profile is not DJ-private. The AI DJ selector and the Home feed
    Home pass the same `genreWeights` to the core. Session start merges the same
    `favoredGenres` into queries. Mood, credited artist, measured energy/tempo
    and coarse contextual weights enrich the profile and Taste Memory summaries;
-   this slice does not add new ranking dimensions or listening lanes.
+   Home continues to consume the shared profile. My Mix uses derived listening
+   lanes when explicitly selected.
 3. **One served history.** Home writes `RecommendationProfile.servedTrackIds`;
    the DJ reads it and demotes already-served tracks (not an exclusion).
 4. **Session intent is context.** Intent, mood and queue style travel with the
@@ -151,3 +152,24 @@ retries; local context contains only hour buckets and weekday/weekend labels.
 See [learning from listening habits](../features/agent_taste_intelligence.md#learning-from-listening-habits-2062)
 for the complete mappings and privacy boundaries. Stopping an AI DJ session
 annotates existing signals from that session with a coarse duration outcome.
+
+## Lane sessions (#2064–#2065)
+
+Listening lanes derive catalog genre/mood patterns from repeated, governed
+sessions. Bounded cached summaries contain no raw playback history. Taste
+Memory shows the lanes and lets listeners hide or restore them. The My Mix
+session request carries selected lane IDs, session-only boosts, catalog
+additions and one coarse local context. The server resolves current visible
+lanes for the session owner on every run, then computes whole-track quotas.
+
+The deterministic selector ranks each lane as session intent and applies the
+shared policy globally, including exploration and artist caps. Empty quota
+slots move to stronger lanes, with existing catalog fallback afterward.
+Coverage counts actual lane assignments; a fallback pick cannot conceal a
+missing lane. Existing consent-gated unmet-demand recording consumes those
+lane gaps. The model runtime cannot supply lane names, quotas or coverage.
+
+Basic mixes are free. The advanced Listener Pro entitlement seam remains off;
+ordering and evaluation remain tracked in #2066 and #2067. These are ADR-BM-6
+Line 4 phase 4 candidates, with free basics supporting Line 1 engagement.
+See [My Mix](../features/agent_taste_intelligence.md#my-mix-2065).

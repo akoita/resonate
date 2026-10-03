@@ -1,4 +1,5 @@
 import type { AgentSessionRequest, AgentSessionTempoRange } from "../agent_session_request";
+import type { MyMixPreferences } from "../agent_my_mix";
 
 export interface AgentRuntimeInput {
   sessionId: string;
@@ -27,6 +28,8 @@ export interface AgentRuntimeInput {
     tempoBpm?: AgentSessionTempoRange;
     /** The listening filters parsed from the listener's own words (#2037); never the text. */
     request?: AgentSessionRequest;
+    /** Untrusted session-only preferences; resolved server-side at runtime. */
+    myMix?: MyMixPreferences | null;
   };
 }
 

@@ -20,4 +20,17 @@ describe("humanPickReason (#2056)", () => {
     expect(humanPickReason("rejected", "budget_exceeded")).toBe("budget exceeded");
     expect(humanPickReason()).toBe("No runtime pick returned.");
   });
+
+  it("uses private catalog lane labels for My Mix shortfalls", () => {
+    const laneId = "lane_0123456789abcdef0123456789abcdef";
+    expect(humanPickReason("no_tracks", "all_candidates_recently_played", {
+      lanes: [{ id: laneId, label: "Soul · Warm", requested: 5, matched: 0 }],
+    })).toBe("Not enough new tracks for Soul · Warm yet.");
+    expect(humanPickReason("all_rejected", "policy_rejected", {
+      lanes: [{ id: laneId, label: "Soul · Warm", requested: 5, matched: 1 }],
+    })).toBe("Matching tracks were found, but none passed the DJ's policy checks. Only 1 of 5 picks matched Soul · Warm.");
+    expect(humanPickReason("no_tracks", "all_candidates_recently_played", {
+      lanes: [{ id: laneId, label: laneId, requested: 2, matched: 0 }],
+    })).toBe("Not enough new tracks for this lane yet.");
+  });
 });

@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane"],
     sections: [
       {
         id: "sessions",
@@ -529,12 +529,35 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/ai-dj.png`,
-              alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate and play tracks for you in real time.",
-              caption: "Setting up your AI DJ the first time.",
+              alt: "The AI DJ session panel with My Mix selected, two listening lanes labelled Soul · Warm and Ambient · Zen, and controls to boost, remove or add music preferences for the session.",
+              caption: "My Mix blends your listening lanes. Edit them for this session before starting.",
               width: 1440,
-              height: 900,
+              height: 1200,
               source: LOCAL,
             },
+          },
+        ],
+      },
+      {
+        id: "my-mix",
+        heading: "Blend your listening lanes with My Mix",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Once repeated listening has revealed different sides of your taste, My Mix appears first among the AI DJ quick starts. It blends your visible listening lanes, giving more room to stronger habits and the ones that fit the broad time of day. If it is not there yet, keep listening or choose any of the other quick starts.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Choose My Mix, then remove a lane, boost its share, or add a genre or mood from the catalog. You can make the same edits while listening to change the upcoming picks.",
+              "Edits stay in this session. Choose Save to Taste Memory only when you want to keep a preference for future recommendations.",
+              "The DJ still leaves room for new human artists and keeps variety across artists. Each pick explains which lane it fits.",
+              "If there is not enough new music for a lane, the DJ tells you. Other lanes may fill the space, but those picks never count as matching the missing lane.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Basic My Mix is free. Saved named mixes, energy changes within a lane, and advanced length or ordering controls are not available yet.",
           },
         ],
       },
@@ -2975,7 +2998,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Your listening lanes show the different sides of your taste once you have enough repeated listening across sessions. Each card uses music labels and broad times, such as weekday evenings. Choose Hide from mixes to leave that lane out, or Restore to mixes to bring it back. Mixes are coming later; you can already review these patterns and save your choices. Reset clears learned lanes and their hide choices, while keeping the preferences you explicitly saved.",
+            text: "Your listening lanes show the different sides of your taste once you have enough repeated listening across sessions. Each card uses music labels and broad times, such as weekday evenings. Choose Hide from mixes to leave that lane out, or Restore to mixes to bring it back. Choose My Mix in the AI DJ to blend your visible lanes. Hiding a lane leaves it out of future mixes. Reset clears learned lanes and their hide choices, while keeping the preferences you explicitly saved.",
           },
           {
             kind: "paragraph",

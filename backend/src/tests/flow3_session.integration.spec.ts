@@ -188,6 +188,7 @@ describe('Choreography Flow 3: Agent Session Lifecycle', () => {
     // Step 2: Select track through the session-owned runtime boundary
     const selection = await sessionsService.agentNext({
       sessionId: session.id,
+      userId,
       preferences: { genres: ['electronic'] },
     }) as any;
 

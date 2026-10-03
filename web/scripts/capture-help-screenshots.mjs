@@ -163,7 +163,19 @@ const AUTH_TARGETS = [
       await page.getByRole("heading", { name: "Tell us what you want more or less of" }).scrollIntoViewIfNeeded();
     },
   }],
-  ["/#ai-dj", "ai-dj.png", { prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); } }],
+  ["/#ai-dj", "ai-dj.png", {
+    mockTasteMemory: true,
+    mockMyMix: true,
+    viewportHeight: 1200,
+    prepare: async (page) => {
+      await page.clock.setFixedTime(new Date("2026-10-03T19:00:00.000Z"));
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.getByRole("button", { name: "My Mix", exact: true }).click();
+      await page.getByText("Soul · Warm", { exact: true }).first().waitFor();
+      await page.locator("#ai-dj").scrollIntoViewIfNeeded();
+      await page.evaluate(() => document.activeElement?.blur());
+    },
+  }],
   ["/sonic-radar", "sonic-radar.png", {
     // ADR-TE-5: the discovery journal, drawn from a fixed sample journal.
     mockDiscoveries: true,
@@ -391,7 +403,7 @@ async function capture(page, targets, passName) {
                 strength: 0.8,
                 contexts: laneContexts({ nightWeekend: 0.95 }),
                 energyBand: null,
-                hidden: true,
+                hidden: !ready.mockMyMix,
               },
             ],
             recentIntents: [],
@@ -402,7 +414,9 @@ async function capture(page, targets, passName) {
           controls: [
             { id: "guide-control-1", signalType: "genre", value: "Jazz", action: "boosted", source: "declared_text_edit", createdAt },
             { id: "guide-control-2", signalType: "mood", value: "Dark", action: "downranked", source: null, createdAt },
-            { id: "guide-lane-control-1", signalType: "lane", value: "lane_fedcba9876543210fedcba9876543210", action: "hidden", source: "settings", createdAt },
+            ...(ready.mockMyMix ? [] : [
+              { id: "guide-lane-control-1", signalType: "lane", value: "lane_fedcba9876543210fedcba9876543210", action: "hidden", source: "settings", createdAt },
+            ]),
           ],
           privacy: {
             socialMatching: "disabled",
@@ -422,6 +436,20 @@ async function capture(page, targets, passName) {
           ],
         },
       }));
+    }
+    if (ready?.mockMyMix) {
+      await page.addInitScript(() => sessionStorage.setItem("resonate.agent_onboarding_dismissed", "1"));
+      await page.route("**/agents/config", (request) => request.fulfill({ json: {
+        id: "guide-dj", userId: "guide-listener", name: "Your DJ",
+        vibes: ["Soul", "Ambient"], stemTypes: [], isActive: false,
+        monthlyCapUsd: 0, sessionMode: "curate", tasteScore: 0,
+        reputationScore: 0, learnedTasteProfile: null, reputationSnapshot: null,
+      } }));
+      await page.route("**/agents/config/history", (request) => request.fulfill({ json: [] }));
+      await page.route("**/agents/config/session/mix-vocabulary", (request) => request.fulfill({ json: {
+        genres: ["Soul", "Ambient", "Jazz", "Dancehall"],
+        moods: ["Warm", "Zen", "Focus", "Hype"],
+      } }));
     }
     if (ready?.mockDiscoveries) {
       const item = (trackId, title, artistName, extra) => ({

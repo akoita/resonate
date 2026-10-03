@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentSessionRequest } from "../../lib/api";
+import type { AgentMixVocabulary, AgentSessionRequest, ListeningLane } from "../../lib/api";
 import AgentSessionPrompt from "./AgentSessionPrompt";
 import { SESSION_PRESETS } from "./AgentSessionPresets";
 
@@ -11,6 +11,17 @@ const request: AgentSessionRequest = {
   energy: "medium",
   bpm: { min: 120, max: 125 },
 };
+const myMixLane: ListeningLane = {
+  id: "lane_private_0123456789abcdef0123456789abcdef",
+  label: "Soul · Warm",
+  genreWeights: { Soul: 0.8 },
+  moodWeights: { Warm: 0.7 },
+  strength: 0.9,
+  contexts: {},
+  energyBand: null,
+  hidden: false,
+};
+const vocabulary: AgentMixVocabulary = { genres: ["Dancehall"], moods: ["Zen"] };
 
 function render(props: Partial<React.ComponentProps<typeof AgentSessionPrompt>> = {}) {
   return renderToStaticMarkup(
@@ -56,6 +67,25 @@ describe("AgentSessionPrompt", () => {
     expect(html).toContain(">Moods<");
     expect(html.indexOf(">Genres<")).toBeLessThan(html.indexOf(">Moods<"));
     expect(html.indexOf("Hip-Hop &amp; Rap")).toBeLessThan(html.indexOf("Neural Flow"));
+  });
+
+  it("puts My Mix before ordinary presets only when a visible lane is available", () => {
+    const myMix = {
+      lanes: [myMixLane],
+      vocabulary,
+      preferences: { context: "evening:weekday" as const },
+      onSelect: vi.fn(),
+      onChange: vi.fn(),
+      onSave: vi.fn(),
+    };
+    const html = render({ myMix });
+    expect(html.indexOf(">My Mix</button>")).toBeLessThan(html.indexOf(">Genres<"));
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("Add a genre or mood");
+    expect(html).not.toContain(myMixLane.id);
+
+    const hidden = render({ myMix: { ...myMix, lanes: [{ ...myMixLane, hidden: true }] } });
+    expect(hidden).not.toContain(">My Mix</button>");
   });
 
   it("describes the selected preset and what it sounds like, visibly (#2052)", () => {

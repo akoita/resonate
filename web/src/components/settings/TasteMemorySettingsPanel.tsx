@@ -175,7 +175,7 @@ export function ListeningLaneSection({
       <h4>Your listening lanes</h4>
       {lanes.length ? (
         <>
-          <p>Hide a lane to keep it out of future mixes. Mixes are not available yet.</p>
+          <p>Hide a lane to keep it out of My Mix in the AI DJ. Restore it whenever you want it back.</p>
           <div className="taste-memory-lane-grid">
             {lanes.map((lane) => {
               const contextLabels = buildListeningLaneContextLabels(lane);
@@ -204,7 +204,7 @@ export function ListeningLaneSection({
           </div>
         </>
       ) : (
-        <p>No lanes yet. Repeated listening sessions are needed before listening lanes appear. Mixes are not available yet.</p>
+        <p>No lanes yet. Repeated listening sessions are needed before listening lanes and My Mix appear.</p>
       )}
     </section>
   );
