@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import type {
     AgentRequestCoverage,
     AgentSessionEnergy,
@@ -17,6 +17,17 @@ import {
 import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
 
 export const SESSION_PROMPT_PLACEHOLDER = "Warm deep house around 122 BPM for cooking";
+
+/** Everyday genres first, then the mood presets (#2052). */
+const PRESET_GROUPS: Array<{ key: SessionPreset["group"]; label: string }> = [
+    { key: "genre", label: "Genres" },
+    { key: "mood", label: "Moods" },
+];
+
+/** Plain-words summary of a preset, for screen readers and the visible note. */
+function presetSummary(preset: SessionPreset): string {
+    return `${preset.description} You'll hear: ${preset.output}.`;
+}
 
 type Props = {
     text: string;
@@ -66,6 +77,14 @@ export default function AgentSessionPrompt({
 }: Props) {
     const id = useId();
     const textId = `${id}-text`;
+    // The preset under the pointer or keyboard focus, else the selected one.
+    const [previewIntent, setPreviewIntent] = useState<string | null>(null);
+    const describedPreset =
+        presets.find((preset) => preset.intent === previewIntent) ??
+        presets.find((preset) => preset.intent === activePresetIntent) ??
+        null;
+    const presetDescriptionId = (preset: SessionPreset) =>
+        `${id}-preset-${preset.intent.replace(/[^a-zA-Z0-9_-]/g, "")}`;
     const chips = chipsFromRequest(request);
     const ignoredLabels = ignoredKeyLabels(ignored);
     const notes = coverageNotes(coverage, request);
@@ -94,20 +113,53 @@ export default function AgentSessionPrompt({
                 Your sentence is read once to set the filters below and is not saved.
             </p>
 
-            <div className="aid-prompt-presets" role="group" aria-label="Quick starts">
-                {presets.map((preset) => (
-                    <button
-                        key={preset.name}
-                        type="button"
-                        className={`aid-prompt-preset ${activePresetIntent === preset.intent ? "active" : ""}`}
-                        aria-pressed={activePresetIntent === preset.intent}
-                        title={preset.description}
-                        onClick={() => onSelectPreset(preset)}
-                    >
-                        {preset.name}
-                    </button>
-                ))}
+            <div className="aid-prompt-preset-groups" onMouseLeave={() => setPreviewIntent(null)}>
+                {PRESET_GROUPS.map((group) => {
+                    const groupPresets = presets.filter((preset) => preset.group === group.key);
+                    if (groupPresets.length === 0) return null;
+                    const groupLabelId = `${id}-presets-${group.key}`;
+                    return (
+                        <div key={group.key} className="aid-prompt-preset-group">
+                            <span id={groupLabelId} className="aid-prompt-preset-group-label">
+                                {group.label}
+                            </span>
+                            <div className="aid-prompt-presets" role="group" aria-labelledby={groupLabelId}>
+                                {groupPresets.map((preset) => (
+                                    <button
+                                        key={preset.name}
+                                        type="button"
+                                        className={`aid-prompt-preset ${activePresetIntent === preset.intent ? "active" : ""}`}
+                                        aria-pressed={activePresetIntent === preset.intent}
+                                        aria-describedby={presetDescriptionId(preset)}
+                                        onClick={() => onSelectPreset(preset)}
+                                        onMouseEnter={() => setPreviewIntent(preset.intent)}
+                                        onFocus={() => setPreviewIntent(preset.intent)}
+                                        onBlur={() => setPreviewIntent(null)}
+                                    >
+                                        {preset.name}
+                                    </button>
+                                ))}
+                            </div>
+                            {/* Descriptions live outside the buttons so they never join the button's name. */}
+                            <div className="visually-hidden">
+                                {groupPresets.map((preset) => (
+                                    <span key={preset.name} id={presetDescriptionId(preset)}>
+                                        {presetSummary(preset)}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
+            {describedPreset ? (
+                <p className="aid-prompt-preset-about" data-testid="agent-session-preset-about">
+                    <strong>{describedPreset.name}.</strong> {describedPreset.description}{" "}
+                    <span className="aid-prompt-preset-expect">You&apos;ll hear: {describedPreset.output}.</span>
+                </p>
+            ) : (
+                <p className="aid-prompt-hint">Pick a quick start to see what it sounds like, or describe the session above.</p>
+            )}
 
             <div className="aid-prompt-filters" aria-live="polite">
                 {chips.length > 0 ? (

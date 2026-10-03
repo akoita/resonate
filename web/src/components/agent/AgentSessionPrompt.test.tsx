@@ -39,12 +39,47 @@ describe("AgentSessionPrompt", () => {
     expect(html).toContain("No filters yet");
   });
 
-  it("shows the five presets as quick-start chips and marks the active one", () => {
+  it("shows every preset as a quick-start chip and marks the active one", () => {
     const html = render({ activePresetIntent: "Hype" });
-    for (const preset of SESSION_PRESETS) expect(html).toContain(preset.name);
+    const escape = (value: string) => value.replace(/&/g, "&amp;");
+    for (const preset of SESSION_PRESETS) expect(html).toContain(escape(preset.name));
     expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
     expect(html.match(/aria-pressed="false"/g)).toHaveLength(SESSION_PRESETS.length - 1);
     expect(html).toMatch(/aria-pressed="true"[^>]*>Pulse Raid</);
+  });
+
+  it("offers everyday genre presets before the mood presets (#2052)", () => {
+    const html = render();
+    const genres = SESSION_PRESETS.filter((preset) => preset.group === "genre");
+    expect(genres.length).toBeGreaterThanOrEqual(6);
+    expect(html).toContain(">Genres<");
+    expect(html).toContain(">Moods<");
+    expect(html.indexOf(">Genres<")).toBeLessThan(html.indexOf(">Moods<"));
+    expect(html.indexOf("Hip-Hop &amp; Rap")).toBeLessThan(html.indexOf("Neural Flow"));
+  });
+
+  it("describes the selected preset and what it sounds like, visibly (#2052)", () => {
+    const html = render({ activePresetIntent: "R&B" });
+    const about = html.slice(html.indexOf('data-testid="agent-session-preset-about"'));
+    expect(about).toContain("R&amp;B &amp; Soul.");
+    expect(about).toContain("Smooth vocals and slow grooves");
+    expect(about).toContain("You&#x27;ll hear: Silky singing over warm, laid-back grooves.");
+  });
+
+  it("invites a choice when no preset is selected", () => {
+    const html = render();
+    expect(html).not.toContain('data-testid="agent-session-preset-about"');
+    expect(html).toContain("Pick a quick start to see what it sounds like");
+  });
+
+  it("gives every chip a screen-reader description outside its accessible name", () => {
+    const html = render();
+    const describedBy = [...html.matchAll(/aria-describedby="([^"]+)"/g)].map((match) => match[1]);
+    expect(describedBy).toHaveLength(SESSION_PRESETS.length);
+    expect(new Set(describedBy).size).toBe(SESSION_PRESETS.length);
+    for (const id of describedBy) expect(html).toContain(`id="${id}"`);
+    // The chip's own text stays just the preset name.
+    expect(html).toMatch(/aria-describedby="[^"]+">Neural Flow<\/button>/);
   });
 
   it("renders each parsed filter as a removable chip and energy as a select", () => {

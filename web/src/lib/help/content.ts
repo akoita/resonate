@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage"],
     sections: [
       {
         id: "sessions",
@@ -544,7 +544,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Type what the session is for, for example \"Warm deep house around 122 BPM for cooking\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. The five quick starts, Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift and Static Calm, fill in the same kind of chips for you.",
+            text: "Type what the session is for, for example \"Warm deep house around 122 BPM for cooking\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. Not sure what to type? The quick starts fill in the same kind of chips for you. Under Genres are everyday choices: Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton and World Music. Under Moods are Neural Flow (focus), Pulse Raid (high energy), Liquid Sky (chill), Abyss Shift (dark) and Static Calm (calm). Choose or point at one to see what it's for and what you'll hear before you start. The DJ does not understand artist names yet, so \"like Beyoncé\" shows up under Didn't catch; name a genre instead.",
           },
           {
             kind: "list",

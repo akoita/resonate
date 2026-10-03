@@ -56,7 +56,7 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > 20 requests a minute) into visible listening filters: genres and moods from
 > the catalog vocabulary, an energy band (low, medium, high) and a tempo range.
 > The listener sees each filter as a chip, can remove or edit any of them, and
-> starts the session from the filters. The five presets are quick-start chips:
+> starts the session from the filters. The presets are quick-start chips:
 > one fills the box and the chips without parsing and starts the same session
 > the preset started before. Anything the parser could not read is listed under
 > "Didn't catch", and Crate Digger-only terms (keys, stems, license tier, price
@@ -77,6 +77,18 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > rows, kept in browser storage or sent to analytics; only the parsed filters
 > (genres, moods, energy, tempo) travel on to the session, and analytics carry
 > filter keys and counts only. The saved vibes in Settings are never written.
+
+> **Everyday genre quick starts (#2052).** Vision-neutral UX quality: no money,
+> payout or fee changes. The quick starts come in two labelled rows. **Genres**
+> holds seven everyday presets (Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats &
+> Amapiano, Reggae & Dancehall, Latin & Reggaeton, World Music) built only from
+> genres in the parser vocabulary, with an energy band and no mood. **Moods**
+> holds the original five, whose filters and analytics intents are unchanged.
+> Choosing, pointing at or focusing a preset shows a visible note with what the
+> session is for and "You'll hear: …"; each chip also carries that text as its
+> screen-reader description, outside its accessible name (the old hover-only
+> `title` tooltip is gone). Artist names are not a filter yet, so "like
+> Beyoncé" still appears under "Didn't catch"; that is a separate follow-up.
 
 > **Session playback.** Starting a session from the AI DJ section plays the
 > session's first picks in the player once they are recorded (the panel polls
