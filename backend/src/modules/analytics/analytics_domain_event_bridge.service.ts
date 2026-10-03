@@ -1164,6 +1164,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
   {
     eventName: "x402.purchase",
     producer: "x402-controller",
+    consentBasis: "performance_of_contract",
     subjectType: "stem",
     // Moments settle on the same rail (#1462); fall back to momentId as subject.
     subjectIdKeys: ["stemId", "momentId"],

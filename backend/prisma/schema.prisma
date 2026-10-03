@@ -610,6 +610,7 @@ model Artist {
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
   managementGrants          ManagementGrant[]
+  sceneScoutCityDemand      SceneScoutCityDemand[]
 
   @@index([displayName])
   @@index([profileType, claimStatus])
@@ -739,6 +740,7 @@ model Release {
   rightsUpgradeRequests  ReleaseRightsUpgradeRequest[]
   rightsReassessments    RightsRouteReassessment[]
   publishedRemixProject  RemixProject?                 @relation("RemixProjectPublishedRelease")
+  sceneScoutCityDemand   SceneScoutCityDemand[]
 
   @@index([rightsRoute])
   @@index([artistId])
@@ -2925,4 +2927,29 @@ model PunchlineUnlockGrant {
 
   @@unique([unlockId, collectorUserId])
   @@index([collectorUserId])
+}
+
+// Aggregate-only city demand snapshots for an artist's own release catalog.
+// No listener identifier or event detail is retained in this serving table.
+model SceneScoutCityDemand {
+  id                String   @id @default(uuid())
+  artistId          String
+  releaseId         String
+  releaseTitle      String
+  citySlug          String   @db.VarChar(80)
+  countryCode       String   @db.Char(2)
+  windowDays        Int
+  resonantListeners Int      @default(0)
+  saves             Int      @default(0)
+  follows           Int      @default(0)
+  purchases         Int      @default(0)
+  pledges           Int      @default(0)
+  uniqueListeners   Int
+  signalCount       Int
+  computedAt        DateTime @default(now())
+  artist            Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  release           Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([artistId, releaseId, countryCode, citySlug, windowDays], map: "SceneScoutCityDemand_artist_release_city_window_key")
+  @@index([artistId, computedAt])
 }

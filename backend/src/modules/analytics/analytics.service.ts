@@ -24,6 +24,11 @@ import {
   RESONANT_DISCOVERY_SOURCE,
   type ResonantDiscoverySource,
 } from "./analytics_resonant_discovery";
+import {
+  SCENE_SCOUT_SOURCE,
+  type SceneScoutSource,
+} from "../scene_scout/scene_scout.service";
+import { sceneScoutCityCards } from "./analytics_scene_scout";
 
 interface TrackStats {
   trackId: string;
@@ -67,12 +72,13 @@ interface ProtectionMetrics {
   routes: ProtectionRouteStats[];
 }
 
-type ArtistActionCardType =
+export type ArtistActionCardType =
   | "promote_top_track"
   | "review_marketplace_readiness"
   | "start_listener_community"
   | "prepare_marketplace_catalog"
   | "review_show_city_demand"
+  | "propose_show_city"
   | "post_campaign_update"
   | "create_holder_benefit"
   | "invite_holder_collectors"
@@ -86,7 +92,7 @@ type ArtistActionCardType =
 type ArtistActionPriority = "high" | "medium" | "low";
 type ArtistActionSourceCategory = "playback" | "marketplace" | "community" | "catalog" | "shows" | "remix";
 
-interface ArtistActionCard {
+export interface ArtistActionCard {
   id: string;
   type: ArtistActionCardType;
   title: string;
@@ -258,6 +264,9 @@ export class AnalyticsService {
     @Optional()
     @Inject(RESONANT_DISCOVERY_SOURCE)
     private readonly resonantDiscoverySource?: ResonantDiscoverySource,
+    @Optional()
+    @Inject(SCENE_SCOUT_SOURCE)
+    private readonly sceneScoutSource?: SceneScoutSource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
@@ -373,6 +382,11 @@ export class AnalyticsService {
     const tracks = [...trackMap.values()];
     const topTracks = this.topTracks(tracks);
     const protection = this.protectionMetrics(facts);
+    const sceneScout = await this.sceneScoutSource?.getArtistSceneScout(artistId).catch(() => ({
+      status: "unavailable" as const,
+      reason: "Scene Scout is temporarily unavailable. Your other analytics are still available.",
+      cityDemand: [],
+    }));
 
     return {
       summary: {
@@ -386,14 +400,15 @@ export class AnalyticsService {
       playsOverTime: this.playsOverTime(facts),
       trackPerformance: tracks,
       protection,
-      actions: this.artistActionCards({
+      actions: [...sceneScoutCityCards(sceneScout), ...this.artistActionCards({
         artistId,
         totalPlays: summary.totalPlays,
         topTracks,
         protection,
         workflowSignals: this.artistWorkflowSignals(facts),
         days: data.metadata.timeWindow.days,
-      }),
+      })],
+      ...(sceneScout ? { sceneScout: { status: sceneScout.status, reason: sceneScout.reason } } : {}),
       listenerGrowth: {
         status: "unavailable",
         reason: "listener and follower growth events are not available in the current analytics event model",

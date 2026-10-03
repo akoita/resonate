@@ -67,6 +67,11 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   marketplace-ready release is visible in the current analytics slice.
 - `review_show_city_demand` opens `/shows/:campaignIdOrSlug` when aggregate
   city-demand joins for a Shows campaign meet the five-signal floor.
+- `propose_show_city` opens an editable Shows draft prefilled with coarse city
+  and release context when qualified listening demand meets both the unique
+  audience threshold and the five-signal floor. It uses fixed seven/28-day
+  demand windows; thin data says **Not enough listening yet**. See
+  [Scene Scout](scene_scout.md) for consent, resonance and source constraints.
 - `post_campaign_update` opens `/shows/:campaignIdOrSlug` when aggregate
   supporter update views meet the five-signal floor.
 - `create_holder_benefit` opens `/artist/:id?tab=community` when aggregate

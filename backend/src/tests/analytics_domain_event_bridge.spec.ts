@@ -872,6 +872,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
       expect.objectContaining({
         eventName: "x402.purchase",
         producer: "x402-controller",
+        consentBasis: "performance_of_contract",
         subjectType: "stem",
         subjectId: "stem_919",
         payload: expect.objectContaining({

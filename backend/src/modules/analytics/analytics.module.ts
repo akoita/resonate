@@ -27,9 +27,10 @@ import { AgentsModule } from "../agents/agents.module";
 import { DiscoveryJournalModule } from "../discovery_journal/discovery_journal.module";
 import { DiscoveryJournalService } from "../discovery_journal/discovery_journal.service";
 import { RESONANT_DISCOVERY_SOURCE } from "./analytics_resonant_discovery";
+import { SceneScoutModule } from "../scene_scout/scene_scout.module";
 
 @Module({
-  imports: [SharedModule, AgentsModule, DiscoveryJournalModule],
+  imports: [SharedModule, AgentsModule, DiscoveryJournalModule, SceneScoutModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,

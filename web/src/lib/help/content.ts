@@ -2202,7 +2202,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["analytics", "dashboard", "plays", "payouts", "revenue", "stats", "metrics", "action cockpit", "staking"],
+    keywords: ["analytics", "dashboard", "plays", "payouts", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release"],
     sections: [
       {
         id: "dashboard",
@@ -2236,6 +2236,31 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Alongside the numbers, the dashboard suggests concrete next steps — for example promoting a top track, listing marketplace-ready stems, activating a community room, reviewing city demand for a show, or posting a campaign update. Each card links straight to where you'd act.",
+          },
+        ],
+      },
+      {
+        id: "scene-scout",
+        heading: "Scene Scout: where a release connects",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Scene Scout suggests cities where enough listeners connect with a release over seven or 28 days. A listen connects when someone plays at least 90% of a track and then replays or saves it within seven days. The cards use shared totals, never individual listeners or their locations. If the audience is too small, you'll see Not enough listening yet.",
+          },
+          {
+            kind: "paragraph",
+            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. A suggestion does not create or publish a campaign, and it does not predict income. Follow and pledge counts are not available for releases yet.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/scene-scout-city.png`,
+              alt: "An artist action card suggesting a show in Paris for First Light, with aggregate release demand and a Draft a show link.",
+              caption: "Scene Scout suggests an action you can review and edit.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },

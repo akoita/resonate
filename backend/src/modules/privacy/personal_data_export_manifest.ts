@@ -672,6 +672,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "artistId", column: "artistId" }],
   },
   {
+    model: "SceneScoutCityDemand",
+    primaryKey: "id",
+    keys: [{ kind: "artistId", column: "artistId" }],
+    note: "Thresholded city/release counts about this artist, with no listener identifiers.",
+  },
+  {
     model: "ArtistEngagement",
     primaryKey: "id",
     keys: [{ kind: "artistId", column: "artistId" }],

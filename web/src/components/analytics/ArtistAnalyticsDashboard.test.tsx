@@ -5,6 +5,27 @@ import ArtistAnalyticsDashboard from "./ArtistAnalyticsDashboard";
 import type { ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
 
 describe("ArtistAnalyticsDashboard", () => {
+  it("explains thin Scene Scout data in an otherwise populated dashboard", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+      data={{ ...dashboard, sceneScout: { status: "thin_data" } }} onDaysChange={() => {}} />);
+    expect(html).toContain("Not enough listening yet");
+    expect(html).not.toContain("Draft a show");
+  });
+
+  it("preserves the new city's draft link and aggregate privacy metadata", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30} data={{
+      ...dashboard, sceneScout: { status: "ready" }, actions: [{
+        id: "propose_show_city:release-1:FR:paris:28", type: "propose_show_city",
+        title: "Consider a show in Paris", description: "First Light connects in Paris.", reason: "Five listeners resonated.",
+        confidence: 0.66, priority: "medium", sourceSignal: { category: "playback", summary: "Qualified city demand", count: 5 },
+        cta: { label: "Draft a show", href: "/shows/create?city=paris&country=FR&releaseId=release-1" },
+        privacy: { aggregateOnly: true, thresholdApplied: true, minimumThreshold: 5 },
+      }],
+    }} onDaysChange={() => {}} />);
+    expect(html).toContain("Draft a show");
+    expect(html).toContain("/shows/create?city=paris&amp;country=FR&amp;releaseId=release-1");
+    expect(html).toContain("Aggregate signals only");
+  });
   it("renders a loading state", () => {
     const html = renderToStaticMarkup(
       <ArtistAnalyticsDashboard status="loading" days={30} onDaysChange={() => {}} />,

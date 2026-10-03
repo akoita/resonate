@@ -1,0 +1,91 @@
+---
+title: "Scene Scout"
+status: in-progress
+owner: "@akoita"
+issues: [1968, 1969, 1970]
+---
+
+# Scene Scout
+
+Scene Scout turns qualified listening and catalog gaps into a suggested next
+action in the artist analytics cockpit. Artists review each suggestion before
+creating a show campaign or changing their catalog.
+
+## Delivery and revenue line
+
+Milestone [33](https://github.com/akoita/resonate/milestone/33) delivers city
+demand (#1968), unmet crate/session demand (#1969), and first-listener reception
+(#1970). Their status is tracked in the
+[sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md).
+
+ADR-BM-6: **Line 2, Artist Pro, phase 2**, behind a currently free entitlement
+seam. Suggestions convert into **Line 1, Shows (6%)** and **Line 3, marketplace
+(10%)**. Demand and exposure are never payout inputs; no fees or splits change.
+Exposure cannot be purchased.
+
+## City demand
+
+The cockpit's `propose_show_city` card summarizes qualified demand for a release
+and city over seven or 28 days. A resonant listener completed at least 90% of a
+track and then replayed or saved that same track within seven days, matching the
+[Taste Engine resonance](../rfc/taste-engine.md#33-objective-and-metrics) rule. Saves and settled commitment
+signals contribute only when their consent basis and coarse geography qualify.
+
+Only user-declared city geography counts toward listening demand. A campaign's
+target city does not locate its backers. The service resolves releases and
+artist ownership from the catalog, excludes the artist's own activity, and
+reads consent-governed ledger records within bounded windows. Follow counts
+remain zero until the platform has a canonical follow ledger event. Purchases
+count verified x402 settlements for a catalog track only when the envelope
+also has a governed user-declared city and a known listener identity. The
+existing purchase bridge does not infer location from a payer or campaign. Pledges remain
+zero because campaign-scoped pledges lack an authoritative release link; a
+campaign target city cannot stand in for listener geography. These remaining
+signal families stay tracked by the open #1968 issue.
+
+Rows below `DISCOVERY_MIN_AUDIENCE` unique listeners are never written to the
+city snapshot table. Cards also require the cockpit's five-signal floor. Thin
+data displays **Not enough listening yet**. No listener identifiers, prompts,
+raw location or wallet identities appear in snapshots or cards.
+
+The **Draft a show** action opens `/shows/create` with coarse city, country and
+release-reference parameters. The editor resolves the release against the
+signed-in user's visible catalog, initializes the release context and city,
+and keeps the details editable. Campaign ownership, payout eligibility and
+artist authority remain enforced by the existing Shows workflow.
+
+## API, analytics and lifecycle
+
+The existing authenticated `GET /analytics/artist/:id/v1` response carries the
+stable cockpit cards and a `sceneScout` status. Artist analytics authorization
+protects the read. Scene Scout adds no public audience endpoint.
+
+Cockpit impressions and clicks use the existing `artist.action_card_impression`
+and `artist.action_card_clicked` events with categorical card metadata.
+Snapshots are rebuilt from the remaining eligible ledger records on dashboard
+reads; current consent and taste-memory controls govern playback eligibility.
+An incomplete bounded read suppresses suggestions instead of presenting a
+partial audience as a complete picture.
+
+## Verification
+
+Run the focused Scene Scout backend unit/integration tests, the artist
+analytics card tests and the Shows prefill/form tests. Integration fixtures
+prove small audiences are absent from storage and responses, invalid consent
+and campaign-target geo are excluded, and withdrawals remove their contribution.
+The User Guide's artist analytics article describes the same behavior.
+
+Warehouse popularity marts are tracked separately in
+[#1450](https://github.com/akoita/resonate/issues/1450). External staging
+verification is tracked in
+[resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
+warehouse scheduling in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). This page
+makes no claim about their deployed state.
+
+## Related documents
+
+- [Taste Engine RFC](../rfc/taste-engine.md#6-scene-scout-artists)
+- [Analytics dashboards](analytics_dashboard.md)
+- [Coarse geo analytics](geo_analytics_demand_dimension.md)
+- [Change impact checklist](../engineering/change_impact_checklist.md)

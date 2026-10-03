@@ -71,6 +71,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
           cacheLabel={cacheLabel(data.meta.cache.hit)}
         />
         <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
+        <SceneScoutStatus sceneScout={data.sceneScout} />
         <EmptyDashboard days={data.meta.timeWindow.days} />
         <SeparatedContentProtection />
       </>
@@ -87,6 +88,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
       />
 
       <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
+      <SceneScoutStatus sceneScout={data.sceneScout} />
 
       <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
@@ -150,6 +152,18 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
 
       <ContentProtectionMetrics protection={data.protection} />
     </>
+  );
+}
+
+function SceneScoutStatus({ sceneScout }: { sceneScout: ArtistAnalyticsDashboardData["sceneScout"] }) {
+  if (!sceneScout || sceneScout.status === "ready") return null;
+  return (
+    <section className="artist-action-cockpit" aria-label="Scene Scout">
+      <h2>Scene Scout</h2>
+      <p>{sceneScout.reason ?? (sceneScout.status === "thin_data"
+        ? "Not enough listening yet. City suggestions appear when enough listeners support a release."
+        : "Scene Scout is currently unavailable.")}</p>
+    </section>
   );
 }
 

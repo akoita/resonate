@@ -15,6 +15,7 @@ import {
 } from "../../lib/api";
 import { PayoutEligibilityNotice } from "../payments/PayoutEligibilityNotice";
 import { formatPaymentAmountWithSymbol } from "../../lib/payments";
+import type { ShowDemandPrefill } from "../../lib/showDemandPrefill";
 import {
   createShowCampaignDraft,
   buildCatalogArtistCandidates,
@@ -122,7 +123,10 @@ function campaignNetEstimate(campaign?: Campaign) {
   );
 }
 
-export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
+export function CampaignDraftForm({ campaign, demandPrefill }: {
+  campaign?: Campaign;
+  demandPrefill?: ShowDemandPrefill;
+}) {
   const router = useRouter();
   const { token, status, role, connect } = useAuth();
   const { chainId } = useZeroDev();
@@ -136,8 +140,9 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [artistDisplayName, setArtistDisplayName] = useState(campaign?.artistName ?? "");
   const [title, setTitle] = useState(campaign?.title ?? "");
   const [description, setDescription] = useState(campaign?.tagline ?? "");
-  const [city, setCity] = useState(campaign?.city ?? "");
-  const [country, setCountry] = useState(campaign?.country ?? "");
+  const [city, setCity] = useState(campaign?.city ?? demandPrefill?.city ?? "");
+  const [country, setCountry] = useState(campaign?.country ?? demandPrefill?.country ?? "");
+  const [demandReleaseTitle, setDemandReleaseTitle] = useState<string | null>(null);
   const [venueTarget, setVenueTarget] = useState(campaign?.venue ?? "");
   const [targetDate, setTargetDate] = useState(isoToInput(campaign?.targetDate) || addDaysForInput(120));
   const [deadline, setDeadline] = useState(isoToInput(campaign?.deadline) || addDaysForInput(30));
@@ -269,6 +274,13 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       .then((releases) => {
         if (!active) return;
         const visibleReleases = releases.filter((release) => PUBLIC_CATALOG_STATUSES.has(release.status));
+        const demandRelease = !campaign && demandPrefill
+          ? visibleReleases.find((release) => release.id === demandPrefill.releaseId)
+          : undefined;
+        setDemandReleaseTitle(demandRelease?.title ?? null);
+        if (demandRelease) {
+          setDescription((current) => current || `A show inspired by ${demandRelease.title}.`);
+        }
         const candidates = buildCatalogArtistCandidates(visibleReleases);
         setArtistCandidates(candidates);
         if (!isPrivileged) {
@@ -285,7 +297,10 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
           const byCampaignName = existingCampaignArtist
             ? candidates.find((candidate) => candidate.name.trim().toLowerCase() === existingCampaignArtist)
             : null;
-          return byCampaignName?.optionId ?? candidates[0]?.optionId ?? "";
+          const demandArtist = demandRelease
+            ? buildCatalogArtistCandidates([demandRelease])[0]
+            : undefined;
+          return byCampaignName?.optionId ?? demandArtist?.optionId ?? candidates[0]?.optionId ?? "";
         });
       })
       .catch(() => {
@@ -301,7 +316,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     return () => {
       active = false;
     };
-  }, [campaign?.artistName, isPrivileged, status, token]);
+  }, [campaign, demandPrefill, isPrivileged, status, token]);
 
   useEffect(() => {
     if (!selectedArtistId) return;
@@ -586,6 +601,9 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
   return (
     <section className="shows-create__form" aria-label={isEdit ? "Edit show campaign" : "Create show campaign"}>
+      {demandReleaseTitle ? (
+        <p role="status">Scene Scout suggested {city} for {demandReleaseTitle}. Review the campaign details before saving.</p>
+      ) : null}
       {termsLocked ? (
         <div className="shows-create__panel shows-create__locked-note" role="status">
           <h2>Approved terms are locked</h2>

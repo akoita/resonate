@@ -29,9 +29,10 @@ itself from the generated Prisma DMMF, so a model added to the schema fails the
 build until someone classifies it. The prose here explains; the manifest is what
 cannot drift.
 
-**1. The arithmetic did not reconcile.** The categories below claim 34 + 28 + 58
-models. The schema has **95**, not 120. The current classification is **76
-models holding a person's data, 19 holding none**.
+**1. The original arithmetic did not reconcile.** The historical categories
+below were an incomplete snapshot. Current model coverage is derived from the
+generated Prisma datamodel and enforced by the export and erasure manifest
+tests; this document does not maintain a competing model count.
 
 **2. There was a blind spot shaped like its own thesis.** This document names
 five identifiers and then enumerates models reachable by `userId`, wallet
@@ -130,6 +131,15 @@ and decision remain in the `ArtistClaimRequest` export. Erasure preserves each
 event's decision and timestamp, rotates `actorUserId` to the pseudonymous user
 id, and scrubs its free-text note when either the claimant or actor is erased.
 Deleting a claim cascades to its decision events.
+
+## Scene Scout aggregate snapshots (#1968)
+
+`SceneScoutCityDemand` contains only thresholded release/city counts and catalog
+labels. It is exported to the owning artist by `artistId`, never as a listener
+history. The artist profile survives account erasure, and its aggregate follows
+that detached profile. Listener source events remain subject to analytics
+governance; dashboard reads recompute snapshots using current consent, reset
+and agent-training controls. Release or artist deletion cascades the snapshot.
 
 ## The problem this exists to prevent
 

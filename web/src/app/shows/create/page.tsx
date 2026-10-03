@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { CampaignDraftForm } from "../../../components/shows/CampaignDraftForm";
+import { showDemandPrefill } from "../../../lib/showDemandPrefill";
 
-export default function CreateShowCampaignPage() {
+export default async function CreateShowCampaignPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const prefill = showDemandPrefill(await searchParams);
   return (
     <main className="shows-surface shows-page">
       <div className="shows-create">
@@ -20,7 +24,7 @@ export default function CreateShowCampaignPage() {
           </p>
         </header>
 
-        <CampaignDraftForm />
+        <CampaignDraftForm demandPrefill={prefill} />
       </div>
     </main>
   );
