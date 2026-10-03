@@ -69,10 +69,14 @@ Focused backend tests cover scoring, export pagination/deadlines, transactional
 replacement, audience suppression, authoritative metadata and cache generation.
 Full local Dataform compilation validates the combined action graph and
 generated SQL. Existing Agent Taste templates use inline configuration helpers
-so their configuration blocks compile in the same graph.
-Warehouse execution, dry-run byte evidence, scheduling and live acceptance
-remain in the private deployment counterpart; this feature remains `partial`
-until those checks are complete.
+so their configuration blocks compile in the same graph. Application
+materialization and export are merged in
+[PR #2045](https://github.com/akoita/resonate/pull/2045).
+Warehouse execution, dry-run byte evidence, scheduling and live checks remain
+tracked privately in [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263);
+staging acceptance remains open in
+[resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264). This feature
+remains `partial` until those checks are complete.
 
 ## Related documents
 

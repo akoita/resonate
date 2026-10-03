@@ -4,6 +4,9 @@
 are merged on `main` (planned 2026-09-30 for 2026-10-15 to 2026-10-28; it
 started when Sprint 28 closed).
 **Milestone:** [31](https://github.com/akoita/resonate/milestone/31).
+**Release:** [Milestone 31 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-31-vision-sprint-29-audio-aware-discovery)
+records the closed application milestone, not a software version or deployment
+event.
 **Goal:** Ranking and search know what every track sounds like (measured tempo,
 key and energy) and what it is close to (real embeddings), and a ranking change
 is promoted only on a measured win.

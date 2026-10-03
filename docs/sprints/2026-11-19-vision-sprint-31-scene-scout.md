@@ -1,8 +1,7 @@
 # Vision Sprint 31: Scene Scout v1
 
-**Status:** Implementation started 2026-10-03. Draft PRs are prepared per issue;
-merge and deployment remain subject to separate authorization. The original
-sprint window was indicative (2026-11-19 to 2026-12-09).
+**Status:** Application implementation is merged; acceptance remains in
+progress. The original sprint window was indicative (2026-11-19 to 2026-12-09).
 **Milestone:** [33](https://github.com/akoita/resonate/milestone/33).
 **Goal:** An artist sees where real demand for a release is and gets one
 concrete next action for it.
@@ -26,23 +25,26 @@ admitted.
 ## Delivery status
 
 - **#1968:** city-demand backend, cockpit card and editable Shows prefill are
-  implemented in [draft PR #2044](https://github.com/akoita/resonate/pull/2044), with privacy, API, browser and help coverage.
+  merged in [PR #2044](https://github.com/akoita/resonate/pull/2044), with privacy, API, browser and help coverage.
 - **#1969:** categorical request/session shortfalls and catalog supply actions
-  are implemented in [draft PR #2046](https://github.com/akoita/resonate/pull/2046).
-  Staging acceptance remains tracked in the open issue and private counterpart.
+  are merged in [PR #2046](https://github.com/akoita/resonate/pull/2046).
 - **#1970:** taste-fitting fresh release selection and day-seven reception are
-  implemented in [draft PR #2047](https://github.com/akoita/resonate/pull/2047)
-  with exposure/privacy coverage, building on PR #2046.
-  Canonical follows and staging acceptance remain tracked by the open issue and
-  [Scene Scout feature page](../features/scene_scout.md).
-- **#1450:** application materialization/export is in [draft PR #2045](https://github.com/akoita/resonate/pull/2045).
-  Scheduling and live warehouse checks are tracked privately in
+  merged in [PR #2047](https://github.com/akoita/resonate/pull/2047), with
+  exposure/privacy coverage; [PR #2048](https://github.com/akoita/resonate/pull/2048)
+  contains the follow-on UI polish.
+- **#1450:** application materialization/export is merged in
+  [PR #2045](https://github.com/akoita/resonate/pull/2045). Scheduling and live
+  warehouse checks are tracked privately in
   [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
 
-Staging acceptance has not run in this application task; it is tracked in
-[resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264). The linked parent
-feature remains open until the remaining slices and external acceptance are
-complete.
+Staging acceptance remains open in
+[resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
+warehouse scheduling and live checks remain open in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). Canonical
+follows are still unavailable without a follow ledger event; pledge demand
+remains excluded without an authoritative release link. The linked parent
+feature remains open until acceptance and its remaining signal families are
+resolved.
 
 ## Exit criteria
 

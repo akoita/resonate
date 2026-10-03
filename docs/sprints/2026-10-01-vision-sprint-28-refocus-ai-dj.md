@@ -3,6 +3,9 @@
 **Status:** Closed 2026-09-30. All six approved items are merged on `main`
 (planned 2026-09-30 for 2026-10-01 to 2026-10-14).
 **Milestone:** [30](https://github.com/akoita/resonate/milestone/30).
+**Release:** [Milestone 30 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-30-vision-sprint-28-refocus-ai-dj)
+records the closed application milestone, not a software version or deployment
+event.
 **Goal:** The AI DJ never spends or generates on its own, and Sonic Radar shows
 what resonated with the listener, not what the agent bought.
 
