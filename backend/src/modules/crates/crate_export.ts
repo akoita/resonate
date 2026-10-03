@@ -142,7 +142,8 @@ function trimDotsAndSpaces(text: string): string {
  * `${artist} - ${title} (${StemLabel}).mp3` for one stem. Artist and title are
  * sanitized and the pair is shortened so the whole base stays within
  * {@link CRATE_EXPORT_FILE_NAME_MAX_LENGTH} characters and the stem label is
- * never cut off.
+ * never cut off. A title that already starts with `${artist} - ` (uploads
+ * often name the file that way) is not prefixed a second time.
  */
 export function stemFileName(input: {
   artistName: string;
@@ -151,7 +152,13 @@ export function stemFileName(input: {
 }): string {
   const suffix = ` (${stemLabel(input.stemType)})`;
   const room = CRATE_EXPORT_FILE_NAME_MAX_LENGTH - Array.from(suffix).length;
-  const head = sanitizeFileNamePart(`${sanitizeFileNamePart(input.artistName)} - ${sanitizeFileNamePart(input.title)}`, room);
+  const artist = sanitizeFileNamePart(input.artistName);
+  let title = sanitizeFileNamePart(input.title);
+  const prefix = `${artist} - `;
+  if (title.length > prefix.length && title.toLowerCase().startsWith(prefix.toLowerCase())) {
+    title = sanitizeFileNamePart(title.slice(prefix.length));
+  }
+  const head = sanitizeFileNamePart(`${artist} - ${title}`, room);
   return `${head}${suffix}.mp3`;
 }
 
@@ -197,24 +204,26 @@ export type CrateExportFeatures = {
 };
 
 /**
- * The measured tempo, key and first beat of a stem, from the stem's own
- * `audioFeatures` and, where it has none, from the track's measured features
- * (the current `original` stem; stems are separated from it, so they share its
- * timeline). The first beat follows the tempo: it comes from the same payload
- * as the tempo it is paired with. Tempo and key use the platform's measured
- * confidence gates (`measuredTrackFeatures`); nothing is guessed.
+ * The measured tempo, key and first beat of a stem, from the track's measured
+ * features (the current `original` stem) and, where the mix has none, from the
+ * stem's own `audioFeatures`. Stems are separated from the mix and share its
+ * timeline, so every stem of a track gets the mix's grid; a lone bass or
+ * guitar stem often measures at double time or with a late first beat. The
+ * first beat follows the tempo: it comes from the same payload as the tempo it
+ * is paired with. Tempo and key use the platform's measured confidence gates
+ * (`measuredTrackFeatures`); nothing is guessed.
  */
 export function exportFeatures(stemFeatures: unknown, trackFeatures: unknown): CrateExportFeatures {
   const own = measuredTrackFeatures(stemFeatures);
   const track = measuredTrackFeatures(trackFeatures);
 
-  const tempoFromStem = own.tempoBpm !== null;
-  const tempoSource = tempoFromStem ? own : track;
+  const tempoFromTrack = track.tempoBpm !== null;
+  const tempoSource = tempoFromTrack ? track : own;
   const bpm = tempoSource.tempoBpm === null ? null : Number(tempoSource.tempoBpm.toFixed(2));
-  const beatSource = tempoFromStem ? stemFeatures : trackFeatures;
+  const beatSource = tempoFromTrack ? trackFeatures : stemFeatures;
   const firstBeat = bpm === null ? null : sanitizeStemAudioFeatures(beatSource)?.firstBeatSec ?? null;
 
-  const keySource = own.key !== null ? own : track;
+  const keySource = track.key !== null ? track : own;
   return {
     bpm,
     key: keyName(keySource.key, keySource.camelot),

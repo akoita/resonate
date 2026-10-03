@@ -268,11 +268,12 @@ describe("CrateExportService (integration)", () => {
           artistName: "Credited / Name",
           licenseType: "commercial",
           fileName: "Credited Name - Track A & Co (Vocals).mp3",
-          // The stem's own measured features.
-          bpm: 128,
-          key: "C",
-          camelot: "8B",
-          firstBeatSec: 0.123,
+          // The mix's measured features win over the stem's own: every stem
+          // of a track shares the mix's grid.
+          bpm: 126,
+          key: "Am",
+          camelot: "8A",
+          firstBeatSec: 0.25,
           hasCue: true,
         },
         {

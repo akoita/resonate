@@ -211,16 +211,20 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
        position, then stem type (vocals, drums, bass, piano, guitar, other).
        The seam decision `CrateEntitlementsService.export` is free for
        everyone; a future denial answers 403 `pro_required`.
-    2. *File names.* The backend decides them: `Artist - Title (Stem).mp3`,
+    2. *File names.* The backend decides them: `Artist - Title (Stem).mp3`
+       (a title that already starts with `Artist - ` is not prefixed twice),
        stripped of `<>:"/\|?*` and control characters, spaces collapsed,
        leading and trailing dots and spaces trimmed, at most 150 characters
        before the extension; a collision inside one export appends
        ` [first 6 characters of the stem id]`. The web saves each downloaded
        stem under the manifest's `fileName`, so the export files and the disk
        agree.
-    3. *Measured facts.* Tempo, key and first beat come from the stem's own
-       `audioFeatures`, else from the track's measured features (its `original`
-       stem); the first beat follows the tempo it is paired with. The platform's
+    3. *Measured facts.* Tempo, key and first beat come from the track's
+       measured features (its `original` stem, the mix), else from the stem's
+       own `audioFeatures`. Stems are separated from the mix and share its
+       timeline, so all stems of a track get one grid; a lone bass or guitar
+       stem often measures at double time or with a late first beat. The first
+       beat follows the tempo it is paired with. The platform's
        confidence gates apply, and nothing is guessed.
     4. *The folder.* rekordbox and Serato reference files on the DJ's disk, so
        the export takes `folder`, the absolute path the DJ typed (`/Users/...`
