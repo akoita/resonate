@@ -139,6 +139,19 @@ function trimDotsAndSpaces(text: string): string {
 }
 
 /**
+ * The title without a leading `${artist} - ` (compared case-insensitively):
+ * uploads often name the file that way, and every export place that already
+ * shows the artist would otherwise repeat it. A title that is only the prefix
+ * is kept as it is.
+ */
+export function titleWithoutArtist(artist: string, title: string): string {
+  const prefix = `${artist} - `;
+  return title.length > prefix.length && title.toLowerCase().startsWith(prefix.toLowerCase())
+    ? title.slice(prefix.length)
+    : title;
+}
+
+/**
  * `${artist} - ${title} (${StemLabel}).mp3` for one stem. Artist and title are
  * sanitized and the pair is shortened so the whole base stays within
  * {@link CRATE_EXPORT_FILE_NAME_MAX_LENGTH} characters and the stem label is
@@ -153,11 +166,7 @@ export function stemFileName(input: {
   const suffix = ` (${stemLabel(input.stemType)})`;
   const room = CRATE_EXPORT_FILE_NAME_MAX_LENGTH - Array.from(suffix).length;
   const artist = sanitizeFileNamePart(input.artistName);
-  let title = sanitizeFileNamePart(input.title);
-  const prefix = `${artist} - `;
-  if (title.length > prefix.length && title.toLowerCase().startsWith(prefix.toLowerCase())) {
-    title = sanitizeFileNamePart(title.slice(prefix.length));
-  }
+  const title = sanitizeFileNamePart(titleWithoutArtist(artist, sanitizeFileNamePart(input.title)));
   const head = sanitizeFileNamePart(`${artist} - ${title}`, room);
   return `${head}${suffix}.mp3`;
 }
@@ -213,7 +222,11 @@ export type CrateExportFeatures = {
  * is paired with. Tempo and key use the platform's measured confidence gates
  * (`measuredTrackFeatures`); nothing is guessed.
  */
-export function exportFeatures(stemFeatures: unknown, trackFeatures: unknown): CrateExportFeatures {
+export function exportFeatures(
+  stemFeatures: unknown,
+  trackFeatures: unknown,
+  stemKeyConsensus: StemKeyConsensus | null = null,
+): CrateExportFeatures {
   const own = measuredTrackFeatures(stemFeatures);
   const track = measuredTrackFeatures(trackFeatures);
 
@@ -223,13 +236,41 @@ export function exportFeatures(stemFeatures: unknown, trackFeatures: unknown): C
   const beatSource = tempoFromTrack ? trackFeatures : stemFeatures;
   const firstBeat = bpm === null ? null : sanitizeStemAudioFeatures(beatSource)?.firstBeatSec ?? null;
 
-  const keySource = track.key !== null ? track : own;
+  // Key: the mix's, else the key the track's measured stems agree on, else the
+  // stem's own. Without the middle step one stem of a track exported "Em"
+  // and its sibling no key at all, although both play the same song (#1965).
+  const trackKey = track.key !== null ? { key: keyName(track.key, track.camelot), camelot: track.camelot } : null;
+  const ownKey = { key: keyName(own.key, own.camelot), camelot: own.camelot };
+  const chosenKey = trackKey ?? stemKeyConsensus ?? ownKey;
   return {
     bpm,
-    key: keyName(keySource.key, keySource.camelot),
-    camelot: keySource.camelot,
+    key: chosenKey.key,
+    camelot: chosenKey.camelot,
     firstBeatSec: firstBeat === null ? null : Number(firstBeat.toFixed(3)),
   };
+}
+
+/** A key shared by a track's measured stems. */
+export type StemKeyConsensus = { key: string; camelot: string | null };
+
+/**
+ * The key a track's stems agree on, for when the mix itself has no confident
+ * key. At least two stems must have a measured key, and every measured key must
+ * name the same key; one lone stem (often a bass or drum measurement) or any
+ * disagreement gives null. Only measured keys count, so nothing is guessed.
+ */
+export function stemKeyConsensus(stemFeatures: readonly unknown[]): StemKeyConsensus | null {
+  let agreed: StemKeyConsensus | null = null;
+  let measured = 0;
+  for (const raw of stemFeatures) {
+    const features = measuredTrackFeatures(raw);
+    const key = keyName(features.key, features.camelot);
+    if (key === null) continue;
+    measured += 1;
+    if (agreed === null) agreed = { key, camelot: features.camelot };
+    else if (agreed.key !== key) return null;
+  }
+  return measured >= 2 ? agreed : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -389,8 +430,10 @@ function attributes(pairs: ReadonlyArray<readonly [string, string]>): string {
 }
 
 /** The rekordbox track name: the title and the stem label. */
-export function rekordboxTrackName(entry: Pick<CrateExportEntry, "title" | "stemType">): string {
-  return `${entry.title} (${stemLabel(entry.stemType)})`;
+export function rekordboxTrackName(entry: Pick<CrateExportEntry, "title" | "stemType" | "artistName">): string {
+  // rekordbox shows Artist next to Title, so a title that already starts with
+  // `${artist} - ` would repeat it (#1965), as the file names already avoid.
+  return `${titleWithoutArtist(entry.artistName, entry.title)} (${stemLabel(entry.stemType)})`;
 }
 
 /**
