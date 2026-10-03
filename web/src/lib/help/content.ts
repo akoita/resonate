@@ -2240,6 +2240,31 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "scene-scout",
+        heading: "Scene Scout: where a release connects",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Scene Scout suggests cities where enough listeners connect with a release over seven or 28 days. A listen connects when someone plays at least 90% of a track and then replays or saves it within seven days. The cards use shared totals, never individual listeners or their locations. If the audience is too small, the Scene Scout panel on your dashboard says Not enough listening yet.",
+          },
+          {
+            kind: "paragraph",
+            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. A suggestion does not create or publish a campaign, and it does not predict income. Follow and pledge counts are not available for releases yet.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/scene-scout-city.png`,
+              alt: "An artist action card suggesting a show in Paris for First Light, with aggregate release demand and a Draft a show link.",
+              caption: "Scene Scout suggests an action you can review and edit.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
+          },
+        ],
+      },
+      {
         id: "unmet-demand",
         heading: "Scene Scout: searched but missing",
         blocks: [
@@ -2282,31 +2307,6 @@ export const HELP_ARTICLES: HelpArticle[] = [
               src: `${SHOT}/scene-scout-reception.png`,
               alt: "An artist first-week reception card for First Light with aggregate heard, full-play and save counts and a Review release link.",
               caption: "First-week reception counts actual listening after discovery placement.",
-              width: 1440,
-              height: 900,
-              source: LOCAL,
-            },
-          },
-        ],
-      },
-      {
-        id: "scene-scout",
-        heading: "Scene Scout: where a release connects",
-        blocks: [
-          {
-            kind: "paragraph",
-            text: "Scene Scout suggests cities where enough listeners connect with a release over seven or 28 days. A listen connects when someone plays at least 90% of a track and then replays or saves it within seven days. The cards use shared totals, never individual listeners or their locations. If the audience is too small, you'll see Not enough listening yet.",
-          },
-          {
-            kind: "paragraph",
-            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. A suggestion does not create or publish a campaign, and it does not predict income. Follow and pledge counts are not available for releases yet.",
-          },
-          {
-            kind: "figure",
-            figure: {
-              src: `${SHOT}/scene-scout-city.png`,
-              alt: "An artist action card suggesting a show in Paris for First Light, with aggregate release demand and a Draft a show link.",
-              caption: "Scene Scout suggests an action you can review and edit.",
               width: 1440,
               height: 900,
               source: LOCAL,

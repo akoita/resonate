@@ -7,11 +7,13 @@ test("city demand card opens an editable draft with the right release", async ({
   await expect(page.getByRole("heading", { name: "Consider a show in Paris" })).toBeVisible();
   await page.getByRole("link", { name: "Draft a show" }).click();
   await expect(page).toHaveURL(/\/shows\/create\?city=paris&country=FR&releaseId=guide-first-light/);
-  await expect(page.getByText("Scene Scout suggested Paris for First Light.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Listeners in Paris, FR connected with First Light" })).toBeVisible();
   await expect(page.getByLabel("City", { exact: true })).toHaveValue("Paris");
   await expect(page.getByLabel("Country", { exact: true })).toHaveValue("FR");
   await page.getByLabel("City", { exact: true }).fill("Lyon");
   await expect(page.getByLabel("City", { exact: true })).toHaveValue("Lyon");
+  // The notice names what Scene Scout suggested, not whatever the artist types next.
+  await expect(page.getByRole("status").filter({ hasText: "Listeners in Paris, FR connected with First Light" })).toBeVisible();
 });
 
 test("unmet stem demand opens the owner's actual track without creating a listing", async ({ authenticatedPage: page }) => {
@@ -35,7 +37,7 @@ test("unmet stem demand opens the owner's actual track without creating a listin
   await page.goto("/artist/analytics");
   await page.getByRole("link", { name: "Publish this stem" }).click();
   await expect(page).toHaveURL(/\/release\/guide-first-light\?demandTrack=guide-track&demandStem=vocals#scene-scout-supply/);
-  await expect(page.getByRole("heading", { name: "Review vocals supply for First Light" })).toBeVisible();
-  await expect(page.getByText("This stem is not ready to list.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review vocals stem supply for First Light" })).toBeVisible();
+  await expect(page.getByText("This stem is not ready to list yet.", { exact: false })).toBeVisible();
   expect(writes).toEqual([]);
 });

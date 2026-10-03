@@ -532,6 +532,18 @@
   color: #f5c45c;
 }
 
+/* Scene Scout prefill notice: spans the form grid so panels keep their columns. */
+.shows-create__demand-note {
+  gap: 6px;
+  padding: 16px 22px;
+  border-color: color-mix(in srgb, var(--color-signal) 28%, rgba(255, 255, 255, 0.06));
+  background: color-mix(in srgb, var(--color-signal) 7%, transparent);
+}
+
+.shows-create__demand-note .shows-create__panel-note {
+  color: var(--color-signal-mid);
+}
+
 .shows-create__artist-context {
   min-height: 48px;
   display: flex;

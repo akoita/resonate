@@ -71,9 +71,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
           cacheLabel={cacheLabel(data.meta.cache.hit)}
         />
         <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
-        <SceneScoutStatus sceneScout={data.sceneScout} />
-        <UnmetDemandStatus demand={data.unmetDemand} />
-      <ReceptionStatus reception={data.firstListenerReception} />
+        <SceneScoutStatus data={data} />
         <EmptyDashboard days={data.meta.timeWindow.days} />
         <SeparatedContentProtection />
       </>
@@ -90,9 +88,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
       />
 
       <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
-      <SceneScoutStatus sceneScout={data.sceneScout} />
-      <UnmetDemandStatus demand={data.unmetDemand} />
-      <ReceptionStatus reception={data.firstListenerReception} />
+      <SceneScoutStatus data={data} />
 
       <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
@@ -159,38 +155,61 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
   );
 }
 
-function SceneScoutStatus({ sceneScout }: { sceneScout: ArtistAnalyticsDashboardData["sceneScout"] }) {
-  if (!sceneScout || sceneScout.status === "ready") return null;
-  return (
-    <section className="artist-action-cockpit" aria-label="Scene Scout">
-      <h2>Scene Scout</h2>
-      <p>{sceneScout.reason ?? (sceneScout.status === "thin_data"
-        ? "Not enough listening yet. City suggestions appear when enough listeners support a release."
-        : "Scene Scout is currently unavailable.")}</p>
-    </section>
-  );
-}
+type SceneScoutSignal = ArtistAnalyticsDashboardData["sceneScout"];
 
-function UnmetDemandStatus({ demand }: { demand: ArtistAnalyticsDashboardData["unmetDemand"] }) {
-  if (!demand || demand.status === "ready") return null;
-  return (
-    <section className="artist-action-cockpit" aria-label="Unmet demand">
-      <h2>Unmet demand</h2>
-      <p>{demand.reason ?? (demand.status === "thin_data"
-        ? "Not enough request demand yet. Suggestions appear after enough people ask for matching catalog supply."
-        : "Request demand is currently unavailable.")}</p>
-    </section>
-  );
-}
+const SCENE_SCOUT_SIGNALS: Array<{
+  key: "sceneScout" | "unmetDemand" | "firstListenerReception";
+  label: string;
+  thinData: string;
+  unavailable: string;
+}> = [
+  {
+    key: "sceneScout",
+    label: "City demand",
+    thinData: "Not enough listening yet. City suggestions appear when enough listeners support a release.",
+    unavailable: "City suggestions are currently unavailable.",
+  },
+  {
+    key: "unmetDemand",
+    label: "Searched but missing",
+    thinData: "Not enough request demand yet. Suggestions appear after enough people ask for matching catalog supply.",
+    unavailable: "Request demand is currently unavailable.",
+  },
+  {
+    key: "firstListenerReception",
+    label: "First-week reception",
+    thinData: "Not enough discovery listening yet. Reception appears after seven days when enough listeners have heard the release.",
+    unavailable: "Discovery reception is currently unavailable.",
+  },
+];
 
-function ReceptionStatus({ reception }: { reception: ArtistAnalyticsDashboardData["firstListenerReception"] }) {
-  if (!reception || reception.status === "ready") return null;
+/** One compact panel for Scene Scout signals that cannot produce action cards yet. */
+function SceneScoutStatus({ data }: { data: ArtistAnalyticsDashboardData }) {
+  const pending = SCENE_SCOUT_SIGNALS.flatMap((signal) => {
+    const state: SceneScoutSignal = data[signal.key];
+    if (!state || state.status === "ready") return [];
+    return [{ ...signal, message: state.reason ?? (state.status === "thin_data" ? signal.thinData : signal.unavailable) }];
+  });
+  if (pending.length === 0) return null;
   return (
-    <section className="artist-action-cockpit" aria-label="First-week reception">
-      <h2>First-week reception</h2>
-      <p>{reception.reason ?? (reception.status === "thin_data"
-        ? "Not enough discovery listening yet. Reception appears after seven days when enough listeners have heard the release."
-        : "Discovery reception is currently unavailable.")}</p>
+    <section className="artist-action-cockpit scene-scout-status" aria-labelledby="scene-scout-status-heading">
+      <div className="artist-action-cockpit__header">
+        <div>
+          <p className="artist-action-cockpit__eyebrow">Scene Scout</p>
+          <h2 id="scene-scout-status-heading">Still gathering signals</h2>
+        </div>
+        <Link className="scene-scout-status__help" href="/help/artist-analytics#scene-scout">
+          How Scene Scout works
+        </Link>
+      </div>
+      <ul className="scene-scout-status__list">
+        {pending.map((signal) => (
+          <li key={signal.key}>
+            <strong>{signal.label}</strong>
+            <span>{signal.message}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
