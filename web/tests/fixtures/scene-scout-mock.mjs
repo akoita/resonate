@@ -1,8 +1,16 @@
 /** Deterministic artist data shared by the guide capture and browser flow. */
-export async function mockSceneScoutApi(page) {
+export async function mockSceneScoutApi(page, variant = "city") {
   const artistId = "test-artist-id";
   const timestamp = "2026-10-03T09:00:00.000Z";
-  const actions = [{
+  const actions = variant === "demand" ? [{
+    id: "unmet_demand:track:guide-track:stem:vocals:28", type: "review_unmet_demand",
+    title: "Review vocals stem supply", description: "Requests for First Light came up short.",
+    reason: "14 requests from 8 people in 28 days. This is a supply gap, not a forecast of sales.",
+    priority: "medium", confidence: 0.66,
+    sourceSignal: { category: "catalog", summary: "Qualified categorical request shortfalls", count: 14 },
+    cta: { label: "Publish this stem", href: "/release/guide-first-light?demandTrack=guide-track&demandStem=vocals#scene-scout-supply" },
+    privacy: { aggregateOnly: true, thresholdApplied: true, minimumThreshold: 5 },
+  }] : [{
     id: "propose_show_city:guide-first-light:FR:paris:28",
     type: "propose_show_city",
     title: "Consider a show in Paris",
@@ -17,7 +25,7 @@ export async function mockSceneScoutApi(page) {
     summary: { artistId, days: 30, totalPlays: 75, totalPayoutUsd: 0, payoutsByAsset: [] },
     tracks: [], topTracks: [], sessions: [], sources: [], playsOverTime: [], trackPerformance: [],
     protection: { totalDecisions: 0, releasesWithDecisions: 0, marketplaceReadyReleases: 0, restrictedReleases: 0, blockedReleases: 0, routes: [] },
-    actions, sceneScout: { status: "ready" },
+    actions, sceneScout: { status: "ready" }, unmetDemand: { status: "ready" },
     meta: { source: "warehouse_export", generatedAt: timestamp, timeWindow: { from: "2026-09-03T09:00:00.000Z", to: timestamp, days: 30 }, freshness: { asOf: timestamp, lagSeconds: 0 }, isEmpty: false, cache: { hit: false, ttlSeconds: 0 } },
     export: { artistId, days: 30, totalPlays: 75, totalPayoutUsd: 0, payoutsByAsset: [], generatedAt: timestamp, source: "warehouse_export", freshness: { asOf: timestamp, lagSeconds: 0 } },
   } }));

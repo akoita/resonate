@@ -72,6 +72,10 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   audience threshold and the five-signal floor. It uses fixed seven/28-day
   demand windows; thin data says **Not enough listening yet**. See
   [Scene Scout](scene_scout.md) for consent, resonance and source constraints.
+- **Unmet demand:** qualified categorical crate and short-session gaps suggest
+  publishing a stem or listing a license through the existing release controls.
+  Cards require enough distinct requesters and at least five requests; identities
+  and request text stay out of the artist response.
 - `post_campaign_update` opens `/shows/:campaignIdOrSlug` when aggregate
   supporter update views meet the five-signal floor.
 - `create_holder_benefit` opens `/artist/:id?tab=community` when aggregate

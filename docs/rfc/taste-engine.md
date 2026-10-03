@@ -340,7 +340,12 @@ little data, it says "not enough listening yet" instead of guessing.
 
 Unmet crate filters and honest session gaps become "searched but missing"
 signals: for example "DJs looked for an acapella of this track 14 times this
-month".
+month". The implemented request/session slice uses canonical single-filter
+near matches, current consent and 28-day requester-observation expiry. Only
+thresholded category totals become `DemandSignal` snapshots; these sources
+have no trustworthy city dimension. Stem and license cards open the existing
+release supply controls. See [Scene Scout](../features/scene_scout.md) for the
+current contract and external acceptance tracking.
 
 ### 6.4 First listeners
 

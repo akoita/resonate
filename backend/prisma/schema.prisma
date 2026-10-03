@@ -67,6 +67,7 @@ model User {
   generationJobOutcomes       GenerationJobOutcome[]
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
+  demandObservations          DemandObservation[]
   accountClosureRequests      AccountClosureRequest[]
   artistClaimDecisionEvents   ArtistClaimDecisionEvent[]  @relation("ArtistClaimDecisionEventActor")
   managementOwnedArtists       Artist[]                       @relation("ArtistManagementOwner")
@@ -611,6 +612,7 @@ model Artist {
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
   managementGrants          ManagementGrant[]
   sceneScoutCityDemand      SceneScoutCityDemand[]
+  unmetDemandSignals        DemandSignal[]
 
   @@index([displayName])
   @@index([profileType, claimStatus])
@@ -2953,5 +2955,55 @@ model SceneScoutCityDemand {
   release           Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([artistId, releaseId, countryCode, citySlug, windowDays], map: "SceneScoutCityDemand_artist_release_city_window_key")
+  @@index([artistId, computedAt])
+}
+
+/// #1969: user-linked, categorical observations retained for at most 28 days.
+/// `sourceKey` is a one-way digest used only to deduplicate one crate request
+/// or session; prompt text, session ids, requester counts and candidate dumps
+/// are never stored here. Current consent is checked on every write and read.
+model DemandObservation {
+  id               String   @id @default(uuid())
+  userId           String
+  sourceType       String   @db.VarChar(16)
+  sourceKey        String   @db.Char(64)
+  targetArtistId   String
+  /// Track id for a track target, artist id for artist/genre targets.
+  targetId         String
+  targetType       String   @db.VarChar(16)
+  /// A current playable track used to revalidate non-track near-match targets.
+  evidenceTrackId  String?
+  kind             String   @db.VarChar(24)
+  value            String   @db.VarChar(64)
+  consentDecidedAt DateTime
+  tastePolicyUpdatedAt DateTime?
+  observedAt       DateTime
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, sourceKey, targetType, targetId, kind, value], map: "DemandObservation_source_target_category_key")
+  @@index([targetArtistId, expiresAt, observedAt])
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+/// #1969: serving snapshots contain aggregate counts and canonical catalog
+/// references only. Requester, source, session and observation identifiers are
+/// intentionally absent. Artist deletion cascades; account erasure detaches.
+model DemandSignal {
+  id                  String   @id @default(uuid())
+  artistId            String
+  targetType          String   @db.VarChar(16)
+  targetId            String
+  kind                String   @db.VarChar(24)
+  value               String   @db.VarChar(64)
+  windowDays          Int
+  distinctRequesters  Int
+  requestCount        Int
+  computedAt          DateTime @default(now())
+  artist              Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([artistId, targetType, targetId, kind, value, windowDays], map: "DemandSignal_artist_target_category_window_key")
   @@index([artistId, computedAt])
 }

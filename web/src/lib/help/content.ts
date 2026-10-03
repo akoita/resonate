@@ -2202,7 +2202,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["analytics", "dashboard", "plays", "payouts", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release"],
+    keywords: ["analytics", "dashboard", "plays", "payouts", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses"],
     sections: [
       {
         id: "dashboard",
@@ -2236,6 +2236,31 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Alongside the numbers, the dashboard suggests concrete next steps — for example promoting a top track, listing marketplace-ready stems, activating a community room, reviewing city demand for a show, or posting a campaign update. Each card links straight to where you'd act.",
+          },
+        ],
+      },
+      {
+        id: "unmet-demand",
+        heading: "Scene Scout: searched but missing",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "When enough people ask for matching catalog supply and come up short, Scene Scout can suggest a missing stem or license to review. The cards show shared request totals, never who asked or their original words. A small audience shows Not enough request demand yet. A request gap is not a promise of sales.",
+          },
+          {
+            kind: "paragraph",
+            text: "Choose Publish this stem or List this license to open the relevant track in your release. Prepare missing stems if needed, then review the existing rights checks, terms and confirmation steps. The suggestion does not publish anything for you. Other supply gaps open your catalog for review.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/scene-scout-demand.png`,
+              alt: "An artist action card showing aggregate unmet vocals-stem demand for First Light and a Publish this stem link.",
+              caption: "Review a catalog gap before preparing supply or confirming a listing.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },

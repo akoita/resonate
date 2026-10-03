@@ -24,6 +24,7 @@ import { CommunityModule } from "../community/community.module";
 import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { createCrateRequestParser } from "../crates/model_crate_request_parser";
 import { AGENT_SESSION_REQUEST_PARSER } from "./agent_session_request";
+import { SceneScoutModule } from "../scene_scout/scene_scout.module";
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AGENT_SESSION_REQUEST_PARSER } from "./agent_session_request";
     RecommendationsModule,
     CommunityModule,
     EmbeddingsModule,
+    SceneScoutModule,
   ],
   controllers: [
     AgentsController,

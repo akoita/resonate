@@ -24,6 +24,8 @@ import { minutes } from "../shared/rate_limits";
 import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../crates/crate.types";
 import type { CrateRequestParser } from "../crates/crate_request_parser";
 import { createCrateRequestParser } from "../crates/model_crate_request_parser";
+import { getAgentTrackLimit } from "./agent_runtime.config";
+import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 
 /** Tracked per signed-in person where the guard has resolved them, else per IP. */
 const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
@@ -51,6 +53,8 @@ export class AgentConfigController {
         @Optional()
         @Inject(AGENT_SESSION_REQUEST_PARSER)
         private requestParser?: CrateRequestParser,
+        @Optional()
+        private readonly unmetDemand?: UnmetDemandService,
     ) { }
 
     @Get()
@@ -373,6 +377,30 @@ export class AgentConfigController {
                     return this.runtimeService.run(runtimeInput);
                 })
                 .then(async (result) => {
+                    const resultStatus = typeof result.status === "string" ? result.status : "";
+                    const foundTrackIds = "tracks" in result
+                        ? result.tracks.map((track) => track.trackId)
+                        : (result.picks ?? (result.trackId ? [{ trackId: result.trackId }] : []))
+                            .map((pick) => pick.trackId);
+                    if (
+                        this.unmetDemand && requested.request &&
+                        (resultStatus === "approved" || resultStatus === "no_tracks")
+                    ) {
+                        try {
+                            await this.unmetDemand.recordSessionShortfall({
+                                userId: req.user.userId,
+                                sessionId: session.id,
+                                resultStatus,
+                                observedAt: new Date(),
+                                request: requested.request,
+                                requestedCount: getAgentTrackLimit(),
+                                foundTrackIds,
+                                requestCoverage: "tracks" in result ? result.requestCoverage : undefined,
+                            });
+                        } catch {
+                            this.logger.warn("Unmet-demand observation was skipped after an agent session result.");
+                        }
+                    }
                     if ("tracks" in result) {
                         // Orchestrator pipeline result (local mode)
                         for (const track of result.tracks) {

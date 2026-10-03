@@ -24,7 +24,9 @@ on 2026-10-03. Workers must prove Luna/max before receiving real tasks.
 3. **#1970:** prioritize fresh verified-human releases within the existing
    exploration budget, preserving taste fit, listener hides, AI exclusions and
    diversity. Bound exposure per listener/release using durable interaction
-   history; attach the existing discovery explanation. Produce a day-seven
+   history, including actual model-driven DJ picks and every track of a fresh
+   release. Unreturned fallback candidates must never consume placements;
+   attach the existing discovery explanation. Produce a day-seven
    aggregate reception card through the Scene Scout source with the same
    privacy and entitlement checks.
 4. **#1450 (independent worktree):** add Dataform popularity/engagement marts
@@ -54,7 +56,7 @@ on 2026-10-03. Workers must prove Luna/max before receiving real tasks.
 
 | Issue | State |
 | --- | --- |
-| #1968 | in progress |
-| #1969 | planned |
+| #1968 | draft [PR #2044](https://github.com/akoita/resonate/pull/2044); remaining signal families tracked in the open issue |
+| #1969 | application implemented and locally verified in this branch; depends on PR #2044; external acceptance tracked in resonate-iac#264 |
 | #1970 | in progress in isolated worktree |
-| #1450 | in progress in isolated worktree |
+| #1450 | draft [PR #2045](https://github.com/akoita/resonate/pull/2045); external warehouse acceptance tracked in resonate-iac#263 |

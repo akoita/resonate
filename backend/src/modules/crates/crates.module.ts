@@ -14,6 +14,7 @@ import { CRATE_REQUEST_PARSER } from "./crate_request_parser";
 import { createCrateRequestParser } from "./model_crate_request_parser";
 import { CratesController } from "./crates.controller";
 import { CratesService } from "./crates.service";
+import { SceneScoutModule } from "../scene_scout/scene_scout.module";
 
 /**
  * Crate Digger (#1962, docs/rfc/taste-engine.md §5.1-5.2).
@@ -26,7 +27,7 @@ import { CratesService } from "./crates.service";
  * Nothing imports this module, so it adds no import cycle.
  */
 @Module({
-  imports: [RecommendationsModule, AgentsModule, NotificationModule, ContractsModule],
+  imports: [RecommendationsModule, AgentsModule, NotificationModule, ContractsModule, SceneScoutModule],
   controllers: [CratesController],
   providers: [
     CratesService,

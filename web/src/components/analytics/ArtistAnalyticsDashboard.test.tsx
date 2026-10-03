@@ -5,6 +5,25 @@ import ArtistAnalyticsDashboard from "./ArtistAnalyticsDashboard";
 import type { ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
 
 describe("ArtistAnalyticsDashboard", () => {
+  it("explains small unmet demand without inventing a supply suggestion", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+      data={{ ...dashboard, actions: [], unmetDemand: { status: "thin_data" } }} onDaysChange={() => {}} />);
+    expect(html).toContain("Not enough request demand yet");
+    expect(html).not.toContain("Publish this stem");
+  });
+
+  it("preserves the canonical release supply link", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+      data={{ ...dashboard, actions: [{
+        id: "demand:vocals", type: "review_unmet_demand", title: "Review vocals stem supply",
+        description: "Requests came up short.", reason: "14 requests from 8 people.",
+        confidence: 0.66, priority: "medium", sourceSignal: { category: "catalog", summary: "Qualified shortfalls", count: 14 },
+        cta: { label: "Publish this stem", href: "/release/r?demandTrack=t&demandStem=vocals#scene-scout-supply" },
+        privacy: { aggregateOnly: true, thresholdApplied: true, minimumThreshold: 5 },
+      }] }} onDaysChange={() => {}} />);
+    expect(html).toContain("/release/r?demandTrack=t&amp;demandStem=vocals#scene-scout-supply");
+    expect(html).toContain("Aggregate signals only");
+  });
   it("explains thin Scene Scout data in an otherwise populated dashboard", () => {
     const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
       data={{ ...dashboard, sceneScout: { status: "thin_data" } }} onDaysChange={() => {}} />);

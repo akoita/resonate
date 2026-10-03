@@ -54,10 +54,34 @@ signed-in user's visible catalog, initializes the release context and city,
 and keeps the details editable. Campaign ownership, payout eligibility and
 artist authority remain enforced by the existing Shows workflow.
 
+## Searched but missing demand
+
+Crate gaps become categorical observations only when an otherwise eligible
+catalog candidate fails exactly one requested filter. Missing stems and licenses
+point to that actual track. BPM, key, energy and other categorical gaps describe
+artist or genre supply; they do not claim an unrelated track matches the request.
+Short DJ sessions use structured intent and actual returned track counts,
+including sessions with no picks. Unresolved catalog attribution is omitted.
+
+Observations require current analytics consent, exclude the artist's own
+requests, and retain no prompts or reasoning. They expire after 28 days; bounded
+cleanup runs on reads and writes and through the analytics retention procedure.
+Current consent and taste-memory controls are checked again when refreshing
+aggregates, so withdrawal removes the contribution from the next safe snapshot.
+Account erasure explicitly deletes requester-linked observations.
+
+Only seven- and 28-day `DemandSignal` aggregates above `DISCOVERY_MIN_AUDIENCE`
+distinct requesters are stored or returned. Cockpit cards also need five requests.
+**Publish this stem** and **List this license** open the canonical release and
+track's existing listing controls with validated categorical context. The artist
+reviews the supply, rights and terms before confirming; the suggestion never
+publishes or lists automatically. Other gaps link to the artist catalog. Small
+or unavailable samples produce an honest status rather than a sales estimate.
+
 ## API, analytics and lifecycle
 
 The existing authenticated `GET /analytics/artist/:id/v1` response carries the
-stable cockpit cards and a `sceneScout` status. Artist analytics authorization
+stable cockpit cards, a `sceneScout` city status and an `unmetDemand` status. Artist analytics authorization
 protects the read. Scene Scout adds no public audience endpoint.
 
 Cockpit impressions and clicks use the existing `artist.action_card_impression`
