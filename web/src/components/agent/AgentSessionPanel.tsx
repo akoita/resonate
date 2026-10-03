@@ -211,13 +211,22 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 const queue = await resolveDjQueue(trackIds, token);
                 if (queue.length === 0) return 0;
                 await saveTracksMetadata(queue, "remote");
-                await playQueue(queue, 0);
+                const previousSet = getDjSet();
                 // Let the DJ keep adding picks as this queue runs out (AgentDjContinuation).
                 setDjSet({
                     sessionId,
                     preferences: buildNextPickPreferences(),
                     trackIds: queue.map((track) => track.catalogTrackId || track.id),
                 });
+                const installedSet = getDjSet();
+                try {
+                    // Starts must already carry the DJ session's provenance.
+                    await playQueue(queue, 0);
+                } catch (error) {
+                    // Preserve a newer set if another action replaced this one.
+                    if (getDjSet() === installedSet) setDjSet(previousSet);
+                    throw error;
+                }
                 return queue.length;
             } catch (error) {
                 addToast({
@@ -540,7 +549,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         const session = sessions.find((candidate) => candidate.id === sessionId);
         if (!session || session.licenses.length === 0) return;
         clearAwaitingAutoplay();
-        void playDjTracks(sessionId, session.licenses.map((license) => license.trackId));
+        void playDjTracks(sessionId, session.mixTrackIds ?? session.licenses.map((license) => license.trackId));
     }, [sessions, playDjTracks, clearAwaitingAutoplay]);
 
     useEffect(() => {

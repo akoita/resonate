@@ -25,6 +25,7 @@ describe("AgentConfigController My Mix boundaries (integration)", () => {
   };
   const runtime = {
     getInitialMixCoverage: jest.fn().mockReturnValue(coverage),
+    getMyMixTrackOrder: jest.fn().mockReturnValue([TRACK]),
     clearMyMixSession: jest.fn(),
     run: jest.fn(),
   };
@@ -112,6 +113,16 @@ describe("AgentConfigController My Mix boundaries (integration)", () => {
     expect(runtime.getInitialMixCoverage).not.toHaveBeenCalled();
   });
 
+  it("exposes ordered initial batch IDs only through owner-scoped history", async () => {
+    runtime.getMyMixTrackOrder.mockClear();
+    const history = await controller.getHistory({ user: { userId: OWNER } });
+    expect(history.find((row) => row.id === SESSION)).toHaveProperty("mixTrackIds", [TRACK]);
+    expect(runtime.getMyMixTrackOrder).toHaveBeenCalledWith(OWNER, SESSION);
+    runtime.getMyMixTrackOrder.mockClear();
+    expect(await controller.getHistory({ user: { userId: OTHER } })).toEqual([]);
+    expect(runtime.getMyMixTrackOrder).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed or foreign lane selections before creating or activating a session", async () => {
     const before = await prisma.session.count({ where: { userId: OWNER } });
 
@@ -185,9 +196,16 @@ describe("AgentConfigController My Mix boundaries (integration)", () => {
       label: "Jazz · Warm",
       matched: 1,
     });
+    expect(runtimeService.getMyMixTrackOrder(OWNER, SESSION)).toEqual([TRACK]);
+    const snapshot = runtimeService.getMyMixTrackOrder(OWNER, SESSION)!;
+    snapshot.push("tampered");
+    expect(runtimeService.getMyMixTrackOrder(OWNER, SESSION)).toEqual([TRACK]);
+    expect(runtimeService.getMyMixTrackOrder(OTHER, SESSION)).toBeUndefined();
     expect(runtimeService.takeMyMixDemandObservations(OWNER, SESSION)[0]).toMatchObject({
       genres: ["Jazz"],
       moods: [],
     });
+    runtimeService.clearMyMixSession(OWNER, SESSION);
+    expect(runtimeService.getMyMixTrackOrder(OWNER, SESSION)).toBeUndefined();
   });
 });

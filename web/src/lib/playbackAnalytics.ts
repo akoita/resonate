@@ -19,6 +19,8 @@ export type PlaybackCompletedPayload = {
   artistId?: string;
   releaseId?: string;
   sessionId: string;
+  /** Active DJ session provenance; listener playback stays listener-originated. */
+  agentSessionId?: string;
   playbackInstanceId?: string;
   source: string;
   completionRatio: number;
@@ -41,6 +43,8 @@ export type PlaybackLifecyclePayload = {
   artistId?: string;
   releaseId?: string;
   sessionId: string;
+  /** Active DJ session provenance; listener playback stays listener-originated. */
+  agentSessionId?: string;
   playbackInstanceId: string;
   source: string;
   positionMs?: number;
@@ -149,6 +153,7 @@ export function buildPlaybackCompletedPayload(input: {
   playbackInstanceId?: string;
   repeatMode?: "none" | "one" | "all";
   playlistId?: string;
+  agentSessionId?: string;
   now?: Date;
 }): PlaybackCompletedPayload | null {
   const trackId = getPlaybackAnalyticsTrackId(input.track);
@@ -182,6 +187,7 @@ export function buildPlaybackCompletedPayload(input: {
     ...(input.repeatMode ? { repeatMode: input.repeatMode } : {}),
     ...getPlaybackLocalContext(input.now),
     ...getDiscoveryAttribution(trackId),
+    ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
   };
 }
 
@@ -199,6 +205,7 @@ export function buildPlaybackLifecyclePayload(input: {
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
   playlistId?: string;
+  agentSessionId?: string;
   now?: Date;
 }): PlaybackLifecyclePayload | null {
   const trackId = getPlaybackAnalyticsTrackId(input.track);
@@ -238,9 +245,18 @@ export function buildPlaybackLifecyclePayload(input: {
     ...(input.playlistId ? { playlistId: input.playlistId } : {}),
     ...getPlaybackLocalContext(input.now),
     ...getDiscoveryAttribution(trackId),
+    ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
   };
 }
 
 function getPlaybackAnalyticsTrackId(track: LocalTrack) {
   return track.catalogTrackId || (track.source === "remote" ? track.id : undefined);
+}
+
+/** Select session provenance only when this actual playback belongs to the active set. */
+export function getPlaybackDjSessionId(
+  trackId: string,
+  set: { sessionId: string; trackIds: string[] } | null,
+): string | undefined {
+  return set?.trackIds.includes(trackId) ? set.sessionId : undefined;
 }

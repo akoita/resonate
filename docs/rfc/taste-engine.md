@@ -136,7 +136,11 @@ for thresholds and cache lifecycle. My Mix (#2065) blends visible lanes with
 strength/context shares and whole-track quotas. Session edits do not change
 Taste Memory unless explicitly saved; missing lane coverage stays visible even
 when another lane fills its slots. The shared exploration and diversity policy
-still applies. See [My Mix](../features/agent_taste_intelligence.md#my-mix-2065).
+still applies. Free habit ordering (#2066) now groups the selected batch into
+short runs, using decayed, consented playback transitions and measured energy.
+Actual started playback establishes across-batch continuity; sparse evidence
+uses a neutral order. Advanced styles stay off, and gated tempo/Camelot work
+remains in #1971. See [My Mix](../features/agent_taste_intelligence.md#my-mix-2065).
 
 Manipulation protection (ADR-TE-2.5): signals from accounts younger than the
 trust threshold or flagged as anomalous are down-weighted; self-plays and

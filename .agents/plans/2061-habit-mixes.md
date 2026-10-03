@@ -1,7 +1,7 @@
 # Habit mixes (#2061)
 
-Status: #2062–#2064 merged in PRs #2068–#2070. #2065 is implemented and locally validated;
-#2066–#2067 remain planned and tracked by the open parent epic. Revenue: vision-neutral
+Status: #2062–#2065 merged in PRs #2068–#2070 and #2072. #2066 is implemented;
+#2067 remains planned and tracked by the open parent epic. Revenue: vision-neutral
 infrastructure (ADR-BM-6), enabling Line 4 Listener Pro, phase 4.
 
 ## First slice: habit telemetry (#2062)
@@ -43,9 +43,9 @@ infrastructure (ADR-BM-6), enabling Line 4 Listener Pro, phase 4.
   see [its plan](2063-habit-profile-v2.md).
 - #2064: deterministic listening lanes — merged in #2070;
   see [its plan](2064-listening-lanes.md).
-- #2065: My Mix and editable lane quotas — implemented and locally validated;
+- #2065: My Mix and editable lane quotas — merged in #2072;
   see [its plan](2065-my-mix.md).
-- #2066: learned ordering — planned.
+- #2066: learned ordering — implemented; see [its plan](2066-habit-ordering.md).
 - #2067: measurement and promotion evidence — planned.
 
 ## First-slice validation and change impact

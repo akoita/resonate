@@ -70,6 +70,12 @@ finite-repeat set share one `loop` reinforcement per track/browser session;
 `library.removed` maps to `unsave`. For consent, deduplication, weights and reset
 semantics, see [the learning-loop contract](../features/agent_taste_intelligence.md#learning-from-listening-habits-2062).
 
+The browser now forwards the existing optional `agentSessionId` for tracks in
+its active DJ set (#2066). Playback-start/skip mirrors preserve it, as completion
+mirrors already do. This associates actual playback with owner-scoped batch
+ordering; it does not mark listener playback as agent-originated. Lane-pair
+counts remain private derived state, with no new domain event or warehouse field.
+
 ## Naming Rules
 
 - Use lowercase dotted event names: `family.action`.

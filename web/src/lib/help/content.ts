@@ -557,7 +557,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Basic My Mix is free. Saved named mixes, energy changes within a lane, and advanced length or ordering controls are not available yet.",
+            text: "My Mix keeps you in a style for a few tracks, then uses your listening habits to choose where to go next. With little listening history, it starts with your strongest styles and eases between tracks when energy has been measured. Basic My Mix is free. Saved named mixes, energy changes within a lane, and advanced length or ordering controls are not available yet.",
           },
         ],
       },

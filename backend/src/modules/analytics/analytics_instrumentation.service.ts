@@ -322,6 +322,7 @@ export class AnalyticsInstrumentationService {
             source: input.source ?? "web_player",
             initiator: input.initiator ?? "listener",
             agentOriginated: false,
+            agentSessionId: input.agentSessionId,
             playbackCommandId: input.playbackCommandId,
             playbackInstanceId: input.playbackInstanceId,
             playlistId: input.playlistId,

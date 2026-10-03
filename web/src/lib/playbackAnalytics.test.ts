@@ -4,6 +4,7 @@ import {
   buildPlaybackLifecyclePayload,
   createPlaybackAnalyticsInstanceId,
   getPlaybackLocalContext,
+  getPlaybackDjSessionId,
   getPlaybackPlaylistId,
   getPlaybackAnalyticsSessionId,
   PLAYBACK_HEARTBEAT_SECONDS,
@@ -46,6 +47,18 @@ describe("playback analytics helpers", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("associates actual playback with the active DJ set without marking it agent-originated", () => {
+    const set = { sessionId: "dj-session", trackIds: ["catalog-track-1"] };
+    const common = { track, agentSessionId: getPlaybackDjSessionId("catalog-track-1", set), sessionId: "browser-session", playbackInstanceId: "instance", currentTimeSeconds: 30 };
+    const started = buildPlaybackLifecyclePayload({ ...common, action: "started" });
+    const completed = buildPlaybackCompletedPayload(common);
+    expect(started?.agentSessionId).toBe("dj-session");
+    expect(completed?.agentSessionId).toBe("dj-session");
+    expect(started).not.toHaveProperty("agentOriginated");
+    expect(getPlaybackDjSessionId("other", set)).toBeUndefined();
+    expect(buildPlaybackCompletedPayload({ ...common, agentSessionId: getPlaybackDjSessionId("catalog-track-1", null) })).not.toHaveProperty("agentSessionId");
   });
 
   it("uses secure random bytes when randomUUID is unavailable", () => {

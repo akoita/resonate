@@ -1,5 +1,6 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
+import { HabitOrderingService } from "./habit_ordering.service";
 import { AgentMixerService } from "./agent_mixer.service";
 import type { AgentAudioFeatures } from "./agent_audio_feature.service";
 import { AgentRecommendationService } from "./agent_recommendation.service";
@@ -87,7 +88,8 @@ export class AgentOrchestratorService {
   constructor(
     private readonly recommendations: AgentRecommendationService,
     private readonly mixer: AgentMixerService,
-    private readonly eventBus: EventBus
+    private readonly eventBus: EventBus,
+    @Optional() private readonly habitOrdering?: HabitOrderingService,
   ) { }
 
   async orchestrate(input: AgentOrchestratorInput): Promise<{
@@ -138,13 +140,19 @@ export class AgentOrchestratorService {
       };
     }
 
+    // Reorder the policy-approved batch before planning each transition.
+    // Future tempo/Camelot sequencing (#1971) can refine tracks within lane runs.
+    const ordered = input.myMixPlan && this.habitOrdering
+      ? await this.habitOrdering.orderMyMix(input.userId, input.sessionId, selection.selected, input.myMixPlan)
+      : selection.selected;
+
     if (selectedCount > 0) {
       this.eventBus.publish({
         eventName: "agent.selection",
         eventVersion: 1,
         occurredAt: new Date().toISOString(),
         sessionId: input.sessionId,
-        trackId: selection.selected[0]?.id,
+        trackId: ordered[0]?.id,
         candidates: selection.candidates,
         count: selection.selected.length,
         strategy: selection.strategy,
@@ -157,7 +165,7 @@ export class AgentOrchestratorService {
     const tracks: OrchestratedTrack[] = [];
     let previousTrackId = input.recentTrackIds[0];
 
-    for (const track of selection.selected ?? []) {
+    for (const track of ordered ?? []) {
       const mixPlan = this.mixer.plan({
         trackId: track.id,
         previousTrackId,

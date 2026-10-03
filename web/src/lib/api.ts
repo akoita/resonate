@@ -5648,6 +5648,8 @@ export interface AgentSession {
   startedAt: string;
   endedAt: string | null;
   licenses: AgentSessionLicense[];
+  /** Latest owner-only ordered My Mix batch; absent after ephemeral cache loss. */
+  mixTrackIds?: string[];
   agentTransactions: AgentTransaction[];
 }
 
