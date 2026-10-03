@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { IdentityModule } from "../identity/identity.module";
 import { AgentsModule } from "../agents/agents.module";
 import { SharedModule } from "../shared/shared.module";
+import { SceneScoutModule } from "../scene_scout/scene_scout.module";
 import { SessionsController } from "./sessions.controller";
 import { SessionsService } from "./sessions.service";
 import {
@@ -11,7 +12,7 @@ import {
 } from "./playback_intents.service";
 
 @Module({
-  imports: [SharedModule, IdentityModule, AgentsModule],
+  imports: [SharedModule, IdentityModule, AgentsModule, SceneScoutModule],
   controllers: [SessionsController],
   providers: [
     SessionsService,

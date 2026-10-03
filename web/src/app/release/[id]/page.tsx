@@ -40,6 +40,7 @@ import { QueueActionsButton } from "../../../components/player/QueueActionsButto
 import { ArtistCampaignLink } from "../../../components/shows/ArtistCampaignLink";
 import { releaseCampaignArtistIdentity } from "../../../lib/shows";
 import { useQueueActions } from "../../../lib/useQueueActions";
+import { ownedDemandTrack, stemDemandContext } from "../../../lib/stemDemandContext";
 
 import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
@@ -490,6 +491,15 @@ export default function ReleaseDetails() {
     ? release?.rightsFlags?.filter((flag) => flag !== "NEEDS_PROOF_OF_CONTROL")
     : release?.rightsFlags;
   const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
+  const demandContext = useMemo(() => stemDemandContext(searchParams), [searchParams]);
+  const demandTrack = ownedDemandTrack(demandContext, release?.tracks, Boolean(token && userId && isOwner));
+  const demandContextHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !demandTrack || demandContextHandledRef.current === demandTrack.id) return;
+    demandContextHandledRef.current = demandTrack.id;
+    setExpandedNftTracks((previous) => new Set([...previous, demandTrack.id]));
+    document.getElementById("scene-scout-supply")?.scrollIntoView({ block: "center" });
+  }, [demandTrack, loading]);
   const canReadCatalog = catalogAccess?.resourceId === release?.id;
   const isCatalogOwner = catalogAccess?.resourceId === release?.id && catalogAccess?.currentUserAccess.isOwner;
   const canEditTitle = catalogAccess?.resourceId === release?.id
@@ -2821,6 +2831,17 @@ export default function ReleaseDetails() {
       )}
 
       {/* NFT Marketplace Section - Only for owners */}
+      {demandTrack && demandContext && (
+        <section id="scene-scout-supply" className="glass-panel" style={{ padding: "20px", marginBottom: "20px" }}>
+          <h3>Review {demandContext.stemType ?? demandContext.licenseType} supply for {demandTrack.title}</h3>
+          <p>{demandContext.stemType && !demandTrack.stems?.some((stem) =>
+            stem.type.toLowerCase() === demandContext.stemType)
+            ? "This stem is not ready to list. Prepare the track's stems in your catalog, then review the listing controls below."
+            : "Review the stem and license options below. Choose your terms before confirming a listing."}</p>
+          <p>A Scene Scout suggestion does not publish a stem or create a listing. Your existing rights review and confirmation steps apply.</p>
+          <Link href="/artist/catalog">Open your catalog</Link>
+        </section>
+      )}
       {
         isOwner && release.tracks && release.tracks.some(t => t.stems && t.stems.length > 0) && (
           <section id="nft-marketplace" className="nft-section glass-panel">

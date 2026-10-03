@@ -674,6 +674,11 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     note: "`crateId` is SET NULL when the crate above is deleted; this rule deletes the request rows themselves by `userId`, so none survive the erasure.",
   },
   {
+    model: "DemandObservation",
+    disposition: "delete",
+    reason: "Consent-shaped, user-linked request observations have no use after account erasure and expire after 28 days in ordinary retention.",
+  },
+  {
     model: "CrateQuote",
     disposition: "delete",
     reason: "The priced offers a DJ asked for on their crates (#1964): the person's smart-account address, the transaction they submitted and when. It is behavioural state about them; the settled sales themselves live on in the chain and in StemPurchase, which this rule does not touch.",
@@ -800,6 +805,11 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     model: "SceneScoutCityDemand",
     disposition: "detach",
     reason: "Thresholded city/release counts name no listener and follow the detached artist profile; source events remain governed and reads rebuild the snapshot.",
+  },
+  {
+    model: "DemandSignal",
+    disposition: "detach",
+    reason: "Thresholded request-demand counts name no requester and follow the artist catalog that survives account erasure.",
   },
   {
     model: "ArtistEngagement",

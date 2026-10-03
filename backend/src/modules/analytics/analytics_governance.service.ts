@@ -53,6 +53,7 @@ export interface AnalyticsRetentionWarehouseOutcome extends WarehouseErasureResu
 }
 
 const REDACTED_VALUE = "[redacted]";
+const UNMET_DEMAND_RETENTION_BATCH_LIMIT = 1_000;
 
 @Injectable()
 export class AnalyticsGovernanceService {
@@ -91,9 +92,27 @@ export class AnalyticsGovernanceService {
       deleted: 0,
       redacted: 0,
       lineageRecords: 0,
+      demandObservationsDeleted: 0,
       policy,
       ranAt: now.toISOString(),
     };
+
+    // Demand observations are user-linked categorical records with their own
+    // 28-day expiry. They do not enter the analytics warehouse, so retention
+    // deletes a bounded Postgres batch directly rather than calling the event
+    // erasure pipeline.
+    const expiredDemand = await prisma.demandObservation.findMany({
+      where: { expiresAt: { lt: now } },
+      orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+      take: UNMET_DEMAND_RETENTION_BATCH_LIMIT,
+      select: { id: true },
+    });
+    if (expiredDemand.length > 0) {
+      const deleted = await prisma.demandObservation.deleteMany({
+        where: { id: { in: expiredDemand.map((row) => row.id) } },
+      });
+      result.demandObservationsDeleted = deleted.count;
+    }
 
     for (const tier of ["sensitive", "personal", "pseudonymous"] as RetentionTier[]) {
       const cutoff = new Date(now.getTime() - retentionDays(policy, tier) * 24 * 60 * 60 * 1000);

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { WalletService } from "../identity/wallet.service";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
@@ -7,6 +7,8 @@ import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
 import { AgentRuntimeService } from "../agents/agent_runtime.service";
 import { djPickVariantFields } from "./dj_pick_variant";
 import { AgentLearningService } from "../agents/agent_learning.service";
+import { getAgentTrackLimit } from "../agents/agent_runtime.config";
+import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
 import {
   requestRankingPreferences,
@@ -35,6 +37,7 @@ export interface AgentPreferences {
 
 @Injectable()
 export class SessionsService {
+  private readonly logger = new Logger(SessionsService.name);
   private playlistCache = new Map<string, { items: unknown[]; cachedAt: number }>();
   private readonly playlistTtlMs = 15_000;
   private agentPreferences = new Map<string, AgentPreferences>();
@@ -45,7 +48,8 @@ export class SessionsService {
     private readonly eventBus: EventBus,
     private readonly agentRuntimeService: AgentRuntimeService,
     private readonly agentPurchaseService: AgentPurchaseService,
-    private readonly agentLearningService?: AgentLearningService
+    private readonly agentLearningService?: AgentLearningService,
+    private readonly unmetDemand?: UnmetDemandService,
   ) {}
 
   async startSession(input: {
@@ -268,6 +272,26 @@ export class SessionsService {
           : {}),
       },
     });
+
+    if (this.unmetDemand && requested.request && (result.status === "approved" || result.status === "no_tracks")) {
+      try {
+        await this.unmetDemand.recordSessionShortfall({
+          userId: session.userId,
+          sessionId: input.sessionId,
+          resultStatus: result.status,
+          observedAt: new Date(),
+          request: requested.request,
+          requestedCount: getAgentTrackLimit(),
+          foundTrackIds: [
+            ...(result.primaryTrack ? [result.primaryTrack.trackId] : []),
+            ...result.tracks.map((track) => track.trackId),
+          ],
+          requestCoverage: result.requestCoverage,
+        });
+      } catch {
+        this.logger.warn("Unmet-demand observation was skipped after an agent session result.");
+      }
+    }
 
     return this.toAgentNextResponse(input.sessionId, session.userId, result);
   }

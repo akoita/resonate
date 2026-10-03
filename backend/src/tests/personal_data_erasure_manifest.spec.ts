@@ -468,6 +468,13 @@ describe("personal data erasure manifest", () => {
       expect(ERASURE_RULES_BY_MODEL.Release.note).toContain("managementOwnerUserId");
     });
 
+    it("deletes requester-linked demand observations and detaches aggregate signals", () => {
+      expect(ERASURE_RULES_BY_MODEL.DemandObservation.disposition).toBe("delete");
+      expect(ERASURE_RULES_BY_MODEL.DemandSignal.disposition).toBe("detach");
+      expect(EXPORTED_MODELS.some((entry) => entry.model === "DemandObservation")).toBe(true);
+      expect(EXPORTED_MODELS.some((entry) => entry.model === "DemandSignal")).toBe(true);
+    });
+
     it("leaves analytics to the governance service", () => {
       expect(ERASURE_RULES_BY_MODEL.AnalyticsEvent.disposition).toBe("governance");
       expect(ERASURE_RULES_BY_MODEL.AnalyticsGovernanceLog.disposition).toBe("governance");

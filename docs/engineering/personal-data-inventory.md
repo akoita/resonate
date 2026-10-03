@@ -43,7 +43,7 @@ was itself written from fewer than five.
 
 Added by the manifest: `Release`, `ReleaseArtistCredit`, `CreatorTrust`,
 `CommunityBenefitRule`, `CommunityRoom`, `CommunityDiscordBridge`,
-`TrustedSourceArtistLink`, `PunchlineDrop`, `ArtistEngagement` (all
+`TrustedSourceArtistLink`, `PunchlineDrop`, `ArtistEngagement`, `DemandSignal` (all
 `artistId`); `License` and `Payment` (`sessionId`); `Dispute`,
 `DisputeEvidence` and `DisputeJurorAssignment` (wallet addresses —
 `reporterAddr`, `creatorAddr`, `submitter`, `jurorAddr`); and
@@ -141,6 +141,23 @@ that detached profile. Listener source events remain subject to analytics
 governance; dashboard reads recompute snapshots using current consent, reset
 and agent-training controls. Release or artist deletion cascades the snapshot.
 
+## Scene Scout unmet demand (#1969)
+
+`DemandObservation` holds a user's structured crate or short-session shortfall,
+keyed by a one-way source digest and canonical catalog/category values. It never
+stores prompts, reasoning, session ids, raw candidate lists or free text. A
+positive decision for the current analytics-consent policy is required when an
+observation is written and again when it is read; session observations also
+follow playback-training opt-out and taste-memory reset controls. Rows expire
+after 28 days, are included in the person's export, and are deleted by
+`userId` on erasure.
+
+`DemandSignal` contains only an artist/catalog target, a fixed category, the
+7- or 28-day window and thresholded counts. It has no requester, source or
+session identifiers. It is exported to the owning artist and follows the
+catalog through account erasure; reads recompute it from currently consented
+observations and replace stale or below-threshold snapshots.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:
@@ -199,7 +216,8 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
 `ShowPledge`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
-`CrateRequest`, `CrateQuote`, `CrateQuoteLine`, `CrateWatchMatch`.
+`CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
+`CrateWatchMatch`.
 
 Crate Digger (#1962) adds three of these, all keyed by `userId`. `Crate` (title,
 filters, status), `CrateItem` (track id, position, locked flag; `userId` is

@@ -72,6 +72,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
         />
         <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
         <SceneScoutStatus sceneScout={data.sceneScout} />
+        <UnmetDemandStatus demand={data.unmetDemand} />
         <EmptyDashboard days={data.meta.timeWindow.days} />
         <SeparatedContentProtection />
       </>
@@ -89,6 +90,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
 
       <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
       <SceneScoutStatus sceneScout={data.sceneScout} />
+      <UnmetDemandStatus demand={data.unmetDemand} />
 
       <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
@@ -163,6 +165,18 @@ function SceneScoutStatus({ sceneScout }: { sceneScout: ArtistAnalyticsDashboard
       <p>{sceneScout.reason ?? (sceneScout.status === "thin_data"
         ? "Not enough listening yet. City suggestions appear when enough listeners support a release."
         : "Scene Scout is currently unavailable.")}</p>
+    </section>
+  );
+}
+
+function UnmetDemandStatus({ demand }: { demand: ArtistAnalyticsDashboardData["unmetDemand"] }) {
+  if (!demand || demand.status === "ready") return null;
+  return (
+    <section className="artist-action-cockpit" aria-label="Unmet demand">
+      <h2>Unmet demand</h2>
+      <p>{demand.reason ?? (demand.status === "thin_data"
+        ? "Not enough request demand yet. Suggestions appear after enough people ask for matching catalog supply."
+        : "Request demand is currently unavailable.")}</p>
     </section>
   );
 }

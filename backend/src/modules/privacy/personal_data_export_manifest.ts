@@ -284,6 +284,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "that left gaps. The free text they typed is never stored, so there is none to export.",
   },
   {
+    model: "DemandObservation",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "The person's consented, categorized request shortfalls retained for at most 28 days; prompt text and session identifiers are never stored.",
+  },
+  {
     model: "CrateQuote",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
@@ -676,6 +682,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     primaryKey: "id",
     keys: [{ kind: "artistId", column: "artistId" }],
     note: "Thresholded city/release counts about this artist, with no listener identifiers.",
+  },
+  {
+    model: "DemandSignal",
+    primaryKey: "id",
+    keys: [{ kind: "artistId", column: "artistId" }],
+    note: "Thresholded aggregate request shortfalls about this artist, with no requester or source identifiers.",
   },
   {
     model: "ArtistEngagement",

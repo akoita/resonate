@@ -83,6 +83,17 @@ describe("personal data export manifest", () => {
       expect(REDACTED_FIELDS.ManagementTransferRecoveryRequest).toHaveProperty("reviewerUserId");
     });
 
+    it("exports unmet-demand observations to requesters and aggregate signals to artists", () => {
+      expect(EXPORTED_MODELS.find((entry) => entry.model === "DemandObservation")).toMatchObject({
+        primaryKey: "id",
+        keys: [{ kind: "userId", column: "userId" }],
+      });
+      expect(EXPORTED_MODELS.find((entry) => entry.model === "DemandSignal")).toMatchObject({
+        primaryKey: "id",
+        keys: [{ kind: "artistId", column: "artistId" }],
+      });
+    });
+
     it("keeps operator claim-decision history out of personal exports", () => {
       expect(NOT_EXPORTED_MODELS.ArtistClaimDecisionEvent).toContain(
         "historical free-text review notes are not exposed through an operator's personal export",

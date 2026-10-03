@@ -29,6 +29,8 @@ import {
   type SceneScoutSource,
 } from "../scene_scout/scene_scout.service";
 import { sceneScoutCityCards } from "./analytics_scene_scout";
+import { unmetDemandCards } from "./analytics_unmet_demand";
+import { UNMET_DEMAND_SOURCE, type UnmetDemandSource } from "../scene_scout/unmet_demand.contracts";
 
 interface TrackStats {
   trackId: string;
@@ -79,6 +81,7 @@ export type ArtistActionCardType =
   | "prepare_marketplace_catalog"
   | "review_show_city_demand"
   | "propose_show_city"
+  | "review_unmet_demand"
   | "post_campaign_update"
   | "create_holder_benefit"
   | "invite_holder_collectors"
@@ -267,6 +270,9 @@ export class AnalyticsService {
     @Optional()
     @Inject(SCENE_SCOUT_SOURCE)
     private readonly sceneScoutSource?: SceneScoutSource,
+    @Optional()
+    @Inject(UNMET_DEMAND_SOURCE)
+    private readonly unmetDemandSource?: UnmetDemandSource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
@@ -387,6 +393,11 @@ export class AnalyticsService {
       reason: "Scene Scout is temporarily unavailable. Your other analytics are still available.",
       cityDemand: [],
     }));
+    const unmetDemand = await this.unmetDemandSource?.getArtistUnmetDemand(artistId).catch(() => ({
+      status: "unavailable" as const,
+      reason: "Request demand is temporarily unavailable. Your other analytics are still available.",
+      demand: [],
+    }));
 
     return {
       summary: {
@@ -400,7 +411,7 @@ export class AnalyticsService {
       playsOverTime: this.playsOverTime(facts),
       trackPerformance: tracks,
       protection,
-      actions: [...sceneScoutCityCards(sceneScout), ...this.artistActionCards({
+      actions: [...sceneScoutCityCards(sceneScout), ...unmetDemandCards(unmetDemand), ...this.artistActionCards({
         artistId,
         totalPlays: summary.totalPlays,
         topTracks,
@@ -409,6 +420,7 @@ export class AnalyticsService {
         days: data.metadata.timeWindow.days,
       })],
       ...(sceneScout ? { sceneScout: { status: sceneScout.status, reason: sceneScout.reason } } : {}),
+      ...(unmetDemand ? { unmetDemand: { status: unmetDemand.status, reason: unmetDemand.reason } } : {}),
       listenerGrowth: {
         status: "unavailable",
         reason: "listener and follower growth events are not available in the current analytics event model",

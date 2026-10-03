@@ -60,6 +60,7 @@ import {
 import { CrateQuoteService } from "./crate_quote.service";
 import { crateLicenseOptions } from "./crate_license_rights";
 import { orderCrateAsSetPath, transitionFacts } from "./crate_ordering";
+import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import {
   CRATE_REQUEST_PARSER,
   filtersFromReferenceTrack,
@@ -166,6 +167,8 @@ export class CratesService {
     @Optional() private readonly tasteMemory?: TasteMemoryService,
     // The crate's latest quote (#1964); without it `latestQuote` is null.
     @Optional() private readonly quotes?: CrateQuoteService,
+    // Aggregate-only Scene Scout recording (#1969); absent in lightweight tests.
+    @Optional() private readonly unmetDemand?: UnmetDemandService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -181,6 +184,12 @@ export class CratesService {
     const now = new Date();
 
     const considered = await this.loadConsidered(now, referenceTrackId ? [referenceTrackId] : []);
+    let candidatePoolComplete = false;
+    try {
+      candidatePoolComplete = !(await this.hasCandidatePoolOverflow(referenceTrackId ? [referenceTrackId] : []));
+    } catch {
+      this.logger.warn("Unmet-demand catalog coverage could not be verified for a crate request.");
+    }
     const passing = this.passingFilters(considered, filters);
     const rankedPassing = await this.rankPassing(userId, passing);
 
@@ -229,6 +238,23 @@ export class CratesService {
       });
       return { created, request };
     });
+
+    if (this.unmetDemand) {
+      try {
+        await this.unmetDemand.recordCrateRequest({
+          userId,
+          requestId: crate.request.id,
+          observedAt: crate.request.createdAt,
+          filters,
+          coverage,
+          considered: considered.map(({ facts }) => facts),
+          candidatePoolComplete,
+        });
+      } catch {
+        // Scene Scout cannot turn a successful crate request into a failure.
+        this.logger.warn("Unmet-demand observation was skipped after a crate request.");
+      }
+    }
 
     return {
       crate: await this.toCrateDto(userId, crate.created, filters, ordered),
@@ -742,6 +768,24 @@ export class CratesService {
       select: crateTrackSelect(now),
     });
     return rows as CrateTrackRow[];
+  }
+
+  /** One extra id lets unmet-demand recording fail closed on a truncated pool. */
+  private async hasCandidatePoolOverflow(excludeTrackIds: readonly string[]): Promise<boolean> {
+    const rows = await prisma.track.findMany({
+      where: {
+        ...(excludeTrackIds.length > 0 ? { id: { notIn: [...excludeTrackIds] } } : {}),
+        contentStatus: "clean",
+        release: {
+          status: { in: [...WITHDRAWABLE_RELEASE_STATUSES] },
+          withdrawnAt: null,
+        },
+      },
+      orderBy: [{ release: { createdAt: "desc" } }, { id: "asc" }],
+      take: CRATE_CANDIDATE_POOL_LIMIT + 1,
+      select: { id: true },
+    });
+    return rows.length > CRATE_CANDIDATE_POOL_LIMIT;
   }
 
   /**
