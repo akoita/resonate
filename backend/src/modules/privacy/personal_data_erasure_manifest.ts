@@ -642,6 +642,14 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Per-play taste signals — behavioural state about the person, kept only to personalise for them.",
   },
   {
+    model: "FirstListenerExposure",
+    disposition: "delete",
+    reason:
+      "A first-listener placement records which release was recommended to this person and when; erase the listener-linked row with their other recommendation history.",
+    note:
+      "The per-release placement counter is stored separately on Release and remains monotonic so erasure does not replenish the bounded placement budget.",
+  },
+  {
     model: "ListenerTasteMemorySettings",
     disposition: "delete",
     reason: "Consent-shaped switches for taste memory; with the account closed there is nothing left to switch.",

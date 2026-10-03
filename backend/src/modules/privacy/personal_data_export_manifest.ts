@@ -246,6 +246,13 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
   },
   {
+    model: "FirstListenerExposure",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "A placement of a fresh release in this person's discovery feed. The userId key exports only this listener's exposure row.",
+  },
+  {
     model: "AnalyticsConsent",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

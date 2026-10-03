@@ -11,6 +11,7 @@ import { RecommendationsController } from "./recommendations.controller";
 import { RecommendationsService } from "./recommendations.service";
 import { createTasteEditParser, TASTE_EDIT_PARSER } from "./model_taste_edit_parser";
 import { TasteMemoryService } from "./taste_memory.service";
+import { FirstListenerModule } from "./first_listener.module";
 
 @Module({
   // CatalogModule provides the WS-4 popularity serving consumed by the
@@ -18,7 +19,7 @@ import { TasteMemoryService } from "./taste_memory.service";
   // EmbeddingsModule: stored-vector neighbours as a Home candidate source
   // (#2003) and taste-note embeddings (#2006). Both are inert while the
   // embedding provider is disabled.
-  imports: [SharedModule, CommunityModule, CatalogModule, EmbeddingsModule],
+  imports: [SharedModule, CommunityModule, CatalogModule, EmbeddingsModule, FirstListenerModule],
   controllers: [RecommendationsController],
   providers: [
     RecommendationsService,

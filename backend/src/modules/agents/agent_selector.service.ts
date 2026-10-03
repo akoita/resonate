@@ -5,6 +5,7 @@ import { AgentAudioFeatureService, AgentAudioFeatures } from "./agent_audio_feat
 import { AgentBigQueryTasteSignalService, AgentTasteScore } from "./agent_bigquery_taste_signal.service";
 import { CommunityCohortService } from "../community/community_cohort.service";
 import {
+  applyFirstListenerReservationOutcome,
   applyDiscoveryPolicy,
   DISCOVERY_POLICY_DEFAULTS,
   discoveryArtistKey,
@@ -12,6 +13,7 @@ import {
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import { DiscoveryRankingService } from "../recommendations/discovery-ranking.service";
 import { RecommendationsService } from "../recommendations/recommendations.service";
+import { FirstListenerDiscoveryService } from "../recommendations/first_listener_discovery.service";
 import {
   hasSignal,
   TasteMemoryPolicy,
@@ -64,6 +66,7 @@ export interface AgentCandidateTrack {
     moods?: string[] | null;
     artistId?: string | null;
   };
+  releaseId?: string;
   agentRecommendation?: {
     score: number;
     matchedQueries: string[];
@@ -102,6 +105,9 @@ export class AgentSelectorService {
     // Shared served-history source (same one Home reads and writes).
     @Optional()
     private readonly recommendations?: RecommendationsService,
+    // Bounded fresh-release source and transactional placement reservation.
+    @Optional()
+    private readonly firstListenerDiscovery?: FirstListenerDiscoveryService,
   ) { }
 
   async select(input: AgentSelectorInput) {
@@ -145,6 +151,21 @@ export class AgentSelectorService {
             matchedQueries: query ? [query] : [],
           });
         }
+      }
+    }
+
+    const firstListenerCandidates = input.userId && this.firstListenerDiscovery
+      ? await this.firstListenerDiscovery
+          .getFreshCandidates({
+            userId: input.userId,
+            allowExplicit: input.allowExplicit ?? false,
+          })
+          .catch(() => [])
+      : [];
+    const firstListenerTrackIds = new Set(firstListenerCandidates.map((track) => track.id));
+    for (const track of firstListenerCandidates) {
+      if (!byId.has(track.id)) {
+        byId.set(track.id, { ...track, matchedQueries: [] });
       }
     }
 
@@ -229,6 +250,9 @@ export class AgentSelectorService {
         // Artist identity + AI disclosure feed the policy stage: without an
         // artistId no DJ candidate can be an exploration pick.
         artistId: track.release?.artistId ?? null,
+        releaseId: track.releaseId ?? null,
+        firstListenerEligible:
+          firstListenerTrackIds.has(track.id) && aiDisclosureLevelOf(track) !== "ALL",
         aiDisclosureLevel: aiDisclosureLevelOf(track),
         release: {
           genre: track.release?.genre ?? null,
@@ -295,14 +319,41 @@ export class AgentSelectorService {
     // cap (per 10 session tracks), categorical reason.
     const fresh = ranked.filter((entry) => !sessionTrackIds.has(entry.id));
     const policyContext = await this.loadPolicyContext(input, fresh);
-    const policyResult = applyDiscoveryPolicy(fresh, {
+    const policyOptions = {
       limit,
       tastePolicy: policy,
       verifiedHumanArtistIds: policyContext.verifiedHumanArtistIds,
       playedArtistIds: policyContext.playedArtistIds,
       priorSessionArtistKeys: policyContext.priorSessionArtistKeys,
       priorExplorationCount: policyContext.priorExplorationCount,
-    });
+    };
+    let policyInput = fresh;
+    let policyResult = applyDiscoveryPolicy(policyInput, policyOptions);
+    const firstListenerPicks = policyResult.items.filter(
+      (entry) => entry.firstListenerEligible && entry.reasonCode === "discovery_pick",
+    );
+    if (firstListenerPicks.length > 0 && this.firstListenerDiscovery && input.userId) {
+      try {
+        const reserved = await this.firstListenerDiscovery.reservePlacements(
+          input.userId,
+          firstListenerPicks.flatMap((entry) =>
+            entry.releaseId
+              ? [{ trackId: entry.id, releaseId: entry.releaseId }]
+              : [],
+          ),
+          { allowExplicit: input.allowExplicit ?? false },
+        );
+        policyResult = applyFirstListenerReservationOutcome(
+          policyInput,
+          policyResult,
+          reserved,
+          policyOptions,
+        );
+      } catch {
+        policyInput = fresh.filter((entry) => !entry.firstListenerEligible);
+        policyResult = applyDiscoveryPolicy(policyInput, policyOptions);
+      }
+    }
     const selected = policyResult.items.map(toAgentTrack);
     const scored = ranked.map(toAgentTrack);
 

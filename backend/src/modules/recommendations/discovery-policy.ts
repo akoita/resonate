@@ -49,6 +49,18 @@ export const DISCOVERY_POLICY_DEFAULTS = {
   sessionWindow: 10,
 } as const;
 
+const FIRST_LISTENER_TASTE_SIGNALS = new Set([
+  "taste_match",
+  "expanded_taste_match",
+  "learned_preference",
+  "declared_preference",
+  "embedding_similarity",
+  "semantic_similarity",
+  "declared_note_match",
+  "bigquery_taste_score",
+  "session_intent_fit",
+]);
+
 export interface DiscoveryPolicyOptions {
   /** Page size: the maximum number of items returned. */
   limit: number;
@@ -173,21 +185,31 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
   // Eligible exploration candidates: a known artist id that is a verified
   // human, that the listener has never played, with a positive taste score. Recently served tracks are
   // not "new", so they are never discovery picks. `ranked` is score-sorted, so
-  // a stable sort here only guards callers that pass unsorted input.
+  // a stable sort here only guards callers that pass unsorted input. Fresh
+  // first-listener candidates need a named, positive taste signal as well as a
+  // positive total score; they receive priority only inside these reserved
+  // exploration positions.
   if (reserved > 0) {
     const explorationPool = eligible
       .filter(
         (candidate) =>
           !!candidate.artistId &&
+          candidate.aiDisclosureLevel !== "ALL" &&
           !candidate.recentlyPlayed &&
-          // "Chosen by taste fit": a candidate with no positive taste score
-          // is not "close to your taste", so it is never a discovery pick.
           candidate.score > 0 &&
+          (!candidate.firstListenerEligible ||
+            hasPositiveFirstListenerTasteSignal(candidate)) &&
           verified.has(candidate.artistId) &&
           !played.has(candidate.artistId),
       )
       .map((candidate, index) => ({ candidate, index }))
-      .sort((a, b) => b.candidate.score - a.candidate.score || a.index - b.index);
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.candidate.firstListenerEligible)) -
+            Number(Boolean(a.candidate.firstListenerEligible)) ||
+          b.candidate.score - a.candidate.score ||
+          a.index - b.index,
+      );
     for (const { candidate } of explorationPool) {
       if (explorationPicks.size >= reserved) break;
       if (!withinCap(candidate)) continue;
@@ -225,6 +247,49 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
     dropped,
     exploration: { reserved, served: explorationPicks.size },
   };
+}
+
+/**
+ * Resolves a reservation attempt without returning an unreserved first-listener
+ * source item. Accepted placements keep their exploration eligibility; all
+ * other fresh-source candidates leave the pool before the ordinary policy is
+ * rerun, so available baseline candidates can fill the page safely.
+ */
+export function applyFirstListenerReservationOutcome<
+  T extends RankedDiscoveryCandidate,
+>(
+  ranked: readonly T[],
+  initial: DiscoveryPolicyResult<T>,
+  reservedReleaseIds: ReadonlySet<string>,
+  options: DiscoveryPolicyOptions,
+): DiscoveryPolicyResult<T> {
+  const reservedCandidateIds = new Set(
+    initial.items
+      .filter(
+        (candidate) =>
+          candidate.firstListenerEligible &&
+          candidate.reasonCode === "discovery_pick" &&
+          candidate.releaseId &&
+          reservedReleaseIds.has(candidate.releaseId),
+      )
+      .map((candidate) => candidate.id),
+  );
+  return applyDiscoveryPolicy(
+    ranked.filter(
+      (candidate) =>
+        !candidate.firstListenerEligible || reservedCandidateIds.has(candidate.id),
+    ),
+    options,
+  );
+}
+
+/** A fresh placement must have an explicit positive signal from the ranker. */
+export function hasPositiveFirstListenerTasteSignal(
+  candidate: Pick<RankedDiscoveryCandidate, "signals">,
+): boolean {
+  return (candidate.signals ?? []).some(
+    (signal) => FIRST_LISTENER_TASTE_SIGNALS.has(signal.label) && signal.weight > 0,
+  );
 }
 
 /** Rule 1: true when the listener hid this candidate by any declared axis. */

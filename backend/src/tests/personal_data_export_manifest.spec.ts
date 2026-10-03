@@ -101,6 +101,13 @@ describe("personal data export manifest", () => {
       expect(EXPORTED_MODELS.find((entry) => entry.model === "ArtistClaimRequest")).toBeDefined();
     });
 
+    it("exports only the current user's first-listener exposure rows", () => {
+      expect(EXPORTED_MODELS.find((entry) => entry.model === "FirstListenerExposure")).toMatchObject({
+        primaryKey: "id",
+        keys: [{ kind: "userId", column: "userId" }],
+      });
+    });
+
     it("lists each exported model only once", () => {
       const exported = EXPORTED_MODELS.map((entry) => entry.model);
       expect(exported.length).toBe(new Set(exported).size);
