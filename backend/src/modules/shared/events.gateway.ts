@@ -23,6 +23,7 @@ import {
 import { LyriaRealtimeService } from '../generation/lyria_realtime.service';
 import type { RealtimeSessionOwner } from '../generation/lyria_realtime.service';
 import { AuthService } from '../auth/auth.service';
+import { SessionOwnerResolver } from './session_owner.resolver';
 import { Subscription } from 'rxjs';
 
 interface RealtimeStartPayload {
@@ -36,6 +37,9 @@ interface RealtimeStartPayload {
 interface RealtimeSessionPayload {
     sessionId?: unknown;
 }
+
+/** Upper bound on cached sessionId → owner entries used to route agent events. */
+const MAX_AGENT_SESSION_OWNERS = 5000;
 
 type RealtimeErrorCode =
     | 'AUTH_REQUIRED'
@@ -56,12 +60,15 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
     private readonly logger = new Logger(EventsGateway.name);
     /** Maps sessionId → client socket id for targeted audio delivery */
     private readonly sessionClients = new Map<string, string>();
+    /** Maps DJ sessionId → owning userId for routing agent events (bounded, oldest evicted first) */
+    private readonly agentSessionOwners = new Map<string, string>();
     private readonly subscriptions: Subscription[] = [];
 
     constructor(
         private readonly eventBus: EventBus,
         private readonly lyriaRealtime: LyriaRealtimeService,
         @Optional() private readonly authService?: AuthService,
+        @Optional() private readonly sessionOwners?: SessionOwnerResolver,
     ) {
         this.subscribeToEvents();
     }
@@ -133,104 +140,98 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
             }
         }));
 
-        // ---- Agent events → broadcast as 'agent.event' ----
+        // ---- Agent events → 'agent.event', delivered ONLY to the session owner's user room ----
+        // The payloads carry the listener's session request, picks, and LLM reasoning, so
+        // they are private: they go to the authenticated `user:<userId>` room and are never
+        // broadcast to other (or anonymous) clients.
 
         this.subscriptions.push(this.eventBus.subscribe('session.started', (event: SessionStartedEvent) => {
             this.logger.log(`Agent session started: ${event.sessionId}`);
-            if (this.server) {
-                this.server.emit('agent.event', {
-                    id: `${event.sessionId}-started`,
-                    type: 'session.started',
-                    sessionId: event.sessionId,
-                    message: 'Agent session started',
-                    timestamp: event.occurredAt,
-                });
-            }
+            this.rememberAgentSessionOwner(event.sessionId, event.userId);
+            this.emitAgentEvent(event, {
+                id: `${event.sessionId}-started`,
+                type: 'session.started',
+                sessionId: event.sessionId,
+                message: 'Agent session started',
+                timestamp: event.occurredAt,
+            });
         }));
 
         this.subscriptions.push(this.eventBus.subscribe('session.ended', (event: SessionEndedEvent) => {
             this.logger.log(`Agent session ended: ${event.sessionId}`);
-            if (this.server) {
-                this.server.emit('agent.event', {
-                    id: `${event.sessionId}-ended`,
-                    type: 'session.ended',
-                    sessionId: event.sessionId,
-                    message: 'Agent session ended',
-                    timestamp: event.occurredAt,
-                });
-            }
+            this.emitAgentEvent(event, {
+                id: `${event.sessionId}-ended`,
+                type: 'session.ended',
+                sessionId: event.sessionId,
+                message: 'Agent session ended',
+                timestamp: event.occurredAt,
+            }, { endOfSession: true });
         }));
 
         this.subscriptions.push(this.eventBus.subscribe('agent.selection', (event: AgentSelectionEvent) => {
-            if (this.server) {
-                const count = event.count ?? 1;
-                const total = event.candidates?.length ?? 0;
-                this.server.emit('agent.event', {
-                    id: `${event.sessionId}-sel-${event.trackId}`,
-                    type: 'agent.selection',
-                    sessionId: event.sessionId,
-                    message: `Found ${total} tracks, selected ${count} for curation`,
-                    timestamp: event.occurredAt,
-                    detail: `Selected ${count} from ${total} candidates`,
-                });
-            }
+            const count = event.count ?? 1;
+            const total = event.candidates?.length ?? 0;
+            this.emitAgentEvent(event, {
+                id: `${event.sessionId}-sel-${event.trackId}`,
+                type: 'agent.selection',
+                sessionId: event.sessionId,
+                message: `Found ${total} tracks, selected ${count} for curation`,
+                timestamp: event.occurredAt,
+                detail: `Selected ${count} from ${total} candidates`,
+            });
         }));
 
         this.subscriptions.push(this.eventBus.subscribe('agent.mix_planned', (event: AgentMixPlannedEvent) => {
-            if (this.server) {
-                const title = event.trackTitle ?? event.trackId;
-                this.server.emit('agent.event', {
-                    id: `${event.sessionId}-mix-${event.trackId}`,
-                    type: 'agent.mix_planned',
-                    sessionId: event.sessionId,
-                    message: `Planning mix for "${title}" — ${event.transition}`,
-                    timestamp: event.occurredAt,
-                });
-            }
+            const title = event.trackTitle ?? event.trackId;
+            this.emitAgentEvent(event, {
+                id: `${event.sessionId}-mix-${event.trackId}`,
+                type: 'agent.mix_planned',
+                sessionId: event.sessionId,
+                message: `Planning mix for "${title}" — ${event.transition}`,
+                timestamp: event.occurredAt,
+            });
         }));
 
         this.subscriptions.push(this.eventBus.subscribe('agent.decision_made', (event: AgentDecisionMadeEvent) => {
-            if (this.server) {
-                let msg: string;
-                if (event.reason === 'no_tracks') {
-                    msg = 'No matching tracks found in catalog';
-                } else if (event.reason === 'error') {
-                    msg = 'Curation encountered an error';
-                } else if (
-                    // #2075: the curator, when recorded, decides; the heuristic is for older events.
-                    event.curatedBy
-                        ? event.curatedBy === 'llm'
-                        : event.reasoning || event.latencyMs != null
-                ) {
-                    const latency = event.latencyMs != null ? ` (${(event.latencyMs / 1000).toFixed(1)}s)` : '';
-                    msg = event.trackId
-                        ? `AI selected track${latency}`
-                        : `AI could not find a suitable track${latency}`;
-                    if (event.reasoning) {
-                        msg += `: ${event.reasoning}`;
-                    }
-                } else {
-                    const count = event.trackCount ?? 0;
-                    msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected`;
+            let msg: string;
+            if (event.reason === 'no_tracks') {
+                msg = 'No matching tracks found in catalog';
+            } else if (event.reason === 'error') {
+                msg = 'Curation encountered an error';
+            } else if (
+                // #2075: the curator, when recorded, decides; the heuristic is for older events.
+                event.curatedBy
+                    ? event.curatedBy === 'llm'
+                    : event.reasoning || event.latencyMs != null
+            ) {
+                const latency = event.latencyMs != null ? ` (${(event.latencyMs / 1000).toFixed(1)}s)` : '';
+                msg = event.trackId
+                    ? `AI selected track${latency}`
+                    : `AI could not find a suitable track${latency}`;
+                if (event.reasoning) {
+                    msg += `: ${event.reasoning}`;
                 }
-                if (event.runtimeFallback) {
-                    msg += ' · rule-based picks (AI curator unavailable)';
-                }
-                // #2037: what the picks did not match of the described session.
-                if (event.coverageSummary) {
-                    msg += ` · ${event.coverageSummary}`;
-                }
-                this.server.emit('agent.event', {
-                    id: `${event.sessionId}-dec-${Date.now()}`,
-                    type: 'agent.decision_made',
-                    sessionId: event.sessionId,
-                    message: msg,
-                    timestamp: event.occurredAt,
-                    ...(event.coverage ? { coverage: event.coverage } : {}),
-                    ...(event.curatedBy ? { curatedBy: event.curatedBy } : {}),
-                    ...(event.runtimeFallback ? { runtimeFallback: event.runtimeFallback } : {}),
-                });
+            } else {
+                const count = event.trackCount ?? 0;
+                msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected`;
             }
+            if (event.runtimeFallback) {
+                msg += ' · rule-based picks (AI curator unavailable)';
+            }
+            // #2037: what the picks did not match of the described session.
+            if (event.coverageSummary) {
+                msg += ` · ${event.coverageSummary}`;
+            }
+            this.emitAgentEvent(event, {
+                id: `${event.sessionId}-dec-${Date.now()}`,
+                type: 'agent.decision_made',
+                sessionId: event.sessionId,
+                message: msg,
+                timestamp: event.occurredAt,
+                ...(event.coverage ? { coverage: event.coverage } : {}),
+                ...(event.curatedBy ? { curatedBy: event.curatedBy } : {}),
+                ...(event.runtimeFallback ? { runtimeFallback: event.runtimeFallback } : {}),
+            });
         }));
 
         // ---- Marketplace events → broadcast for real-time UI updates ----
@@ -428,6 +429,61 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
         }));
     }
 
+    private rememberAgentSessionOwner(sessionId: string, userId: unknown): void {
+        if (!this.isValidRealtimeString(sessionId) || !this.isValidRealtimeString(userId)) {
+            return;
+        }
+        // Re-insert so the entry counts as the newest.
+        this.agentSessionOwners.delete(sessionId);
+        while (this.agentSessionOwners.size >= MAX_AGENT_SESSION_OWNERS) {
+            const oldest = this.agentSessionOwners.keys().next();
+            if (oldest.done) break;
+            this.agentSessionOwners.delete(oldest.value);
+        }
+        this.agentSessionOwners.set(sessionId, userId);
+    }
+
+    /**
+     * Deliver an agent event to the session owner's user room only. When the owner
+     * cannot be determined the event is dropped: it never falls back to a broadcast.
+     */
+    private emitAgentEvent(
+        event: { sessionId: string; userId?: string },
+        payload: Record<string, unknown>,
+        options?: { endOfSession?: boolean },
+    ): void {
+        if (!this.server) return;
+        const endOfSession = options?.endOfSession === true;
+        const sessionId = event.sessionId;
+
+        const owner = this.isValidRealtimeString(event.userId)
+            ? event.userId
+            : this.agentSessionOwners.get(sessionId);
+        if (owner) {
+            this.server.to(`user:${owner}`).emit('agent.event', payload);
+            if (endOfSession) this.agentSessionOwners.delete(sessionId);
+            return;
+        }
+
+        if (!this.sessionOwners) {
+            this.logger.debug(`Dropping agent event for session ${sessionId}: owner unknown`);
+            return;
+        }
+
+        this.sessionOwners.resolveSessionOwner(sessionId).then((resolved) => {
+            if (!this.isValidRealtimeString(resolved)) {
+                this.logger.debug(`Dropping agent event for session ${sessionId}: owner not found`);
+                return;
+            }
+            this.server?.to(`user:${resolved}`).emit('agent.event', payload);
+            if (!endOfSession) this.rememberAgentSessionOwner(sessionId, resolved);
+        }).catch((error: unknown) => {
+            this.logger.warn(`Dropping agent event for session ${sessionId}: owner lookup failed (${error instanceof Error ? error.name : 'unknown error'})`);
+        }).finally(() => {
+            if (endOfSession) this.agentSessionOwners.delete(sessionId);
+        });
+    }
+
     onModuleDestroy(): void {
         this.subscriptions.forEach(s => s.unsubscribe());
         this.subscriptions.length = 0;
@@ -439,6 +495,15 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
 
     handleConnection(client: Socket) {
         this.logger.log(`Client connected: ${client.id}`);
+
+        // Authenticated sockets join their private user room (agent events are
+        // delivered there). Anonymous or invalid-token sockets stay connected for
+        // public broadcasts but join no user room.
+        const userId = this.authenticateSocket(client);
+        if (userId) {
+            client.join(`user:${userId}`);
+            this.logger.log(`Client ${client.id} joined its authenticated user room`);
+        }
 
         // Allow clients to join their wallet room for targeted notifications
         client.on('wallet:join', (walletAddress: string) => {
@@ -519,10 +584,11 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
     }
 
     /**
-     * Authenticate each realtime operation from the Socket.IO auth payload.
-     * No query-string, header, or message-body identity is accepted.
+     * Verify the access token from the Socket.IO auth payload and return the
+     * verified userId, or null. No query-string, header, or message-body
+     * identity is accepted.
      */
-    private getRealtimeOwner(client: Socket): RealtimeSessionOwner | null {
+    private authenticateSocket(client: Socket): string | null {
         const auth = client.handshake?.auth;
         const rawToken =
             typeof auth === 'string'
@@ -539,7 +605,13 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
         if (!identity || !this.isValidRealtimeString(identity.userId)) {
             return null;
         }
-        return { userId: identity.userId, socketId: client.id };
+        return identity.userId;
+    }
+
+    /** Authenticate each realtime operation from the Socket.IO auth payload. */
+    private getRealtimeOwner(client: Socket): RealtimeSessionOwner | null {
+        const userId = this.authenticateSocket(client);
+        return userId ? { userId, socketId: client.id } : null;
     }
 
     @SubscribeMessage('realtime:start')
