@@ -285,4 +285,95 @@ describe('RecommendationsService (integration)', () => {
     expect(result.preferences.genres).toBeUndefined();
     expect(result.preferences.mood).toBeUndefined();
   });
+
+  describe('served history', () => {
+    const SERVED_USER = `${TEST_PREFIX}served_user`;
+    const id = (n: number | string) => `${TEST_PREFIX}served_${n}`;
+    const storedHistory = async () =>
+      (await prisma.recommendationProfile.findUnique({ where: { userId: SERVED_USER } }))
+        ?.servedTrackIds ?? [];
+
+    beforeAll(async () => {
+      await prisma.user.create({
+        data: { id: SERVED_USER, email: `${SERVED_USER}@test.resonate` },
+      });
+    });
+
+    beforeEach(async () => {
+      await prisma.recommendationProfile.deleteMany({ where: { userId: SERVED_USER } });
+    });
+
+    afterAll(async () => {
+      await prisma.recommendationProfile.deleteMany({ where: { userId: SERVED_USER } }).catch(() => {});
+      await prisma.user.delete({ where: { id: SERVED_USER } }).catch(() => {});
+    });
+
+    it('does not grow with duplicates when the same tracks are served repeatedly', async () => {
+      const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+
+      for (let i = 0; i < 20; i += 1) {
+        await service.noteServed(SERVED_USER, [id('a'), id('b'), id('c')]);
+      }
+
+      expect(await storedHistory()).toEqual([id('a'), id('b'), id('c')]);
+    });
+
+    it('moves a re-served track to the front instead of repeating it', async () => {
+      const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+      await service.noteServed(SERVED_USER, [id('a'), id('b'), id('c')]);
+
+      await service.noteServed(SERVED_USER, [id('c'), id('d')]);
+
+      expect(await storedHistory()).toEqual([id('c'), id('d'), id('a'), id('b')]);
+    });
+
+    it('keeps one entry per track within a single batch', async () => {
+      const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+
+      await service.noteServed(SERVED_USER, [id('a'), id('b'), id('a')]);
+
+      expect(await storedHistory()).toEqual([id('a'), id('b')]);
+    });
+
+    it('keeps the 50-entry cap, most recent first, over distinct tracks', async () => {
+      const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+      const older = Array.from({ length: 40 }, (_, n) => id(`old_${n}`));
+      const newer = Array.from({ length: 30 }, (_, n) => id(`new_${n}`));
+      await service.noteServed(SERVED_USER, older);
+
+      await service.noteServed(SERVED_USER, newer);
+
+      const history = await storedHistory();
+      expect(history).toEqual([...newer, ...older.slice(0, 20)]);
+      expect(new Set(history).size).toBe(50);
+    });
+
+    it('collapses a history written with duplicates on the next serve', async () => {
+      await prisma.recommendationProfile.create({
+        data: {
+          userId: SERVED_USER,
+          servedTrackIds: Array.from({ length: 50 }, (_, n) => [id('a'), id('b'), id('c')][n % 3]),
+        },
+      });
+      const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+
+      await service.noteServed(SERVED_USER, [id('d')]);
+
+      expect(await storedHistory()).toEqual([id('d'), id('a'), id('b'), id('c')]);
+    });
+
+    it('records distinct ids when Home recommendations re-serve the same small catalog', async () => {
+      const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+      await service.setPreferences(SERVED_USER, { genres: ['Hip Hop'] });
+
+      for (let i = 0; i < 6; i += 1) {
+        await service.getRecommendations(SERVED_USER, 10);
+      }
+
+      const history = await storedHistory();
+      expect(history.length).toBeGreaterThan(0);
+      expect(history.length).toBeLessThanOrEqual(50);
+      expect(new Set(history).size).toBe(history.length);
+    });
+  });
 });

@@ -198,7 +198,10 @@ export class RecommendationsService {
   }
 
   private async recordServed(userId: string, trackIds: string[], previous: string[]) {
-    const updated = [...trackIds, ...previous].slice(0, SERVED_HISTORY_CAP);
+    // Most recent first, one entry per track: a re-served id moves to the
+    // front instead of repeating, so the capped window keeps covering distinct
+    // tracks. Deduping `previous` too collapses rows written before this fix.
+    const updated = [...new Set([...trackIds, ...previous])].slice(0, SERVED_HISTORY_CAP);
     await prisma.recommendationProfile.upsert({
       where: { userId },
       create: { userId, servedTrackIds: updated },

@@ -2921,7 +2921,7 @@ model PunchlineUnlock {
 // Durable discovery state (#1448 WS-1): replaces the per-process in-memory
 // preference/served-history Maps that were lost on restart and incoherent
 // across Cloud Run instances. One row per user; servedTrackIds is capped
-// app-side (most recent first).
+// app-side (most recent first, one entry per track).
 // Discovery popularity serving tables (#1450 WS-3 contract, filled today by
 // the interim local-facts refresher from #1451 WS-4; the warehouse mart
 // export replaces the FILLER, not these tables). genre "" = all genres.
