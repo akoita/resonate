@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiscoveryJournal, DiscoveryJournalPendingItem } from "../../lib/api";
+import type { DiscoveryJournal, DiscoveryJournalNewReleaseItem, DiscoveryJournalPendingItem } from "../../lib/api";
 
 // Static rendering never runs effects or re-renders, so keep state in call-order
 // slots (they survive across renders) and read handlers off the element tree.
@@ -35,6 +35,8 @@ const refetch = vi.fn(async () => undefined);
 const addToast = vi.fn();
 const authState: { token: string | null } = { token: "tok" };
 const saveTrackMetadataAuthenticated = vi.fn(async (track: unknown) => track);
+const saveTracksMetadata = vi.fn();
+const playQueue = vi.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
 const recordProductAnalyticsFromBrowser = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -55,8 +57,11 @@ vi.mock("../../hooks/useDiscoveryJournal", () => ({
 vi.mock("../../lib/uiStore", () => ({
     useUIStore: () => ({ setTracksToAddToPlaylist: vi.fn() }),
 }));
+vi.mock("../../lib/playerContext", () => ({
+    usePlayer: () => ({ playQueue: (...args: unknown[]) => playQueue(...args) }),
+}));
 vi.mock("../../lib/localLibrary", () => ({
-    saveTracksMetadata: vi.fn(),
+    saveTracksMetadata: (...args: unknown[]) => saveTracksMetadata(...args),
     saveTrackMetadataAuthenticated: (...args: unknown[]) => saveTrackMetadataAuthenticated(...(args as [unknown])),
 }));
 
@@ -108,6 +113,7 @@ beforeEach(() => {
     hookState.error = null;
     authState.token = "tok";
     saveTrackMetadataAuthenticated.mockImplementation(async (track: unknown) => track);
+    playQueue.mockImplementation(async () => undefined);
 });
 
 afterEach(() => {
@@ -168,10 +174,33 @@ function tree() {
     return SonicRadarPage();
 }
 
-function saveButton(title: string) {
-    const found = findElement(tree(), (props) => props["aria-label"] === `Save ${title}`);
-    if (!found?.props?.onClick) throw new Error(`No Save button for ${title}`);
-    return found.props.onClick;
+/** The action card element (not rendered) for a track title, with its handlers. */
+function card(title: string) {
+    const found = findElement(tree(), (props) => props.title === title && typeof props.onSave === "function");
+    if (!found?.props) throw new Error(`No card for ${title}`);
+    return found.props as { onOpen: () => void; onPlay: () => void; onSave: () => Promise<void> | void };
+}
+
+/** Handlers are fire-and-forget; let their promise chains settle. */
+async function settle() {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+}
+
+function newItem(id: string, overrides: Partial<DiscoveryJournalNewReleaseItem> = {}): DiscoveryJournalNewReleaseItem {
+    return {
+        trackId: id,
+        title: `Fresh ${id}`,
+        artistId: `a-${id}`,
+        artistName: `Artist ${id}`,
+        releaseId: `r-${id}`,
+        releaseTitle: `Release ${id}`,
+        artworkUrl: null,
+        hasUploadedArtwork: false,
+        artworkRevision: 1,
+        addedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+        reason: { code: "new_from_discovered_artist", text: "New from an artist you discovered" },
+        ...overrides,
+    };
 }
 
 describe("SonicRadarPage (discovery journal)", () => {
@@ -263,12 +292,9 @@ describe("SonicRadarPage (discovery journal)", () => {
 
         it("saves the catalog track, records analytics, toasts, hides the card and refreshes the journal", async () => {
             hookState.journal = emptyJournal([pendingItem("p1"), pendingItem("p2")]);
-            const onClick = saveButton("Pending p1");
-            const stopPropagation = vi.fn();
+            card("Pending p1").onSave();
+            await settle();
 
-            await onClick({ stopPropagation });
-
-            expect(stopPropagation).toHaveBeenCalled();
             expect(saveTrackMetadataAuthenticated).toHaveBeenCalledTimes(1);
             expect(saveTrackMetadataAuthenticated).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -303,7 +329,8 @@ describe("SonicRadarPage (discovery journal)", () => {
             vi.spyOn(console, "warn").mockImplementation(() => undefined);
             saveTrackMetadataAuthenticated.mockRejectedValueOnce(new Error("boom"));
 
-            await saveButton("Pending p1")({ stopPropagation: vi.fn() });
+            card("Pending p1").onSave();
+            await settle();
 
             expect(addToast).toHaveBeenCalledWith({ type: "error", title: "Couldn't save", message: "Please try again." });
             expect(recordProductAnalyticsFromBrowser).not.toHaveBeenCalled();
@@ -317,7 +344,8 @@ describe("SonicRadarPage (discovery journal)", () => {
             hookState.journal = emptyJournal([pendingItem("p1")]);
             authState.token = null;
 
-            await saveButton("Pending p1")({ stopPropagation: vi.fn() });
+            card("Pending p1").onSave();
+            await settle();
 
             expect(saveTrackMetadataAuthenticated).not.toHaveBeenCalled();
             expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ type: "info", title: "Sign in to save" }));
@@ -326,9 +354,145 @@ describe("SonicRadarPage (discovery journal)", () => {
 
         it("opens the release when the card is clicked", () => {
             hookState.journal = emptyJournal([pendingItem("p1")]);
-            const card = findElement(tree(), (props) => String(props.className ?? "") === "sonic-radar-card");
-            card?.props?.onClick?.({});
+            card("Pending p1").onOpen();
             expect(push).toHaveBeenCalledWith("/release/r-p1");
+        });
+
+        it("offers Play next to Save and plays the track again without saving it", async () => {
+            hookState.journal = emptyJournal([pendingItem("p1")]);
+            expect(render()).toContain('aria-label="Play Pending p1"');
+
+            card("Pending p1").onPlay();
+            await settle();
+
+            expect(playQueue).toHaveBeenCalledTimes(1);
+            const [queue, startIndex] = playQueue.mock.calls[0] as [Array<Record<string, unknown>>, number];
+            expect(startIndex).toBe(0);
+            expect(queue).toHaveLength(1);
+            expect(queue[0]).toMatchObject({ catalogTrackId: "p1", releaseId: "r-p1", source: "remote" });
+            expect(String(queue[0].remoteUrl)).toContain("/catalog/releases/r-p1/tracks/p1/stream");
+            expect(saveTrackMetadataAuthenticated).not.toHaveBeenCalled();
+            expect(saveTracksMetadata).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("New from artists you discovered", () => {
+        const withNew = (items: DiscoveryJournalNewReleaseItem[], pending?: DiscoveryJournalPendingItem[]) => {
+            hookState.journal = { ...journalWith(false), ...(pending ? { pending } : {}), newFromDiscovered: items };
+        };
+
+        it("lists recent tracks with an added-ago badge, the reason, Play and Save", () => {
+            withNew([newItem("n1"), newItem("n2", { addedAt: new Date().toISOString() })]);
+            const html = render();
+
+            expect(html).toContain("New from artists you discovered");
+            expect(html).toContain("Recent releases from artists whose music resonated with you.");
+            expect(html).toContain("Fresh n1");
+            expect(html).toContain("Fresh n2");
+            expect(html).toContain("Added 2 days ago");
+            expect(html).toContain("Added today");
+            expect((html.match(/New from an artist you discovered/g) ?? []).length).toBe(2);
+            expect(html).toContain('aria-label="Play Fresh n1"');
+            expect(html).toContain('aria-label="Save Fresh n1"');
+        });
+
+        it("sits above Almost there and the journal feed", () => {
+            withNew([newItem("n1")], [pendingItem("p1")]);
+            const html = render();
+
+            const newAt = html.indexOf("New from artists you discovered");
+            expect(newAt).toBeGreaterThan(-1);
+            expect(newAt).toBeLessThan(html.indexOf("Almost there"));
+            expect(html.indexOf("Almost there")).toBeLessThan(html.indexOf("Title t1"));
+        });
+
+        it("is hidden when empty, missing, loading or when the journal failed to load", () => {
+            withNew([]);
+            expect(render()).not.toContain("New from artists you discovered");
+            hookState.journal = journalWith(false);
+            expect(render()).not.toContain("New from artists you discovered");
+            withNew([newItem("n1")]);
+            hookState.isLoading = true;
+            hookState.journal = null;
+            expect(render()).not.toContain("New from artists you discovered");
+            hookState.isLoading = false;
+            hookState.error = "We could not load your discoveries. Try again in a moment.";
+            expect(render()).not.toContain("New from artists you discovered");
+        });
+
+        it("plays a remote catalog track without saving it to the library", async () => {
+            withNew([newItem("n1")]);
+
+            card("Fresh n1").onPlay();
+            await settle();
+
+            expect(playQueue).toHaveBeenCalledTimes(1);
+            const [queue, startIndex] = playQueue.mock.calls[0] as [Array<Record<string, unknown>>, number];
+            expect(startIndex).toBe(0);
+            expect(queue[0]).toMatchObject({
+                id: "n1",
+                catalogTrackId: "n1",
+                releaseId: "r-n1",
+                artistId: "a-n1",
+                source: "remote",
+            });
+            expect(String(queue[0].remoteUrl)).toContain("/catalog/releases/r-n1/tracks/n1/stream");
+            expect(saveTrackMetadataAuthenticated).not.toHaveBeenCalled();
+            expect(saveTracksMetadata).not.toHaveBeenCalled();
+            expect(recordProductAnalyticsFromBrowser).not.toHaveBeenCalled();
+        });
+
+        it("toasts an error when playback fails", async () => {
+            withNew([newItem("n1")]);
+            vi.spyOn(console, "warn").mockImplementation(() => undefined);
+            playQueue.mockRejectedValueOnce(new Error("boom"));
+
+            card("Fresh n1").onPlay();
+            await settle();
+
+            expect(addToast).toHaveBeenCalledWith({ type: "error", title: "Couldn't play", message: "Please try again." });
+        });
+
+        it("saves the track, records analytics, hides it and refreshes the journal", async () => {
+            withNew([newItem("n1"), newItem("n2")]);
+
+            card("Fresh n1").onSave();
+            await settle();
+
+            expect(saveTrackMetadataAuthenticated).toHaveBeenCalledWith(
+                expect.objectContaining({ id: "n1", catalogTrackId: "n1", source: "remote", releaseId: "r-n1" }),
+                "tok",
+            );
+            expect(recordProductAnalyticsFromBrowser).toHaveBeenCalledWith("library.saved", {
+                subjectType: "track",
+                subjectId: "n1",
+                payload: { trackId: "n1", surface: "dj" },
+            });
+            expect(addToast).toHaveBeenCalledWith({ type: "success", title: "Saved", message: '"Fresh n1" is in your library.' });
+            expect(refetch).toHaveBeenCalledTimes(1);
+
+            const html = render();
+            expect(html).not.toContain("Fresh n1");
+            expect(html).toContain("Fresh n2");
+        });
+
+        it("keeps the track and toasts an error when saving fails", async () => {
+            withNew([newItem("n1")]);
+            vi.spyOn(console, "warn").mockImplementation(() => undefined);
+            saveTrackMetadataAuthenticated.mockRejectedValueOnce(new Error("boom"));
+
+            card("Fresh n1").onSave();
+            await settle();
+
+            expect(addToast).toHaveBeenCalledWith({ type: "error", title: "Couldn't save", message: "Please try again." });
+            expect(refetch).not.toHaveBeenCalled();
+            expect(render()).toContain("Fresh n1");
+        });
+
+        it("opens the release when the card is clicked", () => {
+            withNew([newItem("n1")]);
+            card("Fresh n1").onOpen();
+            expect(push).toHaveBeenCalledWith("/release/r-n1");
         });
     });
 });

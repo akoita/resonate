@@ -178,9 +178,9 @@ const AUTH_TARGETS = [
   }],
   ["/sonic-radar", "sonic-radar.png", {
     // ADR-TE-5: the discovery journal, drawn from a fixed sample journal.
-    // Taller so "Almost there" (with its Save buttons) and the journal both show.
+    // Taller so the new-releases and "Almost there" shelves and the journal all show.
     mockDiscoveries: true,
-    viewportHeight: 1750,
+    viewportHeight: 2300,
     prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
   }],
   ["/library", "library.png", {
@@ -495,6 +495,17 @@ async function capture(page, targets, passName) {
             completedAt: new Date(Date.now() - (7 - daysLeft) * 86_400_000).toISOString(),
             followUpBy: new Date(Date.now() + daysLeft * 86_400_000 - 60_000).toISOString(),
             discovery,
+          })),
+          // "New from artists you discovered": recent releases by journal artists.
+          newFromDiscovered: [
+            ["guide-song-6", "Blue Hour", "Felicia Angels", 2],
+            ["guide-song-7", "Signal Fire", "Sennarin", 9],
+          ].map(([trackId, title, artistName, daysAgo]) => ({
+            trackId, title, artistId: `guide-artist-${artistName.toLowerCase().replace(/\s+/g, "-")}`, artistName,
+            releaseId: "guide-release", releaseTitle: "First Light", artworkUrl: "/shows/felicia-angels-cover.webp",
+            hasUploadedArtwork: false, artworkRevision: null,
+            addedAt: new Date(Date.now() - daysAgo * 86_400_000).toISOString(),
+            reason: { code: "new_from_discovered_artist", text: "New from an artist you discovered" },
           })),
         },
       }));

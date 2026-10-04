@@ -956,7 +956,20 @@ describe("AgentSessionPanel", () => {
       reason: { code: "listening_pattern", text: "Fit" },
       nextAction: null,
     });
-    const journal = (resonant: number, pending: number, newArtists = 0): DiscoveryJournal => ({
+    const newRelease = (id: string) => ({
+      trackId: id,
+      title: `New ${id}`,
+      artistId: "a2",
+      artistName: "Artist Two",
+      releaseId: `r-${id}`,
+      releaseTitle: "Release",
+      artworkUrl: null,
+      hasUploadedArtwork: false,
+      artworkRevision: 1,
+      addedAt: "2026-10-03T10:00:00.000Z",
+      reason: { code: "new_from_discovered_artist", text: "New from an artist you discovered" },
+    });
+    const journal = (resonant: number, pending: number, newArtists = 0, newTracks?: number): DiscoveryJournal => ({
       schemaVersion: "discovery-journal/v1",
       window: { days: 28, from: "2026-09-06T00:00:00.000Z", to: "2026-10-04T00:00:00.000Z" },
       headline: { resonantDiscoveriesThisWeek: resonant, newArtistsThisWeek: newArtists },
@@ -964,6 +977,9 @@ describe("AgentSessionPanel", () => {
         ? [{ key: "day:2026-10-02", sessionId: null, date: "2026-10-02", items: Array.from({ length: resonant }, (_, i) => resonantItem(`t${i}`)) }]
         : [],
       pending: Array.from({ length: pending }, (_, i) => pendingItem(`p${i}`)),
+      ...(newTracks === undefined
+        ? {}
+        : { newFromDiscovered: Array.from({ length: newTracks }, (_, i) => newRelease(`n${i}`)) }),
     });
 
     beforeEach(() => {
@@ -978,6 +994,20 @@ describe("AgentSessionPanel", () => {
       expect(html).toMatch(/<strong>2<\/strong> new artists this week/);
       expect(html).toMatch(/<a[^>]*href="\/sonic-radar"[^>]*>View on Sonic Radar →<\/a>/);
       expect(html).not.toContain("tracks discovered");
+    });
+
+    it("mentions new tracks from artists you discovered when there are some", () => {
+      hookState.journal = journal(3, 0, 2, 4);
+      expect(render()).toMatch(/<strong>4<\/strong> new tracks from artists you discovered/);
+      hookState.journal = journal(3, 0, 0, 1);
+      expect(render()).toMatch(/<strong>1<\/strong> new track from artists you discovered/);
+    });
+
+    it("omits the new-tracks mention when there are none or the backend predates it", () => {
+      hookState.journal = journal(3, 0, 2, 0);
+      expect(render()).not.toContain("from artists you discovered");
+      hookState.journal = journal(3, 0, 2);
+      expect(render()).not.toContain("from artists you discovered");
     });
 
     it("uses singular copy and omits new artists when there are none", () => {

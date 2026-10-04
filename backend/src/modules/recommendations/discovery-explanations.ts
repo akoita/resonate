@@ -24,6 +24,7 @@ export const DISCOVERY_REASON_CODES = [
   "library_signal",
   "scene",
   "discovery_pick",
+  "new_from_discovered_artist",
   "catalog",
 ] as const;
 
@@ -43,6 +44,9 @@ export const DISCOVERY_EXPLANATIONS: Record<DiscoveryReasonCode, string> = {
   // ("From your {cohort} cohort"); this is the generic fallback.
   scene: "Popular with listeners in your scene",
   discovery_pick: "Discovery pick: new verified artist close to your taste",
+  // Sonic Radar "new from artists you discovered" (#2086): a recent release by
+  // an artist in the listener's own discovery journal.
+  new_from_discovered_artist: "New from an artist you discovered",
   catalog: "Catalog candidate",
 };
 

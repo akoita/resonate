@@ -1,4 +1,5 @@
-import type { DiscoveryJournal, DiscoveryJournalPendingItem } from "./api";
+import { getReleaseTrackStreamUrl } from "./api";
+import type { DiscoveryJournal, DiscoveryJournalNewReleaseItem, DiscoveryJournalPendingItem } from "./api";
 import type { LocalTrack } from "./localLibrary";
 
 const DAY_MS = 86_400_000;
@@ -28,6 +29,14 @@ export function catalogItemToLocalTrack(item: CatalogTrackFields): LocalTrack {
     };
 }
 
+/** A catalog track that can be played straight from the catalog without saving it. */
+export function catalogItemToPlayableTrack(item: CatalogTrackFields): LocalTrack {
+    return {
+        ...catalogItemToLocalTrack(item),
+        remoteUrl: getReleaseTrackStreamUrl(item.releaseId, item.trackId),
+    };
+}
+
 export function pendingItemToLocalTrack(item: DiscoveryJournalPendingItem): LocalTrack {
     return catalogItemToLocalTrack(item);
 }
@@ -42,8 +51,13 @@ export function pendingItems(journal: DiscoveryJournal | null | undefined): Disc
     return journal?.pending ?? [];
 }
 
+/** Recent tracks by artists the listener discovered. Empty for older backends. */
+export function newFromDiscoveredItems(journal: DiscoveryJournal | null | undefined): DiscoveryJournalNewReleaseItem[] {
+    return journal?.newFromDiscovered ?? [];
+}
+
 export type SonicRadarBanner =
-    | { kind: "resonant"; count: number; newArtistsThisWeek: number; windowDays: number }
+    | { kind: "resonant"; count: number; newArtistsThisWeek: number; windowDays: number; newTracks: number }
     | { kind: "pending"; count: number }
     | { kind: "empty" };
 
@@ -56,6 +70,7 @@ export function sonicRadarBanner(journal: DiscoveryJournal | null | undefined): 
             count,
             newArtistsThisWeek: journal.headline.newArtistsThisWeek,
             windowDays: journal.window.days,
+            newTracks: newFromDiscoveredItems(journal).length,
         };
     }
     const pendingCount = pendingItems(journal).length;
@@ -75,4 +90,15 @@ export function saveDeadlineLabel(followUpBy: string, now: Date = new Date()): s
     const days = followUpDaysLeft(followUpBy, now);
     if (days <= 1) return "Last day to save";
     return `Save within ${days} days`;
+}
+
+/** Badge copy for a new release, e.g. "Added today" or "Added 3 days ago" (UTC calendar days). */
+export function addedAgoLabel(addedAt: string, now: Date = new Date()): string {
+    const added = Date.parse(addedAt);
+    if (!Number.isFinite(added)) return "Recently added";
+    const startOfUtcDay = (ms: number) => Math.floor(ms / DAY_MS);
+    const days = Math.max(0, startOfUtcDay(now.getTime()) - startOfUtcDay(added));
+    if (days === 0) return "Added today";
+    if (days === 1) return "Added yesterday";
+    return `Added ${days} days ago`;
 }

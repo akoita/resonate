@@ -1061,6 +1061,20 @@ clamped. Response contract `discovery-journal/v1`:
   and tracks whose artist or genre the listener hid in taste memory are left
   out. The list carries no reason and no next action: it is a prompt to save,
   not a recommendation.
+- `newFromDiscovered[]` ("New from artists you discovered", additive to v1,
+  [#2086](https://github.com/akoita/resonate/issues/2086)): up to 12 tracks,
+  at most 2 per artist, newest release first, from releases by journal artists
+  (artists with a resonant track in the window) that arrived on Resonate
+  (`Release.createdAt`) after the listener's first resonant listen of that
+  artist and within the last 60 days. Each carries the track, artist, release
+  and artwork fields, `addedAt` and the categorical reason
+  `new_from_discovered_artist` ("New from an artist you discovered"). Left
+  out: tracks the listener already played (any signal since a taste reset) or
+  has in the library, tracks that are not publicly available, fully
+  AI-generated tracks (ADR-TE-2 rule 3), and hidden artists or genres. Listings
+  and prices are never read, so having stems for sale changes neither
+  inclusion nor order (ADR-TE-2 rule 1). Computed on read with bounded queries;
+  there is no scheduled job.
 
 **Privacy and consent.** The journal is computed on read from the signed-in
 listener's own `AgentSignal` and `LibraryTrack` rows, bounded to the window and
@@ -1093,9 +1107,13 @@ Sonic Radar will not show. It shows how many tracks resonated in the window
 one save away; and otherwise how a track gets into Sonic Radar. The copy
 helpers live in `web/src/lib/sonicRadarSummary.ts`.
 
-**Follow-up.** "New from artists you discovered", a forward-looking section of
-recent releases by journal artists, computed on read with no scheduled job, is
-tracked in [#2086](https://github.com/akoita/resonate/issues/2086).
+**New from artists you discovered.** At the top of the page, a section lists
+`newFromDiscovered[]` with Play and Save on each card; "Almost there" cards
+also get Play, since a replay makes a track resonate too. Play queues the
+catalog stream without adding the track to the library. The AI DJ banner adds
+the count of new tracks from discovered artists. Notifications or digests for
+new releases, scheduled playlists and an artist follow model stay out of scope
+([#2086](https://github.com/akoita/resonate/issues/2086)).
 
 **Tests.** `backend/src/tests/discovery_journal.integration.spec.ts` (the
 resonance rule, discovery flag, per-listener scoping, consent, next actions,

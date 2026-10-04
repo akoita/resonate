@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { DiscoveryJournal, DiscoveryJournalItem, DiscoveryJournalPendingItem } from "./api";
+import type {
+    DiscoveryJournal,
+    DiscoveryJournalItem,
+    DiscoveryJournalNewReleaseItem,
+    DiscoveryJournalPendingItem,
+} from "./api";
+import { getReleaseTrackStreamUrl } from "./api";
 import {
+    addedAgoLabel,
+    catalogItemToPlayableTrack,
+    newFromDiscoveredItems,
     followUpDaysLeft,
     pendingItemToLocalTrack,
     pendingItems,
@@ -40,7 +49,29 @@ function resonant(id: string): DiscoveryJournalItem {
     };
 }
 
-function journal(resonantIds: string[][], pendingIds: string[] | undefined, newArtists = 0): DiscoveryJournal {
+function newRelease(id: string, overrides: Partial<DiscoveryJournalNewReleaseItem> = {}): DiscoveryJournalNewReleaseItem {
+    return {
+        trackId: id,
+        title: `New ${id}`,
+        artistId: "a1",
+        artistName: "Artist One",
+        releaseId: `r-${id}`,
+        releaseTitle: "Release One",
+        artworkUrl: "https://example.test/art.jpg",
+        hasUploadedArtwork: false,
+        artworkRevision: 1,
+        addedAt: "2026-10-03T12:00:00.000Z",
+        reason: { code: "new_from_discovered_artist", text: "New from an artist you discovered" },
+        ...overrides,
+    };
+}
+
+function journal(
+    resonantIds: string[][],
+    pendingIds: string[] | undefined,
+    newArtists = 0,
+    newIds?: string[],
+): DiscoveryJournal {
     return {
         schemaVersion: "discovery-journal/v1",
         window: { days: 28, from: "2026-09-06T00:00:00.000Z", to: "2026-10-04T00:00:00.000Z" },
@@ -52,6 +83,7 @@ function journal(resonantIds: string[][], pendingIds: string[] | undefined, newA
             items: ids.map(resonant),
         })),
         ...(pendingIds ? { pending: pendingIds.map((id) => pending(id)) } : {}),
+        ...(newIds ? { newFromDiscovered: newIds.map((id) => newRelease(id)) } : {}),
     };
 }
 
@@ -63,10 +95,19 @@ describe("resonantItemCount / pendingItems", () => {
     it("handles a missing journal", () => {
         expect(resonantItemCount(null)).toBe(0);
         expect(pendingItems(null)).toEqual([]);
+        expect(newFromDiscoveredItems(null)).toEqual([]);
     });
 
     it("treats a missing pending field (older backend) as empty", () => {
         expect(pendingItems(journal([], undefined))).toEqual([]);
+    });
+
+    it("treats a missing newFromDiscovered field (older backend) as empty", () => {
+        expect(newFromDiscoveredItems(journal([["a"]], []))).toEqual([]);
+    });
+
+    it("returns the new releases when present", () => {
+        expect(newFromDiscoveredItems(journal([["a"]], [], 0, ["n1", "n2"])).map((item) => item.trackId)).toEqual(["n1", "n2"]);
     });
 });
 
@@ -77,6 +118,14 @@ describe("sonicRadarBanner", () => {
             count: 3,
             newArtistsThisWeek: 2,
             windowDays: 28,
+            newTracks: 0,
+        });
+    });
+
+    it("counts new tracks from artists the listener discovered", () => {
+        expect(sonicRadarBanner(journal([["a"]], [], 0, ["n1", "n2", "n3"]))).toMatchObject({
+            kind: "resonant",
+            newTracks: 3,
         });
     });
 
@@ -139,5 +188,40 @@ describe("pendingItemToLocalTrack", () => {
 
     it("omits artwork when there is none", () => {
         expect(pendingItemToLocalTrack(pending("t2", { artworkUrl: null })).remoteArtworkUrl).toBeUndefined();
+    });
+});
+
+describe("catalogItemToPlayableTrack", () => {
+    it("adds the catalog stream URL so it plays without being saved", () => {
+        const track = catalogItemToPlayableTrack(newRelease("n1"));
+        expect(track).toMatchObject({
+            id: "n1",
+            catalogTrackId: "n1",
+            releaseId: "r-n1",
+            artistId: "a1",
+            source: "remote",
+            remoteUrl: getReleaseTrackStreamUrl("r-n1", "n1"),
+            remoteArtworkUrl: "https://example.test/art.jpg",
+        });
+        expect(track.remoteUrl).toContain("/catalog/releases/r-n1/tracks/n1/stream");
+    });
+});
+
+describe("addedAgoLabel", () => {
+    const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs).toISOString();
+
+    it("labels same-day, yesterday and older additions by UTC calendar day", () => {
+        expect(addedAgoLabel(at(-3_600_000), NOW)).toBe("Added today");
+        expect(addedAgoLabel("2026-10-03T23:59:00.000Z", NOW)).toBe("Added yesterday");
+        expect(addedAgoLabel("2026-10-01T01:00:00.000Z", NOW)).toBe("Added 3 days ago");
+        expect(addedAgoLabel(at(-14 * DAY), NOW)).toBe("Added 14 days ago");
+    });
+
+    it("never reports a future date as negative", () => {
+        expect(addedAgoLabel(at(2 * DAY), NOW)).toBe("Added today");
+    });
+
+    it("falls back for an unparseable date", () => {
+        expect(addedAgoLabel("not a date", NOW)).toBe("Recently added");
     });
 });
