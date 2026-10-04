@@ -54,3 +54,31 @@ describe("DiscoveryRankingService lane-local session request", () => {
     expect(track.signals.some((signal) => signal.label === "session_request")).toBe(false);
   });
 });
+
+describe("DiscoveryRankingService requested terms match genre families (#2088)", () => {
+  const ranking = new DiscoveryRankingService();
+  const sessionFit = async (genre: string, requestedTerm: string) => {
+    const [track] = await ranking.rank([{ id: "t", release: { genre } }], {
+      originalQueries: [],
+      expandedQueries: [],
+      requestedTerms: [requestedTerm],
+    });
+    return track.signals.some((signal) => signal.label === "session_request");
+  };
+
+  it("matches an African release against a requested World genre", async () => {
+    expect(await sessionFit("African", "World")).toBe(true);
+    expect(await sessionFit("Musiques du monde", "World")).toBe(true);
+  });
+
+  it("matches Hip Hop against a requested Hip-Hop, and rap against both", async () => {
+    expect(await sessionFit("Hip Hop", "Hip-Hop")).toBe(true);
+    expect(await sessionFit("French Rap", "Hip-Hop")).toBe(true);
+  });
+
+  it("keeps unrelated genres unmatched", async () => {
+    expect(await sessionFit("Techno", "World")).toBe(false);
+    expect(await sessionFit("Ambient", "Rap")).toBe(false);
+  });
+});
+

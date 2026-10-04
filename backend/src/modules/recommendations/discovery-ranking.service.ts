@@ -25,6 +25,7 @@ import {
   TASTE_EDIT_MOODS,
   TASTE_EDIT_MOOD_ALIASES,
 } from "./taste_edit_vocabulary";
+import { genreMatchesRequest } from "./genre_families";
 
 /**
  * The unified discovery scoring core (#1448 WS-1, RFC
@@ -486,7 +487,7 @@ function requestedTermsMatch(
   const genre = candidate.release?.genre ?? "";
   const moods = candidate.release?.moods ?? [];
   for (const term of terms) {
-    if (genre.toLowerCase().includes(term.toLowerCase())) {
+    if (genreMatchesRequest(genre, term)) {
       const canonicalGenre = canonicalCatalogMetadata(genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
       const multiplier = sessionRequestPolicyMultiplier(policy, "genre", genre, canonicalGenre);
       return multiplier > 0 ? { term, multiplier } : undefined;

@@ -7,6 +7,7 @@ import {
 import { AgentSelectorService } from "./agent_selector.service";
 import { myMixSearchTerms } from "./agent_my_mix";
 import type { ResolvedMyMixPlan } from "./agent_my_mix";
+import { relatedGenreLabels } from "../recommendations/genre_families";
 
 export function buildAgentRecommendationQueries(
   preferences: AgentRecommendationInput["preferences"],
@@ -51,6 +52,49 @@ export function requestedTermsFor(
   return unique.length ? { requestedTerms: unique } : {};
 }
 
+const SEMANTIC_RELATED_STYLE_LIMIT = 8;
+
+/**
+ * The session the listener asked for, described in words for catalog-wide
+ * semantic retrieval (#2088). Undefined unless the session asked for something
+ * itself (genres, mood(s) or an intent); learned taste alone never triggers it.
+ */
+export function buildSemanticSessionQuery(
+  preferences: AgentRecommendationInput["preferences"],
+): string | undefined {
+  const clean = (values: Array<string | undefined | null>) =>
+    values
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value));
+  const dedupe = (values: string[]) => {
+    const seen = new Set<string>();
+    return values.filter((value) => !seen.has(value.toLowerCase()) && Boolean(seen.add(value.toLowerCase())));
+  };
+
+  const intent = clean([preferences.sessionIntentName ?? preferences.sessionIntent])[0];
+  const genres = dedupe(clean(preferences.sessionGenres ?? []));
+  const moods = dedupe(clean([preferences.mood, ...(preferences.moods ?? [])]));
+  if (!intent && genres.length === 0 && moods.length === 0) return undefined;
+
+  const asked = new Set(genres.map((genre) => genre.toLowerCase()));
+  const related = dedupe(
+    genres.flatMap((genre) => relatedGenreLabels(genre, SEMANTIC_RELATED_STYLE_LIMIT)),
+  )
+    .filter((label) => !asked.has(label.toLowerCase()))
+    .slice(0, SEMANTIC_RELATED_STYLE_LIMIT);
+
+  const sentences: string[] = [];
+  if (intent) sentences.push(intent);
+  if (genres.length > 0) {
+    sentences.push(
+      `Genres: ${genres.join(", ")}${related.length > 0 ? `, plus related styles: ${related.join(", ")}` : ""}`,
+    );
+  }
+  if (moods.length > 0) sentences.push(`Mood: ${moods.join(", ")}`);
+  if (preferences.energy) sentences.push(`Energy: ${preferences.energy}`);
+  return `${sentences.join(". ")}.`;
+}
+
 @Injectable()
 export class DeterministicRecommendationAdapter implements AgentRecommendationAdapter {
   readonly name = "deterministic" as const;
@@ -76,6 +120,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       // Listening sessions never dead-end while an unplayed track fits (#2056).
       fallback: true,
       ...requestedTermsFor(input.preferences),
+      semanticQuery: buildSemanticSessionQuery(input.preferences),
       myMixPlan: input.myMixPlan,
     });
 

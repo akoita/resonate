@@ -52,7 +52,54 @@ describe("agent tool identity", () => {
     );
 
     expect(get).toHaveBeenCalledWith("catalog.search");
-    expect(run).toHaveBeenCalledWith({ query: "house", userId: "session-user" });
+    expect(run).toHaveBeenCalledWith({
+      query: "house",
+      allowExplicit: false,
+      userId: "session-user",
+    });
+  });
+
+  it("forces the session's explicit choice and played tracks onto catalog tools", async () => {
+    const run = jest.fn().mockResolvedValue({ items: [] });
+    const get = jest.spyOn(registry, "get").mockReturnValue({ name: "x", run });
+
+    await executeTool(
+      registry,
+      { name: "catalog_search", args: { query: "house", allowExplicit: true } },
+      { userId: "session-user", allowExplicit: false },
+    );
+    expect(run).toHaveBeenLastCalledWith({
+      query: "house",
+      allowExplicit: false,
+      userId: "session-user",
+    });
+
+    await executeTool(
+      registry,
+      {
+        name: "semantic_search",
+        args: { query: "world music", allowExplicit: true, excludeTrackIds: ["steered"] },
+      },
+      { userId: "session-user", allowExplicit: true, recentTrackIds: ["played-1"] },
+    );
+    expect(get).toHaveBeenLastCalledWith("catalog.semantic_search");
+    expect(run).toHaveBeenLastCalledWith({
+      query: "world music",
+      allowExplicit: true,
+      excludeTrackIds: ["played-1"],
+      userId: "session-user",
+    });
+  });
+
+  it("does not add session-owned fields to non-catalog tools", async () => {
+    const run = jest.fn().mockResolvedValue({ priceUsd: 0.02 });
+    jest.spyOn(registry, "get").mockReturnValue({ name: "pricing.quote", run });
+    await executeTool(
+      registry,
+      { name: "pricing_quote", args: { licenseType: "personal" } },
+      { userId: "session-user", allowExplicit: true },
+    );
+    expect(run).toHaveBeenCalledWith({ licenseType: "personal", userId: "session-user" });
   });
 
   it("exposes no generation tools in the registry", () => {

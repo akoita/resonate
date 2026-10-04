@@ -145,6 +145,8 @@ describe("agent recommendation adapters", () => {
       fallback: true,
       // The session's own mood outranks learned taste (#2059).
       requestedTerms: ["Focus"],
+      // The session described in words feeds catalog-wide semantic retrieval (#2088).
+      semanticQuery: "Mood: Focus. Energy: medium.",
     });
     expect(result).toEqual(expect.objectContaining({
       strategy: "deterministic",

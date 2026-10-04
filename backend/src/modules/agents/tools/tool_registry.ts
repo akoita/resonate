@@ -1,4 +1,5 @@
 import { Injectable, Optional } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
 import { calculatePrice, PricingInput } from "../../../pricing/pricing";
 import { EmbeddingService } from "../../embeddings/embedding.service";
@@ -9,6 +10,8 @@ import {
   toAiDisclosureRecord,
 } from "../../catalog/ai-disclosure.policy";
 import { AgentObservabilityService } from "../agent_observability.service";
+import { getAgentSemanticMinSimilarity } from "../agent_runtime.config";
+import { expandGenreSearchTerms } from "../../recommendations/genre_families";
 
 /** Upper bound on candidates lazily embedded / ranked per tool call. */
 const EMBEDDINGS_SIMILARITY_MAX_CANDIDATES = 100;
@@ -44,83 +47,74 @@ export class ToolRegistry {
     this.register({
       name: "catalog.search",
       run: async (input) => {
-        const query = String(input.query ?? "");
+        const query = String(input.query ?? "").trim();
         const limit = Number(input.limit ?? 20);
         const explicitAllowed = Boolean(input.allowExplicit ?? false);
         const take = Math.min(Math.max(limit, 1), 50);
 
-        // Search by genre on the release, OR by title
-        const whereBase = explicitAllowed ? {} : { explicit: false };
-        let items = await prisma.track.findMany({
-          where: {
-            ...whereBase,
-            // catalog.search is the AI DJ candidate source. Fully generated
-            // tracks remain available through direct catalog APIs, but are
-            // excluded from this promotional/agent-ranking seam (ADR-BM-5).
-            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
-            ...(query
-              ? {
-                OR: [
-                  { release: { genre: { contains: query, mode: "insensitive" } } },
-                  { title: { contains: query, mode: "insensitive" } },
-                ],
-              }
-              : {}),
-          },
-          include: {
-            // `artistId` and `moods` feed the shared discovery policy stage
-            // (exploration + diversity) and intent matching in the selector.
-            release: {
-              select: {
-                title: true,
-                genre: true,
-                moods: true,
-                artistId: true,
-                artworkUrl: true,
-              },
-            },
-            stems: {
-              where: { isCurrent: true },
-              select: {
-                listings: {
-                  where: {
-                    status: "active",
-                    amount: { gt: 0n },
-                    expiresAt: { gt: new Date() },
-                  },
-                  select: { id: true },
-                  take: 1,
-                },
-              },
-            },
-          },
-          orderBy: { createdAt: "desc" },
+        // Genre labels are free text, so a genre query also searches the
+        // labels of its genre family ("World" reaches "African", #2088). The
+        // title match stays literal.
+        const items = await this.loadCandidateTracks({
+          explicitAllowed,
           take,
+          extraWhere: query
+            ? {
+              OR: [
+                ...expandGenreSearchTerms(query).map((term) => ({
+                  release: { genre: { contains: term, mode: "insensitive" as const } },
+                })),
+                { title: { contains: query, mode: "insensitive" as const } },
+              ],
+            }
+            : {},
         });
 
-        // Annotate only. `hasListing` is data for the caller's own filter; it
-        // never orders, boosts or demotes results (ADR-TE-2 rule 6), so the
-        // order stays newest-first exactly as queried.
-        const annotated = items.map((t) => {
-          const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
-          const {
-            stems,
-            generationMetadata: _generationMetadata,
-            aiDisclosureLevel: _aiDisclosureLevel,
-            aiContributionFacets: _aiContributionFacets,
-            aiDisclosureSource: _aiDisclosureSource,
-            aiDisclosureVersion: _aiDisclosureVersion,
-            aiDeclaredAt: _aiDeclaredAt,
-            ...rest
-          } = t;
-          return {
-            ...rest,
-            aiDisclosure: toAiDisclosureRecord(t),
-            hasListing,
-          };
-        });
+        return { items };
+      },
+    });
 
-        return { items: annotated };
+    this.register({
+      name: "catalog.semantic_search",
+      run: async (input) => {
+        const query = String(input.query ?? "").trim();
+        const limit = Math.min(Math.max(Math.floor(Number(input.limit ?? 20)) || 20, 1), 50);
+        const explicitAllowed = Boolean(input.allowExplicit ?? false);
+        const excludeTrackIds = Array.isArray(input.excludeTrackIds)
+          ? (input.excludeTrackIds as unknown[]).filter(
+            (id): id is string => typeof id === "string",
+          )
+          : undefined;
+        // Provider disabled or failing: report it and let the caller keep its
+        // keyword candidates. Never throws.
+        if (!query || !this.embeddingService.modelId) {
+          return { items: [], status: "unavailable" };
+        }
+        const vector = await this.embeddingService.embedQuery(query);
+        if (!vector) {
+          return { items: [], status: "unavailable" };
+        }
+        const neighbours = await trackEmbeddingService.neighboursOfVector(vector, {
+          limit,
+          allowExplicit: explicitAllowed,
+          excludeTrackIds,
+        });
+        const floor = getAgentSemanticMinSimilarity();
+        const kept = neighbours.filter((neighbour) => neighbour.score >= floor);
+        if (kept.length === 0) {
+          return { items: [], status: "ok" };
+        }
+        const rows = await this.loadCandidateTracks({
+          explicitAllowed,
+          take: kept.length,
+          extraWhere: { id: { in: kept.map((neighbour) => neighbour.trackId) } },
+        });
+        const byId = new Map(rows.map((row) => [row.id, row]));
+        const items = kept.flatMap((neighbour) => {
+          const row = byId.get(neighbour.trackId);
+          return row ? [{ ...row, semanticScore: neighbour.score }] : [];
+        });
+        return { items, status: "ok" };
       },
     });
 
@@ -182,6 +176,79 @@ export class ToolRegistry {
           status: "ok",
         };
       },
+    });
+  }
+
+  /**
+   * Shared candidate loader for the AI DJ catalog tools: explicit filter, AI
+   * promotional eligibility (ADR-BM-5), and the annotated result shape.
+   * `hasListing` is data for the caller's own filter; it never orders, boosts
+   * or demotes results (ADR-TE-2 rule 6), so the default order stays
+   * newest-first exactly as queried.
+   */
+  private async loadCandidateTracks(options: {
+    explicitAllowed: boolean;
+    take: number;
+    extraWhere: Prisma.TrackWhereInput;
+    orderBy?: Prisma.TrackOrderByWithRelationInput;
+  }) {
+    const whereBase = options.explicitAllowed ? {} : { explicit: false };
+    const items = await prisma.track.findMany({
+      where: {
+        ...whereBase,
+        // Fully generated tracks remain available through direct catalog APIs,
+        // but are excluded from this promotional/agent-ranking seam (ADR-BM-5).
+        ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+        ...options.extraWhere,
+      },
+      include: {
+        // `artistId` and `moods` feed the shared discovery policy stage
+        // (exploration + diversity) and intent matching in the selector.
+        release: {
+          select: {
+            title: true,
+            genre: true,
+            moods: true,
+            artistId: true,
+            artworkUrl: true,
+          },
+        },
+        stems: {
+          where: { isCurrent: true },
+          select: {
+            listings: {
+              where: {
+                status: "active",
+                amount: { gt: 0n },
+                expiresAt: { gt: new Date() },
+              },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: options.orderBy ?? { createdAt: "desc" },
+      take: options.take,
+    });
+
+    return items.map((t) => {
+      const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
+      const {
+        stems,
+        generationMetadata: _generationMetadata,
+        aiDisclosureLevel: _aiDisclosureLevel,
+        aiContributionFacets: _aiContributionFacets,
+        aiDisclosureSource: _aiDisclosureSource,
+        aiDisclosureVersion: _aiDisclosureVersion,
+        aiDeclaredAt: _aiDeclaredAt,
+        ...rest
+      } = t;
+      return {
+        ...rest,
+        aiDisclosure: toAiDisclosureRecord(t),
+        hasListing,
+      };
     });
   }
 

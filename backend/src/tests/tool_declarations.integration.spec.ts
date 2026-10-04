@@ -39,11 +39,12 @@ describe('tool declarations (integration)', () => {
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
   });
 
-  it('returns function declarations for all 4 tools', () => {
+  it('returns function declarations for all 5 tools', () => {
     const declarations = getToolDeclarations();
-    expect(declarations).toHaveLength(4);
+    expect(declarations).toHaveLength(5);
     const names = declarations.map(d => d.name);
     expect(names).toContain('catalog_search');
+    expect(names).toContain('semantic_search');
     expect(names).toContain('pricing_quote');
     expect(names).toContain('analytics_signal');
     expect(names).toContain('embeddings_similarity');

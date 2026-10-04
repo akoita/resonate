@@ -52,9 +52,13 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     return this.withTimeout(this.callAgent(input, start), TIMEOUT_MS, start);
   }
 
-  private createRunner(): InMemoryRunner {
-    // Create a fresh runner per call
-    const agent = createCurationAgent(this.tools);
+  private createRunner(input: AgentRuntimeInput): InMemoryRunner {
+    // Create a fresh runner per call. The session's explicit-content choice is
+    // forced onto every catalog tool call; the model cannot override it.
+    const agent = createCurationAgent(this.tools, {
+      allowExplicit: input.preferences.allowExplicit ?? false,
+      recentTrackIds: input.recentTrackIds,
+    });
     return new InMemoryRunner({ agent, appName: APP_NAME });
   }
 
@@ -76,7 +80,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     input: AgentRuntimeInput,
     startMs: number
   ): Promise<AgentRuntimeResult> {
-    const runner = this.createRunner();
+    const runner = this.createRunner(input);
     await this.ensureSession(runner, input);
     const userMessage = buildUserMessage(input);
 

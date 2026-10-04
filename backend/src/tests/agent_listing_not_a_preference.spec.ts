@@ -35,7 +35,7 @@ const affirmative = (text: string) =>
 
 describe("listing is not a preference input on listener AI paths", () => {
   it("the ADK agent prompt and tool descriptions do not ask for listed tracks", () => {
-    const agent: any = createCurationAgent({ get: jest.fn() } as any);
+    const agent: any = createCurationAgent({ get: jest.fn() } as any, { allowExplicit: false });
     expect(agent.instruction).not.toMatch(/STRONGLY PREFER/i);
     expect(affirmative(agent.instruction)).not.toMatch(LISTING_PREFERENCE);
     expect(agent.instruction).toContain("never prefer or avoid a track because of it");

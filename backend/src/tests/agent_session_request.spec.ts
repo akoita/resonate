@@ -244,6 +244,20 @@ describe("computeRequestCoverage", () => {
     });
   });
 
+  it("counts a catalog genre in the requested genre's family as a match (#2088)", () => {
+    const pick = (genre: string | null) => ({ genre, moods: [], tempoMeasured: false });
+    expect(
+      computeRequestCoverage(request({ genres: ["World"] }), [
+        pick("African"),
+        pick("Musiques du monde"),
+        pick("Techno"),
+      ]),
+    ).toEqual({ picks: 3, gaps: [{ filter: "genres", matched: 2 }] });
+    expect(
+      computeRequestCoverage(request({ genres: ["Hip-Hop"] }), [pick("Hip Hop"), pick("French Rap")]),
+    ).toEqual({ picks: 2, gaps: [] });
+  });
+
   it("does not count an inferred tempo toward a BPM filter", () => {
     const coverage = computeRequestCoverage(request({ bpm: { min: 120, max: 125 } }), [
       measured(122),
