@@ -302,6 +302,7 @@ When adding a new environment variable:
 | `AGENT_RUNTIME_WORKER_URL` | Backend | Optional base URL for the standalone agent runtime worker. When unset, `AgentRuntimeService` runs in-process |
 | `AGENT_RUNTIME_WORKER_TIMEOUT_MS` | Backend | Optional timeout for backend-to-worker runtime calls; defaults to `5000` |
 | `AGENT_RUNTIME_WORKER_REQUIRED` | Backend | Optional fail-closed switch. Set `true` to disable in-process fallback when the worker is configured but unavailable |
+| `AGENT_SESSION_HISTORY_LIMIT` | Backend | Optional number of most recent AI DJ sessions returned by `GET /agents/config/history`. Defaults to `10`, capped at `50`; invalid or non-positive values fall back to the default. Lifetime counts come from `GET /agents/config/history/summary` and are not limited |
 | `AGENT_RECOMMENDATION_STRATEGY` | Backend | Optional AI DJ recommendation ranking strategy. Defaults to `deterministic`; set `model-assisted` to enable structured Gemini ranking when credentials are available. Unsupported values fall back to deterministic ranking |
 | `AGENT_RECOMMENDATION_MODEL` | Backend | Optional model name for `model-assisted` recommendation ranking. Falls back to `VERTEX_AI_MODEL`, then the backend default model |
 | `AGENT_RECOMMENDATION_MIN_CONFIDENCE` | Backend | Optional minimum model confidence for accepted model-assisted recommendation decisions. Defaults to `0.55`; lower-confidence selections are rejected by post-model guards |

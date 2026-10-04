@@ -5791,6 +5791,18 @@ export async function getAgentHistory(token: string): Promise<AgentSession[]> {
   return sessions;
 }
 
+/** Lifetime AI DJ counts; `getAgentHistory` returns only the latest `historyLimit` sessions. */
+export interface AgentHistorySummary {
+  sessionCount: number;
+  sessionsWithTracks: number;
+  trackCount: number;
+  historyLimit: number;
+}
+
+export async function getAgentHistorySummary(token: string): Promise<AgentHistorySummary> {
+  return apiRequest<AgentHistorySummary>("/agents/config/history/summary", {}, token);
+}
+
 // ========== Discovery Journal (Sonic Radar, ADR-TE-5) ==========
 
 export type DiscoveryJournalNextAction = {

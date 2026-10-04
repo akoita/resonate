@@ -4,7 +4,10 @@ import Link from "next/link";
 import type { AgentSession } from "../../lib/api";
 
 type Props = {
+    /** Most recent sessions, capped by the backend history limit. */
     sessions: AgentSession[];
+    /** Lifetime session count; may exceed `sessions.length`. */
+    totalCount: number;
     isLoading: boolean;
 };
 
@@ -36,7 +39,7 @@ function recommendationText(recommendation: AgentSession["licenses"][number]["re
     return "Curated within session policy";
 }
 
-export default function AgentHistoryCard({ sessions, isLoading }: Props) {
+export default function AgentHistoryCard({ sessions, totalCount, isLoading }: Props) {
     if (isLoading) {
         return (
             <div className="aid-card aid-card--history">
@@ -67,8 +70,8 @@ export default function AgentHistoryCard({ sessions, isLoading }: Props) {
                     </svg>
                     <span className="aid-card-title">Session History</span>
                 </div>
-                {sessions.length > 0 && (
-                    <span className="aid-count-badge">{sessions.length}</span>
+                {totalCount > 0 && (
+                    <span className="aid-count-badge">{totalCount}</span>
                 )}
             </div>
 
@@ -149,6 +152,11 @@ export default function AgentHistoryCard({ sessions, isLoading }: Props) {
                             )}
                         </details>
                     ))}
+                    {totalCount > sessions.length && (
+                        <p className="aid-history-window-note">
+                            Showing your {sessions.length} most recent of {totalCount} sessions.
+                        </p>
+                    )}
                 </div>
             )}
         </div>
