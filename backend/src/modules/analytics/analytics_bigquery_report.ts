@@ -454,10 +454,11 @@ WHERE occurredAt >= TIMESTAMP(@from)
     -- and AI DJ-attributed ones (#2005); agent-sourced ones are kept by the
     -- source clause below.
     OR (
-      JSON_VALUE(dimensions, '$.eventName') IN ('playback.started', 'playback.skipped')
+      JSON_VALUE(dimensions, '$.eventName') IN ('playback.started', 'playback.skipped', 'playback.heartbeat')
       AND (
         JSON_VALUE(dimensions, '$.railId') IS NOT NULL
         OR JSON_VALUE(dimensions, '$.surface') = 'dj'
+        OR JSON_VALUE(dimensions, '$.agentSessionId') IS NOT NULL
       )
     )
     OR STARTS_WITH(COALESCE(JSON_VALUE(dimensions, '$.source'), ''), 'agent')

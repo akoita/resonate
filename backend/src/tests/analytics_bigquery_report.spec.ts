@@ -27,6 +27,21 @@ describe("analytics BigQuery report source", () => {
     );
   });
 
+  it("retains DJ heartbeat/session attribution in bounded quality reads", async () => {
+    const client = new FakeBigQueryClient([{ rows: [{ factId: "f", eventId: "e", factType: "playback_event",
+      occurredAt: "2026-05-20T10:00:00.000Z", occurredDate: "2026-05-20", count: 1,
+      dimensions: JSON.stringify({ eventName: "playback.heartbeat", agentSessionId: "session", sessionSource: "my_mix" }) }],
+      totalBytesProcessed: "10", cacheHit: false }]);
+    const source = new BigQueryArtistAnalyticsReportSource(analyticsBigQueryReportConfigFromEnv({
+      ANALYTICS_REPORT_SOURCE: "bigquery", GCP_PROJECT_ID: "analytics-project", ANALYTICS_WAREHOUSE_DATASET_PREFIX: "analytics_dev",
+    }), client);
+    const result = await source.listAgentQualityFacts({ from: new Date("2026-05-01T00:00:00Z"), to: new Date("2026-05-22T00:00:00Z") });
+    expect(client.requests[0].query).toContain("'playback.heartbeat'");
+    expect(client.requests[0].query).toContain("'$.agentSessionId'");
+    expect(client.requests[0].query).toContain("LIMIT @limit");
+    expect(result.facts[0].dimensions).toMatchObject({ eventName: "playback.heartbeat", agentSessionId: "session" });
+  });
+
   it("queries bounded artist-scoped facts and views with cache metadata", async () => {
     const client = new FakeBigQueryClient([
       {

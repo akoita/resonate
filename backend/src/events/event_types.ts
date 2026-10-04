@@ -389,10 +389,16 @@ export interface RecommendationGeneratedEvent extends BaseEvent {
   cohortInfluence?: CohortInfluenceEventSummary;
   /** #1455 WS-8: where the recommendations were generated ("home" | "dj"). */
   surface?: string;
-  /** #1455 WS-8: ranker variant the listener was assigned (label only). */
+  /** Assigned ranker label; explicit My Mix arms select their measurement path. */
   rankerVariant?: string;
   /** #1455 WS-8: experiment key, absent when no experiment is configured. */
   experimentKey?: string;
+  /** #2067: server-derived DJ impression attribution, never prompt or lane text. */
+  trackId?: string;
+  agentSessionId?: string;
+  sessionSource?: "my_mix" | "preset" | "described";
+  orderingVariant?: "habit" | "neutral" | "single_profile";
+  explorationPick?: boolean;
 }
 
 export interface TasteMemorySettingsUpdatedEvent extends BaseEvent {

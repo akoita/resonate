@@ -1,7 +1,7 @@
 # Habit mixes (#2061)
 
-Status: #2062–#2065 merged in PRs #2068–#2070 and #2072. #2066 is implemented;
-#2067 remains planned and tracked by the open parent epic. Revenue: vision-neutral
+Status: #2062–#2066 merged in PRs #2068–#2070, #2072 and #2073. #2067 measurement
+is implemented and locally verified; the parent stays open until its PR merges. Revenue: vision-neutral
 infrastructure (ADR-BM-6), enabling Line 4 Listener Pro, phase 4.
 
 ## First slice: habit telemetry (#2062)
@@ -45,8 +45,8 @@ infrastructure (ADR-BM-6), enabling Line 4 Listener Pro, phase 4.
   see [its plan](2064-listening-lanes.md).
 - #2065: My Mix and editable lane quotas — merged in #2072;
   see [its plan](2065-my-mix.md).
-- #2066: learned ordering — implemented; see [its plan](2066-habit-ordering.md).
-- #2067: measurement and promotion evidence — planned.
+- #2066: learned ordering — merged in #2073; see [its plan](2066-habit-ordering.md).
+- #2067: measurement and promotion evidence — implemented; see [its plan](2067-habit-measurement.md).
 
 ## First-slice validation and change impact
 
@@ -86,5 +86,6 @@ Feature pages, event taxonomy, learning architecture, and User Guide describe
 the current behavior. Existing settings screenshots remain applicable because
 controls and layout did not change. No schema migration, environment variable,
 contract, fee, payout, or deployment change is required. Broader backend suites
-are deferred to CI under the focused validation policy. Remaining mix/profile
-features are tracked by #2063–#2067; the parent epic remains partial.
+are deferred to CI under the focused validation policy. The subsequent mix/profile slices #2063–#2066 are merged, and #2067 supplies
+the final measurement slice. Advanced sequencing and taste-portability work
+remain in the separate #1971 and #1973 issues.

@@ -484,3 +484,25 @@ Open questions for the owner:
 - Does "AI DJ" stay the brand for the listener face, or become "Session DJ"?
 - Export free to attract DJs, or behind `crate.pro`?
 - Default exploration share: 20% proposed.
+
+### Habit Mix measurement (#2067)
+
+The three explicit My Mix experiment arms reuse the discovery holdout:
+lanes plus habits, lanes with neutral ordering, and a deterministic
+single-profile control. Server-owned per-pick impressions bind session source
+and actual ordering to pseudonymous playback episodes. Operator quality
+analytics report skips, completion, resonance, session length and exploration
+acceptance per source and arm. Older or ambiguous attribution does not become
+promotion evidence.
+
+Offline day-cutoff replay rebuilds lanes from prior history and compares
+lane-quota recall@k/NDCG with the genre-only v1 baseline on later completions
+and saves. Its deterministic metadata scoring isolates quotas; it does not
+claim to evaluate semantic retrieval or transition quality.
+
+Promotion is advisory: the randomized habit arm and single-profile control
+in the same experiment each require configured minimum session/start counts,
+nonnegative skip improvement and positive completion or resonance improvement.
+No report automatically changes the default or activates Listener Pro. See
+[the feature contract](../features/agent_taste_intelligence.md#habit-mix-measurement-2067)
+for thresholds, definitions and limits.

@@ -8,6 +8,7 @@ import {
   StemsUploadedEvent,
   ResonateEvent,
 } from "../../events/event_types";
+import { pseudonymousAnalyticsActorId } from "./analytics_identity";
 import { EventBus } from "../shared/event_bus";
 import { AnalyticsEventInput, AnalyticsPrivacyTier } from "./analytics_event";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
@@ -1116,6 +1117,11 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "surface",
       "rankerVariant",
       "experimentKey",
+      "trackId",
+      "agentSessionId",
+      "sessionSource",
+      "orderingVariant",
+      "explorationPick",
     ],
     sourceRefKeys: ["userId"],
   },
@@ -1724,10 +1730,17 @@ export class AnalyticsDomainEventBridgeService implements OnModuleInit, OnModule
 
   private recordConfiguredDomainEvent(event: ResonateDomainEvent, config: DomainBridgeConfig) {
     const subjectId = firstStringField(event, config.subjectIdKeys ?? []);
-    const actorId = firstStringField(event, config.actorIdKeys ?? []);
+    const rawActorId = firstStringField(event, config.actorIdKeys ?? []);
+    const habitMeasurement = (event.eventName === "recommendation.generated" && Boolean(event.sessionSource)) ||
+      event.eventName === "playlist.track_added";
+    const actorId = habitMeasurement ? pseudonymousAnalyticsActorId(rawActorId) : rawActorId;
     const sessionId = firstStringField(event, config.sessionIdKeys ?? []);
     const payload = compactPayload(event, config.payloadKeys);
     const sourceRefs = sourceRefsFrom(event, config.sourceRefKeys);
+    if (habitMeasurement) {
+      delete payload.userId;
+      delete sourceRefs.userId;
+    }
 
     return this.ingest(
       removeUndefined({

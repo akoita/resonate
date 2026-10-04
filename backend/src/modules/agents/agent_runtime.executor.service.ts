@@ -53,6 +53,11 @@ export class AgentRuntimeExecutorService {
     }
   }
 
+  /** Single-profile control uses the deterministic shared selector, avoiding adapter confounding. */
+  runWithSingleProfile(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
+    return this.orchestrator.orchestrate(withoutMyMix(input));
+  }
+
   /** The API runtime calls this only after resolving the lane plan for the owner. */
   runWithMyMix(input: AgentRuntimeInput, plan: ResolvedMyMixPlan): Promise<AgentRuntimeRunResult> {
     return this.orchestrator.orchestrate({ ...input, myMixPlan: plan });

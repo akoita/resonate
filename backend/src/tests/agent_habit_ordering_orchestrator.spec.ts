@@ -42,6 +42,16 @@ describe("My Mix ordering integration", () => {
     expect(result.tracks.map((track) => track.trackId)).toEqual(["a", "b", "c"]);
   });
 
+  it("retains selector order for the neutral experiment arm without reading habits", async () => {
+    const { orchestrator, mixer, ordering } = build();
+    const result = await orchestrator.orchestrate({ sessionId: "session", userId: "owner", recentTrackIds: [],
+      preferences: { myMix: {} }, myMixPlan: { lanes: [], orderingVariant: "neutral" } });
+    expect(ordering.orderMyMix).not.toHaveBeenCalled();
+    expect(result.tracks.map((track) => track.trackId)).toEqual(["a", "b", "c"]);
+    expect(mixer.plan.mock.calls.map(([input]) => input.trackId)).toEqual(["a", "b", "c"]);
+    expect(result.mixCoverage).toBe(mixCoverage);
+  });
+
   it("does not read ordering history for an empty batch", async () => {
     const ordering = { orderMyMix: jest.fn() };
     const orchestrator = new AgentOrchestratorService({ recommend: jest.fn().mockResolvedValue({ selected: [], reason: "no_candidates" }) } as any, {} as any, new EventBus(), ordering as any);

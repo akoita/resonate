@@ -307,7 +307,7 @@ when they follow the privacy and versioning rules above.
 | `agent.decision_made` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `reason` | `trackId`, `artistId`, `releaseId`, `licenseType`, `priceUsd` |
 | `agent.purchase_completed` | `agent-purchase-service` | `listing` | `userId` | `sessionId`, `userId`, `listingId`, `tokenId`, `amount`, `priceUsd`, `txHash` | `mode` |
 | `agent.purchase_failed` | `agent-purchase-service` | `listing` | `userId` | `sessionId`, `userId`, `listingId`, `error` | `tokenId`, `amount`, `priceUsd` |
-| `recommendation.generated` | `recommendations-service` | none | `userId` | `userId`, `trackIds`, `strategy` | `candidateCount`, aggregate `cohortInfluence` |
+| `recommendation.generated` | `recommendations-service` | none | pseudonymous actor for DJ measurement | `trackIds`, `strategy` | Home: `userId`, `candidateCount`, aggregate `cohortInfluence`; DJ: per-pick `trackId`, `agentSessionId`, `sessionSource`, `rankerVariant`, `orderingVariant`, `experimentKey`, `explorationPick` (#2067) |
 | `recommendation.preferences_updated` | `recommendations-service` | none | `userId` | `userId`, `preferences` | none |
 | `generation.started` | `generation-service` | `generation_job` | `userId` | `jobId`, `userId` | `artistId`, `durationSeconds`, `seed` |
 | `generation.progress` | `generation-service` | `generation_job` | none | `jobId`, `phase` | none |
@@ -437,3 +437,14 @@ Before adding a new event:
 6. Add or update tests covering ingestion, warehouse/Dataflow promotion, and
    any report that reads the event.
 7. Update this document if the event name or required fields are new.
+
+### Habit Mix attribution (#2067)
+
+DJ generation emits one categorical impression per returned pick. Its ledger
+actor uses the browser playback pseudonym; raw user IDs are removed from the
+impression payload and source references. Canonical playlist additions also
+use that pseudonym so recent playback can be joined for resonance, retaining
+the added track IDs. Warehouse facts preserve owner-session attribution and
+experiment labels equally in TypeScript and Python. The authorized quality
+endpoint returns aggregate source and variant metrics only; see the
+[measurement definitions](../features/agent_taste_intelligence.md#habit-mix-measurement-2067).

@@ -45,6 +45,8 @@ export interface ResolvedMyMixLane extends ListeningLane {
 }
 
 export interface ResolvedMyMixPlan {
+  /** Trusted runtime experiment decision; raw preferences cannot set this. */
+  orderingVariant?: "habit" | "neutral";
   context?: MyMixContext;
   lanes: ResolvedMyMixLane[];
 }

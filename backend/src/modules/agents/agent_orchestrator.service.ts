@@ -142,7 +142,7 @@ export class AgentOrchestratorService {
 
     // Reorder the policy-approved batch before planning each transition.
     // Future tempo/Camelot sequencing (#1971) can refine tracks within lane runs.
-    const ordered = input.myMixPlan && this.habitOrdering
+    const ordered = input.myMixPlan && input.myMixPlan.orderingVariant !== "neutral" && this.habitOrdering
       ? await this.habitOrdering.orderMyMix(input.userId, input.sessionId, selection.selected, input.myMixPlan)
       : selection.selected;
 

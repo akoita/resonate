@@ -9,7 +9,7 @@ import {
 } from "./agent_runtime.types";
 import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
 import { EventBus } from "../shared/event_bus";
-import { discoveryVariantForUser } from "../recommendations/discovery_experiment";
+import { habitMixAssignment } from "./habit_mix_experiment";
 import { resolveListeningLanes } from "./listening_lanes.service";
 import {
   MixCoverage,
@@ -58,18 +58,24 @@ export class AgentRuntimeService {
    * (`tracks`) already did, inside the selector.
    */
   async run(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
-    const plan = await this.resolveMyMix(input);
+    const assignment = habitMixAssignment(input);
+    const resolvedPlan = await this.resolveMyMix(input);
+    const plan = resolvedPlan && assignment.orderingVariant !== "single_profile"
+      ? { ...resolvedPlan, orderingVariant: assignment.orderingVariant }
+      : undefined;
     if (!plan) this.clearMyMixSession(input.userId, input.sessionId);
     const safeInput = withoutMyMix(input);
     const result = plan
       ? await this.executor.runWithMyMix(safeInput, plan)
-      : await this.execute(safeInput);
+      : assignment.sessionSource === "my_mix" && assignment.orderingVariant === "single_profile"
+        ? await this.executor.runWithSingleProfile(safeInput)
+        : await this.execute(safeInput);
     const final =
       this.policy && !("tracks" in result) ? await this.policy.apply(input, result) : result;
     if (plan && "tracks" in final) {
       this.rememberMyMixSession(input.userId, input.sessionId, plan, final);
     }
-    this.recordVariant(input, final);
+    this.recordVariant(input, final, plan?.orderingVariant ?? "single_profile", assignment);
     return final;
   }
 
@@ -100,28 +106,31 @@ export class AgentRuntimeService {
     this.myMixSessions.delete(this.sessionCacheKey(userId, sessionId));
   }
 
-  /**
-   * #1455 WS-8: record which ranker variant the listener was in for this DJ
-   * recommendation. Label only; the DJ ranks identically in every variant.
-   * Never affects the pick: failures are swallowed.
-   */
-  private recordVariant(input: AgentRuntimeInput, result: AgentRuntimeRunResult) {
+  /** Each returned DJ pick gets server-owned labels; telemetry cannot fail a pick. */
+  private recordVariant(input: AgentRuntimeInput, result: AgentRuntimeRunResult,
+    orderingVariant: "habit" | "neutral" | "single_profile",
+    assignment: ReturnType<typeof habitMixAssignment>) {
     if (!this.eventBus || !input.userId) return;
     try {
-      const trackIds = normalizeAgentRuntimeResult(result).tracks.map((track) => track.trackId);
-      if (trackIds.length === 0) return;
-      const variant = discoveryVariantForUser(input.userId);
-      this.eventBus.publish({
-        eventName: "recommendation.generated",
-        eventVersion: 1,
-        occurredAt: new Date().toISOString(),
-        userId: input.userId,
-        trackIds,
-        strategy: "ai_dj",
-        surface: "dj",
-        rankerVariant: variant.rankerVariant,
-        ...(variant.experimentKey ? { experimentKey: variant.experimentKey } : {}),
-      });
+      const tracks = normalizeAgentRuntimeResult(result).tracks;
+      for (const track of tracks) {
+        this.eventBus.publish({
+          eventName: "recommendation.generated",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          userId: input.userId,
+          trackId: track.trackId,
+          trackIds: [track.trackId],
+          agentSessionId: input.sessionId,
+          strategy: "ai_dj",
+          surface: "dj",
+          sessionSource: assignment.sessionSource,
+          rankerVariant: assignment.rankerVariant,
+          orderingVariant,
+          explorationPick: track.reasonCode === "discovery_pick",
+          ...(assignment.experimentKey ? { experimentKey: assignment.experimentKey } : {}),
+        });
+      }
     } catch (error) {
       this.logger.warn(`ranker variant not recorded: ${String(error)}`);
     }
