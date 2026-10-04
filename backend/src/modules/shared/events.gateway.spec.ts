@@ -349,8 +349,26 @@ describe("EventsGateway", () => {
   });
 
   describe("AI DJ live feed", () => {
+    function startSession(eventBus: EventBus, sessionId = "session-1", userId = "user-1") {
+      eventBus.publish({
+        eventName: "session.started",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T11:59:00.000Z",
+        sessionId,
+        userId,
+        budgetCapUsd: 10,
+      } as any);
+    }
+
+    function decisionPayload(roomEmit: jest.Mock) {
+      return roomEmit.mock.calls.find(
+        ([name, payload]) => name === "agent.event" && payload.type === "agent.decision_made",
+      )?.[1];
+    }
+
     it("announces curation completion without spend text", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
 
       eventBus.publish({
         eventName: "agent.decision_made",
@@ -361,7 +379,7 @@ describe("EventsGateway", () => {
         reason: "approved",
       });
 
-      expect(emit).toHaveBeenCalledWith("agent.event", expect.objectContaining({
+      expect(roomEmit).toHaveBeenCalledWith("agent.event", expect.objectContaining({
         type: "agent.decision_made",
         message: "Curation complete: 5 tracks selected",
       }));
@@ -369,7 +387,8 @@ describe("EventsGateway", () => {
     });
 
     it("shows no price on an LLM decision message", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
 
       eventBus.publish({
         eventName: "agent.decision_made",
@@ -382,13 +401,13 @@ describe("EventsGateway", () => {
         latencyMs: 1200,
       } as any);
 
-      const message = emit.mock.calls.find(([name]) => name === "agent.event")?.[1].message;
-      expect(message).toBe("AI selected track (1.2s)");
+      expect(decisionPayload(roomEmit).message).toBe("AI selected track (1.2s)");
       gateway.onModuleDestroy();
     });
 
     it("appends what the picks did not match of the described session (#2037)", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
       const coverage = {
         picks: 5,
         gaps: [
@@ -408,7 +427,7 @@ describe("EventsGateway", () => {
         coverageSummary: "not matched: deep house (0 of 5), 120\u2013125 BPM (1 of 5)",
       } as any);
 
-      expect(emit).toHaveBeenCalledWith("agent.event", expect.objectContaining({
+      expect(roomEmit).toHaveBeenCalledWith("agent.event", expect.objectContaining({
         type: "agent.decision_made",
         message:
           "Curation complete: 5 tracks selected \u00b7 not matched: deep house (0 of 5), 120\u2013125 BPM (1 of 5)",
@@ -418,7 +437,8 @@ describe("EventsGateway", () => {
     });
 
     it("says the picks are rule-based when the LLM runtime fell back (#2075)", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
       const runtimeFallback = { from: "adk", reason: "not_configured" };
 
       eventBus.publish({
@@ -443,7 +463,9 @@ describe("EventsGateway", () => {
         runtimeFallback,
       } as any);
 
-      const payloads = emit.mock.calls.filter(([name]) => name === "agent.event").map(([, payload]) => payload);
+      const payloads = roomEmit.mock.calls
+        .filter(([name, payload]) => name === "agent.event" && payload.type === "agent.decision_made")
+        .map(([, payload]) => payload);
       expect(payloads[0].message).toBe(
         "Curation complete: 5 tracks selected \u00b7 rule-based picks (AI curator unavailable) \u00b7 not matched: soul (1 of 5)",
       );
@@ -456,7 +478,8 @@ describe("EventsGateway", () => {
     });
 
     it("never says AI selected for a rule-curated decision, even with reasoning or latency (#2075)", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
 
       eventBus.publish({
         eventName: "agent.decision_made",
@@ -470,14 +493,15 @@ describe("EventsGateway", () => {
         curatedBy: "rules",
       } as any);
 
-      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      const payload = decisionPayload(roomEmit);
       expect(payload.message).toBe("Curation complete: 3 tracks selected");
       expect(payload.runtimeFallback).toBeUndefined();
       gateway.onModuleDestroy();
     });
 
     it("says AI selected for an LLM-curated decision (#2075)", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
 
       eventBus.publish({
         eventName: "agent.decision_made",
@@ -490,14 +514,15 @@ describe("EventsGateway", () => {
         coverageSummary: "not matched: soul (1 of 2)",
       } as any);
 
-      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      const payload = decisionPayload(roomEmit);
       expect(payload.message).toBe("AI selected track \u00b7 not matched: soul (1 of 2)");
       expect(payload.curatedBy).toBe("llm");
       gateway.onModuleDestroy();
     });
 
     it("keeps the message and omits coverage when nothing was requested or missed", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
 
       eventBus.publish({
         eventName: "agent.decision_made",
@@ -509,14 +534,15 @@ describe("EventsGateway", () => {
         coverage: { picks: 5, gaps: [] },
       } as any);
 
-      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      const payload = decisionPayload(roomEmit);
       expect(payload.message).toBe("Curation complete: 5 tracks selected");
       expect(payload.coverage).toEqual({ picks: 5, gaps: [] });
       gateway.onModuleDestroy();
     });
 
     it("does not broadcast private My Mix lane coverage", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
       eventBus.publish({
         eventName: "agent.decision_made",
         eventVersion: 1,
@@ -528,7 +554,7 @@ describe("EventsGateway", () => {
           lanes: [{ id: "lane_private", label: "Private Soul lane", requested: 3, matched: 1 }],
         },
       } as any);
-      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      const payload = decisionPayload(roomEmit);
       expect(payload.mixCoverage).toBeUndefined();
       expect(JSON.stringify(payload)).not.toContain("Private Soul lane");
       expect(JSON.stringify(payload)).not.toContain("lane_private");
@@ -536,7 +562,8 @@ describe("EventsGateway", () => {
     });
 
     it("no longer broadcasts negotiation messages", () => {
-      const { gateway, eventBus, emit } = createGateway();
+      const { gateway, eventBus, emit, roomEmit } = createGateway();
+      startSession(eventBus);
 
       eventBus.publish({
         eventName: "agent.negotiated",
@@ -550,6 +577,254 @@ describe("EventsGateway", () => {
       });
 
       expect(emit).not.toHaveBeenCalled();
+      expect(roomEmit).toHaveBeenCalledTimes(1);
+      expect(roomEmit).toHaveBeenCalledWith("agent.event", expect.objectContaining({ type: "session.started" }));
+      gateway.onModuleDestroy();
+    });
+  });
+
+  describe("agent events", () => {
+    const TOKENS: Record<string, string> = {
+      "token-owner": "user-owner",
+      "token-other": "user-other",
+    };
+
+    function createRoomGateway(sessionOwners?: { resolveSessionOwner: jest.Mock }) {
+      const eventBus = new EventBus();
+      const lyriaRealtime = { stopSessionsForSocket: jest.fn() } as any;
+      const authService = {
+        verifyAccessToken: jest.fn((token: unknown) => {
+          const userId = typeof token === "string" ? TOKENS[token] : undefined;
+          return userId ? { userId } : null;
+        }),
+      } as any;
+      const gateway = new EventsGateway(eventBus, lyriaRealtime, authService, sessionOwners as any);
+
+      type FakeSocket = { id: string; rooms: Set<string>; received: Array<{ name: string; data: any }> };
+      const sockets = new Map<string, FakeSocket>();
+      const emit = jest.fn((name: string, data: any) => {
+        for (const socket of sockets.values()) socket.received.push({ name, data });
+      });
+      const to = jest.fn((room: string) => ({
+        emit: (name: string, data: any) => {
+          for (const socket of sockets.values()) {
+            if (socket.rooms.has(room)) socket.received.push({ name, data });
+          }
+        },
+      }));
+      gateway.server = { emit, to, sockets: { sockets: new Map() } } as any;
+
+      function connect(id: string, token?: string) {
+        const fake: FakeSocket = { id, rooms: new Set(), received: [] };
+        sockets.set(id, fake);
+        const client = {
+          id,
+          connected: true,
+          handshake: { auth: token === undefined ? {} : { token } },
+          emit: jest.fn(),
+          on: jest.fn(),
+          join: jest.fn((room: string) => { fake.rooms.add(room); }),
+          leave: jest.fn(),
+        } as any;
+        gateway.handleConnection(client);
+        return fake;
+      }
+
+      const agentEvents = (socket: FakeSocket) =>
+        socket.received.filter((entry) => entry.name === "agent.event").map((entry) => entry.data);
+
+      return { gateway, eventBus, emit, to, connect, agentEvents };
+    }
+
+    const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+    function publishSelection(eventBus: EventBus, sessionId = "session-1") {
+      eventBus.publish({
+        eventName: "agent.selection",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:01.000Z",
+        sessionId,
+        trackId: "track-1",
+        candidates: [{}, {}, {}],
+        count: 2,
+      } as any);
+    }
+
+    function agentEventCalls(emit: jest.Mock) {
+      return emit.mock.calls.filter(([name]) => name === "agent.event");
+    }
+
+    it("joins authenticated sockets to their user room and no other socket", () => {
+      const { gateway, connect } = createRoomGateway();
+
+      const owner = connect("socket-owner", "token-owner");
+      const anonymous = connect("socket-anon");
+      const invalid = connect("socket-bad", "bad");
+
+      expect([...owner.rooms]).toEqual(["user:user-owner"]);
+      expect([...anonymous.rooms].filter((room) => room.startsWith("user:"))).toEqual([]);
+      expect([...invalid.rooms].filter((room) => room.startsWith("user:"))).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+
+    it("delivers the full agent sequence only to the session owner's room", () => {
+      const { gateway, eventBus, emit, connect, agentEvents } = createRoomGateway();
+      const owner = connect("socket-owner", "token-owner");
+      const other = connect("socket-other", "token-other");
+      const anonymous = connect("socket-anon");
+
+      eventBus.publish({
+        eventName: "session.started",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:00.000Z",
+        sessionId: "session-1",
+        userId: "user-owner",
+        budgetCapUsd: 10,
+      } as any);
+      publishSelection(eventBus);
+      eventBus.publish({
+        eventName: "agent.mix_planned",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:02.000Z",
+        sessionId: "session-1",
+        trackId: "track-1",
+        trackTitle: "Midnight Secret Title",
+        transition: "crossfade",
+      } as any);
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:03.000Z",
+        sessionId: "session-1",
+        trackId: "track-1",
+        reason: "llm",
+        reasoning: "private reasoning about the listener",
+        coverage: { picks: 2, gaps: [{ filter: "genres", matched: 0 }] },
+        coverageSummary: "not matched: deep house (0 of 2), warm mood, 120\u2013125 BPM",
+      } as any);
+      eventBus.publish({
+        eventName: "session.ended",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:04.000Z",
+        sessionId: "session-1",
+      } as any);
+
+      const received = agentEvents(owner);
+      expect(received.map((payload) => payload.type)).toEqual([
+        "session.started",
+        "agent.selection",
+        "agent.mix_planned",
+        "agent.decision_made",
+        "session.ended",
+      ]);
+      expect(received.every((payload) => payload.sessionId === "session-1")).toBe(true);
+      expect(received[2].message).toContain("Midnight Secret Title");
+      expect(received[3].message).toContain("private reasoning about the listener");
+      expect(received[3].message).toContain("deep house");
+      expect(received[3].message).toContain("warm mood");
+      expect(received[3].message).toContain("120\u2013125 BPM");
+      expect(received[3].coverage).toEqual({ picks: 2, gaps: [{ filter: "genres", matched: 0 }] });
+
+      expect(other.received).toEqual([]);
+      expect(anonymous.received).toEqual([]);
+      expect(agentEventCalls(emit)).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+
+    it("resolves the owner on a cache miss and delivers only to that owner", async () => {
+      const resolver = { resolveSessionOwner: jest.fn().mockResolvedValue("user-owner") };
+      const { gateway, eventBus, emit, connect, agentEvents } = createRoomGateway(resolver);
+      const owner = connect("socket-owner", "token-owner");
+      const other = connect("socket-other", "token-other");
+      const anonymous = connect("socket-anon");
+
+      publishSelection(eventBus);
+      await flush();
+
+      expect(resolver.resolveSessionOwner).toHaveBeenCalledWith("session-1");
+      expect(agentEvents(owner)).toHaveLength(1);
+      expect(other.received).toEqual([]);
+      expect(anonymous.received).toEqual([]);
+      expect(agentEventCalls(emit)).toEqual([]);
+
+      // The resolved owner is cached: no second lookup.
+      publishSelection(eventBus);
+      expect(agentEvents(owner)).toHaveLength(2);
+      expect(resolver.resolveSessionOwner).toHaveBeenCalledTimes(1);
+      gateway.onModuleDestroy();
+    });
+
+    it("drops the event when the resolver finds no owner", async () => {
+      const resolver = { resolveSessionOwner: jest.fn().mockResolvedValue(null) };
+      const { gateway, eventBus, emit, connect } = createRoomGateway(resolver);
+      const owner = connect("socket-owner", "token-owner");
+      const anonymous = connect("socket-anon");
+
+      publishSelection(eventBus);
+      await flush();
+
+      expect(owner.received).toEqual([]);
+      expect(anonymous.received).toEqual([]);
+      expect(agentEventCalls(emit)).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+
+    it("drops the event without throwing when the resolver rejects", async () => {
+      const resolver = { resolveSessionOwner: jest.fn().mockRejectedValue(new Error("db down")) };
+      const { gateway, eventBus, emit, connect } = createRoomGateway(resolver);
+      const owner = connect("socket-owner", "token-owner");
+      const anonymous = connect("socket-anon");
+
+      expect(() => publishSelection(eventBus)).not.toThrow();
+      await flush();
+
+      expect(resolver.resolveSessionOwner).toHaveBeenCalledTimes(1);
+      expect(owner.received).toEqual([]);
+      expect(anonymous.received).toEqual([]);
+      expect(agentEventCalls(emit)).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+
+    it("drops the event when the owner is unknown and no resolver is wired", () => {
+      const { gateway, eventBus, emit, connect } = createRoomGateway();
+      const owner = connect("socket-owner", "token-owner");
+
+      publishSelection(eventBus);
+
+      expect(owner.received).toEqual([]);
+      expect(agentEventCalls(emit)).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+
+    it("forgets the owner after session.ended so a later event triggers a lookup", async () => {
+      const resolver = { resolveSessionOwner: jest.fn().mockResolvedValue("user-owner") };
+      const { gateway, eventBus, connect, agentEvents } = createRoomGateway(resolver);
+      const owner = connect("socket-owner", "token-owner");
+
+      eventBus.publish({
+        eventName: "session.started",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:00.000Z",
+        sessionId: "session-1",
+        userId: "user-owner",
+        budgetCapUsd: 10,
+      } as any);
+      publishSelection(eventBus);
+      expect(resolver.resolveSessionOwner).not.toHaveBeenCalled();
+
+      eventBus.publish({
+        eventName: "session.ended",
+        eventVersion: 1,
+        occurredAt: "2026-10-04T12:00:04.000Z",
+        sessionId: "session-1",
+      } as any);
+      expect(agentEvents(owner)).toHaveLength(3);
+
+      publishSelection(eventBus);
+      await flush();
+
+      expect(resolver.resolveSessionOwner).toHaveBeenCalledTimes(1);
+      expect(agentEvents(owner)).toHaveLength(4);
       gateway.onModuleDestroy();
     });
   });
