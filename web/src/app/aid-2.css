@@ -857,6 +857,18 @@
 .aid-prompt-note--coverage { color: #fcd34d; }
 .aid-prompt-note--error { color: #f87171; }
 
+.aid-prompt-explicit { display: flex; flex-direction: column; gap: 4px; }
+.aid-prompt-explicit-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  color: #f0eaff;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.aid-prompt-explicit-label input { accent-color: var(--r-agent, #8b5cf6); }
+
 .aid-prompt-actions { display: flex; justify-content: flex-end; }
 .aid-prompt-submit {
   min-height: 38px;

@@ -13,6 +13,7 @@ import {
     type AgentSignalAction,
 } from "./agent_learning.service";
 import { mergeSessionGenres } from "./agent_session_genres";
+import { resolveAllowExplicit } from "./agent_explicit_preference";
 import {
   AGENT_SESSION_REQUEST_PARSER,
   describeCoverageGaps,
@@ -113,7 +114,7 @@ export class AgentConfigController {
     @UseGuards(AuthGuard("jwt"))
     async update(
         @Req() req: any,
-        @Body() body: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: string; monthlyCapUsd?: number; isActive?: boolean }
+        @Body() body: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: string; monthlyCapUsd?: number; isActive?: boolean; allowExplicit?: boolean }
     ) {
         const allowedData: {
             name?: string;
@@ -122,6 +123,7 @@ export class AgentConfigController {
             sessionMode?: string;
             monthlyCapUsd?: number;
             isActive?: boolean;
+            allowExplicit?: boolean;
         } = {};
         if (body.name !== undefined) allowedData.name = body.name;
         if (body.vibes !== undefined) allowedData.vibes = body.vibes;
@@ -139,6 +141,12 @@ export class AgentConfigController {
         }
         if (body.monthlyCapUsd !== undefined) allowedData.monthlyCapUsd = body.monthlyCapUsd;
         if (body.isActive !== undefined) allowedData.isActive = body.isActive;
+        if (body.allowExplicit !== undefined) {
+            if (typeof body.allowExplicit !== "boolean") {
+                throw new BadRequestException({ reason: "invalid_allow_explicit" });
+            }
+            allowedData.allowExplicit = body.allowExplicit;
+        }
 
         const config = await prisma.agentConfig.update({
             where: { userId: req.user.userId },
@@ -299,6 +307,8 @@ export class AgentConfigController {
         const sessionGenres = requested.request
             ? [...(body?.preferences?.genres ?? []), ...requested.sessionGenres]
             : body?.preferences?.genres;
+        // The persisted listener choice applies unless this session sends its own (#2088).
+        const allowExplicit = resolveAllowExplicit(body?.preferences?.allowExplicit, config.allowExplicit);
         const sessionPreferences = {
             genres: requested.request
                 ? [...(body?.preferences?.genres ?? config.vibes), ...requested.sessionGenres]
@@ -306,7 +316,7 @@ export class AgentConfigController {
             stemTypes: config.stemTypes,
             mood: requested.mood,
             energy: requested.energy,
-            allowExplicit: body?.preferences?.allowExplicit,
+            allowExplicit,
             licenseType: body?.preferences?.licenseType ?? "personal",
             sessionIntent: body?.preferences?.sessionIntent,
             sessionIntentName: body?.preferences?.sessionIntentName,

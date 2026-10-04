@@ -1,0 +1,1 @@
+ALTER TABLE "AgentConfig" ADD COLUMN "allowExplicit" BOOLEAN NOT NULL DEFAULT false;

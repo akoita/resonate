@@ -13,6 +13,7 @@ import { resolveListeningLanes } from "../agents/listening_lanes.service";
 import { resolveMyMixPlan } from "../agents/agent_my_mix";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
+import { resolveAllowExplicit } from "../agents/agent_explicit_preference";
 import {
   requestRankingPreferences,
   sanitizeSessionRequest,
@@ -275,6 +276,10 @@ export class SessionsService {
     const sessionGenres = requested.request
       ? [...(preferences.genres ?? []), ...requested.sessionGenres]
       : preferences.genres;
+    // Explicit tracks follow the listener's saved choice unless this session
+    // sent its own; the config-derived value is not remembered, so a later
+    // toggle takes effect on the next pick (#2088).
+    const allowExplicit = await this.resolveAllowExplicit(session.userId, preferences.allowExplicit);
     const recentTrackIds = await this.sessionTrackIds(input.sessionId);
     // Wire-contract field only: listening runs are not budget-limited
     // (ADR-TE-1), so the remaining budget never reduces the picks.
@@ -286,6 +291,7 @@ export class SessionsService {
       budgetRemainingUsd,
       preferences: {
         ...preferences,
+        allowExplicit,
         genres: await this.withLearnedGenres(session.userId, sessionGenres),
         // What this session asked for itself, so it outranks learned taste (#2059).
         ...(sessionGenres?.length ? { sessionGenres } : {}),
@@ -467,6 +473,15 @@ export class SessionsService {
         this.logger.warn("My Mix unmet-demand observation was skipped after an agent session result.");
       }
     }
+  }
+
+  /** The session's own boolean wins; otherwise the listener's saved choice, defaulting to off. */
+  private async resolveAllowExplicit(userId: string, requested: unknown): Promise<boolean> {
+    if (typeof requested === "boolean") return requested;
+    const config = await prisma.agentConfig
+      .findUnique({ where: { userId }, select: { allowExplicit: true } })
+      .catch(() => null);
+    return resolveAllowExplicit(requested, config?.allowExplicit);
   }
 
   /**

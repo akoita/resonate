@@ -5436,6 +5436,8 @@ export type AgentConfig = {
   erc8004Enabled?: boolean;
   monthlyCapUsd: number;
   isActive: boolean;
+  /** Include tracks flagged explicit in the DJ's picks. Off unless the listener turns it on (#2088). */
+  allowExplicit?: boolean;
   identityStatus: AgentIdentityStatus;
   identityChainId: number | null;
   identityRegistry: string | null;
@@ -5513,7 +5515,7 @@ export async function createAgentConfig(
 
 export async function updateAgentConfig(
   token: string,
-  input: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: "curate" | "buy"; monthlyCapUsd?: number; isActive?: boolean }
+  input: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: "curate" | "buy"; monthlyCapUsd?: number; isActive?: boolean; allowExplicit?: boolean }
 ): Promise<AgentConfig> {
   return apiRequest<AgentConfig>(
     "/agents/config",

@@ -50,6 +50,26 @@ describe("AgentSessionPrompt", () => {
     expect(html).toContain("No filters yet");
   });
 
+  it("offers an accessible include-explicit-tracks toggle that reflects the saved choice (#2088)", () => {
+    expect(render()).not.toContain("Include explicit tracks");
+
+    const off = render({ explicit: { enabled: false, onChange: vi.fn() } });
+    expect(off).toContain("Include explicit tracks");
+    expect(off).toContain("Applies from the next pick.");
+    expect(off).toMatch(/<input[^>]*type="checkbox"/);
+    expect(off).not.toMatch(/<input[^>]*checked=""/);
+    expect(off).toMatch(/<label[^>]*for="[^"]*-explicit"/);
+
+    const on = render({ explicit: { enabled: true, onChange: vi.fn() } });
+    expect(on).toMatch(/<input[^>]*checked=""/);
+  });
+
+  it("disables the toggle while saving and shows a save error inline (#2088)", () => {
+    const html = render({ explicit: { enabled: true, isSaving: true, error: "Couldn't save this setting.", onChange: vi.fn() } });
+    expect(html).toMatch(/<input[^>]*disabled=""/);
+    expect(html).toContain("Couldn&#x27;t save this setting.");
+  });
+
   it("shows every preset as a quick-start chip and marks the active one", () => {
     const html = render({ activePresetIntent: "Hype" });
     const escape = (value: string) => value.replace(/&/g, "&amp;");

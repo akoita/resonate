@@ -339,6 +339,49 @@ describe("AgentSessionPanel", () => {
     );
   });
 
+  it("shows the saved explicit-tracks choice, off by default (#2088)", () => {
+    hookState.config = config({ isActive: false });
+    render();
+    expect(captured.prompt?.explicit).toMatchObject({ enabled: false, isSaving: false, error: null });
+
+    hookState.config = config({ isActive: false, allowExplicit: true });
+    render();
+    expect(captured.prompt?.explicit?.enabled).toBe(true);
+  });
+
+  it("saves the explicit-tracks choice through the config update, optimistically (#2088)", async () => {
+    hookState.config = config({ isActive: true });
+    render();
+    let release: () => void = () => undefined;
+    updateConfig.mockImplementationOnce(() => new Promise<undefined>((resolve) => { release = () => resolve(undefined); }));
+
+    const saving = captured.prompt?.explicit?.onChange(true);
+    render();
+    expect(updateConfig).toHaveBeenCalledWith({ allowExplicit: true });
+    expect(captured.prompt?.explicit).toMatchObject({ enabled: true, isSaving: true });
+
+    release();
+    await saving;
+    render();
+    expect(captured.prompt?.explicit).toMatchObject({ isSaving: false, error: null });
+    // A saved choice is not sent with the session: the server resolves it on every pick.
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
+  it("reverts the explicit-tracks choice and says so when saving fails (#2088)", async () => {
+    hookState.config = config({ isActive: false, allowExplicit: false });
+    render();
+    updateConfig.mockRejectedValueOnce(new Error("Network down"));
+
+    await captured.prompt?.explicit?.onChange(true);
+    render();
+    expect(captured.prompt?.explicit).toMatchObject({
+      enabled: false,
+      isSaving: false,
+      error: "Couldn't save this setting. Network down",
+    });
+  });
+
   it("starts a plain session with no preferences when nothing was typed or chosen", async () => {
     hookState.config = config({ isActive: false });
     render();
