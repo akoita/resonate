@@ -246,6 +246,12 @@ forwarding, Dataflow failures, and Dataflow system lag when the corresponding
 analytics mode is enabled. Batch materialization job failure alerting is tracked
 with the batch materializer implementation.
 
+Backend containers log one JSON object per line with a Cloud Logging `severity`;
+errors with a stack carry Error Reporting fields, and silent degraded paths emit
+`degraded.fallback` events that infrastructure can count and alert on. The
+fields are defined in the
+[Production Observability Contract](../operations/production_observability_contract.md).
+
 ## Source References
 
 - Application overview and local topology: [README.md](../../README.md)

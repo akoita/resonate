@@ -111,6 +111,43 @@ describe("VertexEmbeddingClient", () => {
     ).resolves.toBeNull();
   });
 
+  it("reports a categorical degraded.fallback reason per failure kind (#2076)", async () => {
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    const reasons = () =>
+      info.mock.calls
+        .map(([line]) => JSON.parse(String(line)))
+        .filter((payload) => payload.event === "degraded.fallback")
+        .map((payload) => [payload.component, payload.reason]);
+    try {
+      const client = new VertexEmbeddingClient();
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) });
+      await client.embed(target, ["a"], "RETRIEVAL_DOCUMENT");
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+      await client.embed(target, ["a"], "RETRIEVAL_DOCUMENT");
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) });
+      await client.embed(target, ["a"], "RETRIEVAL_DOCUMENT");
+      fetchMock.mockResolvedValueOnce(okResponse(2));
+      await client.embed(target, ["a"], "RETRIEVAL_DOCUMENT");
+      fetchMock.mockRejectedValueOnce(
+        Object.assign(new Error("aborted"), { name: "AbortError" }),
+      );
+      await client.embed(target, ["a"], "RETRIEVAL_DOCUMENT");
+      fetchMock.mockRejectedValueOnce(new Error("network down"));
+      await client.embed(target, ["a"], "RETRIEVAL_DOCUMENT");
+
+      expect(reasons()).toEqual([
+        ["embeddings.vertex", "rate_limited"],
+        ["embeddings.vertex", "upstream_unavailable"],
+        ["embeddings.vertex", "http_error"],
+        ["embeddings.vertex", "malformed_response"],
+        ["embeddings.vertex", "timeout"],
+        ["embeddings.vertex", "request_failed"],
+      ]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
   it("returns null when fetch rejects or times out", async () => {
     fetchMock.mockRejectedValue(
       Object.assign(new Error("The operation was aborted"), { name: "AbortError" }),

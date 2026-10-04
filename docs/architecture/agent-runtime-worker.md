@@ -93,3 +93,10 @@ secret is configured.
 When `AGENT_RUNTIME_WORKER_URL` is unset, the backend executes the runtime
 in-process. When the worker is configured but unavailable, the backend falls
 back in-process unless `AGENT_RUNTIME_WORKER_REQUIRED=true`.
+
+Every fallback emits a categorical `degraded.fallback` log event: component
+`agent_runtime.remote_worker` when the worker is unreachable, and
+`agent_runtime.<adapter>` with reason `not_configured`, `timeout` or `error` when an
+LLM adapter fails and the deterministic orchestrator answers instead. Error text
+stays on the adjacent warning line. See the
+[Production Observability Contract](../operations/production_observability_contract.md#degraded-fallback-events).

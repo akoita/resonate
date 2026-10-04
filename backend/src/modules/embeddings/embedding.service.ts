@@ -3,6 +3,7 @@ import {
   EmbeddingProviderConfig,
   resolveEmbeddingProviderConfig,
 } from "./embedding.config";
+import { logDegradedFallback } from "../shared/degraded_fallback";
 import { HashEmbedder } from "./hash_embedder";
 import { VertexEmbeddingClient } from "./vertex_embedding.client";
 
@@ -57,6 +58,11 @@ export class EmbeddingService {
       }
       return await this.vertex.embed(config, texts, taskType);
     } catch (error) {
+      logDegradedFallback({
+        component: "embeddings.provider",
+        reason: "error",
+        error,
+      });
       this.logger.warn(
         `Embedding provider "${config.mode}" failed: ${error instanceof Error ? error.message : String(error)}`,
       );

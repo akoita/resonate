@@ -8,6 +8,7 @@ import { RedisIoAdapter } from "./modules/shared/redis.adapter";
 import { getCorsAllowedOrigins } from "./config/cors";
 import { applyGlobalValidation } from "./config/validation";
 import { requestObservabilityMiddleware } from "./modules/shared/request_observability.middleware";
+import { createAppLogger } from "./modules/shared/structured_nest_logger";
 import { assertAnalyticsActorIdSaltConfiguration } from "./modules/analytics/analytics_identity";
 
 async function bootstrap() {
@@ -50,7 +51,8 @@ async function bootstrap() {
     console.warn(`[Self-Healing] Could not check indexer state:`, e);
   }
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(createAppLogger());
   applyGlobalValidation(app);
 
   // Enable cross-instance WebSocket broadcasting via Redis pub/sub
