@@ -1033,7 +1033,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Open the Add to playlist action on any track, release, album, or artist page — including artist pages inside My Library.",
               "To add several tracks at once, select them in My Library and choose Add to playlist, or drag them onto a playlist in the side panel. Dragging a track from one playlist onto another copies it there; the original playlist keeps it.",
               "Create a new playlist or add the tracks to an existing one.",
-              "Reorder and manage tracks from the Playlists tab in your library. Playlist covers show a mosaic of the artwork inside.",
+              "Reorder and manage tracks from the Playlists tab in your library. Playlist covers, including public playlists you have saved, show a mosaic of the artwork inside.",
             ],
           },
           {

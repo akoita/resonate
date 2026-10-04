@@ -1,11 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { PublicPlaylistSummary } from "../../lib/api";
+import { API_BASE, type PublicPlaylistSummary, type PublicPlaylistTrack } from "../../lib/api";
 import {
   CatalogPlaylistCard,
   CatalogPlaylistThumb,
   PlaylistCoverThumb,
   playlistCoverUrls,
+  publicPlaylistCoverUrls,
 } from "./CatalogPlaylistCard";
 
 const basePlaylist: PublicPlaylistSummary = {
@@ -113,5 +114,40 @@ describe("playlistCoverUrls", () => {
 
   it("returns nothing for an empty playlist", () => {
     expect(playlistCoverUrls([], coverFor)).toEqual([]);
+  });
+});
+
+describe("publicPlaylistCoverUrls", () => {
+  const track = (id: string, artworkPath: string | null, playable = true): PublicPlaylistTrack => ({
+    id,
+    title: id,
+    artist: null,
+    album: null,
+    duration: null,
+    streamPath: playable ? `/catalog/tracks/${id}/stream` : null,
+    artworkPath,
+    catalogTrackId: null,
+    releaseId: null,
+    playable,
+  });
+
+  it("keeps distinct artwork of playable tracks in order, capped at four", () => {
+    const tracks = [
+      track("t1", "/art/1.jpg"),
+      track("t2", "/art/1.jpg"),
+      track("t3", null),
+      track("t4", "/art/x.jpg", false),
+      track("t5", "/art/2.jpg"),
+      track("t6", "/art/3.jpg"),
+      track("t7", "/art/4.jpg"),
+      track("t8", "/art/5.jpg"),
+    ];
+    expect(publicPlaylistCoverUrls(tracks)).toEqual(
+      ["/art/1.jpg", "/art/2.jpg", "/art/3.jpg", "/art/4.jpg"].map((path) => `${API_BASE}${path}`),
+    );
+  });
+
+  it("returns nothing when no playable track has artwork", () => {
+    expect(publicPlaylistCoverUrls([track("t1", null), track("t2", "/art/1.jpg", false)])).toEqual([]);
   });
 });
