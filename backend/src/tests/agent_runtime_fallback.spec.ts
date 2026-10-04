@@ -59,6 +59,34 @@ describe("AgentRuntimeExecutorService fallback (#2075)", () => {
     );
   });
 
+  it("emits a categorical degraded.fallback event (#2076)", async () => {
+    process.env.AGENT_RUNTIME = "adk";
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const { executor } = build(
+        jest.fn().mockRejectedValue(new AgentRuntimeUnavailableError("not_configured", "secret key detail")),
+      );
+
+      await executor.run(input);
+
+      const events = info.mock.calls
+        .map(([line]) => JSON.parse(String(line)))
+        .filter((payload) => payload.event === "degraded.fallback");
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual(
+        expect.objectContaining({
+          severity: "WARNING",
+          component: "agent_runtime.adk",
+          reason: "not_configured",
+          errorClass: "AgentRuntimeUnavailableError",
+        }),
+      );
+      expect(JSON.stringify(events[0])).not.toContain("secret");
+    } finally {
+      info.mockRestore();
+    }
+  });
+
   it("records a timeout against the vertex runtime", async () => {
     process.env.AGENT_RUNTIME = "vertex";
     const { executor, orchestrator } = build(

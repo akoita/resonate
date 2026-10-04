@@ -235,6 +235,7 @@ When adding a new environment variable:
 | `ALLOW_SAMPLE_SHOW_FIXTURES` | Backend fixture tooling | Required as `true` before `npm run fixtures:shows` may write to a shared `dev`, `staging`, `test`, or production-labelled environment. Leave unset for normal runtime and local fixture creation. |
 | `SAMPLE_SHOWS_CHAIN_ID` | Backend fixture tooling | Optional positive chain ID recorded on sample Shows campaigns. Falls back to `AA_CHAIN_ID`, then local Anvil `31337`. |
 | `SAMPLE_SHOWS_ASSET_DIR` | Backend fixture tooling | Optional path to a reviewed sample Shows asset directory. Defaults to `backend/fixtures/show-campaigns/assets` when the command runs from `backend/`. |
+| `LOG_FORMAT` | Backend | `json` or `pretty`. Selects the NestJS log format for the API and agent worker. `json` writes one structured JSON object per line with a Cloud Logging `severity` (and Error Reporting fields on errors); `pretty` is the coloured human format. Unset defaults to `pretty` on an interactive terminal and `json` otherwise; unknown values behave as unset. Deployed containers should leave it unset or set `json`. See the [observability contract](../operations/production_observability_contract.md). |
 
 > Seeded Shows images live in storage and only refresh when `fixtures:shows`
 > re-runs — deploying backend code alone does not update them. Run the seed after

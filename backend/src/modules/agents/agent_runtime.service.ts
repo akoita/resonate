@@ -17,6 +17,7 @@ import {
   ResolvedMyMixPlan,
 } from "./agent_my_mix";
 import { getAgentTrackLimit } from "./agent_runtime.config";
+import { logDegradedFallback } from "../shared/degraded_fallback";
 
 export interface MyMixLaneDemandObservation {
   laneId: string;
@@ -147,6 +148,11 @@ export class AgentRuntimeService {
       if (this.remoteClient.required) {
         throw error;
       }
+      logDegradedFallback({
+        component: "agent_runtime.remote_worker",
+        reason: "error",
+        error,
+      });
       this.logger.warn(
         `agent runtime worker failed (${error.message}) - falling back to in-process executor`
       );

@@ -36,6 +36,7 @@ describe("request observability middleware", () => {
         path: "/api/stems/stem-1/x402",
         statusCode: 200,
         hasAuth: true,
+        severity: "INFO",
         paymentHeaderType: "payment-signature",
       }),
     );
@@ -85,6 +86,7 @@ describe("request observability middleware", () => {
     expect(payload.service).toBe("resonate-backend");
     expect(payload.timestamp).toEqual(expect.any(String));
     expect(payload.privateKey).toBe("[redacted]");
+    expect(payload.severity).toBe("INFO");
   });
 });
 

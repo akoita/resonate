@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common";
+import { logDegradedFallback } from "../shared/degraded_fallback";
 import {
   TRACK_EMBEDDING_DIMENSION,
   VERTEX_EMBEDDING_BATCH_SIZE,
@@ -49,6 +50,14 @@ export class VertexEmbeddingClient {
       }
       return vectors;
     } catch (error) {
+      logDegradedFallback({
+        component: "embeddings.vertex",
+        reason:
+          error instanceof Error && error.name === "AbortError"
+            ? "timeout"
+            : "request_failed",
+        error,
+      });
       this.logger.warn(
         `Vertex embedding request failed: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -101,6 +110,15 @@ export class VertexEmbeddingClient {
         signal: controller.signal,
       });
       if (!response.ok) {
+        logDegradedFallback({
+          component: "embeddings.vertex",
+          reason:
+            response.status === 429
+              ? "rate_limited"
+              : response.status >= 500
+              ? "upstream_unavailable"
+              : "http_error",
+        });
         this.logger.warn(`Vertex embedding API returned HTTP ${response.status}`);
         return null;
       }
@@ -119,6 +137,10 @@ export class VertexEmbeddingClient {
   ): number[][] | null {
     const predictions = body.predictions;
     if (!Array.isArray(predictions) || predictions.length !== expected) {
+      logDegradedFallback({
+        component: "embeddings.vertex",
+        reason: "malformed_response",
+      });
       this.logger.warn(
         "Vertex embedding response had an unexpected prediction count",
       );
@@ -134,6 +156,10 @@ export class VertexEmbeddingClient {
           (value) => typeof value !== "number" || !Number.isFinite(value),
         )
       ) {
+        logDegradedFallback({
+          component: "embeddings.vertex",
+          reason: "malformed_response",
+        });
         this.logger.warn("Vertex embedding response had a malformed vector");
         return null;
       }
