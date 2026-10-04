@@ -691,7 +691,10 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   same listener therefore gets the same score for the same track on Home and in
   the DJ. Home previously passed no learned weights.
 - **One served history.** Home reads and writes `RecommendationProfile.
-  servedTrackIds`; the DJ selector reads the same list (through
+  servedTrackIds` — the 50 most recently served distinct tracks, newest
+  first; a re-served track moves to the front rather than repeating, so the
+  window never fills with copies of a few ids. The DJ selector reads the same
+  list (through
   `RecommendationsService.getServedHistory`) and demotes those tracks like a
   recent play. They stay available at the tail, so a small catalog never runs
   dry. Only the session's own tracks (`recentTrackIds`) are excluded outright,
