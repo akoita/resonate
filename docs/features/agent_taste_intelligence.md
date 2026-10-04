@@ -996,6 +996,17 @@ clamped. Response contract `discovery-journal/v1`:
   and `null` on the rest: the artist's open Shows campaign (active, before its
   deadline, not signal-level) when one exists, else the artist page. A "follow
   the artist" action is not offered because no follow feature exists yet.
+- `pending[]` ("Almost there", additive to v1): up to 12 tracks the listener
+  played through (a `complete` with `completionRatio >= 0.9`) in the last 7
+  days that have not resonated yet, newest completion first. Each carries the
+  same track, artist, release and artwork fields as `items[]`, plus
+  `completedAt` (the latest qualifying completion), `followUpBy`
+  (`completedAt` + 7 days, the last moment a replay or save still makes the
+  track resonate) and `discovery`. Tracks already in the listener's library
+  (a `LibraryTrack` row at any time), tracks that are not publicly available,
+  and tracks whose artist or genre the listener hid in taste memory are left
+  out. The list carries no reason and no next action: it is a prompt to save,
+  not a recommendation.
 
 **Privacy and consent.** The journal is computed on read from the signed-in
 listener's own `AgentSignal` and `LibraryTrack` rows, bounded to the window and
@@ -1013,13 +1024,31 @@ Pro "where your money went" statement in RFC §4.1 is not built.
 
 **Web.** `web/src/app/sonic-radar/page.tsx` renders the headline, the groups,
 the reason and follow-up per track, the single next action per artist, and an
-honest empty state with a link to start an AI DJ session. The User Guide
-article `sonic-radar` (AI DJ & Sonic Radar) describes it; its screenshot needs
-regenerating with `web/scripts/capture-help-screenshots.mjs`.
+honest empty state with a link to start an AI DJ session. Above the journal, an
+"Almost there" section lists `pending[]` with a Save button per track. Saving
+adds the track to the library (a `LibraryTrack` row), which makes it resonate,
+records the `library.saved` product event like the player does, and refetches
+the journal. The User Guide article `sonic-radar` (AI DJ & Sonic Radar)
+describes both.
+
+**AI DJ link.** The Sonic Radar banner on the AI DJ panel
+(`web/src/components/agent/AgentSessionPanel.tsx`) reads the same journal
+instead of counting every track the DJ served, so it never promises tracks
+Sonic Radar will not show. It shows how many tracks resonated in the window
+(and new artists this week); when none did, how many played-through tracks are
+one save away; and otherwise how a track gets into Sonic Radar. The copy
+helpers live in `web/src/lib/sonicRadarSummary.ts`.
+
+**Follow-up.** "New from artists you discovered", a forward-looking section of
+recent releases by journal artists, computed on read with no scheduled job, is
+tracked in [#2086](https://github.com/akoita/resonate/issues/2086).
 
 **Tests.** `backend/src/tests/discovery_journal.integration.spec.ts` (the
 resonance rule, discovery flag, per-listener scoping, consent, next actions,
-no price keys) and `backend/src/tests/discovery_journal.controller.http.spec.ts`.
+the pending list and its exclusions, no price keys) and
+`backend/src/tests/discovery_journal.controller.http.spec.ts`; on the web,
+`web/src/app/sonic-radar/page.test.tsx`, `web/src/lib/sonicRadarSummary.test.ts`
+and the banner cases in `web/src/components/agent/AgentSessionPanel.test.tsx`.
 
 ## Warehouse Materialization
 

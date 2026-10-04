@@ -5,6 +5,8 @@ import {
   DiscoveryJournal,
   DiscoveryJournalItem,
   DiscoveryJournalService,
+  PENDING_LIMIT,
+  RESONANCE_FOLLOW_UP_DAYS,
 } from "../modules/discovery_journal/discovery_journal.service";
 import { DISCOVERY_EXPLANATIONS } from "../modules/recommendations/discovery-explanations";
 import { DiscoveryPolicyContextService } from "../modules/recommendations/discovery-policy-context.service";
@@ -19,6 +21,8 @@ const L1 = `${TEST_PREFIX}listener1`;
 const L2 = `${TEST_PREFIX}listener2`;
 const L3 = `${TEST_PREFIX}listener3`;
 const L4 = `${TEST_PREFIX}listener4`;
+const L5 = `${TEST_PREFIX}listener5`; // only "almost there" tracks
+const L6 = `${TEST_PREFIX}listener6`; // saves a pending track
 const OWNER = `${TEST_PREFIX}verifiedowner`; // lowercase: matches the reputation wallet key
 
 const ago = (hours: number) => new Date(NOW.getTime() - hours * HOUR);
@@ -28,7 +32,7 @@ type Seeded = { artistId: string; releaseId: string; trackId: string };
 
 async function seedTrack(
   name: string,
-  options: { artistId?: string; releaseStatus?: string; title?: string } = {},
+  options: { artistId?: string; releaseStatus?: string; title?: string; genre?: string } = {},
 ): Promise<Seeded> {
   const artistId = options.artistId ?? `${TEST_PREFIX}artist_${name}`;
   if (!options.artistId) {
@@ -42,7 +46,7 @@ async function seedTrack(
       id: releaseId,
       artistId,
       title: `Release ${name}`,
-      genre: "Deep House",
+      genre: options.genre ?? "Deep House",
       status: options.releaseStatus ?? "published",
       primaryArtist: `Credited ${name}`,
     },
@@ -119,7 +123,7 @@ describe("DiscoveryJournalService (integration)", () => {
   let journal: DiscoveryJournal;
 
   beforeAll(async () => {
-    for (const id of [L1, L2, L3, L4]) {
+    for (const id of [L1, L2, L3, L4, L5, L6]) {
       await prisma.user.create({ data: { id, email: `${id}@test.resonate` } });
     }
     await prisma.session.create({
@@ -134,6 +138,17 @@ describe("DiscoveryJournalService (integration)", () => {
         releaseStatus: name === "hidden" ? "withdrawn" : "published",
       });
     }
+    // Played through in the last 7 days with no follow-up, but never "almost there".
+    tracks.pendingWithdrawn = await seedTrack("pendingWithdrawn", { releaseStatus: "withdrawn" });
+    tracks.libBefore = await seedTrack("libBefore");
+    tracks.hideArtistId = await seedTrack("hideArtistId");
+    tracks.hideArtistName = await seedTrack("hideArtistName");
+    tracks.hideGenre = await seedTrack("hideGenre", { genre: "Hidden Genre" });
+    tracks.edgeSix = await seedTrack("edgeSix");
+    tracks.edgeSeven = await seedTrack("edgeSeven");
+    tracks.pendA = await seedTrack("pendA");
+    tracks.pendB = await seedTrack("pendB");
+    tracks.flip = await seedTrack("flip");
     // Two tracks by ONE artist, to prove a single next action per artist.
     tracks.twoA = await seedTrack("twoA");
     tracks.twoB = await seedTrack("twoB", { artistId: tracks.twoA.artistId });
@@ -231,6 +246,46 @@ describe("DiscoveryJournalService (integration)", () => {
     await signal(L1, tracks.hidden.trackId, "complete", ago(days(2)), { ratio: 1 });
     await signal(L1, tracks.hidden.trackId, "replay", ago(days(1)));
 
+    // "Almost there" exclusions, all completed in the last 7 days with no follow-up.
+    await signal(L1, tracks.pendingWithdrawn.trackId, "complete", ago(days(1)), { ratio: 1 });
+    // Already in the library BEFORE the completion: not a follow-up, and a re-save is a no-op.
+    await prisma.libraryTrack.create({
+      data: {
+        userId: L1,
+        source: "remote",
+        title: "Track libBefore",
+        catalogTrackId: tracks.libBefore.trackId,
+        createdAt: ago(days(5)),
+      },
+    });
+    await signal(L1, tracks.libBefore.trackId, "complete", ago(days(1)), { ratio: 1 });
+    await signal(L1, tracks.hideArtistId.trackId, "complete", ago(days(1)), { ratio: 1 });
+    await signal(L1, tracks.hideArtistName.trackId, "complete", ago(days(1)), { ratio: 1 });
+    await signal(L1, tracks.hideGenre.trackId, "complete", ago(days(1)), { ratio: 1 });
+    await tasteMemory.upsertSignalControl(L1, {
+      signalType: "artist",
+      value: tracks.hideArtistId.artistId,
+      action: "hidden",
+    });
+    await tasteMemory.upsertSignalControl(L1, {
+      signalType: "artist",
+      value: "Credited hideArtistName",
+      action: "hidden",
+    });
+    await tasteMemory.upsertSignalControl(L1, {
+      signalType: "genre",
+      value: "Hidden Genre",
+      action: "hidden",
+    });
+    // Window edge: 6 days ago is still pending, exactly 7 days ago is not.
+    await signal(L1, tracks.edgeSix.trackId, "complete", ago(days(6)), { ratio: 1 });
+    await signal(L1, tracks.edgeSeven.trackId, "complete", ago(days(7)), { ratio: 1 });
+
+    // --- Listener 5: played through twice, nothing resonated yet. -----------
+    await signal(L5, tracks.pendA.trackId, "complete", ago(days(3)), { ratio: 0.97 });
+    await signal(L5, tracks.pendB.trackId, "complete", ago(days(1)), { ratio: 1 });
+    await signal(L5, tracks.pendB.trackId, "skip", ago(12));
+
     // --- Listener 2: resonance on their own track, plus an old signal on the
     // artist of listener 1's "replay" track that must never leak into L1. -----
     await signal(L2, tracks.other.trackId, "complete", ago(days(2)), { ratio: 1 });
@@ -243,9 +298,10 @@ describe("DiscoveryJournalService (integration)", () => {
   });
 
   afterAll(async () => {
-    const users = [L1, L2, L3, L4, OWNER];
+    const users = [L1, L2, L3, L4, L5, L6, OWNER];
     await prisma.agentSignal.deleteMany({ where: { userId: { in: users } } });
     await prisma.libraryTrack.deleteMany({ where: { userId: { in: users } } });
+    await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: { in: users } } });
     await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: { in: users } } });
     await prisma.showCampaign.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.session.deleteMany({ where: { userId: { in: users } } });
@@ -522,6 +578,118 @@ describe("DiscoveryJournalService (integration)", () => {
       const result = await service.getJournal(L4, { now: NOW });
       expect(itemFor(result, bogus.trackId)?.reason.code).toBe("listening_pattern");
       expect(JSON.stringify(result)).not.toContain("because-you-paid");
+    });
+  });
+
+  describe("pending (almost there)", () => {
+    const pendingIds = (result: DiscoveryJournal) => result.pending.map((item) => item.trackId);
+
+    it("lists a track played through in the last 7 days with no replay or save", () => {
+      const item = journal.pending.find((entry) => entry.trackId === tracks.onlyComplete.trackId);
+      expect(item).toEqual({
+        trackId: tracks.onlyComplete.trackId,
+        title: "Track onlyComplete",
+        artistId: tracks.onlyComplete.artistId,
+        artistName: "Credited onlyComplete",
+        releaseId: tracks.onlyComplete.releaseId,
+        releaseTitle: "Release onlyComplete",
+        artworkUrl: null,
+        hasUploadedArtwork: false,
+        artworkRevision: expect.any(Number),
+        completedAt: ago(days(2)).toISOString(),
+        followUpBy: new Date(
+          ago(days(2)).getTime() + RESONANCE_FOLLOW_UP_DAYS * 24 * HOUR,
+        ).toISOString(),
+        discovery: true,
+      });
+      // Not a resonated item.
+      expect(itemFor(journal, tracks.onlyComplete.trackId)).toBeUndefined();
+    });
+
+    it("orders pending by completion, newest first, within the 7-day window edge", () => {
+      // 6 days ago is inside the window, exactly 7 days ago is not.
+      expect(pendingIds(journal)).toEqual([tracks.onlyComplete.trackId, tracks.edgeSix.trackId]);
+    });
+
+    it("never lists resonated tracks", () => {
+      for (const name of ["replay", "save", "library", "twoA", "twoB", "prior", "old"]) {
+        expect(pendingIds(journal)).not.toContain(tracks[name].trackId);
+      }
+    });
+
+    it("never lists low-ratio, no-ratio or stale completions", () => {
+      for (const name of ["lowRatio", "noRatio", "late", "edgeSeven"]) {
+        expect(pendingIds(journal)).not.toContain(tracks[name].trackId);
+      }
+    });
+
+    it("never lists a track that is not publicly available", () => {
+      expect(pendingIds(journal)).not.toContain(tracks.pendingWithdrawn.trackId);
+    });
+
+    it("never lists a track already in the library, even if added before the completion", () => {
+      expect(pendingIds(journal)).not.toContain(tracks.libBefore.trackId);
+    });
+
+    it("never lists a track hidden through taste memory (artist id, artist name or genre)", () => {
+      for (const name of ["hideArtistId", "hideArtistName", "hideGenre"]) {
+        expect(pendingIds(journal)).not.toContain(tracks[name].trackId);
+      }
+    });
+
+    it("keeps pending when no track resonated at all", async () => {
+      const result = await service.getJournal(L5, { now: NOW });
+      expect(result.groups).toEqual([]);
+      expect(result.headline).toEqual({ resonantDiscoveriesThisWeek: 0, newArtistsThisWeek: 0 });
+      expect(pendingIds(result)).toEqual([tracks.pendB.trackId, tracks.pendA.trackId]);
+    });
+
+    it("scopes pending to the listener", async () => {
+      expect(pendingIds(journal)).not.toContain(tracks.pendA.trackId);
+      expect(pendingIds(journal)).not.toContain(tracks.pendB.trackId);
+      const other = await service.getJournal(L2, { now: NOW });
+      expect(other.pending).toEqual([]);
+    });
+
+    it("returns an empty pending list for a listener with no signals", async () => {
+      const nobody = await service.getJournal(`${TEST_PREFIX}nobody`, { now: NOW });
+      expect(nobody.pending).toEqual([]);
+    });
+
+    it("moves a track out of pending and into the journal once it is saved", async () => {
+      await signal(L6, tracks.flip.trackId, "complete", ago(days(1)), { ratio: 1 });
+      const before = await service.getJournal(L6, { now: NOW });
+      expect(pendingIds(before)).toEqual([tracks.flip.trackId]);
+      expect(allItems(before)).toEqual([]);
+
+      await prisma.libraryTrack.create({
+        data: {
+          userId: L6,
+          source: "remote",
+          title: "Track flip",
+          catalogTrackId: tracks.flip.trackId,
+          createdAt: ago(12),
+        },
+      });
+      const after = await service.getJournal(L6, { now: NOW });
+      expect(after.pending).toEqual([]);
+      expect(itemFor(after, tracks.flip.trackId)).toMatchObject({ followUp: "saved" });
+    });
+
+    it("caps the list at PENDING_LIMIT, newest first", async () => {
+      const extra = PENDING_LIMIT + 1;
+      const seeded: Seeded[] = [];
+      for (let index = 0; index < extra; index += 1) {
+        seeded.push(await seedTrack(`cap${index}`));
+      }
+      for (const [index, entry] of seeded.entries()) {
+        // cap0 is the newest completion; the oldest one falls off the cap.
+        await signal(L5, entry.trackId, "complete", ago(1 + index), { ratio: 1 });
+      }
+      const result = await service.getJournal(L5, { now: NOW });
+      expect(result.pending).toHaveLength(PENDING_LIMIT);
+      expect(pendingIds(result).slice(0, 3)).toEqual(seeded.slice(0, 3).map((entry) => entry.trackId));
+      expect(pendingIds(result)).not.toContain(seeded[extra - 1].trackId);
     });
   });
 
