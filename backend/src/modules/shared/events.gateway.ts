@@ -196,7 +196,12 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     msg = 'No matching tracks found in catalog';
                 } else if (event.reason === 'error') {
                     msg = 'Curation encountered an error';
-                } else if (event.reasoning || event.latencyMs != null) {
+                } else if (
+                    // #2075: the curator, when recorded, decides; the heuristic is for older events.
+                    event.curatedBy
+                        ? event.curatedBy === 'llm'
+                        : event.reasoning || event.latencyMs != null
+                ) {
                     const latency = event.latencyMs != null ? ` (${(event.latencyMs / 1000).toFixed(1)}s)` : '';
                     msg = event.trackId
                         ? `AI selected track${latency}`
@@ -207,6 +212,9 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                 } else {
                     const count = event.trackCount ?? 0;
                     msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected`;
+                }
+                if (event.runtimeFallback) {
+                    msg += ' · rule-based picks (AI curator unavailable)';
                 }
                 // #2037: what the picks did not match of the described session.
                 if (event.coverageSummary) {
@@ -219,6 +227,8 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     message: msg,
                     timestamp: event.occurredAt,
                     ...(event.coverage ? { coverage: event.coverage } : {}),
+                    ...(event.curatedBy ? { curatedBy: event.curatedBy } : {}),
+                    ...(event.runtimeFallback ? { runtimeFallback: event.runtimeFallback } : {}),
                 });
             }
         }));

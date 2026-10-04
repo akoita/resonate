@@ -15,6 +15,7 @@ import { ToolRegistry } from "../tools/tool_registry";
 import { getToolDeclarations, executeTool } from "../tools/tool_declarations";
 import { getAgentTrackLimit } from "../agent_runtime.config";
 import { describeTempoRange } from "../agent_session_request";
+import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
 
 const MAX_TOOL_ROUNDS = 6;
 const TIMEOUT_MS = 30_000;
@@ -32,7 +33,10 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
 
     if (!apiKey) {
       this.logger.warn("GOOGLE_AI_API_KEY not set — falling back to deterministic orchestrator");
-      throw new Error("GOOGLE_AI_API_KEY not configured");
+      throw new AgentRuntimeUnavailableError(
+        "not_configured",
+        "GOOGLE_AI_API_KEY not configured"
+      );
     }
 
     // Let errors propagate so AgentRuntimeService can fall back to the orchestrator
@@ -121,6 +125,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
       "- If a genre search returns no tracks, treat that as no match for that genre.",
       "- Avoid recommending tracks the user has recently listened to.",
+      "- Requested genres, Mood/Moods, Energy and Tempo are what the listener asked for in this session: rank tracks that match them above tracks that only match the broader Genres list (their saved vibes and learned taste). Use the broader genres to fill the remaining slots.",
       "",
       "After using tools, respond with a concise ranked shortlist of matching tracks.",
       "List each track on its own line using this exact format:",
@@ -151,6 +156,11 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
     if (input.preferences.tempoBpm) {
       const tempo = describeTempoRange(input.preferences.tempoBpm);
       if (tempo) parts.push(`Tempo: ${tempo}`);
+    }
+    if (input.preferences.sessionGenres?.length) {
+      parts.push(
+        `Requested genres (this session): ${input.preferences.sessionGenres.join(", ")}`
+      );
     }
     if (input.preferences.genres?.length) {
       parts.push(`Genres: ${input.preferences.genres.join(", ")}`);
@@ -238,7 +248,9 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.logger.warn(`Gemini call timed out after ${ms}ms — falling back to deterministic orchestrator`);
-        reject(new Error(`Gemini timeout after ${ms}ms`));
+        reject(
+          new AgentRuntimeUnavailableError("timeout", `Gemini timeout after ${ms}ms`)
+        );
       }, ms);
 
       promise

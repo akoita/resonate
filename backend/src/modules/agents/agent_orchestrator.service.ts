@@ -6,11 +6,9 @@ import type { AgentAudioFeatures } from "./agent_audio_feature.service";
 import { AgentRecommendationService } from "./agent_recommendation.service";
 import type { MixCoverage, MyMixPreferences, ResolvedMyMixPlan } from "./agent_my_mix";
 import { getAgentTrackLimit } from "./agent_runtime.config";
+import type { AgentRuntimeFallback } from "./agent_runtime.types";
 import {
-  computeRequestCoverage,
-  describeCoverageGaps,
-  hasRequestFilters,
-  sanitizeSessionRequest,
+  requestCoverageFor,
   type AgentRequestCoverage,
   type AgentSessionRequest,
   type AgentSessionTempoRange,
@@ -92,13 +90,21 @@ export class AgentOrchestratorService {
     @Optional() private readonly habitOrdering?: HabitOrderingService,
   ) { }
 
-  async orchestrate(input: AgentOrchestratorInput): Promise<{
+  async orchestrate(
+    input: AgentOrchestratorInput,
+    options: {
+      /** Set by the executor when the LLM runtime failed and the rules curate instead (#2075). */
+      runtimeFallback?: AgentRuntimeFallback;
+    } = {},
+  ): Promise<{
     status: string;
     tracks: OrchestratedTrack[];
     /** Tracks requested minus tracks returned. Never filled by generation. */
     shortfall: number;
     /** How well the picks matched the listener's described session (#2037); absent without filters. */
     requestCoverage?: AgentRequestCoverage;
+    /** Echo of the fallback the executor passed in; absent in configured rules mode (#2075). */
+    runtimeFallback?: AgentRuntimeFallback;
     /**
      * Why nothing was returned (#2056): the selector's categorical reason, so
      * the listener can tell "nothing matches" from "everything matching was played".
@@ -106,6 +112,8 @@ export class AgentOrchestratorService {
     reason?: string;
     mixCoverage?: MixCoverage;
   }> {
+    const { runtimeFallback } = options;
+    const fallbackFields = runtimeFallback ? { runtimeFallback } : {};
     const requestedLimit = getAgentTrackLimit();
     const selection = await this.recommendations.recommend({
       sessionId: input.sessionId,
@@ -128,6 +136,8 @@ export class AgentOrchestratorService {
         sessionId: input.sessionId,
         trackId: "",
         reason: "no_tracks",
+        curatedBy: "rules",
+        ...fallbackFields,
         shortfall,
         unmetIntent: buildUnmetIntent(input.preferences),
       });
@@ -135,6 +145,7 @@ export class AgentOrchestratorService {
         status: "no_tracks",
         tracks: [],
         shortfall,
+        ...fallbackFields,
         ...(selection.reason ? { reason: selection.reason } : {}),
         ...(selection.mixCoverage ? { mixCoverage: selection.mixCoverage } : {}),
       };
@@ -210,6 +221,8 @@ export class AgentOrchestratorService {
       sessionId: input.sessionId,
       trackCount: tracks.length,
       reason: status,
+      curatedBy: "rules",
+      ...fallbackFields,
       ...(shortfall > 0
         ? { shortfall, unmetIntent: buildUnmetIntent(input.preferences) }
         : {}),
@@ -225,6 +238,7 @@ export class AgentOrchestratorService {
       status,
       tracks,
       shortfall,
+      ...fallbackFields,
       ...(coverage ? { requestCoverage: coverage.coverage } : {}),
       ...(selection.mixCoverage ? { mixCoverage: selection.mixCoverage } : {}),
     };
@@ -244,10 +258,8 @@ function buildRequestCoverage(
     agentRecommendation?: { audioFeatures?: AgentAudioFeatures };
   }>,
 ): { coverage: AgentRequestCoverage; summary: string } | undefined {
-  const request = sanitizeSessionRequest(rawRequest);
-  if (!request || !hasRequestFilters(request)) return undefined;
-  const coverage = computeRequestCoverage(
-    request,
+  return requestCoverageFor(
+    rawRequest,
     selected.map((track) => {
       const features = track.agentRecommendation?.audioFeatures;
       return {
@@ -259,8 +271,6 @@ function buildRequestCoverage(
       };
     }),
   );
-  if (!coverage) return undefined;
-  return { coverage, summary: describeCoverageGaps(request, coverage) };
 }
 
 function buildUnmetIntent(

@@ -915,6 +915,13 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   };
   /** Pre-rendered "not matched: ..." line for the live feed; set only when coverage has gaps. */
   coverageSummary?: string;
+  /** Who curated: the LLM runtime or the deterministic rules (#2075). Absent on older events. */
+  curatedBy?: "llm" | "rules";
+  /** Set when the LLM runtime failed and the rules curated instead (#2075); categorical, never error text. */
+  runtimeFallback?: {
+    from: "adk" | "vertex" | "langgraph";
+    reason: "not_configured" | "timeout" | "error";
+  };
 }
 
 /**

@@ -5730,6 +5730,12 @@ export type AgentNextPreferences = {
   myMix?: AgentMyMixPreferences | null;
 };
 
+/** #2075: why the AI curator could not pick; categorical, never an error message. */
+export type AgentRuntimeFallback = {
+  from: "adk" | "vertex" | "langgraph";
+  reason: "not_configured" | "timeout" | "error";
+};
+
 export type AgentNextPickResponse = {
   status: "ok" | "session_inactive" | "no_tracks" | "all_rejected" | "rejected" | string;
   track?: {
@@ -5744,6 +5750,10 @@ export type AgentNextPickResponse = {
   signals?: AgentRecommendationSignal[];
   audioFeatures?: AgentAudioFeatureSummary;
   runtimeStatus?: string;
+  /** #2075: who chose these picks — the LLM curator or the rule-based taste engine. */
+  curatedBy?: "llm" | "rules";
+  /** #2075: set when the configured AI curator failed and rule-based picks were served instead. */
+  runtimeFallback?: AgentRuntimeFallback;
   reason?: string;
   /** #2005: the listener's ranker variant (label only); additive. */
   rankerVariant?: string;

@@ -5,6 +5,7 @@ import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
 import { AdkAdapter } from "./runtime/adk_adapter";
 import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
+import { agentRuntimeFallbackReason } from "./runtime/agent_runtime.errors";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import { resolveListeningLanes } from "./listening_lanes.service";
 import { resolveMyMixPlan, ResolvedMyMixPlan } from "./agent_my_mix";
@@ -46,10 +47,16 @@ export class AgentRuntimeExecutorService {
     try {
       return await adapter.run(safeInput);
     } catch (error: any) {
+      // Categorical only: the raw error text stays in the log, never on the
+      // decision event or the Next Pick response (#2075).
+      const runtimeFallback = {
+        from: adapter.name,
+        reason: agentRuntimeFallbackReason(error),
+      };
       this.logger.warn(
-        `${adapter.name} adapter failed (${error.message}) - falling back to deterministic orchestrator`
+        `${adapter.name} adapter failed (${runtimeFallback.reason}: ${error?.message}) - falling back to deterministic orchestrator`
       );
-      return this.orchestrator.orchestrate(safeInput);
+      return this.orchestrator.orchestrate(safeInput, { runtimeFallback });
     }
   }
 

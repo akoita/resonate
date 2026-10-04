@@ -104,6 +104,30 @@ describe("AgentNextPickCard", () => {
     expect(html).toContain("high energy · 124 BPM");
   });
 
+  it("labels who curated the pick, and never calls a fallback an AI pick (#2075)", () => {
+    const render = (extra: Record<string, unknown>) =>
+      renderToStaticMarkup(
+        <AgentNextPickCard
+          config={config}
+          activeSessionId="session-1"
+          isLoading={false}
+          pick={{
+            status: "ok",
+            track: { id: "track-1", title: "Boom Bap Signal", artistId: "artist-1" },
+            runtimeStatus: "approved",
+            ...extra,
+          }}
+          onPick={async () => {}}
+        />,
+      );
+
+    expect(render({ curatedBy: "llm" })).toContain("Picked by the AI curator");
+    const fallback = render({ curatedBy: "rules", runtimeFallback: { from: "adk", reason: "timeout" } });
+    expect(fallback).toContain("Rule-based pick · AI curator unavailable");
+    expect(fallback).not.toContain("Picked by the AI curator");
+    expect(render({ curatedBy: "rules" })).toContain("approved");
+  });
+
   it("does not show an inferred tempo as a BPM (#1960)", () => {
     const html = renderToStaticMarkup(
       <AgentNextPickCard

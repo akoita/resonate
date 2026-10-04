@@ -20,6 +20,7 @@ import {
 import { ToolRegistry } from "../tools/tool_registry";
 import { getAgentTrackLimit } from "../agent_runtime.config";
 import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
+import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
 
 const TIMEOUT_MS = 30_000;
 const APP_NAME = "resonate";
@@ -39,7 +40,10 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       this.logger.warn(
         "GOOGLE_AI_API_KEY not set — falling back to deterministic orchestrator"
       );
-      throw new Error("GOOGLE_AI_API_KEY not configured");
+      throw new AgentRuntimeUnavailableError(
+        "not_configured",
+        "GOOGLE_AI_API_KEY not configured"
+      );
     }
 
     // Set the API key for the ADK's underlying Gemini model
@@ -54,11 +58,26 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     return new InMemoryRunner({ agent, appName: APP_NAME });
   }
 
+  // runAsync requires the session to exist in the runner's session service (#2075).
+  private async ensureSession(
+    runner: InMemoryRunner,
+    input: AgentRuntimeInput
+  ): Promise<void> {
+    const sessionKey = {
+      appName: APP_NAME,
+      userId: input.userId,
+      sessionId: input.sessionId,
+    };
+    const existing = await runner.sessionService.getSession(sessionKey);
+    if (!existing) await runner.sessionService.createSession(sessionKey);
+  }
+
   private async callAgent(
     input: AgentRuntimeInput,
     startMs: number
   ): Promise<AgentRuntimeResult> {
     const runner = this.createRunner();
+    await this.ensureSession(runner, input);
     const userMessage = buildUserMessage(input);
 
     const newMessage: Content = {
@@ -169,7 +188,9 @@ export class AdkAdapter implements AgentRuntimeAdapter {
         this.logger.warn(
           `ADK call timed out after ${ms}ms — falling back to deterministic orchestrator`
         );
-        reject(new Error(`ADK timeout after ${ms}ms`));
+        reject(
+          new AgentRuntimeUnavailableError("timeout", `ADK timeout after ${ms}ms`)
+        );
       }, ms);
 
       promise

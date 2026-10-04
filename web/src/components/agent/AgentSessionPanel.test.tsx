@@ -905,6 +905,30 @@ describe("AgentSessionPanel", () => {
       );
     });
 
+    it("does not call a rule-based fallback pick an AI pick (#2075)", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      getAgentNextPick.mockResolvedValueOnce({
+        status: "ok",
+        track: { id: "t-main", title: "Main", artistId: "a-1" },
+        tracks: [],
+        curatedBy: "rules",
+        runtimeFallback: { from: "adk", reason: "error" },
+      });
+      render();
+
+      await captured.onPick?.();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(addToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Pick Ready",
+          message: "Playing Main · rule-based pick, the AI curator is unavailable",
+        }),
+      );
+      expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ title: "AI Pick Ready" }));
+    });
+
     it("records the DJ set before playback starts so starts carry session provenance", async () => {
       hookState.config = config({ isActive: true });
       hookState.sessions = [session("s-open", [])];

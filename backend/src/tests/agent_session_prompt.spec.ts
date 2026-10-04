@@ -62,4 +62,21 @@ describe.each([
     expect(message).not.toMatch(/Moods:|Tempo:/);
     expect(message).toContain("Mood: Chill");
   });
+
+  it("names the genres this session asked for ahead of the broader Genres (#2075)", () => {
+    const message = build(
+      input({ genres: ["Soul", "Jazz", "Funk"], sessionGenres: ["Soul", "Jazz"] }),
+    );
+    expect(message).toContain("Requested genres (this session): Soul, Jazz");
+    expect(message.indexOf("Requested genres (this session):")).toBeLessThan(
+      message.indexOf("Genres: Soul, Jazz, Funk"),
+    );
+  });
+
+  it("has no Requested genres line without session genres", () => {
+    expect(build(input({ genres: ["Soul"] }))).not.toContain("Requested genres");
+    expect(build(input({ genres: ["Soul"], sessionGenres: [] }))).not.toContain(
+      "Requested genres",
+    );
+  });
 });

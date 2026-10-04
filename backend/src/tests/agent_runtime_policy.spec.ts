@@ -97,7 +97,11 @@ function serviceFor(
       reasonCode: string;
       releaseId?: string;
       firstListenerEligible?: boolean;
+      genre?: string;
+      audioFeatures?: Record<string, unknown>;
     }>;
+    /** Per-track audio features the feature service returns (#2037). */
+    audioFeatures?: Record<string, Record<string, unknown>>;
     /** Authoritative fresh-source matches for known model or fallback picks. */
     freshCandidates?: Array<{
       id: string;
@@ -138,8 +142,9 @@ function serviceFor(
         id: entry.id,
         releaseId: entry.releaseId,
         firstListenerEligible: entry.firstListenerEligible ?? false,
-        release: { artistId: entry.artistId },
+        release: { artistId: entry.artistId, genre: entry.genre, moods: [] },
         agentRecommendation: {
+          audioFeatures: entry.audioFeatures,
           score: 30,
           matchedQueries: [],
           signals: [],
@@ -176,6 +181,15 @@ function serviceFor(
           : jest.fn().mockResolvedValue(new Set(options.reservedReleaseIds ?? [])),
       }
     : undefined;
+  const audioFeatures = options.audioFeatures
+    ? {
+        getOrCreate: jest.fn(async (trackId: string) =>
+          options.audioFeatures![trackId]
+            ? { status: "ok", features: options.audioFeatures![trackId] }
+            : { status: "failed" },
+        ),
+      }
+    : undefined;
   const ranking = new DiscoveryRankingService();
   const service = new AgentRuntimePolicyService(
     ranking,
@@ -186,8 +200,9 @@ function serviceFor(
     undefined,
     selector as any,
     firstListenerDiscovery as any,
+    audioFeatures as any,
   );
-  return { service, policyContext, ranking, selector, firstListenerDiscovery };
+  return { service, policyContext, ranking, selector, firstListenerDiscovery, audioFeatures };
 }
 
 const ids = (result: { picks?: Array<{ trackId: string }> }) =>
@@ -290,6 +305,8 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
         originalQueries: ["House", "Hype"],
         expandedQueries: ["House", "Hype"],
         learnedGenreWeights: { House: 4 },
+        // The session's mood is a requested term, as the selector passes it (#2059).
+        requestedTerms: ["Hype"],
         sessionIntent: { intent: "Hype", mood: "Hype" },
       },
     );
@@ -776,6 +793,107 @@ describe("AgentRuntimeService choke point", () => {
     const policy = { apply: jest.fn().mockResolvedValue({ status: "rejected" }) };
     const service = new AgentRuntimeService({} as any, remoteClient as any, policy as any);
     expect(await service.run(baseInput())).toEqual({ status: "rejected" });
+  });
+});
+
+describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
+  const soulRequest = { genres: ["Soul"], moods: [], energy: null, bpm: null };
+
+  it("hands the request's terms, tempo and audio features to the ranking without reordering", async () => {
+    const { service, ranking } = serviceFor(
+      [track("house", { genre: "House" }), track("soul", { genre: "Soul" })],
+      { audioFeatures: { soul: { energyBand: "high", tempoBpm: 122 } } },
+    );
+    const rank = jest.spyOn(ranking, "rank");
+    const result = await service.apply(
+      baseInput({
+        preferences: {
+          genres: ["House"],
+          sessionGenres: ["Soul"],
+          tempoBpm: { min: 120, max: 125 },
+          request: soulRequest,
+        },
+      }),
+      { status: "approved", picks: [pick("house"), pick("soul")] },
+    );
+
+    const context = rank.mock.calls[0][1];
+    expect(context.requestedTerms).toEqual(["Soul"]);
+    expect(context.tempoBpm).toEqual({ min: 120, max: 125 });
+    expect(context.audioFeaturesByTrack?.get("soul")).toEqual({ energyBand: "high", tempoBpm: 122 });
+    expect(context.audioFeaturesByTrack?.has("house")).toBe(false);
+    // The model's order is never changed by the request.
+    expect(ids(result)).toEqual(["house", "soul"]);
+  });
+
+  it("returns request coverage over the final picks", async () => {
+    const { service } = serviceFor([track("house", { genre: "House" }), track("soul", { genre: "Soul" })]);
+    const result = await service.apply(
+      baseInput({ preferences: { genres: ["House"], sessionGenres: ["Soul"], request: soulRequest } }),
+      { status: "approved", picks: [pick("house"), pick("soul")] },
+    );
+
+    expect(result.requestCoverage).toEqual({
+      picks: 2,
+      gaps: [{ filter: "genres", matched: 1 }],
+    });
+  });
+
+  it("reads energy and measured tempo coverage from the audio features", async () => {
+    const { service } = serviceFor([track("a"), track("b")], {
+      audioFeatures: {
+        a: { energyBand: "high", tempoBpm: 122, featureSources: { tempo: "measured" } },
+        b: { energyBand: "high", tempoBpm: 122, featureSources: { tempo: "inferred" } },
+      },
+    });
+    const result = await service.apply(
+      baseInput({
+        preferences: {
+          request: { genres: [], moods: [], energy: "high", bpm: { min: 120, max: 125 } },
+        },
+      }),
+      { status: "approved", picks: [pick("a"), pick("b")] },
+    );
+
+    expect(result.requestCoverage).toEqual({
+      picks: 2,
+      gaps: [{ filter: "bpm", matched: 1 }],
+    });
+  });
+
+  it("omits request coverage without a request", async () => {
+    const { service } = serviceFor([track("house", { genre: "House" })]);
+    const result = await service.apply(baseInput(), { status: "approved", picks: [pick("house")] });
+
+    expect(result).not.toHaveProperty("requestCoverage");
+  });
+
+  it("measures coverage on the swapped-in discovery pick too", async () => {
+    const { service } = serviceFor([track("first", { genre: "Soul" }), track("second", { genre: "Soul" })], {
+      selectorPicks: [{ id: "discover", artistId: "verified-new", reasonCode: "discovery_pick", genre: "Polka" }],
+    });
+    const result = await service.apply(
+      baseInput({
+        recentTrackIds: ["s-1"],
+        preferences: { genres: ["Soul"], sessionGenres: ["Soul"], request: soulRequest },
+      }),
+      { status: "approved", picks: [pick("first"), pick("second")] },
+    );
+
+    expect(ids(result)).toEqual(["first", "discover"]);
+    expect(result.requestCoverage).toEqual({ picks: 2, gaps: [{ filter: "genres", matched: 1 }] });
+  });
+
+  it("omits a track whose audio features fail instead of failing the step", async () => {
+    const { service, audioFeatures } = serviceFor([track("a")], { audioFeatures: {} });
+    audioFeatures!.getOrCreate.mockRejectedValueOnce(new Error("boom"));
+    const result = await service.apply(
+      baseInput({ preferences: { request: { genres: [], moods: [], energy: "high", bpm: null } } }),
+      { status: "approved", picks: [pick("a")] },
+    );
+
+    expect(ids(result)).toEqual(["a"]);
+    expect(result.requestCoverage).toEqual({ picks: 1, gaps: [{ filter: "energy", matched: 0 }] });
   });
 });
 

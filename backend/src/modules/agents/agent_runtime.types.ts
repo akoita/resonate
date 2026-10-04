@@ -2,15 +2,30 @@ import type { OrchestratedTrack } from "./agent_orchestrator.service";
 import type { AgentRequestCoverage } from "./agent_session_request";
 import type { MixCoverage } from "./agent_my_mix";
 import type { AgentRuntimeResult } from "./runtime/agent_runtime.adapter";
+import type { AgentRuntimeFallbackReason } from "./runtime/agent_runtime.errors";
 
 export type AgentLicenseType = "personal" | "remix" | "commercial";
+
+/** Who curated the picks: the LLM runtime, or the deterministic rules (#2075). */
+export type AgentCurator = "llm" | "rules";
+
+/**
+ * Set when the configured LLM runtime could not produce picks and the rules
+ * curated instead (#2075). Categorical only: never the raw error text.
+ */
+export interface AgentRuntimeFallback {
+  from: "adk" | "vertex" | "langgraph";
+  reason: AgentRuntimeFallbackReason;
+}
 
 export type AgentRuntimeOrchestratorResult = {
   status: string;
   tracks: OrchestratedTrack[];
   shortfall?: number;
-  /** Coverage of the listener's described session (#2037); deterministic path only. */
+  /** Coverage of the listener's described session (#2037). */
   requestCoverage?: AgentRequestCoverage;
+  /** Present when the LLM runtime failed and the rules curated instead (#2075). */
+  runtimeFallback?: AgentRuntimeFallback;
   /** Private My Mix coverage; returned only through owner-checked session APIs. */
   mixCoverage?: MixCoverage;
   /** The selector's categorical reason when nothing was returned (#2056). */
@@ -52,9 +67,13 @@ export interface AgentRuntimeCommerceResult {
   latencyMs?: number;
   /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
   shortfall?: number;
-  /** How well the picks matched the listener's described session (#2037). Absent for LLM picks. */
+  /** How well the picks matched the listener's described session (#2037). */
   requestCoverage?: AgentRequestCoverage;
   mixCoverage?: MixCoverage;
+  /** Who curated these picks (#2075). */
+  curatedBy: AgentCurator;
+  /** Set when the LLM runtime failed and the rules curated instead (#2075). */
+  runtimeFallback?: AgentRuntimeFallback;
 }
 
 function normalizeStatus(status: string): AgentRuntimeCommerceStatus {
@@ -108,6 +127,8 @@ export function normalizeAgentRuntimeResult(
       tracks,
       primaryTrack: tracks[0],
       shortfall: result.shortfall,
+      curatedBy: "rules",
+      ...(result.runtimeFallback ? { runtimeFallback: result.runtimeFallback } : {}),
       ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
       ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
       ...(result.reason ? { reason: result.reason } : {}),
@@ -148,5 +169,7 @@ export function normalizeAgentRuntimeResult(
     reason: result.reason,
     reasoning: result.reasoning,
     latencyMs: result.latencyMs,
+    curatedBy: "llm",
+    ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
   };
 }

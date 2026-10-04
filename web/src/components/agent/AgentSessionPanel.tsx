@@ -778,10 +778,13 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             setPickCoverage({ coverage: result.requestCoverage ?? null, at: Date.now() });
             if (myMixPreferences) setMyMixCoverage(result.mixCoverage ?? null);
             if (result.status === "ok" && result.track) {
+                // A rule-based fallback is not an AI pick; say so (#2075).
                 addToast({
                     type: "success",
-                    title: "AI Pick Ready",
-                    message: `Playing ${result.track.title}`,
+                    title: result.runtimeFallback ? "Pick Ready" : "AI Pick Ready",
+                    message: result.runtimeFallback
+                        ? `Playing ${result.track.title} · rule-based pick, the AI curator is unavailable`
+                        : `Playing ${result.track.title}`,
                 });
                 void playDjTracks(requestedSessionId, [result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
             } else {

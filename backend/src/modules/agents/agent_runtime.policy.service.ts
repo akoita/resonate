@@ -19,7 +19,18 @@ import { FirstListenerDiscoveryService } from "../recommendations/first_listener
 import { FIRST_LISTENER_CANDIDATE_LIMIT } from "../recommendations/first_listener.contracts";
 import { AgentLearningService } from "./agent_learning.service";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
-import { buildAgentRecommendationQueries } from "./deterministic_recommendation.adapter";
+import {
+  buildAgentRecommendationQueries,
+  requestedTermsFor,
+} from "./deterministic_recommendation.adapter";
+import type {
+  AgentAudioFeatureService,
+  AgentAudioFeatures,
+} from "./agent_audio_feature.service";
+import {
+  requestCoverageFor,
+  type AgentRequestCoveragePick,
+} from "./agent_session_request";
 import { AgentSelectorService, isHiddenTasteQuery } from "./agent_selector.service";
 import type {
   AgentRuntimeInput,
@@ -49,7 +60,12 @@ import type {
  *  4. when rule 3 reserves a discovery slot that none of the model's picks can
  *     fill, swaps the model's last pick for the deterministic selector's
  *     discovery pick for the same listener and session (ADR-TE-2 rule 3 on
- *     every surface). This is the only pick the step ever adds.
+ *     every surface). This is the only pick the step ever adds;
+ *  5. measures how well the final picks matched the session the listener
+ *     described (#2037) and returns it as `requestCoverage`, so the live feed,
+ *     Next Pick and unmet-demand records see it on this path too. The requested
+ *     terms, tempo and audio features also reach the ranking in step 2, so each
+ *     pick's score and explanation reflect the request.
  *
  * It never reorders the model's picks. A model pick that qualifies as a
  * discovery pick (verified human artist the listener never played) is
@@ -75,6 +91,8 @@ export class AgentRuntimePolicyService {
     @Optional() private readonly selector?: AgentSelectorService,
     // Authoritative fresh-source check and placement reservation for runtime picks.
     @Optional() private readonly firstListenerDiscovery?: FirstListenerDiscoveryService,
+    // Per-pick audio features for the request's energy and tempo (#2037).
+    @Optional() private readonly audioFeatures?: AgentAudioFeatureService,
   ) {}
 
   async apply(
@@ -171,6 +189,10 @@ export class AgentRuntimePolicyService {
       };
     });
 
+    const audioFeaturesByTrack = await this.loadAudioFeatures(
+      known.map((pick) => pick.trackId),
+    );
+
     const bigQueryTasteScores = canUseWarehouseTaste
       ? await ranking.fetchWarehouseTasteScores(
           userId,
@@ -186,6 +208,9 @@ export class AgentRuntimePolicyService {
       cohortContext,
       recentTrackIds: [...new Set([...input.recentTrackIds, ...servedHistory])],
       energy: input.preferences.energy,
+      tempoBpm: input.preferences.tempoBpm,
+      ...requestedTermsFor(input.preferences),
+      audioFeaturesByTrack,
       sessionIntent: {
         intent: input.preferences.sessionIntent,
         mood: input.preferences.mood,
@@ -257,6 +282,7 @@ export class AgentRuntimePolicyService {
 
     const { reserved, served } = policyResult.exploration;
     let injected = false;
+    let discoveryFacts: AgentRequestCoveragePick | undefined;
     if (
       surviving.length > 0 &&
       served < reserved &&
@@ -271,7 +297,8 @@ export class AgentRuntimePolicyService {
         ...surviving.slice(0, -1).map((entry) => artistKeyOf(entry.trackId)),
       ]);
       if (swapped) {
-        surviving = swapped;
+        surviving = swapped.picks;
+        discoveryFacts = swapped.discoveryFacts;
         injected = true;
       }
     }
@@ -295,6 +322,17 @@ export class AgentRuntimePolicyService {
       };
     }
 
+    // Coverage of the final picks: the swapped-in discovery pick is always last.
+    const facts = surviving.map((pick, index) =>
+      discoveryFacts && index === surviving.length - 1
+        ? discoveryFacts
+        : coverageFactsFor(
+            candidatesById.get(pick.trackId),
+            audioFeaturesByTrack.get(pick.trackId),
+          ),
+    );
+    const coverage = requestCoverageFor(input.preferences.request, facts);
+
     const [first] = surviving;
     return {
       ...result,
@@ -303,7 +341,30 @@ export class AgentRuntimePolicyService {
       priceUsd: first.priceUsd,
       picks: surviving,
       policy: { dropped, exploration: explorationAccounting },
+      ...(coverage ? { requestCoverage: coverage.coverage } : {}),
     };
+  }
+
+  /** Audio features for the picked tracks; a failed lookup just omits that track. */
+  private async loadAudioFeatures(
+    trackIds: string[],
+  ): Promise<Map<string, AgentAudioFeatures>> {
+    const byTrack = new Map<string, AgentAudioFeatures>();
+    const service = this.audioFeatures;
+    if (!service) return byTrack;
+    await Promise.all(
+      trackIds.map(async (trackId) => {
+        try {
+          const featureResult = await service.getOrCreate(trackId);
+          if (featureResult?.status === "ok") {
+            byTrack.set(trackId, featureResult.features);
+          }
+        } catch (error) {
+          this.logger.warn(`Audio features unavailable for a pick: ${String(error)}`);
+        }
+      }),
+    );
+    return byTrack;
   }
 
   /**
@@ -350,7 +411,8 @@ export class AgentRuntimePolicyService {
 
   /**
    * Replaces the model's last pick with the deterministic selector's discovery
-   * pick for the same listener, session and preferences, or returns undefined
+   * pick (and the facts coverage reads from it) for the same listener, session
+   * and preferences, or returns undefined
    * when the selector has none that fits (not already picked, within the
    * artist cap given `otherArtistKeys`). Fails open.
    */
@@ -358,7 +420,9 @@ export class AgentRuntimePolicyService {
     input: AgentRuntimeInput,
     surviving: LlmTrackPick[],
     otherArtistKeys: string[],
-  ): Promise<LlmTrackPick[] | undefined> {
+  ): Promise<
+    { picks: LlmTrackPick[]; discoveryFacts: AgentRequestCoveragePick } | undefined
+  > {
     if (!this.selector) return undefined;
     try {
       const queries = buildAgentRecommendationQueries(input.preferences);
@@ -421,19 +485,25 @@ export class AgentRuntimePolicyService {
 
       const replaced = surviving[surviving.length - 1];
       const recommendation = discovery.agentRecommendation!;
-      return [
-        ...surviving.slice(0, -1),
-        {
-          trackId: discovery.id,
-          licenseType: replaced.licenseType,
-          // Not a model-negotiated price; buy mode negotiates it separately.
-          priceUsd: 0,
-          score: recommendation.score,
-          explanation: recommendation.explanation,
-          reasonCode: recommendation.reasonCode,
-          signals: recommendation.signals,
-        },
-      ];
+      return {
+        picks: [
+          ...surviving.slice(0, -1),
+          {
+            trackId: discovery.id,
+            licenseType: replaced.licenseType,
+            // Not a model-negotiated price; buy mode negotiates it separately.
+            priceUsd: 0,
+            score: recommendation.score,
+            explanation: recommendation.explanation,
+            reasonCode: recommendation.reasonCode,
+            signals: recommendation.signals,
+          },
+        ],
+        discoveryFacts: coverageFactsFor(
+          discovery,
+          recommendation.audioFeatures as AgentAudioFeatures | undefined,
+        ),
+      };
     } catch (error) {
       this.logger.warn(`Discovery pick unavailable for LLM picks: ${String(error)}`);
       return undefined;
@@ -481,6 +551,24 @@ export class AgentRuntimePolicyService {
 function canSwapForDiscovery(pageSize: number, priorExplorationCount?: number) {
   if (priorExplorationCount !== undefined) return true;
   return Math.round(pageSize * DISCOVERY_POLICY_DEFAULTS.explorationShare) >= 1;
+}
+
+/**
+ * What the request filters read about a pick (#2037): genre and moods from the
+ * release, energy and tempo from the audio features. The tempo only counts when
+ * measured; the inferred tempo is a metadata hash.
+ */
+function coverageFactsFor(
+  track: { release?: { genre?: string | null; moods?: string[] | null } | null } | undefined,
+  features: AgentAudioFeatures | undefined,
+): AgentRequestCoveragePick {
+  return {
+    genre: track?.release?.genre ?? null,
+    moods: track?.release?.moods ?? [],
+    energyBand: features?.energyBand,
+    tempoBpm: features?.tempoBpm,
+    tempoMeasured: features?.featureSources?.tempo === "measured",
+  };
 }
 
 /** The picks of an adapter result; legacy single-track results included. */
