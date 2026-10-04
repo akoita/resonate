@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import type { AgentRequestCoverage } from "../lib/api";
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+import { API_BASE, type AgentRequestCoverage } from "../lib/api";
+import { useAuth } from "../components/auth/AuthProvider";
 
 export interface AgentEvent {
     id: string;
@@ -28,44 +27,48 @@ const EVENT_ICONS: Record<string, string> = {
 };
 
 const MAX_EVENTS = 50;
+const NO_EVENTS: AgentEvent[] = [];
 
 export function useAgentEvents() {
-    const [events, setEvents] = useState<AgentEvent[]>([]);
+    const { token } = useAuth();
+    // Events are stamped with the token they arrived under, so a different
+    // account never sees the previous account's feed after a token change.
+    const [feed, setFeed] = useState<{ token: string | null; events: AgentEvent[] }>({
+        token: null,
+        events: NO_EVENTS,
+    });
     const socketRef = useRef<Socket | null>(null);
 
     useEffect(() => {
-        const socket = io(SOCKET_URL, {
+        // Agent events are delivered only to the session owner's room, so the
+        // socket has to authenticate; without a token there is nothing to receive.
+        if (!token) return;
+
+        const socket = io(API_BASE, {
             transports: ["websocket", "polling"],
+            auth: { token },
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
         });
 
         socketRef.current = socket;
 
-        socket.on("connect", () => {
-            console.log(`[AgentEvents] Connected: ${socket.id}`);
-        });
-
         socket.on("agent.event", (data: AgentEvent) => {
-            console.log("[AgentEvents] Received:", data);
-            setEvents((prev) => {
+            setFeed((prev) => {
+                const earlier = prev.token === token ? prev.events : NO_EVENTS;
                 const next = [
                     { ...data, icon: EVENT_ICONS[data.type] ?? "📋" },
-                    ...prev,
+                    ...earlier,
                 ];
-                return next.slice(0, MAX_EVENTS);
+                return { token, events: next.slice(0, MAX_EVENTS) };
             });
-        });
-
-        socket.on("disconnect", (reason) => {
-            console.log(`[AgentEvents] Disconnected: ${reason}`);
         });
 
         return () => {
             socket.disconnect();
             socketRef.current = null;
         };
-    }, []);
+    }, [token]);
 
-    return events;
+    return feed.token === token ? feed.events : NO_EVENTS;
 }

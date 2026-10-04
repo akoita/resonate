@@ -100,6 +100,13 @@ Lyria tools were removed ([ADR-TE-4](../strategy/taste-engine-decisions.md)).
 6. Review the selected track, license type, price, runtime status, and any no-pick/policy status shown in the card.
 7. Watch the activity feed/history for selected tracks and spend.
 
+The activity feed arrives over Socket.IO as `agent.event`. The gateway sends
+each event only to the session owner's `user:<userId>` room, which a socket
+joins on connect after its handshake access token verifies; the owner comes
+from the event or from `Session.userId`, and an event whose owner cannot be
+resolved is dropped rather than broadcast (#2078). The web feed
+(`useAgentEvents`) connects only while signed in and clears on account change.
+
 This verifies that the user-facing AI DJ operates through the deployed runtime
 stack and gives developers a simple manual QA path for `POST
 /sessions/agent/next`.

@@ -82,6 +82,9 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > rows, kept in browser storage or sent to analytics; only the parsed filters
 > (genres, moods, energy, tempo) travel on to the session, and analytics carry
 > filter keys and counts only. The saved vibes in Settings are never written.
+> The live feed itself, including the coverage line and any LLM reasoning, is
+> delivered only to the session owner's authenticated socket (`user:<userId>`
+> room); signed-out or other accounts' sockets never receive it (#2078).
 
 > **Session requests receive priority (#2059).** Vision-neutral quality. A
 > preset or described session keeps its own genres and moods separate from
