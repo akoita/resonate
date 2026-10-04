@@ -1,4 +1,5 @@
 import type { CrateFilters, CrateParseResult } from "../crates/crate.types";
+import { genreMatchesRequest } from "../recommendations/genre_families";
 
 /**
  * A listener describes an AI DJ session in their own words (#2037). The text is
@@ -261,7 +262,12 @@ export function computeRequestCoverage(
   const counts: Partial<Record<AgentRequestCoverageFilter, number>> = {};
 
   if (requestedGenres.size > 0) {
-    counts.genres = picks.filter((pick) => !!pick.genre && requestedGenres.has(normalizeTerm(pick.genre))).length;
+    // Free-text catalog genres: "African" satisfies a "World" request (#2088).
+    counts.genres = picks.filter(
+      (pick) =>
+        !!pick.genre &&
+        [...requestedGenres].some((requested) => genreMatchesRequest(pick.genre, requested)),
+    ).length;
   }
   if (requestedMoods.size > 0) {
     counts.moods = picks.filter((pick) => (pick.moods ?? []).some((mood) => requestedMoods.has(normalizeTerm(mood)))).length;

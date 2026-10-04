@@ -255,6 +255,36 @@ describe('SessionsService (integration)', () => {
     expect(JSON.stringify(observations)).not.toContain(session.id);
   });
 
+  it('resolves allowExplicit server-side for every next pick (#2088)', async () => {
+    const userId = `${TEST_PREFIX}user`;
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({ status: 'no_tracks', tracks: [], shortfall: 1 }),
+    };
+    const { service } = makeService(runtimeService);
+    const session = await service.startSession({ userId, budgetCapUsd: 10 });
+    const sentAllowExplicit = () =>
+      runtimeService.runCommerce.mock.calls.at(-1)?.[0].preferences.allowExplicit;
+    await prisma.agentConfig.create({ data: { userId } });
+    try {
+      // No saved choice: the safe default excludes explicit tracks.
+      await service.agentNext({ sessionId: session.id, userId });
+      expect(sentAllowExplicit()).toBe(false);
+
+      // Toggling the saved choice takes effect on the very next pick.
+      await prisma.agentConfig.update({ where: { userId }, data: { allowExplicit: true } });
+      await service.agentNext({ sessionId: session.id, userId });
+      expect(sentAllowExplicit()).toBe(true);
+
+      // A value the session sends itself wins, and is remembered for later picks.
+      await service.agentNext({ sessionId: session.id, userId, preferences: { allowExplicit: false } });
+      expect(sentAllowExplicit()).toBe(false);
+      await service.agentNext({ sessionId: session.id, userId });
+      expect(sentAllowExplicit()).toBe(false);
+    } finally {
+      await prisma.agentConfig.deleteMany({ where: { userId } });
+    }
+  });
+
   it('routes agentNext through AgentRuntimeService with session budget and recent tracks', async () => {
     const runtimeService = {
       runCommerce: jest.fn().mockResolvedValue({
@@ -301,7 +331,7 @@ describe('SessionsService (integration)', () => {
         recentTrackIds: [],
         budgetRemainingUsd: 10,
         // The session's own genres travel separately so they outrank learned taste (#2059).
-        preferences: { genres: ['electronic'], licenseType: 'remix', sessionGenres: ['electronic'] },
+        preferences: { allowExplicit: false, genres: ['electronic'], licenseType: 'remix', sessionGenres: ['electronic'] },
       }),
     );
     expect(runtimeService.runCommerce).toHaveBeenNthCalledWith(
@@ -309,7 +339,7 @@ describe('SessionsService (integration)', () => {
       expect.objectContaining({
         recentTrackIds: [`${TEST_PREFIX}track`],
         // The session's own genres travel separately so they outrank learned taste (#2059).
-        preferences: { genres: ['electronic'], licenseType: 'remix', sessionGenres: ['electronic'] },
+        preferences: { allowExplicit: false, genres: ['electronic'], licenseType: 'remix', sessionGenres: ['electronic'] },
       }),
     );
     expect(second.status).toBe('ok');

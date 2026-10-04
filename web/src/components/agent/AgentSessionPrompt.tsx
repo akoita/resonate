@@ -56,6 +56,13 @@ type Props = {
     /** A session is live: the main action updates it instead of starting one. */
     isLive?: boolean;
     isBusy?: boolean;
+    /** The saved "include explicit tracks" choice; applies from the next pick. */
+    explicit?: {
+        enabled: boolean;
+        isSaving?: boolean;
+        error?: string | null;
+        onChange: (next: boolean) => void;
+    };
     myMix?: {
         lanes: readonly ListeningLane[];
         vocabulary: AgentMixVocabulary;
@@ -91,11 +98,13 @@ export default function AgentSessionPrompt({
     parseError = null,
     isLive = false,
     isBusy = false,
+    explicit,
     myMix,
     onSubmit,
 }: Props) {
     const id = useId();
     const textId = `${id}-text`;
+    const explicitId = `${id}-explicit`;
     // The preset under the pointer or keyboard focus, else the selected one.
     const [previewIntent, setPreviewIntent] = useState<string | null>(null);
     const describedPreset =
@@ -276,6 +285,30 @@ export default function AgentSessionPrompt({
                     </p>
                 ))}
             </div>
+
+            {explicit ? (
+                <div className="aid-prompt-explicit">
+                    <label className="aid-prompt-explicit-label" htmlFor={explicitId}>
+                        <input
+                            id={explicitId}
+                            type="checkbox"
+                            checked={explicit.enabled}
+                            disabled={explicit.isSaving}
+                            aria-describedby={`${explicitId}-hint`}
+                            onChange={(event) => explicit.onChange(event.target.checked)}
+                        />
+                        <span>Include explicit tracks</span>
+                    </label>
+                    <p id={`${explicitId}-hint`} className="aid-prompt-hint">
+                        Applies from the next pick.
+                    </p>
+                    {explicit.error ? (
+                        <p className="aid-prompt-note aid-prompt-note--error" role="status">
+                            {explicit.error}
+                        </p>
+                    ) : null}
+                </div>
+            ) : null}
 
             <div className="aid-prompt-actions">
                 <button type="button" className="aid-prompt-submit" disabled={submitDisabled} onClick={onSubmit}>

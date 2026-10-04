@@ -30,9 +30,29 @@ export function getToolDeclarations(): FunctionDeclaration[] {
             type: SchemaType.NUMBER,
             description: "Maximum number of results to return (1-50, default 20)",
           },
-          allowExplicit: {
-            type: SchemaType.BOOLEAN,
-            description: "Whether to include explicit tracks (default false)",
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "semantic_search",
+      description:
+        "Find tracks across the whole catalog by meaning, not by literal genre text. " +
+        "Describe the requested session in a short phrase (genres, mood, energy, style). " +
+        "Returns track objects like catalog_search, most similar first, each with a semanticScore. " +
+        "Catalog genres are free-text labels, so this finds fits that catalog_search misses. " +
+        "hasListing says nothing about how well a track fits the listener.",
+      parameters: {
+        type: SchemaType.OBJECT,
+        properties: {
+          query: {
+            type: SchemaType.STRING,
+            description:
+              "The session described in words (e.g. 'African and world music, upbeat, warm, traditional instruments')",
+          },
+          limit: {
+            type: SchemaType.NUMBER,
+            description: "Maximum number of results to return (1-50, default 20)",
           },
         },
         required: ["query"],
@@ -107,6 +127,7 @@ export function getToolDeclarations(): FunctionDeclaration[] {
  */
 const DECLARED_TOOL_REGISTRY_NAMES: Readonly<Record<string, string>> = {
   catalog_search: "catalog.search",
+  semantic_search: "catalog.semantic_search",
   pricing_quote: "pricing.quote",
   analytics_signal: "analytics.signal",
   embeddings_similarity: "embeddings.similarity",
@@ -128,12 +149,14 @@ function toRegistryName(geminiName: string): string | undefined {
  * catalog content (indirect prompt injection). Undeclared names return
  * `{ error: "unknown_tool" }` without running anything, and identity fields are
  * never taken from the model: `userId` is forced to the server-side session user
- * and `artistId` is dropped.
+ * and `artistId` is dropped. Catalog tools also get the session's explicit-content
+ * choice (`allowExplicit`, default false) and, for semantic search, the session's
+ * already-played tracks; model-supplied values for either are ignored.
  */
 export async function executeTool(
   registry: ToolRegistry,
   functionCall: { name: string; args: Record<string, unknown> },
-  context: { userId: string }
+  context: { userId: string; allowExplicit?: boolean; recentTrackIds?: string[] }
 ): Promise<Record<string, unknown>> {
   const registryName = toRegistryName(functionCall.name);
   if (!registryName) {
@@ -141,6 +164,13 @@ export async function executeTool(
   }
   const { userId: _userId, artistId: _artistId, ...args } = functionCall.args ?? {};
   const tool = registry.get(registryName);
-  const result = await tool.run({ ...args, userId: context.userId });
+  const sessionOwned: Record<string, unknown> = {};
+  if (registryName === "catalog.search" || registryName === "catalog.semantic_search") {
+    sessionOwned.allowExplicit = context.allowExplicit ?? false;
+  }
+  if (registryName === "catalog.semantic_search") {
+    sessionOwned.excludeTrackIds = context.recentTrackIds ?? [];
+  }
+  const result = await tool.run({ ...args, ...sessionOwned, userId: context.userId });
   return result;
 }

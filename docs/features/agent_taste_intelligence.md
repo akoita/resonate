@@ -230,7 +230,7 @@ consent-disabled cohorts are not used.
 
 The selector never performs an unbounded warehouse scan during recommendation.
 It queries only the current `userId` and the candidate `trackIds` already found
-by catalog search.
+by catalog search or semantic retrieval (#2088).
 
 Agents never generate audio to fill a sparse selection
 ([ADR-TE-4](../strategy/taste-engine-decisions.md)). Every candidate comes from
@@ -533,6 +533,60 @@ Measurement is implemented in [#2067](https://github.com/akoita/resonate/issues/
 Advanced ordering styles remain behind the OFF Listener Pro seam; tempo,
 Camelot and DSP sequencing remain gated future work in
 [#1971](https://github.com/akoita/resonate/issues/1971).
+
+## Meaning-aware retrieval and explicit content (#2088)
+
+Catalog genres are free text typed by artists ("African", "French Rap",
+"Hip Hop"), so literal keyword retrieval missed obvious fits: a World Music
+session never saw an "African" release, and "Hip-Hop" never matched "Hip Hop".
+Every model and ranking step works on the candidates retrieval hands it, so
+retrieval itself now understands meaning.
+
+- **Genre families.** `backend/src/modules/recommendations/genre_families.ts`
+  is one pure, spelling-insensitive vocabulary (case, spacing, hyphens, accents
+  and `&` are normalized). A requested term resolves to the families it names
+  or narrowly belongs to; `broad` families (World, African, Electronic, Latin)
+  are reached only by their own names, so "World" matches an Afrobeats release
+  but "Afrobeats" does not widen to all of World. Release genres belong to every
+  family one of whose members appears in them as whole words. The same module
+  drives:
+  - `catalog.search`: a genre query also searches its family's labels
+    (`expandGenreSearchTerms`); the title match stays literal;
+  - the ranking core's `session_request` signal (`genreMatchesRequest`);
+  - request coverage ("Only N of M picks matched …").
+- **Semantic retrieval.** The `catalog.semantic_search` tool embeds a
+  description of the session and returns catalog-wide nearest neighbours
+  (`TrackEmbeddingService.neighboursOfVector`) at or above the cosine floor
+  `AGENT_SEMANTIC_MIN_SIMILARITY` (default `0.55`), with the explicit and
+  AI-promotion filters applied. The deterministic selector adds these
+  neighbours to its keyword candidates when the session asked for something
+  itself (`buildSemanticSessionQuery`: intent, requested genres plus related
+  family labels, moods, energy); learned taste alone never triggers it. The
+  floor keeps ADR-TE-4 intact: a request nothing in the catalog resembles still
+  finds nothing, so it is never widened and its unmet demand stays recorded.
+  Retrieval fails open to the keyword candidates, and returns nothing while
+  embeddings are disabled. Only tracks with a stored vector can be found this
+  way; tracks are embedded on ingest, lazily when they become DJ candidates, or
+  by the admin backfill.
+- **LLM curator.** The ADK and Vertex curators get a `semantic_search` tool and
+  are told that catalog genres are free text and to fill the selection target
+  when enough tracks fit (still never dumping the catalog or generating audio).
+- **Explicit content.** `AgentConfig.allowExplicit` (default `false`) is the
+  listener's saved "Include explicit tracks" choice, toggled from the AI DJ
+  session panel (`PATCH /agents/config` with `allowExplicit`). Session start and
+  every Next Pick resolve it server-side (`resolveAllowExplicit`: a boolean sent
+  with the session wins, otherwise the saved value), so a toggle applies from
+  the next pick. The curator's tools no longer expose `allowExplicit` to the
+  model: the server forces the session's value onto every catalog call.
+- **Follow-ups.** "More like this" expansion from the session's own picks
+  (seed-track neighbours), golden-eval cases for World → African and
+  Rap → explicit rap, and tuning the similarity floor against real embeddings.
+- Tests: `genre_families.spec.ts`, `agent_semantic_selector.spec.ts`,
+  `agent_curator_session_controls.spec.ts`, `agent_explicit_preference.spec.ts`,
+  `agent_semantic_retrieval.integration.spec.ts`,
+  `agent_config_allow_explicit.integration.spec.ts`,
+  `sessions.integration.spec.ts`, `discovery_ranking_session_request.spec.ts`,
+  `agent_session_request.spec.ts`.
 
 ## Unified Ranking Core (#1448 WS-1)
 

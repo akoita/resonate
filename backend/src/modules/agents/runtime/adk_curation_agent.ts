@@ -16,7 +16,19 @@ import { describeTempoRange } from "../agent_session_request";
 // Tool definitions — each delegates to the existing ToolRegistry
 // ---------------------------------------------------------------------------
 
-function buildTools(tools: ToolRegistry): FunctionTool[] {
+/**
+ * Session-owned values forced onto every catalog tool call. The model never
+ * chooses them: the listener's explicit-content choice must not be overridable
+ * by model output (or catalog content steering it), and tracks already played
+ * in the session are never suggested again.
+ */
+export interface CurationAgentOptions {
+  allowExplicit?: boolean;
+  recentTrackIds?: string[];
+}
+
+function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): FunctionTool[] {
+  const allowExplicit = options.allowExplicit ?? false;
   const catalogSearch = new FunctionTool({
     name: "catalog_search",
     description:
@@ -34,13 +46,38 @@ function buildTools(tools: ToolRegistry): FunctionTool[] {
         .number()
         .optional()
         .describe("Maximum number of results to return (1-50, default 20)"),
-      allowExplicit: z
-        .boolean()
-        .optional()
-        .describe("Whether to include explicit tracks (default false)"),
     }),
     execute: async (args) => {
-      const result = await tools.get("catalog.search").run(args);
+      const result = await tools.get("catalog.search").run({ ...args, allowExplicit });
+      return result;
+    },
+  });
+
+  const semanticSearch = new FunctionTool({
+    name: "semantic_search",
+    description:
+      "Find tracks across the whole catalog by meaning, not by literal genre text. " +
+      "Describe the requested session in a short phrase (genres, mood, energy, style). " +
+      "Returns track objects like catalog_search, most similar first, each with a semanticScore. " +
+      "Catalog genres are free-text labels, so this finds fits that catalog_search misses. " +
+      "hasListing says nothing about how well a track fits the listener.",
+    parameters: z.object({
+      query: z
+        .string()
+        .describe(
+          "The session described in words (e.g. 'African and world music, upbeat, warm, traditional instruments')"
+        ),
+      limit: z
+        .number()
+        .optional()
+        .describe("Maximum number of results to return (1-50, default 20)"),
+    }),
+    execute: async (args) => {
+      const result = await tools.get("catalog.semantic_search").run({
+        ...args,
+        allowExplicit,
+        excludeTrackIds: options.recentTrackIds ?? [],
+      });
       return result;
     },
   });
@@ -103,6 +140,7 @@ function buildTools(tools: ToolRegistry): FunctionTool[] {
 
   return [
     catalogSearch,
+    semanticSearch,
     pricingQuote,
     analyticsSignal,
     embeddingsSimilarity,
@@ -124,9 +162,10 @@ function buildSystemPrompt(): string {
     "Guidelines:",
     "- Use catalog_search to find tracks matching EACH of the user's genre/mood preferences.",
     "- Search for each genre separately to get comprehensive results.",
+    "- Catalog genres are free-text labels typed by artists (for example \"African\" for world music, \"French Rap\" for hip-hop), so a literal genre search can miss good fits. Also call semantic_search with a short description of the requested session in words.",
     "- Choose tracks only by how well they fit the listener's taste, mood and energy.",
     "- hasListing is purchase availability data, not a quality signal: never prefer or avoid a track because of it.",
-    "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
+    "- Aim to return the full selection target when enough tracks fit the request; return fewer only when the tracks you found genuinely do not fit. Choose by fit and never dump the whole catalog.",
     "- If a genre search returns no tracks, treat that as no match for that genre.",
     "- Avoid recommending tracks the user has recently listened to.",
     "- Requested genres, Mood/Moods, Energy and Tempo are what the listener asked for in this session: rank tracks that match them above tracks that only match the broader Genres list (their saved vibes and learned taste). Use the broader genres to fill the remaining slots.",
@@ -182,7 +221,10 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
       `Recently played (avoid these): ${input.recentTrackIds.join(", ")}`
     );
   }
-  parts.push("", "Please find and recommend the best tracks for me. If the catalog is sparse for my taste, return fewer tracks.");
+  parts.push(
+    "",
+    "Please find and recommend the best tracks for me. Fill the selection target when enough tracks fit; return fewer only if the catalog genuinely lacks tracks that fit."
+  );
   return parts.join("\n");
 }
 
@@ -190,13 +232,16 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
 // Factory — creates the LlmAgent for use by the adapter
 // ---------------------------------------------------------------------------
 
-export function createCurationAgent(toolRegistry: ToolRegistry): LlmAgent {
+export function createCurationAgent(
+  toolRegistry: ToolRegistry,
+  options: CurationAgentOptions = {},
+): LlmAgent {
   const modelName = process.env.VERTEX_AI_MODEL ?? "gemini-2.5-flash";
   return new LlmAgent({
     name: "resonate_curation_agent",
     model: modelName,
     description: "AI DJ agent that curates catalog tracks based on user preferences and catalog availability.",
     instruction: buildSystemPrompt(),
-    tools: buildTools(toolRegistry),
+    tools: buildTools(toolRegistry, options),
   });
 }

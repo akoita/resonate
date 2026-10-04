@@ -78,6 +78,13 @@ export interface AgentSelectorInput {
   requestedTerms?: string[];
   /** Server-resolved session-only My Mix plan. */
   myMixPlan?: ResolvedMyMixPlan;
+  /**
+   * The session described in words (#2088). Adds catalog-wide semantic
+   * neighbours as candidates, so a track whose free-text genre never contains
+   * the requested label can still be found, and ranks by it instead of the
+   * joined keyword queries.
+   */
+  semanticQuery?: string;
 }
 
 /**
@@ -237,6 +244,45 @@ export class AgentSelectorService {
       }
     }
 
+    // Catalog-wide semantic retrieval (#2088). The tool applies the explicit
+    // and AI-promotion filters and a similarity floor (AGENT_SEMANTIC_MIN_SIMILARITY).
+    // Because of that floor, a request nothing in the catalog resembles still
+    // yields no candidates, so the "nothing matched => never widen" rule in
+    // `select()` (ADR-TE-4: unmet demand stays visible) keeps holding even
+    // though semantic candidates count toward `candidates.length`.
+    const semanticQuery = input.semanticQuery?.trim();
+    const semanticScores = new Map<string, number>();
+    if (semanticQuery) {
+      // Fails open: semantic retrieval only adds candidates, so a tool error
+      // leaves the keyword candidates as they were.
+      const result = await this.tools
+        .get("catalog.semantic_search")
+        .run({
+          query: semanticQuery,
+          limit: 20,
+          allowExplicit: input.allowExplicit ?? false,
+          excludeTrackIds: input.recentTrackIds,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Semantic retrieval failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return { items: [] as unknown[] };
+        });
+      for (const item of (result.items as any[]) ?? []) {
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
+        if (typeof item.semanticScore === "number") {
+          semanticScores.set(item.id, item.semanticScore);
+        }
+        if (!byId.has(item.id)) {
+          // No matchedQueries: no keyword query found this track.
+          byId.set(item.id, { ...item, matchedQueries: [] });
+        }
+      }
+    }
+
     const firstListenerCandidates = input.userId && this.firstListenerDiscovery
       ? await this.firstListenerDiscovery
           .getFreshCandidates({
@@ -316,9 +362,14 @@ export class AgentSelectorService {
     }
 
     const similarityScores = new Map<string, number>();
-    // Optionally rank by embedding similarity to the combined query
-    if (input.useEmbeddings && allCandidates.length > 1 && queries.length > 0) {
-      const combinedQuery = queries.join(" ");
+    // Optionally rank by embedding similarity to the combined query (or, when
+    // the session is described in words, to that description).
+    if (
+      input.useEmbeddings &&
+      allCandidates.length > 1 &&
+      (queries.length > 0 || semanticQuery)
+    ) {
+      const combinedQuery = semanticQuery || queries.join(" ");
       const ranked = await this.tools.get("embeddings.similarity").run({
         query: combinedQuery,
         candidates: allCandidates.map((track) => track.id),
@@ -327,6 +378,7 @@ export class AgentSelectorService {
       rankedIds.forEach((entry, index) => {
         similarityScores.set(entry.trackId, Math.max(0, 1 - index / Math.max(1, rankedIds.length)));
       });
+
       const ordered = rankedIds
         .map((entry) => allCandidates.find((track) => track.id === entry.trackId))
         .filter(Boolean) as any[];
@@ -340,6 +392,12 @@ export class AgentSelectorService {
           ...allCandidates.filter((track) => !rankedSet.has(track.id)),
         ];
       }
+    }
+
+    // The semantic tool's cosine scores are real similarities, so they win
+    // over the rank-derived position score for the tracks it returned.
+    for (const [trackId, score] of semanticScores) {
+      similarityScores.set(trackId, Math.max(0, Math.min(1, score)));
     }
 
     const canUseWarehouseTaste = input.userId

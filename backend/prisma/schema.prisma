@@ -1779,6 +1779,7 @@ model AgentConfig {
   stemTypes            String[]                  @default([])
   monthlyCapUsd        Float                     @default(10)
   isActive             Boolean                   @default(false)
+  allowExplicit        Boolean                   @default(false)
   identityStatus       String                    @default("local") // "local" | "pending" | "minted" | "attested"
   identityChainId      Int?
   identityRegistry     String?

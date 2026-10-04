@@ -89,7 +89,7 @@ type Props = {
  */
 export default function AgentSessionPanel({ refreshKey }: Props) {
     const { token } = useAuth();
-    const { config, isLoading, createConfig, startSession, stopSession, refetch: refetchConfig } =
+    const { config, isLoading, createConfig, updateConfig, startSession, stopSession, refetch: refetchConfig } =
         useAgentConfig();
     const events = useAgentEvents();
     const { sessions, summary: historySummary, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
@@ -121,6 +121,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const [myMixCoverage, setMyMixCoverage] = useState<AgentMixCoverage | null>(null);
     const [isSavingMyMix, setIsSavingMyMix] = useState(false);
     const [myMixSaveMessage, setMyMixSaveMessage] = useState<string | null>(null);
+    // Optimistic "include explicit tracks" value while the save is in flight (#2088).
+    const [explicitPending, setExplicitPending] = useState<boolean | null>(null);
+    const [explicitError, setExplicitError] = useState<string | null>(null);
     const [isParsing, setIsParsing] = useState(false);
     const [parseError, setParseError] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(false);
@@ -512,6 +515,21 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         }
     };
 
+    const handleExplicitChange = async (next: boolean) => {
+        if (explicitPending !== null) return;
+        setExplicitError(null);
+        setExplicitPending(next);
+        try {
+            // The server resolves this setting on every pick, so it applies from the next one.
+            await updateConfig({ allowExplicit: next });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to save this setting.";
+            setExplicitError(`Couldn't save this setting. ${message}`);
+        } finally {
+            setExplicitPending(null);
+        }
+    };
+
     // A session was started elsewhere on the page: pick it up without a reload.
     useEffect(() => {
         if (!refreshKey) return;
@@ -877,6 +895,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         parseError={parseError}
                         isLive={config.isActive}
                         isBusy={isStarting || isReplanning}
+                        explicit={{
+                            enabled: explicitPending ?? config.allowExplicit ?? false,
+                            isSaving: explicitPending !== null,
+                            error: explicitError,
+                            onChange: handleExplicitChange,
+                        }}
                         myMix={{
                             lanes: myMixLanes,
                             vocabulary: myMixVocabulary,
