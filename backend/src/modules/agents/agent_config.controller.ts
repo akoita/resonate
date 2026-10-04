@@ -26,7 +26,7 @@ import { minutes } from "../shared/rate_limits";
 import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../crates/crate.types";
 import type { CrateRequestParser } from "../crates/crate_request_parser";
 import { createCrateRequestParser } from "../crates/model_crate_request_parser";
-import { getAgentTrackLimit } from "./agent_runtime.config";
+import { getAgentSessionHistoryLimit, getAgentTrackLimit } from "./agent_runtime.config";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../recommendations/taste_edit_vocabulary";
 import { resolveMyMixPlan } from "./agent_my_mix";
@@ -603,13 +603,34 @@ export class AgentConfigController {
         }
     }
 
+    /**
+     * Lifetime totals across every session. `history` returns only the most
+     * recent `AGENT_SESSION_HISTORY_LIMIT` sessions, so page stats come from here.
+     */
+    @Get("history/summary")
+    @UseGuards(AuthGuard("jwt"))
+    async getHistorySummary(@Req() req: any) {
+        const userId: string = req.user.userId;
+        const [sessionCount, sessionsWithTracks, trackCount] = await Promise.all([
+            prisma.session.count({ where: { userId } }),
+            prisma.session.count({ where: { userId, licenses: { some: {} } } }),
+            prisma.license.count({ where: { session: { userId } } }),
+        ]);
+        return {
+            sessionCount,
+            sessionsWithTracks,
+            trackCount,
+            historyLimit: getAgentSessionHistoryLimit(),
+        };
+    }
+
     @Get("history")
     @UseGuards(AuthGuard("jwt"))
     async getHistory(@Req() req: any) {
         const sessions = await prisma.session.findMany({
             where: { userId: req.user.userId },
             orderBy: { startedAt: "desc" },
-            take: 20,
+            take: getAgentSessionHistoryLimit(),
             include: {
                 licenses: {
                     include: {

@@ -90,7 +90,13 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const { config, isLoading, createConfig, startSession, stopSession, refetch: refetchConfig } =
         useAgentConfig();
     const events = useAgentEvents();
-    const { sessions, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
+    const { sessions, summary: historySummary, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
+    // Lifetime counts come from the summary; `sessions` is only the most recent window.
+    const lifetime = historySummary ?? {
+        sessionCount: sessions.length,
+        sessionsWithTracks: sessions.filter((s) => s.licenses.length > 0).length,
+        trackCount: sessions.reduce((sum, s) => sum + s.licenses.length, 0),
+    };
     const { addToast } = useToast();
     const player = usePlayer();
     const { playQueue } = player;
@@ -887,8 +893,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         <AgentStatusCard
                             config={config}
                             onToggle={() => handleToggle()}
-                            sessionCount={sessions.length}
-                            trackCount={sessions.reduce((sum, s) => sum + s.licenses.length, 0)}
+                            sessionCount={lifetime.sessionCount}
+                            trackCount={lifetime.trackCount}
                         />
                         <AgentActivityFeed isActive={config.isActive} events={events} />
                         <AgentNextPickCard
@@ -902,18 +908,18 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     </div>
 
                     {/* Discovery banner */}
-                    {!historyLoading && sessions.some((s) => s.licenses.length > 0) && (
+                    {!historyLoading && lifetime.trackCount > 0 && (
                         <div className="aid-discovery-banner">
                             <span>
-                                <strong>{sessions.reduce((sum, s) => sum + s.licenses.length, 0)}</strong> tracks discovered across{" "}
-                                <strong>{sessions.filter((s) => s.licenses.length > 0).length}</strong> sessions
+                                <strong>{lifetime.trackCount}</strong> tracks discovered across{" "}
+                                <strong>{lifetime.sessionsWithTracks}</strong> sessions
                             </span>
                             <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
                         </div>
                     )}
 
                     {/* History */}
-                    <AgentHistoryCard sessions={sessions} isLoading={showHistoryLoader} />
+                    <AgentHistoryCard sessions={sessions} totalCount={lifetime.sessionCount} isLoading={showHistoryLoader} />
 
                     <p className="aid-taste-hint">
                         Rename your DJ or change its vibes in{" "}

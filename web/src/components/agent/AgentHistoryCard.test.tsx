@@ -31,14 +31,42 @@ function session(): AgentSession {
   } as unknown as AgentSession;
 }
 
+function emptySession(index: number): AgentSession {
+  return {
+    id: `session-${index}`,
+    budgetCapUsd: 10,
+    spentUsd: 0,
+    startedAt: new Date(Date.UTC(2026, 9, 1, index)).toISOString(),
+    endedAt: new Date(Date.UTC(2026, 9, 1, index, 5)).toISOString(),
+    licenses: [],
+    agentTransactions: [],
+  };
+}
+
+const tenSessions = Array.from({ length: 10 }, (_, index) => emptySession(index));
+
 describe("AgentHistoryCard", () => {
   it("lists picked tracks without prices, spend, or license badges (#2036)", () => {
-    const html = renderToStaticMarkup(<AgentHistoryCard sessions={[session()]} isLoading={false} />);
+    const html = renderToStaticMarkup(<AgentHistoryCard sessions={[session()]} totalCount={1} isLoading={false} />);
 
     expect(html).toContain("Night Drive");
     expect(html).toContain("Ada");
     expect(html).toContain("1 track");
     expect(html).not.toContain("$");
     expect(html).not.toMatch(/remix|personal|commercial/i);
+  });
+
+  it("shows the lifetime count and a window note when older sessions are not listed", () => {
+    const html = renderToStaticMarkup(<AgentHistoryCard sessions={tenSessions} totalCount={34} isLoading={false} />);
+
+    expect(html).toContain('<span class="aid-count-badge">34</span>');
+    expect(html).toContain("Showing your 10 most recent of 34 sessions.");
+  });
+
+  it("omits the window note when every session is listed", () => {
+    const html = renderToStaticMarkup(<AgentHistoryCard sessions={tenSessions} totalCount={10} isLoading={false} />);
+
+    expect(html).toContain('<span class="aid-count-badge">10</span>');
+    expect(html).not.toContain("most recent of");
   });
 });

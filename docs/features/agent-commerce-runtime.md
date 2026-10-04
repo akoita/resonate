@@ -75,6 +75,11 @@ mode that once existed behind `AGENT_SESSION_BUY_MODE_ENABLED` was removed
 
 Variable reference: [Environment variables](../deployment/environment.md).
 
+### Session history
+
+- `GET /agents/config/history` returns the listener's most recent AI DJ sessions, newest first, capped by `AGENT_SESSION_HISTORY_LIMIT` (default 10, maximum 50; invalid or non-positive values fall back to 10).
+- `GET /agents/config/history/summary` returns lifetime counts across every session (`sessionCount`, `sessionsWithTracks`, `trackCount`) plus the active `historyLimit`. The Your AI DJ section's Sessions/Tracks stats, the discovery banner, and the Session History count badge read these counts, so they stay correct when older sessions fall outside the list. The list shows "Showing your N most recent of M sessions" when it is truncated.
+
 ## No Generation From Agents (ADR-TE-4)
 
 Nothing in the agents module can create an AI generation job. Generated filler on
@@ -491,7 +496,7 @@ Run the focused tests:
 cd backend
 npx jest --runInBand src/tests/agent_recommendation_adapter.spec.ts src/tests/agent_runtime_normalization.spec.ts src/tests/policy_guard.spec.ts src/tests/payment_router.spec.ts
 npm run eval:recommendations
-npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='agent_audio_feature.integration|payment_router_x402.integration|sessions.integration|flow3_session.integration'
+npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='agent_session_history.integration|agent_audio_feature.integration|payment_router_x402.integration|sessions.integration|flow3_session.integration'
 ```
 
 Run the focused frontend API test:
