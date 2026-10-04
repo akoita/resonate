@@ -13091,7 +13091,7 @@ tr[draggable="true"]:hover {
   border-radius: 20px;
 }
 
-/* ── Almost there (played through, not yet saved) ─────── */
+/* ── Action sections: New from artists you discovered / Almost there ─────── */
 
 .sonic-radar-pending {
   display: flex;
@@ -13117,6 +13117,13 @@ tr[draggable="true"]:hover {
   min-height: 32px;
   padding: 4px 16px;
   font-size: 12px;
+}
+
+/* Play + Save row on action cards (shared by "New from artists you discovered" and "Almost there"). */
+.sonic-radar-card-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* ── Card Grid ───────────────────────────────────────── */

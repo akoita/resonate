@@ -924,6 +924,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                                                 <strong>{radarBanner.newArtistsThisWeek}</strong> new {radarBanner.newArtistsThisWeek === 1 ? "artist" : "artists"} this week
                                             </>
                                         )}
+                                        {radarBanner.newTracks > 0 && (
+                                            <>
+                                                {" · "}
+                                                <strong>{radarBanner.newTracks}</strong> new {radarBanner.newTracks === 1 ? "track" : "tracks"} from artists you discovered
+                                            </>
+                                        )}
                                     </span>
                                     <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
                                 </>

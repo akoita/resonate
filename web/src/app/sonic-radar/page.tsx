@@ -11,8 +11,17 @@ import { useUIStore } from "../../lib/uiStore";
 import { saveTrackMetadataAuthenticated, saveTracksMetadata } from "../../lib/localLibrary";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 import { getDiscoveryAttribution } from "../../lib/discoveryAttribution";
-import { pendingItemToLocalTrack, pendingItems, saveDeadlineLabel } from "../../lib/sonicRadarSummary";
-import type { DiscoveryJournalItem, DiscoveryJournalPendingItem } from "../../lib/api";
+import { usePlayer } from "../../lib/playerContext";
+import {
+    addedAgoLabel,
+    catalogItemToLocalTrack,
+    catalogItemToPlayableTrack,
+    newFromDiscoveredItems,
+    pendingItems,
+    saveDeadlineLabel,
+} from "../../lib/sonicRadarSummary";
+import type { DiscoveryJournalItem, DiscoveryJournalNewReleaseItem, DiscoveryJournalPendingItem } from "../../lib/api";
+import SonicRadarActionCard from "./SonicRadarActionCard";
 import {
     followUpLabel,
     formatGroupLabel,
@@ -21,12 +30,15 @@ import {
     trackCountLabel,
 } from "./journal";
 
+type CatalogActionItem = DiscoveryJournalPendingItem | DiscoveryJournalNewReleaseItem;
+
 export default function SonicRadarPage() {
     const { journal, isLoading, error, refetch } = useDiscoveryJournal();
     const router = useRouter();
     const { setTracksToAddToPlaylist } = useUIStore();
     const { token } = useAuth();
     const { addToast } = useToast();
+    const { playQueue } = usePlayer();
     const [savingIds, setSavingIds] = useState<string[]>([]);
     const [savedIds, setSavedIds] = useState<string[]>([]);
 
@@ -41,8 +53,8 @@ export default function SonicRadarPage() {
         setTracksToAddToPlaylist(tracks);
     };
 
-    // Saving adds the track to the library, which makes it resonate.
-    const savePending = async (item: DiscoveryJournalPendingItem) => {
+    // Saving adds the track to the library; for a played-through track that also makes it resonate.
+    const saveCatalogItem = async (item: CatalogActionItem, savedMessage: string) => {
         if (!token) {
             addToast({ type: "info", title: "Sign in to save", message: "Connect your account to update your library." });
             return;
@@ -50,17 +62,13 @@ export default function SonicRadarPage() {
         if (savingIds.includes(item.trackId)) return;
         setSavingIds((current) => [...current, item.trackId]);
         try {
-            await saveTrackMetadataAuthenticated(pendingItemToLocalTrack(item), token);
+            await saveTrackMetadataAuthenticated(catalogItemToLocalTrack(item), token);
             recordProductAnalyticsFromBrowser("library.saved", {
                 subjectType: "track",
                 subjectId: item.trackId,
                 payload: { trackId: item.trackId, ...getDiscoveryAttribution(item.trackId) },
             });
-            addToast({
-                type: "success",
-                title: "Saved",
-                message: `"${item.title}" is in your library and your Sonic Radar.`,
-            });
+            addToast({ type: "success", title: "Saved", message: savedMessage });
             setSavedIds((current) => [...current, item.trackId]);
             void refetch();
         } catch (err) {
@@ -71,9 +79,28 @@ export default function SonicRadarPage() {
         }
     };
 
+    // Plays straight from the catalog; nothing is written to the library until the listener saves.
+    const playCatalogItem = async (item: CatalogActionItem) => {
+        try {
+            await playQueue([catalogItemToPlayableTrack(item)], 0);
+        } catch (err) {
+            console.warn("[SonicRadar] Failed to play track:", err);
+            addToast({ type: "error", title: "Couldn't play", message: "Please try again." });
+        }
+    };
+
+    const cardActions = (item: CatalogActionItem, savedMessage: string) => ({
+        saving: savingIds.includes(item.trackId),
+        onOpen: () => router.push(`/release/${item.releaseId}`),
+        onPlay: () => void playCatalogItem(item),
+        onSave: () => void saveCatalogItem(item, savedMessage),
+    });
+
     const hasItems = hasJournalItems(journal);
     const visiblePending = pendingItems(journal).filter((item) => !savedIds.includes(item.trackId));
     const hasPending = visiblePending.length > 0;
+    const visibleNew = newFromDiscoveredItems(journal).filter((item) => !savedIds.includes(item.trackId));
+    const hasNew = visibleNew.length > 0;
     const headline = journal?.headline;
 
     return (
@@ -118,6 +145,28 @@ export default function SonicRadarPage() {
                     </div>
                 </section>
 
+                {/* New from artists you discovered: recent releases from artists that already resonated */}
+                {journal && hasNew && (
+                    <section className="sonic-radar-pending" aria-labelledby="sonic-radar-new-title">
+                        <div className="sonic-radar-pending-header">
+                            <h2 id="sonic-radar-new-title">New from artists you discovered</h2>
+                            <p>Recent releases from artists whose music resonated with you.</p>
+                        </div>
+                        <div className="sonic-radar-grid">
+                            {visibleNew.map((item) => (
+                                <SonicRadarActionCard
+                                    key={item.trackId}
+                                    title={item.title}
+                                    artistName={item.artistName}
+                                    artworkUrl={item.artworkUrl}
+                                    badges={[{ label: addedAgoLabel(item.addedAt) }, { label: item.reason.text }]}
+                                    {...cardActions(item, `"${item.title}" is in your library.`)}
+                                />
+                            ))}
+                        </div>
+                    </section>
+                )}
+
                 {/* Almost there: played through, one save from resonating */}
                 {journal && hasPending && (
                     <section className="sonic-radar-pending" aria-labelledby="sonic-radar-pending-title">
@@ -126,59 +175,19 @@ export default function SonicRadarPage() {
                             <p>You played these through this week. Save the ones you liked and they join your journal.</p>
                         </div>
                         <div className="sonic-radar-grid">
-                            {visiblePending.map((item) => {
-                                const saving = savingIds.includes(item.trackId);
-                                return (
-                                    <div
-                                        key={item.trackId}
-                                        className="sonic-radar-card"
-                                        onClick={() => router.push(`/release/${item.releaseId}`)}
-                                        style={{ cursor: "pointer" }}
-                                    >
-                                        <div className="sonic-radar-card-art">
-                                            {item.artworkUrl ? (
-                                                /* eslint-disable-next-line @next/next/no-img-element */
-                                                <img src={item.artworkUrl} alt={item.title} loading="lazy" />
-                                            ) : (
-                                                <div className="sonic-radar-card-art-placeholder">
-                                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                                        <path d="M9 18V5l12-2v13" />
-                                                        <circle cx="6" cy="18" r="3" />
-                                                        <circle cx="18" cy="16" r="3" />
-                                                    </svg>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="sonic-radar-card-info">
-                                            <span className="sonic-radar-card-title">{item.title}</span>
-                                            <span className="sonic-radar-card-artist">{item.artistName}</span>
-                                            <div className="sonic-radar-stems">
-                                                {item.discovery && (
-                                                    <span className="sonic-radar-stem-badge sonic-radar-stem-badge--confirmed">
-                                                        New to you
-                                                    </span>
-                                                )}
-                                                <span className="sonic-radar-stem-badge">{saveDeadlineLabel(item.followUpBy)}</span>
-                                            </div>
-                                        </div>
-                                        <div className="sonic-radar-card-footer">
-                                            <span />
-                                            <button
-                                                type="button"
-                                                className="ui-btn ui-btn-primary ui-btn-sm sonic-radar-pending-save-btn"
-                                                aria-label={`Save ${item.title}`}
-                                                disabled={saving}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    void savePending(item);
-                                                }}
-                                            >
-                                                {saving ? "Saving…" : "Save"}
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                            {visiblePending.map((item) => (
+                                <SonicRadarActionCard
+                                    key={item.trackId}
+                                    title={item.title}
+                                    artistName={item.artistName}
+                                    artworkUrl={item.artworkUrl}
+                                    badges={[
+                                        ...(item.discovery ? [{ label: "New to you", tone: "confirmed" as const }] : []),
+                                        { label: saveDeadlineLabel(item.followUpBy) },
+                                    ]}
+                                    {...cardActions(item, `"${item.title}" is in your library and your Sonic Radar.`)}
+                                />
+                            ))}
                         </div>
                     </section>
                 )}
