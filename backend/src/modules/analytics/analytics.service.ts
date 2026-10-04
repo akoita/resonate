@@ -29,6 +29,7 @@ import {
   type SceneScoutSource,
 } from "../scene_scout/scene_scout.service";
 import { sceneScoutCityCards } from "./analytics_scene_scout";
+import { buildHabitMixQualityReport } from "./analytics_habit_mix_quality";
 import { unmetDemandCards } from "./analytics_unmet_demand";
 import { UNMET_DEMAND_SOURCE, type UnmetDemandSource } from "../scene_scout/unmet_demand.contracts";
 import { FIRST_LISTENER_RECEPTION_SOURCE, firstListenerReceptionCards, type FirstListenerReceptionSource } from "./analytics_first_listener";
@@ -543,6 +544,7 @@ export class AnalyticsService {
       versionBreakdown: this.finalizeBreakdowns(byVersion),
       qualityOverTime: [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date)),
       ...buildDiscoveryQualityReport(data.facts, new Set(djFacts)),
+      ...buildHabitMixQualityReport(data.facts),
       resonantDiscoveries: await this.resonantDiscoveries(data.metadata.timeWindow.days),
       privacy: {
         aggregation: "event-level aggregate metrics only",
@@ -591,7 +593,8 @@ export class AnalyticsService {
       return occurredAt >= from.getTime() && occurredAt < to.getTime();
     });
     const agentFacts = new Set(this.agentQualityFacts(facts));
-    const qualityFacts = facts.filter((fact) => agentFacts.has(fact) || isHomeDiscoveryFact(fact));
+    const qualityFacts = facts.filter((fact) => agentFacts.has(fact) || isHomeDiscoveryFact(fact) ||
+      Boolean(fact.dimensions.agentSessionId) || fact.dimensions.eventName === "playlist.track_added");
     const freshness = this.freshnessFromFacts(qualityFacts, to);
     return {
       facts: qualityFacts,

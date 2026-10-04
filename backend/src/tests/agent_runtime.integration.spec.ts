@@ -83,6 +83,17 @@ describe('AgentRuntimeExecutorService (integration)', () => {
     expect(result.status).toBe('approved');
   });
 
+  it('runs the single-profile control deterministically without model or caller quotas', async () => {
+    const orchestrator = { orchestrate: jest.fn().mockResolvedValue({ status: 'approved', tracks: [] }) };
+    const adapter = { run: jest.fn() };
+    const runtime = new AgentRuntimeExecutorService(orchestrator as any, adapter as any, adapter as any, adapter as any);
+    await runtime.runWithSingleProfile(makeInput({ preferences: { myMix: { lanes: [{ id: 'forged' }] },
+      learnedGenreWeights: { Jazz: 2 } }, myMixPlan: { lanes: [{ id: 'forged' }] } }));
+    expect(adapter.run).not.toHaveBeenCalled();
+    expect(orchestrator.orchestrate).toHaveBeenCalledWith(expect.objectContaining({ preferences: { learnedGenreWeights: { Jazz: 2 } } }));
+    expect(orchestrator.orchestrate.mock.calls[0][0]).not.toHaveProperty('myMixPlan');
+  });
+
   it('falls back to orchestrator when GOOGLE_AI_API_KEY is not set', async () => {
     const orchestrator = {
       orchestrate: async () => ({

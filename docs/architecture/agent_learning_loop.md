@@ -170,7 +170,7 @@ missing lane. Existing consent-gated unmet-demand recording consumes those
 lane gaps. The model runtime cannot supply lane names, quotas or coverage.
 
 Basic mixes are free. The advanced Listener Pro entitlement seam remains off;
-advanced ordering styles remain unavailable. Evaluation stays tracked in #2067.
+advanced ordering styles remain unavailable. Evaluation is implemented in #2067.
 These are ADR-BM-6 Line 4 phase 4 candidates, with free basics supporting Line 1
 engagement.
 See [My Mix](../features/agent_taste_intelligence.md#my-mix-2065).
@@ -198,3 +198,20 @@ bad transitions or permit repeatedly successful measured energy jumps. The
 output is an exact permutation, retaining quota coverage and global policy.
 The future gated #1971 sequencer can refine tempo/key order within lane runs;
 this slice introduces neither model input nor DSP audio processing.
+
+## Habit Mix measurement
+
+Runtime assignment reuses the stable discovery holdout. Explicit My Mix requests
+are validated against owner-visible lanes before selecting lanes with habits,
+lanes with neutral order, or the deterministic single-profile control. Returned
+picks emit per-track impressions with categorical source and actual ordering.
+The analytics bridge uses the same pseudonymous actor identity as browser
+playback; TS and Python facts retain private linkage dimensions for aggregation.
+
+The authorized quality dashboard joins playback episodes to preceding
+owner-session impressions, deduplicates outcomes, and returns source and variant
+aggregates. Its promotion report is advisory and cannot change default session
+behavior or entitlements. Pure offline replay rebuilds lanes before an explicit
+cutoff and compares later completions/saves with a genre-only baseline. See the
+[feature contract](../features/agent_taste_intelligence.md#habit-mix-measurement-2067)
+for definitions, sample thresholds and attribution limits.

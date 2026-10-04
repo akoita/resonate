@@ -225,6 +225,29 @@ describe("AnalyticsController (HTTP)", () => {
     }));
   });
 
+  it("rejects listener-supplied server-owned habit impressions through generic ingest", async () => {
+    authorizationService.assertCanReadAgentQualityDashboard.mockImplementation(() => { throw new ForbiddenException(); });
+    await request(app.getHttpServer()).post("/analytics/ingest")
+      .set("Authorization", `Bearer ${authToken("listener", "listener")}`)
+      .send({ event_name: "recommendation.generated", payload: { sessionSource: "my_mix", rankerVariant: "my_mix_habits" } })
+      .expect(403);
+    expect(ingestService.ingest).not.toHaveBeenCalled();
+  });
+
+  it("returns aggregate habit session sources and promotion evidence only to authorized operators", async () => {
+    const report = { sessionSourceBreakdown: ["my_mix", "preset", "described"].map((sessionSource) => ({
+      sessionSource, plays: 2, skipRate: 0.5, completionRate: 0.5, resonanceRate: 0,
+    })), sessionVariantBreakdown: [], habitMixPromotion: { automaticActivation: false, comparisons: [] } };
+    analyticsService.getAgentQualityDashboard.mockResolvedValue(report);
+    const response = await request(app.getHttpServer()).get("/analytics/agent/quality")
+      .set("Authorization", `Bearer ${authToken("operator", "admin")}`).expect(200);
+    expect(response.body).toEqual(report);
+    expect(authorizationService.assertCanReadAgentQualityDashboard).toHaveBeenCalledWith({ userId: "operator", role: "admin" });
+    authorizationService.assertCanReadAgentQualityDashboard.mockImplementation(() => { throw new ForbiddenException(); });
+    await request(app.getHttpServer()).get("/analytics/agent/quality")
+      .set("Authorization", `Bearer ${authToken("listener", "listener")}`).expect(403);
+  });
+
   it("returns the Home surface, variant, comparison and resonant sections unchanged", async () => {
     const dashboard = {
       summary: { sessionsStarted: 0 },

@@ -437,6 +437,11 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       // #1455 WS-8: discovery measurement. Labels and counts only; no bucket.
       railId: stringPayload(clean.payload, "railId"),
       rankerVariant: stringPayload(clean.payload, "rankerVariant"),
+      trackIds: arrayPayload(clean.payload, "trackIds"),
+      agentSessionId: stringPayload(clean.payload, "agentSessionId"),
+      sessionSource: stringPayload(clean.payload, "sessionSource"),
+      orderingVariant: stringPayload(clean.payload, "orderingVariant"),
+      explorationPick: booleanPayload(clean.payload, "explorationPick"),
       experimentKey: stringPayload(clean.payload, "experimentKey"),
       surface: stringPayload(clean.payload, "surface"),
       reason: stringPayload(clean.payload, "reason"),

@@ -200,7 +200,13 @@ export class AnalyticsController {
   }
 
   @Post("ingest")
-  async ingest(@Body() body: AnalyticsEventInput) {
+  async ingest(@Body() body: AnalyticsEventInput, @Request() req: any) {
+    // Habit experiment impressions are server-owned evidence. The browser
+    // telemetry routes derive identity; generic ingest must not bypass that.
+    if ((body?.eventName ?? body?.event_name) === "recommendation.generated" &&
+      body?.payload?.sessionSource !== undefined) {
+      this.analyticsAuthorizationService.assertCanReadAgentQualityDashboard(req?.user);
+    }
     return this.analyticsIngestService.ingest(body);
   }
 

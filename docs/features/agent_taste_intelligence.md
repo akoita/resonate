@@ -312,9 +312,8 @@ dimensions. No time zone or exact local time is collected.
 
 Home's `recommendation.served` and `recommendation.clicked` events remain the
 measurement base for discovery outcomes. The profile now computes decayed multidimensional weights (#2063), described
-below. My Mix and habit ordering are implemented in #2065–#2066; measurement remains tracked
-in [#2067](https://github.com/akoita/resonate/issues/2067)
-and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
+below. My Mix, habit ordering and measurement are implemented in #2065–#2067;
+see the [epic plan](../../.agents/plans/2061-habit-mixes.md).
 
 ### Verification
 
@@ -329,7 +328,7 @@ and the [branch plan](../../.agents/plans/2061-habit-mixes.md).
 
 Status: merged with #2062. Vision-neutral infrastructure (ADR-BM-6), enabling
 Line 4 Listener Pro, phase 4. Listening lanes are merged in #2064; My Mix is
-implemented in #2065, with habit-aware ordering in #2066. Measurement remains tracked by #2067.
+implemented in #2065, with habit-aware ordering in #2066. Measurement is implemented in #2067.
 
 `agent-taste-profile/v2` keeps the existing score, tier, favored genres and
 `genreWeights` fields consumed by Home and the AI DJ. It adds aggregate maps:
@@ -461,7 +460,7 @@ does not introduce a new model tool or authorize purchases.
 Revenue alignment: ADR-BM-6 Line 4, Listener Pro phase 4 candidate, with free
 basic mixes supporting Line 1 engagement. The advanced entitlement seam is OFF;
 saved named mixes, per-lane energy arcs and length/order controls are not
-available. Default habit ordering is described below; evaluation remains in #2067. No fees,
+available. Default habit ordering is described below; evaluation is implemented in #2067. No fees,
 royalty shares, payouts, deployment wiring or contract behavior change.
 
 Verification and API details: [implementation plan](../../.agents/plans/2065-my-mix.md).
@@ -507,7 +506,7 @@ Verification covers deterministic ties, duplicate track IDs, exact permutations,
 short runs and actual playback boundaries, decayed evidence, early skips,
 measured versus inferred energy, owner isolation and current consent/reset/hidden
 controls. See the [implementation plan](../../.agents/plans/2066-habit-ordering.md).
-Measurement remains tracked in [#2067](https://github.com/akoita/resonate/issues/2067).
+Measurement is implemented in [#2067](https://github.com/akoita/resonate/issues/2067).
 Advanced ordering styles remain behind the OFF Listener Pro seam; tempo,
 Camelot and DSP sequencing remain gated future work in
 [#1971](https://github.com/akoita/resonate/issues/1971).
@@ -1044,6 +1043,93 @@ The report tracks:
 The dashboard is aggregate-only. It does not expose raw listener histories,
 actor ids, wallet addresses, or per-user drilldowns.
 
+### Habit Mix measurement (#2067)
+
+Status: implemented measurement infrastructure. Vision-neutral under ADR-BM-6,
+serving Line 4 (Listener Pro) phase 4 decisions. It does not change fees,
+payouts, entitlements or the default session type.
+
+Operators use `GET /analytics/agent/quality`, behind the existing JWT and
+operator authorization, to compare `my_mix`, `preset` and `described` in
+`sessionSourceBreakdown`. `sessionVariantBreakdown` groups the same measures by
+source, experiment, ranker and ordering variant. A parsed session request is
+`described`; an explicit My Mix request is `my_mix`; other sessions are
+`preset`. These are server-derived categories, without preset names or prompts.
+
+Every returned DJ pick records a `recommendation.generated` impression with
+its track, pseudonymous actor, owner session, source, ranker, ordering and
+actual exploration designation. This changes DJ generation exposure from one
+row per batch to one row per pick. Home generation exposure remains per batch.
+The TypeScript warehouse and Python streaming transform preserve identical
+dimensions. Dashboard results contain aggregates, never actor/session IDs or
+listener histories.
+
+The new measures use attributed playback starts as their denominator:
+
+- Skip rate counts distinct skipped episodes; early skips are positions below
+  30 seconds. Completion requires at least 80% played, established by a matched
+  heartbeat position or completion ratio. The legacy completed event fires at
+  30 seconds and alone does not establish full-track completion.
+- Saves and playlist additions each count once per episode. Resonance is their
+  union, so saving and adding the same play does not double its rate.
+- Session length reports starts in tracks and measured played minutes. Minutes
+  use the largest observed outcome position, capped at known track duration;
+  unknown durations and silent wall-clock gaps do not contribute minutes.
+- Exploration acceptance counts exploration plays completed or saved, divided
+  by exploration starts. Playlist addition alone does not count as exploration
+  acceptance.
+
+Attribution requires a preceding impression for the same actor, owner session
+and track. Outcomes with a playback instance join that episode; ambiguous
+legacy outcomes are excluded. Saves and canonical playlist additions can join
+a recent same-actor track start within 30 minutes. Home rail attribution is
+excluded. Older events without these labels remain in legacy discovery
+metrics but cannot become evidence for this comparison. The measurement notes
+report dropped or incomplete attribution; these rates describe observed,
+consented playback rather than all listening.
+
+#### Experiment arms and promotion
+
+Reuse `DISCOVERY_RANKER_EXPERIMENT`, for example
+`habit_v1:my_mix_habits=34,my_mix_lanes=33,single_profile=33`.
+Assignment uses the existing stable user bucket and affects explicit My Mix
+requests only. `my_mix_habits` uses lanes plus habit ordering; `my_mix_lanes`
+uses lanes with neutral ordering; `single_profile` uses the deterministic
+single-profile selector without lane quotas. All arms preserve catalog safety,
+hidden taste, exploration and diversity. An invalid or absent experiment,
+and unrelated variant names, retain existing behavior. Empty lanes fall back
+and record the actual `single_profile` ordering instead of claiming habits ran.
+
+`habitMixPromotion` reports evidence only. Compare the randomized
+`my_mix_habits`/`habit` arm with `single_profile`/`single_profile` in the same
+experiment and `my_mix` source. Both arms need at least 100 attributed sessions
+and 500 starts, configured in `backend/src/config/habit_measurement.ts`.
+The candidate must have skip rate no higher than control and completion rate
+or resonance rate strictly higher. Preset and described source comparisons are
+descriptive, since choosing a session source is not randomized. Passing the
+rule does not activate a default or Listener Pro; an explicit product decision
+and rollout remain required.
+
+#### Offline replay
+
+`backend/scripts/eval_habit_mix.ts` reads a bounded training-mart export and a
+catalog fixture, with an explicit day-D cutoff. It rebuilds production listening
+lanes from history strictly before D, then evaluates later completions and
+saves/playlist additions. The lane-quota batch and genre-only v1 baseline
+share the lane-eligible listener cohort and eligible catalog pool,
+exclude training-seen tracks, and use shared recall@k and NDCG computation.
+Targets absent from the catalog or excluded as fully AI-generated are
+reported separately. Supply an eligible catalog snapshot with disclosure metadata;
+omitted disclosure stays unspecified under the existing legacy policy. This isolates quota
+and metadata fit; it is not an evaluation of semantic retrieval, live consent
+availability or habit transition quality.
+
+Run the CLI without production credentials, using the documented arguments in
+[the implementation plan](../../.agents/plans/2067-habit-measurement.md).
+Validation covers pure replay, aggregation edge cases, real-ledger impressions
+and source metrics, warehouse parity, and the authorized HTTP response shape.
+There is no listener UI or User Guide change in this slice.
+
 ### Discovery measurement (#1455 WS-8, first slice)
 
 Status: `partial`. **Vision alignment (ADR-BM-6):** vision-neutral measurement
@@ -1127,9 +1213,9 @@ and a new key reshuffles everyone. `backend/src/modules/recommendations/
 discovery_experiment.ts` is the pure module. The Home feed response carries
 `rankerVariant` and `experimentKey`; the web forwards them on
 `recommendation.served` and `recommendation.clicked`. Home and the AI DJ record
-them on `recommendation.generated` (`surface` is `home` or `dj`). This slice
-only records and reports variants: every variant runs the same ranker. The
-bucket itself is never stored or reported.
+them on `recommendation.generated` (`surface` is `home` or `dj`). Home variants remain labels only. Explicit My Mix sessions use the arms
+described above; other variant names retain existing behavior. The bucket
+itself is never stored or reported.
 
 **DJ outcomes per variant (#2005).** The `POST /sessions/agent/next` response
 now carries `rankerVariant` (and `experimentKey` when an experiment is

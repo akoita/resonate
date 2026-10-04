@@ -406,7 +406,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "recommendations-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount", "cohortInfluence", "surface", "rankerVariant", "experimentKey"],
+    payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount", "cohortInfluence", "surface", "rankerVariant", "experimentKey", "trackId", "agentSessionId", "sessionSource", "orderingVariant", "explorationPick"],
   },
   {
     // #1449 WS-2: Home ranking impressions — which ranked items were shown.
