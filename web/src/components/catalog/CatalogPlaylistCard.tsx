@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import type { PublicPlaylistSummary } from "../../lib/api";
+import { API_BASE, type PublicPlaylistSummary, type PublicPlaylistTrack } from "../../lib/api";
 import { formatCount } from "../../lib/catalogDisplay";
 
 /**
@@ -57,6 +57,22 @@ export function playlistCoverUrls(
   for (const trackId of trackIds.slice(0, COVER_TRACK_SAMPLE)) {
     const url = coverFor(trackId);
     if (url && !covers.includes(url)) covers.push(url);
+    if (covers.length >= 4) break;
+  }
+  return covers;
+}
+
+/**
+ * Cover URLs for a full public playlist (e.g. one saved to the library): the
+ * distinct artwork of its playable tracks, in playlist order, capped at four —
+ * the same cover set its catalog card shows.
+ */
+export function publicPlaylistCoverUrls(tracks: readonly PublicPlaylistTrack[]): string[] {
+  const covers: string[] = [];
+  for (const track of tracks) {
+    if (!track.playable || !track.artworkPath) continue;
+    const url = `${API_BASE}${track.artworkPath}`;
+    if (!covers.includes(url)) covers.push(url);
     if (covers.length >= 4) break;
   }
   return covers;

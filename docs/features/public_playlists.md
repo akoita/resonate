@@ -84,8 +84,9 @@ reported as "already in playlist" instead of creating a duplicate. Dragging a tr
 playlist copies it (the source keeps it); dropping it on its own playlist
 reorders. Playlist tracks do not need to be saved in the library:
 catalog tracks resolve through the catalog with a playable stream URL, so they
-play either way. Library playlist cards show the same 2×2 cover mosaic as
-catalog playlist cards.
+play either way. Library playlist cards — your own and the public playlists
+you saved — show the same 2×2 cover mosaic as catalog playlist cards (a saved
+playlist's covers come from its playable tracks, as in the catalog).
 
 Note: a playlist that only exists on your device must be synced to your account
 before it can be shared (the Share toggle is disabled until then).
