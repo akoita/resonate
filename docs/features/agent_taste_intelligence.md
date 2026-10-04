@@ -78,22 +78,20 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > (genres, moods, energy, tempo) travel on to the session, and analytics carry
 > filter keys and counts only. The saved vibes in Settings are never written.
 
-> **The session's own request outranks learned taste (#2059).** Vision-neutral
-> quality. A DJ session searches learned favourites, saved vibes and its own
-> genres together, and learned-genre tracks also carried up to +18
-> `learned_preference`, so a calm preset could play the listener's usual Pop.
-> The session's own genres and moods (preset or described session, sent as
-> `sessionGenres` plus `mood`/`moods`) now give matching tracks a
-> `session_request` signal at the declared-preference weight (20, above the
-> learned cap), reason `session_fit`; learned favourites and saved vibes still
-> fill the remaining slots, and the coverage notes still report misses. Home
-> and sessions without their own request rank as before. Three mood presets
-> used values outside the catalog vocabulary and now use upload-form genres:
-> Pulse Raid (Trap, Drum & Bass, EDM), Liquid Sky (Soul, Jazz, Trip-Hop; mood
-> Chill stays, it is an upload mood tag) and Static Calm (Ambient, New Age,
-> Classical); Neural Flow spells Lo-Fi. The upload form's lists now live in
-> `web/src/lib/catalogVocabulary.ts`, and a test fails if any preset genre or
-> mood leaves them.
+> **Session requests receive priority (#2059).** Vision-neutral quality. A
+> preset or described session keeps its own genres and moods separate from
+> learned favourites. A matching track receives one `session_request` boost at
+> weight 20, above the learned-preference cap of 18. Taste-memory hide and
+> downrank controls still apply. My Mix uses its lane-local request for this
+> boost, without adding a second ordinary-session boost. Learned favourites
+> fill remaining slots, and coverage notes report misses. Home and sessions
+> without a request retain their existing ranking.
+>
+> Mood presets use the shared upload vocabulary: Pulse Raid (Trap, Drum &
+> Bass, EDM), Liquid Sky (Soul, Jazz, Trip-Hop; Chill mood), Static Calm
+> (Ambient, New Age, Classical), and Neural Flow (Lo-Fi). The upload options
+> live in `web/src/lib/catalogVocabulary.ts`; preset tests check that every
+> genre and mood belongs to that vocabulary.
 
 > **Next AI Pick keeps going on a small catalog (#2056).** Vision-neutral
 > quality: no money, payout or fee changes. A listening session used to
@@ -278,22 +276,255 @@ Optional columns:
 | `model_version` | `STRING` | Training or materialization version. |
 | `updated_at` | `TIMESTAMP` or `STRING` | Freshness marker. |
 
-## Signal Completeness (#1449 WS-2)
+## Learning from listening habits (#2062)
 
-The learning loop now sees the full implicit-feedback set without any client
-POSTing agent signals:
+Status: `implemented` locally; the broader [habit-mixes epic #2061](https://github.com/akoita/resonate/issues/2061)
+remains `in-progress`. This slice is vision-neutral infrastructure (ADR-BM-6),
+enabling Line 4 Listener Pro, phase 4, without fee, payout or purchase changes.
 
-- `playback.started` auto-mirrors into an `accept` (+1) AgentSignal;
-  `playback.completed` already mirrored `complete` (+1.5); the new explicit
-  `playback.skipped` event mirrors `skip` (−1) with the skip `positionMs` —
-  a deliberate early skip is now distinct from a short listen.
-- Agent-originated playback is **excluded** from mirroring (the agent runtime
-  records its own signals — no double-counting), and consent gating
-  (`shouldTrainAgentPlayback`) is enforced inside `recordSignal` on every path.
-- Home emits `recommendation.served` (one per rail render: requestId, railId,
-  trackIds, count) and `recommendation.clicked` (per action: trackId,
-  position) — the measurement base for WS-8 and for training on Home outcomes.
-  The `/recommendations` response carries the correlating `requestId`.
+The player feeds bounded feedback through analytics instrumentation into
+`AgentSignal`. Weights and the seven-day replay lookback live in
+`backend/src/config/agent_learning.ts`.
+
+| Consented action | Signal | Weight |
+| --- | --- | --- |
+| Playback starts, including playlist starts | `accept` | +1 |
+| Deliberate skip | `skip` | −1 |
+| First completion, or no recent completion | `complete` | +1.5 |
+| Completion following a completion/replay in the last seven days | `replay` | +2 |
+| Segment loop enabled or finite repeat count set | `loop` | +2.5 |
+| Library save / removal | `save` / `unsave` | +3 / −2 |
+| Track added to playlist | `add_to_playlist` | +3 |
+
+A replay replaces the completion signal for that occurrence. Repeat-one cycles
+qualify through their preceding completion; merely enabling repeat-one does not
+make the first play a replay. Replay history is scoped to the listener and track
+and excludes pre-reset signals. Heartbeats and loop/repeat updates or clears do
+not create learning signals. Agent-originated playback is excluded from the
+analytics mirror because the agent runtime records its own signals.
+
+Loop intent is capped once per track and browser session across segment loops
+and finite repeat counts. Playback instance IDs and client event IDs suppress
+retries; database-backed deduplication and serialized user writes also cover
+concurrent requests. Playlist starts retain `playlistId` on their existing
+`accept` signal. `playlist.played` is not mirrored again, avoiding two signals
+for one start. Browser session IDs are pseudonymized in metadata, separate from the agent
+`Session` foreign key. `loop` and `unsave` are telemetry-only actions on this
+path; the manual agent-signals endpoint cannot bypass their consent and
+deduplication controls.
+
+The authenticated analytics routes require current product-analytics consent.
+Persistence rechecks that consent and `agentPlaybackTrainingEnabled` for mirrored
+feedback. A refusal or disabled training produces no habit signal. Existing
+Taste Memory hide, downrank and reset controls continue to govern the learned
+profile.
+
+Playback lifecycle and completion payloads carry optional `localHourBucket`
+(`night`, `morning`, `afternoon`, `evening`) and `weekdayKind` (`weekday`,
+`weekend`). The browser computes these locally; the API rejects invalid values
+with 400. Only the bounded categories reach signal metadata and warehouse fact
+dimensions. No time zone or exact local time is collected.
+
+Home's `recommendation.served` and `recommendation.clicked` events remain the
+measurement base for discovery outcomes. The profile now computes decayed multidimensional weights (#2063), described
+below. My Mix, habit ordering and measurement are implemented in #2065–#2067;
+see the [epic plan](../../.agents/plans/2061-habit-mixes.md).
+
+### Verification
+
+- Backend: focused analytics controller HTTP, instrumentation, warehouse/parity
+  and agent-habit integration tests. The integration fixtures exercise real
+  Postgres persistence, concurrent retries, consent and training gates.
+- Web: fixed-clock playback context boundaries and payload/provenance tests.
+- Dataflow: `python -B -m unittest test_analytics_transform` verifies fact
+  dimensions; shared playback fixtures keep TypeScript/Python transforms aligned.
+
+## Habit profile v2 (#2063)
+
+Status: merged with #2062. Vision-neutral infrastructure (ADR-BM-6), enabling
+Line 4 Listener Pro, phase 4. Listening lanes are merged in #2064; My Mix is
+implemented in #2065, with habit-aware ordering in #2066. Measurement is implemented in #2067.
+
+`agent-taste-profile/v2` keeps the existing score, tier, favored genres and
+`genreWeights` fields consumed by Home and the AI DJ. It adds aggregate maps:
+
+| Dimension | Source |
+| --- | --- |
+| Genre and mood | Release genre and mood labels |
+| Artist | Credited artist labels, with catalog artist metadata as fallback |
+| Energy band and tempo band | Current original full-mix measurements; missing, inferred or unreliable tempo is omitted |
+| Context | Eight possible hour-bucket × weekday/weekend combinations, each with genre and mood weights |
+
+Behavioral weights halve every 60 days. Purchase, pledge and collect weights
+halve every 365 days; this profile does not introduce new commerce ingestion.
+History is bounded to the newest 500 signals within 730 days. These limits and
+half-lives live in `backend/src/config/agent_learning.ts`. Declared controls do
+not decay. Hidden genre/artist tracks are excluded, hidden moods are removed,
+and downrank/boost multipliers apply to their dimension and contextual weights.
+Reset excludes signals at or before its marker across all dimensions.
+
+Signal writes persist the v2 profile on `AgentConfig.learnedTasteProfile`.
+Shared profile reads recompute bounded history so time decay and current
+controls take effect without another play. A valid legacy v1 snapshot remains
+readable where no signal history exists to upgrade it. Older clients can keep
+using genre fields; additional maps are optional in client types.
+
+In **Settings → Taste Memory**, safe summaries show top genres, moods, credited
+artists, measured energy/tempo bands, and contextual preferences such as
+evenings on weekdays. Summaries contain no itemized playback history, track IDs,
+exact local timestamps or time zones. Empty dimensions say there is not enough
+signal yet. Reset clears every learned summary while retaining declared edits.
+
+Verification: fixed-clock learning tests cover decay, controls, reset, bounds
+and compatibility; real Postgres tests cover feature provenance, persistence,
+profile resolution and safe summaries. Component tests cover older responses,
+new summary rows and reset. See the [implementation plan](../../.agents/plans/2063-habit-profile-v2.md).
+
+## Listening lanes (#2064)
+
+Status: merged on the #2063 dependency; the parent feature remains
+partial. Vision-neutral infrastructure (ADR-BM-6), enabling Line 4 Listener Pro,
+phase 4. Lane summaries and controls in Taste Memory remain free. My Mix and
+quota editing are described below in [#2065](https://github.com/akoita/resonate/issues/2065).
+
+A lane captures a repeated side of a listener's taste, such as weekday-evening
+Soul or weekend Dancehall. The deterministic computation groups governed genre,
+mood and coarse context evidence by session and assigns sorted groups to
+similar centroids. Similarity compares normalized category proportions; signed
+weights retain evidence strength, so skips and removals reduce matching habits.
+This bounded greedy method does not seek a globally optimal partition. It uses
+catalog vocabulary from `taste_edit_vocabulary.ts`; aliases normalize to catalog
+terms and unsupported labels are omitted. No model or embeddings name lanes.
+Energy bands require measured full-mix features.
+
+Evidence uses the v2 decay, reset and hidden/downrank/boost policies. A lane
+requires at least two sessions and the configured minimum decayed weight.
+Missing session identity cannot establish repeated evidence. At most six lanes
+are returned; two observed lanes are valid and the system does not invent a
+third. Insufficient evidence returns no lanes, allowing callers to use the
+existing single-profile fallback. Thresholds live in
+`backend/src/config/agent_learning.ts`.
+
+`GET /recommendations/taste-memory` adds optional `summary.listeningLanes` cards
+with catalog genre/mood weights, a strength share, coarse contextual weights,
+measured energy and an opaque ID. Cards include hidden state for restoration.
+`POST /recommendations/taste-memory/signals` accepts a current listener-owned
+lane ID with `signalType: "lane"` and `action: "hidden"`; downranking lanes is
+rejected. The existing owned-control DELETE restores it. Mix-facing
+`resolveListeningLanes` excludes hidden lanes. Home uses the shared profile;
+the DJ uses lanes when the listener chooses My Mix.
+
+Derived summaries are cached per user and profile version in a bounded
+128-entry process-local cache. The version covers bounded history, catalog
+features, sessions and controls, with an hourly epoch for silent decay. Reads
+still query bounded history to detect edits; cache entries retain derived
+summaries only. Reset clears lane cards and lane hides while preserving declared
+preferences and ordinary catalog controls. No raw sessions, tracks or precise
+listening timestamps appear in lane summaries.
+
+Verification covers fixed-history determinism, evidence thresholds, catalog
+labels, hidden values, measured energy and bounded computation. Real Postgres
+checks cover cache invalidation, user isolation, hide/restore and reset; mounted
+browser checks cover the corresponding cards. See the
+[implementation plan](../../.agents/plans/2064-listening-lanes.md).
+
+## My Mix (#2065)
+
+My Mix appears first among the AI DJ quick starts when Taste Memory has visible
+listening lanes. It blends those lanes into one free session. Stronger lanes
+receive more picks, and the broad local time context increases the share of
+lanes associated with that time. The client sends only the existing coarse
+time-of-day and weekday/weekend categories. Largest-remainder rounding turns
+the shares into whole-track quotas for each batch.
+
+Before starting or while listening, remove a lane, boost its share, or add a
+catalog genre or mood. These edits affect the session only. Saving a preference
+to Taste Memory is a separate explicit action that saves added categories and
+boosted lanes' catalog terms, leaving removed lanes as session-only choices.
+The editor reads the full vocabulary from the authenticated
+`GET /agents/config/session/mix-vocabulary` route. The server resolves current
+listener-owned visible lanes on every run; client labels and weights cannot
+override hidden taste or invent learned lanes.
+
+Each lane ranks tracks as a session request, then the shared policy applies
+hidden taste, AI-content exclusions, exploration and artist diversity globally.
+My Mix supplies the optional `sessionRequest` ranking context, with its boost
+above the learned-preference cap. Home and ordinary sessions do not supply this
+new context in this slice; the broader preset/request fixes remain in #2059.
+Exploration picks can satisfy a matching lane quota. Missing slots transfer to
+stronger lanes before the existing catalog fallback. Original lane coverage
+remains visible: unrelated fallback tracks never count as covering a lane.
+
+Unmet lane requests use the existing consent-gated unmet-demand mechanism.
+Pick explanations name the actual lane and preserve discovery explanations.
+The existing demand source attributes observations only to verified playable
+catalog owners. A wholly absent genre still appears as missing coverage, but
+does not produce an artist-attributed observation without catalog evidence.
+
+Session start and Next Pick bind lane reads to the authenticated owner.
+`GET /agents/config/session/:sessionId/mix-coverage` returns initial coverage
+from a bounded ephemeral cache; Next Pick includes `mixCoverage` directly.
+Lane labels and IDs never enter the public live event feed. Cache loss means
+initial coverage is unavailable until another pick, rather than stored history.
+
+My Mix uses the deterministic orchestrator even when a model runtime is
+configured, so quotas and coverage do not depend on model output. Without lanes,
+the existing presets and single-profile behavior remain available. This slice
+does not introduce a new model tool or authorize purchases.
+
+Revenue alignment: ADR-BM-6 Line 4, Listener Pro phase 4 candidate, with free
+basic mixes supporting Line 1 engagement. The advanced entitlement seam is OFF;
+saved named mixes, per-lane energy arcs and length/order controls are not
+available. Default habit ordering is described below; evaluation is implemented in #2067. No fees,
+royalty shares, payouts, deployment wiring or contract behavior change.
+
+Verification and API details: [implementation plan](../../.agents/plans/2065-my-mix.md).
+
+## Habit-aware ordering (#2066)
+
+My Mix keeps its selected tracks and quotas, then groups picks into short lane
+runs before planning transitions. Default ordering is free (ADR-BM-6 Line 4,
+Listener Pro phase 4 candidate; free basics support Line 1 engagement). No fee,
+payout, purchase or entitlement activation changes.
+
+The owner-scoped ordering service derives decayed lane-pair counts from the
+existing, bounded `AgentSignal` history. Only trusted playback telemetry with
+current analytics consent and enabled playback training teaches transitions.
+An actual playback start establishes an episode; completion, replay or a save
+supports its incoming transition, while a skip within 30 seconds and the first
+quarter of a known duration counts against it. Retries count once, delayed
+outcomes attach to their original episode, and unmatched or currently hidden
+music breaks the chain. Reset and current hidden controls apply on every read.
+No new raw history, persistent transition table or public taste payload is added.
+
+Central defaults require three decayed transitions overall and one for a lane
+pair. Short runs aim for three tracks, with a maximum of four where a suitable
+switch exists. Learned ordering avoids a habitually skipped transition when an
+alternative exists; sparse evidence uses lane strength, measured energy
+continuity and original rank. Only measured features constrain energy jumps.
+A jump of two energy bands needs three decayed positive examples and a positive
+share of at least 75%, unless no compatible remaining pick exists.
+
+Across batches, the boundary comes from actual started playback associated
+with the DJ session, rather than queued picks. Ordering returns a permutation
+of the exact selected objects, preserving exploration, artist diversity,
+explicit/AI/hidden filters, lane assignments, coverage and pick explanations.
+An unavailable history read falls back to neutral ordering. Ordinary sessions
+keep their existing rank order.
+
+Owner-only session history can include `mixTrackIds`, the ordered latest batch
+from the existing bounded My Mix cache. Initial autoplay uses these IDs instead
+of unordered pick-log rows. Cache loss retains the existing history fallback;
+this field does not store actual playback or transition counts.
+
+Verification covers deterministic ties, duplicate track IDs, exact permutations,
+short runs and actual playback boundaries, decayed evidence, early skips,
+measured versus inferred energy, owner isolation and current consent/reset/hidden
+controls. See the [implementation plan](../../.agents/plans/2066-habit-ordering.md).
+Measurement is implemented in [#2067](https://github.com/akoita/resonate/issues/2067).
+Advanced ordering styles remain behind the OFF Listener Pro seam; tempo,
+Camelot and DSP sequencing remain gated future work in
+[#1971](https://github.com/akoita/resonate/issues/1971).
 
 ## Unified Ranking Core (#1448 WS-1)
 
@@ -804,8 +1035,8 @@ The detailed handoff is documented in
 
 The realtime `AgentSignal` loop now records privacy-safe
 `agent-signal-metadata/v1` context for Session Intent picks and mirrors
-available playback completions plus library saves into `complete` and `save`
-signals. Stop events annotate existing session signals with coarse
+playback, loop intent, library saves/removals and playlist additions into
+weighted signals as described in [Learning from listening habits](#learning-from-listening-habits-2062). Stop events annotate existing session signals with coarse
 `sessionDurationMs`.
 
 ## Quality Dashboard
@@ -826,6 +1057,93 @@ The report tracks:
 
 The dashboard is aggregate-only. It does not expose raw listener histories,
 actor ids, wallet addresses, or per-user drilldowns.
+
+### Habit Mix measurement (#2067)
+
+Status: implemented measurement infrastructure. Vision-neutral under ADR-BM-6,
+serving Line 4 (Listener Pro) phase 4 decisions. It does not change fees,
+payouts, entitlements or the default session type.
+
+Operators use `GET /analytics/agent/quality`, behind the existing JWT and
+operator authorization, to compare `my_mix`, `preset` and `described` in
+`sessionSourceBreakdown`. `sessionVariantBreakdown` groups the same measures by
+source, experiment, ranker and ordering variant. A parsed session request is
+`described`; an explicit My Mix request is `my_mix`; other sessions are
+`preset`. These are server-derived categories, without preset names or prompts.
+
+Every returned DJ pick records a `recommendation.generated` impression with
+its track, pseudonymous actor, owner session, source, ranker, ordering and
+actual exploration designation. This changes DJ generation exposure from one
+row per batch to one row per pick. Home generation exposure remains per batch.
+The TypeScript warehouse and Python streaming transform preserve identical
+dimensions. Dashboard results contain aggregates, never actor/session IDs or
+listener histories.
+
+The new measures use attributed playback starts as their denominator:
+
+- Skip rate counts distinct skipped episodes; early skips are positions below
+  30 seconds. Completion requires at least 80% played, established by a matched
+  heartbeat position or completion ratio. The legacy completed event fires at
+  30 seconds and alone does not establish full-track completion.
+- Saves and playlist additions each count once per episode. Resonance is their
+  union, so saving and adding the same play does not double its rate.
+- Session length reports starts in tracks and measured played minutes. Minutes
+  use the largest observed outcome position, capped at known track duration;
+  unknown durations and silent wall-clock gaps do not contribute minutes.
+- Exploration acceptance counts exploration plays completed or saved, divided
+  by exploration starts. Playlist addition alone does not count as exploration
+  acceptance.
+
+Attribution requires a preceding impression for the same actor, owner session
+and track. Outcomes with a playback instance join that episode; ambiguous
+legacy outcomes are excluded. Saves and canonical playlist additions can join
+a recent same-actor track start within 30 minutes. Home rail attribution is
+excluded. Older events without these labels remain in legacy discovery
+metrics but cannot become evidence for this comparison. The measurement notes
+report dropped or incomplete attribution; these rates describe observed,
+consented playback rather than all listening.
+
+#### Experiment arms and promotion
+
+Reuse `DISCOVERY_RANKER_EXPERIMENT`, for example
+`habit_v1:my_mix_habits=34,my_mix_lanes=33,single_profile=33`.
+Assignment uses the existing stable user bucket and affects explicit My Mix
+requests only. `my_mix_habits` uses lanes plus habit ordering; `my_mix_lanes`
+uses lanes with neutral ordering; `single_profile` uses the deterministic
+single-profile selector without lane quotas. All arms preserve catalog safety,
+hidden taste, exploration and diversity. An invalid or absent experiment,
+and unrelated variant names, retain existing behavior. Empty lanes fall back
+and record the actual `single_profile` ordering instead of claiming habits ran.
+
+`habitMixPromotion` reports evidence only. Compare the randomized
+`my_mix_habits`/`habit` arm with `single_profile`/`single_profile` in the same
+experiment and `my_mix` source. Both arms need at least 100 attributed sessions
+and 500 starts, configured in `backend/src/config/habit_measurement.ts`.
+The candidate must have skip rate no higher than control and completion rate
+or resonance rate strictly higher. Preset and described source comparisons are
+descriptive, since choosing a session source is not randomized. Passing the
+rule does not activate a default or Listener Pro; an explicit product decision
+and rollout remain required.
+
+#### Offline replay
+
+`backend/scripts/eval_habit_mix.ts` reads a bounded training-mart export and a
+catalog fixture, with an explicit day-D cutoff. It rebuilds production listening
+lanes from history strictly before D, then evaluates later completions and
+saves/playlist additions. The lane-quota batch and genre-only v1 baseline
+share the lane-eligible listener cohort and eligible catalog pool,
+exclude training-seen tracks, and use shared recall@k and NDCG computation.
+Targets absent from the catalog or excluded as fully AI-generated are
+reported separately. Supply an eligible catalog snapshot with disclosure metadata;
+omitted disclosure stays unspecified under the existing legacy policy. This isolates quota
+and metadata fit; it is not an evaluation of semantic retrieval, live consent
+availability or habit transition quality.
+
+Run the CLI without production credentials, using the documented arguments in
+[the implementation plan](../../.agents/plans/2067-habit-measurement.md).
+Validation covers pure replay, aggregation edge cases, real-ledger impressions
+and source metrics, warehouse parity, and the authorized HTTP response shape.
+There is no listener UI or User Guide change in this slice.
 
 ### Discovery measurement (#1455 WS-8, first slice)
 
@@ -910,9 +1228,9 @@ and a new key reshuffles everyone. `backend/src/modules/recommendations/
 discovery_experiment.ts` is the pure module. The Home feed response carries
 `rankerVariant` and `experimentKey`; the web forwards them on
 `recommendation.served` and `recommendation.clicked`. Home and the AI DJ record
-them on `recommendation.generated` (`surface` is `home` or `dj`). This slice
-only records and reports variants: every variant runs the same ranker. The
-bucket itself is never stored or reported.
+them on `recommendation.generated` (`surface` is `home` or `dj`). Home variants remain labels only. Explicit My Mix sessions use the arms
+described above; other variant names retain existing behavior. The bucket
+itself is never stored or reported.
 
 **DJ outcomes per variant (#2005).** The `POST /sessions/agent/next` response
 now carries `rankerVariant` (and `experimentKey` when an experiment is

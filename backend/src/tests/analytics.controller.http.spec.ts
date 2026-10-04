@@ -225,6 +225,29 @@ describe("AnalyticsController (HTTP)", () => {
     }));
   });
 
+  it("rejects listener-supplied server-owned habit impressions through generic ingest", async () => {
+    authorizationService.assertCanReadAgentQualityDashboard.mockImplementation(() => { throw new ForbiddenException(); });
+    await request(app.getHttpServer()).post("/analytics/ingest")
+      .set("Authorization", `Bearer ${authToken("listener", "listener")}`)
+      .send({ event_name: "recommendation.generated", payload: { sessionSource: "my_mix", rankerVariant: "my_mix_habits" } })
+      .expect(403);
+    expect(ingestService.ingest).not.toHaveBeenCalled();
+  });
+
+  it("returns aggregate habit session sources and promotion evidence only to authorized operators", async () => {
+    const report = { sessionSourceBreakdown: ["my_mix", "preset", "described"].map((sessionSource) => ({
+      sessionSource, plays: 2, skipRate: 0.5, completionRate: 0.5, resonanceRate: 0,
+    })), sessionVariantBreakdown: [], habitMixPromotion: { automaticActivation: false, comparisons: [] } };
+    analyticsService.getAgentQualityDashboard.mockResolvedValue(report);
+    const response = await request(app.getHttpServer()).get("/analytics/agent/quality")
+      .set("Authorization", `Bearer ${authToken("operator", "admin")}`).expect(200);
+    expect(response.body).toEqual(report);
+    expect(authorizationService.assertCanReadAgentQualityDashboard).toHaveBeenCalledWith({ userId: "operator", role: "admin" });
+    authorizationService.assertCanReadAgentQualityDashboard.mockImplementation(() => { throw new ForbiddenException(); });
+    await request(app.getHttpServer()).get("/analytics/agent/quality")
+      .set("Authorization", `Bearer ${authToken("listener", "listener")}`).expect(403);
+  });
+
   it("returns the Home surface, variant, comparison and resonant sections unchanged", async () => {
     const dashboard = {
       summary: { sessionsStarted: 0 },
@@ -360,6 +383,57 @@ describe("AnalyticsController (HTTP)", () => {
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
       actorUserId: "listener-1",
     }));
+  });
+
+  describe("coarse playback context (#2062)", () => {
+    const routes = ["/analytics/playback/event", "/analytics/playback/completed"];
+    const validBody = (route: string) => route.endsWith("completed")
+      ? { trackId: "track-1", completionRatio: 1 }
+      : { action: "started", trackId: "track-1" };
+
+    it.each(routes)("forwards only coarse context on %s", async (route) => {
+      await request(app.getHttpServer()).post(route)
+        .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+        .send({ ...validBody(route), localHourBucket: "evening", weekdayKind: "weekend",
+          playlistId: "playlist-1", playbackInstanceId: "instance-1", repeatMode: "one",
+          timeZone: "Europe/Paris", localTime: "22:14:35", actorUserId: "other-user" })
+        .expect(201);
+      const method = route.endsWith("completed")
+        ? instrumentationService.recordPlaybackCompleted : instrumentationService.recordPlaybackLifecycle;
+      expect(method).toHaveBeenCalledWith(expect.objectContaining({ localHourBucket: "evening",
+        weekdayKind: "weekend", playlistId: "playlist-1", playbackInstanceId: "instance-1",
+        repeatMode: "one", actorUserId: "listener-1", consentBasis: "consent" }));
+      expect(method.mock.calls[0][0]).not.toHaveProperty("timeZone");
+      expect(method.mock.calls[0][0]).not.toHaveProperty("localTime");
+    });
+
+    it.each(routes.flatMap(route => [
+      [route, "localHourBucket", "midnight"], [route, "localHourBucket", 23],
+      [route, "localHourBucket", null], [route, "localHourBucket", " evening "],
+      [route, "weekdayKind", "Friday"], [route, "weekdayKind", ["weekday"]],
+      [route, "weekdayKind", null], [route, "weekdayKind", ""],
+    ]))("rejects invalid context on %s: %s=%j", async (route, field, value) => {
+      await request(app.getHttpServer()).post(route as string)
+        .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+        .send({ ...validBody(route as string), [field as string]: value }).expect(400);
+      expect(instrumentationService.recordPlaybackCompleted).not.toHaveBeenCalled();
+      expect(instrumentationService.recordPlaybackLifecycle).not.toHaveBeenCalled();
+    });
+
+    it.each(["night", "morning", "afternoon", "evening"])("accepts hour bucket %s", async (localHourBucket) => {
+      for (const weekdayKind of ["weekday", "weekend"]) {
+        await request(app.getHttpServer()).post("/analytics/playback/event")
+          .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+          .send({ action: "heartbeat", trackId: "track-1", localHourBucket, weekdayKind }).expect(201);
+      }
+    });
+
+    it("rejects invalid completion repeat mode", async () => {
+      await request(app.getHttpServer()).post("/analytics/playback/completed")
+        .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+        .send({ trackId: "track-1", completionRatio: 1, repeatMode: "forever" }).expect(400);
+      expect(instrumentationService.recordPlaybackCompleted).not.toHaveBeenCalled();
+    });
   });
 
   it("rejects malformed playback completion payloads", async () => {

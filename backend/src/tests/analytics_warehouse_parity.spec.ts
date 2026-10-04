@@ -52,6 +52,14 @@ describe("batch/streaming warehouse parity", () => {
         creditedArtistName: "Artist", creditedArtistIds: ["credited"], creditedArtistNames: ["Artist"],
         creatorOwner: true, remixId: "remix", sourceTrackId: "track", stemIds: ["stem"] } }]);
   });
+  it("preserves My Mix categorical measurement and owner-session attribution", () => {
+    compare([{ ...base, eventId: "habit-impression", eventName: "recommendation.generated", actorId: "actor",
+      payload: { trackId: "track", trackIds: ["track"], agentSessionId: "agent-session", surface: "dj",
+        sessionSource: "my_mix", rankerVariant: "my_mix_habits", orderingVariant: "habit",
+        experimentKey: "habit-test", explorationPick: true } },
+      { ...base, eventId: "habit-start", eventName: "playback.started", actorId: "actor", sessionId: "browser",
+        payload: { trackId: "track", agentSessionId: "agent-session", playbackInstanceId: "instance" } }]);
+  });
   it("quarantines unsupported families and versions without creating facts", () => {
     compare([{ ...base, eventId: "unknown", eventName: "unknown.created", payload: {} },
       { ...base, eventId: "future", eventName: "playback.completed", eventVersion: 999, payload: {} }]);

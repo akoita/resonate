@@ -180,6 +180,11 @@ describe("AnalyticsInstrumentationService", () => {
       source: "web_player",
       completionRatio: 0.95,
       durationMs: 180000,
+      playbackInstanceId: "playback-instance-1",
+      repeatMode: "one",
+      playlistId: "playlist-1",
+      localHourBucket: "night",
+      weekdayKind: "weekday",
     });
 
     expect(agentLearning.recordSignal).toHaveBeenCalledWith({
@@ -192,13 +197,41 @@ describe("AnalyticsInstrumentationService", () => {
         source: "web_player",
         initiator: "listener",
         agentOriginated: false,
+        playbackInstanceId: "playback-instance-1",
+        playlistId: "playlist-1",
+        localHourBucket: "night",
+        weekdayKind: "weekday",
+        repeatMode: "one",
         outcome: {
           type: "playback_completed",
           completionRatio: 0.95,
           durationMs: 180000,
         },
       },
+      telemetry: {
+        playbackSessionId: "playback-session-1",
+        dedupKey: expect.stringMatching(/^agent_signal_[a-f0-9]{64}$/),
+      },
     });
+  });
+
+  it("does not mirror agent-originated completions", async () => {
+    const agentLearning = { recordSignal: jest.fn().mockResolvedValue({}) };
+    const instrumentation = new AnalyticsInstrumentationService(
+      new AnalyticsIngestService(),
+      undefined,
+      agentLearning as any,
+    );
+
+    await instrumentation.recordPlaybackCompleted({
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorUserId: "user-1",
+      agentOriginated: true,
+      completionRatio: 1,
+    });
+
+    expect(agentLearning.recordSignal).not.toHaveBeenCalled();
   });
 
   it("mirrors a deliberate skip into a negative AgentSignal (#1449)", async () => {
@@ -218,6 +251,7 @@ describe("AnalyticsInstrumentationService", () => {
       artistId: "artist-1",
       actorUserId: "user-1",
       sessionId: "playback-session-1",
+      playbackInstanceId: "skip-instance-1",
       source: "web_player",
       positionMs: 12000,
       durationMs: 180000,
@@ -236,6 +270,10 @@ describe("AnalyticsInstrumentationService", () => {
             type: "playback_skipped",
             positionMs: 12000,
           }),
+        }),
+        telemetry: expect.objectContaining({
+          playbackSessionId: "playback-session-1",
+          dedupKey: expect.stringMatching(/^agent_signal_[a-f0-9]{64}$/),
         }),
       }),
     );
@@ -257,10 +295,30 @@ describe("AnalyticsInstrumentationService", () => {
       trackId: "track-1",
       artistId: "artist-1",
       actorUserId: "user-1",
+      sessionId: "browser-session-1",
+      agentSessionId: "dj-session-1",
+      playbackInstanceId: "playback-instance-1",
+      playlistId: "playlist-1",
+      localHourBucket: "afternoon",
+      weekdayKind: "weekend",
       source: "web_player",
     } as any);
     expect(agentLearning.recordSignal).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "accept", trackId: "track-1" }),
+      expect.objectContaining({
+        action: "accept",
+        trackId: "track-1",
+        metadata: expect.objectContaining({
+          agentSessionId: "dj-session-1",
+          playlistId: "playlist-1",
+          localHourBucket: "afternoon",
+          weekdayKind: "weekend",
+          playbackInstanceId: "playback-instance-1",
+        }),
+        telemetry: {
+          playbackSessionId: "browser-session-1",
+          dedupKey: expect.stringMatching(/^agent_signal_[a-f0-9]{64}$/),
+        },
+      }),
     );
 
     agentLearning.recordSignal.mockClear();
@@ -425,7 +483,73 @@ describe("AnalyticsInstrumentationService", () => {
           source: "library",
         },
       },
+      telemetry: { playbackSessionId: undefined },
     });
+  });
+
+  it("mirrors unsaves by client event id and caps both loop controls per track and browser session", async () => {
+    const agentLearning = { recordSignal: jest.fn().mockResolvedValue({}) };
+    const instrumentation = new AnalyticsInstrumentationService(
+      new AnalyticsIngestService(),
+      undefined,
+      agentLearning as any,
+    );
+    const sessionId = `s${"x".repeat(159)}`;
+
+    await instrumentation.recordProductEvent({
+      eventName: "library.removed",
+      actorUserId: "user-1",
+      sessionId: "browser-session-1",
+      sourceRefs: { clientEventId: "client-unsave-1" },
+      payload: { trackId: "track-1" },
+    });
+    expect(agentLearning.recordSignal).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        action: "unsave",
+        metadata: expect.objectContaining({ outcome: expect.objectContaining({ type: "library.removed" }) }),
+        telemetry: expect.objectContaining({
+          playbackSessionId: "browser-session-1",
+          dedupKey: expect.stringMatching(/^agent_signal_[a-f0-9]{64}$/),
+        }),
+      }),
+    );
+
+    for (const eventName of ["player.segment_loop_enabled", "player.repeat_count_set"]) {
+      await instrumentation.recordProductEvent({
+        eventName,
+        actorUserId: "user-1",
+        sessionId,
+        payload: { trackId: "track-1", playbackInstanceId: "instance-1" },
+      });
+    }
+    const loopCalls = agentLearning.recordSignal.mock.calls.slice(1).map(([input]) => input);
+    expect(loopCalls).toHaveLength(2);
+    expect(loopCalls.map((input) => input.action)).toEqual(["loop", "loop"]);
+    expect(loopCalls[0].telemetry.dedupKey).toMatch(/^agent_signal_[a-f0-9]{64}$/);
+    expect(loopCalls[1].telemetry.dedupKey).toBe(loopCalls[0].telemetry.dedupKey);
+    expect(loopCalls[0].telemetry.dedupKey).not.toContain(sessionId);
+    expect(loopCalls[0].telemetry.playbackSessionId).toBe(sessionId);
+
+    const before = agentLearning.recordSignal.mock.calls.length;
+    await instrumentation.recordProductEvent({
+      eventName: "player.segment_loop_enabled",
+      actorUserId: "user-1",
+      payload: { trackId: "track-1" },
+    });
+    await instrumentation.recordProductEvent({
+      eventName: "player.repeat_count_updated",
+      actorUserId: "user-1",
+      sessionId,
+      payload: { trackId: "track-1" },
+    });
+    await instrumentation.recordProductEvent({
+      eventName: "playlist.played",
+      actorUserId: "user-1",
+      sessionId,
+      payload: { trackId: "track-1" },
+    });
+    expect(agentLearning.recordSignal).toHaveBeenCalledTimes(before);
   });
 
   it("emits coarse geo dimensions on product events outside the free-form payload", async () => {

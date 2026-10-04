@@ -90,12 +90,12 @@ Three code facts shape the design:
 | --- | --- | --- | --- |
 | **Commitment** | Purchase, Shows pledge (settled), collected moment, published remix of a track, follow | `purchase` in `AGENT_SIGNAL_WEIGHTS`; others new | Highest; slow decay |
 | **Declared** | Hide, downrank, reset (#1009); "less of this"; written preferences; passport edits | Taste memory controls | Overrides inference (ADR-TE-2.6) |
-| **Behavioral** | Full play, replay, save, playlist add, skip, early skip | `AgentSignal` (#1449) | Current weights; normal decay |
-| **Context** | Session intent, time of day, device, session position | Session request | Applied at ranking time only; never stored as taste |
+| **Behavioral** | Full play, replay, loop intent, save/removal, playlist add, skip, early skip | `AgentSignal` (#1449, #2062) | Configured weights; behavioral decay implemented in #2063 |
+| **Context** | Session intent, coarse time of day/week, session position | Session request and bounded signal metadata (#2062) | Current request steers ranking; coarse contextual affinities are implemented in #2063, without changing declared taste |
 | **Scene** | City and community aggregates above `DISCOVERY_MIN_AUDIENCE` | Popularity marts (#1451) | Lowest; cold start and exploration only |
 
 Proposed additions to `AGENT_SIGNAL_WEIGHTS`
-(`backend/src/modules/agents/agent_learning.service.ts`), as starting values
+(`backend/src/config/agent_learning.ts`, re-exported by the learning service), as starting values
 to tune with the offline evaluation (#978, #1455):
 
 | Action | Weight | Notes |
@@ -107,9 +107,40 @@ to tune with the offline evaluation (#978, #1455):
 | `follow` | 4 | On the artist's catalog |
 | `less_of_this` | −4 | Declared; also written to taste memory as a downrank |
 
+Habit telemetry [#2062](https://github.com/akoita/resonate/issues/2062) adds
+configured `loop` (+2.5) and `unsave` (−2) weights. Loop intent is capped once
+per track/browser session across segment loops and finite repeat counts; a
+completion within seven days of an earlier completed play maps to the existing
+`replay` (+2) weight. The browser sends only hour and weekday categories,
+never a time zone or exact local clock. These categories are retained as bounded
+signal metadata and warehouse dimensions, under analytics consent and the
+playback-training setting. See the [learning-loop contract](../features/agent_taste_intelligence.md#learning-from-listening-habits-2062).
+
 Decay: behavioral signals use a 60-day half-life, commitment signals 365 days,
 declared signals never decay until the listener removes them. Weights and
-half-lives are configuration, not constants in code paths.
+half-lives are configuration, not constants in code paths. The v2 implementation
+(#2063) reads at most 500 newest signals within 730 days, retains v1 genre fields,
+and adds mood, credited artist, measured energy/tempo and coarse context maps.
+Taste Memory shows safe summaries from the same governed computation. The
+profile reads no inferred audio features and recomputes at read time to apply
+current decay and controls.
+
+Listening lanes (#2064) group repeated sessions by governed catalog genre/mood
+and coarse context, merge similar groups deterministically, and expose up to
+six lanes with strength and measured energy. Two natural lanes satisfy the
+separate-habits fixture; the implementation does not fabricate a third.
+Insufficient evidence retains the single-profile fallback. Hidden values are
+excluded and listeners can hide a lane from future mixes in Taste Memory.
+See the [implemented lane contract](../features/agent_taste_intelligence.md#listening-lanes-2064)
+for thresholds and cache lifecycle. My Mix (#2065) blends visible lanes with
+strength/context shares and whole-track quotas. Session edits do not change
+Taste Memory unless explicitly saved; missing lane coverage stays visible even
+when another lane fills its slots. The shared exploration and diversity policy
+still applies. Free habit ordering (#2066) now groups the selected batch into
+short runs, using decayed, consented playback transitions and measured energy.
+Actual started playback establishes across-batch continuity; sparse evidence
+uses a neutral order. Advanced styles stay off, and gated tempo/Camelot work
+remains in #1971. See [My Mix](../features/agent_taste_intelligence.md#my-mix-2065).
 
 Manipulation protection (ADR-TE-2.5): signals from accounts younger than the
 trust threshold or flagged as anomalous are down-weighted; self-plays and
@@ -453,3 +484,25 @@ Open questions for the owner:
 - Does "AI DJ" stay the brand for the listener face, or become "Session DJ"?
 - Export free to attract DJs, or behind `crate.pro`?
 - Default exploration share: 20% proposed.
+
+### Habit Mix measurement (#2067)
+
+The three explicit My Mix experiment arms reuse the discovery holdout:
+lanes plus habits, lanes with neutral ordering, and a deterministic
+single-profile control. Server-owned per-pick impressions bind session source
+and actual ordering to pseudonymous playback episodes. Operator quality
+analytics report skips, completion, resonance, session length and exploration
+acceptance per source and arm. Older or ambiguous attribution does not become
+promotion evidence.
+
+Offline day-cutoff replay rebuilds lanes from prior history and compares
+lane-quota recall@k/NDCG with the genre-only v1 baseline on later completions
+and saves. Its deterministic metadata scoring isolates quotas; it does not
+claim to evaluate semantic retrieval or transition quality.
+
+Promotion is advisory: the randomized habit arm and single-profile control
+in the same experiment each require configured minimum session/start counts,
+nonnegative skip improvement and positive completion or resonance improvement.
+No report automatically changes the default or activates Listener Pro. See
+[the feature contract](../features/agent_taste_intelligence.md#habit-mix-measurement-2067)
+for thresholds, definitions and limits.

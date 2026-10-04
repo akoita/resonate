@@ -24,6 +24,12 @@ import type { DiscoveryReasonCode } from "../recommendations/discovery-explanati
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
 import { AgentLearningService } from "./agent_learning.service";
+import {
+  buildMixCoverage,
+  matchingMyMixLaneIds,
+  MixCoverage,
+  ResolvedMyMixPlan,
+} from "./agent_my_mix";
 
 // Expanded catalog queries can return many candidates; keep the freshness
 // check bounded and suppress discovery if the full candidate pool will not fit.
@@ -69,6 +75,8 @@ export interface AgentSelectorInput {
    * learned taste; the merged queries still fill the remaining slots.
    */
   requestedTerms?: string[];
+  /** Server-resolved session-only My Mix plan. */
+  myMixPlan?: ResolvedMyMixPlan;
 }
 
 /**
@@ -98,6 +106,8 @@ export interface AgentCandidateTrack {
     artistId?: string | null;
   };
   releaseId?: string;
+  /** Private internal assignment used only for response coverage. */
+  mixLaneId?: string;
   /** Internal marker used by runtime injection before returning a fresh pick. */
   firstListenerEligible?: boolean;
   agentRecommendation?: {
@@ -109,6 +119,19 @@ export interface AgentCandidateTrack {
     reasonCode?: DiscoveryReasonCode;
     audioFeatures?: AgentAudioFeatures;
     trace?: Record<string, unknown>;
+  };
+}
+
+export interface AgentSelectionResult {
+  candidates: string[];
+  selected: AgentCandidateTrack[];
+  rejected: Array<{ trackId: string; reason: string }>;
+  reason: string;
+  fallback?: "relaxed_artist_window" | "widened";
+  mixCoverage?: MixCoverage;
+  policy?: {
+    dropped: { hidden: number; aiGenerated: number; diversity: number };
+    exploration: { reserved: number; served: number };
   };
 }
 
@@ -155,7 +178,7 @@ export class AgentSelectorService {
    * A request nothing in the catalog matches is never widened: the session
    * says so and the gap stays recorded as unmet demand (ADR-TE-4).
    */
-  async select(input: AgentSelectorInput) {
+  async select(input: AgentSelectorInput): Promise<AgentSelectionResult> {
     const strict = await this.selectPass(input, "strict");
     // Nothing matched at all: no relaxation can help, and widening would hide the gap.
     if (!input.fallback || strict.selected.length > 0 || strict.candidates.length === 0) return strict;
@@ -167,7 +190,7 @@ export class AgentSelectorService {
     return strict;
   }
 
-  private async selectPass(input: AgentSelectorInput, pass: SelectionPass) {
+  private async selectPass(input: AgentSelectorInput, pass: SelectionPass): Promise<AgentSelectionResult> {
     const policy = input.userId ? await this.tasteMemoryService?.getPolicy(input.userId) : undefined;
     const originalQueries = (input.queries ?? [])
       .filter(Boolean)
@@ -262,6 +285,24 @@ export class AgentSelectorService {
     }
 
     let allCandidates = Array.from(byId.values());
+    const laneMatchesByCandidateId = new Map<string, string[]>();
+    if (input.myMixPlan) {
+      for (const track of allCandidates) {
+        laneMatchesByCandidateId.set(
+          track.id,
+          matchingMyMixLaneIds(input.myMixPlan.lanes, track.release),
+        );
+      }
+      // Sources such as cohort expansion and first-listener discovery may add
+      // unrelated tracks. They cannot satisfy a lane or trigger fallback.
+      // The established widened pass remains available after matching catalog
+      // candidates have all been consumed during a session.
+      if (pass !== "widened") {
+        allCandidates = allCandidates.filter(
+          (track) => (laneMatchesByCandidateId.get(track.id)?.length ?? 0) > 0,
+        );
+      }
+    }
 
     if (allCandidates.length === 0) {
       return {
@@ -269,6 +310,7 @@ export class AgentSelectorService {
         selected: [],
         rejected: [],
         reason: queries.length ? "no_matching_taste_candidates" : "empty_catalog",
+        ...(input.myMixPlan ? { mixCoverage: buildMixCoverage(input.myMixPlan, new Map()) } : {}),
       };
     }
 
@@ -333,8 +375,7 @@ export class AgentSelectorService {
     const servedHistory = await this.resolveServedHistory(input.userId);
     const sessionIntent = buildSessionIntent(input);
 
-    const ranked = await this.rankingService.rank(
-      allCandidates.map((track: any) => ({
+    const rankingCandidates = allCandidates.map((track: any) => ({
         id: track.id,
         title: track.title,
         artist: track.artist ?? null,
@@ -363,8 +404,8 @@ export class AgentSelectorService {
           }),
         },
         matchedQueries: track.matchedQueries ?? [],
-      })),
-      {
+      }));
+    const rankingContext = {
         originalQueries,
         expandedQueries: queries,
         learnedGenreWeights,
@@ -381,15 +422,61 @@ export class AgentSelectorService {
         requestedTerms: input.requestedTerms,
         tastePolicy: policy,
         audioFeaturesByTrack,
-      },
-    );
+      };
+    const ranked = await this.rankingService.rank(rankingCandidates, rankingContext);
+    const laneCandidateOrderByLaneId = new Map<string, string[]>();
+    if (input.myMixPlan) {
+      for (const lane of input.myMixPlan.lanes) {
+        const laneGenres = Object.keys(lane.genreWeights);
+        const laneMoods = Object.keys(lane.moodWeights);
+        const laneQueries = [...laneGenres, ...laneMoods];
+        const expandedLaneQueries = expandAgentTasteQueries(laneQueries);
+        const laneQueryKeys = new Set(expandedLaneQueries.map(normalizeQuery));
+        const ordinaryRequestQueryKeys = new Set(
+          expandAgentTasteQueries(input.requestedTerms ?? [])
+            .map(normalizeQuery)
+            .filter((query) => !laneQueryKeys.has(query)),
+        );
+        // Request terms are also catalog retrieval queries. Remove request-only
+        // matches here so their generic expanded-taste signal cannot influence
+        // lane allocation; lane terms that overlap are retained.
+        const laneCandidates = rankingCandidates
+          .filter((candidate) =>
+            (laneMatchesByCandidateId.get(candidate.id) ?? []).includes(lane.id),
+          )
+          .map((candidate) => ({
+            ...candidate,
+            matchedQueries: (candidate.matchedQueries ?? []).filter(
+              (query: string) => !ordinaryRequestQueryKeys.has(normalizeQuery(query)),
+            ),
+          }));
+        if (laneCandidates.length === 0) {
+          laneCandidateOrderByLaneId.set(lane.id, []);
+          continue;
+        }
+        const laneRanked = await this.rankingService.rank(laneCandidates, {
+          ...rankingContext,
+          originalQueries: laneQueries,
+          expandedQueries: expandedLaneQueries,
+          sessionRequest: { genres: laneGenres, moods: laneMoods },
+          sessionIntent: buildSessionIntent(input, laneMoods[0]),
+          energy: lane.energyBand ?? input.energy,
+        });
+        laneCandidateOrderByLaneId.set(lane.id, laneRanked.map((candidate) => candidate.id));
+      }
+    }
 
     const byId2 = new Map(allCandidates.map((track) => [track.id, track]));
     const sessionTrackIds = new Set(input.recentTrackIds);
     const toAgentTrack = (entry: (typeof ranked)[number]) => {
       const track = byId2.get(entry.id)!;
+      const mixLaneId = policyResult.laneAssignments?.get(track.id);
+      const lane = mixLaneId
+        ? input.myMixPlan?.lanes.find((candidate) => candidate.id === mixLaneId)
+        : undefined;
       return {
         ...track,
+        ...(mixLaneId ? { mixLaneId } : {}),
         ...(input.reserveFirstListenerPlacements === false
           ? { firstListenerEligible: Boolean(entry.firstListenerEligible) }
           : {}),
@@ -397,7 +484,9 @@ export class AgentSelectorService {
           score: entry.score,
           matchedQueries: track.matchedQueries,
           signals: entry.signals,
-          explanation: entry.explanation,
+          explanation: lane
+            ? [`Selected for your ${lane.label} mix.`, ...entry.explanation]
+            : entry.explanation,
           reasonCode: entry.reasonCode,
           ...(entry.audioFeatures ? { audioFeatures: entry.audioFeatures } : {}),
           ...(entry.trace ? { trace: entry.trace } : {}),
@@ -427,6 +516,17 @@ export class AgentSelectorService {
       // Relaxed and widened passes keep two per artist per pick but drop the session window.
       priorSessionArtistKeys: pass === "strict" ? policyContext.priorSessionArtistKeys : undefined,
       priorExplorationCount: policyContext.priorExplorationCount,
+      ...(input.myMixPlan
+        ? {
+            laneQuotas: input.myMixPlan.lanes.map((lane) => ({
+              id: lane.id,
+              requested: lane.requested,
+              strength: lane.allocationWeight,
+            })),
+            laneMatchesByCandidateId,
+            laneCandidateOrderByLaneId,
+          }
+        : {}),
     };
     let policyInput = fresh;
     let policyResult = applyDiscoveryPolicy(policyInput, policyOptions);
@@ -462,6 +562,16 @@ export class AgentSelectorService {
     }
     const selected = policyResult.items.map(toAgentTrack);
     const scored = ranked.map(toAgentTrack);
+    const mixCoverage = input.myMixPlan
+      ? buildMixCoverage(
+          input.myMixPlan,
+          new Map(
+            selected.flatMap((track) =>
+              track.mixLaneId ? [[track.id, track.mixLaneId] as const] : [],
+            ),
+          ),
+        )
+      : undefined;
 
     return {
       candidates: scored.map((track) => track.id),
@@ -473,6 +583,7 @@ export class AgentSelectorService {
           : fresh.length > 0
             ? "no_policy_eligible_candidates"
             : "all_candidates_recently_played",
+      ...(mixCoverage ? { mixCoverage } : {}),
       policy: {
         dropped: policyResult.dropped,
         exploration: policyResult.exploration,
@@ -584,10 +695,11 @@ export class AgentSelectorService {
 
 }
 
-function buildSessionIntent(input: AgentSelectorInput) {
+function buildSessionIntent(input: AgentSelectorInput, moodOverride?: string) {
   const { sessionIntent: intent, mood, queueStyle } = input;
-  if (!intent?.trim() && !mood?.trim() && !queueStyle?.trim()) return undefined;
-  return { intent, mood, queueStyle };
+  const selectedMood = moodOverride ?? mood;
+  if (!intent?.trim() && !selectedMood?.trim() && !queueStyle?.trim()) return undefined;
+  return { intent, mood: selectedMood, queueStyle };
 }
 
 /** Upper-case disclosure level from either catalog.search shape. */
@@ -623,4 +735,8 @@ function uniqueCaseInsensitive(values: string[]) {
     unique.push(trimmed);
   }
   return unique;
+}
+
+function normalizeQuery(query: string) {
+  return query.trim().toLowerCase().replace(/\s+/g, " ");
 }

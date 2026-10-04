@@ -19,6 +19,12 @@ import {
   scoreMultiplierForSignal,
   TasteMemoryPolicy,
 } from "./taste_memory.service";
+import {
+  TASTE_EDIT_GENRES,
+  TASTE_EDIT_GENRE_ALIASES,
+  TASTE_EDIT_MOODS,
+  TASTE_EDIT_MOOD_ALIASES,
+} from "./taste_edit_vocabulary";
 
 /**
  * The unified discovery scoring core (#1448 WS-1, RFC
@@ -128,6 +134,8 @@ export interface DiscoveryRankingContext {
    * in. A match ranks above learned taste (ADR-TE-2 rule 6). Home never sets it.
    */
   requestedTerms?: string[];
+  /** Explicit, lane-local session request used by My Mix; absent on Home. */
+  sessionRequest?: { genres: string[]; moods: string[] };
   tastePolicy?: TasteMemoryPolicy;
   /**
    * Caller-prefetched audio features per track id (the DJ provides these;
@@ -283,6 +291,16 @@ export class DiscoveryRankingService {
       explanation.push(DISCOVERY_EXPLANATION_VARIANTS.declared_taste);
     }
 
+    const requestFit = sessionRequestMatch(candidate, context);
+    if (requestFit) {
+      signals.push({
+        label: "session_request",
+        weight: Math.round(DECLARED_PREFERENCE_WEIGHT * requestFit.multiplier),
+        reason: requestFit.reason,
+      });
+      explanation.push(requestFit.explanation);
+    }
+
     // Embedding neighbours of what the listener saved or finished, and of what
     // they wrote in a taste note (#2003, #2006). The signal is categorical: it
     // says the track sounds close to the listener's taste, not which track or
@@ -340,16 +358,6 @@ export class DiscoveryRankingService {
         reason: cohort.reasonCode,
       });
       explanation.push(cohort.explanation);
-    }
-
-    const requestMatch = sessionRequestMatch(candidate, context.requestedTerms);
-    if (requestMatch) {
-      signals.push({
-        label: "session_request",
-        weight: DECLARED_PREFERENCE_WEIGHT,
-        reason: `matches this session's request for ${requestMatch}`,
-      });
-      explanation.push(DISCOVERY_EXPLANATIONS.session_fit);
     }
 
     const intentMatch = sessionIntentMatch(candidate, context.sessionIntent);
@@ -415,6 +423,103 @@ export class DiscoveryRankingService {
       ...(tasteScore ? { trace: { bigQueryTasteScore: tasteScore } } : {}),
     };
   }
+}
+
+function sessionRequestMatch(
+  candidate: DiscoveryCandidate,
+  context: Pick<DiscoveryRankingContext, "sessionRequest" | "requestedTerms" | "tastePolicy">,
+): { multiplier: number; reason: string; explanation: string } | undefined {
+  // A lane's resolved request is authoritative for lane ordering, even when
+  // this candidate does not match it. Falling through to the caller's ordinary
+  // session request would let unrelated terms move candidates between lanes.
+  if (context.sessionRequest !== undefined) {
+    const match = laneSessionRequestMatch(candidate, context.sessionRequest, context.tastePolicy);
+    return match
+      ? {
+          multiplier: match.multiplier,
+          reason: "matches the current mix request",
+          explanation: "Fits your current mix request.",
+        }
+      : undefined;
+  }
+
+  const match = requestedTermsMatch(candidate, context.requestedTerms, context.tastePolicy);
+  return match
+    ? {
+        multiplier: match.multiplier,
+        reason: `matches this session's request for ${match.term}`,
+        explanation: DISCOVERY_EXPLANATIONS.session_fit,
+      }
+    : undefined;
+}
+
+function laneSessionRequestMatch(
+  candidate: DiscoveryCandidate,
+  request: DiscoveryRankingContext["sessionRequest"],
+  policy?: TasteMemoryPolicy,
+): { multiplier: number } | undefined {
+  if (!request) return undefined;
+  const releaseGenre = canonicalCatalogMetadata(candidate.release?.genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
+  const requestedGenres = new Set(request.genres.map((value) => canonicalCatalogMetadata(value, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES)));
+  if (releaseGenre && requestedGenres.has(releaseGenre)) {
+    const multiplier = sessionRequestPolicyMultiplier(policy, "genre", candidate.release?.genre ?? "", releaseGenre);
+    return multiplier > 0 ? { multiplier } : undefined;
+  }
+  const requestedMoods = new Set(request.moods.map((value) => canonicalCatalogMetadata(value, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES)));
+  for (const releaseMood of candidate.release?.moods ?? []) {
+    const canonicalMood = canonicalCatalogMetadata(releaseMood, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES);
+    if (!canonicalMood || !requestedMoods.has(canonicalMood)) continue;
+    const multiplier = sessionRequestPolicyMultiplier(policy, "mood", releaseMood, canonicalMood);
+    if (multiplier > 0) return { multiplier };
+  }
+  return undefined;
+}
+
+function requestedTermsMatch(
+  candidate: DiscoveryCandidate,
+  requestedTerms: readonly string[] | undefined,
+  policy?: TasteMemoryPolicy,
+): { term: string; multiplier: number } | undefined {
+  const terms = (requestedTerms ?? []).map((term) => term.trim()).filter(Boolean);
+  const genre = candidate.release?.genre ?? "";
+  const moods = candidate.release?.moods ?? [];
+  for (const term of terms) {
+    if (genre.toLowerCase().includes(term.toLowerCase())) {
+      const canonicalGenre = canonicalCatalogMetadata(genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
+      const multiplier = sessionRequestPolicyMultiplier(policy, "genre", genre, canonicalGenre);
+      return multiplier > 0 ? { term, multiplier } : undefined;
+    }
+    for (const mood of moods) {
+      if (!mood.toLowerCase().includes(term.toLowerCase())) continue;
+      const canonicalMood = canonicalCatalogMetadata(mood, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES);
+      const multiplier = sessionRequestPolicyMultiplier(policy, "mood", mood, canonicalMood);
+      return multiplier > 0 ? { term, multiplier } : undefined;
+    }
+  }
+  return undefined;
+}
+
+function sessionRequestPolicyMultiplier(
+  policy: TasteMemoryPolicy | undefined,
+  signalType: "genre" | "mood",
+  rawValue: string,
+  canonicalValue: string,
+): number {
+  const rawMultiplier = scoreMultiplierForSignal(policy, signalType, rawValue);
+  const canonicalMultiplier = scoreMultiplierForSignal(policy, signalType, canonicalValue);
+  if (rawMultiplier === 0 || canonicalMultiplier === 0) return 0;
+  if (rawMultiplier < 1 || canonicalMultiplier < 1) return Math.min(rawMultiplier, canonicalMultiplier);
+  return Math.max(rawMultiplier, canonicalMultiplier);
+}
+
+function canonicalCatalogMetadata(
+  value: string | null | undefined,
+  catalog: readonly string[],
+  aliases: Readonly<Record<string, string>>,
+): string {
+  const normalized = (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  const canonical = catalog.find((term) => term.toLowerCase() === normalized);
+  return (canonical ?? aliases[normalized] ?? "").toLowerCase();
 }
 
 /** Weight of a requested-tempo match (#2037): same size as the energy match. */
@@ -498,22 +603,6 @@ export function matchingCohortContexts(
  * semantics as the Home mood match, so both surfaces read a term the same way.
  * At most one signal fires per candidate even when intent and mood coincide.
  */
-/**
- * The first requested genre or mood (#2059) the candidate's genre or moods
- * contain, compared case-insensitively like the taste queries.
- */
-function sessionRequestMatch(
-  candidate: DiscoveryCandidate,
-  requestedTerms?: readonly string[],
-): string | null {
-  const terms = (requestedTerms ?? []).map((term) => term.trim()).filter(Boolean);
-  if (terms.length === 0) return null;
-  const haystack = [candidate.release?.genre ?? "", ...(candidate.release?.moods ?? [])]
-    .map((value) => value.toLowerCase())
-    .filter(Boolean);
-  return terms.find((term) => haystack.some((value) => value.includes(term.toLowerCase()))) ?? null;
-}
-
 function sessionIntentMatch(
   candidate: DiscoveryCandidate,
   sessionIntent?: DiscoverySessionIntent,

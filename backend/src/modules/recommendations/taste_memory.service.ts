@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { AGENT_TASTE_HISTORY_LIMIT, AGENT_TASTE_HISTORY_WINDOW_DAYS } from "../../config/agent_learning";
 import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.service";
 import { EventBus } from "../shared/event_bus";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
@@ -26,6 +27,7 @@ export const TASTE_SIGNAL_TYPES = [
   "novelty",
   "replay",
   "commerce",
+  "lane",
   // Declared-only types (#1961, ADR-TE-5): written through confirmed taste
   // edits, never through the manual signal control route.
   "energy",
@@ -44,6 +46,7 @@ const MANUAL_SIGNAL_TYPES: readonly TasteSignalType[] = [
   "novelty",
   "replay",
   "commerce",
+  "lane",
 ];
 const MANUAL_SIGNAL_ACTIONS: readonly TasteSignalAction[] = ["hidden", "downranked"];
 
@@ -136,66 +139,57 @@ export class TasteMemoryService {
     const settings = await this.getOrCreateSettings(userId);
     const resetAt = settings.resetAt ?? undefined;
 
-    const [controls, config, signals] = await Promise.all([
+    const historyStart = new Date(Date.now() - AGENT_TASTE_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const [controls, signals] = await Promise.all([
       prisma.listenerTasteSignalControl.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.agentConfig.findUnique({
-        where: { userId },
-        select: { learnedTasteProfile: true, vibes: true },
-      }),
       prisma.agentSignal.findMany({
         where: {
           userId,
-          ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        take: 200,
-        include: {
-          track: {
-            select: {
-              artist: true,
-              release: {
-                select: {
-                  genre: true,
-                  primaryArtist: true,
-                  artist: { select: { displayName: true } },
-                },
-              },
-            },
+          createdAt: {
+            gte: historyStart,
+            ...(resetAt ? { gt: resetAt } : {}),
           },
         },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        take: AGENT_TASTE_HISTORY_LIMIT,
       }),
     ]);
 
     const policy = buildPolicy(settingsDto(settings), controls.map(controlDto));
-    const profile = tasteProfile(config?.learnedTasteProfile);
-    const genreWeights = new Map<string, number>();
-    const moodWeights = new Map<string, number>();
-    const artistWeights = new Map<string, number>();
+    // Resolve lazily to avoid a module cycle: learning also reads taste controls.
+    const { computeTasteProfileFromHistory } = await import("../agents/agent_learning.service");
+    const { getListeningLaneSummary } = await import("../agents/listening_lanes.service");
+    const [profile, listeningLanes] = await Promise.all([
+      computeTasteProfileFromHistory(userId, { policy }),
+      getListeningLaneSummary(userId, { policy }),
+    ]);
+    const labels = (weights: Record<string, number> = {}) => Object.entries(weights)
+      .filter(([label, weight]) => Number.isFinite(weight) && weight > 0 && normalizeSignalValue(label) === label)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 5)
+      .map(([label]) => label);
+    const hourBuckets = ["night", "morning", "afternoon", "evening"] as const;
+    const weekdayKinds = ["weekday", "weekend"] as const;
+    const contexts = hourBuckets.flatMap((localHourBucket) => weekdayKinds.flatMap((weekdayKind) => {
+      const weights = profile.contextWeights?.[`${localHourBucket}:${weekdayKind}`];
+      const favoredGenres = labels(weights?.genreWeights);
+      const favoredMoods = labels(weights?.moodWeights);
+      return favoredGenres.length || favoredMoods.length
+        ? [{ localHourBucket, weekdayKind, favoredGenres, favoredMoods }]
+        : [];
+    }));
     const intentWeights = new Map<string, number>();
     let replayWeight = 0;
     let skipWeight = 0;
     let commerceWeight = 0;
     let libraryWeight = 0;
 
-    for (const [genre, weight] of Object.entries(profile?.genreWeights ?? {})) {
-      addWeighted(genreWeights, genre, Number(weight) || 0, policy, "genre");
-    }
-
     for (const signal of signals) {
       const weight = Number(signal.weight) || 0;
       const metadata = jsonObject(signal.metadata);
-      addWeighted(genreWeights, signal.track.release.genre, weight, policy, "genre");
-      addWeighted(moodWeights, metadata.mood, weight, policy, "mood");
-      addWeighted(
-        artistWeights,
-        signal.track.artist || signal.track.release.primaryArtist || signal.track.release.artist?.displayName,
-        weight,
-        policy,
-        "artist",
-      );
       addWeighted(intentWeights, metadata.sessionIntentName || metadata.sessionIntent, weight, policy, "intent");
 
       if (signal.action === "replay") replayWeight += weight;
@@ -208,9 +202,13 @@ export class TasteMemoryService {
       schemaVersion: "listener-taste-memory/v1",
       settings: settingsDto(settings),
       summary: {
-        favoredGenres: rankedLabels(genreWeights, policy, "genre"),
-        favoredMoods: rankedLabels(moodWeights, policy, "mood"),
-        favoredArtists: rankedLabels(artistWeights, policy, "artist"),
+        favoredGenres: labels(profile.genreWeights),
+        favoredMoods: labels(profile.moodWeights),
+        favoredArtists: labels(profile.artistWeights),
+        favoredEnergyBands: labels(profile.energyBandWeights),
+        favoredTempoBands: labels(profile.tempoBandWeights),
+        contexts,
+        listeningLanes,
         recentIntents: rankedLabels(intentWeights, policy, "intent"),
         noveltyPattern: noveltyPattern(replayWeight, skipWeight),
         commercePreference: commercePreference(commerceWeight, libraryWeight),
@@ -272,22 +270,24 @@ export class TasteMemoryService {
 
   async resetTasteMemory(userId: string) {
     await this.ensureUser(userId);
-    const settings = await prisma.listenerTasteMemorySettings.upsert({
-      where: { userId },
-      update: { resetAt: new Date() },
-      create: {
-        userId,
-        ...DEFAULT_SETTINGS,
-        resetAt: new Date(),
-      },
-    });
-    await prisma.agentConfig.updateMany({
-      where: { userId },
-      data: {
-        learnedTasteProfile: Prisma.JsonNull,
-        tasteScore: 0,
-        tasteUpdatedAt: null,
-      },
+    const settings = await prisma.$transaction(async (tx) => {
+      // Serialize against learning writes so a reset cannot leave a newly
+      // persisted stale profile behind. The reset and lane cleanup are atomic.
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+      const resetAt = new Date();
+      const settings = await tx.listenerTasteMemorySettings.upsert({
+        where: { userId },
+        update: { resetAt },
+        create: { userId, ...DEFAULT_SETTINGS, resetAt },
+      });
+      await tx.agentConfig.updateMany({
+        where: { userId },
+        data: { learnedTasteProfile: Prisma.JsonNull, tasteScore: 0, tasteUpdatedAt: null },
+      });
+      // Lane hides describe learned groups. Declared preferences and ordinary
+      // catalog controls remain intact.
+      await tx.listenerTasteSignalControl.deleteMany({ where: { userId, signalType: "lane" } });
+      return settings;
     });
     this.publish("taste_memory.reset", userId, { resetAt: settings.resetAt?.toISOString() ?? null });
     return settingsDto(settings);
@@ -311,6 +311,16 @@ export class TasteMemoryService {
     // (#1961): the manual route keeps its original hide/downrank contract.
     if (!MANUAL_SIGNAL_TYPES.includes(signalType) || !MANUAL_SIGNAL_ACTIONS.includes(action)) {
       throw new BadRequestException("This signal can only be set through taste edits");
+    }
+
+    if (signalType === "lane") {
+      if ((input.action !== undefined && input.action !== "hidden") || action !== "hidden" || !/^lane_[a-f0-9]{32}$/.test(value)) {
+        throw new BadRequestException("Listening lanes can only be hidden by their lane identifier");
+      }
+      const { getListeningLaneSummary } = await import("../agents/listening_lanes.service");
+      if (!(await getListeningLaneSummary(userId)).some((lane) => lane.id === value)) {
+        throw new BadRequestException("Listening lane not found");
+      }
     }
 
     const control = await prisma.listenerTasteSignalControl.upsert({
@@ -535,10 +545,11 @@ export class TasteMemoryService {
     return found;
   }
 
-  async getPolicy(userId: string): Promise<TasteMemoryPolicy> {
-    const settings = await prisma.listenerTasteMemorySettings.findUnique({ where: { userId } });
-    const controls = await prisma.listenerTasteSignalControl.findMany({ where: { userId } });
-    return buildPolicy(settingsDto(settings ?? defaultSettingsRecord()), controls.map(controlDto));
+  async getPolicy(
+    userId: string,
+    db: Pick<Prisma.TransactionClient, "listenerTasteMemorySettings" | "listenerTasteSignalControl"> = prisma,
+  ): Promise<TasteMemoryPolicy> {
+    return readTasteMemoryPolicy(userId, db);
   }
 
   async shouldTrainAgentPlayback(userId: string, metadata?: SafeSignalMetadata | null) {
@@ -593,6 +604,16 @@ export class TasteMemoryService {
       ...payload,
     } as never);
   }
+}
+
+/** Read controls on the caller's connection, including serialized telemetry writes. */
+export async function readTasteMemoryPolicy(
+  userId: string,
+  db: Pick<Prisma.TransactionClient, "listenerTasteMemorySettings" | "listenerTasteSignalControl"> = prisma,
+): Promise<TasteMemoryPolicy> {
+  const settings = await db.listenerTasteMemorySettings.findUnique({ where: { userId } });
+  const controls = await db.listenerTasteSignalControl.findMany({ where: { userId } });
+  return buildPolicy(settingsDto(settings ?? defaultSettingsRecord()), controls.map(controlDto));
 }
 
 export function filterPreferencesWithPolicy(
@@ -813,9 +834,4 @@ function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
-}
-
-function tasteProfile(value: unknown): { genreWeights?: Record<string, number> } | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as { genreWeights?: Record<string, number> };
 }

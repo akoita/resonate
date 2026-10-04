@@ -7,15 +7,28 @@ import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
 import {
+    applyTasteEdits,
+    getAgentMixCoverage,
+    getAgentMixVocabulary,
     getAgentNextPick,
+    getTasteMemory,
     parseAgentSessionRequest,
+    type AgentMixCoverage,
+    type AgentMixVocabulary,
+    type AgentMyMixPreferences,
     type AgentNextPickResponse,
     type AgentNextPreferences,
     type AgentRequestCoverage,
     type AgentSessionEnergy,
     type AgentSessionRequest,
     type AgentSessionRequestIgnoredKey,
+    type ListeningLane,
 } from "../../lib/api";
+import {
+    buildMyMixTasteEdits,
+    createMyMixPreferences,
+    getMyMixLocalContext,
+} from "../../lib/agentMyMix";
 import { resolveDjQueue } from "../../lib/agentDjPlayback";
 import { getDjSet, setDjSet } from "../../lib/agentDjSet";
 import {
@@ -92,6 +105,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const [unparsed, setUnparsed] = useState<string[]>([]);
     const [ignored, setIgnored] = useState<AgentSessionRequestIgnoredKey[]>([]);
     const [activePreset, setActivePreset] = useState<SessionPreset | null>(null);
+    const [myMixLanes, setMyMixLanes] = useState<ListeningLane[]>([]);
+    const [myMixVocabulary, setMyMixVocabulary] = useState<AgentMixVocabulary>({ genres: [], moods: [] });
+    const [myMixPreferences, setMyMixPreferences] = useState<AgentMyMixPreferences | null>(null);
+    const [myMixCoverage, setMyMixCoverage] = useState<AgentMixCoverage | null>(null);
+    const [isSavingMyMix, setIsSavingMyMix] = useState(false);
+    const [myMixSaveMessage, setMyMixSaveMessage] = useState<string | null>(null);
     const [isParsing, setIsParsing] = useState(false);
     const [parseError, setParseError] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(false);
@@ -102,6 +121,10 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const parseSeqRef = useRef(0);
     const replanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const replanSeqRef = useRef(0);
+    const myMixPreferencesRef = useRef<AgentMyMixPreferences | null>(null);
+    const myMixEditVersionRef = useRef(0);
+    const myMixWasSelectedRef = useRef(false);
+    const initialMixCoverageVersionRef = useRef<number | null>(null);
     // The newest render's values, for timers that fire after later renders.
     const latestRef = useRef<{ replan: () => Promise<void>; player: typeof player } | null>(null);
     // A session started from this panel whose first picks should autoplay once
@@ -109,6 +132,50 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     // only once; the state drives the polling effect.
     const [awaitingAutoplayId, setAwaitingAutoplayId] = useState<string | null>(null);
     const awaitingAutoplayRef = useRef<string | null>(null);
+
+    myMixPreferencesRef.current = myMixPreferences;
+
+    const invalidateMyMixCoverage = () => {
+        myMixEditVersionRef.current += 1;
+        replanSeqRef.current += 1;
+        setIsReplanning(false);
+        setMyMixCoverage(null);
+    };
+
+    const refreshMyMixCoverage = useCallback(async (sessionId: string) => {
+        if (!token || !myMixPreferencesRef.current) return;
+        const version = myMixEditVersionRef.current;
+        try {
+            const result = await getAgentMixCoverage(token, sessionId);
+            if (version === myMixEditVersionRef.current && myMixPreferencesRef.current) {
+                setMyMixCoverage(result.mixCoverage ?? null);
+            }
+        } catch {
+            // Coverage is an optional explanation; playback remains available if it cannot load.
+        }
+    }, [token]);
+
+    // My Mix uses the listener's current visible lanes and backend catalog vocabulary.
+    useEffect(() => {
+        if (!token) {
+            setMyMixLanes([]);
+            setMyMixVocabulary({ genres: [], moods: [] });
+            return;
+        }
+        let current = true;
+        void Promise.all([getTasteMemory(token), getAgentMixVocabulary(token)])
+            .then(([memory, vocabulary]) => {
+                if (!current) return;
+                setMyMixLanes(memory.summary.listeningLanes ?? []);
+                setMyMixVocabulary(vocabulary);
+            })
+            .catch(() => {
+                if (!current) return;
+                setMyMixLanes([]);
+                setMyMixVocabulary({ genres: [], moods: [] });
+            });
+        return () => { current = false; };
+    }, [token]);
 
     const beginAwaitingAutoplay = useCallback((sessionId: string) => {
         awaitingAutoplayRef.current = sessionId;
@@ -121,15 +188,21 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
     /** The preferences a next-pick request carries; also what the continuation reuses to keep the set going. */
     const buildNextPickPreferences = useCallback((): AgentNextPreferences => {
-        return (
-            buildSessionPreferences({ activePreset, request, fallbackGenres: config?.vibes }) ?? {
-                genres: config?.vibes,
-                // Every chip removed: an empty request tells the DJ to drop the
-                // session's earlier filters (omitting the key would keep them).
-                ...(request ? { request } : {}),
-            }
-        );
-    }, [activePreset, request, config?.vibes]);
+        if (myMixPreferences) return { myMix: myMixPreferences };
+        const regularPreferences = buildSessionPreferences({
+            activePreset,
+            request,
+            fallbackGenres: config?.vibes,
+        }) ?? {
+            genres: config?.vibes,
+            // Every chip removed: an empty request tells the DJ to drop the
+            // session's earlier filters (omitting the key would keep them).
+            ...(request ? { request } : {}),
+        };
+        return myMixWasSelectedRef.current
+            ? { ...regularPreferences, myMix: null }
+            : regularPreferences;
+    }, [myMixPreferences, activePreset, request, config?.vibes]);
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
@@ -138,13 +211,22 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 const queue = await resolveDjQueue(trackIds, token);
                 if (queue.length === 0) return 0;
                 await saveTracksMetadata(queue, "remote");
-                await playQueue(queue, 0);
+                const previousSet = getDjSet();
                 // Let the DJ keep adding picks as this queue runs out (AgentDjContinuation).
                 setDjSet({
                     sessionId,
                     preferences: buildNextPickPreferences(),
                     trackIds: queue.map((track) => track.catalogTrackId || track.id),
                 });
+                const installedSet = getDjSet();
+                try {
+                    // Starts must already carry the DJ session's provenance.
+                    await playQueue(queue, 0);
+                } catch (error) {
+                    // Preserve a newer set if another action replaced this one.
+                    if (getDjSet() === installedSet) setDjSet(previousSet);
+                    throw error;
+                }
                 return queue.length;
             } catch (error) {
                 addToast({
@@ -161,6 +243,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const openSessionId = useMemo(() => {
         return activeSessionId ?? sessions.find((session) => !session.endedAt)?.id ?? null;
     }, [activeSessionId, sessions]);
+    const openSessionIdRef = useRef(openSessionId);
+    openSessionIdRef.current = openSessionId;
 
     // How well the latest picks matched the filters: the newest of this panel's own
     // pick response and the live feed's newest decision for the open session.
@@ -198,7 +282,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             const result = await getAgentNextPick(token, { sessionId: openSessionId, preferences });
             if (!isCurrent()) return;
             setPickCoverage({ coverage: result.requestCoverage ?? null, at: Date.now() });
+            if (myMixPreferences) setMyMixCoverage(result.mixCoverage ?? null);
             if (result.status !== "ok" || !result.track) {
+                const live = getDjSet();
+                if (live?.sessionId === openSessionId) {
+                    setDjSet({ ...live, preferences });
+                }
                 addToast({
                     type: "info",
                     title: "No new picks for those filters",
@@ -308,6 +397,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const handleTextChange = (value: string) => {
         setText(value);
         setActivePreset(null);
+        if (myMixPreferences) {
+            setMyMixPreferences(null);
+            myMixWasSelectedRef.current = true;
+            invalidateMyMixCoverage();
+            setMyMixSaveMessage(null);
+        }
         if (parseTimerRef.current) clearTimeout(parseTimerRef.current);
         parseTimerRef.current = null;
         const sequence = ++parseSeqRef.current;
@@ -333,6 +428,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         cancelParse();
         setRequest(next);
         setActivePreset(null);
+        if (myMixPreferences) {
+            setMyMixPreferences(null);
+            myMixWasSelectedRef.current = true;
+            invalidateMyMixCoverage();
+            setMyMixSaveMessage(null);
+        }
         setParseError(null);
         scheduleReplan();
     };
@@ -345,6 +446,62 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         if (request) applyRequestEdit(setEnergy(request, band));
     };
 
+    const handleSelectMyMix = () => {
+        cancelParse();
+        setText("");
+        setRequest(null);
+        setUnparsed([]);
+        setIgnored([]);
+        setParseError(null);
+        setActivePreset(null);
+        myMixWasSelectedRef.current = true;
+        setMyMixPreferences(createMyMixPreferences());
+        invalidateMyMixCoverage();
+        setMyMixSaveMessage(null);
+        scheduleReplan();
+    };
+
+    const handleMyMixChange = (next: AgentMyMixPreferences) => {
+        setMyMixPreferences(next);
+        invalidateMyMixCoverage();
+        setMyMixSaveMessage(null);
+        scheduleReplan();
+    };
+
+    const visibleMyMixLanes = useMemo(
+        () => myMixLanes.filter((lane) => !lane.hidden),
+        [myMixLanes],
+    );
+    const myMixTasteEdits = useMemo(
+        () => myMixPreferences ? buildMyMixTasteEdits(myMixPreferences, visibleMyMixLanes) : [],
+        [myMixPreferences, visibleMyMixLanes],
+    );
+
+    const handleSaveMyMix = async () => {
+        if (!token || isSavingMyMix || myMixTasteEdits.length === 0) return;
+        setIsSavingMyMix(true);
+        setMyMixSaveMessage(null);
+        try {
+            const result = await applyTasteEdits(token, myMixTasteEdits);
+            const { appliedCount, ignoredCount } = result.edits;
+            const message = ignoredCount > 0
+                ? `Saved ${appliedCount} preferences; ${ignoredCount} were not accepted.`
+                : `Saved ${appliedCount} preferences for future recommendations.`;
+            setMyMixSaveMessage(message);
+            addToast({
+                type: ignoredCount > 0 ? "info" : "success",
+                title: ignoredCount > 0 ? "Some preferences were not saved" : "Taste Memory updated",
+                message,
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to save these preferences.";
+            setMyMixSaveMessage(`Couldn't save these preferences. ${message}`);
+            addToast({ type: "error", title: "Couldn't save to Taste Memory", message });
+        } finally {
+            setIsSavingMyMix(false);
+        }
+    };
+
     // A session was started elsewhere on the page: pick it up without a reload.
     useEffect(() => {
         if (!refreshKey) return;
@@ -355,9 +512,21 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     // Poll history while a just-started session's picks are still being chosen.
     useEffect(() => {
         if (!awaitingAutoplayId) return;
+        const startVersion = initialMixCoverageVersionRef.current;
+        const refreshInitialCoverage = () => {
+            if (
+                startVersion !== null &&
+                startVersion === myMixEditVersionRef.current &&
+                myMixPreferencesRef.current
+            ) {
+                void refreshMyMixCoverage(awaitingAutoplayId);
+            }
+        };
         const interval = setInterval(() => {
             void refetchHistory();
+            refreshInitialCoverage();
         }, AUTOPLAY_POLL_INTERVAL_MS);
+        refreshInitialCoverage();
         const giveUp = setTimeout(() => {
             if (awaitingAutoplayRef.current !== awaitingAutoplayId) return;
             clearAwaitingAutoplay();
@@ -371,7 +540,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             clearInterval(interval);
             clearTimeout(giveUp);
         };
-    }, [awaitingAutoplayId, refetchHistory, clearAwaitingAutoplay, addToast]);
+    }, [awaitingAutoplayId, refetchHistory, clearAwaitingAutoplay, addToast, refreshMyMixCoverage]);
 
     // Play the started session's first picks, once.
     useEffect(() => {
@@ -380,7 +549,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         const session = sessions.find((candidate) => candidate.id === sessionId);
         if (!session || session.licenses.length === 0) return;
         clearAwaitingAutoplay();
-        void playDjTracks(sessionId, session.licenses.map((license) => license.trackId));
+        void playDjTracks(sessionId, session.mixTrackIds ?? session.licenses.map((license) => license.trackId));
     }, [sessions, playDjTracks, clearAwaitingAutoplay]);
 
     useEffect(() => {
@@ -433,6 +602,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             replanSeqRef.current += 1;
             setIsReplanning(false);
             setPickCoverage(null);
+            invalidateMyMixCoverage();
             setActiveSessionId(null);
             setNextPick(null);
             void recordProductAnalytics(token, "agent.session_stopped", {
@@ -459,23 +629,31 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             // The sentence is still being read: starting now would ignore it.
             if (isParsing) return;
             const preset = activePreset;
-            const startedFrom: SessionStartedFrom = preset ? "preset" : hasFilters(request) ? "prompt" : "plain";
+            const startedFrom: SessionStartedFrom = myMixPreferences
+                ? "my_mix"
+                : preset ? "preset" : hasFilters(request) ? "prompt" : "plain";
             // A preset or a typed request steers this session only: it travels as
             // session preferences and never overwrites the vibes saved in Settings.
-            const preferences = buildSessionPreferences({ activePreset: preset, request });
+            const preferences = myMixPreferences
+                ? { myMix: { ...myMixPreferences, context: getMyMixLocalContext() } }
+                : buildSessionPreferences({ activePreset: preset, request });
             try {
                 setIsStarting(true);
                 const result = await startSession(preferences ? { preferences } : undefined);
                 if (result?.sessionId) {
                     setActiveSessionId(result.sessionId);
+                    initialMixCoverageVersionRef.current = myMixPreferences
+                        ? myMixEditVersionRef.current
+                        : null;
                     beginAwaitingAutoplay(result.sessionId);
+                    if (!myMixPreferences) myMixWasSelectedRef.current = false;
                 }
                 // Filter kinds and counts only: never the typed sentence or the filter values.
                 void recordProductAnalytics(token, "agent.session_started", {
                     source:
                         startedFrom === "preset"
                             ? "agent_session_intent_panel"
-                            : startedFrom === "prompt"
+                            : startedFrom === "prompt" || startedFrom === "my_mix"
                               ? "agent_session_prompt"
                               : "agent_command_bar",
                     subjectType: "agent_session",
@@ -498,6 +676,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     title: "Session Started",
                     message: preset
                         ? `${preset.name} is now guiding the queue.`
+                        : startedFrom === "my_mix"
+                          ? "My Mix is now guiding the queue."
                         : startedFrom === "prompt"
                           ? "Your DJ is following your filters and will start playing shortly."
                           : "Your DJ is picking tracks and will start playing shortly.",
@@ -518,6 +698,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         setIgnored([]);
         setParseError(null);
         setActivePreset(preset);
+        if (myMixPreferences) {
+            setMyMixPreferences(null);
+            myMixWasSelectedRef.current = true;
+            invalidateMyMixCoverage();
+            setMyMixSaveMessage(null);
+        }
         scheduleReplan();
         void recordProductAnalytics(token, "agent.intent_selected", {
             source: "agent_session_intent_panel",
@@ -557,16 +743,24 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
     const handleNextPick = async () => {
         if (!token || !openSessionId || !config) return;
+        const requestedSessionId = openSessionId;
+        const requestedMixVersion = myMixPreferences ? myMixEditVersionRef.current : null;
+        const requestIsCurrent = () =>
+            requestedMixVersion === null ||
+            (requestedMixVersion === myMixEditVersionRef.current &&
+                myMixPreferencesRef.current !== null &&
+                openSessionIdRef.current === requestedSessionId);
         setIsPickingNext(true);
         try {
             const result = await getAgentNextPick(token, {
-                sessionId: openSessionId,
+                sessionId: requestedSessionId,
                 preferences: buildNextPickPreferences(),
             });
+            if (!requestIsCurrent()) return;
             void recordProductAnalytics(token, "agent.next_pick_requested", {
                 source: "agent_next_pick_card",
                 subjectType: "agent_session",
-                subjectId: openSessionId,
+                subjectId: requestedSessionId,
                 payload: {
                     surface: ANALYTICS_SURFACE,
                     intent: activePreset?.intent,
@@ -582,13 +776,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             });
             setNextPick(result);
             setPickCoverage({ coverage: result.requestCoverage ?? null, at: Date.now() });
+            if (myMixPreferences) setMyMixCoverage(result.mixCoverage ?? null);
             if (result.status === "ok" && result.track) {
                 addToast({
                     type: "success",
                     title: "AI Pick Ready",
                     message: `Playing ${result.track.title}`,
                 });
-                void playDjTracks(openSessionId, [result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
+                void playDjTracks(requestedSessionId, [result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
             } else {
                 addToast({
                     type: "info",
@@ -598,6 +793,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             }
             void refetchHistory();
         } catch (error) {
+            if (!requestIsCurrent()) return;
             const message = error instanceof Error ? error.message : "Unable to request next pick.";
             addToast({
                 type: "error",
@@ -668,6 +864,18 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         parseError={parseError}
                         isLive={config.isActive}
                         isBusy={isStarting || isReplanning}
+                        myMix={{
+                            lanes: myMixLanes,
+                            vocabulary: myMixVocabulary,
+                            preferences: myMixPreferences,
+                            coverage: myMixCoverage,
+                            isSaving: isSavingMyMix,
+                            saveMessage: myMixSaveMessage,
+                            canSave: myMixTasteEdits.length > 0,
+                            onSelect: handleSelectMyMix,
+                            onChange: handleMyMixChange,
+                            onSave: handleSaveMyMix,
+                        }}
                         onSubmit={handleSubmit}
                     />
 
@@ -685,6 +893,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                             activeSessionId={openSessionId}
                             pick={nextPick}
                             isLoading={isPickingNext}
+                            mixCoverage={myMixPreferences ? myMixCoverage : null}
                             onPick={handleNextPick}
                         />
                     </div>
@@ -720,7 +929,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     );
 }
 
-export type SessionStartedFrom = "preset" | "prompt" | "plain";
+export type SessionStartedFrom = "preset" | "prompt" | "plain" | "my_mix";
 
 export function toIntentPreferences(preset: SessionPreset): AgentNextPreferences {
     return {

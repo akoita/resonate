@@ -3,6 +3,7 @@ import { AgentAudioFeatureService } from "./agent_audio_feature.service";
 import { AgentBigQueryTasteSignalService } from "./agent_bigquery_taste_signal.service";
 import { AgentGoldenEvalService } from "./agent_golden_eval.service";
 import { AgentLearningService } from "./agent_learning.service";
+import { HabitOrderingService } from "./habit_ordering.service";
 import { AgentMixerService } from "./agent_mixer.service";
 import { AgentObservabilityService } from "./agent_observability.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
@@ -47,6 +48,7 @@ export const AGENT_RUNTIME_CORE_PROVIDERS = [
   AgentSelectorService,
   DeterministicRecommendationAdapter,
   ModelAssistedRecommendationAdapter,
+  HabitOrderingService,
   AgentMixerService,
   AgentOrchestratorService,
   VertexAiAdapter,

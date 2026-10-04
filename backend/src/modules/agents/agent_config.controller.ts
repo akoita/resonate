@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, Optional, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IsString, MaxLength } from "class-validator";
@@ -14,10 +14,11 @@ import {
 } from "./agent_learning.service";
 import { mergeSessionGenres } from "./agent_session_genres";
 import {
-    AGENT_SESSION_REQUEST_PARSER,
-    listeningRequestFromCrateParse,
-    requestRankingPreferences,
-    type AgentSessionParseResponse,
+  AGENT_SESSION_REQUEST_PARSER,
+  listeningRequestFromCrateParse,
+  requestRankingPreferences,
+  type AgentSessionRequest,
+  type AgentSessionParseResponse,
 } from "./agent_session_request";
 import { EventBus } from "../shared/event_bus";
 import { minutes } from "../shared/rate_limits";
@@ -26,6 +27,10 @@ import type { CrateRequestParser } from "../crates/crate_request_parser";
 import { createCrateRequestParser } from "../crates/model_crate_request_parser";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
+import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../recommendations/taste_edit_vocabulary";
+import { resolveMyMixPlan } from "./agent_my_mix";
+import type { MyMixPreferences } from "./agent_my_mix";
+import { resolveListeningLanes } from "./listening_lanes.service";
 
 /** Tracked per signed-in person where the guard has resolved them, else per IP. */
 const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
@@ -147,6 +152,24 @@ export class AgentConfigController {
         return this.identityService.mintIdentity(req.user.userId);
     }
 
+    @Get("session/mix-vocabulary")
+    @UseGuards(AuthGuard("jwt"))
+    getMixVocabulary() {
+        return { genres: [...TASTE_EDIT_GENRES], moods: [...TASTE_EDIT_MOODS] };
+    }
+
+    @Get("session/:sessionId/mix-coverage")
+    @UseGuards(AuthGuard("jwt"))
+    async getMixCoverage(@Req() req: any, @Param("sessionId") sessionId: string) {
+        const session = await prisma.session.findFirst({
+            where: { id: sessionId, userId: req.user.userId },
+            select: { id: true },
+        });
+        if (!session) throw new NotFoundException("Session not found");
+        const mixCoverage = this.runtimeService.getInitialMixCoverage(req.user.userId, sessionId);
+        return mixCoverage ? { mixCoverage } : {};
+    }
+
     @Post("identity/attest")
     @UseGuards(AuthGuard("jwt"))
     async attestIdentity(@Req() req: any) {
@@ -177,7 +200,9 @@ export class AgentConfigController {
         @Req() req: any,
         @Body() body: { trackId: string; action: string; sessionId?: string; metadata?: Record<string, unknown> }
     ) {
-        if (!body.trackId || !isAgentSignalAction(body.action)) {
+        // Habit-only actions enter through consented analytics instrumentation,
+        // where browser-session deduplication and training controls are enforced.
+        if (!body.trackId || !isAgentSignalAction(body.action) || body.action === "loop" || body.action === "unsave") {
             throw new BadRequestException({
                 reason: "trackId and valid action are required",
                 acceptedActions: ["accept", "skip", "complete", "save", "replay", "add_to_playlist", "purchase"],
@@ -245,6 +270,7 @@ export class AgentConfigController {
                 source?: string;
                 /** Listening filters parsed from the listener's own words (#2037). Sanitized here. */
                 request?: unknown;
+                myMix?: MyMixPreferences | null;
             };
         }
     ) {
@@ -253,6 +279,13 @@ export class AgentConfigController {
         });
         if (!config) {
             return { status: "not_configured" };
+        }
+        if (body?.preferences?.myMix != null) {
+            resolveMyMixPlan(
+                body.preferences.myMix,
+                await resolveListeningLanes(req.user.userId),
+                getAgentTrackLimit(),
+            );
         }
         // The described session (#2037): invalid fields are dropped, and with
         // no request every derived value below is exactly what it was before.
@@ -278,6 +311,7 @@ export class AgentConfigController {
             sessionIntentName: body?.preferences?.sessionIntentName,
             queueStyle: body?.preferences?.queueStyle,
             source: body?.preferences?.source,
+            myMix: body?.preferences?.myMix,
         };
 
         // Create a persistent Session record
@@ -319,7 +353,7 @@ export class AgentConfigController {
                 sessionId: session.id,
                 userId: req.user.userId,
                 budgetCapUsd: config.monthlyCapUsd,
-                preferences: sessionPreferences,
+                preferences: publicSessionPreferences(sessionPreferences),
             });
 
             // Kick off orchestration — route through LLM when AGENT_RUNTIME is set
@@ -355,6 +389,7 @@ export class AgentConfigController {
                     sessionIntentName: sessionPreferences.sessionIntentName,
                     queueStyle: sessionPreferences.queueStyle,
                     source: sessionPreferences.source,
+                    myMix: sessionPreferences.myMix,
                     // The described session (#2037); absent without a request.
                     ...(requested.request
                         ? {
@@ -384,6 +419,9 @@ export class AgentConfigController {
                         ? result.tracks.map((track) => track.trackId)
                         : (result.picks ?? (result.trackId ? [{ trackId: result.trackId }] : []))
                             .map((pick) => pick.trackId);
+                    if (sessionPreferences.myMix != null) {
+                        await this.recordMyMixDemand(req.user.userId, session.id);
+                    }
                     if (
                         this.unmetDemand && requested.request &&
                         (resultStatus === "approved" || resultStatus === "no_tracks")
@@ -503,6 +541,7 @@ export class AgentConfigController {
                 where: { id: openSession.id },
                 data: { endedAt: new Date() },
             });
+            this.runtimeService.clearMyMixSession(req.user.userId, openSession.id);
             await this.learningService.annotateSessionOutcome({
                 userId: req.user.userId,
                 sessionId: openSession.id,
@@ -524,6 +563,33 @@ export class AgentConfigController {
         });
 
         return { status: "stopped" };
+    }
+
+    private async recordMyMixDemand(userId: string, sessionId: string) {
+        if (!this.unmetDemand) return;
+        const observations = this.runtimeService.takeMyMixDemandObservations(userId, sessionId);
+        for (const observation of observations) {
+            if (observation.requested <= 0 || observation.matchedTrackIds.length >= observation.requested) continue;
+            const request: AgentSessionRequest = {
+                genres: observation.genres,
+                moods: observation.moods,
+                energy: null,
+                bpm: null,
+            };
+            try {
+                await this.unmetDemand.recordSessionShortfall({
+                    userId,
+                    sessionId,
+                    resultStatus: observation.matchedTrackIds.length > 0 ? "approved" : "no_tracks",
+                    observedAt: new Date(),
+                    request,
+                    requestedCount: observation.requested,
+                    foundTrackIds: observation.matchedTrackIds,
+                });
+            } catch {
+                this.logger.warn("My Mix unmet-demand observation was skipped after an agent session result.");
+            }
+        }
     }
 
     @Get("history")
@@ -562,6 +628,9 @@ export class AgentConfigController {
         });
 
         for (const session of sessions) {
+            // Initial playback must use the ordered batch, not unordered pick-log rows.
+            const mixTrackIds = this.runtimeService.getMyMixTrackOrder?.(req.user.userId, session.id);
+            if (mixTrackIds) Object.assign(session, { mixTrackIds });
             const signalByTrack = new Map(session.agentSignals.map((signal) => [signal.trackId, signal.metadata]));
             // @ts-ignore - hydrating dynamic props for frontend
             session.licenses = session.licenses.map((license) => ({
@@ -609,4 +678,9 @@ export class AgentConfigController {
 
         return sessions;
     }
+}
+
+function publicSessionPreferences(preferences: Record<string, unknown>): Record<string, unknown> {
+    const { myMix: _myMix, ...safePreferences } = preferences;
+    return safePreferences;
 }

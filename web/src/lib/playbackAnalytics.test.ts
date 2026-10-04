@@ -3,6 +3,9 @@ import {
   buildPlaybackCompletedPayload,
   buildPlaybackLifecyclePayload,
   createPlaybackAnalyticsInstanceId,
+  getPlaybackLocalContext,
+  getPlaybackDjSessionId,
+  getPlaybackPlaylistId,
   getPlaybackAnalyticsSessionId,
   PLAYBACK_HEARTBEAT_SECONDS,
   shouldReportPlaybackCompleted,
@@ -44,6 +47,18 @@ describe("playback analytics helpers", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("associates actual playback with the active DJ set without marking it agent-originated", () => {
+    const set = { sessionId: "dj-session", trackIds: ["catalog-track-1"] };
+    const common = { track, agentSessionId: getPlaybackDjSessionId("catalog-track-1", set), sessionId: "browser-session", playbackInstanceId: "instance", currentTimeSeconds: 30 };
+    const started = buildPlaybackLifecyclePayload({ ...common, action: "started" });
+    const completed = buildPlaybackCompletedPayload(common);
+    expect(started?.agentSessionId).toBe("dj-session");
+    expect(completed?.agentSessionId).toBe("dj-session");
+    expect(started).not.toHaveProperty("agentOriginated");
+    expect(getPlaybackDjSessionId("other", set)).toBeUndefined();
+    expect(buildPlaybackCompletedPayload({ ...common, agentSessionId: getPlaybackDjSessionId("catalog-track-1", null) })).not.toHaveProperty("agentSessionId");
   });
 
   it("uses secure random bytes when randomUUID is unavailable", () => {
@@ -152,6 +167,7 @@ describe("playback analytics helpers", () => {
     const sessionId = getPlaybackAnalyticsSessionId();
     expect(sessionId).toBe("session-uuid");
     expect(getPlaybackAnalyticsSessionId()).toBe("session-uuid");
+    const now = new Date(2026, 0, 7, 10);
 
     expect(
       buildPlaybackCompletedPayload({
@@ -159,6 +175,7 @@ describe("playback analytics helpers", () => {
         currentTimeSeconds: 130,
         durationSeconds: 120,
         sessionId,
+        now,
       }),
     ).toEqual({
       trackId: "catalog-track-1",
@@ -168,6 +185,8 @@ describe("playback analytics helpers", () => {
       source: "web_player",
       completionRatio: 1,
       durationMs: 120000,
+      localHourBucket: "morning",
+      weekdayKind: "weekday",
     });
   });
 
@@ -178,6 +197,7 @@ describe("playback analytics helpers", () => {
         currentTimeSeconds: 30,
         durationSeconds: 120,
         sessionId: "session-1",
+        now: new Date(2026, 0, 7, 10),
       }),
     ).toEqual({
       trackId: "catalog-track-1",
@@ -186,6 +206,8 @@ describe("playback analytics helpers", () => {
       source: "web_player",
       completionRatio: 0.25,
       durationMs: 120000,
+      localHourBucket: "morning",
+      weekdayKind: "weekday",
     });
   });
 
@@ -205,6 +227,8 @@ describe("playback analytics helpers", () => {
         queueLength: 4,
         repeatMode: "all",
         shuffle: true,
+        playlistId: "playlist-1",
+        now: new Date(2026, 0, 3, 18),
       }),
     ).toEqual({
       action: "heartbeat",
@@ -221,6 +245,78 @@ describe("playback analytics helpers", () => {
       queueLength: 4,
       repeatMode: "all",
       shuffle: true,
+      playlistId: "playlist-1",
+      localHourBucket: "evening",
+      weekdayKind: "weekend",
     });
+  });
+
+  it.each([
+    [0, 0, "night"],
+    [5, 59, "night"],
+    [6, 0, "morning"],
+    [11, 59, "morning"],
+    [12, 0, "afternoon"],
+    [17, 59, "afternoon"],
+    [18, 0, "evening"],
+    [23, 59, "evening"],
+  ] as const)("buckets local hour %s:%s", (hour, minute, expected) => {
+    expect(getPlaybackLocalContext(new Date(2026, 0, 7, hour, minute)).localHourBucket).toBe(expected);
+  });
+
+  it("classifies weekdays and weekends using the local calendar day", () => {
+    expect(getPlaybackLocalContext(new Date(2026, 0, 3, 12)).weekdayKind).toBe("weekend");
+    expect(getPlaybackLocalContext(new Date(2026, 0, 5, 12)).weekdayKind).toBe("weekday");
+  });
+
+  it("propagates coarse local context and playback provenance without a clock or timezone", () => {
+    const now = new Date(2026, 0, 3, 5, 59);
+    const playlistSource = { playlistId: "playlist-1", trackIds: [track.id] };
+    const appendedTrack = { ...track, id: "appended-track" };
+    const context = { localHourBucket: "night", weekdayKind: "weekend" };
+    const completed = buildPlaybackCompletedPayload({
+      track,
+      currentTimeSeconds: 40,
+      durationSeconds: 120,
+      sessionId: "session-1",
+      playbackInstanceId: "instance-1",
+      repeatMode: "all",
+      playlistId: getPlaybackPlaylistId(track, playlistSource),
+      now,
+    });
+    const lifecycle = buildPlaybackLifecyclePayload({
+      action: "started",
+      track,
+      sessionId: "session-1",
+      playbackInstanceId: "instance-1",
+      repeatMode: "all",
+      playlistId: getPlaybackPlaylistId(track, playlistSource),
+      now,
+    });
+
+    expect(completed).toEqual(expect.objectContaining({
+      ...context,
+      playbackInstanceId: "instance-1",
+      repeatMode: "all",
+      playlistId: "playlist-1",
+    }));
+    expect(lifecycle).toEqual(expect.objectContaining({
+      ...context,
+      playbackInstanceId: "instance-1",
+      repeatMode: "all",
+      playlistId: "playlist-1",
+    }));
+    expect(getPlaybackPlaylistId(appendedTrack, playlistSource)).toBeUndefined();
+
+    for (const payload of [completed, lifecycle]) {
+      expect(payload).not.toHaveProperty("localTime");
+      expect(payload).not.toHaveProperty("timeZone");
+      expect(payload).not.toHaveProperty("timezone");
+      expect(JSON.stringify(payload)).not.toContain(now.toISOString());
+    }
+  });
+
+  it("does not attribute an ad hoc track to a playlist", () => {
+    expect(getPlaybackPlaylistId(track, null)).toBeUndefined();
   });
 });

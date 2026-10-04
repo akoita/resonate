@@ -10,6 +10,16 @@ describe("analytics warehouse export", () => {
   const generatedAt = new Date("2026-05-20T12:00:00.000Z");
   const expectedEventCases = loadExpectedEventCases();
 
+  it("retains coarse listening context in warehouse fact dimensions (#2062)", () => {
+    const layers = buildAnalyticsWarehouseExport([event({
+      eventId: "evt_habit_context", eventName: "playback.completed",
+      payload: { trackId: "track-1", localHourBucket: "evening", weekdayKind: "weekend", playlistId: "playlist-1" },
+    })]);
+    expect(layers.analyticsFacts[0].dimensions).toMatchObject({
+      localHourBucket: "evening", weekdayKind: "weekend", playlistId: "playlist-1",
+    });
+  });
+
   it("builds raw, clean, fact, and report view layers for known events", () => {
     const result = buildAnalyticsWarehouseExport(
       [

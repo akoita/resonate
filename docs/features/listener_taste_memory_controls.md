@@ -47,8 +47,8 @@ UI:
 
 - Open `/settings`.
 - Use the **Taste Memory** section to review safe summaries such as favored
-  genres, moods, artists, recent intents, novelty pattern, and commerce
-  preference.
+  genres, moods, credited artists, measured energy and tempo bands, coarse
+  time-of-day preferences, recent intents, novelty pattern, and commerce preference.
 - Toggle social matching, city/scene discovery, and AI DJ playback training.
 - Add a hidden or downranked signal such as a genre or mood.
 - Under **Tell us what you want more or less of**, type a wish in your own
@@ -244,8 +244,45 @@ event, including the restore event when it is removed.
 
 Agent-mediated playback analytics can now carry `initiator`,
 `agentOriginated`, `agentSessionId`, and `playbackCommandId` markers. Downstream
-taste learning should continue to respect `agentPlaybackTrainingEnabled` before
-using those agent-originated playback signals.
+analytics-to-taste learning requires both current optional measurement consent
+and `agentPlaybackTrainingEnabled`. Disabling training pauses learning from
+listener starts, skips, completions, loops, saves, removals, and playlist
+additions. Agent-originated playback is excluded from this listener telemetry
+mirror. See [learning from listening habits](agent_taste_intelligence.md#learning-from-listening-habits-2062)
+for weights, deduplication, and coarse local context.
+
+## Habit summaries (#2063)
+
+Taste Memory uses the same decayed, bounded profile as the learning service;
+it does not add a persisted profile to recent signals a second time. Release
+moods and credited artist labels feed summaries. Energy and tempo bands require
+current full-mix measurements, and context uses only hour buckets and
+weekday/weekend categories. Missing evidence leaves an empty summary.
+
+Hide, downrank, boost and reset govern both global and context weights. Reset
+clears every learned dimension while keeping declared controls. The response
+adds `favoredEnergyBands`, `favoredTempoBands` and `contexts` without exposing
+itemized listening history. Existing clients can continue reading the original
+summary fields. See [habit profile v2](agent_taste_intelligence.md#habit-profile-v2-2063)
+for source, decay and history limits.
+
+## Your listening lanes (#2064)
+
+Taste Memory shows up to six repeated listening patterns as catalog-labelled
+cards with coarse times. At least two sessions and sufficient decayed evidence
+are required; a new listener may see no cards. Measured energy is shown only
+when available. Cards contain no track list or exact listening times.
+
+**Hide from mixes** saves a lane hide; **Restore to mixes** removes it. These
+controls apply to My Mix (#2065): hidden lanes are excluded whenever the DJ
+resolves the listener's lanes. My Mix's remove, boost and added-category edits
+affect the current session only; saving to Taste Memory is a separate action.
+See [My Mix](agent_taste_intelligence.md#my-mix-2065).
+Hidden lanes remain visible here for restoration but are excluded from the
+mix-facing resolver. Hiding a genre, mood or artist rebuilds the affected lanes.
+Reset clears learned lanes and their hides while preserving explicitly declared
+preferences. See [listening lanes](agent_taste_intelligence.md#listening-lanes-2064)
+for the API, evidence thresholds and caching contract.
 
 ## Verification
 
@@ -259,6 +296,11 @@ Focused coverage:
 - `backend/src/tests/taste_edits.integration.spec.ts` (preview writes nothing, apply writes only confirmed items, invalid combinations rejected, boosted preference matching, removal restores; CI only, needs Docker)
 - `backend/src/tests/agent_learning.spec.ts`
 - `backend/src/tests/agent_learning.integration.spec.ts`
+- `backend/src/tests/taste_memory_profile_v2.integration.spec.ts`
+- `backend/src/tests/listening_lanes.spec.ts`
+- `backend/src/tests/listening_lanes.integration.spec.ts`
+- `web/src/components/settings/TasteMemorySettingsPanel.test.tsx`
+- `web/tests/taste-memory-habits.spec.ts`
 - `web/src/lib/api.test.ts`
 - `web/src/components/settings/tasteEdits.test.ts`
 - `web/src/components/settings/TasteEditSection.test.tsx`
@@ -269,8 +311,9 @@ Manual smoke:
 2. Confirm the Taste Memory section renders with empty-state copy when no
    profile exists.
 3. Hide a genre and confirm future recommendation reasons no longer show it.
-4. Disable AI DJ playback training and confirm agent-originated playback does
-   not create new taste signals.
+4. Disable AI DJ playback training and confirm listener playback and library
+   analytics do not create new taste signals. Repeat with optional measurement
+   consent disabled.
 5. Reset taste memory and confirm recommendations fall back until new signals
    are recorded.
 6. Type "less drill, more live instruments", choose Preview changes, and confirm

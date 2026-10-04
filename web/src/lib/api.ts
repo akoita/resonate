@@ -7,6 +7,7 @@ import type {
 } from "./verificationSemantics";
 import { invalidateStoredAuthSession } from "./authSession";
 import { rememberDjAttribution } from "./discoveryAttribution";
+import { withCurrentMyMixContext } from "./agentMyMix";
 import type { RemixBeatRecipe } from "./remixBeat";
 import type { RemixPartRole, RemixParts } from "./remixParts";
 import type { RemixFxRecipe } from "./remixFx";
@@ -1321,6 +1322,9 @@ export type ClientTelemetryRefused = {
 
 export type ClientTelemetryResponse = ClientTelemetryRecorded | ClientTelemetryRefused;
 
+export type PlaybackLocalHourBucket = "night" | "morning" | "afternoon" | "evening";
+export type PlaybackWeekdayKind = "weekday" | "weekend";
+
 export function isClientTelemetryRefused(
   response: ClientTelemetryResponse | null | undefined,
 ): response is ClientTelemetryRefused {
@@ -1332,6 +1336,7 @@ export type PlaybackCompletedAnalyticsInput = {
   artistId?: string;
   releaseId?: string;
   sessionId?: string;
+  playbackInstanceId?: string;
   source?: string;
   initiator?: "listener" | "external_agent" | "ai_dj";
   agentOriginated?: boolean;
@@ -1341,6 +1346,10 @@ export type PlaybackCompletedAnalyticsInput = {
   railId?: string;
   /** #1455: ranker variant of the listener who was served the rail. */
   rankerVariant?: string;
+  playlistId?: string;
+  repeatMode?: "none" | "one" | "all";
+  localHourBucket?: PlaybackLocalHourBucket;
+  weekdayKind?: PlaybackWeekdayKind;
   completionRatio: number;
   durationMs?: number;
 };
@@ -1379,6 +1388,9 @@ export type PlaybackLifecycleAnalyticsInput = {
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
+  playlistId?: string;
+  localHourBucket?: PlaybackLocalHourBucket;
+  weekdayKind?: PlaybackWeekdayKind;
   /** #1455: Home rail the play came from (label only). */
   railId?: string;
   /** #1455: ranker variant of the listener who was served the rail. */
@@ -3766,7 +3778,8 @@ export type TasteSignalControl = {
     | "replay"
     | "commerce"
     | "energy"
-    | "note";
+    | "note"
+    | "lane";
   value: string;
   /** `boosted` and `declared` only come from confirmed taste edits (#1961). */
   action: "hidden" | "downranked" | "boosted" | "declared";
@@ -3811,6 +3824,34 @@ export type ConfirmedTasteEdit = {
   action: TasteSignalControl["action"];
 };
 
+export type TasteMemoryContextSummary = {
+  localHourBucket: "night" | "morning" | "afternoon" | "evening";
+  weekdayKind: "weekday" | "weekend";
+  favoredGenres: string[];
+  favoredMoods: string[];
+};
+
+export type ListeningLaneContextKey =
+  | "night:weekday"
+  | "night:weekend"
+  | "morning:weekday"
+  | "morning:weekend"
+  | "afternoon:weekday"
+  | "afternoon:weekend"
+  | "evening:weekday"
+  | "evening:weekend";
+
+export type ListeningLane = {
+  id: string;
+  label: string;
+  genreWeights: Record<string, number>;
+  moodWeights: Record<string, number>;
+  strength: number;
+  contexts: Partial<Record<ListeningLaneContextKey, number>>;
+  energyBand: "low" | "medium" | "high" | null;
+  hidden: boolean;
+};
+
 export type TasteMemoryResponse = {
   schemaVersion: "listener-taste-memory/v1";
   settings: TasteMemorySettings;
@@ -3818,6 +3859,10 @@ export type TasteMemoryResponse = {
     favoredGenres: string[];
     favoredMoods: string[];
     favoredArtists: string[];
+    favoredEnergyBands?: string[];
+    favoredTempoBands?: string[];
+    contexts?: TasteMemoryContextSummary[];
+    listeningLanes?: ListeningLane[];
     recentIntents: string[];
     noveltyPattern: string;
     commercePreference: string;
@@ -5398,7 +5443,7 @@ export type AgentConfig = {
   identityTxHash: string | null;
   identityCredential: Record<string, unknown> | null;
   learnedTasteProfile: {
-    schemaVersion: "agent-taste-profile/v1";
+    schemaVersion: "agent-taste-profile/v1" | "agent-taste-profile/v2";
     score: number;
     tier: "New" | "Emerging" | "Focused" | "Deep";
     signals: number;
@@ -5408,6 +5453,14 @@ export type AgentConfig = {
     genresExplored: string[];
     favoredGenres: string[];
     genreWeights: Record<string, number>;
+    moodWeights?: Record<string, number>;
+    artistWeights?: Record<string, number>;
+    energyBandWeights?: Record<string, number>;
+    tempoBandWeights?: Record<string, number>;
+    contextWeights?: Record<string, {
+      genreWeights: Record<string, number>;
+      moodWeights: Record<string, number>;
+    }>;
     diversity: number;
     depth: number;
     consistency: number;
@@ -5512,6 +5565,23 @@ export async function startAgentSession(
   );
 }
 
+/** Owner-only initial coverage for a session's first My Mix batch (#2065). */
+export async function getAgentMixCoverage(
+  token: string,
+  sessionId: string,
+): Promise<{ mixCoverage?: AgentMixCoverage }> {
+  return apiRequest<{ mixCoverage?: AgentMixCoverage }>(
+    `/agents/config/session/${encodeURIComponent(sessionId)}/mix-coverage`,
+    {},
+    token,
+  );
+}
+
+/** Canonical catalog choices for session-only My Mix additions (#2065). */
+export async function getAgentMixVocabulary(token: string): Promise<AgentMixVocabulary> {
+  return apiRequest<AgentMixVocabulary>("/agents/config/session/mix-vocabulary", {}, token);
+}
+
 export async function stopAgentSession(token: string): Promise<{ status: string }> {
   return apiRequest<{ status: string }>(
     "/agents/config/session/stop",
@@ -5578,6 +5648,8 @@ export interface AgentSession {
   startedAt: string;
   endedAt: string | null;
   licenses: AgentSessionLicense[];
+  /** Latest owner-only ordered My Mix batch; absent after ephemeral cache loss. */
+  mixTrackIds?: string[];
   agentTransactions: AgentTransaction[];
 }
 
@@ -5608,6 +5680,32 @@ export type AgentRequestCoverage = {
   gaps: Array<{ filter: AgentRequestCoverageFilter; matched: number }>;
 };
 
+export type AgentMixCoverageLane = {
+  id: string;
+  label: string;
+  requested: number;
+  matched: number;
+};
+
+export type AgentMixCoverage = {
+  lanes: AgentMixCoverageLane[];
+};
+
+export type AgentMixVocabulary = {
+  genres: string[];
+  moods: string[];
+};
+
+export type AgentMyMixAddition = { genre?: string; mood?: string };
+
+export type AgentMyMixPreferences = {
+  /** One of the eight local coarse time/day buckets; never a timestamp or timezone. */
+  context?: ListeningLaneContextKey;
+  /** Omitted means all visible lanes; an explicit empty array removes them all. */
+  lanes?: Array<{ id: string; boost?: boolean }>;
+  additions?: AgentMyMixAddition[];
+};
+
 export type AgentSessionRequestParse = {
   request: AgentSessionRequest;
   unparsed: string[];
@@ -5627,6 +5725,9 @@ export type AgentNextPreferences = {
   sessionIntentName?: string;
   queueStyle?: string;
   source?: string;
+  /** #2065: session-only taste lanes and catalog additions. */
+  /** `null` explicitly clears a previously selected session mix. */
+  myMix?: AgentMyMixPreferences | null;
 };
 
 export type AgentNextPickResponse = {
@@ -5661,6 +5762,8 @@ export type AgentNextPickResponse = {
   shortfall?: number;
   /** #2037: how well these picks matched the session request; present when the request had a filter. */
   requestCoverage?: AgentRequestCoverage;
+  /** #2065: actual lane assignment counts, with catalog labels and opaque IDs. */
+  mixCoverage?: AgentMixCoverage;
 };
 
 export async function getAgentHistory(token: string): Promise<AgentSession[]> {
@@ -5765,9 +5868,12 @@ export async function getAgentNextPick(
   token: string,
   input: { sessionId: string; preferences?: AgentNextPreferences },
 ): Promise<AgentNextPickResponse> {
+  const request = input.preferences
+    ? { ...input, preferences: withCurrentMyMixContext(input.preferences) }
+    : input;
   const pick = await apiRequest<AgentNextPickResponse>(
     "/sessions/agent/next",
-    { method: "POST", body: JSON.stringify(input) },
+    { method: "POST", body: JSON.stringify(request) },
     token,
   );
   // #2005: remember the variant so this pick's play, skip and save are

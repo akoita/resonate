@@ -69,6 +69,17 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(dimensions["geoSource"], "user_declared")
         self.assertEqual(dimensions["geoPrecision"], "city")
 
+    def test_coarse_playback_context_reaches_fact_dimensions(self):
+        playback = event("habit_context", "playback.completed")
+        playback["payload"] = {"trackId": "track-1", "localHourBucket": "evening",
+                               "weekdayKind": "weekend", "playlistId": "playlist-1"}
+        layers = process_payload(playback)
+        self.assertEqual(layers.analytics_quarantine, [])
+        dimensions = json.loads(layers.analytics_facts[0]["dimensions"])
+        self.assertEqual(dimensions["localHourBucket"], "evening")
+        self.assertEqual(dimensions["weekdayKind"], "weekend")
+        self.assertEqual(dimensions["playlistId"], "playlist-1")
+
     def test_invalid_geo_dimension_is_quarantined(self):
         payload = event("evt_bad_geo", "shows.pledge_intent_created")
         payload["geo"] = {

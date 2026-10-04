@@ -2,6 +2,7 @@ import { Logger } from "@nestjs/common";
 import { AnalyticsDomainEventBridgeService } from "../modules/analytics/analytics_domain_event_bridge.service";
 import { AnalyticsEventPublisher } from "../modules/analytics/analytics_event_publisher";
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
+import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
 import { EventBus } from "../modules/shared/event_bus";
 
 describe("AnalyticsDomainEventBridgeService", () => {
@@ -260,7 +261,14 @@ describe("AnalyticsDomainEventBridgeService", () => {
         sessionId: "session_919",
         userId: "user_919",
         budgetCapUsd: 12,
-        preferences: { mood: "focus", explicit: false, nested: { drop: true } },
+        preferences: {
+          mood: "focus", explicit: false, nested: { drop: true },
+          myMix: {
+            context: "evening:weekday",
+            lanes: [{ id: "lane_private", boost: true }],
+            additions: [{ genre: "Soul" }],
+          },
+        },
       },
       {
         eventName: "license.granted",
@@ -773,7 +781,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
         producer: "playlist-service",
         subjectType: "playlist",
         subjectId: "playlist_919",
-        actorId: "user_919",
+        actorId: pseudonymousAnalyticsActorId("user_919"),
         payload: expect.objectContaining({
           trackIds: ["track_919"],
           trackCount: 1,

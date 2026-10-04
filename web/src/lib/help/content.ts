@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane"],
     sections: [
       {
         id: "sessions",
@@ -529,12 +529,35 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/ai-dj.png`,
-              alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate and play tracks for you in real time.",
-              caption: "Setting up your AI DJ the first time.",
+              alt: "The AI DJ session panel with My Mix selected, two listening lanes labelled Soul · Warm and Ambient · Zen, and controls to boost, remove or add music preferences for the session.",
+              caption: "My Mix blends your listening lanes. Edit them for this session before starting.",
               width: 1440,
-              height: 900,
+              height: 1200,
               source: LOCAL,
             },
+          },
+        ],
+      },
+      {
+        id: "my-mix",
+        heading: "Blend your listening lanes with My Mix",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Once repeated listening has revealed different sides of your taste, My Mix appears first among the AI DJ quick starts. It blends your visible listening lanes, giving more room to stronger habits and the ones that fit the broad time of day. If it is not there yet, keep listening or choose any of the other quick starts.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Choose My Mix, then remove a lane, boost its share, or add a genre or mood from the catalog. You can make the same edits while listening to change the upcoming picks.",
+              "Edits stay in this session. Choose Save to Taste Memory only when you want to keep a preference for future recommendations.",
+              "The DJ still leaves room for new human artists and keeps variety across artists. Each pick explains which lane it fits.",
+              "If there is not enough new music for a lane, the DJ tells you. Other lanes may fill the space, but those picks never count as matching the missing lane.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "My Mix keeps you in a style for a few tracks, then uses your listening habits to choose where to go next. With little listening history, it starts with your strongest styles and eases between tracks when energy has been measured. Basic My Mix is free. Saved named mixes, energy changes within a lane, and advanced length or ordering controls are not available yet.",
           },
         ],
       },
@@ -544,7 +567,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Type what the session is for, for example \"Warm deep house around 122 BPM for cooking\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. Not sure what to type? The quick starts fill in the same kind of chips for you. Under Genres are everyday choices: Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton and World Music. Under Moods are Neural Flow (focus), Pulse Raid (high energy), Liquid Sky (chill), Abyss Shift (dark) and Static Calm (calm). Choose or point at one to see what it's for and what you'll hear before you start. The DJ does not understand artist names yet, so \"like Beyoncé\" shows up under Didn't catch; name a genre instead.",
+            text: "Type what the session is for, for example \"Warm deep house around 122 BPM for cooking\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. Not sure what to type? The quick starts fill in the same kind of chips for you. Under Genres are everyday choices: Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton and World Music. Under Moods are Neural Flow (focus), Pulse Raid (high energy), Liquid Sky (chill), Abyss Shift (dark) and Static Calm (calm). Choose or point at one to see what it's for and what you'll hear before you start. The genres and moods you choose for this session receive priority over your usual listening taste, while your hidden and downranked preferences still apply. Your usual favourites can fill gaps when the catalog has few matching tracks. The DJ does not understand artist names yet, so \"like Beyoncé\" shows up under Didn't catch; name a genre instead.",
           },
           {
             kind: "list",
@@ -2967,7 +2990,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "You decide how much your activity personalizes Resonate. From Settings you can view a plain-language summary of your taste, opt in or out of social taste matching, control city/scene discovery, choose whether AI DJ playback trains your taste, hide or downrank signals, and reset your taste inputs — without ever exposing your raw history.",
+            text: "You decide how much your activity personalizes Resonate. From Settings you can view a plain-language summary of your taste, opt in or out of social taste matching, control city/scene discovery, choose whether AI DJ playback trains your taste, hide or downrank signals, and reset your taste inputs — without ever exposing your raw history. Turning off AI DJ playback trains taste also pauses learning from player starts, skips, completions, loops, library saves and removals, and playlist additions. This feedback is used only with your permission for optional usage measurement. Playback sends only broad time-of-day and weekday/weekend categories, never your time zone or exact local time.",
+          },
+          {
+            kind: "paragraph",
+            text: "Taste Memory shows your top genres, moods and artists, plus energy and pace preferences when the music has measured features. It can also show preferences for mornings, afternoons, evenings or nights on weekdays and weekends. Recent listening matters more as older signals fade. These are summaries, not a list of your plays. Hiding a preference removes it from learned summaries; reset clears all learned summaries and keeps the edits you explicitly saved.",
+          },
+          {
+            kind: "paragraph",
+            text: "Your listening lanes show the different sides of your taste once you have enough repeated listening across sessions. Each card uses music labels and broad times, such as weekday evenings. Choose Hide from mixes to leave that lane out, or Restore to mixes to bring it back. Choose My Mix in the AI DJ to blend your visible lanes. Hiding a lane leaves it out of future mixes. Reset clears learned lanes and their hide choices, while keeping the preferences you explicitly saved.",
           },
           {
             kind: "paragraph",
@@ -2986,10 +3017,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/settings.png`,
-              alt: "The Settings page with its list of sections on the left and the Taste Memory section open on the right: a summary of your taste, the privacy toggles, and the \"Tell us what you want more or less of\" box with a preview listing \"Show less Drill\", \"Show more Jazz\" and a calmer-energy preference, each with Switch and Remove buttons, plus an Apply button.",
+              alt: "The Settings page with its list of sections on the left and the Taste Memory section open on the right: a summary of your taste, listening lane cards, the privacy toggles, and the \"Tell us what you want more or less of\" box with a preview listing \"Show less Drill\", \"Show more Jazz\" and a calmer-energy preference, each with Switch and Remove buttons, plus an Apply button.",
               caption: "In Settings, pick Taste Memory, type what you want in your own words, and review the proposed changes before you apply them.",
               width: 1440,
-              height: 1800,
+              height: 2800,
               source: LOCAL,
             },
           },

@@ -175,7 +175,7 @@ function isoDay(date: Date) {
  * Pure resonance rule for one track. `events` are the listener's journal
  * signals on the track (any order); `libraryAdds` are LibraryTrack creation
  * times. Returns the EARLIEST qualifying completion inside `[from, now]`:
- * a completion with a recorded ratio >= 0.9 followed, strictly after it and
+ * a complete/replay with a recorded ratio >= 0.9 followed, strictly after it and
  * within seven days (never after `now`), by a later complete/replay (replayed)
  * or a save/add_to_playlist/library add (saved).
  */
@@ -203,7 +203,7 @@ export function findResonance(input: {
   const completions = input.events
     .filter(
       (event) =>
-        event.action === "complete" &&
+        (event.action === "complete" || event.action === "replay") &&
         (completionRatioOf(event.metadata) ?? -1) >= RESONANCE_COMPLETION_THRESHOLD &&
         event.createdAt >= input.from &&
         event.createdAt <= input.now,

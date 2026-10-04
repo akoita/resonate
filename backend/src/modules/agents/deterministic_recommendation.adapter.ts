@@ -5,9 +5,12 @@ import {
   AgentRecommendationResult,
 } from "./agent_recommendation.adapter";
 import { AgentSelectorService } from "./agent_selector.service";
+import { myMixSearchTerms } from "./agent_my_mix";
+import type { ResolvedMyMixPlan } from "./agent_my_mix";
 
 export function buildAgentRecommendationQueries(
   preferences: AgentRecommendationInput["preferences"],
+  myMixPlan?: ResolvedMyMixPlan,
 ): string[] {
   const queries: string[] = [];
   if (preferences.genres?.length) {
@@ -22,6 +25,9 @@ export function buildAgentRecommendationQueries(
     if (!trimmed) continue;
     if (queries.some((query) => query.toLowerCase() === trimmed.toLowerCase())) continue;
     queries.push(trimmed);
+  }
+  for (const term of myMixPlan ? myMixSearchTerms(myMixPlan) : []) {
+    if (!queries.some((query) => query.toLowerCase() === term.toLowerCase())) queries.push(term);
   }
   return queries;
 }
@@ -52,7 +58,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
   constructor(private readonly selector: AgentSelectorService) {}
 
   async recommend(input: AgentRecommendationInput): Promise<AgentRecommendationResult> {
-    const queries = buildAgentRecommendationQueries(input.preferences);
+    const queries = buildAgentRecommendationQueries(input.preferences, input.myMixPlan);
     const selection = await this.selector.select({
       userId: input.userId,
       queries,
@@ -70,6 +76,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       // Listening sessions never dead-end while an unplayed track fits (#2056).
       fallback: true,
       ...requestedTermsFor(input.preferences),
+      myMixPlan: input.myMixPlan,
     });
 
     return {
@@ -78,6 +85,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       selected: selection.selected,
       rejected: selection.rejected,
       reason: selection.reason,
+      ...(selection.mixCoverage ? { mixCoverage: selection.mixCoverage } : {}),
     };
   }
 }

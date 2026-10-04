@@ -1,13 +1,16 @@
 "use client";
 
-import type { AgentConfig, AgentNextPickResponse } from "../../lib/api";
+import type { AgentConfig, AgentMixCoverage, AgentNextPickResponse } from "../../lib/api";
 import { humanPickReason } from "../../lib/agentPickReason";
+import { myMixCoverageNotes } from "../../lib/agentMyMix";
 
 type Props = {
     config: AgentConfig;
     activeSessionId: string | null;
     pick: AgentNextPickResponse | null;
     isLoading: boolean;
+    /** Explicit null hides lane labels outside My Mix; omitted uses the pick payload. */
+    mixCoverage?: AgentMixCoverage | null;
     onPick: () => Promise<void>;
 };
 
@@ -16,11 +19,13 @@ function humanStatus(status?: string) {
     return status.replace(/_/g, " ");
 }
 
-export default function AgentNextPickCard({ config, activeSessionId, pick, isLoading, onPick }: Props) {
+export default function AgentNextPickCard({ config, activeSessionId, pick, isLoading, mixCoverage, onPick }: Props) {
     const disabled = !config.isActive || !activeSessionId || isLoading;
     const hasTrack = pick?.status === "ok" && pick.track;
     const emptyStatus = pick && pick.status !== "ok";
     const sessionLive = config.isActive && Boolean(activeSessionId);
+    const effectiveMixCoverage = mixCoverage === undefined ? pick?.mixCoverage : mixCoverage;
+    const mixNotes = myMixCoverageNotes(effectiveMixCoverage);
 
     return (
         <div className="aid-card aid-card--next-pick">
@@ -73,7 +78,7 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                 ) : emptyStatus ? (
                     <div className="aid-np-empty">
                         <p className="aid-np-kicker">{humanStatus(pick!.status)}</p>
-                        <p className="aid-np-hint">{humanPickReason(pick!.status, pick!.reason)}</p>
+                        <p className="aid-np-hint">{humanPickReason(pick!.status, pick!.reason, effectiveMixCoverage)}</p>
                     </div>
                 ) : (
                     <div className="aid-np-empty">
@@ -89,6 +94,11 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                         </p>
                     </div>
                 )}
+                {mixNotes.length > 0 ? (
+                    <div className="aid-np-reasons aid-np-reasons--coverage" role="status" aria-label="My Mix availability">
+                        {mixNotes.map((note) => <span key={note} className="aid-np-reason-pill">{note}</span>)}
+                    </div>
+                ) : null}
             </div>
 
             <button

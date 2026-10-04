@@ -7,17 +7,27 @@
  * Run: npm run test:integration
  */
 
+import { NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { prisma } from '../db/prisma';
+import { ANALYTICS_CONSENT_POLICY_VERSION } from '../modules/analytics/analytics_consent.service';
+import { UnmetDemandService } from '../modules/scene_scout/unmet_demand.service';
 import { SessionsService } from '../modules/sessions/sessions.service';
 import { WalletService } from '../modules/identity/wallet.service';
 import { EventBus } from '../modules/shared/event_bus';
 
 const TEST_PREFIX = `sess_${Date.now()}_`;
+const JAZZ_ARTIST = `${TEST_PREFIX}jazz_artist`;
+const JAZZ_RELEASE = `${TEST_PREFIX}jazz_release`;
+const JAZZ_TRACK = `${TEST_PREFIX}jazz_track`;
 
 describe('SessionsService (integration)', () => {
   beforeAll(async () => {
     await prisma.user.create({
       data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}user@test.resonate` },
+    });
+    await prisma.user.create({
+      data: { id: `${TEST_PREFIX}other`, email: `${TEST_PREFIX}other@test.resonate` },
     });
     await prisma.artist.create({
       data: {
@@ -43,21 +53,60 @@ describe('SessionsService (integration)', () => {
         position: 1,
       },
     });
+    await prisma.artist.create({
+      data: {
+        id: JAZZ_ARTIST,
+        userId: `${TEST_PREFIX}other`,
+        displayName: 'Session Demand Jazz Artist',
+        payoutAddress: '0x' + 'C'.repeat(40),
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: JAZZ_RELEASE,
+        artistId: JAZZ_ARTIST,
+        title: 'Session Demand Jazz Release',
+        status: 'published',
+        genre: 'Jazz',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: JAZZ_TRACK,
+        releaseId: JAZZ_RELEASE,
+        title: 'Session Demand Jazz Track',
+        position: 1,
+        processingStatus: 'complete',
+        contentStatus: 'clean',
+        explicit: false,
+        aiDisclosureLevel: 'NONE',
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.demandObservation.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.analyticsConsent.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.payment.deleteMany({ where: { session: { userId: `${TEST_PREFIX}user` } } }).catch(() => {});
     await prisma.license.deleteMany({ where: { track: { release: { artist: { userId: `${TEST_PREFIX}user` } } } } }).catch(() => {});
     await prisma.session.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.wallet.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { releaseId: JAZZ_RELEASE } }).catch(() => {});
+    await prisma.release.delete({ where: { id: JAZZ_RELEASE } }).catch(() => {});
+    await prisma.artist.delete({ where: { id: JAZZ_ARTIST } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.user.delete({ where: { id: `${TEST_PREFIX}other` } }).catch(() => {});
   });
 
-  function makeService(runtimeService: any = { runCommerce: jest.fn() }, agentLearningService?: any) {
+  function makeService(
+    runtimeService: any = { runCommerce: jest.fn() },
+    agentLearningService?: any,
+    unmetDemand?: UnmetDemandService,
+  ) {
     const eventBus = new EventBus();
     const providerRegistry = {
       getProvider: () => ({
@@ -81,7 +130,14 @@ describe('SessionsService (integration)', () => {
     const agentPurchaseService = { purchase: async () => {} } as any;
     return {
       eventBus,
-      service: new SessionsService(walletService, eventBus, runtimeService, agentPurchaseService, agentLearningService),
+      service: new SessionsService(
+        walletService,
+        eventBus,
+        runtimeService,
+        agentPurchaseService,
+        agentLearningService,
+        unmetDemand,
+      ),
     };
   }
 
@@ -103,6 +159,100 @@ describe('SessionsService (integration)', () => {
     const wallet = await prisma.wallet.findFirst({ where: { userId: `${TEST_PREFIX}user` } });
     expect(wallet).not.toBeNull();
     expect(wallet!.monthlyCapUsd).toBe(10);
+  });
+
+  it('rejects an unknown My Mix lane before creating the session or wallet budget', async () => {
+    const { service } = makeService();
+    const beforeSessions = await prisma.session.count({ where: { userId: `${TEST_PREFIX}user` } });
+    const beforeWallets = await prisma.wallet.count({ where: { userId: `${TEST_PREFIX}user` } });
+
+    await expect(service.startSession({
+      userId: `${TEST_PREFIX}user`,
+      budgetCapUsd: 10,
+      preferences: { myMix: { lanes: [{ id: 'not-a-visible-lane' }] } },
+    })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(await prisma.session.count({ where: { userId: `${TEST_PREFIX}user` } })).toBe(beforeSessions);
+    expect(await prisma.wallet.count({ where: { userId: `${TEST_PREFIX}user` } })).toBe(beforeWallets);
+  });
+
+  it('does not allow another listener to request a private session pick', async () => {
+    const runtimeService = { runCommerce: jest.fn() };
+    const { service } = makeService(runtimeService);
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    await expect(service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}other` }))
+      .rejects.toBeInstanceOf(NotFoundException);
+
+    expect(runtimeService.runCommerce).not.toHaveBeenCalled();
+    expect(await prisma.license.count({ where: { sessionId: session.id } })).toBe(0);
+  });
+
+  it('does not remember a rejected My Mix edit for the next continuation', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({ status: 'no_tracks', tracks: [], shortfall: 1 }),
+    };
+    const { service } = makeService(runtimeService);
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    await expect(service.agentNext({
+      sessionId: session.id,
+      userId: `${TEST_PREFIX}user`,
+      preferences: { myMix: { lanes: [{ id: 'not-visible' }] } },
+    })).rejects.toBeInstanceOf(BadRequestException);
+
+    await expect(service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user` }))
+      .resolves.toMatchObject({ status: 'no_tracks' });
+    expect(runtimeService.runCommerce).toHaveBeenCalledTimes(1);
+    expect(runtimeService.runCommerce.mock.calls[0][0].preferences).not.toHaveProperty('myMix');
+  });
+
+  it('records an unmet My Mix genre against existing catalog ownership', async () => {
+    await prisma.analyticsConsent.upsert({
+      where: { userId: `${TEST_PREFIX}user` },
+      update: {
+        productAnalytics: true,
+        policyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
+        decidedAt: new Date(Date.now() - 60_000),
+      },
+      create: {
+        userId: `${TEST_PREFIX}user`,
+        productAnalytics: true,
+        policyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
+        decidedAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({ status: 'no_tracks', tracks: [], shortfall: 1 }),
+      takeMyMixDemandObservations: jest.fn().mockReturnValue([{
+        laneId: 'lane_jazz',
+        requested: 1,
+        genres: ['Jazz'],
+        moods: [],
+        matchedTrackIds: [],
+      }]),
+    };
+    const { service } = makeService(runtimeService, undefined, new UnmetDemandService());
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    await expect(service.agentNext({
+      sessionId: session.id,
+      userId: `${TEST_PREFIX}user`,
+    })).resolves.toMatchObject({ status: 'no_tracks' });
+
+    const observations = await prisma.demandObservation.findMany({
+      where: { userId: `${TEST_PREFIX}user`, sourceType: 'session' },
+    });
+    expect(observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        targetType: 'genre',
+        targetId: JAZZ_ARTIST,
+        targetArtistId: JAZZ_ARTIST,
+        evidenceTrackId: JAZZ_TRACK,
+        value: 'Jazz',
+      }),
+    ]));
+    expect(JSON.stringify(observations)).not.toContain(session.id);
   });
 
   it('routes agentNext through AgentRuntimeService with session budget and recent tracks', async () => {
@@ -134,9 +284,10 @@ describe('SessionsService (integration)', () => {
 
     const first = await service.agentNext({
       sessionId: session.id,
+      userId: `${TEST_PREFIX}user`,
       preferences: { licenseType: 'remix' },
     }) as any;
-    const second = await service.agentNext({ sessionId: session.id }) as any;
+    const second = await service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user` }) as any;
 
     expect(first.status).toBe('ok');
     expect(first.track?.id).toBe(`${TEST_PREFIX}track`);
@@ -183,7 +334,7 @@ describe('SessionsService (integration)', () => {
     const { service } = makeService(runtimeService);
     const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
 
-    const result = await service.agentNext({ sessionId: session.id }) as any;
+    const result = await service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user` }) as any;
 
     expect(result.status).toBe('ok');
     const licenses = await prisma.license.findMany({ where: { sessionId: session.id } });
@@ -208,6 +359,7 @@ describe('SessionsService (integration)', () => {
 
     const result = await service.agentNext({
       sessionId: session.id,
+      userId: `${TEST_PREFIX}user`,
       preferences: { genres: ['Ambient', 'Lo-fi'], mood: 'Focus' },
     }) as any;
 
@@ -237,7 +389,7 @@ describe('SessionsService (integration)', () => {
     const { service } = makeService(runtimeService, agentLearningService);
     const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
 
-    const result = await service.agentNext({ sessionId: session.id }) as any;
+    const result = await service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user` }) as any;
 
     expect(result.status).toBe('ok');
     const licenses = await prisma.license.findMany({ where: { sessionId: session.id } });
@@ -263,7 +415,7 @@ describe('SessionsService (integration)', () => {
       const { service } = makeService(runtimeService, agentLearningService);
       const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
 
-      await service.agentNext({ sessionId: session.id, preferences: { genres: ['Dark', 'Industrial'] } });
+      await service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user`, preferences: { genres: ['Dark', 'Industrial'] } });
 
       expect(runtimeService.runCommerce).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -298,6 +450,7 @@ describe('SessionsService (integration)', () => {
 
     const first = await service.agentNext({
       sessionId: session.id,
+      userId: `${TEST_PREFIX}user`,
       preferences: { genres: ['Soul'], mood: 'Chill', energy: 'low', request },
     }) as any;
 
@@ -318,6 +471,7 @@ describe('SessionsService (integration)', () => {
     // A new request replaces the old one (a mid-session chip edit re-plans).
     await service.agentNext({
       sessionId: session.id,
+      userId: `${TEST_PREFIX}user`,
       preferences: { request: { genres: ['Techno'], moods: [], energy: null, bpm: null } },
     });
     const replaced = runtimeService.runCommerce.mock.calls[1][0].preferences;
@@ -326,9 +480,9 @@ describe('SessionsService (integration)', () => {
     expect(replaced).not.toHaveProperty('tempoBpm');
 
     // Omitting the request keeps it; sending one with no valid filter clears it.
-    await service.agentNext({ sessionId: session.id });
+    await service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user` });
     expect(runtimeService.runCommerce.mock.calls[2][0].preferences.genres).toEqual(['Soul', 'Techno']);
-    await service.agentNext({ sessionId: session.id, preferences: { request: { genres: 'junk' } as any } });
+    await service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user`, preferences: { request: { genres: 'junk' } as any } });
     const cleared = runtimeService.runCommerce.mock.calls[3][0].preferences;
     expect(cleared.genres).toEqual(['Soul']);
     expect(cleared.request).toBeUndefined();
@@ -346,7 +500,7 @@ describe('SessionsService (integration)', () => {
     const { service } = makeService(runtimeService);
     const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
 
-    const result = await service.agentNext({ sessionId: session.id }) as any;
+    const result = await service.agentNext({ sessionId: session.id, userId: `${TEST_PREFIX}user` }) as any;
 
     expect(result.status).toBe('ok');
     expect(result).not.toHaveProperty('requestCoverage');

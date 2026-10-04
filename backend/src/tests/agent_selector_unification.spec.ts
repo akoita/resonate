@@ -144,6 +144,69 @@ function selectorWith(
 const ids = (tracks: Array<{ id: string }>) => tracks.map((track) => track.id);
 
 describe("AI DJ selector on the shared core (#1456 WS-9)", () => {
+  it("does not widen to unrelated candidates when every lane has no catalog match", async () => {
+    const { selector } = selectorWith([
+      item("house-only", {}, { genre: "House", moods: ["Club"] }),
+    ]);
+    const result = await selector.select({
+      queries: ["Jazz"],
+      recentTrackIds: [],
+      limit: 1,
+      fallback: true,
+      myMixPlan: {
+        lanes: [{
+          id: "lane_jazz",
+          label: "Jazz · Warm",
+          genreWeights: { Jazz: 1 },
+          moodWeights: { Warm: 1 },
+          strength: 1,
+          contexts: {},
+          energyBand: null,
+          requested: 1,
+          boost: false,
+          addition: false,
+          allocationWeight: 1,
+        }],
+      },
+    });
+
+    expect(result.selected).toEqual([]);
+    expect(result.reason).toBe("no_matching_taste_candidates");
+    expect(result.mixCoverage?.lanes).toEqual([
+      expect.objectContaining({ id: "lane_jazz", requested: 1, matched: 0 }),
+    ]);
+  });
+
+  it("puts the actual matched lane name first in a My Mix pick explanation", async () => {
+    const { selector } = selectorWith([
+      item("soul-warm", {}, { genre: "Soul", moods: ["Warm"] }),
+    ]);
+    const result = await selector.select({
+      queries: ["Soul", "Warm"],
+      recentTrackIds: [],
+      limit: 1,
+      myMixPlan: {
+        lanes: [{
+          id: "lane_soul_warm",
+          label: "Soul · Warm",
+          genreWeights: { Soul: 1 },
+          moodWeights: { Warm: 1 },
+          strength: 1,
+          contexts: {},
+          energyBand: null,
+          requested: 1,
+          boost: false,
+          addition: false,
+          allocationWeight: 1,
+        }],
+      },
+    });
+
+    expect(result.selected[0]?.agentRecommendation?.explanation[0]).toBe(
+      "Selected for your Soul · Warm mix.",
+    );
+  });
+
   describe("policy stage", () => {
     it("drops a hidden artist and never returns fully AI-generated tracks", async () => {
       const { selector } = selectorWith(

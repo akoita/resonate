@@ -67,6 +67,22 @@ function optionalDiscoverySurface(value: unknown): "dj" | undefined {
   }
   return "dj";
 }
+function optionalPlaybackContext<T extends string>(value: unknown, field: string, allowed: readonly T[]): T | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !allowed.includes(value as T)) {
+    throw new BadRequestException(`${field} must be one of: ${allowed.join(", ")}`);
+  }
+  return value as T;
+}
+
+function normalizePlaybackContext(body: { localHourBucket?: unknown; weekdayKind?: unknown; playlistId?: unknown }) {
+  return {
+    localHourBucket: optionalPlaybackContext(body.localHourBucket, "localHourBucket", ["night", "morning", "afternoon", "evening"] as const),
+    weekdayKind: optionalPlaybackContext(body.weekdayKind, "weekdayKind", ["weekday", "weekend"] as const),
+    playlistId: optionalLabel(body.playlistId, "playlistId"),
+  };
+}
+
 const REPEAT_MODES = new Set(["none", "one", "all"]);
 const PRODUCT_EVENT_NAMES = new Set([
   "player.action_impression",
@@ -184,7 +200,13 @@ export class AnalyticsController {
   }
 
   @Post("ingest")
-  async ingest(@Body() body: AnalyticsEventInput) {
+  async ingest(@Body() body: AnalyticsEventInput, @Request() req: any) {
+    // Habit experiment impressions are server-owned evidence. The browser
+    // telemetry routes derive identity; generic ingest must not bypass that.
+    if ((body?.eventName ?? body?.event_name) === "recommendation.generated" &&
+      body?.payload?.sessionSource !== undefined) {
+      this.analyticsAuthorizationService.assertCanReadAgentQualityDashboard(req?.user);
+    }
     return this.analyticsIngestService.ingest(body);
   }
 
@@ -353,6 +375,9 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
   }
 
   return {
+    ...normalizePlaybackContext(body),
+    playbackInstanceId: optionalLabel(body.playbackInstanceId, "playbackInstanceId"),
+    repeatMode: optionalPlaybackContext(body.repeatMode, "repeatMode", ["none", "one", "all"] as const),
     trackId,
     artistId: artistId || undefined,
     releaseId: releaseId || undefined,
@@ -411,6 +436,7 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
   }
 
   return {
+    ...normalizePlaybackContext(body),
     action: action as PlaybackLifecycleAction,
     trackId,
     artistId: artistId || undefined,

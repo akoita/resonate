@@ -1,8 +1,10 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
+import { HabitOrderingService } from "./habit_ordering.service";
 import { AgentMixerService } from "./agent_mixer.service";
 import type { AgentAudioFeatures } from "./agent_audio_feature.service";
 import { AgentRecommendationService } from "./agent_recommendation.service";
+import type { MixCoverage, MyMixPreferences, ResolvedMyMixPlan } from "./agent_my_mix";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import {
   computeRequestCoverage,
@@ -42,7 +44,10 @@ export interface AgentOrchestratorInput {
     tempoBpm?: AgentSessionTempoRange;
     /** Listening filters parsed from the listener's words (#2037), for coverage. */
     request?: AgentSessionRequest;
+    myMix?: MyMixPreferences | null;
   };
+  /** Trusted server-resolved lane plan. */
+  myMixPlan?: ResolvedMyMixPlan;
 }
 
 /**
@@ -60,6 +65,8 @@ export interface OrchestratedPick {
 export interface OrchestratedTrack {
   trackId: string;
   mixPlan: any;
+  /** Internal-only selector assignment; excluded from commerce normalization and events. */
+  mixLaneId?: string;
   pick: OrchestratedPick;
 }
 
@@ -81,7 +88,8 @@ export class AgentOrchestratorService {
   constructor(
     private readonly recommendations: AgentRecommendationService,
     private readonly mixer: AgentMixerService,
-    private readonly eventBus: EventBus
+    private readonly eventBus: EventBus,
+    @Optional() private readonly habitOrdering?: HabitOrderingService,
   ) { }
 
   async orchestrate(input: AgentOrchestratorInput): Promise<{
@@ -96,6 +104,7 @@ export class AgentOrchestratorService {
      * the listener can tell "nothing matches" from "everything matching was played".
      */
     reason?: string;
+    mixCoverage?: MixCoverage;
   }> {
     const requestedLimit = getAgentTrackLimit();
     const selection = await this.recommendations.recommend({
@@ -104,6 +113,7 @@ export class AgentOrchestratorService {
       recentTrackIds: input.recentTrackIds,
       preferences: input.preferences,
       limit: requestedLimit,
+      myMixPlan: input.myMixPlan,
     });
 
     const selectedCount = selection.selected?.length ?? 0;
@@ -126,8 +136,15 @@ export class AgentOrchestratorService {
         tracks: [],
         shortfall,
         ...(selection.reason ? { reason: selection.reason } : {}),
+        ...(selection.mixCoverage ? { mixCoverage: selection.mixCoverage } : {}),
       };
     }
+
+    // Reorder the policy-approved batch before planning each transition.
+    // Future tempo/Camelot sequencing (#1971) can refine tracks within lane runs.
+    const ordered = input.myMixPlan && input.myMixPlan.orderingVariant !== "neutral" && this.habitOrdering
+      ? await this.habitOrdering.orderMyMix(input.userId, input.sessionId, selection.selected, input.myMixPlan)
+      : selection.selected;
 
     if (selectedCount > 0) {
       this.eventBus.publish({
@@ -135,7 +152,7 @@ export class AgentOrchestratorService {
         eventVersion: 1,
         occurredAt: new Date().toISOString(),
         sessionId: input.sessionId,
-        trackId: selection.selected[0]?.id,
+        trackId: ordered[0]?.id,
         candidates: selection.candidates,
         count: selection.selected.length,
         strategy: selection.strategy,
@@ -148,7 +165,7 @@ export class AgentOrchestratorService {
     const tracks: OrchestratedTrack[] = [];
     let previousTrackId = input.recentTrackIds[0];
 
-    for (const track of selection.selected ?? []) {
+    for (const track of ordered ?? []) {
       const mixPlan = this.mixer.plan({
         trackId: track.id,
         previousTrackId,
@@ -169,6 +186,7 @@ export class AgentOrchestratorService {
       tracks.push({
         trackId: track.id,
         mixPlan,
+        ...(track.mixLaneId ? { mixLaneId: track.mixLaneId } : {}),
         pick: {
           licenseType: input.preferences.licenseType ?? "personal",
           priceUsd: 0,
@@ -208,6 +226,7 @@ export class AgentOrchestratorService {
       tracks,
       shortfall,
       ...(coverage ? { requestCoverage: coverage.coverage } : {}),
+      ...(selection.mixCoverage ? { mixCoverage: selection.mixCoverage } : {}),
     };
   }
 }

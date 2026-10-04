@@ -11,6 +11,7 @@ import {
   DeterministicRecommendationAdapter,
   requestedTermsFor,
 } from "../modules/agents/deterministic_recommendation.adapter";
+import type { TasteMemoryPolicy, TasteSignalType } from "../modules/recommendations/taste_memory.service";
 
 type Item = {
   id: string;
@@ -38,6 +39,28 @@ function selectorWith(catalog: Item[]) {
 }
 
 const ids = (tracks: Array<{ id: string }>) => tracks.map((track) => track.id);
+
+function emptyTastePolicy(): TasteMemoryPolicy {
+  return {
+    settings: {} as TasteMemoryPolicy["settings"],
+    hidden: new Map<TasteSignalType, Set<string>>(),
+    downranked: new Map<TasteSignalType, Set<string>>(),
+    boosted: new Map<TasteSignalType, Set<string>>(),
+  };
+}
+
+const ordinaryRequestPolicyCases: Array<{
+  signalType: "genre" | "mood";
+  metadataValue: string;
+  requestedTerm: string;
+  control: "raw" | "canonical";
+  controlValue: string;
+}> = [
+  { signalType: "genre", metadataValue: "Afrobeats", requestedTerm: "Afrobeat", control: "raw", controlValue: "afrobeats" },
+  { signalType: "genre", metadataValue: "Afrobeats", requestedTerm: "Afrobeat", control: "canonical", controlValue: "afrobeat" },
+  { signalType: "mood", metadataValue: "Warmer", requestedTerm: "Warm", control: "raw", controlValue: "warmer" },
+  { signalType: "mood", metadataValue: "Warmer", requestedTerm: "Warm", control: "canonical", controlValue: "warm" },
+];
 
 // A listener who mostly plays Pop starts a calm session.
 const catalog = [
@@ -94,5 +117,95 @@ describe("AI DJ session request outranks learned taste (#2059)", () => {
       preferences: { genres: ["Pop", "Ambient"], sessionGenres: ["Ambient"], mood: "Zen" },
     } as any);
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ requestedTerms: ["Ambient", "Zen"] }));
+  });
+
+  it("uses a lane-local typed request alone, even when an ordinary term also matches", async () => {
+    const [laneMatch, ordinaryOnly] = await new DiscoveryRankingService().rank(
+      [
+        { id: "lane-match", release: { genre: "Jazz", moods: ["Zen"] } },
+        { id: "ordinary-only", release: { genre: "Pop", moods: ["Zen"] } },
+      ],
+      {
+        originalQueries: [],
+        expandedQueries: [],
+        sessionRequest: { genres: ["Jazz"], moods: [] },
+        requestedTerms: ["Zen"],
+      },
+    );
+
+    const laneRequestSignals = laneMatch.signals.filter((signal) => signal.label === "session_request");
+    expect(laneRequestSignals).toEqual([
+      { label: "session_request", weight: 20, reason: "matches the current mix request" },
+    ]);
+    expect(ordinaryOnly.signals.some((signal) => signal.label === "session_request")).toBe(false);
+  });
+
+  it.each(ordinaryRequestPolicyCases)(
+    "suppresses an ordinary $signalType request hidden by its $control value",
+    async ({ signalType, metadataValue, requestedTerm, controlValue }) => {
+      const policy = emptyTastePolicy();
+      policy.hidden.set(signalType, new Set([controlValue]));
+      const release = signalType === "genre" ? { genre: metadataValue } : { moods: [metadataValue] };
+      const [track] = await new DiscoveryRankingService().rank(
+        [{ id: "request", release }],
+        {
+          originalQueries: [],
+          expandedQueries: [],
+          requestedTerms: [requestedTerm],
+          tastePolicy: policy,
+        },
+      );
+
+      expect(track.signals.some((signal) => signal.label === "session_request")).toBe(false);
+    },
+  );
+
+  it.each(ordinaryRequestPolicyCases)(
+    "applies the downrank multiplier to an ordinary $signalType request with $control metadata",
+    async ({ signalType, metadataValue, requestedTerm, controlValue }) => {
+      const policy = emptyTastePolicy();
+      policy.downranked.set(signalType, new Set([controlValue]));
+      const release = signalType === "genre" ? { genre: metadataValue } : { moods: [metadataValue] };
+      const [track] = await new DiscoveryRankingService().rank(
+        [{ id: "request", release }],
+        {
+          originalQueries: [],
+          expandedQueries: [],
+          requestedTerms: [requestedTerm],
+          tastePolicy: policy,
+        },
+      );
+
+      expect(track.signals.find((signal) => signal.label === "session_request")?.weight).toBe(7);
+    },
+  );
+
+  it("keeps ordinary request matches out of lane allocation", async () => {
+    const result = await selectorWith([
+      item("pop-warm", "Pop", "A", ["Warm"]),
+      item("soul-warm", "Soul", "B", ["Warm"]),
+    ]).select({
+      queries: ["Pop", "Soul", "Warm"],
+      requestedTerms: ["Pop"],
+      recentTrackIds: [],
+      limit: 1,
+      myMixPlan: {
+        lanes: [{
+          id: "lane_warm",
+          label: "Warm",
+          genreWeights: {},
+          moodWeights: { Warm: 1 },
+          strength: 1,
+          contexts: {},
+          energyBand: null,
+          requested: 1,
+          boost: false,
+          addition: false,
+          allocationWeight: 1,
+        }],
+      },
+    });
+
+    expect(ids(result.selected)).toEqual(["soul-warm"]);
   });
 });

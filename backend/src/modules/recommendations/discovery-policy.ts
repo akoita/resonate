@@ -92,12 +92,20 @@ export interface DiscoveryPolicyOptions {
    * slot (9 prior + limit 5 would otherwise reserve 3 of 5 instead of 1).
    */
   priorExplorationCount?: number;
+  /** Optional, session-only My Mix quotas applied inside this same policy pass. */
+  laneQuotas?: readonly { id: string; requested: number; strength: number }[];
+  /** Strict metadata matches computed by the caller; fuzzy query hits are not included. */
+  laneMatchesByCandidateId?: ReadonlyMap<string, readonly string[]>;
+  /** Per-lane score order computed from the already-loaded shared candidate facts. */
+  laneCandidateOrderByLaneId?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface DiscoveryPolicyResult<T extends RankedDiscoveryCandidate> {
   items: T[];
   dropped: { hidden: number; aiGenerated: number; diversity: number };
   exploration: { reserved: number; served: number };
+  /** Candidate ID to private lane ID; callers must keep this out of broadcast events. */
+  laneAssignments?: Map<string, string>;
 }
 
 /**
@@ -174,12 +182,48 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
 
   const chosen = new Set<T>();
   const explorationPicks = new Set<T>();
+  const laneAssignments = new Map<string, string>();
+  const assignedPerLane = new Map<string, number>();
+  const laneQuotas = [...(options.laneQuotas ?? [])]
+    .filter((lane) => lane.id && Number.isFinite(lane.requested) && lane.requested >= 0)
+    .map((lane) => ({
+      id: lane.id,
+      requested: Math.floor(lane.requested),
+      strength: Number.isFinite(lane.strength) && lane.strength > 0 ? lane.strength : 0,
+    }))
+    .sort((a, b) => b.strength - a.strength || a.id.localeCompare(b.id));
+  const candidateLaneIds = (candidate: T) =>
+    (options.laneMatchesByCandidateId?.get(candidate.id) ?? [])
+      .filter((id) => laneQuotas.some((lane) => lane.id === id));
+  const eligibleById = new Map(eligible.map((candidate) => [candidate.id, candidate]));
+  const laneCandidatesInRankOrder = (laneId: string) => {
+    const preferred = options.laneCandidateOrderByLaneId?.get(laneId);
+    if (!preferred) return eligible.filter((candidate) => candidateLaneIds(candidate).includes(laneId));
+    return preferred
+      .map((id) => eligibleById.get(id))
+      .filter((candidate): candidate is T => Boolean(candidate));
+  };
+  const chooseLane = (candidate: T, onlyDeficit = false) => {
+    const matching = candidateLaneIds(candidate)
+      .map((id) => laneQuotas.find((lane) => lane.id === id)!)
+      .filter((lane) => !onlyDeficit || (assignedPerLane.get(lane.id) ?? 0) < lane.requested)
+      .sort((a, b) => {
+        const aDeficit = Math.max(0, a.requested - (assignedPerLane.get(a.id) ?? 0));
+        const bDeficit = Math.max(0, b.requested - (assignedPerLane.get(b.id) ?? 0));
+        return bDeficit - aDeficit || b.strength - a.strength || a.id.localeCompare(b.id);
+      });
+    return matching[0]?.id;
+  };
   const withinCap = (candidate: T) =>
     (counts.get(discoveryArtistKey(candidate)) ?? 0) < maxPerArtist;
-  const take = (candidate: T) => {
+  const take = (candidate: T, laneId?: string) => {
     const key = discoveryArtistKey(candidate);
     counts.set(key, (counts.get(key) ?? 0) + 1);
     chosen.add(candidate);
+    if (laneId) {
+      laneAssignments.set(candidate.id, laneId);
+      assignedPerLane.set(laneId, (assignedPerLane.get(laneId) ?? 0) + 1);
+    }
   };
 
   // Eligible exploration candidates: a known artist id that is a verified
@@ -198,7 +242,7 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
           !candidate.recentlyPlayed &&
           candidate.score > 0 &&
           (!candidate.firstListenerEligible ||
-            hasPositiveFirstListenerTasteSignal(candidate)) &&
+          hasPositiveFirstListenerTasteSignal(candidate)) &&
           verified.has(candidate.artistId) &&
           !played.has(candidate.artistId),
       )
@@ -213,8 +257,34 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
     for (const { candidate } of explorationPool) {
       if (explorationPicks.size >= reserved) break;
       if (!withinCap(candidate)) continue;
-      take(candidate);
+      take(candidate, chooseLane(candidate, true) ?? chooseLane(candidate));
       explorationPicks.add(candidate);
+    }
+  }
+
+  // My Mix lane quotas are enforced after exploration reservation, so policy
+  // removal, exploration and diversity still run globally exactly once.
+  for (const lane of laneQuotas) {
+    while ((assignedPerLane.get(lane.id) ?? 0) < lane.requested && chosen.size < limit) {
+      const candidate = laneCandidatesInRankOrder(lane.id).find((entry) =>
+        !chosen.has(entry) &&
+        withinCap(entry),
+      );
+      if (!candidate) break;
+      take(candidate, lane.id);
+    }
+  }
+
+  // Unfilled quotas transfer to the strongest remaining matching lane. Picks
+  // without any exact catalog lane match remain for the ordinary fallback.
+  if (laneQuotas.length > 0) {
+    for (const lane of laneQuotas) {
+      for (const candidate of laneCandidatesInRankOrder(lane.id)) {
+        if (chosen.size >= limit) break;
+        if (chosen.has(candidate) || !withinCap(candidate)) continue;
+        take(candidate, lane.id);
+      }
+      if (chosen.size >= limit) break;
     }
   }
 
@@ -246,6 +316,7 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
     items,
     dropped,
     exploration: { reserved, served: explorationPicks.size },
+    ...(laneQuotas.length ? { laneAssignments } : {}),
   };
 }
 
