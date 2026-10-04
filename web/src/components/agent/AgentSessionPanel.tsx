@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
+import { useDiscoveryJournal } from "../../hooks/useDiscoveryJournal";
 import {
     applyTasteEdits,
     getAgentMixCoverage,
@@ -44,6 +45,7 @@ import {
 import { saveTracksMetadata } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
+import { sonicRadarBanner } from "../../lib/sonicRadarSummary";
 import { useToast } from "../ui/Toast";
 import AgentActivityFeed from "./AgentActivityFeed";
 import AgentHistoryCard from "./AgentHistoryCard";
@@ -97,6 +99,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         sessionsWithTracks: sessions.filter((s) => s.licenses.length > 0).length,
         trackCount: sessions.reduce((sum, s) => sum + s.licenses.length, 0),
     };
+    const { journal, isLoading: journalLoading } = useDiscoveryJournal();
+    const radarBanner = sonicRadarBanner(journal);
     const { addToast } = useToast();
     const player = usePlayer();
     const { playQueue } = player;
@@ -907,14 +911,35 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         />
                     </div>
 
-                    {/* Discovery banner */}
-                    {!historyLoading && lifetime.trackCount > 0 && (
+                    {/* Discovery banner: numbers come from the Sonic Radar journal itself. */}
+                    {!journalLoading && journal && (
                         <div className="aid-discovery-banner">
-                            <span>
-                                <strong>{lifetime.trackCount}</strong> tracks discovered across{" "}
-                                <strong>{lifetime.sessionsWithTracks}</strong> sessions
-                            </span>
-                            <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
+                            {radarBanner.kind === "resonant" ? (
+                                <>
+                                    <span>
+                                        <strong>{radarBanner.count}</strong> {radarBanner.count === 1 ? "track" : "tracks"} resonated with you in the last {radarBanner.windowDays} days
+                                        {radarBanner.newArtistsThisWeek > 0 && (
+                                            <>
+                                                {" · "}
+                                                <strong>{radarBanner.newArtistsThisWeek}</strong> new {radarBanner.newArtistsThisWeek === 1 ? "artist" : "artists"} this week
+                                            </>
+                                        )}
+                                    </span>
+                                    <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
+                                </>
+                            ) : radarBanner.kind === "pending" ? (
+                                <>
+                                    <span>
+                                        <strong>{radarBanner.count}</strong> {radarBanner.count === 1 ? "track" : "tracks"} you played through this week {radarBanner.count === 1 ? "is" : "are"} one save away from your Sonic Radar
+                                    </span>
+                                    <Link href="/sonic-radar" className="aid-ghost-btn">Review them →</Link>
+                                </>
+                            ) : (
+                                <>
+                                    <span>Play a track all the way through, then save or replay it, and it lands in your Sonic Radar.</span>
+                                    <Link href="/sonic-radar" className="aid-ghost-btn">Open Sonic Radar →</Link>
+                                </>
+                            )}
                         </div>
                     )}
 

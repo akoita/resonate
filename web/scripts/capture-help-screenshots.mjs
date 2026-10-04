@@ -178,7 +178,9 @@ const AUTH_TARGETS = [
   }],
   ["/sonic-radar", "sonic-radar.png", {
     // ADR-TE-5: the discovery journal, drawn from a fixed sample journal.
+    // Taller so "Almost there" (with its Save buttons) and the journal both show.
     mockDiscoveries: true,
+    viewportHeight: 1750,
     prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
   }],
   ["/library", "library.png", {
@@ -481,6 +483,19 @@ async function capture(page, targets, passName) {
               }),
             ] },
           ],
+          // "Almost there": played through, not yet replayed or saved. The
+          // save-by dates are relative to now so the days-left badges are stable.
+          pending: [
+            ["guide-song-4", "Low Tide", "Mara Sol", 3, true],
+            ["guide-song-5", "Paper Lanterns", "Okonkwo", 5, false],
+          ].map(([trackId, title, artistName, daysLeft, discovery]) => ({
+            trackId, title, artistId: `guide-artist-${artistName.toLowerCase().replace(/\s+/g, "-")}`, artistName,
+            releaseId: "guide-release", releaseTitle: "First Light", artworkUrl: "/shows/felicia-angels-cover.webp",
+            hasUploadedArtwork: false, artworkRevision: null,
+            completedAt: new Date(Date.now() - (7 - daysLeft) * 86_400_000).toISOString(),
+            followUpBy: new Date(Date.now() + daysLeft * 86_400_000 - 60_000).toISOString(),
+            discovery,
+          })),
         },
       }));
     }
