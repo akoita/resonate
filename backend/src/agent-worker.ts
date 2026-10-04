@@ -5,9 +5,11 @@ import { NestFactory } from "@nestjs/core";
 import { type NextFunction, type Request, type Response } from "express";
 import { AgentWorkerModule } from "./modules/agents/agent_worker.module";
 import { applyGlobalValidation } from "./config/validation";
+import { createAppLogger } from "./modules/shared/structured_nest_logger";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AgentWorkerModule);
+  const app = await NestFactory.create(AgentWorkerModule, { bufferLogs: true });
+  app.useLogger(createAppLogger());
   applyGlobalValidation(app);
 
   app.use((req: Request, res: Response, next: NextFunction) => {

@@ -5,6 +5,7 @@ import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
 import { AdkAdapter } from "./runtime/adk_adapter";
 import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
+import { logDegradedFallback } from "../shared/degraded_fallback";
 import { agentRuntimeFallbackReason } from "./runtime/agent_runtime.errors";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import { resolveListeningLanes } from "./listening_lanes.service";
@@ -53,6 +54,11 @@ export class AgentRuntimeExecutorService {
         from: adapter.name,
         reason: agentRuntimeFallbackReason(error),
       };
+      logDegradedFallback({
+        component: `agent_runtime.${adapter.name}`,
+        reason: runtimeFallback.reason,
+        error,
+      });
       this.logger.warn(
         `${adapter.name} adapter failed (${runtimeFallback.reason}: ${error?.message}) - falling back to deterministic orchestrator`
       );

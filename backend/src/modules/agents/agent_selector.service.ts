@@ -21,6 +21,7 @@ import {
   TasteMemoryService,
 } from "../recommendations/taste_memory.service";
 import type { DiscoveryReasonCode } from "../recommendations/discovery-explanations";
+import { logDegradedFallback } from "../shared/degraded_fallback";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
 import { AgentLearningService } from "./agent_learning.service";
@@ -612,6 +613,7 @@ export class AgentSelectorService {
           return profile.genreWeights;
         }
       } catch (error) {
+        logDegradedFallback({ component: "taste_profile", reason: "unavailable", error });
         this.logger.warn(`Shared taste profile unavailable: ${String(error)}`);
       }
     }
@@ -624,6 +626,7 @@ export class AgentSelectorService {
     try {
       return await this.recommendations.getServedHistory(userId);
     } catch (error) {
+      logDegradedFallback({ component: "served_history", reason: "unavailable", error });
       this.logger.warn(`Served history unavailable: ${String(error)}`);
       return [];
     }
@@ -658,6 +661,11 @@ export class AgentSelectorService {
         playedArtistIds = context.playedArtistIds;
         sessionArtists = artistsByTrack;
       } catch (error) {
+        logDegradedFallback({
+          component: "discovery_policy_context",
+          reason: "context_unavailable",
+          error,
+        });
         this.logger.warn(`Discovery policy context unavailable: ${String(error)}`);
       }
       // Same prior window the policy uses for the diversity cap (last 9).
@@ -676,6 +684,11 @@ export class AgentSelectorService {
           );
         }
       } catch (error) {
+        logDegradedFallback({
+          component: "discovery_policy_context",
+          reason: "prior_picks_unavailable",
+          error,
+        });
         this.logger.warn(`Prior discovery picks unavailable: ${String(error)}`);
       }
     }
