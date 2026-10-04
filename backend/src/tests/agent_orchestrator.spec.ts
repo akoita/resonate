@@ -102,6 +102,54 @@ describe("AgentOrchestratorService (listening picks)", () => {
     expect(result.tracks[0].mixPlan.transition).toBeDefined();
   });
 
+  it("tags the decision event as rule-curated, with no fallback unless one was given (#2075)", async () => {
+    const { orchestrator, events } = build(makeTracks(2));
+
+    const result = await orchestrator.orchestrate({
+      sessionId: "s1",
+      userId: "u1",
+      recentTrackIds: [],
+      budgetRemainingUsd: 0,
+      preferences: {},
+    });
+
+    const decision = events.find((event) => event.eventName === "agent.decision_made");
+    expect(decision.curatedBy).toBe("rules");
+    expect(decision).not.toHaveProperty("runtimeFallback");
+    expect(result).not.toHaveProperty("runtimeFallback");
+  });
+
+  it("records the runtime fallback on the decision event and the result (#2075)", async () => {
+    const { orchestrator, events } = build(makeTracks(2));
+    const runtimeFallback = { from: "adk" as const, reason: "not_configured" as const };
+
+    const result = await orchestrator.orchestrate(
+      { sessionId: "s1", userId: "u1", recentTrackIds: [], budgetRemainingUsd: 0, preferences: {} },
+      { runtimeFallback },
+    );
+
+    const decision = events.find((event) => event.eventName === "agent.decision_made");
+    expect(decision.curatedBy).toBe("rules");
+    expect(decision.runtimeFallback).toEqual(runtimeFallback);
+    expect(result.runtimeFallback).toEqual(runtimeFallback);
+  });
+
+  it("records the runtime fallback when the catalog returned nothing (#2075)", async () => {
+    const { orchestrator, events } = build([]);
+    const runtimeFallback = { from: "vertex" as const, reason: "error" as const };
+
+    const result = await orchestrator.orchestrate(
+      { sessionId: "s1", userId: "u1", recentTrackIds: [], budgetRemainingUsd: 0, preferences: {} },
+      { runtimeFallback },
+    );
+
+    const decision = events.find((event) => event.eventName === "agent.decision_made");
+    expect(decision.reason).toBe("no_tracks");
+    expect(decision.curatedBy).toBe("rules");
+    expect(decision.runtimeFallback).toEqual(runtimeFallback);
+    expect(result.runtimeFallback).toEqual(runtimeFallback);
+  });
+
   it("never emits agent.negotiated and plans a mix per track", async () => {
     const { orchestrator, events } = build(makeTracks(3));
 

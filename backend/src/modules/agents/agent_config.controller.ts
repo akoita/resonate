@@ -15,6 +15,7 @@ import {
 import { mergeSessionGenres } from "./agent_session_genres";
 import {
   AGENT_SESSION_REQUEST_PARSER,
+  describeCoverageGaps,
   listeningRequestFromCrateParse,
   requestRankingPreferences,
   type AgentSessionRequest,
@@ -435,7 +436,7 @@ export class AgentConfigController {
                                 request: requested.request,
                                 requestedCount: getAgentTrackLimit(),
                                 foundTrackIds,
-                                requestCoverage: "tracks" in result ? result.requestCoverage : undefined,
+                                requestCoverage: result.requestCoverage,
                             });
                         } catch {
                             this.logger.warn("Unmet-demand observation was skipped after an agent session result.");
@@ -492,6 +493,9 @@ export class AgentConfigController {
                                 this.logger.error(`Failed to persist pick for ${pick.trackId}:`, err);
                             }
                         }
+                        const coverageSummary = requested.request && result.requestCoverage
+                            ? describeCoverageGaps(requested.request, result.requestCoverage)
+                            : "";
                         // Publish decision event with LLM reasoning
                         this.eventBus.publish({
                             eventName: "agent.decision_made",
@@ -503,6 +507,13 @@ export class AgentConfigController {
                             reason: result.reason ?? "llm",
                             reasoning: result.reasoning,
                             latencyMs: result.latencyMs,
+                            curatedBy: "llm",
+                            ...(result.requestCoverage
+                                ? {
+                                    coverage: result.requestCoverage,
+                                    ...(coverageSummary ? { coverageSummary } : {}),
+                                }
+                                : {}),
                         });
                     }
                 })

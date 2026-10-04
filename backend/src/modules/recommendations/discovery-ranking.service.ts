@@ -414,8 +414,10 @@ export class DiscoveryRankingService {
       ...candidate,
       score,
       signals,
+      // Several signals share a sentence (session intent and a requested term
+      // both read "Fits this session intent"); show each sentence once.
       explanation: explanation.length
-        ? explanation
+        ? [...new Set(explanation)]
         : [DISCOVERY_EXPLANATIONS.catalog],
       reasonCode: primaryReasonFor(signals),
       recentlyPlayed,

@@ -103,4 +103,48 @@ describe("normalizeAgentRuntimeResult", () => {
     });
     expect(adapter).not.toHaveProperty("requestCoverage");
   });
+
+  describe("curation (#2075)", () => {
+    it("marks deterministic results as rule-curated and passes the fallback through", () => {
+      const runtimeFallback = { from: "vertex" as const, reason: "timeout" as const };
+      const requestCoverage = { picks: 2, gaps: [{ filter: "genres" as const, matched: 1 }] };
+      const result = normalizeAgentRuntimeResult({
+        status: "approved",
+        tracks: [],
+        shortfall: 0,
+        runtimeFallback,
+        requestCoverage,
+      });
+
+      expect(result.curatedBy).toBe("rules");
+      expect(result.runtimeFallback).toEqual(runtimeFallback);
+      expect(result.requestCoverage).toEqual(requestCoverage);
+    });
+
+    it("omits runtimeFallback when the rules were configured, not a fallback", () => {
+      const result = normalizeAgentRuntimeResult({ status: "approved", tracks: [], shortfall: 0 });
+
+      expect(result.curatedBy).toBe("rules");
+      expect(result).not.toHaveProperty("runtimeFallback");
+    });
+
+    it("marks LLM results as llm-curated and passes the policy step's coverage through", () => {
+      const requestCoverage = { picks: 2, gaps: [{ filter: "genres" as const, matched: 1 }] };
+      const withCoverage = normalizeAgentRuntimeResult({
+        status: "approved",
+        picks: [{ trackId: "track-1", licenseType: "personal", priceUsd: 0 }],
+        requestCoverage,
+      });
+      const without = normalizeAgentRuntimeResult({
+        status: "approved",
+        picks: [{ trackId: "track-1", licenseType: "personal", priceUsd: 0 }],
+      });
+
+      expect(withCoverage.curatedBy).toBe("llm");
+      expect(withCoverage.requestCoverage).toEqual(requestCoverage);
+      expect(withCoverage).not.toHaveProperty("runtimeFallback");
+      expect(without.curatedBy).toBe("llm");
+      expect(without).not.toHaveProperty("requestCoverage");
+    });
+  });
 });

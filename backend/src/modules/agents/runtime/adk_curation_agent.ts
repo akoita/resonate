@@ -129,6 +129,7 @@ function buildSystemPrompt(): string {
     "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
     "- If a genre search returns no tracks, treat that as no match for that genre.",
     "- Avoid recommending tracks the user has recently listened to.",
+    "- Requested genres, Mood/Moods, Energy and Tempo are what the listener asked for in this session: rank tracks that match them above tracks that only match the broader Genres list (their saved vibes and learned taste). Use the broader genres to fill the remaining slots.",
     "",
     "- Never generate audio; if the catalog cannot fill the request, return fewer tracks.",
     "",
@@ -164,6 +165,11 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
   if (input.preferences.tempoBpm) {
     const tempo = describeTempoRange(input.preferences.tempoBpm);
     if (tempo) parts.push(`Tempo: ${tempo}`);
+  }
+  if (input.preferences.sessionGenres?.length) {
+    parts.push(
+      `Requested genres (this session): ${input.preferences.sessionGenres.join(", ")}`
+    );
   }
   if (input.preferences.genres?.length) {
     parts.push(`Genres: ${input.preferences.genres.join(", ")}`);

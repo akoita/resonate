@@ -67,8 +67,13 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > Filters are boosts, not guarantees: after each set the AI DJ reports, in the
 > live feed and as `requestCoverage` on Next AI Pick, which requested filters
 > some picks did not match ("not matched: 120-125 BPM (1 of 5)"). Coverage is
-> computed for the deterministic ranking path; an LLM runtime path (`AGENT_RUNTIME`
-> set) is told the moods and tempo in its prompt but reports no coverage. Editing
+> computed on both paths (#2075): the deterministic selector computes it for its
+> picks, and for the LLM runtime (`AGENT_RUNTIME=adk|vertex`) the runtime policy
+> step computes it for the final picks. The LLM prompt also names the session's
+> own genres on a separate "Requested genres" line and asks the model to rank
+> them above saved vibes and learned taste, and the policy step scores its picks
+> with the same requested terms, tempo and audio features as the selector (it
+> still never reorders the model's picks). Editing
 > the chips mid-session sends a new request with the next pick, which replaces
 > the old one (an empty request clears it), and the web swaps the DJ's upcoming
 > picks in the queue for new ones; the playing track and tracks the listener

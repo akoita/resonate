@@ -360,12 +360,18 @@ export class SessionsService {
     result: AgentRuntimeCommerceResult,
   ) {
     const selected = result.primaryTrack;
+    // #2075: who curated, and categorically why the rules stepped in.
+    const curation = {
+      curatedBy: result.curatedBy,
+      ...(result.runtimeFallback ? { runtimeFallback: result.runtimeFallback } : {}),
+    };
     if (!selected) {
       return {
         status: result.status,
         tracks: [],
         reason: result.reason,
         shortfall: result.shortfall,
+        ...curation,
         ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
       };
     }
@@ -379,6 +385,7 @@ export class SessionsService {
         status: "no_tracks",
         tracks: [],
         reason: "selected_track_not_found",
+        ...curation,
         ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
       };
     }
@@ -414,6 +421,7 @@ export class SessionsService {
       signals: selected.signals,
       audioFeatures: selected.audioFeatures,
       runtimeStatus: result.status,
+      ...curation,
       // #2005: the listener's ranker variant, so the web can attribute the
       // play, skip and save of this pick to it. Additive; labels only.
       ...djPickVariantFields(userId),
@@ -428,7 +436,7 @@ export class SessionsService {
         signals: item.signals,
       })),
       shortfall: result.shortfall,
-      // #2037: how well the picks matched the described session; deterministic path only.
+      // #2037: how well the picks matched the described session, on both curation paths.
       ...(result.requestCoverage ? { requestCoverage: result.requestCoverage } : {}),
       ...(result.mixCoverage ? { mixCoverage: result.mixCoverage } : {}),
     };

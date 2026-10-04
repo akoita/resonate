@@ -19,6 +19,13 @@ function humanStatus(status?: string) {
     return status.replace(/_/g, " ");
 }
 
+/** Who chose the pick (#2075): a rule-based fallback is never presented as an AI pick. */
+function curatorLabel(pick: AgentNextPickResponse) {
+    if (pick.runtimeFallback) return "Rule-based pick · AI curator unavailable";
+    if (pick.curatedBy === "llm") return "Picked by the AI curator";
+    return humanStatus(pick.runtimeStatus);
+}
+
 export default function AgentNextPickCard({ config, activeSessionId, pick, isLoading, mixCoverage, onPick }: Props) {
     const disabled = !config.isActive || !activeSessionId || isLoading;
     const hasTrack = pick?.status === "ok" && pick.track;
@@ -51,7 +58,7 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
                             </div>
                         </div>
                         <div className="aid-np-info">
-                            <p className="aid-np-kicker">{humanStatus(pick!.runtimeStatus)}</p>
+                            <p className="aid-np-kicker">{curatorLabel(pick!)}</p>
                             <h4 className="aid-np-title">{pick!.track!.title}</h4>
                             <div className="aid-np-meta">
                                 {typeof pick!.score === "number" && (

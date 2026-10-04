@@ -297,6 +297,22 @@ function normalizeTerm(term: string): string {
 }
 
 /**
+ * Coverage plus its live-feed summary for a raw (untrusted) request: sanitize,
+ * require at least one filter, compute. Undefined without a request, without
+ * filters, or without picks. Shared by the deterministic and LLM paths.
+ */
+export function requestCoverageFor(
+  rawRequest: unknown,
+  picks: readonly AgentRequestCoveragePick[],
+): { coverage: AgentRequestCoverage; summary: string } | undefined {
+  const request = sanitizeSessionRequest(rawRequest);
+  if (!request || !hasRequestFilters(request)) return undefined;
+  const coverage = computeRequestCoverage(request, picks);
+  if (!coverage) return undefined;
+  return { coverage, summary: describeCoverageGaps(request, coverage) };
+}
+
+/**
  * A short human line for the live feed: `not matched: 120–125 BPM (1 of 5),
  * deep house (0 of 5)`. Empty string when nothing is missing.
  */

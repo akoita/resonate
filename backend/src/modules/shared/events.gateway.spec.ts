@@ -417,6 +417,85 @@ describe("EventsGateway", () => {
       gateway.onModuleDestroy();
     });
 
+    it("says the picks are rule-based when the LLM runtime fell back (#2075)", () => {
+      const { gateway, eventBus, emit } = createGateway();
+      const runtimeFallback = { from: "adk", reason: "not_configured" };
+
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackCount: 5,
+        reason: "approved",
+        curatedBy: "rules",
+        runtimeFallback,
+        coverageSummary: "not matched: soul (1 of 5)",
+      } as any);
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackId: "",
+        reason: "no_tracks",
+        curatedBy: "rules",
+        runtimeFallback,
+      } as any);
+
+      const payloads = emit.mock.calls.filter(([name]) => name === "agent.event").map(([, payload]) => payload);
+      expect(payloads[0].message).toBe(
+        "Curation complete: 5 tracks selected \u00b7 rule-based picks (AI curator unavailable) \u00b7 not matched: soul (1 of 5)",
+      );
+      expect(payloads[0].curatedBy).toBe("rules");
+      expect(payloads[0].runtimeFallback).toEqual(runtimeFallback);
+      expect(payloads[1].message).toBe(
+        "No matching tracks found in catalog \u00b7 rule-based picks (AI curator unavailable)",
+      );
+      gateway.onModuleDestroy();
+    });
+
+    it("never says AI selected for a rule-curated decision, even with reasoning or latency (#2075)", () => {
+      const { gateway, eventBus, emit } = createGateway();
+
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackCount: 3,
+        reason: "approved",
+        latencyMs: 900,
+        reasoning: "stale text",
+        curatedBy: "rules",
+      } as any);
+
+      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      expect(payload.message).toBe("Curation complete: 3 tracks selected");
+      expect(payload.runtimeFallback).toBeUndefined();
+      gateway.onModuleDestroy();
+    });
+
+    it("says AI selected for an LLM-curated decision (#2075)", () => {
+      const { gateway, eventBus, emit } = createGateway();
+
+      eventBus.publish({
+        eventName: "agent.decision_made",
+        eventVersion: 1,
+        occurredAt: "2026-10-02T12:00:00.000Z",
+        sessionId: "session-1",
+        trackId: "track-1,track-2",
+        reason: "llm",
+        curatedBy: "llm",
+        coverageSummary: "not matched: soul (1 of 2)",
+      } as any);
+
+      const payload = emit.mock.calls.find(([name]) => name === "agent.event")?.[1];
+      expect(payload.message).toBe("AI selected track \u00b7 not matched: soul (1 of 2)");
+      expect(payload.curatedBy).toBe("llm");
+      gateway.onModuleDestroy();
+    });
+
     it("keeps the message and omits coverage when nothing was requested or missed", () => {
       const { gateway, eventBus, emit } = createGateway();
 

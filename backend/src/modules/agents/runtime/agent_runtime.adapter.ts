@@ -1,4 +1,4 @@
-import type { AgentSessionRequest, AgentSessionTempoRange } from "../agent_session_request";
+import type { AgentRequestCoverage, AgentSessionRequest, AgentSessionTempoRange } from "../agent_session_request";
 import type { MyMixPreferences } from "../agent_my_mix";
 
 export interface AgentRuntimeInput {
@@ -72,6 +72,11 @@ export interface AgentRuntimeResult {
     /** Rule 3; `injected` when the selector's discovery pick replaced the last model pick. */
     exploration?: { reserved: number; served: number; injected: boolean };
   };
+  /**
+   * How well the final picks matched the listener's described session (#2037).
+   * Set by the runtime policy step, never by the model.
+   */
+  requestCoverage?: AgentRequestCoverage;
 }
 
 export interface AgentRuntimeAdapter {
