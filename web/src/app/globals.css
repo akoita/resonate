@@ -13091,6 +13091,34 @@ tr[draggable="true"]:hover {
   border-radius: 20px;
 }
 
+/* ── Almost there (played through, not yet saved) ─────── */
+
+.sonic-radar-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sonic-radar-pending-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 4px;
+}
+
+.sonic-radar-pending-header p {
+  font-size: 13px;
+  color: var(--color-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sonic-radar-pending-save-btn {
+  min-height: 32px;
+  padding: 4px 16px;
+  font-size: 12px;
+}
+
 /* ── Card Grid ───────────────────────────────────────── */
 
 .sonic-radar-grid {

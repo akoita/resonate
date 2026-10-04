@@ -1,5 +1,6 @@
 import type { DiscoveryJournal, DiscoveryJournalGroup, DiscoveryJournalItem } from "../../lib/api";
 import type { LocalTrack } from "../../lib/localLibrary";
+import { catalogItemToLocalTrack } from "../../lib/sonicRadarSummary";
 
 const DAY_MS = 86_400_000;
 
@@ -42,20 +43,5 @@ export function hasJournalItems(journal: DiscoveryJournal | null): boolean {
 
 /** A catalog track in the shape the playlist picker expects. */
 export function journalItemToLocalTrack(item: DiscoveryJournalItem): LocalTrack {
-    return {
-        id: item.trackId,
-        title: item.title,
-        artist: item.artistName,
-        albumArtist: null,
-        album: item.releaseTitle,
-        year: null,
-        genre: null,
-        duration: null,
-        createdAt: new Date().toISOString(),
-        source: "remote",
-        catalogTrackId: item.trackId,
-        artistId: item.artistId,
-        releaseId: item.releaseId,
-        remoteArtworkUrl: item.artworkUrl || undefined,
-    };
+    return catalogItemToLocalTrack(item);
 }

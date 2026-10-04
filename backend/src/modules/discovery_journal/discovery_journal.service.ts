@@ -8,7 +8,7 @@ import {
   type DiscoveryReasonCode,
 } from "../recommendations/discovery-explanations";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
-import { TasteMemoryService } from "../recommendations/taste_memory.service";
+import { hasSignal, TasteMemoryService } from "../recommendations/taste_memory.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 /**
@@ -32,6 +32,8 @@ export const DEFAULT_WINDOW_DAYS = 28;
 export const MAX_WINDOW_DAYS = 90;
 export const DEFAULT_LIMIT = 50;
 export const MAX_LIMIT = 100;
+/** Most recent "almost resonated" tracks returned (Sonic Radar "Almost there"). */
+export const PENDING_LIMIT = 12;
 /** Hard cap on AgentSignal rows read per request (newest first). */
 export const SIGNAL_READ_CAP = 2000;
 /** "This week" in the headline numbers: the last 7 days ending `now`. */
@@ -85,11 +87,35 @@ export interface DiscoveryJournalGroup {
   items: DiscoveryJournalItem[];
 }
 
+/**
+ * A track played through (>= 90%) inside the follow-up window that has not
+ * resonated yet: no replay and no save so far. Saving (or replaying) it before
+ * `followUpBy` makes it resonate.
+ */
+export interface DiscoveryJournalPendingItem {
+  trackId: string;
+  title: string;
+  artistId: string;
+  artistName: string;
+  releaseId: string;
+  releaseTitle: string;
+  artworkUrl: string | null;
+  hasUploadedArtwork: boolean;
+  artworkRevision: number;
+  /** The qualifying (>= 90%) completion, ISO. */
+  completedAt: string;
+  /** Last moment a replay or save still makes the track resonate (completedAt + 7 days), ISO. */
+  followUpBy: string;
+  discovery: boolean;
+}
+
 export interface DiscoveryJournal {
   schemaVersion: typeof DISCOVERY_JOURNAL_SCHEMA_VERSION;
   window: { days: number; from: string; to: string };
   headline: { resonantDiscoveriesThisWeek: number; newArtistsThisWeek: number };
   groups: DiscoveryJournalGroup[];
+  /** Additive: played through in the last 7 days, not replayed or saved yet. */
+  pending: DiscoveryJournalPendingItem[];
 }
 
 /** Hard caps on rows read for the operator aggregate (#1455), newest first. */
@@ -231,6 +257,50 @@ export function findResonance(input: {
   return null;
 }
 
+/**
+ * Pure "almost resonated" rule for one track. `events` are the listener's
+ * journal signals on the track. Returns the LATEST `complete` with a recorded
+ * ratio >= 0.9 inside the follow-up window `(now - 7 days, now]`, or null.
+ * The caller decides the track has not resonated yet and is not saved.
+ */
+export function findPendingCompletion(input: {
+  events: Array<{
+    action: string;
+    createdAt: Date;
+    sessionId?: string | null;
+    metadata: unknown;
+  }>;
+  now: Date;
+}): { completedAt: Date; followUpBy: Date } | null {
+  const earliest = input.now.getTime() - RESONANCE_FOLLOW_UP_DAYS * DAY_MS;
+  let latest: Date | null = null;
+  for (const event of input.events) {
+    if (event.action !== "complete") continue;
+    if ((completionRatioOf(event.metadata) ?? -1) < RESONANCE_COMPLETION_THRESHOLD) continue;
+    const at = event.createdAt.getTime();
+    if (at <= earliest || at > input.now.getTime()) continue;
+    if (!latest || at > latest.getTime()) latest = event.createdAt;
+  }
+  if (!latest) return null;
+  return {
+    completedAt: latest,
+    followUpBy: new Date(latest.getTime() + RESONANCE_FOLLOW_UP_DAYS * DAY_MS),
+  };
+}
+
+/** Newest completion first (ties by track id), capped at PENDING_LIMIT. */
+export function orderPending<T extends { trackId: string; completedAt: Date }>(
+  entries: T[],
+  limit = PENDING_LIMIT,
+): T[] {
+  return [...entries]
+    .sort(
+      (a, b) =>
+        b.completedAt.getTime() - a.completedAt.getTime() || a.trackId.localeCompare(b.trackId),
+    )
+    .slice(0, limit);
+}
+
 @Injectable()
 export class DiscoveryJournalService {
   constructor(
@@ -254,6 +324,7 @@ export class DiscoveryJournalService {
       window: { days: windowDays, from: windowFrom.toISOString(), to: now.toISOString() },
       headline: { resonantDiscoveriesThisWeek: 0, newArtistsThisWeek: 0 },
       groups: [],
+      pending: [],
     });
 
     // Consent: the same two controls the taste loop honors. A taste reset
@@ -319,27 +390,45 @@ export class DiscoveryJournalService {
       libraryAddsByTrack.set(row.catalogTrackId, list);
     }
 
-    // 2. Apply the resonance rule in code.
+    // 2. Apply the resonance rule in code. A track that played through within
+    // the follow-up window and has not resonated (over everything read) is
+    // "pending": a replay or a save before `followUpBy` would make it resonate.
     const resonant: Resonance[] = [];
+    const pendingCandidates: Array<{ trackId: string; completedAt: Date; followUpBy: Date }> = [];
     for (const trackId of completedTrackIds) {
-      const found = findResonance({
-        events: signalsByTrack.get(trackId) ?? [],
-        libraryAdds: libraryAddsByTrack.get(trackId) ?? [],
-        from: windowFrom,
-        now,
-      });
-      if (found) resonant.push({ trackId, ...found });
+      const events = signalsByTrack.get(trackId) ?? [];
+      const libraryAdds = libraryAddsByTrack.get(trackId) ?? [];
+      const found = findResonance({ events, libraryAdds, from: windowFrom, now });
+      if (found) {
+        resonant.push({ trackId, ...found });
+        continue;
+      }
+      // Resonated already, even if outside a window shorter than the follow-up window.
+      if (findResonance({ events, libraryAdds, from: readFrom, now })) continue;
+      const pending = findPendingCompletion({ events, now });
+      if (pending) pendingCandidates.push({ trackId, ...pending });
     }
-    if (resonant.length === 0) return empty();
     resonant.sort(
       (a, b) =>
         b.completedAt.getTime() - a.completedAt.getTime() ||
         a.trackId.localeCompare(b.trackId),
     );
 
-    // 3. Catalog rows, publicly visible tracks only.
+    // A track already in the library (added at any time) cannot be saved again.
+    let pendingIds = pendingCandidates.map((entry) => entry.trackId);
+    if (pendingIds.length > 0) {
+      const savedRows = await prisma.libraryTrack.findMany({
+        where: { userId, catalogTrackId: { in: pendingIds } },
+        select: { catalogTrackId: true },
+      });
+      const saved = new Set(savedRows.map((row) => row.catalogTrackId));
+      pendingIds = pendingIds.filter((id) => !saved.has(id));
+    }
+    if (resonant.length === 0 && pendingIds.length === 0) return empty();
+
+    // 3. Catalog rows, publicly visible tracks only (journal and pending alike).
     const tracks = await prisma.track.findMany({
-      where: { id: { in: resonant.map((entry) => entry.trackId) } },
+      where: { id: { in: [...new Set([...resonant.map((entry) => entry.trackId), ...pendingIds])] } },
       select: {
         id: true,
         title: true,
@@ -356,6 +445,7 @@ export class DiscoveryJournalService {
             withdrawalReason: true,
             artistId: true,
             primaryArtist: true,
+            genre: true,
             artworkUrl: true,
             artworkMimeType: true,
             artworkRevision: true,
@@ -368,28 +458,75 @@ export class DiscoveryJournalService {
         },
       },
     });
+    type CatalogTrack = (typeof tracks)[number];
     const trackById = new Map(
       tracks
         .filter((track) => classifyTrackAvailability(track).state === "available")
         .map((track) => [track.id, track]),
     );
+    const artistNameOf = (track: CatalogTrack) =>
+      resolveCreditedArtistName({
+        trackArtist: track.artist,
+        credits: track.release.artistCredits,
+        primaryArtist: track.release.primaryArtist,
+        accountDisplayName: track.release.artist?.displayName,
+      });
+    // Hidden through taste memory: the artist (id, credited name, account name) or the genre.
+    const isHiddenByTaste = (track: CatalogTrack) =>
+      hasSignal(policy.hidden, "artist", track.release.artistId) ||
+      hasSignal(policy.hidden, "artist", artistNameOf(track)) ||
+      hasSignal(policy.hidden, "artist", track.release.artist?.displayName) ||
+      hasSignal(policy.hidden, "genre", track.release.genre);
+
     const visible = resonant.filter((entry) => trackById.has(entry.trackId));
-    if (visible.length === 0) return empty();
+    const visiblePendingByTrack = new Map(pendingCandidates.map((entry) => [entry.trackId, entry]));
+    const pendingEntries = orderPending(
+      pendingIds
+        .filter((id) => trackById.has(id) && !isHiddenByTaste(trackById.get(id)!))
+        .map((id) => visiblePendingByTrack.get(id)!),
+    );
+    if (visible.length === 0 && pendingEntries.length === 0) return empty();
 
     const artistIds = [
       ...new Set(visible.map((entry) => trackById.get(entry.trackId)!.release.artistId)),
     ];
+    const allArtistIds = [
+      ...new Set([
+        ...artistIds,
+        ...pendingEntries.map((entry) => trackById.get(entry.trackId)!.release.artistId),
+      ]),
+    ];
 
     // 4. Which artists were new to the listener, and which are verified humans.
+    // One first-touch query covers the journal and the pending artists.
     const [firstTouchByArtist, policyContext] = await Promise.all([
-      this.loadFirstTouch(userId, artistIds, now, resetAt, agentPlaybackAllowed),
+      this.loadFirstTouch(userId, allArtistIds, now, resetAt, agentPlaybackAllowed),
       this.policyContext.loadContext(undefined, artistIds),
     ]);
-    const discoveryFor = (entry: Resonance) => {
+    const discoveryFor = (entry: { trackId: string; completedAt: Date }) => {
       const artistId = trackById.get(entry.trackId)!.release.artistId;
       const firstTouch = firstTouchByArtist.get(artistId);
       return isDiscoveryListen(firstTouch, entry.completedAt);
     };
+
+    const pending: DiscoveryJournalPendingItem[] = pendingEntries.map((entry) => {
+      const track = trackById.get(entry.trackId)!;
+      const release = track.release;
+      return {
+        trackId: track.id,
+        title: track.title,
+        artistId: release.artistId,
+        artistName: artistNameOf(track) ?? "Unknown Artist",
+        releaseId: release.id,
+        releaseTitle: release.title,
+        artworkUrl: release.artworkUrl,
+        hasUploadedArtwork: Boolean(release.artworkMimeType),
+        artworkRevision: release.artworkRevision,
+        completedAt: entry.completedAt.toISOString(),
+        followUpBy: entry.followUpBy.toISOString(),
+        discovery: discoveryFor(entry),
+      };
+    });
 
     const headlineEntries = visible.filter(
       (entry) => entry.completedAt >= weekFrom && discoveryFor(entry),
@@ -404,7 +541,7 @@ export class DiscoveryJournalService {
     // 5. Truncate to the window and the requested limit, then decorate.
     const shown = visible.filter((entry) => entry.completedAt >= windowFrom).slice(0, limit);
     if (shown.length === 0) {
-      return { ...empty(), headline };
+      return { ...empty(), headline, pending };
     }
     const shownArtistIds = [
       ...new Set(shown.map((entry) => trackById.get(entry.trackId)!.release.artistId)),
@@ -429,13 +566,7 @@ export class DiscoveryJournalService {
         trackId: track.id,
         title: track.title,
         artistId: release.artistId,
-        artistName:
-          resolveCreditedArtistName({
-            trackArtist: track.artist,
-            credits: release.artistCredits,
-            primaryArtist: release.primaryArtist,
-            accountDisplayName: release.artist?.displayName,
-          }) ?? "Unknown Artist",
+        artistName: artistNameOf(track) ?? "Unknown Artist",
         releaseId: release.id,
         releaseTitle: release.title,
         artworkUrl: release.artworkUrl,
@@ -490,6 +621,7 @@ export class DiscoveryJournalService {
       window: { days: windowDays, from: windowFrom.toISOString(), to: now.toISOString() },
       headline,
       groups: orderedGroups,
+      pending,
     };
   }
 

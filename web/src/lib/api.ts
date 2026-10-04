@@ -5839,14 +5839,37 @@ export type DiscoveryJournalGroup = {
   items: DiscoveryJournalItem[];
 };
 
+/** Played through (90%+) but not yet replayed or saved: one save from resonating. */
+export type DiscoveryJournalPendingItem = {
+  trackId: string;
+  title: string;
+  artistId: string;
+  artistName: string;
+  releaseId: string;
+  releaseTitle: string;
+  artworkUrl: string | null;
+  hasUploadedArtwork: boolean;
+  artworkRevision: number;
+  /** ISO time of the 90%+ completion. */
+  completedAt: string;
+  /** ISO time (completedAt + 7 days): the last moment a save or replay still counts. */
+  followUpBy: string;
+  discovery: boolean;
+};
+
 export type DiscoveryJournal = {
   schemaVersion: "discovery-journal/v1";
   window: { days: number; from: string; to: string };
   headline: { resonantDiscoveriesThisWeek: number; newArtistsThisWeek: number };
   groups: DiscoveryJournalGroup[];
+  /** Newest first, at most 12. Optional so an older backend still parses. */
+  pending?: DiscoveryJournalPendingItem[];
 };
 
-/** The listener's resonant tracks (played to 90%+, then replayed or saved). */
+/**
+ * The listener's resonant tracks (played to 90%+, then replayed or saved), plus
+ * `pending`: tracks played through recently that are not yet replayed or saved.
+ */
 export async function getDiscoveryJournal(
   token: string,
   options: { windowDays?: number; limit?: number } = {},
@@ -5868,6 +5891,13 @@ export async function getDiscoveryJournal(
           artworkRevision: item.artworkRevision,
         });
       }
+    }
+  }
+  for (const item of journal.pending ?? []) {
+    if (!item.artworkUrl && item.hasUploadedArtwork) {
+      item.artworkUrl = getReleaseArtworkUrl(item.releaseId, {
+        artworkRevision: item.artworkRevision,
+      });
     }
   }
   return journal;

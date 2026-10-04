@@ -28,7 +28,12 @@ import {
     type SavedPlaylistView,
 } from "../../lib/api";
 import { queueableTracks } from "./trackAvailability";
-import { COVER_TRACK_SAMPLE, PlaylistCoverThumb, playlistCoverUrls } from "../catalog/CatalogPlaylistCard";
+import {
+    COVER_TRACK_SAMPLE,
+    PlaylistCoverThumb,
+    playlistCoverUrls,
+    publicPlaylistCoverUrls,
+} from "../catalog/CatalogPlaylistCard";
 import {
     applyPlaylistDrop,
     parsePlaylistDropPayload,
@@ -383,14 +388,23 @@ export function PlaylistTab({
                                 onClick={() => saved.available && router.push(`/playlist/${saved.id}`)}
                                 title={saved.available ? "Open playlist" : "This playlist is no longer available"}
                             >
-                                <div className="playlist-card-icon">{saved.available ? "🎶" : "🚫"}</div>
+                                {saved.available ? (
+                                    <div className="playlist-card-artwork playlist-card-cover">
+                                        <PlaylistCoverThumb name={saved.name} covers={publicPlaylistCoverUrls(saved.tracks)} />
+                                        <span className="pl-card-badge pl-card-badge--on-cover">Saved</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="playlist-card-icon">🚫</div>
+                                        <span className="pl-card-badge">Saved</span>
+                                    </>
+                                )}
                                 <div className="playlist-card-title">{saved.name}</div>
                                 <div className="playlist-card-meta">
                                     {saved.available
                                         ? `${saved.ownerDisplayName ? `by ${saved.ownerDisplayName} • ` : ""}${saved.trackCount} track${saved.trackCount !== 1 ? "s" : ""}`
                                         : "Unavailable"}
                                 </div>
-                                <span className="pl-card-badge">Saved</span>
                                 <div className="playlist-card-actions">
                                     <button
                                         className="playlist-action-btn"

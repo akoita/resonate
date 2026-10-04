@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks"],
     sections: [
       {
         id: "sessions",
@@ -607,8 +607,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/sonic-radar.png`,
-              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, two headline numbers (resonant discoveries this week and new artists this week), and yesterday's resonant tracks grouped under 'Yesterday' with an Add to Playlist button.",
-              caption: "Sonic Radar: this week's resonant discoveries and new artists, grouped by day or session.",
+              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, two headline numbers (resonant discoveries this week and new artists this week), an 'Almost there' section with two played-through tracks that each show how many days are left to save them and a Save button, and below it the resonant tracks grouped by day with an Add to Playlist button.",
+              caption: "Sonic Radar: tracks one save away under Almost there, then your resonant discoveries grouped by day or session.",
               width: 1440,
               height: 900,
               source: LOCAL,
@@ -625,7 +625,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "If nothing has resonated yet, Sonic Radar says so and offers a way to start a session. Tracks you finish and then replay or save will show up here.",
+            text: "Above your journal, an Almost there section lists tracks you played through in the last seven days that have not resonated yet. Each one shows how long you have left to act on it, and a New to you label for a first-time artist. Press Save on a track you liked, or replay it, within seven days of finishing it, and it joins your journal. Saving also adds the track to your library.",
+          },
+          {
+            kind: "paragraph",
+            text: "On the AI DJ page, a line under the controls tells you how many tracks have resonated with you recently, or how many you played through are one save away. Open it to see them on Sonic Radar.",
+          },
+          {
+            kind: "paragraph",
+            text: "If nothing has resonated yet, Sonic Radar says so and offers a way to start a session. Play a track all the way through, then save or replay it, and it will show up here.",
           },
           {
             kind: "callout",
@@ -1037,7 +1045,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Open the Add to playlist action on any track, release, album, or artist page — including artist pages inside My Library.",
               "To add several tracks at once, select them in My Library and choose Add to playlist, or drag them onto a playlist in the side panel. Dragging a track from one playlist onto another copies it there; the original playlist keeps it.",
               "Create a new playlist or add the tracks to an existing one.",
-              "Reorder and manage tracks from the Playlists tab in your library. Playlist covers show a mosaic of the artwork inside.",
+              "Reorder and manage tracks from the Playlists tab in your library. Playlist covers, including public playlists you have saved, show a mosaic of the artwork inside.",
             ],
           },
           {
