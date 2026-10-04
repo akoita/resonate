@@ -143,6 +143,8 @@ describe("agent recommendation adapters", () => {
       mood: "Focus",
       // Listening sessions retry wider before dead-ending (#2056).
       fallback: true,
+      // The session's own mood outranks learned taste (#2059).
+      requestedTerms: ["Focus"],
     });
     expect(result).toEqual(expect.objectContaining({
       strategy: "deterministic",

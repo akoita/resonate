@@ -287,6 +287,8 @@ export class SessionsService {
       preferences: {
         ...preferences,
         genres: await this.withLearnedGenres(session.userId, sessionGenres),
+        // What this session asked for itself, so it outranks learned taste (#2059).
+        ...(sessionGenres?.length ? { sessionGenres } : {}),
         ...(requested.request
           ? {
               mood: requested.mood,

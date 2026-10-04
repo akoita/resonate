@@ -78,6 +78,21 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > (genres, moods, energy, tempo) travel on to the session, and analytics carry
 > filter keys and counts only. The saved vibes in Settings are never written.
 
+> **Session requests receive priority (#2059).** Vision-neutral quality. A
+> preset or described session keeps its own genres and moods separate from
+> learned favourites. A matching track receives one `session_request` boost at
+> weight 20, above the learned-preference cap of 18. Taste-memory hide and
+> downrank controls still apply. My Mix uses its lane-local request for this
+> boost, without adding a second ordinary-session boost. Learned favourites
+> fill remaining slots, and coverage notes report misses. Home and sessions
+> without a request retain their existing ranking.
+>
+> Mood presets use the shared upload vocabulary: Pulse Raid (Trap, Drum &
+> Bass, EDM), Liquid Sky (Soul, Jazz, Trip-Hop; Chill mood), Static Calm
+> (Ambient, New Age, Classical), and Neural Flow (Lo-Fi). The upload options
+> live in `web/src/lib/catalogVocabulary.ts`; preset tests check that every
+> genre and mood belongs to that vocabulary.
+
 > **Next AI Pick keeps going on a small catalog (#2056).** Vision-neutral
 > quality: no money, payout or fee changes. A listening session used to
 > dead-end with `no_tracks` after one Next Pick on a catalog with few artists:

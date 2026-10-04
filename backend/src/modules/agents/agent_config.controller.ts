@@ -379,6 +379,8 @@ export class AgentConfigController {
                     }),
                     stemTypes: config.stemTypes,
                     learnedGenreWeights: {} as Record<string, number>,
+                    // What this session asked for itself, so it outranks learned taste (#2059).
+                    ...(sessionGenres?.length ? { sessionGenres } : {}),
                     mood: sessionPreferences.mood,
                     energy: sessionPreferences.energy,
                     allowExplicit: sessionPreferences.allowExplicit,

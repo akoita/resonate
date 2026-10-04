@@ -24,6 +24,12 @@ export interface AgentRuntimeInput {
     source?: string;
     /** Every mood the listener described (#2037); each is also a search query. */
     moods?: string[];
+    /**
+     * The session's own genres (preset or described session, #2059), before
+     * learned favourites and saved vibes are merged into `genres`. They rank
+     * above learned taste.
+     */
+    sessionGenres?: string[];
     /** Requested tempo range in BPM (#2037); a ranking boost on measured tempo only. */
     tempoBpm?: AgentSessionTempoRange;
     /** The listening filters parsed from the listener's own words (#2037); never the text. */

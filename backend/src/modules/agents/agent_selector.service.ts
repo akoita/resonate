@@ -69,6 +69,12 @@ export interface AgentSelectorInput {
    * and exploration rules are never relaxed.
    */
   fallback?: boolean;
+  /**
+   * Genres and moods the session itself asked for (#2059), before learned
+   * favourites and saved vibes are merged into `queries`. Matches rank above
+   * learned taste; the merged queries still fill the remaining slots.
+   */
+  requestedTerms?: string[];
   /** Server-resolved session-only My Mix plan. */
   myMixPlan?: ResolvedMyMixPlan;
 }
@@ -413,6 +419,7 @@ export class AgentSelectorService {
         energy: input.energy,
         tempoBpm: input.tempoBpm,
         sessionIntent,
+        requestedTerms: input.requestedTerms,
         tastePolicy: policy,
         audioFeaturesByTrack,
       };
@@ -423,9 +430,26 @@ export class AgentSelectorService {
         const laneGenres = Object.keys(lane.genreWeights);
         const laneMoods = Object.keys(lane.moodWeights);
         const laneQueries = [...laneGenres, ...laneMoods];
-        const laneCandidates = rankingCandidates.filter((candidate) =>
-          (laneMatchesByCandidateId.get(candidate.id) ?? []).includes(lane.id),
+        const expandedLaneQueries = expandAgentTasteQueries(laneQueries);
+        const laneQueryKeys = new Set(expandedLaneQueries.map(normalizeQuery));
+        const ordinaryRequestQueryKeys = new Set(
+          expandAgentTasteQueries(input.requestedTerms ?? [])
+            .map(normalizeQuery)
+            .filter((query) => !laneQueryKeys.has(query)),
         );
+        // Request terms are also catalog retrieval queries. Remove request-only
+        // matches here so their generic expanded-taste signal cannot influence
+        // lane allocation; lane terms that overlap are retained.
+        const laneCandidates = rankingCandidates
+          .filter((candidate) =>
+            (laneMatchesByCandidateId.get(candidate.id) ?? []).includes(lane.id),
+          )
+          .map((candidate) => ({
+            ...candidate,
+            matchedQueries: (candidate.matchedQueries ?? []).filter(
+              (query: string) => !ordinaryRequestQueryKeys.has(normalizeQuery(query)),
+            ),
+          }));
         if (laneCandidates.length === 0) {
           laneCandidateOrderByLaneId.set(lane.id, []);
           continue;
@@ -433,7 +457,7 @@ export class AgentSelectorService {
         const laneRanked = await this.rankingService.rank(laneCandidates, {
           ...rankingContext,
           originalQueries: laneQueries,
-          expandedQueries: expandAgentTasteQueries(laneQueries),
+          expandedQueries: expandedLaneQueries,
           sessionRequest: { genres: laneGenres, moods: laneMoods },
           sessionIntent: buildSessionIntent(input, laneMoods[0]),
           energy: lane.energyBand ?? input.energy,
@@ -711,4 +735,8 @@ function uniqueCaseInsensitive(values: string[]) {
     unique.push(trimmed);
   }
   return unique;
+}
+
+function normalizeQuery(query: string) {
+  return query.trim().toLowerCase().replace(/\s+/g, " ");
 }

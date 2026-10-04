@@ -128,6 +128,12 @@ export interface DiscoveryRankingContext {
   tempoBpm?: { min: number | null; max: number | null };
   /** Session intent as request context (DJ). Never stored as taste. */
   sessionIntent?: DiscoverySessionIntent;
+  /**
+   * Genres and moods this DJ session asked for itself (#2059): a preset or a
+   * described session, before learned favourites and saved vibes are merged
+   * in. A match ranks above learned taste (ADR-TE-2 rule 6). Home never sets it.
+   */
+  requestedTerms?: string[];
   /** Explicit, lane-local session request used by My Mix; absent on Home. */
   sessionRequest?: { genres: string[]; moods: string[] };
   tastePolicy?: TasteMemoryPolicy;
@@ -285,14 +291,14 @@ export class DiscoveryRankingService {
       explanation.push(DISCOVERY_EXPLANATION_VARIANTS.declared_taste);
     }
 
-    const requestFit = sessionRequestMatch(candidate, context.sessionRequest, context.tastePolicy);
+    const requestFit = sessionRequestMatch(candidate, context);
     if (requestFit) {
       signals.push({
         label: "session_request",
         weight: Math.round(DECLARED_PREFERENCE_WEIGHT * requestFit.multiplier),
-        reason: "matches the current mix request",
+        reason: requestFit.reason,
       });
-      explanation.push("Fits your current mix request.");
+      explanation.push(requestFit.explanation);
     }
 
     // Embedding neighbours of what the listener saved or finished, and of what
@@ -421,6 +427,34 @@ export class DiscoveryRankingService {
 
 function sessionRequestMatch(
   candidate: DiscoveryCandidate,
+  context: Pick<DiscoveryRankingContext, "sessionRequest" | "requestedTerms" | "tastePolicy">,
+): { multiplier: number; reason: string; explanation: string } | undefined {
+  // A lane's resolved request is authoritative for lane ordering, even when
+  // this candidate does not match it. Falling through to the caller's ordinary
+  // session request would let unrelated terms move candidates between lanes.
+  if (context.sessionRequest !== undefined) {
+    const match = laneSessionRequestMatch(candidate, context.sessionRequest, context.tastePolicy);
+    return match
+      ? {
+          multiplier: match.multiplier,
+          reason: "matches the current mix request",
+          explanation: "Fits your current mix request.",
+        }
+      : undefined;
+  }
+
+  const match = requestedTermsMatch(candidate, context.requestedTerms, context.tastePolicy);
+  return match
+    ? {
+        multiplier: match.multiplier,
+        reason: `matches this session's request for ${match.term}`,
+        explanation: DISCOVERY_EXPLANATIONS.session_fit,
+      }
+    : undefined;
+}
+
+function laneSessionRequestMatch(
+  candidate: DiscoveryCandidate,
   request: DiscoveryRankingContext["sessionRequest"],
   policy?: TasteMemoryPolicy,
 ): { multiplier: number } | undefined {
@@ -437,6 +471,30 @@ function sessionRequestMatch(
     if (!canonicalMood || !requestedMoods.has(canonicalMood)) continue;
     const multiplier = sessionRequestPolicyMultiplier(policy, "mood", releaseMood, canonicalMood);
     if (multiplier > 0) return { multiplier };
+  }
+  return undefined;
+}
+
+function requestedTermsMatch(
+  candidate: DiscoveryCandidate,
+  requestedTerms: readonly string[] | undefined,
+  policy?: TasteMemoryPolicy,
+): { term: string; multiplier: number } | undefined {
+  const terms = (requestedTerms ?? []).map((term) => term.trim()).filter(Boolean);
+  const genre = candidate.release?.genre ?? "";
+  const moods = candidate.release?.moods ?? [];
+  for (const term of terms) {
+    if (genre.toLowerCase().includes(term.toLowerCase())) {
+      const canonicalGenre = canonicalCatalogMetadata(genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
+      const multiplier = sessionRequestPolicyMultiplier(policy, "genre", genre, canonicalGenre);
+      return multiplier > 0 ? { term, multiplier } : undefined;
+    }
+    for (const mood of moods) {
+      if (!mood.toLowerCase().includes(term.toLowerCase())) continue;
+      const canonicalMood = canonicalCatalogMetadata(mood, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES);
+      const multiplier = sessionRequestPolicyMultiplier(policy, "mood", mood, canonicalMood);
+      return multiplier > 0 ? { term, multiplier } : undefined;
+    }
   }
   return undefined;
 }
