@@ -290,6 +290,10 @@ and pay-per-play are Listener Pro candidates behind an entitlement seam.
 - the tracks that resonated, grouped by session, with their explanation;
 - one next action per artist;
 - headline numbers: resonant discoveries this week and new artists;
+- "Almost there": tracks played through in the last 7 days that are one
+  replay or save from resonating (#2089);
+- "New from artists you discovered": recent releases by journal artists that
+  arrived after the listener's first resonant listen, computed on read (#2086);
 - with Listener Pro: "where your money went", the per-artist pay-per-play
   statement.
 

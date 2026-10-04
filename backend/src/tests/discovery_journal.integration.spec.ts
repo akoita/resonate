@@ -5,6 +5,7 @@ import {
   DiscoveryJournal,
   DiscoveryJournalItem,
   DiscoveryJournalService,
+  NEW_RELEASES_LIMIT,
   PENDING_LIMIT,
   RESONANCE_FOLLOW_UP_DAYS,
 } from "../modules/discovery_journal/discovery_journal.service";
@@ -23,6 +24,9 @@ const L3 = `${TEST_PREFIX}listener3`;
 const L4 = `${TEST_PREFIX}listener4`;
 const L5 = `${TEST_PREFIX}listener5`; // only "almost there" tracks
 const L6 = `${TEST_PREFIX}listener6`; // saves a pending track
+const N1 = `${TEST_PREFIX}newrel1`; // "new from artists you discovered"
+const N2 = `${TEST_PREFIX}newrel2`; // another listener with its own journal artist
+const N3 = `${TEST_PREFIX}newrel3`; // no resonant tracks
 const OWNER = `${TEST_PREFIX}verifiedowner`; // lowercase: matches the reputation wallet key
 
 const ago = (hours: number) => new Date(NOW.getTime() - hours * HOUR);
@@ -32,7 +36,14 @@ type Seeded = { artistId: string; releaseId: string; trackId: string };
 
 async function seedTrack(
   name: string,
-  options: { artistId?: string; releaseStatus?: string; title?: string; genre?: string } = {},
+  options: {
+    artistId?: string;
+    releaseStatus?: string;
+    title?: string;
+    genre?: string;
+    createdAt?: Date;
+    aiDisclosureLevel?: "UNDECLARED" | "NONE" | "PARTLY" | "ALL";
+  } = {},
 ): Promise<Seeded> {
   const artistId = options.artistId ?? `${TEST_PREFIX}artist_${name}`;
   if (!options.artistId) {
@@ -49,11 +60,18 @@ async function seedTrack(
       genre: options.genre ?? "Deep House",
       status: options.releaseStatus ?? "published",
       primaryArtist: `Credited ${name}`,
+      ...(options.createdAt ? { createdAt: options.createdAt } : {}),
     },
   });
   const trackId = `${TEST_PREFIX}track_${name}`;
   await prisma.track.create({
-    data: { id: trackId, releaseId, title: options.title ?? `Track ${name}`, position: 1 },
+    data: {
+      id: trackId,
+      releaseId,
+      title: options.title ?? `Track ${name}`,
+      position: 1,
+      ...(options.aiDisclosureLevel ? { aiDisclosureLevel: options.aiDisclosureLevel } : {}),
+    },
   });
   return { artistId, releaseId, trackId };
 }
@@ -298,7 +316,9 @@ describe("DiscoveryJournalService (integration)", () => {
   });
 
   afterAll(async () => {
-    const users = [L1, L2, L3, L4, L5, L6, OWNER];
+    const users = [L1, L2, L3, L4, L5, L6, N1, N2, N3, OWNER];
+    await prisma.stemListing.deleteMany({ where: { transactionHash: { startsWith: TEST_PREFIX } } });
+    await prisma.stem.deleteMany({ where: { trackId: { startsWith: TEST_PREFIX } } });
     await prisma.agentSignal.deleteMany({ where: { userId: { in: users } } });
     await prisma.libraryTrack.deleteMany({ where: { userId: { in: users } } });
     await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: { in: users } } });
@@ -690,6 +710,245 @@ describe("DiscoveryJournalService (integration)", () => {
       expect(result.pending).toHaveLength(PENDING_LIMIT);
       expect(pendingIds(result).slice(0, 3)).toEqual(seeded.slice(0, 3).map((entry) => entry.trackId));
       expect(pendingIds(result)).not.toContain(seeded[extra - 1].trackId);
+    });
+  });
+
+  describe("new from artists you discovered", () => {
+    const ids = (result: DiscoveryJournal) => result.newFromDiscovered.map((item) => item.trackId);
+    // Every scenario artist resonated with a "base" track: complete 10 days ago,
+    // replay 9 days ago. Releases created after that are "new".
+    const FIRST_RESONANT = ago(days(10));
+    const nr: Record<string, Seeded> = {};
+    let result: DiscoveryJournal;
+    let wide: DiscoveryJournal;
+
+    async function journalArtist(listener: string, name: string) {
+      const base = await seedTrack(`${name}Base`, { createdAt: ago(days(100)) });
+      await signal(listener, base.trackId, "complete", FIRST_RESONANT, { ratio: 1 });
+      await signal(listener, base.trackId, "replay", ago(days(9)));
+      return base;
+    }
+    async function newRelease(
+      name: string,
+      base: Seeded,
+      createdAt: Date,
+      options: Parameters<typeof seedTrack>[1] = {},
+    ) {
+      nr[name] = await seedTrack(name, { ...options, artistId: base.artistId, createdAt });
+      return nr[name];
+    }
+
+    beforeAll(async () => {
+      for (const id of [N1, N2, N3]) {
+        await prisma.user.create({ data: { id, email: `${id}@test.resonate` } });
+      }
+
+      // Included: positive control, a rich item, and the ADR-TE-2 shape.
+      const ok = await journalArtist(N1, "nrOk");
+      await newRelease("nrOkNew", ok, ago(days(5)));
+
+      // Diversity: three recent releases by one artist -> the newest two.
+      const cap = await journalArtist(N1, "nrCap");
+      await newRelease("nrCap1", cap, ago(days(1)));
+      await newRelease("nrCap3", cap, ago(days(3)));
+      await newRelease("nrCap6", cap, ago(days(6)));
+
+      // Excluded by exactly one property each.
+      const early = await journalArtist(N1, "nrEarly");
+      await newRelease("nrEarlyNew", early, ago(days(11))); // before the first resonant listen
+      await newRelease("nrEqualNew", early, FIRST_RESONANT); // not strictly after it
+      const played = await journalArtist(N1, "nrPlayed");
+      await newRelease("nrPlayedNew", played, ago(days(5)));
+      await signal(N1, nr.nrPlayedNew.trackId, "skip", ago(days(2)));
+      const saved = await journalArtist(N1, "nrSaved");
+      await newRelease("nrSavedNew", saved, ago(days(5)));
+      await prisma.libraryTrack.create({
+        data: {
+          userId: N1,
+          source: "remote",
+          title: "Track nrSavedNew",
+          catalogTrackId: nr.nrSavedNew.trackId,
+          createdAt: ago(days(4)),
+        },
+      });
+      const hiddenArtist = await journalArtist(N1, "nrHiddenArtist");
+      await newRelease("nrHiddenArtistNew", hiddenArtist, ago(days(5)));
+      const hiddenGenre = await journalArtist(N1, "nrHiddenGenre");
+      await newRelease("nrHiddenGenreNew", hiddenGenre, ago(days(5)), { genre: "Hidden Genre" });
+      await tasteMemory.upsertSignalControl(N1, {
+        signalType: "artist",
+        value: hiddenArtist.artistId,
+        action: "hidden",
+      });
+      await tasteMemory.upsertSignalControl(N1, {
+        signalType: "genre",
+        value: "Hidden Genre",
+        action: "hidden",
+      });
+      const withdrawn = await journalArtist(N1, "nrWithdrawn");
+      await newRelease("nrWithdrawnNew", withdrawn, ago(days(5)), { releaseStatus: "withdrawn" });
+      const aiAll = await journalArtist(N1, "nrAiAll");
+      await newRelease("nrAiAllNew", aiAll, ago(days(5)), { aiDisclosureLevel: "ALL" });
+      // Only fully AI-generated content is excluded; partly AI is eligible.
+      const aiPartly = await journalArtist(N1, "nrAiPartly");
+      await newRelease("nrAiPartlyNew", aiPartly, ago(days(7)), { aiDisclosureLevel: "PARTLY" });
+
+      // Another listener's play of the same track does not exclude it for N1.
+      const otherPlayed = await journalArtist(N1, "nrOtherPlayed");
+      await newRelease("nrOtherPlayedNew", otherPlayed, ago(days(4)));
+      await signal(N2, nr.nrOtherPlayedNew.trackId, "skip", ago(days(2)));
+
+      // ADR-TE-2 rule 1: a listing on the later-position track must not reorder it.
+      const listed = await journalArtist(N1, "nrListed");
+      await newRelease("nrListedFirst", listed, ago(days(8)));
+      nr.nrListedSecond = {
+        artistId: listed.artistId,
+        releaseId: nr.nrListedFirst.releaseId,
+        trackId: `${TEST_PREFIX}track_nrListedSecond`,
+      };
+      await prisma.track.create({
+        data: {
+          id: nr.nrListedSecond.trackId,
+          releaseId: nr.nrListedFirst.releaseId,
+          title: "Track nrListedSecond",
+          position: 2,
+        },
+      });
+
+      // Per-listener scoping: only N2's journal has this artist.
+      const n2Only = await journalArtist(N2, "nrN2Only");
+      await newRelease("nrN2OnlyNew", n2Only, ago(days(3)));
+
+      // Older than 60 days but after the first resonant listen (window 90 only).
+      const ancient = await seedTrack("nrAncientBase", { createdAt: ago(days(200)) });
+      await signal(N1, ancient.trackId, "complete", ago(days(80)), { ratio: 1 });
+      await signal(N1, ancient.trackId, "replay", ago(days(79)));
+      await newRelease("nrAncient70", ancient, ago(days(70)));
+      await newRelease("nrAncient55", ancient, ago(days(55)));
+
+      result = await service.getJournal(N1, { now: NOW });
+      wide = await service.getJournal(N1, { now: NOW, windowDays: 90 });
+    });
+
+    it("lists new releases by journal artists, newest release first, with the documented shape", () => {
+      expect(ids(result)).toEqual([
+        nr.nrCap1.trackId,
+        nr.nrCap3.trackId,
+        nr.nrOtherPlayedNew.trackId,
+        nr.nrOkNew.trackId,
+        nr.nrAiPartlyNew.trackId,
+        nr.nrListedFirst.trackId,
+        nr.nrListedSecond.trackId,
+      ]);
+      expect(result.newFromDiscovered.find((item) => item.trackId === nr.nrOkNew.trackId)).toEqual({
+        trackId: nr.nrOkNew.trackId,
+        title: "Track nrOkNew",
+        artistId: nr.nrOkNew.artistId,
+        artistName: "Credited nrOkNew",
+        releaseId: nr.nrOkNew.releaseId,
+        releaseTitle: "Release nrOkNew",
+        artworkUrl: null,
+        hasUploadedArtwork: false,
+        artworkRevision: expect.any(Number),
+        addedAt: ago(days(5)).toISOString(),
+        reason: {
+          code: "new_from_discovered_artist",
+          text: DISCOVERY_EXPLANATIONS.new_from_discovered_artist,
+        },
+      });
+      expect(result.schemaVersion).toBe(DISCOVERY_JOURNAL_SCHEMA_VERSION);
+    });
+
+    it("keeps at most two tracks per artist, the newest releases", () => {
+      expect(ids(result)).toContain(nr.nrCap1.trackId);
+      expect(ids(result)).toContain(nr.nrCap3.trackId);
+      expect(ids(result)).not.toContain(nr.nrCap6.trackId);
+      expect(result.newFromDiscovered.length).toBeLessThanOrEqual(NEW_RELEASES_LIMIT);
+    });
+
+    it("excludes releases that arrived before (or exactly at) the first resonant listen", () => {
+      expect(ids(result)).not.toContain(nr.nrEarlyNew.trackId);
+      expect(ids(result)).not.toContain(nr.nrEqualNew.trackId);
+    });
+
+    it("excludes releases older than 60 days, and keeps newer ones for the same artist", () => {
+      expect(ids(wide)).not.toContain(nr.nrAncient70.trackId);
+      expect(ids(wide)).toContain(nr.nrAncient55.trackId);
+    });
+
+    it("excludes tracks the listener already played or saved", () => {
+      expect(ids(result)).not.toContain(nr.nrPlayedNew.trackId);
+      expect(ids(result)).not.toContain(nr.nrSavedNew.trackId);
+    });
+
+    it("is not affected by another listener's plays", () => {
+      expect(ids(result)).toContain(nr.nrOtherPlayedNew.trackId);
+    });
+
+    it("excludes artists and genres hidden through taste memory", () => {
+      expect(ids(result)).not.toContain(nr.nrHiddenArtistNew.trackId);
+      expect(ids(result)).not.toContain(nr.nrHiddenGenreNew.trackId);
+    });
+
+    it("excludes withdrawn releases and fully AI-generated tracks, not partly AI ones", () => {
+      expect(ids(result)).not.toContain(nr.nrWithdrawnNew.trackId);
+      expect(ids(result)).not.toContain(nr.nrAiAllNew.trackId);
+      expect(ids(result)).toContain(nr.nrAiPartlyNew.trackId);
+    });
+
+    it("never lists releases created after `now`", async () => {
+      // Every release of the shared fixture was created at wall-clock time, after NOW.
+      expect(journal.newFromDiscovered).toEqual([]);
+    });
+
+    it("scopes the list to the listener's own journal", async () => {
+      expect(ids(result)).not.toContain(nr.nrN2OnlyNew.trackId);
+      const other = await service.getJournal(N2, { now: NOW });
+      expect(ids(other)).toEqual([nr.nrN2OnlyNew.trackId]);
+    });
+
+    it("returns an empty list for a listener with no resonant tracks", async () => {
+      const none = await service.getJournal(N3, { now: NOW });
+      expect(none.newFromDiscovered).toEqual([]);
+      const nobody = await service.getJournal(`${TEST_PREFIX}nobody`, { now: NOW });
+      expect(nobody.newFromDiscovered).toEqual([]);
+    });
+
+    it("is not influenced by stem listings (ADR-TE-2 rule 1)", async () => {
+      const stem = await prisma.stem.create({
+        data: { trackId: nr.nrListedSecond.trackId, type: "vocals", uri: "s3://test/stem" },
+      });
+      await prisma.stemListing.create({
+        data: {
+          listingId: BigInt(Date.now()),
+          stemId: stem.id,
+          tokenId: BigInt(1),
+          chainId: 31337,
+          contractAddress: "0x0000000000000000000000000000000000000001",
+          sellerAddress: "0x0000000000000000000000000000000000000002",
+          pricePerUnit: "1000000",
+          amount: BigInt(10),
+          paymentToken: "0x0000000000000000000000000000000000000003",
+          expiresAt: new Date(NOW.getTime() + 30 * 24 * HOUR),
+          transactionHash: `${TEST_PREFIX}listing_tx`,
+          blockNumber: BigInt(1),
+          listedAt: ago(days(1)),
+          status: "active",
+        },
+      });
+      const withListing = await service.getJournal(N1, { now: NOW });
+      expect(withListing.newFromDiscovered).toEqual(result.newFromDiscovered);
+
+      await prisma.stemListing.deleteMany({ where: { stemId: stem.id } });
+      const without = await service.getJournal(N1, { now: NOW });
+      expect(without.newFromDiscovered).toEqual(withListing.newFromDiscovered);
+      await prisma.stem.delete({ where: { id: stem.id } });
+    });
+
+    it("carries no price, spend, license or transaction fields", () => {
+      const keys = [...collectKeys(result.newFromDiscovered)];
+      const forbidden = /price|spend|spent|cost|usd|license|transaction|wallet|payment|amount|userId|listing|stem/i;
+      expect(keys.filter((key) => forbidden.test(key))).toEqual([]);
     });
   });
 

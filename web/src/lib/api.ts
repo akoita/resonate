@@ -5855,6 +5855,22 @@ export type DiscoveryJournalPendingItem = {
   discovery: boolean;
 };
 
+/** A recent track by an artist whose music already resonated with the listener. */
+export type DiscoveryJournalNewReleaseItem = {
+  trackId: string;
+  title: string;
+  artistId: string;
+  artistName: string;
+  releaseId: string;
+  releaseTitle: string;
+  artworkUrl: string | null;
+  hasUploadedArtwork: boolean;
+  artworkRevision: number;
+  /** ISO time the release arrived on Resonate. */
+  addedAt: string;
+  reason: { code: string; text: string };
+};
+
 export type DiscoveryJournal = {
   schemaVersion: "discovery-journal/v1";
   window: { days: number; from: string; to: string };
@@ -5862,6 +5878,11 @@ export type DiscoveryJournal = {
   groups: DiscoveryJournalGroup[];
   /** Newest first, at most 12. Optional so an older backend still parses. */
   pending?: DiscoveryJournalPendingItem[];
+  /**
+   * Newest release first, at most 12 and two per artist; excludes tracks already
+   * played or saved. Optional so an older backend still parses.
+   */
+  newFromDiscovered?: DiscoveryJournalNewReleaseItem[];
 };
 
 /**
@@ -5891,7 +5912,7 @@ export async function getDiscoveryJournal(
       }
     }
   }
-  for (const item of journal.pending ?? []) {
+  for (const item of [...(journal.pending ?? []), ...(journal.newFromDiscovered ?? [])]) {
     if (!item.artworkUrl && item.hasUploadedArtwork) {
       item.artworkUrl = getReleaseArtworkUrl(item.releaseId, {
         artworkRevision: item.artworkRevision,

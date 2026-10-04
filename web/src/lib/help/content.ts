@@ -488,7 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered"],
     sections: [
       {
         id: "sessions",
@@ -603,8 +603,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/sonic-radar.png`,
-              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, two headline numbers (resonant discoveries this week and new artists this week), an 'Almost there' section with two played-through tracks that each show how many days are left to save them and a Save button, and below it the resonant tracks grouped by day with an Add to Playlist button.",
-              caption: "Sonic Radar: tracks one save away under Almost there, then your resonant discoveries grouped by day or session.",
+              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of your discovery journal, two headline numbers (resonant discoveries this week and new artists this week), a 'New from artists you discovered' section with two recent tracks labelled with when they were added, an 'Almost there' section with two played-through tracks that each show how many days are left to save them, Play and Save buttons on every card in both sections, and below them the resonant tracks grouped by day with an Add to Playlist button.",
+              caption: "Sonic Radar: new tracks from artists you discovered, tracks one save away under Almost there, then your resonant discoveries grouped by day or session.",
               width: 1440,
               height: 900,
               source: LOCAL,
@@ -621,11 +621,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Above your journal, an Almost there section lists tracks you played through in the last seven days that have not resonated yet. Each one shows how long you have left to act on it, and a New to you label for a first-time artist. Press Save on a track you liked, or replay it, within seven days of finishing it, and it joins your journal. Saving also adds the track to your library.",
+            text: "At the top, New from artists you discovered lists recent releases from artists whose music resonated with you, up to two tracks per artist, leaving out anything you have already played or saved. Play a track or save it straight from the card.",
           },
           {
             kind: "paragraph",
-            text: "On the AI DJ page, a line under the controls tells you how many tracks have resonated with you recently, or how many you played through are one save away. Open it to see them on Sonic Radar.",
+            text: "Above your journal, an Almost there section lists tracks you played through in the last seven days that have not resonated yet. Each one shows how long you have left to act on it, and a New to you label for a first-time artist. Press Save on a track you liked, or press Play to hear it again, within seven days of finishing it, and it joins your journal. Saving also adds the track to your library.",
+          },
+          {
+            kind: "paragraph",
+            text: "On the AI DJ page, a line under the controls tells you how many tracks have resonated with you recently and how many new tracks from artists you discovered are waiting, or how many you played through are one save away. Open it to see them on Sonic Radar.",
           },
           {
             kind: "paragraph",

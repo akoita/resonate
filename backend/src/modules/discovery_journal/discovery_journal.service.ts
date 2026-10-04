@@ -1,7 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import { classifyTrackAvailability } from "../catalog/track-availability";
+import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
+import {
+  classifyTrackAvailability,
+  WITHDRAWABLE_RELEASE_STATUSES,
+} from "../catalog/track-availability";
 import {
   DISCOVERY_EXPLANATIONS,
   DISCOVERY_REASON_CODES,
@@ -34,6 +38,13 @@ export const DEFAULT_LIMIT = 50;
 export const MAX_LIMIT = 100;
 /** Most recent "almost resonated" tracks returned (Sonic Radar "Almost there"). */
 export const PENDING_LIMIT = 12;
+/** Window for "new from artists you discovered": releases added in the last N days. */
+export const NEW_RELEASES_WINDOW_DAYS = 60;
+export const NEW_RELEASES_LIMIT = 12;
+/** ADR-TE-2 diversity: at most this many tracks per artist. */
+export const NEW_RELEASES_PER_ARTIST = 2;
+/** Hard cap on candidate track rows read. */
+export const NEW_RELEASES_READ_CAP = 200;
 /** Hard cap on AgentSignal rows read per request (newest first). */
 export const SIGNAL_READ_CAP = 2000;
 /** "This week" in the headline numbers: the last 7 days ending `now`. */
@@ -109,6 +120,26 @@ export interface DiscoveryJournalPendingItem {
   discovery: boolean;
 }
 
+/**
+ * A recent, publicly available track by an artist in the listener's journal,
+ * on a release that arrived on Resonate after the listener first resonated
+ * with that artist. Carries no listing, price or stem information.
+ */
+export interface DiscoveryJournalNewReleaseItem {
+  trackId: string;
+  title: string;
+  artistId: string;
+  artistName: string;
+  releaseId: string;
+  releaseTitle: string;
+  artworkUrl: string | null;
+  hasUploadedArtwork: boolean;
+  artworkRevision: number;
+  /** When the release arrived on Resonate (Release.createdAt), ISO. */
+  addedAt: string;
+  reason: { code: DiscoveryReasonCode; text: string };
+}
+
 export interface DiscoveryJournal {
   schemaVersion: typeof DISCOVERY_JOURNAL_SCHEMA_VERSION;
   window: { days: number; from: string; to: string };
@@ -116,6 +147,8 @@ export interface DiscoveryJournal {
   groups: DiscoveryJournalGroup[];
   /** Additive: played through in the last 7 days, not replayed or saved yet. */
   pending: DiscoveryJournalPendingItem[];
+  /** Additive (#2086): recent releases by artists in this listener's journal. */
+  newFromDiscovered: DiscoveryJournalNewReleaseItem[];
 }
 
 /** Hard caps on rows read for the operator aggregate (#1455), newest first. */
@@ -146,6 +179,18 @@ type SignalRow = {
   sessionId: string | null;
   createdAt: Date;
   metadata: Prisma.JsonValue;
+};
+
+/** The track fields the artist-name and taste-hidden checks read. */
+type NewReleaseTrack = {
+  artist?: string | null;
+  release: {
+    artistId: string;
+    primaryArtist?: string | null;
+    genre?: string | null;
+    artist?: { displayName: string } | null;
+    artistCredits: Array<{ role: string; displayName: string }>;
+  };
 };
 
 type Resonance = {
@@ -301,6 +346,33 @@ export function orderPending<T extends { trackId: string; completedAt: Date }>(
     .slice(0, limit);
 }
 
+/**
+ * Newest release first, then track position, then track id (deterministic).
+ * Keeps at most `perArtist` tracks per artist (ADR-TE-2 diversity) and `limit`
+ * overall. Order depends on release recency and position only: never on
+ * listings, prices or stems (ADR-TE-2 rule 1).
+ */
+export function selectNewReleases<
+  T extends { trackId: string; artistId: string; releaseCreatedAt: Date; position: number },
+>(entries: T[], limit = NEW_RELEASES_LIMIT, perArtist = NEW_RELEASES_PER_ARTIST): T[] {
+  const ordered = [...entries].sort(
+    (a, b) =>
+      b.releaseCreatedAt.getTime() - a.releaseCreatedAt.getTime() ||
+      a.position - b.position ||
+      a.trackId.localeCompare(b.trackId),
+  );
+  const perArtistCount = new Map<string, number>();
+  const selected: T[] = [];
+  for (const entry of ordered) {
+    if (selected.length >= limit) break;
+    const count = perArtistCount.get(entry.artistId) ?? 0;
+    if (count >= perArtist) continue;
+    perArtistCount.set(entry.artistId, count + 1);
+    selected.push(entry);
+  }
+  return selected;
+}
+
 @Injectable()
 export class DiscoveryJournalService {
   constructor(
@@ -325,6 +397,7 @@ export class DiscoveryJournalService {
       headline: { resonantDiscoveriesThisWeek: 0, newArtistsThisWeek: 0 },
       groups: [],
       pending: [],
+      newFromDiscovered: [],
     });
 
     // Consent: the same two controls the taste loop honors. A taste reset
@@ -458,13 +531,12 @@ export class DiscoveryJournalService {
         },
       },
     });
-    type CatalogTrack = (typeof tracks)[number];
     const trackById = new Map(
       tracks
         .filter((track) => classifyTrackAvailability(track).state === "available")
         .map((track) => [track.id, track]),
     );
-    const artistNameOf = (track: CatalogTrack) =>
+    const artistNameOf = (track: NewReleaseTrack) =>
       resolveCreditedArtistName({
         trackArtist: track.artist,
         credits: track.release.artistCredits,
@@ -472,7 +544,7 @@ export class DiscoveryJournalService {
         accountDisplayName: track.release.artist?.displayName,
       });
     // Hidden through taste memory: the artist (id, credited name, account name) or the genre.
-    const isHiddenByTaste = (track: CatalogTrack) =>
+    const isHiddenByTaste = (track: NewReleaseTrack) =>
       hasSignal(policy.hidden, "artist", track.release.artistId) ||
       hasSignal(policy.hidden, "artist", artistNameOf(track)) ||
       hasSignal(policy.hidden, "artist", track.release.artist?.displayName) ||
@@ -538,10 +610,31 @@ export class DiscoveryJournalService {
       ).size,
     };
 
-    // 5. Truncate to the window and the requested limit, then decorate.
+    // 5. Forward-looking: recent releases by journal artists (#2086).
+    const newFromDiscovered = await this.loadNewFromDiscovered({
+      userId,
+      now,
+      resetAt,
+      firstResonantAtByArtist: new Map(
+        artistIds.map((artistId) => [
+          artistId,
+          new Date(
+            Math.min(
+              ...visible
+                .filter((entry) => trackById.get(entry.trackId)!.release.artistId === artistId)
+                .map((entry) => entry.completedAt.getTime()),
+            ),
+          ),
+        ]),
+      ),
+      isHiddenByTaste,
+      artistNameOf,
+    });
+
+    // 6. Truncate to the window and the requested limit, then decorate.
     const shown = visible.filter((entry) => entry.completedAt >= windowFrom).slice(0, limit);
     if (shown.length === 0) {
-      return { ...empty(), headline, pending };
+      return { ...empty(), headline, pending, newFromDiscovered };
     }
     const shownArtistIds = [
       ...new Set(shown.map((entry) => trackById.get(entry.trackId)!.release.artistId)),
@@ -622,7 +715,150 @@ export class DiscoveryJournalService {
       headline,
       groups: orderedGroups,
       pending,
+      newFromDiscovered,
     };
+  }
+
+  /**
+   * "New from artists you discovered" (#2086). Computed on read from public
+   * catalog rows. A track qualifies when its artist is in this listener's
+   * journal (at least one resonant track), its release arrived on Resonate
+   * AFTER the listener's first resonant listen of that artist and within the
+   * last NEW_RELEASES_WINDOW_DAYS, it is publicly available, not fully
+   * AI-generated (ADR-TE-2 rule 3), not hidden through taste memory and not
+   * already played or saved by the listener. Listings, prices and stems are
+   * never read (ADR-TE-2 rule 1). Ordering and caps: `selectNewReleases`.
+   */
+  private async loadNewFromDiscovered(input: {
+    userId: string;
+    now: Date;
+    resetAt: Date | undefined;
+    firstResonantAtByArtist: Map<string, Date>;
+    isHiddenByTaste: (track: NewReleaseTrack) => boolean;
+    artistNameOf: (track: NewReleaseTrack) => string | null | undefined;
+  }): Promise<DiscoveryJournalNewReleaseItem[]> {
+    const { userId, now, resetAt, firstResonantAtByArtist } = input;
+    if (firstResonantAtByArtist.size === 0) return [];
+
+    // The database pre-filters (released status, not fully AI-generated, after
+    // the earliest first resonance) keep ineligible rows from using up the read
+    // cap; the exact per-artist, availability and AI rules still run below.
+    const earliestFirstResonance = Math.min(
+      ...[...firstResonantAtByArtist.values()].map((at) => at.getTime()),
+    );
+    const rows = await prisma.track.findMany({
+      where: {
+        aiDisclosureLevel: { not: "ALL" },
+        release: {
+          artistId: { in: [...firstResonantAtByArtist.keys()] },
+          status: { in: [...WITHDRAWABLE_RELEASE_STATUSES] },
+          createdAt: {
+            gt: new Date(
+              Math.max(now.getTime() - NEW_RELEASES_WINDOW_DAYS * DAY_MS, earliestFirstResonance),
+            ),
+            lte: now,
+          },
+        },
+      },
+      orderBy: [{ release: { createdAt: "desc" } }, { position: "asc" }, { id: "asc" }],
+      take: NEW_RELEASES_READ_CAP,
+      select: {
+        id: true,
+        title: true,
+        artist: true,
+        position: true,
+        aiDisclosureLevel: true,
+        contentStatus: true,
+        rightsRoute: true,
+        release: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            rightsRoute: true,
+            withdrawnAt: true,
+            withdrawalReason: true,
+            artistId: true,
+            primaryArtist: true,
+            genre: true,
+            createdAt: true,
+            artworkUrl: true,
+            artworkMimeType: true,
+            artworkRevision: true,
+            artist: { select: { displayName: true } },
+            artistCredits: {
+              select: { role: true, displayName: true },
+              orderBy: { sortOrder: "asc" },
+            },
+          },
+        },
+      },
+    });
+
+    const candidates = rows.filter((track) => {
+      const firstResonantAt = firstResonantAtByArtist.get(track.release.artistId);
+      return (
+        firstResonantAt !== undefined &&
+        track.release.createdAt > firstResonantAt &&
+        classifyTrackAvailability(track).state === "available" &&
+        isPromotionEligible(track.aiDisclosureLevel) &&
+        !input.isHiddenByTaste(track)
+      );
+    });
+    if (candidates.length === 0) return [];
+
+    // Already played or saved by this listener: exclusion only, nothing from
+    // these rows is returned. A taste reset forgets earlier plays.
+    const candidateIds = candidates.map((track) => track.id);
+    const [playedRows, savedRows] = await Promise.all([
+      prisma.agentSignal.findMany({
+        where: {
+          userId,
+          trackId: { in: candidateIds },
+          createdAt: { lte: now, ...(resetAt ? { gt: resetAt } : {}) },
+        },
+        distinct: ["trackId"],
+        select: { trackId: true },
+      }),
+      prisma.libraryTrack.findMany({
+        where: { userId, catalogTrackId: { in: candidateIds } },
+        select: { catalogTrackId: true },
+      }),
+    ]);
+    const known = new Set<string>([
+      ...playedRows.map((row) => row.trackId),
+      ...savedRows.flatMap((row) => (row.catalogTrackId ? [row.catalogTrackId] : [])),
+    ]);
+
+    return selectNewReleases(
+      candidates
+        .filter((track) => !known.has(track.id))
+        .map((track) => ({
+          track,
+          trackId: track.id,
+          artistId: track.release.artistId,
+          releaseCreatedAt: track.release.createdAt,
+          position: track.position,
+        })),
+    ).map(({ track }) => {
+      const release = track.release;
+      return {
+        trackId: track.id,
+        title: track.title,
+        artistId: release.artistId,
+        artistName: input.artistNameOf(track) ?? "Unknown Artist",
+        releaseId: release.id,
+        releaseTitle: release.title,
+        artworkUrl: release.artworkUrl,
+        hasUploadedArtwork: Boolean(release.artworkMimeType),
+        artworkRevision: release.artworkRevision,
+        addedAt: release.createdAt.toISOString(),
+        reason: {
+          code: "new_from_discovered_artist",
+          text: DISCOVERY_EXPLANATIONS.new_from_discovered_artist,
+        },
+      };
+    });
   }
 
   /**
