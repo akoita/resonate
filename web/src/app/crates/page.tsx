@@ -5,8 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { MarketplaceBrowse } from "../../components/marketplace/MarketplaceBrowse";
-import { createCrateRequest, listCrates } from "../../lib/api";
+import { createCrateRequest, deleteCrate, listCrates } from "../../lib/api";
 import {
   clampCount,
   CRATE_DEFAULT_COUNT,
@@ -14,6 +15,7 @@ import {
   CRATE_MIN_COUNT,
   CRATE_REQUEST_MAX_TEXT_LENGTH,
   crateErrorMessage,
+  crateErrorStatus,
   storeCrateCreationNotes,
   type CrateListEntry,
   type CreateCrateRequestBody,
@@ -24,6 +26,12 @@ function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 }
+
+const CRATE_PROMPT_EXAMPLES = [
+  "Six dark techno rollers at 128-132 BPM with drum stems",
+  "Ten warm disco and nu-disco tracks around 118 BPM",
+  "Four afro house tracks in 8A with vocal stems, under $15 each",
+] as const;
 
 function CratesHome() {
   const { token } = useAuth();
@@ -40,7 +48,11 @@ function CratesHome() {
   const [error, setError] = useState<string | null>(null);
   const [crates, setCrates] = useState<CrateListEntry[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CrateListEntry | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const autoSubmitted = useRef<string | null>(null);
+  const collectionHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const build = useCallback(
     async (body: CreateCrateRequestBody, { replace = false }: { replace?: boolean } = {}) => {
@@ -92,6 +104,27 @@ function CratesHome() {
       });
   }, [referenceTrackId, router, token]);
 
+  const confirmDelete = async () => {
+    const target = pendingDelete;
+    if (!target || !token) return;
+    try {
+      await deleteCrate(token, target.id);
+    } catch (err) {
+      // A crate that is already gone is what the DJ wanted.
+      if (crateErrorStatus(err) !== 404) {
+        setDeleteError(crateErrorMessage(err, "We could not delete that crate. Please try again."));
+        setPendingDelete(null);
+        return;
+      }
+    }
+    setCrates((current) => current?.filter((crate) => crate.id !== target.id) ?? current);
+    setPendingDelete(null);
+    // The deleted card held focus: bring it back to the list heading.
+    collectionHeadingRef.current?.focus();
+  };
+
+  const pendingDeleteTitle = pendingDelete ? pendingDelete.title?.trim() || "Untitled crate" : "";
+
   const trimmed = text.trim();
 
   const onSubmit = (event: React.FormEvent) => {
@@ -119,7 +152,7 @@ function CratesHome() {
       )}
 
       {referenceTrackId ? (
-        <div className="crates-panel" aria-live="polite">
+        <div className="crates-panel crates-composer" aria-live="polite">
           {building ? <p>Building your crate…</p> : null}
           {error ? (
             <>
@@ -146,11 +179,12 @@ function CratesHome() {
           ) : null}
         </div>
       ) : (
-        <form className="crates-panel" onSubmit={onSubmit}>
+        <form className="crates-panel crates-composer" onSubmit={onSubmit}>
           <div className="crates-field">
             <label htmlFor="crate-request-text">What does your set need?</label>
             <textarea
               id="crate-request-text"
+              ref={textareaRef}
               className="crates-textarea"
               value={text}
               maxLength={CRATE_REQUEST_MAX_TEXT_LENGTH}
@@ -163,6 +197,28 @@ function CratesHome() {
               {CRATE_REQUEST_MAX_TEXT_LENGTH} characters; anything we cannot read is shown back to
               you. Leave Lines empty to use the number in your sentence.
             </p>
+            <div className="crates-examples">
+              <span className="crates-examples-label" id="crate-examples-label">
+                Try
+              </span>
+              <ul aria-labelledby="crate-examples-label">
+                {CRATE_PROMPT_EXAMPLES.map((example) => (
+                  <li key={example}>
+                    <button
+                      type="button"
+                      className="crates-example"
+                      disabled={building}
+                      onClick={() => {
+                        setText(example);
+                        textareaRef.current?.focus();
+                      }}
+                    >
+                      {example}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
           <div className="crates-row crates-row--fields">
             <div className="crates-field">
@@ -182,7 +238,7 @@ function CratesHome() {
             </div>
             <button
               type="submit"
-              className="crates-btn crates-btn--primary"
+              className="crates-btn crates-btn--primary crates-btn--glow"
               disabled={!trimmed || building}
             >
               {building ? "Building…" : "Build crate"}
@@ -196,8 +252,18 @@ function CratesHome() {
         </form>
       )}
 
-      <section aria-labelledby="your-crates-heading" className="crates-panel">
-        <h2 id="your-crates-heading">Your crates</h2>
+      <section aria-labelledby="your-crates-heading" className="crates-panel crates-collection">
+        <div className="crates-section-head">
+          <h2 id="your-crates-heading" ref={collectionHeadingRef} tabIndex={-1}>
+            Your crates
+          </h2>
+          {crates && crates.length > 0 ? <span className="crates-count">{crates.length}</span> : null}
+        </div>
+        {deleteError ? (
+          <p className="crates-error" role="alert">
+            {deleteError}
+          </p>
+        ) : null}
         {listError ? (
           <p className="crates-error" role="alert">
             {listError}
@@ -205,23 +271,74 @@ function CratesHome() {
         ) : crates === null ? (
           <p className="crates-hint">Loading your crates…</p>
         ) : crates.length === 0 ? (
-          <p className="crates-hint">No crates yet. Describe a set above to build your first one.</p>
+          <div className="crates-empty">
+            <span className="crates-card-art crates-card-art--0" aria-hidden="true" />
+            <p className="crates-hint">No crates yet. Describe a set above to build your first one.</p>
+          </div>
         ) : (
-          <ul className="crates-list">
-            {crates.map((crate) => (
-              <li key={crate.id}>
-                <Link className="crates-list-link" href={`/crates/${encodeURIComponent(crate.id)}`}>
-                  <span>{crate.title?.trim() || "Untitled crate"}</span>
-                  <span className="crates-hint">
-                    {crate.itemCount} {crate.itemCount === 1 ? "line" : "lines"} ·{" "}
-                    {crate.status === "saved" ? "Saved" : "Draft"} · {formatDate(crate.updatedAt)}
-                  </span>
-                </Link>
-              </li>
-            ))}
+          <ul className="crates-cards">
+            {crates.map((crate, index) => {
+              const saved = crate.status === "saved";
+              const title = crate.title?.trim() || "Untitled crate";
+              return (
+                <li key={crate.id} className="crates-card-item">
+                  <Link className="crates-card" href={`/crates/${encodeURIComponent(crate.id)}`}>
+                    <span className={`crates-card-art crates-card-art--${index % 3}`} aria-hidden="true" />
+                    <span className="crates-card-body">
+                      <span className="crates-card-title">{title}</span>
+                      <span className="crates-card-meta">
+                        {crate.itemCount} {crate.itemCount === 1 ? "line" : "lines"} ·{" "}
+                        {formatDate(crate.updatedAt)}
+                      </span>
+                    </span>
+                    <span className={`crates-status crates-status--${saved ? "saved" : "draft"}`}>
+                      {saved ? "Saved" : "Draft"}
+                    </span>
+                  </Link>
+                  <button
+                    type="button"
+                    className="crates-card-delete"
+                    aria-label={`Delete ${title}`}
+                    title="Delete crate"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setPendingDelete(crate);
+                    }}
+                  >
+                    <svg
+                      aria-hidden="true"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" />
+                      <line x1="10" y1="11" x2="10" y2="17" />
+                      <line x1="14" y1="11" x2="14" y2="17" />
+                    </svg>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
+
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        variant="danger"
+        title="Delete this crate?"
+        message={`\u201C${pendingDeleteTitle}\u201D and its lines will be deleted. Stems you already bought stay yours.`}
+        confirmLabel="Delete crate"
+        cancelLabel="Keep it"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
@@ -275,7 +392,8 @@ function CratesAndStems() {
 
   return (
     <div className={`crates-page${tab === "stems" ? " crates-page--wide" : ""}`}>
-      <header>
+      <header className="crates-hero">
+        <p className="crates-eyebrow">Crate Digger</p>
         <h1>Crates &amp; Stems</h1>
         <p className="crates-lede">
           Build a crate from a sentence, or browse stems to license on their own.

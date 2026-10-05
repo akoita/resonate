@@ -772,6 +772,13 @@ a {
   scroll-padding-bottom: 120px;
   /* Ensure content clears the floating bottom bar */
   flex: 1;
+  /* Two rows, the page and the legal footer: on a short page the page row
+   * takes the spare height, so the footer sits at the bottom instead of
+   * directly under the content. The page row is a plain block (`.app-page`),
+   * so every page lays out exactly as it would without the grid. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;

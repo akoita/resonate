@@ -727,22 +727,28 @@
 }
 
 .crates-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--r-xs);
-  border-bottom: 1px solid var(--r-outline);
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  gap: 4px;
+  padding: 4px;
+  background: var(--r-surface-low);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
 }
 
 .crates-tab {
   background: transparent;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--r-radius-full);
   color: var(--r-on-surface-variant);
   cursor: pointer;
   font: inherit;
   font-weight: 600;
   min-height: 44px;
-  padding: 8px 14px;
+  padding: 8px 18px;
+  transition: background 0.18s var(--r-ease-out), color 0.18s var(--r-ease-out),
+    box-shadow 0.18s var(--r-ease-out);
 }
 
 .crates-tab:hover {
@@ -750,8 +756,9 @@
 }
 
 .crates-tab[aria-selected="true"] {
-  border-bottom-color: var(--r-primary-soft);
-  color: var(--r-on-surface);
+  background: var(--r-surface-highest);
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.28), 0 0 18px -4px rgba(124, 92, 255, 0.5);
+  color: #fff;
 }
 
 .crates-tab:focus-visible {
@@ -769,4 +776,414 @@
 /* The embedded stem browser lays itself out; let it fill the panel. */
 .crates-tabpanel > .marketplace-page {
   width: 100%;
+}
+
+/* Warmer Build a crate page: hero, composer, example prompts, crate cards. */
+
+.crates-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-xs);
+  padding: var(--r-lg);
+  background:
+    var(--r-sheen),
+    radial-gradient(120% 140% at 0% 0%, rgba(124, 92, 255, 0.28), transparent 60%),
+    radial-gradient(90% 120% at 100% 100%, rgba(255, 107, 74, 0.14), transparent 60%),
+    var(--r-surface-low);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-lg);
+}
+
+/* A decorative record, partly clipped by the right edge. */
+.crates-hero::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -72px;
+  width: 220px;
+  height: 220px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--r-play) 0 9%, #14141f 9% 11%, transparent 11%),
+    repeating-radial-gradient(circle, rgba(255, 255, 255, 0.5) 0 1px, transparent 1px 7px);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+.crates-hero > * {
+  position: relative;
+  z-index: 1;
+  max-width: 34rem;
+}
+
+.crates-hero h1 {
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.4rem);
+  line-height: 1.15;
+  color: #fff;
+  background: var(--r-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.crates-eyebrow {
+  margin: 0;
+  color: var(--r-play-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.crates-composer {
+  gap: var(--r-md);
+  padding: var(--r-lg);
+  background:
+    radial-gradient(100% 120% at 0% 0%, rgba(124, 92, 255, 0.14), transparent 55%),
+    var(--r-surface-low);
+  border-radius: var(--r-radius-lg);
+  transition: box-shadow 0.2s var(--r-ease-out), border-color 0.2s var(--r-ease-out);
+}
+
+.crates-composer:focus-within {
+  border-color: var(--r-primary-soft);
+  box-shadow: var(--r-glow-violet);
+}
+
+.crates-composer .crates-field:first-child label {
+  color: var(--r-on-surface);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.crates-composer .crates-textarea {
+  background: var(--r-surface-lowest);
+  font-size: 1rem;
+  min-height: 112px;
+}
+
+.crates-composer .crates-textarea:focus-visible {
+  border-color: var(--r-primary-soft);
+}
+
+.crates-composer .crates-number {
+  min-height: 44px;
+}
+
+.crates-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--r-xs);
+}
+
+.crates-examples-label {
+  color: var(--r-on-surface-variant);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.crates-examples ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-xs);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.crates-example {
+  background: var(--r-surface-mid);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
+  color: var(--r-on-surface-variant);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8125rem;
+  min-height: 32px;
+  padding: 4px 12px;
+  text-align: left;
+  transition: background 0.18s var(--r-ease-out), border-color 0.18s var(--r-ease-out),
+    color 0.18s var(--r-ease-out);
+}
+
+.crates-example:hover:not(:disabled) {
+  background: rgba(124, 92, 255, 0.16);
+  border-color: var(--r-primary-soft);
+  color: #fff;
+}
+
+.crates-example:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.crates-example:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.crates-btn--glow {
+  background: linear-gradient(135deg, var(--r-primary-container) 0%, #5b3dc4 100%);
+  border-color: transparent;
+  border-radius: var(--r-radius-full);
+  font-weight: 600;
+  min-height: 44px;
+  padding: 10px 20px;
+  transition: box-shadow 0.2s var(--r-ease-out), transform 0.2s var(--r-ease-out);
+}
+
+.crates-btn--glow:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--r-primary-container) 0%, #5b3dc4 100%);
+  box-shadow: var(--r-glow-violet);
+  filter: none;
+  transform: translateY(-1px);
+}
+
+.crates-collection {
+  gap: var(--r-md);
+  padding: var(--r-lg);
+  border-radius: var(--r-radius-lg);
+}
+
+.crates-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--r-xs);
+}
+
+.crates-count {
+  background: var(--r-surface-high);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
+  color: var(--r-on-surface-variant);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 8px;
+}
+
+.crates-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  gap: var(--r-sm);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.crates-card-item {
+  position: relative;
+  height: 100%;
+  transition: transform 0.18s var(--r-ease-out);
+}
+
+/* The lift and highlight live on the item, so the card and its delete button
+   (a sibling: a link cannot hold a button) move together and the card stays
+   highlighted while the pointer is on the button. */
+.crates-card-item:hover {
+  transform: translateY(-2px);
+}
+
+.crates-card {
+  display: flex;
+  align-items: center;
+  gap: var(--r-sm);
+  height: 100%;
+  /* The right side is reserved for the delete button. */
+  padding: var(--r-sm) 52px var(--r-sm) var(--r-sm);
+  background: var(--r-surface-mid);
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  color: var(--r-on-surface);
+  text-decoration: none;
+  transition: background 0.18s var(--r-ease-out), border-color 0.18s var(--r-ease-out),
+    box-shadow 0.18s var(--r-ease-out);
+}
+
+.crates-card-item:hover .crates-card {
+  background: var(--r-surface-high);
+  border-color: var(--r-primary-soft);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+}
+
+.crates-card:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.crates-card-delete {
+  position: absolute;
+  top: 50%;
+  right: var(--r-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-radius-full);
+  color: var(--r-on-surface-variant);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background 0.18s var(--r-ease-out), color 0.18s var(--r-ease-out),
+    opacity 0.18s var(--r-ease-out);
+}
+
+.crates-card-delete:hover,
+.crates-card-delete:focus-visible {
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--r-error);
+}
+
+.crates-card-delete:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+/* Where a pointer can hover, the button stays quiet until the card is in use;
+   on touch it is always fully visible. */
+@media (hover: hover) {
+  .crates-card-delete {
+    opacity: 0.55;
+  }
+
+  .crates-card-item:hover .crates-card-delete,
+  .crates-card-item:focus-within .crates-card-delete {
+    opacity: 1;
+  }
+}
+
+.crates-card-art {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-radius-sm);
+  background:
+    radial-gradient(circle at 50% 50%, #e8e8f0 0 6%, #14141f 6% 62%, transparent 63%),
+    var(--r-grad-brand);
+}
+
+.crates-card-art--1 {
+  background:
+    radial-gradient(circle at 50% 50%, #e8e8f0 0 6%, #14141f 6% 62%, transparent 63%),
+    var(--r-grad-energy);
+}
+
+.crates-card-art--2 {
+  background:
+    radial-gradient(circle at 50% 50%, #e8e8f0 0 6%, #14141f 6% 62%, transparent 63%),
+    var(--r-grad-agent);
+}
+
+.crates-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.crates-card-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crates-card-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--r-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.crates-status {
+  flex: none;
+  border-radius: var(--r-radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.crates-status--saved {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--r-success);
+}
+
+.crates-status--draft {
+  background: var(--r-chrome-glass);
+  border: 1px solid var(--r-outline);
+  color: var(--r-on-surface-variant);
+}
+
+.crates-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--r-sm);
+  padding: var(--r-lg) var(--r-md);
+  border: 1px dashed var(--r-outline);
+  border-radius: var(--r-radius-md);
+  text-align: left;
+}
+
+@media (max-width: 600px) {
+  .crates-hero {
+    padding: var(--r-md);
+  }
+
+  .crates-hero::after {
+    right: -90px;
+    width: 160px;
+    height: 160px;
+    opacity: 0.1;
+  }
+
+  .crates-tabs {
+    align-self: stretch;
+  }
+
+  .crates-tab {
+    flex: 1;
+    padding: 8px 10px;
+  }
+
+  .crates-composer,
+  .crates-collection {
+    padding: var(--r-md);
+  }
+
+  .crates-cards {
+    /* minmax(0, …): a long crate title must ellipsize, not widen the page. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crates-tab,
+  .crates-composer,
+  .crates-example,
+  .crates-btn--glow,
+  .crates-card,
+  .crates-card-item,
+  .crates-card-delete {
+    transition: none;
+  }
+
+  .crates-btn--glow:hover:not(:disabled),
+  .crates-card-item:hover {
+    transform: none;
+  }
 }

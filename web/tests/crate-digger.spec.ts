@@ -158,8 +158,11 @@ test.describe("Crate Digger (#1963)", () => {
 
     // The crate is in the list.
     await page.getByRole("link", { name: "Your crates" }).click();
-    await expect(page.getByRole("link", { name: /Friday warm-up/ })).toBeVisible();
-    await expect(page.getByText(/5 lines · Saved/)).toBeVisible();
+    const savedCard = page.getByRole("link", { name: /Friday warm-up/ });
+    await expect(savedCard).toBeVisible();
+    // The line count sits in the card's meta line; Saved is its own badge.
+    await expect(savedCard.getByText(/^5 lines · /)).toBeVisible();
+    await expect(savedCard.locator(".crates-status")).toHaveText("Saved");
   });
 
   test("a stem page's reference-track link builds a crate on arrival", async ({
@@ -317,6 +320,29 @@ test.describe("Crate Digger (#1963)", () => {
     await page.getByRole("button", { name: "Approve and buy" }).click();
     await expect(page.getByRole("heading", { name: "Confirm your purchase" })).toBeVisible();
     expect(await blocking()).toEqual([]);
+  });
+
+  test("a crate can be deleted from Your crates after confirming", async ({
+    authenticatedPage: page,
+  }) => {
+    const crate = mockCrate("saved-crate", { title: "Friday warm-up", status: "saved" });
+    const { deletions } = await mockCrateApi(page, { savedCrates: [crate] });
+    await page.goto("/crates");
+    await expect(page.getByRole("link", { name: /Friday warm-up/ })).toBeVisible();
+
+    await page.getByRole("button", { name: "Delete Friday warm-up" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("heading", { name: "Delete this crate?" })).toBeVisible();
+    // Keeping it changes nothing.
+    await dialog.getByRole("button", { name: "Keep it" }).click();
+    await expect(page.getByRole("link", { name: /Friday warm-up/ })).toBeVisible();
+    expect(deletions).toEqual([]);
+
+    await page.getByRole("button", { name: "Delete Friday warm-up" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete crate" }).click();
+    await expect(page.getByRole("link", { name: /Friday warm-up/ })).toHaveCount(0);
+    await expect(page.getByText("No crates yet.")).toBeVisible();
+    expect(deletions).toEqual(["saved-crate"]);
   });
 
   test("an unknown crate says so", async ({ authenticatedPage: page }) => {

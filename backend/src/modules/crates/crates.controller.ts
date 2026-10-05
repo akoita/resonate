@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -89,6 +90,19 @@ export class CratesController {
     @Body() body: UpdateCrateDto,
   ): Promise<GetCrateResponse> {
     return this.crates.updateCrate(req.user.userId, id, body);
+  }
+
+  /**
+   * Deletes the caller's crate with its lines, quotes and watch matches; stems
+   * already bought stay owned. Anyone else's crate is a 404; a crate with a
+   * purchase still settling is a 409.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+  @Delete(":id")
+  @HttpCode(204)
+  deleteCrate(@Req() req: any, @Param("id") id: string): Promise<void> {
+    return this.crates.deleteCrate(req.user.userId, id);
   }
 
   /**

@@ -1120,6 +1120,20 @@ export async function addCrateItem(token: string, crateId: string, trackId: stri
   );
 }
 
+/**
+ * Delete one of the DJ's crates: its lines, price quotes and receipts go with
+ * it, while stems already bought stay owned. `404` means the crate is gone or
+ * is not theirs; `409` carries the code `purchase_in_progress` while a purchase
+ * from the crate is still settling (see `crateErrorMessage`).
+ */
+export async function deleteCrate(token: string, crateId: string): Promise<void> {
+  await apiRequest<void>(
+    `/crates/${encodeURIComponent(crateId)}`,
+    { method: "DELETE", silentErrorCodes: [404, 409] },
+    token,
+  );
+}
+
 export async function updateCrate(token: string, crateId: string, body: UpdateCrateBody) {
   return apiRequest<{ crate: CrateDto }>(
     `/crates/${encodeURIComponent(crateId)}`,
