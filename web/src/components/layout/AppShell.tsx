@@ -46,10 +46,14 @@ export default function AppShell({
             * rather than adding a third undismissable thing to that corner. */}
           <AccountClosureNotice />
           <main id="main-content" className="app-content" tabIndex={-1}>
-            <Suspense fallback={null}>
-              {children}
-            </Suspense>
-            <LegalFooter />
+            <div className="app-page">
+              <Suspense fallback={null}>
+                {children}
+              </Suspense>
+            </div>
+            <div className="app-footer-slot">
+              <LegalFooter />
+            </div>
           </main>
           <PlayerBar />
         </div>
