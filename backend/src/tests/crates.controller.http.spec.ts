@@ -27,6 +27,7 @@ const mockCrates = {
   getCrate: jest.fn(),
   listCrates: jest.fn(),
   updateCrate: jest.fn(),
+  deleteCrate: jest.fn(),
   addItem: jest.fn(),
   swapItem: jest.fn(),
 };
@@ -67,6 +68,7 @@ describe("CratesController (http)", () => {
     mockCrates.getCrate.mockResolvedValue({ crate: { id: "crate-1", items: [] } });
     mockCrates.listCrates.mockResolvedValue({ crates: [] });
     mockCrates.updateCrate.mockResolvedValue({ crate: { id: "crate-1", items: [] } });
+    mockCrates.deleteCrate.mockResolvedValue(undefined);
     mockCrates.addItem.mockResolvedValue({ crate: { id: "crate-1", items: [] }, latestQuote: null });
     mockCrates.swapItem.mockResolvedValue({ crate: { id: "crate-1", items: [] }, swapped: true });
     mockQuotes.createQuote.mockResolvedValue({ id: "q-1", crateId: "crate-1", status: "open", lines: [] });
@@ -434,6 +436,40 @@ describe("CratesController (http)", () => {
         .send({ trackId: "t2" })
         .expect(409);
       expect(full.body.code).toBe("crate_full");
+    });
+  });
+
+  describe("DELETE /crates/:id", () => {
+    it("-> 401 without JWT", async () => {
+      await request(app.getHttpServer()).delete("/crates/crate-1").expect(401);
+      expect(mockCrates.deleteCrate).not.toHaveBeenCalled();
+    });
+
+    it("-> 204 with no body and passes the JWT user and the id to the service", async () => {
+      const res = await request(app.getHttpServer())
+        .delete("/crates/crate-1")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(204);
+
+      expect(res.text).toBe("");
+      expect(mockCrates.deleteCrate).toHaveBeenCalledWith("dj-1", "crate-1");
+    });
+
+    it("-> passes a service 404 and the 409 purchase_in_progress through", async () => {
+      mockCrates.deleteCrate.mockRejectedValueOnce(new NotFoundException("Crate not found"));
+      await request(app.getHttpServer())
+        .delete("/crates/someone-elses")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(404);
+
+      mockCrates.deleteCrate.mockRejectedValueOnce(
+        new ConflictException({ code: "purchase_in_progress", message: "Still settling." }),
+      );
+      const busy = await request(app.getHttpServer())
+        .delete("/crates/crate-1")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(409);
+      expect(busy.body.code).toBe("purchase_in_progress");
     });
   });
 

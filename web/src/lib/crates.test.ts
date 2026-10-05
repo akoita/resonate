@@ -299,4 +299,11 @@ describe("error helpers", () => {
     expect(crateErrorMessage({ details: { message: "Too long" } }, "fallback")).toBe("Too long");
     expect(crateErrorMessage(new Error("boom"), "fallback")).toBe("fallback");
   });
+
+  it("explains a delete refused while a purchase is settling", () => {
+    const error = { message: "API 409", status: 409, details: { code: "purchase_in_progress", message: "x" } };
+    expect(crateErrorMessage(error, "fallback")).toBe(
+      "A purchase from this crate is still settling. Try again once it finishes.",
+    );
+  });
 });
