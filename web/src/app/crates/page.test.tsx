@@ -79,9 +79,7 @@ describe("/crates tabs (#2032)", () => {
       "Ten warm disco and nu-disco tracks around 118 BPM",
       "Four afro house tracks in 8A with vocal stems, under $15 each",
     ]) {
-      expect(html).toMatch(
-        new RegExp(`<button type="button" class="crates-example"[^>]*>${example.replace("$", "\\$")}</button>`),
-      );
+      expect(html).toContain(`<button type="button" class="crates-example">${example}</button>`);
     }
     expect(html.match(/class="crates-example"/g)).toHaveLength(3);
   });
