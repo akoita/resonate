@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { AgentSession } from "../../lib/api";
+import type { AgentSession, AgentSessionFilters } from "../../lib/api";
 
 type Props = {
     /** Most recent sessions, capped by the backend history limit. */
@@ -25,6 +25,33 @@ function formatDuration(startedAt: string, endedAt: string | null) {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+function describeTempo(tempo: NonNullable<AgentSessionFilters["tempoBpm"]>) {
+    const { min, max } = tempo;
+    if (min !== null && max !== null) return min === max ? `${min} BPM` : `${min}\u2013${max} BPM`;
+    if (min !== null) return `from ${min} BPM`;
+    if (max !== null) return `up to ${max} BPM`;
+    return null;
+}
+
+/** The one-line summary of a session's own filters; null for sessions that predate them. */
+export function describeSessionFilters(
+    filters: AgentSessionFilters | null | undefined,
+): { preset: string | null; rest: string[]; text: string } | null {
+    if (!filters) return null;
+    const preset = filters.presetName?.trim() || null;
+    const rest: string[] = [];
+    if (filters.genres?.length) rest.push(filters.genres.join(" \u00B7 "));
+    if (filters.moods?.length) rest.push(filters.moods.join(" \u00B7 "));
+    if (filters.energy) rest.push(`Energy ${filters.energy}`);
+    const tempo = filters.tempoBpm ? describeTempo(filters.tempoBpm) : null;
+    if (tempo) rest.push(tempo);
+    if (filters.myMix) rest.push("My Mix");
+    if (!preset && rest.length === 0) rest.push("Saved taste");
+    if (filters.explicit) rest.push("Explicit on");
+    const text = [...(preset ? [preset] : []), ...rest].join(" \u00B7 ");
+    return { preset, rest, text };
+}
+
 function recommendationText(recommendation: AgentSession["licenses"][number]["recommendation"]) {
     const summary = recommendation?.recommendation;
     if (summary?.explanation?.length) {
@@ -37,6 +64,18 @@ function recommendationText(recommendation: AgentSession["licenses"][number]["re
         return "LLM-curated pick";
     }
     return "Curated within session policy";
+}
+
+function SessionFiltersLine({ filters }: { filters: AgentSession["filters"] }) {
+    const summary = describeSessionFilters(filters);
+    if (!summary) return null;
+    return (
+        <span className="aid-history-filters" title={summary.text}>
+            {summary.preset && <strong className="aid-history-filters-preset">{summary.preset}</strong>}
+            {summary.preset && summary.rest.length > 0 ? " \u00B7 " : ""}
+            {summary.rest.join(" \u00B7 ")}
+        </span>
+    );
 }
 
 export default function AgentHistoryCard({ sessions, totalCount, isLoading }: Props) {
@@ -95,6 +134,7 @@ export default function AgentHistoryCard({ sessions, totalCount, isLoading }: Pr
                                 <div className="aid-history-info">
                                     <span className="aid-history-date">{formatDate(session.startedAt)}</span>
                                     <span className="aid-history-duration">{formatDuration(session.startedAt, session.endedAt)}</span>
+                                    <SessionFiltersLine filters={session.filters} />
                                 </div>
                                 <div className="aid-history-stats">
                                     <span className="aid-history-tracks">

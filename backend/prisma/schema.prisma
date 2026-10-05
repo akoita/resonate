@@ -1396,6 +1396,9 @@ model Session {
   spentUsd          Float              @default(0)
   startedAt         DateTime           @default(now())
   endedAt           DateTime?
+  /// #2096: sanitized summary of the session's own filters (preset, genres, moods,
+  /// energy, tempo, My Mix flag, explicit) for Session History. Never free text.
+  filters           Json?
   licenses          License[]
   payments          Payment[]
   agentTransactions AgentTransaction[]

@@ -227,6 +227,12 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
 `CrateWatchMatch`.
 
+AI DJ Session History (#2096) adds `Session.filters`, a bounded summary of a
+listening session's own filters (preset name, requested genres and moods,
+energy, tempo, a My Mix flag and the explicit choice). It never holds the typed
+sentence or My Mix lane details. It lives on the listener's `Session` row, so
+export and erasure already cover it.
+
 First-listener discovery (#1970) adds `FirstListenerExposure`, keyed by the
 listener's `userId`. It records the release and time of a placement, so export
 includes only that person's rows and erasure deletes them before rotating the

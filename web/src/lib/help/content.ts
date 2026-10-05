@@ -519,7 +519,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Session History in the Your AI DJ section lists your most recent sessions. Open one to see the tracks it picked and why. The session and track counts include every session you have had, not only the ones in the list.",
+            text: "Session History in the Your AI DJ section lists your most recent sessions. Under each date you see what the session asked for: the preset, genres, moods, energy, tempo, My Mix, and Explicit on when you allowed explicit tracks, or Saved taste when you picked no filters. After Update session it shows the latest filters. The sentence you typed is never shown or saved. Open a session to see the tracks it picked and why. The session and track counts include every session you have had, not only the ones in the list.",
           },
           {
             kind: "callout",

@@ -637,6 +637,30 @@ with nothing.
 - The AI DJ panel refreshes Session History after **Update session**
   re-plans the queue, so the card shows the new request's picks.
 
+## Session History shows each session's filters (#2096)
+
+Session History used to list only a session's date, duration and tracks, so a
+"Pop Hits" session and an "R&B & Soul" one looked the same.
+
+- `Session.filters` (nullable JSON) stores a sanitized summary of the
+  session's **own** filters, built by `sessionFilterSummary`
+  (`backend/src/modules/agents/agent_session_filters.ts`): preset name, the
+  requested genres and moods, energy band, tempo range, a My Mix flag (never
+  lane details) and the resolved explicit choice. Values are bounded (at most 8
+  terms of 40 characters, a 60-character preset name). The typed sentence is
+  never an input, and the saved vibes a plain Next Pick falls back to are kept
+  out.
+- Session start writes it (`POST /agents/config/session` and
+  `SessionsService.startSession`). A Next Pick or re-plan that sends
+  preferences rewrites it only when the summary changed, so the card shows the
+  latest filters. Both writes are best effort and never block a session or a
+  pick.
+- `GET /agents/config/history` returns `filters`, and `AgentHistoryCard` shows
+  one line under the date. A session with no chosen filters reads "Saved
+  taste", and sessions from before #2096 show nothing new.
+- Tests: `agent_session_filters.spec.ts`,
+  `agent_session_filters.integration.spec.ts`, `AgentHistoryCard.test.tsx`.
+
 ## Unified Ranking Core (#1448 WS-1)
 
 Since Sprint 8, the AI DJ and the Home feed rank with **one shared brain**:

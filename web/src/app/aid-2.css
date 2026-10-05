@@ -419,6 +419,8 @@
 .aid-history-details { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .aid-history-date    { font-size: 0.7rem; color: rgba(240,234,255,0.4); }
 .aid-history-duration{ font-size: 0.7rem; color: rgba(240,234,255,0.4); }
+.aid-history-filters { font-size: 0.7rem; color: rgba(240,234,255,0.5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aid-history-filters-preset { font-weight: 600; color: rgba(240,234,255,0.75); }
 .aid-history-stats   { display: flex; flex-wrap: wrap; gap: 6px; }
 .aid-history-chevron { flex-shrink: 0; color: rgba(240,234,255,0.25); transition: transform 0.2s ease; }
 
