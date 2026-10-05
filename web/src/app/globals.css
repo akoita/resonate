@@ -5704,6 +5704,16 @@ a {
   border-radius: var(--radius-md);
 }
 
+.taste-drift {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--radius-md);
+}
+
 .taste-edit-title {
   margin: 0;
   color: var(--color-text);

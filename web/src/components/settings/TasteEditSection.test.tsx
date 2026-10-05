@@ -2,8 +2,15 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { ProposedTasteEdit } from "../../lib/api";
-import { TasteEditSectionContent } from "./TasteEditSection";
-import { buildDraft, toggleRow } from "./tasteEdits";
+vi.mock("../../lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/api")>()),
+  applyTasteEdits: vi.fn(),
+  previewTasteEdits: vi.fn(),
+}));
+
+import { applyTasteEdits, previewTasteEdits } from "../../lib/api";
+import TasteEditSection, { TasteEditSectionContent } from "./TasteEditSection";
+import { buildDraft, driftProposal, toggleRow } from "./tasteEdits";
 
 const items: ProposedTasteEdit[] = [
   {
@@ -117,6 +124,29 @@ describe("TasteEditSectionContent", () => {
     const html = render({ draft: buildDraft(items), busy: "apply" });
     expect(html).toContain("Applying...");
     expect(html).toMatch(/<input[^>]*disabled/);
+  });
+
+  it("shows a proposal as a previewed row without applying or previewing anything", () => {
+    const html = renderToStaticMarkup(
+      <TasteEditSection
+        token="listener-token"
+        addToast={vi.fn()}
+        onApplied={vi.fn()}
+        proposal={{ key: "genre:Techno:1", items: [driftProposal("genre", "Techno")] }}
+      />,
+    );
+    expect(html).toContain("Proposed taste changes");
+    expect(html).toContain("Show more Techno");
+    expect(html).toContain("Apply 1 selected change");
+    expect(applyTasteEdits).not.toHaveBeenCalled();
+    expect(previewTasteEdits).not.toHaveBeenCalled();
+  });
+
+  it("shows no preview without a proposal", () => {
+    const html = renderToStaticMarkup(
+      <TasteEditSection token="listener-token" addToast={vi.fn()} onApplied={vi.fn()} />,
+    );
+    expect(html).not.toContain("Proposed taste changes");
   });
 
   it("wires no network call into rendering itself", () => {

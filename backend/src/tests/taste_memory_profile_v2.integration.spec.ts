@@ -110,4 +110,45 @@ describe("Taste Memory v2 summaries (integration)", () => {
     expect(current.summary.favoredGenres).toEqual(["Soul"]);
     expect(current.summary.contexts).toEqual([]);
   });
+  describe("declared taste drift (#2101)", () => {
+    const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const listenFiveTimes = async () => {
+      for (let n = 0; n < 5; n += 1) await listen(new Date(Date.now() - n * 1000));
+    };
+
+    it("reports a boost older than 14 days that listening no longer supports", async () => {
+      await listenFiveTimes();
+      const control = await prisma.listenerTasteSignalControl.create({
+        data: { userId, signalType: "genre", value: "Jazz", action: "boosted", source: "declared_text_edit", createdAt: daysAgo(20) },
+      });
+      const { summary } = await service.getTasteMemory(userId);
+      expect(summary.tasteDrift).toEqual({
+        staleBoosts: [{ controlId: control.id, signalType: "genre", value: "Jazz", boostedAt: control.createdAt.toISOString() }],
+        listeningGenres: ["Soul"],
+        listeningMoods: ["Late Night", "Warm"],
+      });
+    });
+
+    it("stays silent for a fresh boost, a boost listening still supports, and thin evidence", async () => {
+      await listenFiveTimes();
+      await prisma.listenerTasteSignalControl.create({
+        data: { userId, signalType: "genre", value: "Jazz", action: "boosted", createdAt: daysAgo(3) },
+      });
+      expect((await service.getTasteMemory(userId)).summary.tasteDrift).toBeNull();
+
+      await prisma.listenerTasteSignalControl.deleteMany({ where: { userId } });
+      await prisma.listenerTasteSignalControl.create({
+        data: { userId, signalType: "genre", value: "soul", action: "boosted", createdAt: daysAgo(60) },
+      });
+      expect((await service.getTasteMemory(userId)).summary.tasteDrift).toBeNull();
+
+      await prisma.agentSignal.deleteMany({ where: { userId } });
+      await listen();
+      await prisma.listenerTasteSignalControl.deleteMany({ where: { userId } });
+      await prisma.listenerTasteSignalControl.create({
+        data: { userId, signalType: "genre", value: "Jazz", action: "boosted", createdAt: daysAgo(60) },
+      });
+      expect((await service.getTasteMemory(userId)).summary.tasteDrift).toBeNull();
+    });
+  });
 });

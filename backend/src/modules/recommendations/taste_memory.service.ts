@@ -6,6 +6,7 @@ import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.se
 import { EventBus } from "../shared/event_bus";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 import type { UserPreferences } from "./recommendations.service";
+import { computeTasteDrift, type TasteDrift } from "./taste_drift";
 import { TASTE_EDIT_PARSER } from "./model_taste_edit_parser";
 import {
   candidateArtistNames,
@@ -70,6 +71,8 @@ export interface TasteMemorySettingsDto {
   recommendationExplanationPreference: RecommendationExplanationPreference;
   resetAt: string | null;
 }
+
+export type { TasteDrift } from "./taste_drift";
 
 export interface TasteSignalControlDto {
   id: string;
@@ -166,6 +169,13 @@ export class TasteMemoryService {
       computeTasteProfileFromHistory(userId, { policy }),
       getListeningLaneSummary(userId, { policy }),
     ]);
+    const controlDtos = controls.map(controlDto);
+    // Declared boosts never fade; a stale one is only reported (#2101).
+    const tasteDrift: TasteDrift | null = computeTasteDrift({
+      profile,
+      controls: controlDtos,
+      now: new Date(),
+    });
     const labels = (weights: Record<string, number> = {}) => Object.entries(weights)
       .filter(([label, weight]) => Number.isFinite(weight) && weight > 0 && normalizeSignalValue(label) === label)
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -213,8 +223,9 @@ export class TasteMemoryService {
         noveltyPattern: noveltyPattern(replayWeight, skipWeight),
         commercePreference: commercePreference(commerceWeight, libraryWeight),
         explanationPreference: settings.recommendationExplanationPreference,
+        tasteDrift,
       },
-      controls: controls.map(controlDto),
+      controls: controlDtos,
       privacy: {
         socialMatching: settings.socialMatchingEnabled ? "enabled" : "disabled",
         citySceneDiscovery: settings.citySceneDiscoveryEnabled ? "enabled" : "disabled",

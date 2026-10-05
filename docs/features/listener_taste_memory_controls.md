@@ -148,8 +148,20 @@ clauses; clauses beyond the bound are reported as unmapped, not dropped silently
   is `isColdStart` in `home-feed.service.ts`. Played artists count too; a taste
   reset makes earlier plays stop counting, and turning off "learn from AI DJ
   playback" drops AI DJ session plays from that count (#2100). When declared
-  taste and listening disagree, the declared genre still anchors the lead rail;
-  reconciling the two is tracked in #2101.
+  taste and listening disagree, the declared genre still anchors the lead rail
+  and Home adds a separate "Because you've been playing \<genre\>" rail from
+  the learned profile (#2101).
+- Drift hint (#2101): declared boosts never fade. When a genre or mood boost is
+  at least 14 days old and is no longer among the listener's top 5 learned
+  genres (or moods), with at least 5 positive signals, `GET
+  /recommendations/taste-memory` returns `summary.tasteDrift` (`staleBoosts`
+  with control ids, plus `listeningGenres` / `listeningMoods`). Settings shows
+  "Your saved taste and your listening have drifted apart" with "Show more
+  \<value\>", which pre-fills the edit preview (nothing is stored before
+  Apply), and "Remove the \<value\> boost", the same explicit removal as the
+  controls list. A downranked or hidden value is never suggested. Legacy saved
+  preference genres never produce a hint. Design:
+  [declared vs. listening taste](../rfc/declared-vs-listening-taste.md).
 
 **Model-assisted parsing (optional, [#2006](https://github.com/akoita/resonate/issues/2006)).**
 `TasteEditParser` is the seam. The default is the deterministic parser. Setting
