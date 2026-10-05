@@ -145,7 +145,11 @@ clauses; clauses beyond the bound are reported as unmapped, not dropped silently
   "Catalog signal", and downranks, hides, notes and a lone energy band do not
   count. A declared energy band alone keeps the honest cold-start rail, because
   it re-ranks but gives the personalized rails nothing to anchor on. The check
-  is `isColdStart` in `home-feed.service.ts`.
+  is `isColdStart` in `home-feed.service.ts`. Played artists count too; a taste
+  reset makes earlier plays stop counting, and turning off "learn from AI DJ
+  playback" drops AI DJ session plays from that count (#2100). When declared
+  taste and listening disagree, the declared genre still anchors the lead rail;
+  reconciling the two is tracked in #2101.
 
 **Model-assisted parsing (optional, [#2006](https://github.com/akoita/resonate/issues/2006)).**
 `TasteEditParser` is the seam. The default is the deterministic parser. Setting

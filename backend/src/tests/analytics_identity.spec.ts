@@ -1,4 +1,5 @@
 import {
+  analyticsActorIdCandidates,
   assertAnalyticsActorIdSaltConfiguration,
   pseudonymousAnalyticsActorId,
   resolveAnalyticsActorIdSalt,
@@ -100,5 +101,23 @@ describe("analytics actor identity salt", () => {
     expect(pseudonymousAnalyticsActorId("0xabc")).toBe(first);
     expect(first).toMatch(/^user_[0-9a-f]{32}$/);
     expect(first).not.toContain("stable-analytics-salt");
+  });
+});
+
+describe("analyticsActorIdCandidates", () => {
+  it("returns the raw, lowercased, and pseudonymous ids without duplicates", () => {
+    expect(analyticsActorIdCandidates("0xAbC")).toEqual([
+      "0xAbC",
+      "0xabc",
+      pseudonymousAnalyticsActorId("0xAbC"),
+    ]);
+    expect(analyticsActorIdCandidates("user-1")).toEqual([
+      "user-1",
+      pseudonymousAnalyticsActorId("user-1"),
+    ]);
+  });
+
+  it("returns nothing for an empty id", () => {
+    expect(analyticsActorIdCandidates("")).toEqual([]);
   });
 });

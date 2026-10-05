@@ -251,7 +251,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Every visit also includes a small \"Step outside your lanes\" row of new releases that almost nobody has played yet, one track from each, so your feed never becomes an echo chamber, and rows rotate between visits instead of repeating the same picks. If you're new and we don't know your taste yet, the feed says \"Catalog signal\" honestly — play a few tracks or save a genre and it gets personal.",
+            text: "Every visit also includes a small \"Step outside your lanes\" row of new releases that almost nobody has played yet, one track from each, so your feed never becomes an echo chamber, and rows rotate between visits instead of repeating the same picks. If you're new and we don't know your taste yet, the feed says \"Catalog signal\" honestly — play a few tracks, or open Settings → Taste Memory and tell us what you want more of, and it gets personal.",
           },
           {
             kind: "figure",

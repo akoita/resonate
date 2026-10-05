@@ -971,7 +971,14 @@ re-ranked) from the WS-1 core and WS-4 serving by
 - `because_genre` — "Because you save a lot of \<genre\>": WS-1 items whose
   reasons match the dominant saved genre/mood.
 - `new_from_artists` — newest catalog from artists the listener has actually
-  played (derived server-side; item history never leaves the backend).
+  played (derived server-side; item history never leaves the backend). Plays
+  are looked up under every actor id a producer may write: the raw and
+  lowercased user id, and the pseudonymous `user_<hash>` id the browser
+  playback routes store (`analyticsActorIdCandidates`). Before #2100 only the
+  raw id was queried, so web plays never counted: the rail was always empty and
+  a listener with no declared taste stayed on "Catalog signal" however much
+  they played. Plays before a taste reset are ignored, and AI DJ session plays
+  are ignored while "learn from AI DJ playback" is off.
 - `trending_genre` — "Trending in \<genre\>" from the WS-4 serving tables.
 - `exploration` — a controlled slice of fresh/low-data tracks
   (`DISCOVERY_EXPLORATION_COUNT`, default 4) to escape feedback loops.
@@ -981,7 +988,9 @@ re-ranked) from the WS-1 core and WS-4 serving by
   counted from the consented analytics ledger, and it has no popularity row
   (#2050). A missing popularity row alone no longer counts, because empty or
   stale serving tables would make every track look unheard.
-- `catalog_signal` — cold users only (RFC §8), labeled as exactly that.
+- `catalog_signal` — cold users only (RFC §8), labeled as exactly that. A
+  listener leaves it with one counted play or one declared genre or mood boost;
+  the rail links to Settings → Taste Memory (`/settings?section=taste`).
 
 Rules enforced in composition: every explanation is **categorical** (RFC §7 —
 never itemized listening history), max 2 items per artist per rail, each
