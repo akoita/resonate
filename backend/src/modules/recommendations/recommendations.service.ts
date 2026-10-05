@@ -19,7 +19,7 @@ import {
 import { discoveryVariantForUser, type DiscoveryVariantAssignment } from "./discovery_experiment";
 import { DiscoveryPolicyContextService } from "./discovery-policy-context.service";
 import { resolveAgentTasteProfile } from "../agents/agent_learning.service";
-import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
+import { hasSignal, TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
 import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.service";
 import { TrackEmbeddingService } from "../embeddings/track_embedding.service";
 import {
@@ -466,7 +466,19 @@ export class RecommendationsService {
     });
   }
 
-  async getRecommendations(userId: string, limit = 10, preferenceOverrides?: UserPreferences) {
+  /**
+   * `options.additionalGenres` adds preference terms after the taste policy
+   * ran (e.g. Home's listening genre, #2101). They are matched, ranked and
+   * explained like any preference genre, but hidden genres are still dropped.
+   * `options.learnedGenreWeights` lets a caller that already resolved the
+   * learned profile with the same policy skip resolving it again.
+   */
+  async getRecommendations(
+    userId: string,
+    limit = 10,
+    preferenceOverrides?: UserPreferences,
+    options?: { additionalGenres?: string[]; learnedGenreWeights?: Record<string, number> },
+  ) {
     const policy = await this.tasteMemoryService?.getPolicy(userId);
     const profile = await this.loadProfile(userId);
     const storedPreferences = shouldUseStoredPreferences(
@@ -483,6 +495,17 @@ export class RecommendationsService {
     const normalizedGenres = (prefs.genres ?? [])
       .map((genre) => genre.trim())
       .filter(Boolean);
+    for (const extra of options?.additionalGenres ?? []) {
+      const genre = extra.trim();
+      if (
+        !genre ||
+        normalizedGenres.some((existing) => existing.toLowerCase() === genre.toLowerCase()) ||
+        (policy && hasSignal(policy.hidden, "genre", genre))
+      ) {
+        continue;
+      }
+      normalizedGenres.push(genre);
+    }
     const normalizedMood = prefs.mood?.trim();
 
     const {
@@ -567,9 +590,10 @@ export class RecommendationsService {
     // The same persisted taste profile the AI DJ ranks with (#1456 WS-9), so
     // one listener has one set of learned genre weights on both surfaces.
     // Fails open: no profile contributes no learned weights.
-    const learnedGenreWeights = await resolveAgentTasteProfile(userId, { policy })
-      .then((profile) => profile.genreWeights)
-      .catch(() => ({}) as Record<string, number>);
+    const learnedGenreWeights = options?.learnedGenreWeights
+      ?? await resolveAgentTasteProfile(userId, { policy })
+        .then((profile) => profile.genreWeights)
+        .catch(() => ({}) as Record<string, number>);
 
     const ranked = await this.rankingService.rank(
       enriched.map((entry) => entry.candidate),

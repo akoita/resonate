@@ -118,6 +118,26 @@ describe("HomeFeedRails", () => {
     expect(html).toContain("Tell us your taste");
   });
 
+  it("renders the listening-derived rail with its own kicker and title", () => {
+    const html = renderToStaticMarkup(
+      <HomeFeedRails
+        feed={feed([
+          rail({
+            id: "listening_genre",
+            kind: "listening_genre",
+            title: "Because you've been playing Techno",
+            explanation: "From your recent listening. It fades as your listening changes.",
+            items: [item({ reasons: ["listening_pattern"] })],
+          }),
+        ])}
+      />,
+    );
+    expect(html).toContain('data-rail-kind="listening_genre"');
+    expect(html).toContain("Your listening");
+    expect(html).toContain("been playing Techno");
+    expect(html).not.toContain("Start an AI DJ session");
+  });
+
   it("shows the honest empty state when there are no rails (no catalog fallback)", () => {
     const html = renderToStaticMarkup(<HomeFeedRails feed={feed([])} />);
     expect(html).toContain("Your feed is warming up");

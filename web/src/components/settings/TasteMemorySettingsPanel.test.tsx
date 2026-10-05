@@ -25,7 +25,9 @@ import TasteMemorySettingsPanel, {
   resetTasteMemoryState,
   TasteSignalControlList,
   TasteMemorySummary,
+  tasteDriftOf,
 } from "./TasteMemorySettingsPanel";
+import TasteDriftHint from "./TasteDriftHint";
 
 const settings: TasteMemoryResponse["settings"] = {
   socialMatchingEnabled: false,
@@ -227,6 +229,76 @@ describe("TasteMemorySettingsPanel", () => {
       commercePreference: "Listening first",
     });
     expect(updatedMemory.controls).toEqual([declaredControl]);
+  });
+
+  it("shows the drift hint with stale and listening values and keeps changes behind a confirmation", () => {
+    const drift = {
+      staleBoosts: [
+        { controlId: declaredControl.id, signalType: "genre" as const, value: "Jazz", boostedAt: "2026-09-01T10:00:00.000Z" },
+      ],
+      listeningGenres: ["Techno"],
+      listeningMoods: [],
+    };
+    const populated: TasteMemoryResponse = {
+      ...memory({ ...legacySummary, tasteDrift: drift }),
+      controls: [declaredControl],
+    };
+    const found = tasteDriftOf(populated.summary);
+    expect(found).toEqual(drift);
+
+    const onProposeMore = vi.fn();
+    const onRemoveBoost = vi.fn();
+    const html = renderToStaticMarkup(
+      <TasteDriftHint
+        drift={found!}
+        controls={populated.controls}
+        onProposeMore={onProposeMore}
+        onRemoveBoost={onRemoveBoost}
+      />,
+    );
+    expect(html).toContain("Your saved taste and your listening have drifted apart");
+    expect(html).toContain("You asked for more Jazz,");
+    expect(html).toContain("but lately you mostly play Techno.");
+    expect(html).toContain("Show more Techno");
+    expect(html).toContain("Remove the Jazz boost");
+    expect(html).toContain("nothing is added until you apply");
+    expect(onProposeMore).not.toHaveBeenCalled();
+    expect(onRemoveBoost).not.toHaveBeenCalled();
+  });
+
+  it("words the hint honestly when there is no listening to point at, and caps the choices", () => {
+    const boost = (id: string, value: string) => ({
+      controlId: id,
+      signalType: "genre" as const,
+      value,
+      boostedAt: "2026-09-01T10:00:00.000Z",
+    });
+    const controls = ["a", "b", "c"].map((id) => ({ ...declaredControl, id }));
+    const html = renderToStaticMarkup(
+      <TasteDriftHint
+        drift={{
+          staleBoosts: [boost("a", "Jazz"), boost("b", "Soul"), boost("c", "Folk")],
+          listeningGenres: [],
+          listeningMoods: [],
+        }}
+        controls={controls}
+        onProposeMore={vi.fn()}
+        onRemoveBoost={vi.fn()}
+      />,
+    );
+    expect(html).toContain("You asked for more Jazz and Soul,");
+    expect(html).toContain("but you haven\u2019t played much of it lately.");
+    expect(html).not.toContain("Show more");
+    expect(html).toContain("Remove the Jazz boost");
+    expect(html).toContain("Remove the Soul boost");
+    expect(html).not.toContain("Folk");
+  });
+
+  it("renders no hint when there is no drift, including on servers that omit it", () => {
+    expect(tasteDriftOf(legacySummary)).toBeNull();
+    expect(tasteDriftOf({ ...legacySummary, tasteDrift: null })).toBeNull();
+    const html = renderToStaticMarkup(<TasteMemorySettingsPanel token={null} addToast={vi.fn()} />);
+    expect(html).not.toContain("drifted apart");
   });
 
   it("keeps the training toggle label and explains playback and library learning consent", () => {

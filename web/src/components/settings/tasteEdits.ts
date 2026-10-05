@@ -35,6 +35,23 @@ export function buildDraft(items: ProposedTasteEdit[]): TasteEditDraft {
   return items.map((item) => ({ item, included: isApplicable(item) }));
 }
 
+/**
+ * The edit a drift hint pre-fills (#2101): "Show more <value>" as a boost the
+ * listener still has to preview-confirm and Apply. Nothing is stored here.
+ */
+export function driftProposal(signalType: "genre" | "mood", value: string): ProposedTasteEdit {
+  const isGenre = signalType === "genre";
+  return {
+    id: `drift-${signalType}-${value}`,
+    kind: isGenre ? "boost_genre" : "boost_mood",
+    signalType,
+    value,
+    action: "boosted",
+    phrase: value,
+    statement: isGenre ? `Show more ${value}` : `Show more ${value} music`,
+  };
+}
+
 export function toggleRow(draft: TasteEditDraft, id: string): TasteEditDraft {
   return draft.map((row) =>
     row.item.id === id && isApplicable(row.item) ? { ...row, included: !row.included } : row,

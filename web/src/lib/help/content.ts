@@ -251,7 +251,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Every visit also includes a small \"Step outside your lanes\" row of new releases that almost nobody has played yet, one track from each, so your feed never becomes an echo chamber, and rows rotate between visits instead of repeating the same picks. If you're new and we don't know your taste yet, the feed says \"Catalog signal\" honestly — play a few tracks, or open Settings → Taste Memory and tell us what you want more of, and it gets personal.",
+            text: "Every visit also includes a small \"Step outside your lanes\" row of new releases that almost nobody has played yet, one track from each, so your feed never becomes an echo chamber, and rows rotate between visits instead of repeating the same picks. If what you've been playing lately differs from the genres you asked for, a \"Because you've been playing\" row appears right after your saved-taste row. It comes from your recent listening, so it changes as your listening changes, and the genres you saved in Taste Memory always come first. If you're new and we don't know your taste yet, the feed says \"Catalog signal\" honestly — play a few tracks, or open Settings → Taste Memory and tell us what you want more of, and it gets personal.",
           },
           {
             kind: "figure",
@@ -3024,6 +3024,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Prefer to just say it? Under Taste Memory, type what you want in your own words — for example \"less drill, more live instruments\" — and choose Preview changes. We list exactly what would change as plain statements such as \"Show less Drill\". Untick, switch between more and less, or remove any line, then choose Apply. Nothing is saved until you apply, and anything we could not understand is shown as such and is never saved.",
+          },
+          {
+            kind: "paragraph",
+            text: "If you asked for more of a genre or mood a while ago and your recent listening has moved elsewhere, Taste Memory says so: \"Your saved taste and your listening have drifted apart\". You can choose Show more for what you have been playing, which only fills in the preview below — nothing is added until you apply — or Remove the boost, which takes it off your list straight away, just like removing it from the list itself. Your saved boosts never fade or change on their own.",
           },
           {
             kind: "list",

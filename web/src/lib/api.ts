@@ -3698,6 +3698,7 @@ export type SongRecommendationsResponse = {
 
 export type HomeFeedRailKind =
   | "because_genre"
+  | "listening_genre"
   | "new_from_artists"
   | "trending_genre"
   | "exploration"
@@ -3866,6 +3867,21 @@ export type ListeningLane = {
   hidden: boolean;
 };
 
+/**
+ * Declared boosts that no longer match what the listener plays (#2101). Absent
+ * on older servers; treat `undefined` as `null`.
+ */
+export type TasteDrift = {
+  staleBoosts: Array<{
+    controlId: string;
+    signalType: "genre" | "mood";
+    value: string;
+    boostedAt: string;
+  }>;
+  listeningGenres: string[];
+  listeningMoods: string[];
+};
+
 export type TasteMemoryResponse = {
   schemaVersion: "listener-taste-memory/v1";
   settings: TasteMemorySettings;
@@ -3877,6 +3893,7 @@ export type TasteMemoryResponse = {
     favoredTempoBands?: string[];
     contexts?: TasteMemoryContextSummary[];
     listeningLanes?: ListeningLane[];
+    tasteDrift?: TasteDrift | null;
     recentIntents: string[];
     noveltyPattern: string;
     commercePreference: string;

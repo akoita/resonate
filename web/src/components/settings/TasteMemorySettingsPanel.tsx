@@ -8,6 +8,8 @@ import {
   updateTasteMemorySettings,
   upsertTasteSignalControl,
   type ManualTasteSignalAction,
+  type ProposedTasteEdit,
+  type TasteDrift,
   type ListeningLane,
   type ListeningLaneContextKey,
   type TasteMemoryContextSummary,
@@ -18,8 +20,9 @@ import {
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import TasteDriftHint from "./TasteDriftHint";
 import TasteEditSection from "./TasteEditSection";
-import { controlLabel, controlRemoveLabel, isDeclaredControl } from "./tasteEdits";
+import { controlLabel, controlRemoveLabel, driftProposal, isDeclaredControl } from "./tasteEdits";
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
@@ -69,6 +72,11 @@ function bandLabel(value: string, labels: Record<string, string>) {
   return labels[value.trim().toLowerCase()] ?? value;
 }
 
+/** Older servers omit `tasteDrift`; treat that the same as no drift. */
+export function tasteDriftOf(summary: TasteMemorySummaryData | null | undefined): TasteDrift | null {
+  return summary?.tasteDrift ?? null;
+}
+
 export function buildTasteMemorySummaryItems(summary: TasteMemorySummaryData | null | undefined): SummaryItem[] {
   if (!summary) return [];
   const items: SummaryItem[] = [
@@ -111,6 +119,7 @@ export function clearTasteMemorySummary(summary: TasteMemorySummaryData): TasteM
     favoredTempoBands: [],
     contexts: [],
     listeningLanes: [],
+    tasteDrift: null,
     recentIntents: [],
     noveltyPattern: "Balanced discovery",
     commercePreference: "Listening first",
@@ -270,6 +279,7 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
   const [newSignalValue, setNewSignalValue] = useState("");
   const [newSignalAction, setNewSignalAction] = useState<ManualTasteSignalAction>("hidden");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [proposal, setProposal] = useState<{ key: string; items: ProposedTasteEdit[] } | null>(null);
 
   const load = async () => {
     if (!token) return;
@@ -293,6 +303,7 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
   }, [token]);
 
   const listeningLanes = memory?.summary.listeningLanes ?? [];
+  const drift = tasteDriftOf(memory?.summary);
   const genericControls = filterGenericTasteControls(memory?.controls ?? [], listeningLanes);
 
   const updateSetting = async <K extends keyof Omit<TasteMemorySettings, "resetAt">>(
@@ -393,6 +404,16 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
     await restoreControl(laneControl);
   };
 
+  const proposeMore = (signalType: "genre" | "mood", value: string) => {
+    // Pre-fills the preview only; the listener still has to press Apply.
+    setProposal({ key: `${signalType}:${value}:${Date.now()}`, items: [driftProposal(signalType, value)] });
+  };
+
+  const removeDriftBoost = async (controlId: string) => {
+    const control = memory?.controls.find((candidate) => candidate.id === controlId);
+    if (control) await restoreControl(control);
+  };
+
   const confirmResetMemory = async () => {
     if (!token || !memory) return;
     setSavingKey("reset");
@@ -479,7 +500,17 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
         </label>
       </div>
 
-      <TasteEditSection token={token} addToast={addToast} onApplied={setMemory} />
+      {drift ? (
+        <TasteDriftHint
+          drift={drift}
+          controls={memory?.controls ?? []}
+          onProposeMore={proposeMore}
+          onRemoveBoost={removeDriftBoost}
+          busy={savingKey !== null}
+        />
+      ) : null}
+
+      <TasteEditSection token={token} addToast={addToast} onApplied={setMemory} proposal={proposal} />
 
       <div className="taste-memory-editor">
         <div className="taste-memory-editor-inputs">

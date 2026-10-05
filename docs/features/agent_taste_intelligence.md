@@ -979,7 +979,18 @@ re-ranked) from the WS-1 core and WS-4 serving by
   a listener with no declared taste stayed on "Catalog signal" however much
   they played. Plays before a taste reset are ignored, and AI DJ session plays
   are ignored while "learn from AI DJ playback" is off.
-- `trending_genre` — "Trending in \<genre\>" from the WS-4 serving tables.
+- `listening_genre` — "Because you've been playing \<genre\>" (#2101): the
+  learned profile's top genre when it is not one of the listener's declared
+  genres, with at least 5 positive signals behind it and never a genre the
+  listener downranked. It sits right after
+  `because_genre`, which keeps its declared anchor (ADR-TE-5: declared >
+  behavioral), and is the only genre rail for a listener with no declared
+  taste. The genre is added to the single `getRecommendations` call as an extra
+  preference term (`additionalGenres`), so no second ranking call records
+  impressions or exposure. Items carry `listening_pattern`. Design:
+  [declared vs. listening taste](../rfc/declared-vs-listening-taste.md).
+- `trending_genre` — "Trending in \<genre\>" from the WS-4 serving tables,
+  for the declared anchor, else the listening genre.
 - `exploration` — a controlled slice of fresh/low-data tracks
   (`DISCOVERY_EXPLORATION_COUNT`, default 4) to escape feedback loops.
   Candidates are the newest public releases, one lead track each, so a release

@@ -23,6 +23,7 @@ import { HomeTile } from "./HomeTile";
 
 const RAIL_KICKERS: Record<HomeFeedRail["kind"], { label: string; tone: ShelfTone }> = {
   because_genre: { label: "Personalized picks", tone: "violet" },
+  listening_genre: { label: "Your listening", tone: "violet" },
   new_from_artists: { label: "Your artists", tone: "violet" },
   trending_genre: { label: "What listeners play", tone: "tertiary" },
   exploration: { label: "Exploration", tone: "tertiary" },

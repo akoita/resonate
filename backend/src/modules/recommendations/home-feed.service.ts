@@ -6,6 +6,7 @@ import { analyticsActorIdCandidates } from "../analytics/analytics_identity";
 import { DiscoveryPopularityService } from "../catalog/discovery-popularity.service";
 import { minimumAudienceFromEnv } from "../catalog/discovery-popularity.math";
 import { RecommendationsService } from "./recommendations.service";
+import { resolveAgentTasteProfile } from "../agents/agent_learning.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
@@ -20,6 +21,7 @@ import { applyDiscoveryPolicy } from "./discovery-policy";
 import type { RankedDiscoveryCandidate } from "./discovery-ranking.service";
 import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
 import { discoveryVariantForUser } from "./discovery_experiment";
+import { listeningGenre, type LearnedTasteView } from "./taste_drift";
 
 /**
  * Home feed v2 composition (#1454 WS-7).
@@ -28,6 +30,9 @@ import { discoveryVariantForUser } from "./discovery_experiment";
  * serving into a multi-rail personalized feed:
  *   - `because_genre`   "Because you save a lot of <genre>" (WS-1 items whose
  *                        reasons match the dominant preference genre/mood)
+ *   - `listening_genre` "Because you've been playing <genre>" (#2101): the
+ *                        learned top genre when it is not one the listener
+ *                        declared; follows `because_genre`, never replaces it
  *   - `new_from_artists` newest catalog tracks from artists the listener has
  *                        actually played (derived server-side; the response
  *                        never itemizes listening history)
@@ -61,6 +66,7 @@ import { discoveryVariantForUser } from "./discovery_experiment";
 
 export type HomeFeedRailKind =
   | "because_genre"
+  | "listening_genre"
   | "new_from_artists"
   | "trending_genre"
   | "exploration"
@@ -124,6 +130,7 @@ export interface RawItem
  */
 const RAIL_REASON_CODE: Record<HomeFeedRailKind, DiscoveryReasonCode> = {
   because_genre: "taste_match",
+  listening_genre: "listening_pattern",
   new_from_artists: "listening_pattern",
   trending_genre: "catalog",
   exploration: "catalog",
@@ -235,12 +242,14 @@ export class HomeFeedService {
     // Played artists honour the taste policy (reset, AI DJ training opt-out),
     // so they chain off the same policy load without serialising the others.
     const tastePolicyPromise = this.loadTastePolicy(userId);
-    const [preferences, served, playedArtistIds, tastePolicy] = await Promise.all([
-      this.recommendationsService.getPreferences(userId),
-      this.recommendationsService.getServedHistory(userId),
-      tastePolicyPromise.then((policy) => this.artistsThePlayerPlays(userId, policy)),
-      tastePolicyPromise,
-    ]);
+    const [preferences, served, playedArtistIds, tastePolicy, learnedProfile] =
+      await Promise.all([
+        this.recommendationsService.getPreferences(userId),
+        this.recommendationsService.getServedHistory(userId),
+        tastePolicyPromise.then((policy) => this.artistsThePlayerPlays(userId, policy)),
+        tastePolicyPromise,
+        tastePolicyPromise.then((policy) => this.loadLearnedProfile(userId, policy)),
+      ]);
     // Every rail passes the policy stage with the same taste policy.
     const applyCaps = (
       kind: HomeFeedRailKind,
@@ -269,17 +278,37 @@ export class HomeFeedService {
       const catalogRail = await this.catalogSignalRail(usedTrackIds, applyCaps);
       if (catalogRail) rails.push(catalogRail);
     } else {
-      const recommendations = await this.recommendationsService.getRecommendations(
-        userId,
-        RAIL_SIZE * 3,
-      );
       // Saved preferences anchor first, then a declared boost (#2006), so a
       // listener whose only taste is a boost gets a rail built on it.
       const declared = tastePolicy?.declared;
+      const declaredGenres = [
+        ...(preferences.genres ?? []),
+        ...(declared?.boostedGenres ?? []),
+      ];
+      // Listening adds a rail; it never takes the declared rail's topic (#2101).
+      const listening = listeningGenre(
+        learnedProfile,
+        declaredGenres,
+        tastePolicy?.downranked.get("genre") ?? [],
+      );
+      // One ranking call: the listening genre rides along as an extra
+      // preference term instead of a second call that would record extra
+      // impressions and a duplicate `recommendation.generated`.
+      const recommendations = await this.recommendationsService.getRecommendations(
+        userId,
+        listening ? RAIL_SIZE * 4 : RAIL_SIZE * 3,
+        undefined,
+        {
+          ...(listening ? { additionalGenres: [listening] } : {}),
+          // Reuse the profile resolved above instead of recomputing it.
+          ...(learnedProfile ? { learnedGenreWeights: learnedProfile.genreWeights } : {}),
+        },
+      );
       const dominantGenre = this.dominantGenre(
-        [...(preferences.genres ?? []), ...(declared?.boostedGenres ?? [])],
+        declaredGenres,
         preferences.mood?.trim() || declared?.boostedMoods[0],
         recommendations.items,
+        listening,
       );
 
       const becauseRail = this.becauseGenreRail(
@@ -290,6 +319,14 @@ export class HomeFeedService {
       );
       if (becauseRail) rails.push(becauseRail);
 
+      const listeningRail = this.listeningGenreRail(
+        listening,
+        recommendations.items,
+        usedTrackIds,
+        applyCaps,
+      );
+      if (listeningRail) rails.push(listeningRail);
+
       const artistsRail = await this.newFromArtistsRail(
         playedArtistIds,
         usedTrackIds,
@@ -298,7 +335,7 @@ export class HomeFeedService {
       if (artistsRail) rails.push(artistsRail);
 
       const trendingRail = await this.trendingGenreRail(
-        dominantGenre,
+        dominantGenre ?? listening,
         usedTrackIds,
         applyCaps,
       );
@@ -386,6 +423,51 @@ export class HomeFeedService {
       kind: "because_genre",
       title: `Because you save a lot of ${dominantGenre}`,
       explanation: `Ranked for your ${dominantGenre} taste — from your saved preferences, not your play-by-play history.`,
+      items: selected,
+    };
+  }
+
+  /**
+   * Items the ranker matched on the listening genre. Unlike `because_genre`,
+   * the ranked item's reason code and sentence are not carried over: the topic
+   * comes from listening, so `listening_pattern` is the honest label (#2101).
+   */
+  private listeningGenreRail(
+    listening: string | null,
+    items: Awaited<ReturnType<RecommendationsService["getRecommendations"]>>["items"],
+    used: Set<string>,
+    applyCaps: RailCaps,
+  ): HomeFeedRail | null {
+    if (!listening) return null;
+    const needle = listening.toLowerCase();
+    const matching: RawItem[] = items
+      .filter((item) =>
+        item.reasons.some(
+          (reason) =>
+            reason.startsWith("genre:") &&
+            reason.slice("genre:".length).toLowerCase() === needle,
+        ),
+      )
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        artist: item.artist,
+        artistId: item.artistId,
+        releaseId: item.releaseId,
+        releaseTitle: item.releaseTitle,
+        genre: item.genre,
+        moods: item.moods ?? [],
+        aiDisclosure: item.aiDisclosure,
+        reasons: item.reasons,
+      }));
+    const selected = applyCaps("listening_genre", matching, used);
+    if (!selected.length) return null;
+    return {
+      id: "listening_genre",
+      kind: "listening_genre",
+      title: `Because you've been playing ${listening}`,
+      explanation:
+        "From what you've been playing lately — it shifts as your listening changes. Your saved preferences still come first.",
       items: selected,
     };
   }
@@ -669,11 +751,33 @@ export class HomeFeedService {
     }
   }
 
-  /** Preference genres first, else the most frequent reason genre/mood. */
+  /**
+   * Fails open: without a learned profile there is no listening rail. Honours
+   * the same taste policy as the rest of Home (hidden taste, reset, training
+   * opt-out).
+   */
+  private async loadLearnedProfile(
+    userId: string,
+    policy: TasteMemoryPolicy | undefined,
+  ): Promise<LearnedTasteView | null> {
+    try {
+      return await resolveAgentTasteProfile(userId, { policy });
+    } catch (error) {
+      this.logger.warn(`Learned taste unavailable for Home rails: ${String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Preference genres first, else the most frequent reason genre/mood. The
+   * listening genre is excluded from the reason-count fallback: it is an extra
+   * ranking term, so it must never become the `because_genre` topic (#2101).
+   */
   private dominantGenre(
     genres: string[],
     mood: string | undefined,
     items: Array<{ reasons: string[] }>,
+    excludeGenre?: string | null,
   ): string | null {
     if (genres.length) return genres[0];
     if (mood?.trim()) return mood.trim();
@@ -682,6 +786,7 @@ export class HomeFeedService {
       for (const reason of item.reasons) {
         if (reason.startsWith("genre:") || reason.startsWith("mood:")) {
           const value = reason.slice(reason.indexOf(":") + 1);
+          if (excludeGenre && value.toLowerCase() === excludeGenre.toLowerCase()) continue;
           counts.set(value, (counts.get(value) ?? 0) + 1);
         }
       }

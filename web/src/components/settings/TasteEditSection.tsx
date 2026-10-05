@@ -4,10 +4,12 @@ import { useId, useState } from "react";
 import {
   applyTasteEdits,
   previewTasteEdits,
+  type ProposedTasteEdit,
   type TasteMemoryResponse,
 } from "../../lib/api";
 import { Button } from "../ui/Button";
 import {
+  buildDraft,
   canSwitchDirection,
   directionLabel,
   isApplicable,
@@ -27,6 +29,12 @@ type Props = {
   addToast: ToastFn;
   /** Called with the updated taste memory after a successful apply. */
   onApplied: (memory: TasteMemoryResponse) => void;
+  /**
+   * A ready-made proposal, e.g. from a taste drift hint (#2101). When `key`
+   * changes the rows replace the current preview. Nothing is applied until the
+   * listener presses Apply.
+   */
+  proposal?: { key: string; items: ProposedTasteEdit[] } | null;
 };
 
 /** Mirrors the backend bound on the text a preview reads. */
@@ -37,11 +45,18 @@ const MAX_TEXT_LENGTH = 500;
  * types in their own words, previews the exact statements we would apply, edits
  * them, and only then applies. Nothing is stored before Apply.
  */
-export default function TasteEditSection({ token, addToast, onApplied }: Props) {
+export default function TasteEditSection({ token, addToast, onApplied, proposal }: Props) {
   const fieldId = useId();
   const [text, setText] = useState("");
   const [draft, setDraft] = useState<TasteEditDraft | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
+  const [seenProposalKey, setSeenProposalKey] = useState<string | null>(null);
+
+  // Adjust state during render when a new proposal arrives (no effect needed).
+  if (proposal && proposal.key !== seenProposalKey) {
+    setSeenProposalKey(proposal.key);
+    if (proposal.items.length > 0) setDraft(buildDraft(proposal.items));
+  }
 
   const preview = async () => {
     if (!token || !text.trim()) return;

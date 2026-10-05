@@ -4,6 +4,7 @@ import {
   buildDraft,
   canSwitchDirection,
   confirmedEdits,
+  driftProposal,
   controlLabel,
   controlRemoveLabel,
   isApplicable,
@@ -192,5 +193,29 @@ describe("control labels", () => {
   it("recognises controls written by a confirmed taste edit", () => {
     expect(isDeclaredControl(control({ source: "declared_text_edit" }))).toBe(true);
     expect(isDeclaredControl(control({ source: "settings" }))).toBe(false);
+  });
+});
+
+describe("driftProposal", () => {
+  it("proposes a genre boost with a plain statement", () => {
+    expect(driftProposal("genre", "Techno")).toEqual({
+      id: "drift-genre-Techno",
+      kind: "boost_genre",
+      signalType: "genre",
+      value: "Techno",
+      action: "boosted",
+      phrase: "Techno",
+      statement: "Show more Techno",
+    });
+  });
+
+  it("proposes a mood boost phrased as music, and is applicable like any previewed row", () => {
+    const proposal = driftProposal("mood", "Warm");
+    expect(proposal).toMatchObject({ kind: "boost_mood", signalType: "mood", action: "boosted" });
+    expect(proposal.statement).toBe("Show more Warm music");
+    expect(isApplicable(proposal)).toBe(true);
+    expect(confirmedEdits(buildDraft([proposal]))).toEqual([
+      { signalType: "mood", value: "Warm", action: "boosted" },
+    ]);
   });
 });
