@@ -160,19 +160,62 @@ describe("DiscoveryPolicyContextService (ADR-TE-2)", () => {
     expect([...dupes.playedArtistIds]).toEqual([A_PLAYED]);
   });
 
-  it("maps track ids to artist ids in one batch, skipping unknown tracks", async () => {
-    const map = await service.artistIdsForTracks([
-      trackOf(A_VERIFIED),
-      trackOf(A_PLAYED),
-      trackOf(A_VERIFIED),
-      `${TEST_PREFIX}no_such_track`,
-      "",
-    ]);
-    expect(Object.fromEntries(map)).toEqual({
-      [trackOf(A_VERIFIED)]: A_VERIFIED,
-      [trackOf(A_PLAYED)]: A_PLAYED,
+  describe("artistKeysForTracks (diversity-cap keys, #2092)", () => {
+    const T_BOOBA = `${TEST_PREFIX}credit_booba`;
+    const T_TI = `${TEST_PREFIX}credit_ti`;
+    const T_FEAT = `${TEST_PREFIX}credit_feat`;
+
+    beforeAll(async () => {
+      // One uploading profile (A_VERIFIED) carrying releases credited to
+      // different performers: the cap key must follow the credit, not the profile.
+      const credits = [
+        { id: T_BOOBA, artist: "Booba", position: 2 },
+        { id: T_TI, artist: "T.I.", position: 3 },
+        { id: T_FEAT, artist: "Booba feat. Ryan Leslie", position: 4 },
+      ];
+      for (const credit of credits) {
+        await prisma.track.create({
+          data: {
+            id: credit.id,
+            releaseId: releaseOf(A_VERIFIED),
+            title: credit.id,
+            artist: credit.artist,
+            position: credit.position,
+          },
+        });
+      }
     });
-    expect((await service.artistIdsForTracks([])).size).toBe(0);
+
+    it("keys tracks of one uploading profile by their distinct credited artists", async () => {
+      const map = await service.artistKeysForTracks([T_BOOBA, T_TI, T_FEAT]);
+      expect(Object.fromEntries(map)).toEqual({
+        [T_BOOBA]: "name:booba",
+        [T_TI]: "name:t i",
+        // A featured guest does not make a different credited artist.
+        [T_FEAT]: "name:booba",
+      });
+    });
+
+    it("falls back to the uploader label when no credit exists, without an id key", async () => {
+      // The seeded track has no Track.artist, credits or primaryArtist, so the
+      // canonical resolution lands on the account display name (the artist id
+      // doubles as displayName in this seed) and the name key wins over `id:`.
+      const map = await service.artistKeysForTracks([trackOf(A_PLAYED)]);
+      expect(map.get(trackOf(A_PLAYED))).toBe(
+        `name:${A_PLAYED.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`,
+      );
+    });
+
+    it("skips unknown tracks and tolerates empty or duplicate input", async () => {
+      const map = await service.artistKeysForTracks([
+        T_BOOBA,
+        T_BOOBA,
+        `${TEST_PREFIX}no_such_track`,
+        "",
+      ]);
+      expect(Object.fromEntries(map)).toEqual({ [T_BOOBA]: "name:booba" });
+      expect((await service.artistKeysForTracks([])).size).toBe(0);
+    });
   });
 
   describe("countDiscoveryPicks (session exploration share)", () => {

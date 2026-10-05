@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { deriveCreatorVerificationStates } from "../trust/verification-semantics";
+import { discoveryArtistKey } from "./discovery-policy";
 import type { DiscoveryCandidate } from "./discovery-ranking.service";
 
 const DISCOVERY_PICK_REASON = "discovery_pick";
@@ -48,18 +49,17 @@ export class DiscoveryPolicyContextService {
   }
 
   /**
-   * Artist id per track id, in one batched query. Session mode of the policy
-   * stage needs the artists of the prior session tracks (diversity cap per 10
-   * session tracks); unknown track ids are simply absent from the map.
+   * Diversity-cap key (`discoveryArtistKey`) per track id, in one batched
+   * query. Session mode of the policy stage needs the credited artists of the
+   * prior session tracks (diversity cap per 10 session tracks); it reuses
+   * `loadTrackCandidates`, so the session window and the page resolve the
+   * credited artist identically. Unknown track ids are simply absent.
    */
-  async artistIdsForTracks(trackIds: string[]): Promise<Map<string, string>> {
-    const ids = [...new Set(trackIds.filter(Boolean))];
-    if (ids.length === 0) return new Map();
-    const tracks = await prisma.track.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, release: { select: { artistId: true } } },
-    });
-    return new Map(tracks.map((track) => [track.id, track.release.artistId]));
+  async artistKeysForTracks(trackIds: string[]): Promise<Map<string, string>> {
+    const candidates = await this.loadTrackCandidates(trackIds);
+    return new Map(
+      [...candidates].map(([id, candidate]) => [id, discoveryArtistKey(candidate)]),
+    );
   }
 
   /**

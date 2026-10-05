@@ -202,8 +202,9 @@ every surface calls and tests assert:
 3. Reserve the exploration share (default 20% of a session or page, at least
    one track) for verified human artists the listener has never played,
    chosen by taste fit.
-4. Apply diversity caps (at most two tracks per artist per page or per 10
-   session tracks). A listening session that would otherwise dead-end (#2056)
+4. Apply diversity caps (at most two tracks per credited artist per page or
+   per 10 session tracks; the uploading profile is only a fallback identity,
+   #2092). A listening session that would otherwise dead-end (#2056)
    relaxes only the 10-track session window, never the per-page cap; then,
    mid session and only once every matching track has played, it widens to
    the newest catalog-wide tracks. A request nothing in the catalog matches is

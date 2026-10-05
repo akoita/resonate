@@ -203,7 +203,9 @@ export class ToolRegistry {
       },
       include: {
         // `artistId` and `moods` feed the shared discovery policy stage
-        // (exploration + diversity) and intent matching in the selector.
+        // (exploration + diversity) and intent matching in the selector;
+        // `primaryArtist` and the uploader label let it resolve the credited
+        // artist the diversity cap keys on.
         release: {
           select: {
             title: true,
@@ -211,6 +213,8 @@ export class ToolRegistry {
             moods: true,
             artistId: true,
             artworkUrl: true,
+            primaryArtist: true,
+            artist: { select: { displayName: true } },
           },
         },
         stems: {

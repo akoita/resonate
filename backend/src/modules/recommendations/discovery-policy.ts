@@ -30,8 +30,9 @@ import { hasSignal, TasteMemoryPolicy } from "./taste_memory.service";
  *     played, chosen by taste fit (highest ranked score). With no eligible
  *     candidate the slots fall back to normal ranked order; ineligible items
  *     are never labeled as discovery.
- *  4. Diversity cap: at most two tracks per artist per page, or per 10 session
- *     tracks when the caller passes the artists of the prior session tracks.
+ *  4. Diversity cap: at most two tracks per credited artist per page, or per 10
+ *     session tracks when the caller passes the artists of the prior session
+ *     tracks.
  *  5. Every returned item carries a non-empty categorical explanation and a
  *     `reasonCode` from the shared vocabulary (`discovery-explanations.ts`).
  *  6. No input through which ranking could be bought. This module reads no
@@ -43,7 +44,7 @@ import { hasSignal, TasteMemoryPolicy } from "./taste_memory.service";
 export const DISCOVERY_POLICY_DEFAULTS = {
   /** Share of the page/session reserved for exploration (rule 3). */
   explorationShare: 0.2,
-  /** Maximum tracks per artist per page / per 10 session tracks (rule 4). */
+  /** Maximum tracks per credited artist per page / per 10 session tracks (rule 4). */
   maxPerArtist: 2,
   /** Session window for the diversity cap: prior tracks considered + 1. */
   sessionWindow: 10,
@@ -109,17 +110,21 @@ export interface DiscoveryPolicyResult<T extends RankedDiscoveryCandidate> {
 }
 
 /**
- * Identity used for the diversity cap. `artistId` when known; otherwise the
- * normalized credited name; otherwise the track id, so an unknown artist never
- * collides with another track. Prefixed so ids, names and track ids cannot
- * collide with each other.
+ * Identity used for the diversity cap: the CREDITED artist, i.e. the performer
+ * the listener hears. That is the normalized credited name (#1492); when no
+ * name is known, `artistId`; otherwise the track id, so an unknown artist never
+ * collides with another track. `artistId` is deliberately not first: it is the
+ * uploading profile, and one profile can carry releases credited to many
+ * different performers (a label, a manager or an aggregator account), which
+ * would collapse them all into one "artist" and starve the page. Prefixed so
+ * names, ids and track ids cannot collide with each other.
  */
 export function discoveryArtistKey(
   candidate: Pick<DiscoveryCandidate, "id" | "artistId" | "artist" | "release">,
 ): string {
-  if (candidate.artistId) return `id:${candidate.artistId}`;
-  const name = normalizeName(candidate.release?.artistDisplayName ?? candidate.artist);
+  const name = creditedArtistKey(candidate.release?.artistDisplayName ?? candidate.artist);
   if (name) return `name:${name}`;
+  if (candidate.artistId) return `id:${candidate.artistId}`;
   return `track:${candidate.id}`;
 }
 
@@ -419,6 +424,20 @@ function withGuaranteedReason<T extends RankedDiscoveryCandidate>(candidate: T):
   };
 }
 
-function normalizeName(value?: string | null): string {
-  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+/**
+ * Credited-name key: accents folded, case-insensitive, the featured-guest
+ * segment dropped ("Ryan Leslie Feat. Booba" and "Drake (ft. Rihanna)" are
+ * Ryan Leslie and Drake), and punctuation collapsed so "T.I" and "T.I." match.
+ * `feat`/`ft` must be whole words followed by "." or whitespace, and
+ * `featuring` a whole word, so names such as "Ftown" or "Feature Band" are kept.
+ */
+function creditedArtistKey(value?: string | null): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[(\[]?\s*\b(?:(?:feat|ft)(?=[.\s])|featuring\b).*$/u, "")
+    .replace(/&/g, " and ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 }

@@ -563,6 +563,73 @@ describe("discovery policy (ADR-TE-2)", () => {
       expect(discoveryArtistKey(unknown[0])).not.toBe(discoveryArtistKey(unknown[1]));
     });
 
+    it("does not collapse distinct credited artists uploaded by one profile (#2092)", () => {
+      const list = ["T.I.", "Booba", "B.o.B", "Fabolous"].map((artist, index) =>
+        ranked(`t${index}`, 90 - index, { artistId: "uploader", artist }),
+      );
+      const result = applyDiscoveryPolicy(list, { limit: 5 });
+      expect(ids(result.items)).toEqual(["t0", "t1", "t2", "t3"]);
+      expect(result.dropped.diversity).toBe(0);
+    });
+
+    it("caps one credited artist across different uploading profiles", () => {
+      const list = [
+        ranked("c1", 90, { artistId: "P1", artist: "Drake" }),
+        ranked("c2", 80, { artistId: "P2", release: { artistDisplayName: "Drake" } }),
+        ranked("c3", 70, { artistId: "P3", artist: "drake" }),
+        ranked("other", 60, { artistId: "P1", artist: "Rihanna" }),
+      ];
+      const result = applyDiscoveryPolicy(list, { limit: 5 });
+      expect(ids(result.items)).toEqual(["c1", "c2", "other"]);
+      expect(result.dropped.diversity).toBe(1);
+    });
+
+    it("prefers the credited name over the artist id and falls back in order", () => {
+      expect(discoveryArtistKey({ id: "t", artistId: "A", artist: "Booba" })).toBe(
+        "name:booba",
+      );
+      expect(
+        discoveryArtistKey({
+          id: "t",
+          artistId: "A",
+          artist: "Track Credit",
+          release: { artistDisplayName: "Release Credit" },
+        }),
+      ).toBe("name:release credit");
+      expect(discoveryArtistKey({ id: "t", artistId: "A" })).toBe("id:A");
+      expect(discoveryArtistKey({ id: "t", artistId: "A", artist: " . " })).toBe("id:A");
+      expect(discoveryArtistKey({ id: "t", artistId: null })).toBe("track:t");
+    });
+
+    it("normalizes credited names: featuring segments, punctuation, accents", () => {
+      const key = (artist: string) => discoveryArtistKey({ id: "t", artist });
+      expect(key("Ryan Leslie Feat. Booba")).toBe(key("Ryan Leslie"));
+      expect(key("Drake (ft. Rihanna)")).toBe("name:drake");
+      expect(key("Drake [feat. Rihanna]")).toBe("name:drake");
+      expect(key("Drake featuring Rihanna")).toBe("name:drake");
+      expect(key("T.I")).toBe(key("T.I."));
+      expect(key("B.o.B")).toBe("name:b o b");
+      expect(key("Beyoncé")).toBe(key("Beyonce"));
+      expect(key("Simon & Garfunkel")).toBe("name:simon and garfunkel");
+      // Whole words only: names that merely start with the featuring tokens stay.
+      expect(key("Ftown")).toBe("name:ftown");
+      expect(key("Featurette")).toBe("name:featurette");
+      expect(key("Feature Band")).toBe("name:feature band");
+      expect(key("Soft Machine")).toBe("name:soft machine");
+    });
+
+    it("session mode blocks only the credited artist already heard", () => {
+      const list = [
+        ranked("heard", 90, { artistId: "uploader", artist: "Booba" }),
+        ranked("other", 80, { artistId: "uploader", artist: "Fabolous" }),
+      ];
+      const result = applyDiscoveryPolicy(list, {
+        limit: 2,
+        priorSessionArtistKeys: ["name:booba", "name:booba", "name:t i"],
+      });
+      expect(ids(result.items)).toEqual(["other"]);
+    });
+
     it("counts exploration picks toward the cap", () => {
       const list = [
         ranked("fam-1", 90, { artistId: "V" }),

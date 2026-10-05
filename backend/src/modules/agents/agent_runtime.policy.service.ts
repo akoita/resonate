@@ -17,6 +17,7 @@ import { RecommendationsService } from "../recommendations/recommendations.servi
 import { TasteMemoryService } from "../recommendations/taste_memory.service";
 import { FirstListenerDiscoveryService } from "../recommendations/first_listener_discovery.service";
 import { FIRST_LISTENER_CANDIDATE_LIMIT } from "../recommendations/first_listener.contracts";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { AgentLearningService } from "./agent_learning.service";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import {
@@ -132,10 +133,10 @@ export class AgentRuntimePolicyService {
       return true;
     });
 
-    const [taste, candidatesById, sessionArtists] = await Promise.all([
+    const [taste, candidatesById, sessionArtistKeys] = await Promise.all([
       this.tasteMemory?.getPolicy(userId),
       policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId)),
-      policyContext.artistIdsForTracks(input.recentTrackIds),
+      policyContext.artistKeysForTracks(input.recentTrackIds),
     ]);
 
     const originalQueries = buildAgentRecommendationQueries(input.preferences)
@@ -228,8 +229,9 @@ export class AgentRuntimePolicyService {
     // recentTrackIds is newest-first; the policy wants chronological order.
     const priorSessionArtistKeys = [...input.recentTrackIds]
       .reverse()
-      .map((id) =>
-        discoveryArtistKey({ id, artistId: sessionArtists.get(id) ?? null }),
+      .map(
+        (id) =>
+          sessionArtistKeys.get(id) ?? discoveryArtistKey({ id, artistId: null }),
       );
 
     const exploration = await this.loadExplorationContext(input, known, candidatesById);
@@ -455,6 +457,14 @@ export class AgentRuntimePolicyService {
         const key = discoveryArtistKey({
           id: track.id,
           artistId: track.release?.artistId ?? null,
+          artist: track.artist ?? null,
+          release: {
+            artistDisplayName: resolveCreditedArtistName({
+              trackArtist: track.artist ?? null,
+              primaryArtist: track.release?.primaryArtist ?? null,
+              accountDisplayName: track.release?.artist?.displayName ?? null,
+            }),
+          },
         });
         return (artistCounts.get(key) ?? 0) < DISCOVERY_POLICY_DEFAULTS.maxPerArtist;
       });

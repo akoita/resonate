@@ -84,7 +84,8 @@ function serviceFor(
   catalog: DiscoveryCandidate[],
   options: {
     policy?: TasteMemoryPolicy;
-    sessionArtists?: Record<string, string>;
+    /** Diversity-cap key per prior session track (`discoveryArtistKey` shape). */
+    sessionArtistKeys?: Record<string, string>;
     profileWeights?: Record<string, number>;
     verifiedArtists?: string[];
     playedArtists?: string[];
@@ -94,6 +95,8 @@ function serviceFor(
     selectorPicks?: Array<{
       id: string;
       artistId: string;
+      /** Track.artist credit of the selector's pick. */
+      artist?: string;
       reasonCode: string;
       releaseId?: string;
       firstListenerEligible?: boolean;
@@ -124,9 +127,9 @@ function serviceFor(
     loadTrackCandidates: jest
       .fn()
       .mockResolvedValue(new Map(catalog.map((candidate) => [candidate.id, candidate]))),
-    artistIdsForTracks: jest
+    artistKeysForTracks: jest
       .fn()
-      .mockResolvedValue(new Map(Object.entries(options.sessionArtists ?? {}))),
+      .mockResolvedValue(new Map(Object.entries(options.sessionArtistKeys ?? {}))),
     loadContext: jest.fn().mockResolvedValue({
       verifiedHumanArtistIds: new Set(options.verifiedArtists ?? []),
       playedArtistIds: new Set(options.playedArtists ?? []),
@@ -140,6 +143,7 @@ function serviceFor(
     select: jest.fn().mockResolvedValue({
       selected: (options.selectorPicks ?? []).map((entry) => ({
         id: entry.id,
+        artist: entry.artist,
         releaseId: entry.releaseId,
         firstListenerEligible: entry.firstListenerEligible ?? false,
         release: { artistId: entry.artistId, genre: entry.genre, moods: [] },
@@ -251,16 +255,46 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
     expect(result.policy?.dropped.diversity).toBe(1);
   });
 
+  it("keeps picks from one uploading profile that are credited to different artists (#2092)", async () => {
+    const artists = ["T.I.", "Booba", "B.o.B", "Fabolous", "Drake"];
+    const { service } = serviceFor(
+      artists.map((artist, index) =>
+        track(`t${index}`, { artistId: "uploader", artist }),
+      ),
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: artists.map((_, index) => pick(`t${index}`)),
+    });
+    expect(ids(result)).toEqual(["t0", "t1", "t2", "t3", "t4"]);
+    expect(result.policy?.dropped.diversity).toBe(0);
+  });
+
+  it("counts the session's earlier credited artists toward the cap, not the uploader", async () => {
+    const { service } = serviceFor(
+      [
+        track("heard", { artistId: "uploader", artist: "Booba" }),
+        track("fresh", { artistId: "uploader", artist: "Fabolous" }),
+      ],
+      { sessionArtistKeys: { "s-1": "name:booba", "s-2": "name:booba" } },
+    );
+    const result = await service.apply(
+      baseInput({ recentTrackIds: ["s-1", "s-2"] }),
+      { status: "approved", picks: [pick("heard"), pick("fresh")] },
+    );
+    expect(ids(result)).toEqual(["fresh"]);
+  });
+
   it("counts the session's earlier artists toward the cap", async () => {
     const { service, policyContext } = serviceFor(
       [track("a-new", { artistId: "A" }), track("b-new", { artistId: "B" })],
-      { sessionArtists: { "s-1": "A", "s-2": "A" } },
+      { sessionArtistKeys: { "s-1": "id:A", "s-2": "id:A" } },
     );
     const result = await service.apply(
       baseInput({ recentTrackIds: ["s-1", "s-2"] }),
       { status: "approved", picks: [pick("a-new"), pick("b-new")] },
     );
-    expect(policyContext.artistIdsForTracks).toHaveBeenCalledWith(["s-1", "s-2"]);
+    expect(policyContext.artistKeysForTracks).toHaveBeenCalledWith(["s-1", "s-2"]);
     expect(ids(result)).toEqual(["b-new"]);
   });
 
@@ -667,7 +701,7 @@ describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", (
 
   it("does not swap once the session already had its share of discovery picks", async () => {
     const { service, selector } = serviceFor([track("a"), track("b")], {
-      sessionArtists: { "s-1": "p", "s-2": "q" },
+      sessionArtistKeys: { "s-1": "id:p", "s-2": "id:q" },
       priorDiscoveryPicks: 1,
       selectorPicks: [{ id: "discover", artistId: "v", reasonCode: "discovery_pick" }],
     });
@@ -710,7 +744,7 @@ describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", (
     const { service } = serviceFor(
       [track("a1", { artistId: "A" }), track("a2", { artistId: "A" }), track("b1", { artistId: "B" })],
       {
-        sessionArtists: { "s-1": "V" },
+        sessionArtistKeys: { "s-1": "id:V" },
         selectorPicks: [
           { id: "a1", artistId: "A", reasonCode: "discovery_pick" },
           { id: "v2", artistId: "A", reasonCode: "discovery_pick" },
@@ -724,6 +758,30 @@ describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", (
     // a1 is already picked; v2's artist already has a1 and a2 in the batch.
     expect(ids(result)).toEqual(["a1", "a2", "b1"]);
     expect(result.policy?.exploration?.injected).toBe(false);
+  });
+
+  it("applies the artist cap to a selector discovery pick by credited artist (#2092)", async () => {
+    const { service } = serviceFor(
+      [
+        track("x1", { artistId: "U", artist: "Booba" }),
+        track("x2", { artistId: "U", artist: "Booba" }),
+        track("y", { artistId: "Y" }),
+      ],
+      {
+        selectorPicks: [
+          // Another profile, but the same credited artist already picked twice.
+          { id: "d1", artistId: "U2", artist: "Booba", reasonCode: "discovery_pick" },
+          // Same uploading profile, a different credited artist: allowed.
+          { id: "d2", artistId: "U", artist: "Fabolous", reasonCode: "discovery_pick" },
+        ],
+      },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("x1"), pick("x2"), pick("y")],
+    });
+    expect(ids(result)).toEqual(["x1", "x2", "d2"]);
+    expect(result.policy?.exploration?.injected).toBe(true);
   });
 
   it("keeps the model's picks when the selector has no discovery pick or fails", async () => {

@@ -26,6 +26,8 @@ type Item = {
     title?: string;
     moods?: string[];
     artistId?: string;
+    primaryArtist?: string | null;
+    artist?: { displayName: string } | null;
   };
 };
 
@@ -70,7 +72,7 @@ function selectorWith(
     policy?: TasteMemoryPolicy;
     verified?: string[];
     played?: string[];
-    sessionArtists?: Record<string, string>;
+    sessionArtistKeys?: Record<string, string>;
     /** Prior discovery picks; `"error"` makes the count lookup throw. */
     priorDiscoveryPicks?: number | "error";
     profileWeights?: Record<string, number>;
@@ -87,15 +89,15 @@ function selectorWith(
         canUseTasteForSocialMatching: jest.fn().mockResolvedValue(false),
       }
     : undefined;
-  const policyContext = options.verified || options.sessionArtists || options.played
+  const policyContext = options.verified || options.sessionArtistKeys || options.played
     ? {
         loadContext: jest.fn().mockResolvedValue({
           verifiedHumanArtistIds: new Set(options.verified ?? []),
           playedArtistIds: new Set(options.played ?? []),
         }),
-        artistIdsForTracks: jest
+        artistKeysForTracks: jest
           .fn()
-          .mockResolvedValue(new Map(Object.entries(options.sessionArtists ?? {}))),
+          .mockResolvedValue(new Map(Object.entries(options.sessionArtistKeys ?? {}))),
         countDiscoveryPicks:
           options.priorDiscoveryPicks === "error"
             ? jest.fn().mockRejectedValue(new Error("db down"))
@@ -255,6 +257,26 @@ describe("AI DJ selector on the shared core (#1456 WS-9)", () => {
       expect(result.policy?.dropped.diversity).toBe(1);
     });
 
+    it("keys the cap on the credited artist, not the uploading profile (#2092)", async () => {
+      const { selector } = selectorWith([
+        item("t1", { artist: "T.I." }, { artistId: "U" }),
+        item("t2", { artist: "T.I" }, { artistId: "U" }),
+        item("t3", { artist: "T.I. feat. Rihanna" }, { artistId: "U" }),
+        // No Track.artist: the release's primaryArtist is the credit, so it
+        // is still not the uploader label.
+        item("b1", {}, { artistId: "U", primaryArtist: "Booba", artist: { displayName: "Label" } }),
+        item("b2", {}, { artistId: "U", primaryArtist: "Booba", artist: { displayName: "Label" } }),
+        item("f1", { artist: "Fabolous" }, { artistId: "U" }),
+      ]);
+      const result = await selector.select({
+        queries: ["House"],
+        recentTrackIds: [],
+        limit: 6,
+      });
+      expect(ids(result.selected).sort()).toEqual(["b1", "b2", "f1", "t1", "t2"]);
+      expect(result.policy?.dropped.diversity).toBe(1);
+    });
+
     it("counts the artists of the session so far toward the cap", async () => {
       const { selector, policyContext } = selectorWith(
         [
@@ -262,7 +284,7 @@ describe("AI DJ selector on the shared core (#1456 WS-9)", () => {
           item("b-new", {}, { artistId: "B" }),
         ],
         // Two earlier session tracks were already artist A (newest first).
-        { verified: [], sessionArtists: { "s-1": "A", "s-2": "A" } },
+        { verified: [], sessionArtistKeys: { "s-1": "id:A", "s-2": "id:A" } },
       );
       const result = await selector.select({
         userId: "u1",
@@ -270,7 +292,7 @@ describe("AI DJ selector on the shared core (#1456 WS-9)", () => {
         recentTrackIds: ["s-1", "s-2"],
         limit: 2,
       });
-      expect(policyContext?.artistIdsForTracks).toHaveBeenCalledWith(["s-1", "s-2"]);
+      expect(policyContext?.artistKeysForTracks).toHaveBeenCalledWith(["s-1", "s-2"]);
       expect(ids(result.selected)).toEqual(["b-new"]);
     });
 

@@ -588,6 +588,32 @@ retrieval itself now understands meaning.
   `sessions.integration.spec.ts`, `discovery_ranking_session_request.spec.ts`,
   `agent_session_request.spec.ts`.
 
+## Diversity cap counts the credited artist (#2092)
+
+Rule 4 (at most two tracks per artist per page, or per 10 session tracks) used
+to identify "the artist" by `Release.artistId`, the uploading profile. One
+profile can carry releases credited to many performers (a label, a manager or
+an aggregator account), so a Hip-Hop session over seven rap tracks uploaded
+from one profile kept only two picks, and Next Pick then found nothing.
+
+- `discoveryArtistKey` now keys on the credited artist (`name:`), the same name
+  the UI shows (#1492: `Track.artist`, main credits, `primaryArtist`, then the
+  account label). The key folds accents and case, drops a featured-guest
+  segment ("Ryan Leslie Feat. Booba" counts as Ryan Leslie) and collapses
+  punctuation ("T.I" equals "T.I."). `artistId` (`id:`) is only the fallback
+  when no name resolves, then the track id.
+- The prior-session window uses the same resolution
+  (`DiscoveryPolicyContextService.artistKeysForTracks`, built on
+  `loadTrackCandidates`), and so does the runtime discovery swap; `catalog.search`
+  candidates now carry `release.primaryArtist` and the uploader label.
+- The same rule applies to Home rails, which already passed the credited name.
+- Exploration (rule 3: verified human artists, played artists) still uses the
+  account identity.
+- Tests: `discovery_policy.spec.ts`, `agent_runtime_policy.spec.ts`,
+  `agent_selector_fallback.spec.ts`, `agent_selector_unification.spec.ts`,
+  `home_feed_rail_policy.spec.ts`,
+  `discovery_policy_context.integration.spec.ts`.
+
 ## Unified Ranking Core (#1448 WS-1)
 
 Since Sprint 8, the AI DJ and the Home feed rank with **one shared brain**:
