@@ -100,3 +100,13 @@ export function pseudonymousAnalyticsActorId(userId?: string | null) {
 
   return `user_${digest}`;
 }
+
+/**
+ * Every id a listener's analytics rows may carry: server-side producers write
+ * the raw (or lowercased) user id, browser telemetry the pseudonymous one.
+ */
+export function analyticsActorIdCandidates(userId: string): string[] {
+  return [
+    ...new Set([userId, userId.toLowerCase(), pseudonymousAnalyticsActorId(userId)]),
+  ].filter((value): value is string => Boolean(value));
+}

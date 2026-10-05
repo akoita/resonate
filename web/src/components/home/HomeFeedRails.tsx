@@ -29,6 +29,12 @@ const RAIL_KICKERS: Record<HomeFeedRail["kind"], { label: string; tone: ShelfTon
   catalog_signal: { label: "Catalog signal", tone: "tertiary" },
 };
 
+const RAIL_ACTIONS: Partial<Record<HomeFeedRail["kind"], { href: string; label: string }>> = {
+  because_genre: { href: "#ai-dj", label: "Start an AI DJ session" },
+  // #2100: the cold rail points at the one place a listener declares taste.
+  catalog_signal: { href: "/settings?section=taste", label: "Tell us your taste" },
+};
+
 function reasonLabel(item: HomeFeedItem): string {
   const meaningful = item.reasons.filter(
     (reason) => reason && !reason.startsWith("downranked:"),
@@ -70,8 +76,8 @@ export function HomeFeedRails({
             <span className="ng-kicker ng-kicker--violet">Personalized picks</span>
             <h3 className="ng-section-title">Your feed is warming up</h3>
             <p className="ng-shelf__description">
-              Nothing to rank honestly yet — play a few tracks or save a genre and
-              this page starts working for you.
+              Nothing to rank honestly yet — play a few tracks or tell us what you
+              like in Taste Memory and this page starts working for you.
             </p>
           </div>
         </header>
@@ -90,7 +96,7 @@ export function HomeFeedRails({
             kickerTone={kicker.tone}
             title={rail.title}
             description={rail.explanation}
-            action={rail.kind === "because_genre" ? { href: "#ai-dj", label: "Start an AI DJ session" } : undefined}
+            action={RAIL_ACTIONS[rail.kind]}
             railKind={rail.kind}
             itemWidth={196}
           >

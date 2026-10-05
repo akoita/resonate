@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { analyticsActorIdCandidates } from "../analytics/analytics_identity";
 import { DiscoveryPopularityService } from "../catalog/discovery-popularity.service";
 import { minimumAudienceFromEnv } from "../catalog/discovery-popularity.math";
 import { RecommendationsService } from "./recommendations.service";
@@ -231,11 +232,14 @@ export class HomeFeedService {
 
   async getHomeFeed(userId: string) {
     const requestId = randomUUID();
+    // Played artists honour the taste policy (reset, AI DJ training opt-out),
+    // so they chain off the same policy load without serialising the others.
+    const tastePolicyPromise = this.loadTastePolicy(userId);
     const [preferences, served, playedArtistIds, tastePolicy] = await Promise.all([
       this.recommendationsService.getPreferences(userId),
       this.recommendationsService.getServedHistory(userId),
-      this.artistsThePlayerPlays(userId),
-      this.loadTastePolicy(userId),
+      tastePolicyPromise.then((policy) => this.artistsThePlayerPlays(userId, policy)),
+      tastePolicyPromise,
     ]);
     // Every rail passes the policy stage with the same taste policy.
     const applyCaps = (
@@ -643,7 +647,7 @@ export class HomeFeedService {
       kind: "catalog_signal",
       title: "Catalog signal",
       explanation:
-        "We don't know your taste yet — this is what listeners across Resonate are playing. Save a genre or press play and this page gets personal.",
+        "We don't know your taste yet — this is what listeners across Resonate are playing. Play a few tracks or tell us what you like in Taste Memory, and this page gets personal.",
       items: selected,
     };
   }
@@ -689,20 +693,36 @@ export class HomeFeedService {
   /**
    * Distinct artists from the listener's own playback facts. Used only to
    * SELECT catalog rows server-side — item history never leaves the backend.
+   * Browser playback rows carry the pseudonymous actor id, so every actor id
+   * form is matched (#2100). Plays before a taste reset, and AI DJ session
+   * plays when the listener opted out of playback training, do not count;
+   * without a policy every play counts.
    */
-  private async artistsThePlayerPlays(userId: string): Promise<string[]> {
+  private async artistsThePlayerPlays(
+    userId: string,
+    tastePolicy?: TasteMemoryPolicy,
+  ): Promise<string[]> {
     const events = await prisma.analyticsEvent.findMany({
       where: {
         eventName: { in: ["playback.completed", "playback.started"] },
-        actorId: userId,
+        actorId: { in: analyticsActorIdCandidates(userId) },
+        ...(tastePolicy?.resetAt ? { occurredAt: { gt: tastePolicy.resetAt } } : {}),
       },
       select: { payload: true },
       orderBy: { occurredAt: "desc" },
       take: 300,
     });
     const trackIds = new Set<string>();
+    const excludeAgentPlays = tastePolicy?.settings.agentPlaybackTrainingEnabled === false;
     for (const event of events) {
-      const trackId = (event.payload as Record<string, unknown> | null)?.trackId;
+      const payload = event.payload as Record<string, unknown> | null;
+      if (
+        excludeAgentPlays &&
+        (payload?.agentOriginated === true || typeof payload?.agentSessionId === "string")
+      ) {
+        continue;
+      }
+      const trackId = payload?.trackId;
       if (typeof trackId === "string") trackIds.add(trackId);
     }
     if (!trackIds.size) return [];

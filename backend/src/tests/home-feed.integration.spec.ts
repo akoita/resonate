@@ -20,12 +20,15 @@
  *       carries a vocabulary reasonCode
  *   (h) a listener whose only taste is a declared boost (#1961) is not cold
  *       (#2006)
+ *   (i) browser playback rows (pseudonymous actor id) count as listening, and
+ *       a taste reset or the AI DJ training opt-out stops them counting (#2100)
  *
  * Run: npx jest --runInBand --forceExit --config jest.integration.config.js \
  *        --testPathPattern='home-feed'
  */
 
 import { prisma } from "../db/prisma";
+import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
 import { EventBus } from "../modules/shared/event_bus";
 import { DiscoveryPopularityService } from "../modules/catalog/discovery-popularity.service";
 import { DiscoveryRankingService } from "../modules/recommendations/discovery-ranking.service";
@@ -39,6 +42,9 @@ const GENRE = `${TEST_PREFIX}amapiano`; // unique genre isolates from parallel s
 const WARM_USER = `${TEST_PREFIX}warm_user`;
 const COLD_USER = `${TEST_PREFIX}cold_user`;
 const BOOST_USER = `${TEST_PREFIX}boost_user`; // only a declared boost (#2006)
+const PLAYS_USER = `${TEST_PREFIX}plays_user`; // only a browser play (#2100)
+const RESET_USER = `${TEST_PREFIX}reset_user`; // browser play, then taste reset
+const AGENT_USER = `${TEST_PREFIX}agent_user`; // only AI DJ session plays
 const TASTE_ARTIST = `${TEST_PREFIX}taste_artist`; // genre-matching catalog
 const PLAYED_ARTIST = `${TEST_PREFIX}played_artist`; // artist the warm user plays
 const FRESH_ARTIST = `${TEST_PREFIX}fresh_artist`; // low-data exploration source
@@ -74,6 +80,9 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
         { id: WARM_USER, email: `${WARM_USER}@test.resonate` },
         { id: COLD_USER, email: `${COLD_USER}@test.resonate` },
         { id: BOOST_USER, email: `${BOOST_USER}@test.resonate` },
+        { id: PLAYS_USER, email: `${PLAYS_USER}@test.resonate` },
+        { id: RESET_USER, email: `${RESET_USER}@test.resonate` },
+        { id: AGENT_USER, email: `${AGENT_USER}@test.resonate` },
       ],
     });
     await prisma.artist.createMany({
@@ -156,7 +165,8 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
         producer: "backend",
         environment: "test",
         privacyTier: "internal",
-        actorId: WARM_USER,
+        // Browser playback routes store the pseudonymous id, never the raw one.
+        actorId: pseudonymousAnalyticsActorId(WARM_USER),
         payload: { trackId: `${TEST_PREFIX}played_track_${n}` },
         envelope: {},
       })),
@@ -168,6 +178,9 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
   });
 
   afterAll(async () => {
+    await prisma.listenerTasteMemorySettings.deleteMany({
+      where: { userId: { startsWith: TEST_PREFIX } },
+    });
     await prisma.listenerTasteSignalControl.deleteMany({
       where: { userId: { startsWith: TEST_PREFIX } },
     });
@@ -401,6 +414,59 @@ describe("Home feed v2 composition (#1454 WS-7)", () => {
     await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: BOOST_USER } });
     const after = await homeFeed.getHomeFeed(BOOST_USER);
     expect(after.cold).toBe(true);
+  });
+
+  /** A browser-style playback row: pseudonymous actor id, as production writes it. */
+  const browserPlay = (
+    eventId: string,
+    userId: string,
+    payload: Record<string, unknown> = {},
+  ) => ({
+    eventId: `${TEST_PREFIX}${eventId}`,
+    eventName: "playback.started",
+    eventVersion: 1,
+    occurredAt: new Date(),
+    receivedAt: new Date(),
+    producer: "backend",
+    environment: "test",
+    privacyTier: "pseudonymous",
+    actorId: pseudonymousAnalyticsActorId(userId),
+    payload: { trackId: `${TEST_PREFIX}played_track_1`, ...payload },
+    envelope: {},
+  });
+
+  it("a browser play alone lifts a listener out of the cold-start rail (#2100)", async () => {
+    await prisma.analyticsEvent.create({ data: browserPlay("plays_evt", PLAYS_USER) });
+    const { homeFeed } = newService();
+    const feed = await homeFeed.getHomeFeed(PLAYS_USER);
+    expect(feed.cold).toBe(false);
+    const kinds = feed.rails.map((rail) => rail.kind);
+    expect(kinds).not.toContain("catalog_signal");
+    expect(kinds).toContain("new_from_artists");
+  });
+
+  it("a taste reset stops earlier plays counting as taste (#2100)", async () => {
+    await prisma.analyticsEvent.create({ data: browserPlay("reset_evt", RESET_USER) });
+    const { homeFeed, tasteMemory } = newService();
+    expect((await homeFeed.getHomeFeed(RESET_USER)).cold).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await tasteMemory.resetTasteMemory(RESET_USER);
+    expect((await homeFeed.getHomeFeed(RESET_USER)).cold).toBe(true);
+  });
+
+  it("AI DJ session plays count only while playback training is enabled (#2100)", async () => {
+    await prisma.analyticsEvent.create({
+      data: browserPlay("agent_evt", AGENT_USER, { agentSessionId: `${TEST_PREFIX}session` }),
+    });
+    const { homeFeed, tasteMemory } = newService();
+    expect((await homeFeed.getHomeFeed(AGENT_USER)).cold).toBe(false);
+
+    await tasteMemory.updateSettings(AGENT_USER, { agentPlaybackTrainingEnabled: false });
+    expect((await homeFeed.getHomeFeed(AGENT_USER)).cold).toBe(true);
+
+    await tasteMemory.updateSettings(AGENT_USER, { agentPlaybackTrainingEnabled: true });
+    expect((await homeFeed.getHomeFeed(AGENT_USER)).cold).toBe(false);
   });
 
   it("every rail passes the policy stage: hidden artists leave, every item has a reason", async () => {

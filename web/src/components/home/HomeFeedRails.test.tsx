@@ -113,6 +113,9 @@ describe("HomeFeedRails", () => {
     );
     expect(html).toContain("Catalog signal");
     expect(html).not.toContain("Because you save");
+    // #2100: the cold rail links to where taste is declared.
+    expect(html).toContain('href="/settings?section=taste"');
+    expect(html).toContain("Tell us your taste");
   });
 
   it("shows the honest empty state when there are no rails (no catalog fallback)", () => {

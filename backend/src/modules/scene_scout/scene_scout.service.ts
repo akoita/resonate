@@ -1,7 +1,10 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
+import {
+  analyticsActorIdCandidates,
+  pseudonymousAnalyticsActorId,
+} from "../analytics/analytics_identity";
 import { normalizeAnalyticsGeoDimension } from "../analytics/analytics_event";
 import { ANALYTICS_CONSENT_POLICY_VERSION } from "../analytics/analytics_consent.service";
 import { findResonance } from "../discovery_journal/discovery_journal.service";
@@ -185,12 +188,6 @@ function cityFromEnvelope(envelope: Prisma.JsonValue): CityKey | null {
     return null;
   }
   return { citySlug: geo.citySlug, countryCode: geo.countryCode };
-}
-
-function actorKeys(userId: string) {
-  return [...new Set([userId, userId.toLowerCase(), pseudonymousAnalyticsActorId(userId)])].filter(
-    (value): value is string => Boolean(value),
-  );
 }
 
 function actorTrackCityKey(actorId: string, trackId: string, city: CityKey) {
@@ -704,7 +701,7 @@ export class SceneScoutService implements SceneScoutSource {
     const registerUser = (userId: string) => {
       const canonical = `user:${userId.toLowerCase()}`;
       canonicalByUserId.set(userId, canonical);
-      for (const alias of actorKeys(userId)) canonicalActorIds.set(alias, canonical);
+      for (const alias of analyticsActorIdCandidates(userId)) canonicalActorIds.set(alias, canonical);
       return canonical;
     };
 
