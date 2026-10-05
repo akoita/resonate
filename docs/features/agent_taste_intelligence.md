@@ -614,6 +614,29 @@ from one profile kept only two picks, and Next Pick then found nothing.
   `home_feed_rail_policy.spec.ts`,
   `discovery_policy_context.integration.spec.ts`.
 
+## Server-side selection target (#2094)
+
+With the LLM curator (ADK / Vertex), the model alone used to decide how many
+tracks a request returned. The prompt asks for up to `AGENT_TRACK_LIMIT`
+(default 5), but the same R&B & Soul request returned 2 tracks, then 5 twenty
+seconds later, and an empty or fully policy-dropped reply left the session
+with nothing.
+
+- `AgentRuntimePolicyService` (the step every LLM result passes through) now
+  tops the final picks up to `getAgentTrackLimit()` from the deterministic
+  selector, called exactly as the rule-based adapter calls it
+  (`deterministicSelectorInput`: request terms, semantic query, explicit
+  choice, the #2056 session fallback). The model's picks keep their order and
+  come first.
+- Fill-ins keep every policy rule: no repeat of a pick or session track, at
+  most two per credited artist on the page (and in the session window on a
+  strict pass), and no first-listener placement without a reservation.
+- A reply with no parsable pick (`llm_no_track_selected`) or whose picks the
+  policy all drops is topped up the same way. A request nothing in the catalog
+  matches still finds nothing (ADR-TE-4). `policy.toppedUp` counts fill-ins.
+- The AI DJ panel refreshes Session History after **Update session**
+  re-plans the queue, so the card shows the new request's picks.
+
 ## Unified Ranking Core (#1448 WS-1)
 
 Since Sprint 8, the AI DJ and the Home feed rank with **one shared brain**:

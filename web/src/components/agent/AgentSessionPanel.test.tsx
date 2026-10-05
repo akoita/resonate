@@ -661,6 +661,7 @@ describe("AgentSessionPanel", () => {
       getAgentNextPick.mockResolvedValueOnce(
         pickResponse(["n1", "n2"], { requestCoverage: { picks: 2, gaps: [{ filter: "energy", matched: 1 }] } }),
       );
+      refetchHistory.mockClear();
       await vi.advanceTimersByTimeAsync(800);
       await vi.advanceTimersByTimeAsync(0);
 
@@ -683,6 +684,8 @@ describe("AgentSessionPanel", () => {
         trackIds: ["a", "n1", "n2"],
       });
       expect(playQueue).not.toHaveBeenCalled();
+      // Session History shows the re-planned picks, not the previous request's (#2094).
+      expect(refetchHistory).toHaveBeenCalledTimes(1);
 
       render();
       expect(captured.prompt?.coverage).toEqual({ picks: 2, gaps: [{ filter: "energy", matched: 1 }] });
