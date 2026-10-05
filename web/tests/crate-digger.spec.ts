@@ -158,8 +158,11 @@ test.describe("Crate Digger (#1963)", () => {
 
     // The crate is in the list.
     await page.getByRole("link", { name: "Your crates" }).click();
-    await expect(page.getByRole("link", { name: /Friday warm-up/ })).toBeVisible();
-    await expect(page.getByText(/5 lines · Saved/)).toBeVisible();
+    const savedCard = page.getByRole("link", { name: /Friday warm-up/ });
+    await expect(savedCard).toBeVisible();
+    // The line count sits in the card's meta line; Saved is its own badge.
+    await expect(savedCard.getByText(/^5 lines · /)).toBeVisible();
+    await expect(savedCard.locator(".crates-status")).toHaveText("Saved");
   });
 
   test("a stem page's reference-track link builds a crate on arrival", async ({
