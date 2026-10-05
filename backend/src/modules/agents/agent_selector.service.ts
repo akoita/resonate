@@ -453,9 +453,9 @@ export class AgentSelectorService {
           title: track.release?.title ?? null,
           moods: track.release?.moods ?? null,
           // Credited artist (#1492), not the uploader/manager account label.
-          // catalog.search does not include release.primaryArtist / release.artist,
-          // so in practice this resolves to the Track.artist scalar; the helper
-          // still applies the canonical order for whatever fields are present.
+          // The diversity cap keys on this name, so catalog.search includes
+          // release.primaryArtist and the uploader label (last resort only):
+          // the helper applies the canonical Track.artist-first order.
           artistDisplayName: resolveCreditedArtistName({
             trackArtist: track.artist ?? null,
             primaryArtist: track.release?.primaryArtist ?? null,
@@ -702,7 +702,7 @@ export class AgentSelectorService {
   ) {
     let verifiedHumanArtistIds: ReadonlySet<string> = new Set<string>();
     let playedArtistIds: ReadonlySet<string> = new Set<string>();
-    let sessionArtists = new Map<string, string>();
+    let sessionArtistKeys = new Map<string, string>();
     // Unknown until counted: the policy then takes the share over the page
     // alone instead of inflating the reserve late in a session.
     let priorExplorationCount: number | undefined;
@@ -711,13 +711,13 @@ export class AgentSelectorService {
         const artistIds = fresh
           .map((entry) => entry.artistId)
           .filter((id): id is string => !!id);
-        const [context, artistsByTrack] = await Promise.all([
+        const [context, keysByTrack] = await Promise.all([
           this.policyContext.loadContext(input.userId, artistIds),
-          this.policyContext.artistIdsForTracks(input.recentTrackIds),
+          this.policyContext.artistKeysForTracks(input.recentTrackIds),
         ]);
         verifiedHumanArtistIds = context.verifiedHumanArtistIds;
         playedArtistIds = context.playedArtistIds;
-        sessionArtists = artistsByTrack;
+        sessionArtistKeys = keysByTrack;
       } catch (error) {
         logDegradedFallback({
           component: "discovery_policy_context",
@@ -753,8 +753,9 @@ export class AgentSelectorService {
     // recentTrackIds is newest-first; the policy wants chronological order.
     const priorSessionArtistKeys = [...input.recentTrackIds]
       .reverse()
-      .map((id) =>
-        discoveryArtistKey({ id, artistId: sessionArtists.get(id) ?? null }),
+      .map(
+        (id) =>
+          sessionArtistKeys.get(id) ?? discoveryArtistKey({ id, artistId: null }),
       );
     return {
       verifiedHumanArtistIds,

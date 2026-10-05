@@ -59,7 +59,7 @@ function hiddenGenres(genres: string[]): TasteMemoryPolicy {
 
 function selectorWith(
   catalog: Item[],
-  options: { sessionArtists?: Record<string, string>; policy?: TasteMemoryPolicy } = {},
+  options: { sessionArtistKeys?: Record<string, string>; policy?: TasteMemoryPolicy } = {},
 ) {
   const registry = catalogTool(catalog);
   const tasteMemory = options.policy
@@ -73,7 +73,7 @@ function selectorWith(
       verifiedHumanArtistIds: new Set<string>(),
       playedArtistIds: new Set<string>(),
     }),
-    artistIdsForTracks: jest.fn().mockResolvedValue(new Map(Object.entries(options.sessionArtists ?? {}))),
+    artistKeysForTracks: jest.fn().mockResolvedValue(new Map(Object.entries(options.sessionArtistKeys ?? {}))),
     countDiscoveryPicks: jest.fn().mockResolvedValue(0),
   };
   const selector = new AgentSelectorService(
@@ -138,7 +138,7 @@ describe("AI DJ selector fallback when a session runs dry (#2056)", () => {
         item("a-old-1", "House", "A"),
         item("a-old-2", "House", "A"),
       ],
-      { sessionArtists: { "a-old-1": "A", "a-old-2": "A" } },
+      { sessionArtistKeys: { "a-old-1": "id:A", "a-old-2": "id:A" } },
     );
     const input = { userId: "u1", queries: ["House"], recentTrackIds: ["a-old-1", "a-old-2"], limit: 5 };
 
@@ -149,6 +149,25 @@ describe("AI DJ selector fallback when a session runs dry (#2056)", () => {
     expect(result.selected).toHaveLength(2);
     expect(ids(result.selected).every((id) => ["a-1", "a-2", "a-3"].includes(id))).toBe(true);
     expect((result as { fallback?: string }).fallback).toBe("relaxed_artist_window");
+  });
+
+  it("does not cap distinct credited artists that share one uploading profile (#2092)", async () => {
+    const credits = ["T.I.", "Booba", "B.o.B", "Fabolous", "Drake"];
+    const { selector } = selectorWith(
+      credits.map((artist, index) =>
+        item(`h-${index}`, "House", "uploader", { artist }),
+      ),
+    );
+    const result = await selector.select({
+      userId: "u1",
+      queries: ["House"],
+      recentTrackIds: [],
+      limit: 5,
+    });
+    expect(result.selected.length).toBeGreaterThan(2);
+    expect(ids(result.selected).sort()).toEqual(
+      credits.map((_, index) => `h-${index}`).sort(),
+    );
   });
 
   it("never relaxes hidden taste, AI content or session repeats: an exhausted catalog returns nothing", async () => {

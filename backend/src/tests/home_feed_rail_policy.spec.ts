@@ -95,10 +95,11 @@ describe("Home feed rails pass the policy stage (#1456)", () => {
     const result = applyRailPolicy(
       "exploration",
       [
-        item("a1", { artistId: "same" }),
+        // The cap counts the credited artist (#2092), not the uploading profile.
+        item("a1", { artistId: "same", artist: "Same Artist" }),
         item("b1"),
-        item("a2", { artistId: "same" }),
-        item("a3", { artistId: "same" }),
+        item("a2", { artistId: "other-profile", artist: "Same Artist" }),
+        item("a3", { artistId: "same", artist: "same artist" }),
         item("c1"),
       ],
       new Set(),
