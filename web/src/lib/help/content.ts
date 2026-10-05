@@ -682,10 +682,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open Crates & Stems, stay on the Build a crate tab and describe your set.",
+              "Open Crates & Stems, stay on the Build a crate tab and describe your set. To start from an idea, tap one of the examples under the box, then edit it to fit your set.",
               "Choose how many lines you want, or leave Lines empty to use the number in your sentence, and press Build crate.",
               "Check the banner at the top of your crate. It tells you how many tracks were found out of how many you asked for, and which parts of your request held tracks back.",
               "If part of your request could not be understood, it is shown back to you word for word so nothing is silently ignored.",
+              "To remove a crate you no longer need, press the bin button on its card under Your crates and confirm. The crate and its lines are deleted, stems you already bought stay yours, and a crate cannot be deleted while a purchase from it is still going through.",
             ],
           },
           {

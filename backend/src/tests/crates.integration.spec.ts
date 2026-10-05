@@ -1251,4 +1251,178 @@ describe("CratesService (integration)", () => {
       });
     });
   });
+
+  describe("DELETE a crate", () => {
+    const WALLET = `${TEST_PREFIX}delwallet`;
+
+    afterEach(async () => {
+      await prisma.notification.deleteMany({ where: { walletAddress: WALLET } }).catch(() => {});
+    });
+
+    async function makeCrate(owner = DJ, lines = [id("t1"), id("t2")]) {
+      const crate = await prisma.crate.create({
+        data: { userId: owner, status: "draft", filters: defaultCrateFilters() as never },
+      });
+      await prisma.crateItem.createMany({
+        data: lines.map((trackId, position) => ({
+          crateId: crate.id,
+          userId: owner,
+          trackId,
+          position,
+        })),
+      });
+      return crate.id;
+    }
+
+    async function makeQuote(crateId: string, status: string, owner = DJ) {
+      const quote = await prisma.crateQuote.create({
+        data: {
+          crateId,
+          userId: owner,
+          status,
+          chainId: 31337,
+          marketplaceAddress: "0x0000000000000000000000000000000000000001",
+          buyerAddress: "0x0000000000000000000000000000000000000002",
+          expiresAt: new Date(Date.now() + 600_000),
+          quotedAtBlock: 1n,
+        },
+      });
+      await prisma.crateQuoteLine.create({
+        data: {
+          quoteId: quote.id,
+          userId: owner,
+          position: 0,
+          trackId: id("t1"),
+          stemId: id("t1_drums"),
+          stemType: "drums",
+          licenseType: "personal",
+          status: status === "settled" ? "settled" : "quoted",
+        },
+      });
+      return quote.id;
+    }
+
+    it("removes the crate with its lines, quotes, quote lines and watch matches", async () => {
+      const crateId = await makeCrate();
+      const quoteId = await makeQuote(crateId, "settled");
+      await prisma.crateWatchMatch.create({
+        data: { crateId, userId: DJ, trackId: id("t3") },
+      });
+
+      await expect(service.deleteCrate(DJ, crateId)).resolves.toBeUndefined();
+
+      expect(await prisma.crate.findUnique({ where: { id: crateId } })).toBeNull();
+      expect(await prisma.crateItem.count({ where: { crateId } })).toBe(0);
+      expect(await prisma.crateQuote.count({ where: { crateId } })).toBe(0);
+      expect(await prisma.crateQuoteLine.count({ where: { quoteId } })).toBe(0);
+      expect(await prisma.crateWatchMatch.count({ where: { crateId } })).toBe(0);
+      await expect(service.getCrate(DJ, crateId)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("keeps the request history with its crate link cleared", async () => {
+      const crateId = await makeCrate();
+      const request = await prisma.crateRequest.create({
+        data: {
+          userId: DJ,
+          crateId,
+          source: "text",
+          filters: defaultCrateFilters() as never,
+          parserStrategy: "deterministic",
+          requestedCount: 2,
+          foundCount: 2,
+        },
+      });
+
+      await service.deleteCrate(DJ, crateId);
+
+      const kept = await prisma.crateRequest.findUnique({ where: { id: request.id } });
+      expect(kept).not.toBeNull();
+      expect(kept?.crateId).toBeNull();
+    });
+
+    it("removes watch notifications linking to the crate and keeps other crates' ones", async () => {
+      const crateId = await makeCrate();
+      const otherCrateId = await makeCrate();
+      const notification = (linkedCrateId: string) => ({
+        walletAddress: WALLET,
+        type: "crate_watch_match",
+        title: "Watch match",
+        message: "A new track matches your crate.",
+        crateId: linkedCrateId,
+      });
+      await prisma.notification.createMany({
+        data: [notification(crateId), notification(otherCrateId)],
+      });
+
+      await service.deleteCrate(DJ, crateId);
+
+      const remaining = await prisma.notification.findMany({ where: { walletAddress: WALLET } });
+      expect(remaining.map((row) => row.crateId)).toEqual([otherCrateId]);
+    });
+
+    it("answers 404 for another user's crate and leaves it untouched", async () => {
+      const crateId = await makeCrate(OTHER_DJ);
+
+      await expect(service.deleteCrate(DJ, crateId)).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(await prisma.crate.count({ where: { id: crateId } })).toBe(1);
+      expect(await prisma.crateItem.count({ where: { crateId } })).toBe(2);
+    });
+
+    it("answers 404 for an unknown id", async () => {
+      await expect(service.deleteCrate(DJ, id("no_such_crate"))).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it("refuses with purchase_in_progress while a quote is submitted, deleting nothing", async () => {
+      const crateId = await makeCrate();
+      const settled = await makeQuote(crateId, "settled");
+      const submitted = await makeQuote(crateId, "submitted");
+      await prisma.notification.create({
+        data: {
+          walletAddress: WALLET,
+          type: "crate_watch_match",
+          title: "Watch match",
+          message: "A new track matches your crate.",
+          crateId,
+        },
+      });
+
+      const error = await service.deleteCrate(DJ, crateId).catch((caught) => caught);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: "purchase_in_progress",
+      });
+
+      expect(await prisma.crate.count({ where: { id: crateId } })).toBe(1);
+      expect(await prisma.crateItem.count({ where: { crateId } })).toBe(2);
+      expect(await prisma.crateQuote.count({ where: { id: { in: [settled, submitted] } } })).toBe(2);
+      expect(await prisma.notification.count({ where: { walletAddress: WALLET } })).toBe(1);
+    });
+
+    it("deletes once the quote has left submitted", async () => {
+      const crateId = await makeCrate();
+      const quoteId = await makeQuote(crateId, "submitted");
+      await expect(service.deleteCrate(DJ, crateId)).rejects.toBeInstanceOf(ConflictException);
+
+      await prisma.crateQuote.update({ where: { id: quoteId }, data: { status: "settled" } });
+      await service.deleteCrate(DJ, crateId);
+
+      expect(await prisma.crate.count({ where: { id: crateId } })).toBe(0);
+    });
+
+    it.each(["open", "settled", "partial", "failed"])(
+      "deletes a crate whose only quote is %s",
+      async (status) => {
+        const crateId = await makeCrate();
+        await makeQuote(crateId, status);
+
+        await service.deleteCrate(DJ, crateId);
+
+        expect(await prisma.crate.count({ where: { id: crateId } })).toBe(0);
+        expect(await prisma.crateQuote.count({ where: { crateId } })).toBe(0);
+      },
+    );
+  });
 });

@@ -647,6 +647,8 @@ export async function mockCrateApi(page, options = {}) {
   const patches = [];
   /** @type {Array<{ crateId: string; trackId: string }>} */
   const swaps = [];
+  /** @type {string[]} */
+  const deletions = [];
   let swapped = false;
   let nextId = 1;
   /** @type {Array<{ crateId: string; format: string | null; folder: string | null; urlHasQuery: boolean }>} */
@@ -815,6 +817,12 @@ export async function mockCrateApi(page, options = {}) {
     if (!crate) {
       return route.fulfill({ status: 404, json: { message: "Crate not found" } });
     }
+    if (request.method() === "DELETE") {
+      deletions.push(crateId);
+      crates.delete(crateId);
+      latestQuotes.delete(crateId);
+      return route.fulfill({ status: 204, body: "" });
+    }
     if (request.method() === "PATCH") {
       /** @type {{ title?: string | null; status?: string; items?: Array<{ trackId: string; locked?: boolean }>; watch?: { mode: string; expiresInDays?: number } }} */
       const body = request.postDataJSON();
@@ -860,6 +868,8 @@ export async function mockCrateApi(page, options = {}) {
   return {
     patches,
     swaps,
+    /** The id of every crate the page deleted. */
+    deletions,
     created,
     crates,
     quoteRequests,

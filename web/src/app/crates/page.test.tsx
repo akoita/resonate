@@ -22,6 +22,7 @@ vi.mock("../../components/marketplace/MarketplaceBrowse", () => ({
 }));
 vi.mock("../../lib/api", () => ({
   createCrateRequest: vi.fn(),
+  deleteCrate: vi.fn(),
   listCrates: vi.fn(),
 }));
 
@@ -67,6 +68,22 @@ describe("/crates tabs (#2032)", () => {
     expect(html).toContain("Your crates");
     expect(html).not.toContain('data-testid="marketplace-browse"');
     expect(html).not.toContain("crates-page--wide");
+  });
+
+  it("greets the build tab with an eyebrow and example prompts", () => {
+    const html = render();
+
+    expect(html).toContain('<p class="crates-eyebrow">Crate Digger</p>');
+    for (const example of [
+      "Six dark techno rollers at 128-132 BPM with drum stems",
+      "Ten warm disco and nu-disco tracks around 118 BPM",
+      "Four afro house tracks in 8A with vocal stems, under $15 each",
+    ]) {
+      expect(html).toMatch(
+        new RegExp(`<button type="button" class="crates-example"[^>]*>${example.replace("$", "\\$")}</button>`),
+      );
+    }
+    expect(html.match(/class="crates-example"/g)).toHaveLength(3);
   });
 
   it("treats ?tab=build like no tab", () => {

@@ -122,6 +122,10 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
    `crate.pro` limit applies only to new saves and never hides a crate). Swap
    replaces one unlocked line with the best-ranked track that passes the same
    filters, is not already in the crate and keeps it within the total budget.
+   A DJ can delete a crate from Your crates on `/crates` after confirming;
+   deleting removes its lines, price quotes and receipts, and stems already
+   bought stay owned. A crate cannot be deleted while a purchase from it is
+   still settling.
 8. **Rights before any quote.** Each line lists the license tiers it offers.
    Personal, remix and commercial show what they grant; sync, sample and
    broadcast have no standard Resonate terms yet and say so. Prices are
@@ -348,6 +352,7 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | `GET /crates/:id` `latestQuote` | The crate's most recent quote, or null |
 | `PATCH /crates/:id` `watch: { mode: "off"\|"notify", expiresInDays? }` | Watch a saved crate for new releases (1 to 365 days, default 90); off is always allowed. 400 `invalid_watch_mode` / `invalid_watch_expiry` / `watch_mode_unavailable`, 409 `crate_not_saved`, 403 `pro_required` (JWT) |
 | `GET /crates/:id` `crate.watch` | `{ mode, expiresAt, summary: { month, matches, notified }, recentMatches }` |
+| `DELETE /crates/:id` | Delete one of your crates (JWT); 204 on success, 404 for an unknown or someone else's crate, 409 `purchase_in_progress` while a quote from it is submitted. Cascades the crate's lines, quotes, watch matches and its watch notifications; the request history is kept with the crate link cleared; stems already bought stay owned |
 | `POST /crates/:id/items` | Add a track to one of your crates (JWT); 404 `track_not_found`, 409 `line_exists` (already in the crate) / `crate_full` (25 lines) |
 | `/crates?tab=stems` | Browse stems tab (public), with Add to crate on every listing; `/marketplace` redirects here |
 | `/crates`, `/crates/:id` | Crate Digger request box, crate list and crate page with the quote and purchase panel |

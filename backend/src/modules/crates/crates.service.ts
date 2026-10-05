@@ -351,6 +351,44 @@ export class CratesService {
   }
 
   // -------------------------------------------------------------------------
+  // DELETE /crates/:id
+  // -------------------------------------------------------------------------
+
+  /**
+   * Deletes the caller's crate. Its lines, quotes (and their lines) and watch
+   * matches go with it; watch notifications that link to it are removed so none
+   * points at a missing crate. Kept: the request history (`CrateRequest.crateId`
+   * is cleared, the request stays) and every stem already bought, because
+   * ownership lives in `StemPurchase`, not in the crate.
+   *
+   * A quote still `submitted` means a purchase is settling from this crate, so
+   * deletion is refused (409) until it finishes. The check and the delete are
+   * one conditional statement, which keeps the race window small; a purchase
+   * that does start settling as the crate goes still becomes `StemPurchase`
+   * rows through the indexer poller, so only the crate's receipt is lost.
+   * Anyone else's crate and an unknown id both answer 404.
+   */
+  async deleteCrate(userId: string, crateId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.crate.deleteMany({
+        where: { id: crateId, userId, quotes: { none: { status: "submitted" } } },
+      });
+      if (count === 0) {
+        const owned = await tx.crate.findFirst({
+          where: { id: crateId, userId },
+          select: { id: true },
+        });
+        if (!owned) throw new NotFoundException("Crate not found");
+        throw new ConflictException({
+          code: "purchase_in_progress",
+          message: "A purchase from this crate is still settling. Try again once it finishes.",
+        });
+      }
+      await tx.notification.deleteMany({ where: { crateId } });
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // PATCH /crates/:id
   // -------------------------------------------------------------------------
 
