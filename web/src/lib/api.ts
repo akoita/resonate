@@ -1370,7 +1370,7 @@ export async function recordPlaybackCompleted(
 
 export type PlaybackLifecycleAnalyticsInput = {
   reason?: string;
-  action: "started" | "heartbeat" | "skipped";
+  action: "started" | "heartbeat" | "skipped" | "played_through";
   trackId: string;
   artistId?: string;
   releaseId?: string;

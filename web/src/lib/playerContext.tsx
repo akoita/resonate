@@ -92,6 +92,7 @@ import {
     PLAYBACK_HEARTBEAT_SECONDS,
     type PlaybackLifecycleAction,
     shouldReportPlaybackCompleted,
+    shouldReportPlayedThrough,
 } from "./playbackAnalytics";
 import {
     appendQueueTracks,
@@ -489,6 +490,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const authTokenRef = useRef<string | null>(token);
     const playbackCompletedTrackRef = useRef<string | null>(null);
     const playbackInstanceIdRef = useRef<string | null>(null);
+    // #2097: instance id already reported as played through; a replay gets a new instance id.
+    const playedThroughInstanceRef = useRef<string | null>(null);
     const playbackHeartbeatBucketsRef = useRef<Set<number>>(new Set());
     const previousNonZeroVolumeRef = useRef(0.8);
     const playbackRequestRef = useRef(0);
@@ -1122,6 +1125,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                     .catch((error) => {
                         console.warn("Failed to record playback analytics:", error);
                     });
+            }
+
+            // #2097: played-through is its own milestone, independent of the 30 s play above.
+            const playbackInstanceId = playbackInstanceIdRef.current;
+            if (
+                playbackInstanceId &&
+                shouldReportPlayedThrough({
+                    track: activeTrack,
+                    currentTimeSeconds: audio.currentTime,
+                    durationSeconds: audio.duration,
+                    alreadyReported: playedThroughInstanceRef.current === playbackInstanceId,
+                })
+            ) {
+                playedThroughInstanceRef.current = playbackInstanceId;
+                recordPlaybackLifecycleEvent("played_through", activeTrack);
             }
         };
 

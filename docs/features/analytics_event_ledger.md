@@ -54,6 +54,13 @@ seconds listened or 80 percent completion for shorter tracks. It also records
 authenticated pseudonymous user playback lifecycle events through
 `POST /analytics/playback/event`, currently `playback.started` and periodic
 `playback.heartbeat`, so long-session, replay, retention, and future listener
+- `playback.played_through` (#2097) — sent once per playback instance when the
+  listener reaches 90% of a track with a known duration, with
+  `positionMs`/`durationMs`. `playback.completed` keeps its 30-second
+  counted-play meaning; this milestone instead upgrades the `complete`
+  `AgentSignal` of the same playback instance to the real `completionRatio`
+  (no new signal, weight unchanged), which is what Sonic Radar's resonance rule
+  reads.
 - `playback.skipped` (#1449) — an explicit deliberate-skip signal (user-invoked
   next before ~97% of the track), with `positionMs`/`durationMs`/`reason`.
   Distinct from a short listen; auto-mirrored into a negative `AgentSignal`.

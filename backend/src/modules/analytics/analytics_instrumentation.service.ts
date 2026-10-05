@@ -10,6 +10,7 @@ import { AnalyticsIngestService } from "./analytics_ingest.service";
 import {
   AgentLearningService,
   buildAgentSignalMetadata,
+  signalDedupKey,
   type AgentSignalAction,
   type AgentSignalTelemetryDescriptor,
 } from "../agents/agent_learning.service";
@@ -18,7 +19,11 @@ type LocalHourBucket = "night" | "morning" | "afternoon" | "evening";
 type WeekdayKind = "weekday" | "weekend";
 type PlaybackRepeatMode = "none" | "one" | "all";
 
-export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped";
+export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped" | "played_through";
+
+// #2097: the share of a track that counts as played through; mirrors the web
+// PLAYED_THROUGH_RATIO and the Sonic Radar journal's resonance threshold.
+const PLAYED_THROUGH_MIN_RATIO = 0.9;
 
 interface PlaybackCatalogAnalyticsInput {
   trackId: string;
@@ -305,6 +310,9 @@ export class AnalyticsInstrumentationService {
     // signals. Agent-originated playback is excluded — the agent runtime
     // records its own signals, and mirroring here would double-count.
     // Consent (`shouldTrainAgentPlayback`) is enforced inside recordSignal.
+    if (!input.agentOriginated && input.action === "played_through") {
+      await this.recordPlayedThroughOutcome(input);
+    }
     if (!input.agentOriginated) {
       const mirrorAction =
         input.action === "started"
@@ -546,6 +554,64 @@ export class AnalyticsInstrumentationService {
     });
   }
 
+  /**
+   * #2097: upgrade the 30 s counted play's AgentSignal to the real completion
+   * ratio. Best effort, like recordAgentOutcome; `playback.completed` itself
+   * keeps its 30 s meaning.
+   */
+  private async recordPlayedThroughOutcome(input: PlaybackLifecycleAnalyticsInput) {
+    const { positionMs, durationMs } = input;
+    if (
+      !this.agentLearningService ||
+      !input.actorUserId ||
+      !input.playbackInstanceId ||
+      positionMs === undefined ||
+      durationMs === undefined ||
+      !Number.isFinite(positionMs) ||
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0
+    ) {
+      return;
+    }
+    const completionRatio = Math.min(1, Math.max(0, positionMs / durationMs));
+    if (completionRatio < PLAYED_THROUGH_MIN_RATIO) {
+      return;
+    }
+    try {
+      await this.agentLearningService.recordPlayedThrough({
+        userId: input.actorUserId,
+        trackId: input.trackId,
+        playbackInstanceId: input.playbackInstanceId,
+        completionRatio,
+        durationMs,
+        playbackSessionId: input.sessionId,
+        metadata: buildAgentSignalMetadata({
+          source: input.source ?? "web_player",
+          initiator: input.initiator ?? "listener",
+          agentOriginated: false,
+          agentSessionId: input.agentSessionId,
+          playbackCommandId: input.playbackCommandId,
+          playbackInstanceId: input.playbackInstanceId,
+          playlistId: input.playlistId,
+          localHourBucket: input.localHourBucket,
+          weekdayKind: input.weekdayKind,
+          repeatMode: input.repeatMode,
+          outcome: {
+            type: "playback_completed",
+            completionRatio,
+            durationMs,
+            playedThrough: true,
+            agentOriginated: false,
+          },
+        }),
+      });
+    } catch (error) {
+      console.warn(
+        `[Analytics] AgentSignal played-through upgrade skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   private async recordAgentOutcome(input: {
     userId?: string;
     sessionId?: string;
@@ -713,11 +779,6 @@ export class AnalyticsInstrumentationService {
 function payloadString(payload: Record<string, unknown> | undefined, key: string) {
   const value = payload?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function signalDedupKey(...parts: string[]) {
-  const canonicalKey = JSON.stringify(["analytics-agent-signal:v1", ...parts]);
-  return `agent_signal_${createHash("sha256").update(canonicalKey).digest("hex")}`;
 }
 
 function productTrackId(input: ProductAnalyticsInput) {

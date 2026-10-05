@@ -228,6 +228,7 @@ describe("analytics event envelope", () => {
       "playback.started",
       "playback.heartbeat",
       "playback.skipped",
+      "playback.played_through",
       "onboarding.step_completed",
       "playlist.track_added",
       "artist.upload_step_completed",

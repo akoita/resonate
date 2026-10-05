@@ -293,6 +293,47 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it("accepts the played-through milestone with its position and duration (#2097)", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        action: "played_through",
+        trackId: "track-1",
+        artistId: "artist-1",
+        playbackInstanceId: "playback-instance-1",
+        source: "web_player",
+        positionMs: 108000,
+        durationMs: 120000,
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "played_through",
+        playbackInstanceId: "playback-instance-1",
+        positionMs: 108000,
+        durationMs: 120000,
+        actorUserId: "listener-1",
+      }),
+    );
+  });
+
+  it("rejects a played-through milestone with an invalid duration or an unknown action (#2097)", async () => {
+    for (const durationMs of [-1, "long"]) {
+      await request(app.getHttpServer())
+        .post("/analytics/playback/event")
+        .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+        .send({ action: "played_through", trackId: "track-1", positionMs: 1000, durationMs })
+        .expect(400);
+    }
+    await request(app.getHttpServer())
+      .post("/analytics/playback/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ action: "finished", trackId: "track-1" })
+      .expect(400);
+  });
+
   it("accepts AI DJ attribution on playback events and rejects other surfaces (#2005)", async () => {
     await request(app.getHttpServer())
       .post("/analytics/playback/event")

@@ -332,6 +332,91 @@ describe("AnalyticsInstrumentationService", () => {
     expect(agentLearning.recordSignal).not.toHaveBeenCalled();
   });
 
+  it("hands a played-through milestone to the learning loop as a ratio upgrade, not a new signal (#2097)", async () => {
+    const agentLearning = {
+      recordSignal: jest.fn().mockResolvedValue({}),
+      recordPlayedThrough: jest.fn().mockResolvedValue(undefined),
+    };
+    const instrumentation = new AnalyticsInstrumentationService(
+      new AnalyticsIngestService(),
+      undefined,
+      agentLearning as any,
+    );
+    const base = {
+      action: "played_through",
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorUserId: "user-1",
+      sessionId: "browser-session-1",
+      playbackInstanceId: "playback-instance-1",
+      source: "web_player",
+      positionMs: 108_000,
+      durationMs: 120_000,
+    } as any;
+
+    await instrumentation.recordPlaybackLifecycle(base);
+    expect(agentLearning.recordSignal).not.toHaveBeenCalled();
+    expect(agentLearning.recordPlayedThrough).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        trackId: "track-1",
+        playbackInstanceId: "playback-instance-1",
+        completionRatio: 0.9,
+        durationMs: 120_000,
+        playbackSessionId: "browser-session-1",
+        metadata: expect.objectContaining({
+          playbackInstanceId: "playback-instance-1",
+          outcome: expect.objectContaining({
+            type: "playback_completed",
+            completionRatio: 0.9,
+            playedThrough: true,
+          }),
+        }),
+      }),
+    );
+
+    // Overshoot is capped at 1.
+    agentLearning.recordPlayedThrough.mockClear();
+    await instrumentation.recordPlaybackLifecycle({ ...base, positionMs: 130_000 });
+    expect(agentLearning.recordPlayedThrough).toHaveBeenCalledWith(
+      expect.objectContaining({ completionRatio: 1 }),
+    );
+
+    // Below the threshold, missing/invalid inputs, agent playback or anonymous callers do nothing.
+    agentLearning.recordPlayedThrough.mockClear();
+    for (const override of [
+      { positionMs: 60_000 },
+      { positionMs: undefined },
+      { durationMs: undefined },
+      { durationMs: 0 },
+      { playbackInstanceId: undefined },
+      { agentOriginated: true },
+      { actorUserId: undefined },
+    ]) {
+      await instrumentation.recordPlaybackLifecycle({ ...base, ...override });
+    }
+    expect(agentLearning.recordPlayedThrough).not.toHaveBeenCalled();
+  });
+
+  it("never lets a failed played-through upgrade fail the telemetry request (#2097)", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const instrumentation = new AnalyticsInstrumentationService(
+      new AnalyticsIngestService(),
+      undefined,
+      { recordPlayedThrough: jest.fn().mockRejectedValue(new Error("db down")) } as any,
+    );
+    await expect(instrumentation.recordPlaybackLifecycle({
+      action: "played_through",
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorUserId: "user-1",
+      playbackInstanceId: "playback-instance-1",
+      positionMs: 120_000,
+      durationMs: 120_000,
+    } as any)).resolves.toBeDefined();
+    warn.mockRestore();
+  });
+
   it("does not mirror agent-originated playback (the agent runtime records its own signals) (#1449)", async () => {
     const ingest = new AnalyticsIngestService();
     const agentLearning = {

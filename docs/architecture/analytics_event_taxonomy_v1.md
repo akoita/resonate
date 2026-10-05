@@ -46,8 +46,8 @@ Every analytics event uses the shared envelope from
 ## Playback habit fields (#2062)
 
 The additive playback contract accepts the following optional fields on
-`playback.started`, `playback.heartbeat`, `playback.skipped` and
-`playback.completed`:
+`playback.started`, `playback.heartbeat`, `playback.skipped`,
+`playback.played_through` (#2097) and `playback.completed`:
 
 | Field | Accepted values | Meaning |
 | --- | --- | --- |
