@@ -5643,12 +5643,28 @@ export type AgentRecommendationSummary = {
   runtime?: string;
 };
 
+/**
+ * #2096: the session's OWN filters, summarised for Session History. Bounded and
+ * structured; never the typed sentence, saved vibes, or My Mix lane details.
+ */
+export interface AgentSessionFilters {
+  presetName?: string;
+  genres: string[];
+  moods: string[];
+  energy?: "low" | "medium" | "high";
+  tempoBpm?: { min: number | null; max: number | null };
+  myMix?: true;
+  explicit: boolean;
+}
+
 export interface AgentSession {
   id: string;
   budgetCapUsd: number;
   spentUsd: number;
   startedAt: string;
   endedAt: string | null;
+  /** Absent or null for sessions started before filters were recorded. */
+  filters?: AgentSessionFilters | null;
   licenses: AgentSessionLicense[];
   /** Latest owner-only ordered My Mix batch; absent after ephemeral cache loss. */
   mixTrackIds?: string[];

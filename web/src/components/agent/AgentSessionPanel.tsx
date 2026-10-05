@@ -336,6 +336,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 preferences,
                 trackIds: [...live.trackIds.filter((id) => !removedIds.has(id)), ...addedIds],
             });
+            // The server recorded the new picks on the session; show them in Session History.
+            void refetchHistory();
             addToast({
                 type: "success",
                 title: "DJ updated",

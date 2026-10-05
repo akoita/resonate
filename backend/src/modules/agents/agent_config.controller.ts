@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
+import type { Prisma } from "@prisma/client";
 import { IsString, MaxLength } from "class-validator";
 import { prisma } from "../../db/prisma";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
@@ -14,6 +15,7 @@ import {
 } from "./agent_learning.service";
 import { mergeSessionGenres } from "./agent_session_genres";
 import { resolveAllowExplicit } from "./agent_explicit_preference";
+import { sessionFilterSummary } from "./agent_session_filters";
 import {
   AGENT_SESSION_REQUEST_PARSER,
   describeCoverageGaps,
@@ -330,6 +332,18 @@ export class AgentConfigController {
             data: {
                 userId: req.user.userId,
                 budgetCapUsd: config.monthlyCapUsd,
+                // The session's OWN filters for Session History (#2096): never
+                // the vibes fallback, never free text.
+                filters: sessionFilterSummary({
+                    sessionIntentName: body?.preferences?.sessionIntentName,
+                    sessionGenres,
+                    moods: requested.moods,
+                    mood: requested.mood,
+                    energy: requested.energy,
+                    tempoBpm: requested.tempoBpm,
+                    myMix: body?.preferences?.myMix,
+                    allowExplicit,
+                }) as unknown as Prisma.InputJsonValue,
             },
         });
 

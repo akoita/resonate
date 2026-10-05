@@ -103,6 +103,8 @@ function serviceFor(
       genre?: string;
       audioFeatures?: Record<string, unknown>;
     }>;
+    /** Which relaxation pass the deterministic selector reports having served. */
+    selectorFallback?: "relaxed_artist_window" | "widened";
     /** Per-track audio features the feature service returns (#2037). */
     audioFeatures?: Record<string, Record<string, unknown>>;
     /** Authoritative fresh-source matches for known model or fallback picks. */
@@ -141,6 +143,7 @@ function serviceFor(
   };
   const selector = {
     select: jest.fn().mockResolvedValue({
+      ...(options.selectorFallback ? { fallback: options.selectorFallback } : {}),
       selected: (options.selectorPicks ?? []).map((entry) => ({
         id: entry.id,
         artist: entry.artist,
@@ -384,6 +387,7 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
       policy: {
         dropped: { hidden: 0, aiGenerated: 1, diversity: 0, unknown: 0 },
         exploration: { reserved: 1, served: 0, injected: false },
+        toppedUp: 0,
       },
     });
   });
@@ -460,6 +464,17 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
 });
 
 describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", () => {
+  // These pages already meet the selection target, so only the discovery swap
+  // reaches the selector (the top-up has its own describe below).
+  const previousLimit = process.env.AGENT_TRACK_LIMIT;
+  beforeEach(() => {
+    process.env.AGENT_TRACK_LIMIT = "2";
+  });
+  afterEach(() => {
+    if (previousLimit === undefined) delete process.env.AGENT_TRACK_LIMIT;
+    else process.env.AGENT_TRACK_LIMIT = previousLimit;
+  });
+
   it("labels a qualifying model pick a discovery pick in place, without a swap", async () => {
     const { service, selector } = serviceFor(
       [track("known"), track("fresh", { artistId: "verified-new" })],
@@ -715,6 +730,7 @@ describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", (
   });
 
   it("never swaps a single pick when the session's discovery count is unknown", async () => {
+    process.env.AGENT_TRACK_LIMIT = "1";
     const { service, selector } = serviceFor([track("only")], {
       priorDiscoveryPicks: new Error("db down"),
       selectorPicks: [{ id: "discover", artistId: "v", reasonCode: "discovery_pick" }],
@@ -952,6 +968,316 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
 
     expect(ids(result)).toEqual(["a"]);
     expect(result.requestCoverage).toEqual({ picks: 1, gaps: [{ filter: "energy", matched: 0 }] });
+  });
+});
+
+describe("AgentRuntimePolicyService top-up to the selection target (#2094)", () => {
+  const previousLimit = process.env.AGENT_TRACK_LIMIT;
+  beforeEach(() => {
+    delete process.env.AGENT_TRACK_LIMIT;
+  });
+  afterEach(() => {
+    if (previousLimit === undefined) delete process.env.AGENT_TRACK_LIMIT;
+    else process.env.AGENT_TRACK_LIMIT = previousLimit;
+  });
+
+  const ranked = (id: string, artistId = `sel-${id}`, extra: Record<string, unknown> = {}) => ({
+    id,
+    artistId,
+    reasonCode: "taste_match",
+    ...extra,
+  });
+  const topUpCalls = (selector: { select: jest.Mock }) =>
+    selector.select.mock.calls.filter(([arg]) => arg.fallback === true);
+
+  it("fills a short page from the selector, after the model's picks, in selector order", async () => {
+    const { service, selector } = serviceFor([track("m1"), track("m2")], {
+      selectorPicks: [ranked("s1"), ranked("s2"), ranked("s3"), ranked("s4")],
+    });
+    const result = await service.apply(
+      baseInput({ recentTrackIds: ["s-0"], preferences: { genres: ["House"], licenseType: "remix" } }),
+      { status: "approved", picks: [pick("m1"), pick("m2")], reasoning: "why" },
+    );
+
+    expect(ids(result)).toEqual(["m1", "m2", "s1", "s2", "s3"]);
+    expect(result.policy?.toppedUp).toBe(3);
+    expect(result.trackId).toBe("m1");
+    expect(result.reasoning).toBe("why");
+    // Fill-ins carry the selector's own ranking, a zero price and the requested license.
+    expect(result.picks?.[2]).toEqual(
+      expect.objectContaining({
+        trackId: "s1",
+        licenseType: "remix",
+        priceUsd: 0,
+        score: 30,
+        reasonCode: "taste_match",
+      }),
+    );
+    // Called as the rule-based adapter calls it, over the same session.
+    expect(topUpCalls(selector)).toHaveLength(1);
+    expect(topUpCalls(selector)[0][0]).toEqual(
+      expect.objectContaining({
+        userId: "u1",
+        queries: ["House"],
+        recentTrackIds: ["s-0"],
+        limit: 7,
+        fallback: true,
+        useEmbeddings: true,
+        reserveFirstListenerPlacements: false,
+      }),
+    );
+  });
+
+  it("counts fill-ins in the request coverage", async () => {
+    const { service } = serviceFor([track("m1", { genre: "Soul" }), track("m2", { genre: "Soul" })], {
+      selectorPicks: [
+        ranked("s1", undefined, { genre: "Polka" }),
+        ranked("s2", undefined, { genre: "Soul" }),
+        ranked("s3", undefined, { genre: "Soul" }),
+      ],
+    });
+    const result = await service.apply(
+      baseInput({
+        preferences: {
+          genres: ["Soul"],
+          sessionGenres: ["Soul"],
+          request: { genres: ["Soul"], moods: [], energy: null, bpm: null },
+        },
+      }),
+      { status: "approved", picks: [pick("m1"), pick("m2")] },
+    );
+
+    expect(ids(result)).toHaveLength(5);
+    expect(result.requestCoverage).toEqual({ picks: 5, gaps: [{ filter: "genres", matched: 4 }] });
+  });
+
+  it("leaves a page that already meets the target alone", async () => {
+    const catalog = ["a", "b", "c", "d", "e"].map((id) => track(id));
+    const { service, selector } = serviceFor(catalog, {
+      selectorPicks: [ranked("s1"), ranked("s2")],
+    });
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: catalog.map((entry) => pick(entry.id)),
+    });
+
+    expect(ids(result)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(result.policy?.toppedUp).toBe(0);
+    expect(topUpCalls(selector)).toHaveLength(0);
+  });
+
+  it("follows AGENT_TRACK_LIMIT", async () => {
+    process.env.AGENT_TRACK_LIMIT = "3";
+    const { service } = serviceFor([track("m1")], {
+      selectorPicks: [ranked("s1"), ranked("s2"), ranked("s3")],
+    });
+    const result = await service.apply(baseInput(), { status: "approved", picks: [pick("m1")] });
+    expect(ids(result)).toEqual(["m1", "s1", "s2"]);
+  });
+
+  it("skips a repeated pick, a fresh placement and a third track by an artist already on the page", async () => {
+    const { service } = serviceFor(
+      [track("m1", { artistId: "A" }), track("m2", { artistId: "A" })],
+      {
+        selectorPicks: [
+          ranked("m1", "A"),
+          ranked("fresh", "F", { firstListenerEligible: true }),
+          ranked("a3", "A"),
+          ranked("s1"),
+          ranked("s2"),
+          ranked("s3"),
+          ranked("s4"),
+        ],
+      },
+    );
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("m1"), pick("m2")],
+    });
+
+    expect(ids(result)).toEqual(["m1", "m2", "s1", "s2", "s3"]);
+  });
+
+  it("caps an artist across the fill-ins themselves, by credited artist", async () => {
+    const { service } = serviceFor([track("m1")], {
+      selectorPicks: [
+        ranked("x1", "U", { artist: "Booba" }),
+        ranked("x2", "U", { artist: "Booba" }),
+        ranked("x3", "U2", { artist: "Booba" }),
+        // Same uploading profile, a different credited artist: allowed.
+        ranked("y1", "U", { artist: "Fabolous" }),
+      ],
+    });
+    const result = await service.apply(baseInput(), { status: "approved", picks: [pick("m1")] });
+    expect(ids(result)).toEqual(["m1", "x1", "x2", "y1"]);
+  });
+
+  it("holds the session window on the strict pass but not once the selector relaxed it", async () => {
+    const sessionArtistKeys = { "s-1": "id:P", "s-2": "id:P" };
+    const selectorPicks = [
+      ranked("p1", "P"),
+      ranked("p2", "P"),
+      ranked("p3", "P"),
+      ranked("s1"),
+      ranked("s2"),
+    ];
+    const input = baseInput({ recentTrackIds: ["s-1", "s-2"] });
+
+    const strict = serviceFor([track("m1")], { sessionArtistKeys, selectorPicks });
+    const strictResult = await strict.service.apply(input, {
+      status: "approved",
+      picks: [pick("m1")],
+    });
+    expect(ids(strictResult)).toEqual(["m1", "s1", "s2"]);
+
+    const relaxed = serviceFor([track("m1")], {
+      sessionArtistKeys,
+      selectorPicks,
+      selectorFallback: "relaxed_artist_window",
+    });
+    const relaxedResult = await relaxed.service.apply(input, {
+      status: "approved",
+      picks: [pick("m1")],
+    });
+    // The prior window is ignored, the page cap (two per artist) still holds.
+    expect(ids(relaxedResult)).toEqual(["m1", "p1", "p2", "s1", "s2"]);
+  });
+
+  it("fills an empty model reply and approves it", async () => {
+    const { service } = serviceFor([], {
+      selectorPicks: [ranked("s1"), ranked("s2"), ranked("s3"), ranked("s4"), ranked("s5"), ranked("s6")],
+    });
+    const result = await service.apply(baseInput(), {
+      status: "rejected",
+      reason: "llm_no_track_selected",
+      reasoning: "nothing fit",
+      latencyMs: 4,
+    });
+
+    expect(result.status).toBe("approved");
+    expect(result.reason).toBe("llm_no_track_selected_topped_up");
+    expect(result.reasoning).toBe("nothing fit");
+    expect(ids(result)).toEqual(["s1", "s2", "s3", "s4", "s5"]);
+    expect(result.trackId).toBe("s1");
+    expect(result.licenseType).toBe("personal");
+    expect(result.priceUsd).toBe(0);
+    expect(result.policy?.toppedUp).toBe(5);
+  });
+
+  it("keeps an empty model reply rejected when the selector has nothing either", async () => {
+    const { service } = serviceFor([]);
+    const original = {
+      status: "rejected" as const,
+      reason: "llm_no_track_selected",
+      reasoning: "nothing fit",
+      latencyMs: 4,
+    };
+    expect(await service.apply(baseInput(), original)).toEqual(original);
+  });
+
+  it("does not top up other empty results", async () => {
+    const { service, selector } = serviceFor([], { selectorPicks: [ranked("s1")] });
+    const errored = { status: "rejected" as const, reason: "error" };
+    expect(await service.apply(baseInput(), errored)).toEqual(errored);
+    expect(selector.select).not.toHaveBeenCalled();
+  });
+
+  it("tops up when the policy dropped every model pick", async () => {
+    const { service } = serviceFor([track("ai", { ai: "ALL" })], {
+      selectorPicks: [ranked("s1"), ranked("s2")],
+    });
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      trackId: "ai",
+      licenseType: "remix",
+      priceUsd: 1,
+      picks: [pick("ai")],
+      reasoning: "because",
+    });
+
+    expect(result.status).toBe("approved");
+    expect(ids(result)).toEqual(["s1", "s2"]);
+    expect(result.trackId).toBe("s1");
+    expect(result.policy).toEqual(
+      expect.objectContaining({
+        dropped: { hidden: 0, aiGenerated: 1, diversity: 0, unknown: 0 },
+        toppedUp: 2,
+      }),
+    );
+  });
+
+  it("still rejects when the policy dropped every pick and the selector has nothing", async () => {
+    const { service } = serviceFor([track("ai", { ai: "ALL" })]);
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("ai")],
+    });
+    expect(result.status).toBe("rejected");
+    expect(result.reason).toBe("no_policy_eligible_picks");
+    expect(result.policy?.toppedUp).toBe(0);
+  });
+
+  it("fails open: a selector error returns the model's picks unchanged", async () => {
+    const { service, selector } = serviceFor([track("m1"), track("m2")]);
+    selector.select.mockRejectedValue(new Error("catalog down"));
+    const result = await service.apply(baseInput(), {
+      status: "approved",
+      picks: [pick("m1"), pick("m2")],
+    });
+    expect(ids(result)).toEqual(["m1", "m2"]);
+    expect(result.policy?.toppedUp).toBe(0);
+  });
+
+  it("keeps each pick's coverage facts with a swapped-in discovery pick and fill-ins", async () => {
+    const { service } = serviceFor(
+      [track("first", { genre: "Soul" }), track("second", { genre: "Soul" })],
+      {
+        selectorPicks: [
+          { id: "discover", artistId: "verified-new", reasonCode: "discovery_pick", genre: "Polka" },
+          ranked("f1", undefined, { genre: "Soul" }),
+          ranked("f2", undefined, { genre: "Polka" }),
+          ranked("f3", undefined, { genre: "Polka" }),
+        ],
+      },
+    );
+    const result = await service.apply(
+      baseInput({
+        recentTrackIds: ["s-1"],
+        preferences: {
+          genres: ["Soul"],
+          sessionGenres: ["Soul"],
+          request: { genres: ["Soul"], moods: [], energy: null, bpm: null },
+        },
+      }),
+      { status: "approved", picks: [pick("first"), pick("second")] },
+    );
+
+    // The discovery pick replaced the last model pick; fill-ins follow it.
+    expect(ids(result)).toEqual(["first", "discover", "f1", "f2", "f3"]);
+    expect(result.policy).toEqual(
+      expect.objectContaining({ toppedUp: 3, exploration: { reserved: 1, served: 1, injected: true } }),
+    );
+    // Soul: first and f1 only. Polka facts of discover, f2 and f3 are not mistaken for Soul.
+    expect(result.requestCoverage).toEqual({ picks: 5, gaps: [{ filter: "genres", matched: 2 }] });
+  });
+
+  it("counts the swapped-in discovery pick's artist toward the cap", async () => {
+    const { service } = serviceFor(
+      [track("first"), track("second")],
+      {
+        selectorPicks: [
+          { id: "discover", artistId: "D", reasonCode: "discovery_pick" },
+          ranked("d2", "D"),
+          ranked("d3", "D"),
+          ranked("s1"),
+        ],
+      },
+    );
+    const result = await service.apply(baseInput({ recentTrackIds: ["s-1"] }), {
+      status: "approved",
+      picks: [pick("first"), pick("second")],
+    });
+    expect(ids(result)).toEqual(["first", "discover", "d2", "s1"]);
   });
 });
 

@@ -71,6 +71,8 @@ export interface AgentRuntimeResult {
     dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number };
     /** Rule 3; `injected` when the selector's discovery pick replaced the last model pick. */
     exploration?: { reserved: number; served: number; injected: boolean };
+    /** Picks the selector added so the page reaches the selection target. */
+    toppedUp?: number;
   };
   /**
    * How well the final picks matched the listener's described session (#2037).

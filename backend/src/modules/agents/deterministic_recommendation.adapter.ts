@@ -5,6 +5,7 @@ import {
   AgentRecommendationResult,
 } from "./agent_recommendation.adapter";
 import { AgentSelectorService } from "./agent_selector.service";
+import type { AgentSelectorInput } from "./agent_selector.service";
 import { myMixSearchTerms } from "./agent_my_mix";
 import type { ResolvedMyMixPlan } from "./agent_my_mix";
 import { relatedGenreLabels } from "../recommendations/genre_families";
@@ -95,6 +96,37 @@ export function buildSemanticSessionQuery(
   return `${sentences.join(". ")}.`;
 }
 
+/**
+ * The selector request for one listening session, shared by the rule-based
+ * adapter and the LLM runtime's top-up (`AgentRuntimePolicyService`), so both
+ * rank the catalog the same way.
+ */
+export function deterministicSelectorInput(
+  input: Pick<AgentRecommendationInput, "userId" | "recentTrackIds" | "preferences" | "limit" | "myMixPlan">,
+): AgentSelectorInput {
+  const queries = buildAgentRecommendationQueries(input.preferences, input.myMixPlan);
+  return {
+    userId: input.userId,
+    queries,
+    recentTrackIds: input.recentTrackIds,
+    allowExplicit: input.preferences.allowExplicit,
+    useEmbeddings: queries.length > 0,
+    limit: input.limit,
+    energy: input.preferences.energy,
+    learnedGenreWeights: input.preferences.learnedGenreWeights,
+    // Session intent is ranking context for this request (WS-9), not taste.
+    sessionIntent: input.preferences.sessionIntent,
+    mood: input.preferences.mood,
+    queueStyle: input.preferences.queueStyle,
+    tempoBpm: input.preferences.tempoBpm,
+    // Listening sessions never dead-end while an unplayed track fits (#2056).
+    fallback: true,
+    ...requestedTermsFor(input.preferences),
+    semanticQuery: buildSemanticSessionQuery(input.preferences),
+    myMixPlan: input.myMixPlan,
+  };
+}
+
 @Injectable()
 export class DeterministicRecommendationAdapter implements AgentRecommendationAdapter {
   readonly name = "deterministic" as const;
@@ -102,27 +134,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
   constructor(private readonly selector: AgentSelectorService) {}
 
   async recommend(input: AgentRecommendationInput): Promise<AgentRecommendationResult> {
-    const queries = buildAgentRecommendationQueries(input.preferences, input.myMixPlan);
-    const selection = await this.selector.select({
-      userId: input.userId,
-      queries,
-      recentTrackIds: input.recentTrackIds,
-      allowExplicit: input.preferences.allowExplicit,
-      useEmbeddings: queries.length > 0,
-      limit: input.limit,
-      energy: input.preferences.energy,
-      learnedGenreWeights: input.preferences.learnedGenreWeights,
-      // Session intent is ranking context for this request (WS-9), not taste.
-      sessionIntent: input.preferences.sessionIntent,
-      mood: input.preferences.mood,
-      queueStyle: input.preferences.queueStyle,
-      tempoBpm: input.preferences.tempoBpm,
-      // Listening sessions never dead-end while an unplayed track fits (#2056).
-      fallback: true,
-      ...requestedTermsFor(input.preferences),
-      semanticQuery: buildSemanticSessionQuery(input.preferences),
-      myMixPlan: input.myMixPlan,
-    });
+    const selection = await this.selector.select(deterministicSelectorInput(input));
 
     return {
       strategy: this.name,

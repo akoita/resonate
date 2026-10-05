@@ -22,8 +22,10 @@ import { AgentLearningService } from "./agent_learning.service";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import {
   buildAgentRecommendationQueries,
+  deterministicSelectorInput,
   requestedTermsFor,
 } from "./deterministic_recommendation.adapter";
+import { getAgentTrackLimit } from "./agent_runtime.config";
 import type {
   AgentAudioFeatureService,
   AgentAudioFeatures,
@@ -61,14 +63,21 @@ import type {
  *  4. when rule 3 reserves a discovery slot that none of the model's picks can
  *     fill, swaps the model's last pick for the deterministic selector's
  *     discovery pick for the same listener and session (ADR-TE-2 rule 3 on
- *     every surface). This is the only pick the step ever adds;
- *  5. measures how well the final picks matched the session the listener
+ *     every surface);
+ *  5. when fewer picks than the selection target (`getAgentTrackLimit()`)
+ *     remain, fills the rest from the deterministic selector, called as the
+ *     rule-based adapter calls it, so the model alone never decides how many
+ *     tracks a request returns. A fill-in is never a fresh placement (those
+ *     need a reservation), never repeats a pick, and keeps the diversity cap;
+ *     it adds nothing the selector did not itself return (ADR-TE-4). An empty
+ *     model reply (`llm_no_track_selected`) is filled the same way;
+ *  6. measures how well the final picks matched the session the listener
  *     described (#2037) and returns it as `requestCoverage`, so the live feed,
  *     Next Pick and unmet-demand records see it on this path too. The requested
  *     terms, tempo and audio features also reach the ranking in step 2, so each
  *     pick's score and explanation reflect the request.
  *
- * It never reorders the model's picks. A model pick that qualifies as a
+ * It never reorders the model's picks; fill-ins follow them. A model pick that qualifies as a
  * discovery pick (verified human artist the listener never played) is
  * labeled one in place. A one-track call with no known session history never
  * swaps: its reserve is only the "at least one" floor, so it would replace
@@ -104,11 +113,18 @@ export class AgentRuntimePolicyService {
       return stripUnverifiedDiscoveryAnnotations(result);
     }
     const picks = picksOf(result);
-    if (picks.length === 0) return result;
+    // An empty model reply is still owed its target; any other empty result
+    // (an error, a stub runtime) has nothing to filter or fill.
+    const emptyReply = picks.length === 0 && result.reason === "llm_no_track_selected";
+    if (picks.length === 0 && !emptyReply) return result;
 
     try {
       return await this.filterPicks(input, result, picks);
     } catch (error) {
+      if (emptyReply) {
+        this.logger.warn(`Runtime top-up unavailable for an empty reply: ${String(error)}`);
+        return result;
+      }
       this.logger.warn(
         `Runtime policy step unavailable; passing picks through: ${String(error)}`,
       );
@@ -285,25 +301,42 @@ export class AgentRuntimePolicyService {
     const { reserved, served } = policyResult.exploration;
     let injected = false;
     let discoveryFacts: AgentRequestCoveragePick | undefined;
+    let discoveryTrackId: string | undefined;
+    // Artist keys of picks the candidate lookup does not know (the swapped-in one).
+    const extraArtistKeys = new Map<string, string>();
+    const artistKeyOf = (trackId: string) =>
+      extraArtistKeys.get(trackId) ??
+      discoveryArtistKey(candidatesById.get(trackId) ?? { id: trackId, artistId: null });
+    const sessionWindowKeys = priorSessionArtistKeys.slice(
+      -(DISCOVERY_POLICY_DEFAULTS.sessionWindow - 1),
+    );
     if (
       surviving.length > 0 &&
       served < reserved &&
       canSwapForDiscovery(surviving.length, exploration.priorExplorationCount)
     ) {
-      const artistKeyOf = (trackId: string) =>
-        discoveryArtistKey(
-          candidatesById.get(trackId) ?? { id: trackId, artistId: null },
-        );
       const swapped = await this.swapInDiscoveryPick(input, surviving, [
-        ...priorSessionArtistKeys.slice(-(DISCOVERY_POLICY_DEFAULTS.sessionWindow - 1)),
+        ...sessionWindowKeys,
         ...surviving.slice(0, -1).map((entry) => artistKeyOf(entry.trackId)),
       ]);
       if (swapped) {
         surviving = swapped.picks;
         discoveryFacts = swapped.discoveryFacts;
+        discoveryTrackId = swapped.picks[swapped.picks.length - 1].trackId;
+        extraArtistKeys.set(discoveryTrackId, swapped.discoveryArtistKey);
         injected = true;
       }
     }
+
+    // The model decides which tracks fit, not how many: fill up to the target.
+    const topUp = await this.topUpPicks(
+      input,
+      surviving,
+      artistKeyOf,
+      priorSessionArtistKeys,
+    );
+    surviving = [...surviving, ...topUp.picks];
+
     const dropped = {
       ...policyResult.dropped,
       unknown: ordered.length - known.length,
@@ -313,22 +346,31 @@ export class AgentRuntimePolicyService {
       served: served + (injected ? 1 : 0),
       injected,
     };
+    const policy = {
+      dropped,
+      exploration: explorationAccounting,
+      toppedUp: topUp.picks.length,
+    };
 
     if (surviving.length === 0) {
+      // An empty model reply nothing could fill stays the model's own rejection.
+      if (picks.length === 0) return result;
       return {
         status: "rejected",
         reason: "no_policy_eligible_picks",
         reasoning: result.reasoning,
         latencyMs: result.latencyMs,
-        policy: { dropped, exploration: explorationAccounting },
+        policy,
       };
     }
 
-    // Coverage of the final picks: the swapped-in discovery pick is always last.
-    const facts = surviving.map((pick, index) =>
-      discoveryFacts && index === surviving.length - 1
+    // Coverage of the final picks: the swapped-in discovery pick and the
+    // fill-ins carry the facts of the selector's own track.
+    const facts = surviving.map((pick) =>
+      pick.trackId === discoveryTrackId && discoveryFacts
         ? discoveryFacts
-        : coverageFactsFor(
+        : topUp.facts.get(pick.trackId) ??
+          coverageFactsFor(
             candidatesById.get(pick.trackId),
             audioFeaturesByTrack.get(pick.trackId),
           ),
@@ -338,11 +380,14 @@ export class AgentRuntimePolicyService {
     const [first] = surviving;
     return {
       ...result,
+      ...(picks.length === 0
+        ? { status: "approved" as const, reason: "llm_no_track_selected_topped_up" }
+        : {}),
       trackId: first.trackId,
       licenseType: first.licenseType,
       priceUsd: first.priceUsd,
       picks: surviving,
-      policy: { dropped, exploration: explorationAccounting },
+      policy,
       ...(coverage ? { requestCoverage: coverage.coverage } : {}),
     };
   }
@@ -423,7 +468,12 @@ export class AgentRuntimePolicyService {
     surviving: LlmTrackPick[],
     otherArtistKeys: string[],
   ): Promise<
-    { picks: LlmTrackPick[]; discoveryFacts: AgentRequestCoveragePick } | undefined
+    | {
+        picks: LlmTrackPick[];
+        discoveryFacts: AgentRequestCoveragePick;
+        discoveryArtistKey: string;
+      }
+    | undefined
   > {
     if (!this.selector) return undefined;
     try {
@@ -454,18 +504,7 @@ export class AgentRuntimePolicyService {
       const discovery = selection.selected.find((track: any) => {
         if (track.agentRecommendation?.reasonCode !== "discovery_pick") return false;
         if (pickedIds.has(track.id)) return false;
-        const key = discoveryArtistKey({
-          id: track.id,
-          artistId: track.release?.artistId ?? null,
-          artist: track.artist ?? null,
-          release: {
-            artistDisplayName: resolveCreditedArtistName({
-              trackArtist: track.artist ?? null,
-              primaryArtist: track.release?.primaryArtist ?? null,
-              accountDisplayName: track.release?.artist?.displayName ?? null,
-            }),
-          },
-        });
+        const key = selectorTrackArtistKey(track);
         return (artistCounts.get(key) ?? 0) < DISCOVERY_POLICY_DEFAULTS.maxPerArtist;
       });
       if (!discovery) return undefined;
@@ -513,10 +552,96 @@ export class AgentRuntimePolicyService {
           discovery,
           recommendation.audioFeatures as AgentAudioFeatures | undefined,
         ),
+        discoveryArtistKey: selectorTrackArtistKey(discovery),
       };
     } catch (error) {
       this.logger.warn(`Discovery pick unavailable for LLM picks: ${String(error)}`);
       return undefined;
+    }
+  }
+
+  /**
+   * Fills the page up to `getAgentTrackLimit()` from the deterministic
+   * selector, called as the rule-based adapter calls it. Walks its ranked
+   * shortlist in order and takes a track that is not already picked, is not a
+   * fresh placement (those need a reservation, never handed out here) and keeps
+   * the artist cap given the page and, on the strict pass, the session's last
+   * tracks (a relaxed or widened pass already dropped that window on purpose).
+   * `recentTrackIds` is the input's own, so the selector's session rules are
+   * unchanged. Fails open: any error adds nothing.
+   */
+  private async topUpPicks(
+    input: AgentRuntimeInput,
+    picks: LlmTrackPick[],
+    artistKeyOf: (trackId: string) => string,
+    priorSessionArtistKeys: string[],
+  ): Promise<{ picks: LlmTrackPick[]; facts: Map<string, AgentRequestCoveragePick> }> {
+    const none = { picks: [], facts: new Map<string, AgentRequestCoveragePick>() };
+    const target = getAgentTrackLimit();
+    const need = target - picks.length;
+    if (need <= 0 || !this.selector) return none;
+    try {
+      const selection = await this.selector.select({
+        ...deterministicSelectorInput({
+          userId: input.userId,
+          recentTrackIds: input.recentTrackIds,
+          preferences: input.preferences,
+          limit: Math.min(50, target + picks.length),
+        }),
+        // A fresh placement needs a reservation; fill-ins never take one.
+        reserveFirstListenerPlacements: false,
+      });
+      const pickedIds = new Set(picks.map((entry) => entry.trackId));
+      const artistCounts = new Map<string, number>();
+      const count = (key: string) =>
+        artistCounts.set(key, (artistCounts.get(key) ?? 0) + 1);
+      for (const entry of picks) count(artistKeyOf(entry.trackId));
+      if (!selection.fallback) {
+        for (const key of priorSessionArtistKeys.slice(
+          -(DISCOVERY_POLICY_DEFAULTS.sessionWindow - 1),
+        )) {
+          count(key);
+        }
+      }
+
+      const added: LlmTrackPick[] = [];
+      const facts = new Map<string, AgentRequestCoveragePick>();
+      for (const track of selection.selected) {
+        if (added.length >= need) break;
+        const recommendation = track.agentRecommendation;
+        if (!recommendation || pickedIds.has(track.id) || track.firstListenerEligible) {
+          continue;
+        }
+        const key = selectorTrackArtistKey(track);
+        if ((artistCounts.get(key) ?? 0) >= DISCOVERY_POLICY_DEFAULTS.maxPerArtist) {
+          continue;
+        }
+        count(key);
+        pickedIds.add(track.id);
+        added.push({
+          trackId: track.id,
+          licenseType: input.preferences.licenseType ?? "personal",
+          // Not a model-negotiated price; buy mode negotiates it separately.
+          priceUsd: 0,
+          score: recommendation.score,
+          explanation: recommendation.explanation,
+          reasonCode: recommendation.reasonCode,
+          signals: recommendation.signals,
+        });
+        facts.set(
+          track.id,
+          coverageFactsFor(track, recommendation.audioFeatures as AgentAudioFeatures | undefined),
+        );
+      }
+      if (added.length > 0) {
+        this.logger.log(
+          `Topped up ${added.length} LLM pick(s) to reach target ${target} from the ranked selector`,
+        );
+      }
+      return { picks: added, facts };
+    } catch (error) {
+      this.logger.warn(`Top-up unavailable for LLM picks: ${String(error)}`);
+      return none;
     }
   }
 
@@ -550,6 +675,22 @@ export class AgentRuntimePolicyService {
       return [];
     }
   }
+}
+
+/** The diversity-cap key of a track the selector returned, by credited artist (#2092). */
+function selectorTrackArtistKey(track: any): string {
+  return discoveryArtistKey({
+    id: track.id,
+    artistId: track.release?.artistId ?? null,
+    artist: track.artist ?? null,
+    release: {
+      artistDisplayName: resolveCreditedArtistName({
+        trackArtist: track.artist ?? null,
+        primaryArtist: track.release?.primaryArtist ?? null,
+        accountDisplayName: track.release?.artist?.displayName ?? null,
+      }),
+    },
+  });
 }
 
 /**

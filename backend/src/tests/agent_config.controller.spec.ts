@@ -104,6 +104,14 @@ describe("AgentConfigController", () => {
       data: {
         userId: "user_1",
         budgetCapUsd: 10,
+        // #2096: the session's own filters, not the saved vibes.
+        filters: {
+          presetName: "Liquid Sky",
+          genres: ["Soul", "Jazz", "Downtempo"],
+          moods: ["Chill"],
+          energy: "low",
+          explicit: false,
+        },
       },
     });
 

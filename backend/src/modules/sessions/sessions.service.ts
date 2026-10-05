@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { WalletService } from "../identity/wallet.service";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
@@ -14,6 +15,7 @@ import { resolveMyMixPlan } from "../agents/agent_my_mix";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
 import { resolveAllowExplicit } from "../agents/agent_explicit_preference";
+import { sameSessionFilters, sessionFilterSummary } from "../agents/agent_session_filters";
 import {
   requestRankingPreferences,
   sanitizeSessionRequest,
@@ -74,11 +76,14 @@ export class SessionsService {
       userId: input.userId,
       monthlyCapUsd: input.budgetCapUsd,
     });
+    const filters = await this.startFilters(input.userId, input.preferences);
     const session = await prisma.session.create({
       data: {
         userId: input.userId,
         budgetCapUsd: input.budgetCapUsd,
         spentUsd: 0,
+        // The session's own filters for Session History (#2096).
+        ...(filters ? { filters } : {}),
       },
     });
     if (input.preferences) {
@@ -280,6 +285,18 @@ export class SessionsService {
     // sent its own; the config-derived value is not remembered, so a later
     // toggle takes effect on the next pick (#2088).
     const allowExplicit = await this.resolveAllowExplicit(session.userId, preferences.allowExplicit);
+    if (input.preferences) {
+      await this.refreshSessionFilters(session.id, session.userId, session.filters, {
+        sessionIntentName: preferences.sessionIntentName,
+        sessionGenres,
+        moods: requested.moods,
+        mood: requested.mood,
+        energy: requested.energy,
+        tempoBpm: requested.tempoBpm,
+        myMix: preferences.myMix,
+        allowExplicit,
+      });
+    }
     const recentTrackIds = await this.sessionTrackIds(input.sessionId);
     // Wire-contract field only: listening runs are not budget-limited
     // (ADR-TE-1), so the remaining budget never reduces the picks.
@@ -473,6 +490,77 @@ export class SessionsService {
         this.logger.warn("My Mix unmet-demand observation was skipped after an agent session result.");
       }
     }
+  }
+
+  /**
+   * The Session History summary a new session starts with (#2096). Best
+   * effort: without it the session still starts, as it did before.
+   */
+  private async startFilters(
+    userId: string,
+    preferences?: AgentPreferences,
+  ): Promise<Prisma.InputJsonValue | undefined> {
+    try {
+      const requested = requestRankingPreferences(preferences ?? {});
+      const sessionGenres = requested.request
+        ? [...(preferences?.genres ?? []), ...requested.sessionGenres]
+        : preferences?.genres;
+      return sessionFilterSummary({
+        sessionIntentName: preferences?.sessionIntentName,
+        sessionGenres,
+        moods: requested.moods,
+        mood: requested.mood,
+        energy: requested.energy,
+        tempoBpm: requested.tempoBpm,
+        myMix: preferences?.myMix,
+        allowExplicit: await this.resolveAllowExplicit(userId, preferences?.allowExplicit),
+      }) as unknown as Prisma.InputJsonValue;
+    } catch {
+      this.logger.warn("Session filter summary was not recorded at session start.");
+      return undefined;
+    }
+  }
+
+  /**
+   * Keeps the Session History filter summary in step with a mid-session edit
+   * (#2096). Best effort: a failed write is logged and never fails the pick.
+   */
+  private async refreshSessionFilters(
+    sessionId: string,
+    userId: string,
+    stored: unknown,
+    input: Parameters<typeof sessionFilterSummary>[0],
+  ) {
+    try {
+      const filters = sessionFilterSummary({
+        ...input,
+        sessionGenres: await this.ownGenres(userId, input),
+      });
+      if (sameSessionFilters(stored, filters)) return;
+      await prisma.session.update({
+        where: { id: sessionId },
+        data: { filters: filters as unknown as Prisma.InputJsonValue },
+      });
+    } catch {
+      this.logger.warn("Session filter summary was not updated after a preference change.");
+    }
+  }
+
+  /**
+   * A pick request with no chosen filters falls back to the saved vibes as its
+   * genres (the web's plain "Next Pick"). Those are the listener's saved taste,
+   * not this session's own filters, so they stay out of the summary.
+   */
+  private async ownGenres(userId: string, input: Parameters<typeof sessionFilterSummary>[0]) {
+    const genres = input.sessionGenres ?? [];
+    if (genres.length === 0 || input.sessionIntentName || input.mood || input.moods?.length || input.energy || input.tempoBpm) {
+      return genres;
+    }
+    const config = await prisma.agentConfig.findUnique({ where: { userId }, select: { vibes: true } });
+    const vibes = new Set((config?.vibes ?? []).map((vibe) => vibe.trim().toLowerCase()));
+    const sameAsVibes =
+      vibes.size > 0 && genres.every((genre) => vibes.has(genre.trim().toLowerCase()));
+    return sameAsVibes ? [] : genres;
   }
 
   /** The session's own boolean wins; otherwise the listener's saved choice, defaulting to off. */
