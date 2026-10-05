@@ -660,6 +660,32 @@ Session History used to list only a session's date, duration and tracks, so a
   taste", and sessions from before #2096 show nothing new.
 - Tests: `agent_session_filters.spec.ts`,
   `agent_session_filters.integration.spec.ts`, `AgentHistoryCard.test.tsx`.
+## Played-through milestone for Sonic Radar (#2097)
+
+Sonic Radar's resonance rule needs a `complete` `AgentSignal` with
+`completionRatio >= 0.9`, but that signal mirrored `playback.completed`, which
+the web sends once per track at the 30-second counted-play mark with the
+position at that moment (about 0.1 for a typical track). No web play could
+qualify, so the journal, its "Almost there" prompt and the AI DJ "resonated"
+banner stayed empty.
+
+- The web player sends a separate lifecycle action, `played_through`, once per
+  playback instance when the position reaches 90% of a known duration
+  (`shouldReportPlayedThrough`, `PLAYED_THROUGH_RATIO`).
+- `AgentLearningService.recordPlayedThrough` upgrades the `complete` signal of
+  the same playback instance (same telemetry dedup id) to the real ratio and
+  marks `outcome.playedThrough`. Action, weight, count and `createdAt` are
+  unchanged, so the taste profile needs no recompute. When no 30-second play
+  was recorded it creates that signal through the regular telemetry path.
+  Analytics consent, agent-playback training and taste reset are honoured.
+- `playback.completed` keeps its counted-play meaning for popularity, Scene
+  Scout, first-listener reception and warehouse reports.
+- The journal's `completedAt` stays the signal's 30-second timestamp, so the
+  seven-day follow-up window starts there. Plays from before #2097 cannot be
+  upgraded because no position was recorded.
+- Tests: `playback_played_through.integration.spec.ts` (including an
+  end-to-end Sonic Radar case), `analytics_instrumentation.spec.ts`,
+  `analytics.controller.http.spec.ts`, `playbackAnalytics.test.ts`.
 
 ## Unified Ranking Core (#1448 WS-1)
 

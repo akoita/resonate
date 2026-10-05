@@ -48,7 +48,7 @@ const CLIENT_TELEMETRY_CONSENT_BASIS = "consent";
 const CONSENT_REFUSED_RESPONSE = { recorded: false, reason: "consent_not_granted" } as const;
 const MAX_POLICY_VERSION_LENGTH = 100;
 
-const PLAYBACK_LIFECYCLE_ACTIONS = new Set<PlaybackLifecycleAction>(["started", "heartbeat", "skipped"]);
+const PLAYBACK_LIFECYCLE_ACTIONS = new Set<PlaybackLifecycleAction>(["started", "heartbeat", "skipped", "played_through"]);
 // #1455 WS-8: rail ids, variants and skip reasons are short labels, never prose.
 const ANALYTICS_LABEL_PATTERN = /^[a-z0-9][a-z0-9_:-]{0,63}$/i;
 
@@ -423,7 +423,7 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
   const reason = optionalLabel(body.reason, "reason");
 
   if (!PLAYBACK_LIFECYCLE_ACTIONS.has(action as PlaybackLifecycleAction)) {
-    throw new BadRequestException("action must be one of: started, heartbeat, skipped");
+    throw new BadRequestException("action must be one of: started, heartbeat, skipped, played_through");
   }
   if (!trackId) {
     throw new BadRequestException("trackId is required");

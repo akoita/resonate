@@ -6,8 +6,10 @@ import type { PlaybackLocalHourBucket, PlaybackWeekdayKind } from "./api";
 export const PLAYBACK_COMPLETED_SECONDS = 30;
 export const PLAYBACK_HEARTBEAT_SECONDS = 30;
 export const SHORT_TRACK_COMPLETION_RATIO = 0.8;
+/** Share of the track that counts as "played through" (#2097); the 30 s play above stays a separate milestone. */
+export const PLAYED_THROUGH_RATIO = 0.9;
 const SESSION_STORAGE_KEY = "resonate.playback.sessionId";
-export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped";
+export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped" | "played_through";
 
 export type PlaybackLocalContext = {
   localHourBucket: PlaybackLocalHourBucket;
@@ -143,6 +145,33 @@ export function shouldReportPlaybackCompleted(input: {
       ? durationSeconds * SHORT_TRACK_COMPLETION_RATIO
       : PLAYBACK_COMPLETED_SECONDS;
   return currentTimeSeconds >= thresholdSeconds;
+}
+
+/**
+ * #2097: a separate milestone from the 30 s counted play. It fires once per
+ * playback instance when the listener reaches PLAYED_THROUGH_RATIO of a track
+ * with a known duration, and upgrades the agent signal's completion ratio.
+ */
+export function shouldReportPlayedThrough(input: {
+  track: LocalTrack | null;
+  currentTimeSeconds: number;
+  durationSeconds?: number | null;
+  alreadyReported: boolean;
+}) {
+  if (input.alreadyReported || !input.track) {
+    return false;
+  }
+  if (!getPlaybackAnalyticsTrackId(input.track)) {
+    return false;
+  }
+  const durationSeconds = input.durationSeconds;
+  if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return false;
+  }
+  if (!Number.isFinite(input.currentTimeSeconds)) {
+    return false;
+  }
+  return Math.max(0, input.currentTimeSeconds) / durationSeconds >= PLAYED_THROUGH_RATIO;
 }
 
 export function buildPlaybackCompletedPayload(input: {

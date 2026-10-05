@@ -121,6 +121,14 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason", "railId", "rankerVariant", "experimentKey", "surface", "localHourBucket", "weekdayKind", "playlistId"],
   },
   {
+    // #2097: reaching 90% of a track; distinct from the 30 s `playback.completed`.
+    eventName: "playback.played_through",
+    eventVersion: 1,
+    producer: "playback-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "railId", "rankerVariant", "experimentKey", "surface", "localHourBucket", "weekdayKind", "playlistId"],
+  },
+  {
     eventName: "onboarding.step_completed",
     eventVersion: 1,
     producer: "web-app",

@@ -407,6 +407,9 @@ function sanitizeSignalOutcome(outcome?: Record<string, unknown>) {
   copyString(sanitized, "source", outcome.source, 80);
   copyBoolean(sanitized, "firstPick", outcome.firstPick);
   copyNumber(sanitized, "completionRatio", outcome.completionRatio);
+  // #2097: set once the listener reached the played-through milestone, which
+  // is separate from the 30 s counted play this signal is created for.
+  copyBoolean(sanitized, "playedThrough", outcome.playedThrough);
   copyNumber(sanitized, "durationMs", outcome.durationMs);
   // #1449: where in the track a deliberate skip happened — a useful,
   // non-identifying learning feature for the skip signal.
@@ -491,6 +494,12 @@ function copyEnum<const Values extends readonly string[]>(
   }
 }
 
+/** Stable dedup identity for a telemetry-mirrored signal (shared with the analytics instrumentation). */
+export function signalDedupKey(...parts: string[]) {
+  const canonicalKey = JSON.stringify(["analytics-agent-signal:v1", ...parts]);
+  return `agent_signal_${createHash("sha256").update(canonicalKey).digest("hex")}`;
+}
+
 export interface AgentSignalTelemetryDescriptor {
   /** Stable identity for retry or browser-session deduplication. */
   dedupKey?: string;
@@ -552,6 +561,96 @@ export class AgentLearningService {
     return profile;
   }
 
+  /**
+   * #2097: the listener reached the played-through milestone of a track. This
+   * upgrades the completion ratio of the `complete` signal the 30 s counted
+   * play already recorded for the same playback instance, or records that
+   * signal with the real ratio when the milestone arrives first. It never adds
+   * a signal, so counts and weights stay as they were.
+   */
+  async recordPlayedThrough(input: {
+    userId: string;
+    trackId: string;
+    playbackInstanceId?: string;
+    completionRatio: number;
+    durationMs?: number;
+    metadata: Prisma.InputJsonObject;
+    playbackSessionId?: string;
+  }): Promise<void> {
+    if (!input.playbackInstanceId) {
+      return;
+    }
+    const dedupKey = signalDedupKey("playback", input.trackId, "complete", input.playbackInstanceId);
+    const dedupId = signalIdForTelemetry(input.userId, dedupKey);
+    if (!dedupId) {
+      return;
+    }
+
+    const existed = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR UPDATE
+      `);
+      const gate = await readTelemetryGate(tx, input.userId);
+      if (!gate.allowed) {
+        // Refused telemetry neither upgrades nor creates a signal.
+        return true;
+      }
+      const existing = await tx.agentSignal.findUnique({
+        where: { id: dedupId },
+        select: { createdAt: true, metadata: true },
+      });
+      if (!existing) {
+        return false;
+      }
+      // A signal from before a taste reset is already out of the learning history.
+      if (gate.settings?.resetAt && existing.createdAt <= gate.settings.resetAt) {
+        return true;
+      }
+
+      const metadata = jsonObject(existing.metadata);
+      const outcome = jsonObject(metadata.outcome);
+      const previousRatio = typeof outcome.completionRatio === "number" && Number.isFinite(outcome.completionRatio)
+        ? outcome.completionRatio
+        : 0;
+      const nextRatio = Math.max(previousRatio, input.completionRatio);
+      if (nextRatio === previousRatio && outcome.playedThrough === true) {
+        return true;
+      }
+      // Metadata only: action, weight and createdAt are untouched, so the
+      // taste profile (built from action weights) needs no recompute.
+      await tx.agentSignal.update({
+        where: { id: dedupId },
+        data: {
+          metadata: {
+            ...metadata,
+            outcome: {
+              ...outcome,
+              completionRatio: nextRatio,
+              ...(typeof outcome.durationMs !== "number" && input.durationMs !== undefined
+                ? { durationMs: input.durationMs }
+                : {}),
+              playedThrough: true,
+            },
+          } as Prisma.InputJsonObject,
+        },
+      });
+      return true;
+    });
+    if (existed) {
+      return;
+    }
+
+    // No 30 s play recorded yet: record it through the regular telemetry path
+    // so consent, replay detection and the profile refresh behave as usual.
+    await this.recordTelemetrySignal({
+      userId: input.userId,
+      trackId: input.trackId,
+      action: "complete",
+      metadata: input.metadata,
+      telemetry: { dedupKey, playbackSessionId: input.playbackSessionId },
+    });
+  }
+
   private async recordTelemetrySignal(input: AgentSignalRecordInput & { telemetry: AgentSignalTelemetryDescriptor }) {
     const dedupId = signalIdForTelemetry(input.userId, input.telemetry.dedupKey);
     const playbackSessionId = userScopedPlaybackSessionId(input.userId, input.telemetry.playbackSessionId);
@@ -562,24 +661,11 @@ export class AgentLearningService {
         SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR UPDATE
       `);
 
-      const consent = await tx.analyticsConsent.findUnique({
-        where: { userId: input.userId },
-        select: { productAnalytics: true, policyVersion: true },
-      });
-      if (
-        !consent?.productAnalytics ||
-        consent.policyVersion !== ANALYTICS_CONSENT_POLICY_VERSION
-      ) {
+      const gate = await readTelemetryGate(tx, input.userId);
+      if (!gate.allowed) {
         return false;
       }
-
-      const settings = await tx.listenerTasteMemorySettings.findUnique({
-        where: { userId: input.userId },
-        select: { agentPlaybackTrainingEnabled: true, resetAt: true },
-      });
-      if (settings?.agentPlaybackTrainingEnabled === false) {
-        return false;
-      }
+      const settings = gate.settings;
 
       if (dedupId && await tx.agentSignal.findUnique({ where: { id: dedupId }, select: { id: true } })) {
         return false;
@@ -995,6 +1081,28 @@ export async function readTasteHistory(
     };
   });
   return { rows, inputs };
+}
+
+async function readTelemetryGate(tx: Prisma.TransactionClient, userId: string) {
+  const consent = await tx.analyticsConsent.findUnique({
+    where: { userId },
+    select: { productAnalytics: true, policyVersion: true },
+  });
+  if (
+    !consent?.productAnalytics ||
+    consent.policyVersion !== ANALYTICS_CONSENT_POLICY_VERSION
+  ) {
+    return { allowed: false as const, settings: null };
+  }
+
+  const settings = await tx.listenerTasteMemorySettings.findUnique({
+    where: { userId },
+    select: { agentPlaybackTrainingEnabled: true, resetAt: true },
+  });
+  if (settings?.agentPlaybackTrainingEnabled === false) {
+    return { allowed: false as const, settings };
+  }
+  return { allowed: true as const, settings };
 }
 
 function signalIdForTelemetry(userId: string, dedupKey?: string) {

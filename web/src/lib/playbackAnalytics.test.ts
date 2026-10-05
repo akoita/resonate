@@ -8,7 +8,9 @@ import {
   getPlaybackPlaylistId,
   getPlaybackAnalyticsSessionId,
   PLAYBACK_HEARTBEAT_SECONDS,
+  PLAYED_THROUGH_RATIO,
   shouldReportPlaybackCompleted,
+  shouldReportPlayedThrough,
 } from "./playbackAnalytics";
 import type { LocalTrack } from "./localLibrary";
 
@@ -120,6 +122,61 @@ describe("playback analytics helpers", () => {
         alreadyReported: true,
       }),
     ).toBe(false);
+  });
+
+  it("reports played-through once at 90 percent of a track with a known duration (#2097)", () => {
+    expect(PLAYED_THROUGH_RATIO).toBe(0.9);
+    const input = { track, durationSeconds: 120, alreadyReported: false };
+    expect(shouldReportPlayedThrough({ ...input, currentTimeSeconds: 30 })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...input, currentTimeSeconds: 107.9 })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...input, currentTimeSeconds: 108 })).toBe(true);
+    expect(shouldReportPlayedThrough({ ...input, currentTimeSeconds: 120 })).toBe(true);
+    expect(shouldReportPlayedThrough({ ...input, currentTimeSeconds: 108, alreadyReported: true })).toBe(false);
+  });
+
+  it("does not report played-through without a usable duration, position or catalog track (#2097)", () => {
+    const base = { track, currentTimeSeconds: 100, alreadyReported: false };
+    expect(shouldReportPlayedThrough({ ...base, durationSeconds: undefined })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...base, durationSeconds: null })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...base, durationSeconds: 0 })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...base, durationSeconds: Number.NaN })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...base, durationSeconds: Number.POSITIVE_INFINITY, currentTimeSeconds: 1e9 })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...base, durationSeconds: 100, currentTimeSeconds: Number.NaN })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...base, durationSeconds: 100, track: null })).toBe(false);
+    expect(
+      shouldReportPlayedThrough({
+        ...base,
+        durationSeconds: 100,
+        track: { ...track, catalogTrackId: undefined, source: "local" },
+      }),
+    ).toBe(false);
+  });
+
+  it("reports played-through for a short track independently of the 30 second play (#2097)", () => {
+    const short = { ...track, duration: 20 };
+    const input = { track: short, durationSeconds: 20, alreadyReported: false };
+    // The 80 percent short-track play has counted, but 90 percent is not reached yet.
+    expect(shouldReportPlaybackCompleted({ ...input, currentTimeSeconds: 16 })).toBe(true);
+    expect(shouldReportPlayedThrough({ ...input, currentTimeSeconds: 16 })).toBe(false);
+    expect(shouldReportPlayedThrough({ ...input, currentTimeSeconds: 18 })).toBe(true);
+  });
+
+  it("builds a played-through lifecycle payload carrying position and duration (#2097)", () => {
+    const payload = buildPlaybackLifecyclePayload({
+      action: "played_through",
+      track,
+      sessionId: "browser-session",
+      playbackInstanceId: "instance",
+      currentTimeSeconds: 110.4,
+      durationSeconds: 120,
+    });
+    expect(payload).toMatchObject({
+      action: "played_through",
+      trackId: "catalog-track-1",
+      playbackInstanceId: "instance",
+      positionMs: 110400,
+      durationMs: 120000,
+    });
   });
 
   it("qualifies short tracks after 80 percent completion", () => {
