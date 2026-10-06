@@ -11,13 +11,14 @@ config {
 
 /*
  * Cost note: this mart reads the 30-day trusted event view; clean rows filter
- * on occurredDate and the raw basis lookup on occurredAt. Physical raw-table
- * pruning requires events_raw to be partitioned by occurredAt; verify its
- * partition and dry-run bytes before warehouse refreshes are enabled. Artist
- * audiences count distinct actors; the exporter never scans events online.
+ * on occurredDate and the raw basis lookup on occurredAt. The raw lookup
+ * currently filters occurredAt only; verify the partition field and matching
+ * predicate via BigQuery dry-run bytes before enabling warehouse refreshes.
+ * Artist audiences count distinct actors; the exporter never scans events
+ * online.
  */
 WITH windows AS (
-  SELECT '24h' AS window, 24 * 60 * 60 AS window_seconds
+  SELECT '24h' AS `window`, 24 * 60 * 60 AS window_seconds
   UNION ALL SELECT '7d', 7 * 24 * 60 * 60
   UNION ALL SELECT '30d', 30 * 24 * 60 * 60
 ),
@@ -32,7 +33,7 @@ artist_genres AS (
 windowed AS (
   SELECT
     ag.*,
-    windows.window,
+    windows.`window`,
     GREATEST(
       0.1,
       1.0 - SAFE_DIVIDE(
@@ -48,13 +49,13 @@ deduplicated_artist_signals AS (
   SELECT *
   FROM windowed
   QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY artist_id, window, genre, signal_kind, signal_id
+    PARTITION BY artist_id, `window`, genre, signal_kind, signal_id
     ORDER BY occurred_at DESC, event_id DESC
   ) = 1
 )
 SELECT
   artist_id,
-  window,
+  `window`,
   genre,
   SUM(CASE WHEN signal_kind = 'play' THEN LEAST(1.5, GREATEST(0.0, completion_ratio)) * decay ELSE 0 END)
     + ${require("includes/discovery_popularity_config").saveWeight(dataform.projectConfig)} * SUM(IF(signal_kind = 'save', decay, 0))
@@ -65,5 +66,5 @@ SELECT
   COUNTIF(signal_kind = 'purchase') AS purchases,
   CURRENT_TIMESTAMP() AS computed_at
 FROM deduplicated_artist_signals
-GROUP BY artist_id, window, genre
+GROUP BY artist_id, `window`, genre
 HAVING COUNT(DISTINCT actor_id) >= ${require("includes/discovery_popularity_config").minimumAudience(dataform.projectConfig)}
