@@ -83,6 +83,46 @@ describe("BigQuery discovery popularity mart reader", () => {
     expect(calls[2].params?.pageToken).toBe("page-2");
   });
 
+  it("quotes the reserved window column for both marts and preserves its result name", async () => {
+    const calls: RequestArgs[] = [];
+    const requestClient: BigQueryRequestClient = {
+      async request<T>(request: RequestArgs) {
+        calls.push(request);
+        const query = (request.data as { query: string }).query;
+        const idField = query.includes("track_id") ? "track_id" : "artist_id";
+        return {
+          data: {
+            jobComplete: true,
+            schema: { fields: [{ name: idField }, { name: "window" }] },
+            totalRows: "1",
+            rows: [{ f: [{ v: "catalog-id" }, { v: "30d" }] }],
+          } as T,
+        };
+      },
+    };
+    const client = new GoogleAuthDiscoveryPopularityBigQueryClient(warehouseConfig(), requestClient);
+
+    for (const [tableName, mart, idField] of [
+      ["track_popularity", "track", "track_id"],
+      ["artist_engagement", "artist", "artist_id"],
+    ] as const) {
+      await expect(client.readMart(tableName, mart)).resolves.toEqual([
+        { [idField]: "catalog-id", window: "30d" },
+      ]);
+    }
+
+    expect(calls).toHaveLength(2);
+    for (const [index, idField] of ["track_id", "artist_id"].entries()) {
+      const request = calls[index];
+      const query = (request.data as { query: string }).query;
+      expect(query).toContain(`SELECT ${idField}, \`window\`, genre`);
+      expect(query).toContain(`ORDER BY \`window\`, genre, ${idField} LIMIT @resultLimit`);
+      expect((request.data as { queryParameters: Array<{ name: string }> }).queryParameters).toEqual([
+        expect.objectContaining({ name: "resultLimit" }),
+      ]);
+    }
+  });
+
   it("preserves the requested page token while an incomplete page is polled", async () => {
     const calls: RequestArgs[] = [];
     const responses: unknown[] = [

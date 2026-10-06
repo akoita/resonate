@@ -259,13 +259,13 @@ export class GoogleAuthDiscoveryPopularityBigQueryClient implements DiscoveryPop
   async readMart(tableName: string, mart: "track" | "artist" | "snapshot") {
     const table = bigQueryIdentifier(tableName, "mart table");
     const columns = mart === "track"
-      ? "track_id, window, genre, score, plays, unique_listeners, saves, purchases, computed_at"
+      ? "track_id, `window`, genre, score, plays, unique_listeners, saves, purchases, computed_at"
       : mart === "artist"
-        ? "artist_id, window, genre, score, plays, unique_listeners, saves, purchases, computed_at"
+        ? "artist_id, `window`, genre, score, plays, unique_listeners, saves, purchases, computed_at"
         : "computed_at, track_rows, artist_rows";
     const orderBy = mart === "snapshot"
       ? "computed_at"
-      : `window, genre, ${mart === "track" ? "track_id" : "artist_id"}`;
+      : `\`window\`, genre, ${mart === "track" ? "track_id" : "artist_id"}`;
     const query = `SELECT ${columns} FROM \`${bigQueryIdentifier(this.projectId, "project")}.${bigQueryIdentifier(this.datasetId, "dataset")}.${table}\` ORDER BY ${orderBy} LIMIT @resultLimit`;
     const deadline = this.now() + this.timeoutMs;
     const initial = await this.request<BigQueryQueryResponse>(

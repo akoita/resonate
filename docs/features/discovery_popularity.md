@@ -67,8 +67,10 @@ are tracked privately in
 
 Focused backend tests cover scoring, export pagination/deadlines, transactional
 replacement, audience suppression, authoritative metadata and cache generation.
-Full local Dataform compilation validates the combined action graph and
-generated SQL. Existing Agent Taste templates use inline configuration helpers
+Full local Dataform compilation validates the combined action graph; BigQuery
+dry runs validate the generated GoogleSQL and estimate query bytes before a
+build. The marts, assertions and exporter quote the reserved `window` identifier
+while preserving the shared column contract. Existing Agent Taste templates use inline configuration helpers
 so their configuration blocks compile in the same graph. Application
 materialization and export are merged in
 [PR #2045](https://github.com/akoita/resonate/pull/2045).

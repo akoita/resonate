@@ -85,6 +85,9 @@ then rotates Redis generation. Source partition verification, dry-run cost
 bounds, cadence, credential grants and live acceptance belong in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
 A recent-timestamp predicate alone does not prove physical partition pruning.
+Dataform compilation checks the action graph; use BigQuery dry runs to validate
+GoogleSQL syntax and estimate bytes. The `window` column keeps its shared name
+and is backtick-quoted in SQL because it is a reserved keyword.
 
 See [Discovery popularity and engagement](../../../docs/features/discovery_popularity.md)
 for the serving contract, configuration and failure behavior.
