@@ -28,8 +28,9 @@ admitted.
   merged in [PR #2044](https://github.com/akoita/resonate/pull/2044), with privacy, API, browser and help coverage.
   [PR #2054](https://github.com/akoita/resonate/pull/2054) preserves validated
   release context when saving and editing a Show draft. The next continuation
-  adds consent-governed API pledge city declarations and indexer-qualified demand;
-  browser city entry remains deferred.
+  adds consent-governed API pledge city declarations and indexer-qualified demand,
+  and the Shows pledge panel now offers optional, consent-gated browser city
+  entry; canonical follows remain open.
 - **#1969:** categorical request/session shortfalls and catalog supply actions
   are merged in [PR #2046](https://github.com/akoita/resonate/pull/2046).
 - **#1970:** taste-fitting fresh release selection and day-seven reception are
@@ -47,7 +48,7 @@ warehouse scheduling and live checks remain open in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). Canonical
 follows are still unavailable without a follow ledger event; pledge demand
 requires canonical release attribution, an indexer-confirmed pledge and a
-consent-governed backer city declaration. Browser city entry remains open. The linked parent
+consent-governed backer city declaration, which the Shows pledge panel now collects as an optional field. The linked parent
 feature remains open until acceptance and its remaining signal families are
 resolved.
 

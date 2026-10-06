@@ -86,7 +86,7 @@ the user's own account or a privileged operator view.
 The intent API may receive a backer-declared city, but a campaign target city
 cannot locate its backers. Optional listener city data is captured separately
 from the financial pledge and its general analytics event, only under current
-affirmative analytics consent. The browser pledge flow does not yet collect it.
+affirmative analytics consent. The browser pledge panel offers it as an optional, consent-gated field.
 
 The private context expires 28 days after declaration and is exported to its
 account holder, erased with the account and deleted on consent refusal. Current
