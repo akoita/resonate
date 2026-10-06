@@ -2293,7 +2293,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. Your saved draft keeps the release connection while the selected artist is credited on it; choosing an artist who isn't credited removes that connection. A suggestion does not create or publish a campaign, and it does not predict income. Follow counts remain unavailable. Pledges count only with confirmed payment, a release connection, and a city the backer chose to share with usage measurement on. The app does not yet ask backers for a city, so ordinary app pledges do not add city demand.",
+            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. Your saved draft keeps the release connection while the selected artist is credited on it; choosing an artist who isn't credited removes that connection. A suggestion does not create or publish a campaign, and it does not predict income. Follow counts remain unavailable. Pledges count only with confirmed payment, a release connection, and a city the backer chose to share with usage measurement on. When usage measurement is on, the pledge card offers an optional \"Your city\" field; leaving it blank means that pledge adds no city demand.",
           },
           {
             kind: "figure",
@@ -2711,6 +2711,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Before signing, a confirmation step recaps your pledge amount and the refund and release terms — review it, then confirm.",
               "Approve the pledge with your passkey; it's held in escrow, not paid out yet.",
             ],
+          },
+          {
+            kind: "paragraph",
+            text: "If you have allowed usage measurement, the pledge card also offers an optional \"Your city\" field. Enter your city and a two-letter country code if you want to share it; leave it blank to skip. The artist only sees an anonymous city count once enough fans share the same city, and you can turn this off any time in Settings, Privacy.",
           },
           {
             kind: "paragraph",

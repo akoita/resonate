@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -9,6 +9,7 @@ import {
   useShowRefundExecution,
   type ShowPledgeExecutionResult,
 } from "../../hooks/useShowPledgeExecution";
+import { isProductAnalyticsAllowed, subscribeToAnalyticsConsent } from "../../lib/analyticsConsent";
 import { getExplorerTxUrl } from "../../lib/explorer";
 import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
@@ -18,6 +19,7 @@ import {
   formatMoney,
   listMyShowPledges,
   pledgeConfirmSummary,
+  pledgeDemandGeo,
   pledgeStateLabel,
   type Campaign,
   type CampaignTier,
@@ -59,6 +61,17 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // #1968: the optional city is offered only while product analytics consent is
+  // granted. It starts empty and is never filled from the campaign city.
+  // The server snapshot is false so the first render fails closed and hydrates
+  // identically; the client value follows the shared consent store.
+  const analyticsAllowed = useSyncExternalStore(
+    subscribeToAnalyticsConsent,
+    isProductAnalyticsAllowed,
+    () => false,
+  );
+  const [declaredCity, setDeclaredCity] = useState("");
+  const [declaredCountry, setDeclaredCountry] = useState("");
 
   const selectedTier = useMemo(
     () => tiers.find((tier) => tier.id === selectedTierId) ?? tiers[0],
@@ -149,6 +162,11 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         tierId: selectedTier.id,
         walletAddress,
         token,
+        declaredCity:
+          isProductAnalyticsAllowed() &&
+          pledgeDemandGeo({ countryCode: declaredCountry, city: declaredCity })
+            ? { countryCode: declaredCountry, city: declaredCity }
+            : null,
       });
       setIntent(next);
       if (next.contractCall) {
@@ -235,6 +253,15 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
           <p>{availability.message}</p>
         </div>
       )}
+
+      {pledgingOpen && analyticsAllowed ? (
+        <PledgeCityEntry
+          city={declaredCity}
+          countryCode={declaredCountry}
+          onCityChange={setDeclaredCity}
+          onCountryCodeChange={setDeclaredCountry}
+        />
+      ) : null}
 
       {latestPledge || myPledgesLoading ? (
         <div className="show-detail__my-pledge" aria-live="polite">
@@ -323,5 +350,57 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         />
       ) : null}
     </article>
+  );
+}
+
+/**
+ * #1968: optional backer city for Scene Scout pledge demand. Rendered only while
+ * product analytics consent is granted; it starts empty and is never filled
+ * from the campaign city, which is the artist's target rather than the fan's.
+ */
+export function PledgeCityEntry({
+  city,
+  countryCode,
+  onCityChange,
+  onCountryCodeChange,
+}: {
+  city: string;
+  countryCode: string;
+  onCityChange: (value: string) => void;
+  onCountryCodeChange: (value: string) => void;
+}) {
+  return (
+    <fieldset className="show-detail__city-entry">
+      <legend>Your city (optional)</legend>
+      <div className="show-detail__city-entry-fields">
+        <label>
+          <span>City</span>
+          <input
+            type="text"
+            name="pledge-city"
+            value={city}
+            onChange={(event) => onCityChange(event.target.value)}
+            maxLength={80}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          <span>Country code</span>
+          <input
+            type="text"
+            name="pledge-country"
+            value={countryCode}
+            onChange={(event) => onCountryCodeChange(event.target.value.toUpperCase())}
+            maxLength={2}
+            placeholder="FR"
+            autoComplete="off"
+          />
+        </label>
+      </div>
+      <p className="show-detail__city-entry-note">
+        The artist only sees an anonymous city count once enough fans share the same city.
+        Leave this blank to skip.
+      </p>
+    </fieldset>
   );
 }
