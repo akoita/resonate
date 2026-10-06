@@ -1468,12 +1468,39 @@ export async function getCampaign(id: string): Promise<Campaign | null> {
   return CAMPAIGNS.find((c) => c.id === id) ?? null;
 }
 
+export type ShowPledgeDemandGeo = {
+  countryCode: string;
+  citySlug: string;
+  source: "user_declared";
+  precision: "city";
+};
+
+/**
+ * #1968: shape a backer-declared city into the coarse geo envelope the pledge
+ * intent accepts. Returns null unless both a two-letter country and a city are
+ * present, so a blank or invalid declaration is simply left out of the request.
+ * The slug rules mirror the backend normalizer; the backend stays the authority.
+ */
+export function pledgeDemandGeo(
+  input: { countryCode?: string; city?: string } | null | undefined,
+): ShowPledgeDemandGeo | null {
+  if (!input) return null;
+  const countryCode = (input.countryCode ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(countryCode)) return null;
+  const citySlug = slugify((input.city ?? "").trim()).slice(0, 80).replace(/-+$/g, "");
+  if (!citySlug) return null;
+  return { countryCode, citySlug, source: "user_declared", precision: "city" };
+}
+
 export async function createPledgeIntent(input: {
   campaign: Campaign;
   tierId: string;
   walletAddress: string;
   token: string;
+  /** Optional, consent-gated city the backer chose to share (never the campaign city). */
+  declaredCity?: { countryCode: string; city: string } | null;
 }): Promise<ShowPledgeIntent> {
+  const geo = pledgeDemandGeo(input.declaredCity);
   const response = await fetch(
     `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/pledges/intent`,
     {
@@ -1485,6 +1512,7 @@ export async function createPledgeIntent(input: {
       body: JSON.stringify({
         tierId: input.tierId,
         walletAddress: input.walletAddress,
+        ...(geo ? { geo } : {}),
       }),
     },
   );

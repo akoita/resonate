@@ -152,7 +152,7 @@ It is separate from retained financial pledges and excluded from their responses
 The personal-data export includes the holder’s rows; account erasure and consent
 refusal delete them. Bounded cleanup runs on demand reads, pledge intent writes
 and analytics retention runs. Current consent and taste reset controls also gate
-aggregate use. The browser pledge flow does not yet collect this declaration.
+aggregate use. The browser pledge panel collects this declaration only as an optional field shown while product analytics consent is granted.
 
 `SceneScoutCityDemand` contains only thresholded release/city counts and catalog
 labels. It is exported to the owning artist by `artistId`, never as a listener

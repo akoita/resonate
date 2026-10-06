@@ -27,7 +27,7 @@ Canonical follows are now a ledger event (`artist.followed`, see
 [Artist follows](artist_follows.md)) and count toward city demand and
 first-week reception; pledge demand requires a consent-qualified city declaration captured at intent
 creation and an indexer-confirmed pledge linked to a release. The browser pledge
-flow does not yet collect a backer city. See the [sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
+flow offers an optional, consent-gated city field. See the [sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
 
 ADR-BM-6: **Line 2, Artist Pro, phase 2**, behind a currently free entitlement
 seam. Suggestions convert into **Line 1, Shows (6%)** and **Line 3, marketplace
@@ -73,10 +73,13 @@ reset. Seven- and 28-day windows use the confirmation time; distinct people
 share the audience count with listening signals. Incomplete bounded reads clear
 old snapshots and show thin data. A campaign target city never locates a backer.
 
-This is an API-backed slice: the browser pledge flow still sends no city.
-Browser city entry remains tracked in open #1968; the follow endpoint accepts a
-user-declared city like the other telemetry routes, but the browser sends none yet,
-so follows from the current web app do not add city demand. The
+Browser city entry now ships in the Shows pledge panel: while product analytics
+consent is granted, the panel offers an optional, initially empty city and
+country field (never prefilled from the campaign city) and sends it as the
+user-declared `geo` on the pledge intent. Without consent, or with the field
+left blank, the pledge sends no city. The follow endpoint accepts a
+user-declared city like the other telemetry routes, but the follow button sends
+none yet, so follows from the current web app do not add city demand. The
 analytics consent wording now explicitly covers optional pledge city demand;
 older decisions require renewal before optional analytics resumes. Affirmative
 grants must include the version bound to the client’s displayed wording

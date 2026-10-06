@@ -1,5 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const consent = vi.hoisted(() => ({ allowed: false }));
+vi.mock("../../lib/analyticsConsent", () => ({
+  isProductAnalyticsAllowed: () => consent.allowed,
+  subscribeToAnalyticsConsent: () => () => {},
+}));
 
 vi.mock("../auth/AuthProvider", () => ({
   useAuth: () => ({
@@ -30,7 +36,7 @@ vi.mock("../../hooks/useShowPledgeExecution", () => ({
   }),
 }));
 
-import { PledgeIntentPanel } from "./PledgeIntentPanel";
+import { PledgeCityEntry, PledgeIntentPanel } from "./PledgeIntentPanel";
 import type { Campaign, CampaignTier } from "../../lib/shows";
 
 const tiers: CampaignTier[] = [
@@ -94,5 +100,44 @@ describe("PledgeIntentPanel campaign fee copy", () => {
       <PledgeIntentPanel campaign={{ ...campaign, feeBps: 0 }} fallbackTiers={tiers} />,
     );
     expect(html).not.toContain("platform fee applies");
+  });
+});
+
+describe("PledgeIntentPanel optional city entry (#1968)", () => {
+  beforeEach(() => {
+    consent.allowed = false;
+  });
+
+  it("hides the city fieldset when product analytics is not allowed", () => {
+    const html = renderToStaticMarkup(<PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />);
+    expect(html).not.toContain("Your city (optional)");
+  });
+
+  it("keeps the server render closed even when consent is already granted", () => {
+    // The first render must match hydration, so the fieldset only appears once
+    // the client consent store reports a grant.
+    consent.allowed = true;
+    const html = renderToStaticMarkup(<PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />);
+    expect(html).not.toContain("Your city (optional)");
+  });
+
+  it("offers an empty, optional city fieldset", () => {
+    const html = renderToStaticMarkup(
+      <PledgeCityEntry city="" countryCode="" onCityChange={() => {}} onCountryCodeChange={() => {}} />,
+    );
+    expect(html).toContain("Your city (optional)");
+    expect(html).toContain("anonymous city count");
+    expect(html).toContain("Leave this blank to skip.");
+    // The campaign target city is never prefilled as the backer's declaration.
+    expect(html).not.toContain('value="Paris"');
+    expect(html).not.toContain('value="FR"');
+  });
+
+  it("does not offer the fieldset when pledging is closed", () => {
+    consent.allowed = true;
+    const html = renderToStaticMarkup(
+      <PledgeIntentPanel campaign={{ ...campaign, rawStatus: "cancelled" }} fallbackTiers={tiers} />,
+    );
+    expect(html).not.toContain("Your city (optional)");
   });
 });

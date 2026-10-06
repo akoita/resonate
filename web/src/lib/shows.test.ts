@@ -3,6 +3,7 @@ import {
   discoverShowCampaignOnChain,
   buildCatalogArtistCandidates,
   campaignArtistHref,
+  createPledgeIntent,
   createShowCampaignDraft,
   findArtistCampaigns,
   releaseCampaignArtistIdentity,
@@ -23,6 +24,7 @@ import {
   campaignFeeNotice,
   formatCampaignFeePercent,
   pledgeConfirmSummary,
+  pledgeDemandGeo,
   showsCampaignListPath,
   validateCampaignDeadlines,
   getCampaign,
@@ -944,5 +946,65 @@ describe("campaign <-> artist navigation", () => {
         sortOrder: 0,
       }],
     })).toEqual({ artistId: "artist-sennarin", artistName: "SennaRin" });
+  });
+});
+
+describe("Pledge city declaration (#1968)", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("builds a coarse user-declared city envelope", () => {
+    expect(pledgeDemandGeo({ countryCode: " fr ", city: "  Paris " })).toEqual({
+      countryCode: "FR",
+      citySlug: "paris",
+      source: "user_declared",
+      precision: "city",
+    });
+  });
+
+  it("slugifies accented and multi-word cities like the backend", () => {
+    expect(pledgeDemandGeo({ countryCode: "BR", city: "São Paulo" })?.citySlug).toBe("sao-paulo");
+    expect(pledgeDemandGeo({ countryCode: "FR", city: "Saint-Étienne!" })?.citySlug).toBe("saint-etienne");
+  });
+
+  it("rejects invalid countries and blank values", () => {
+    expect(pledgeDemandGeo({ countryCode: "FRA", city: "Paris" })).toBeNull();
+    expect(pledgeDemandGeo({ countryCode: "F1", city: "Paris" })).toBeNull();
+    expect(pledgeDemandGeo({ countryCode: "", city: "Paris" })).toBeNull();
+    expect(pledgeDemandGeo({ countryCode: "FR", city: "   " })).toBeNull();
+    expect(pledgeDemandGeo({ countryCode: "FR", city: "!!!" })).toBeNull();
+    expect(pledgeDemandGeo({})).toBeNull();
+    expect(pledgeDemandGeo(null)).toBeNull();
+    expect(pledgeDemandGeo(undefined)).toBeNull();
+  });
+
+  it("sends geo on the pledge intent only when a valid city is declared", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+    const base = {
+      campaign: { backendId: "campaign-1" } as Campaign,
+      tierId: "tier-1",
+      walletAddress: "0xabc",
+      token: "test-token",
+    };
+
+    await createPledgeIntent({ ...base, declaredCity: { countryCode: "fr", city: "Lyon" } });
+    await createPledgeIntent(base);
+    await createPledgeIntent({ ...base, declaredCity: { countryCode: "FR", city: "" } });
+
+    const calls = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls).toHaveLength(3);
+    expect(calls[0][0]).toContain("/shows/campaigns/campaign-1/pledges/intent");
+    expect(JSON.parse(calls[0][1].body as string)).toEqual({
+      tierId: "tier-1",
+      walletAddress: "0xabc",
+      geo: { countryCode: "FR", citySlug: "lyon", source: "user_declared", precision: "city" },
+    });
+    expect(JSON.parse(calls[1][1].body as string)).toEqual({ tierId: "tier-1", walletAddress: "0xabc" });
+    expect(JSON.parse(calls[2][1].body as string)).not.toHaveProperty("geo");
   });
 });
