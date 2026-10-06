@@ -647,6 +647,14 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Per-play taste signals — behavioural state about the person, kept only to personalise for them.",
   },
   {
+    model: "ArtistFollow",
+    disposition: "delete",
+    reason:
+      "Which artists a person follows is private listener preference with no use once the account is closed; the artist profile itself survives.",
+    note:
+      "Deleting the row also removes the person from demand reads, which count a follow only while this row exists.",
+  },
+  {
     model: "FirstListenerExposure",
     disposition: "delete",
     reason:

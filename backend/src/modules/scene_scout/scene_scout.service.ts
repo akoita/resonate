@@ -66,10 +66,15 @@ const LEDGER_EVENT_NAMES = [
   "playlist.track_added",
   "x402.purchase",
 ] as const;
+/** #1968: follows are read per artist (payload.artistId), not per catalog track. */
+const FOLLOW_EVENT_NAME = "artist.followed";
+/** Allowed gap between the stored follow row and its ledger event (clock skew). */
+const FOLLOW_EVENT_CLOCK_TOLERANCE_MS = 60_000;
 const CONSENTED_EVENT_NAMES = new Set([
   "playback.completed",
   "library.saved",
   "playlist.track_added",
+  FOLLOW_EVENT_NAME,
 ]);
 const SETTLEMENT_CONSENT_BASES = new Set(["performance_of_contract", "contract"]);
 const SAVE_EVENT_NAMES = new Set(["library.saved", "playlist.track_added"]);
@@ -152,6 +157,14 @@ interface CanonicalPurchase {
 
 interface CanonicalPurchaseLoad {
   purchases: Map<string, CanonicalPurchase>;
+  incomplete: boolean;
+}
+
+/** Canonical actor id -> when the listener's current follow row was created. */
+type ActiveArtistFollows = Map<string, Date>;
+
+interface ActiveFollowLoad {
+  follows: ActiveArtistFollows;
   incomplete: boolean;
 }
 
@@ -262,6 +275,11 @@ export function aggregateSceneScoutEvents(input: {
   catalogTracks: Map<string, CatalogTrack>;
   identity: ListenerIdentityContext;
   canonicalPurchases: Map<string, CanonicalPurchase>;
+  /**
+   * Listeners who follow the artist right now. A follow event only counts for
+   * a listener still present here whose current follow predates the event.
+   */
+  activeFollows?: ActiveArtistFollows;
   now: Date;
 }): SceneScoutCityDemandRow[] {
   const resonanceGroups = new Map<string, ResonanceEventGroup>();
@@ -284,11 +302,24 @@ export function aggregateSceneScoutEvents(input: {
     return accumulator;
   };
 
+  const catalogReleases = new Map<string, CatalogTrack>();
+  for (const track of input.catalogTracks.values()) {
+    if (!catalogReleases.has(track.releaseId)) catalogReleases.set(track.releaseId, track);
+  }
+
   for (const event of input.events) {
     const rawActorId = event.actorId;
     const payload = jsonObject(event.payload);
     const trackId = typeof payload.trackId === "string" ? payload.trackId : "";
-    const catalogTrack = input.catalogTracks.get(trackId);
+    const isFollow = event.eventName === FOLLOW_EVENT_NAME;
+    // A follow is about the artist; its release context counts only when it is
+    // in this artist's own catalog (a catalog track wins over a bare release).
+    const catalogTrack = isFollow
+      ? payload.artistId === input.artistId
+        ? input.catalogTracks.get(trackId) ??
+          catalogReleases.get(typeof payload.releaseId === "string" ? payload.releaseId : "")
+        : undefined
+      : input.catalogTracks.get(trackId);
     if (!rawActorId || !catalogTrack) continue;
     const purchaseReceiptId = typeof payload.receiptId === "string" ? payload.receiptId : "";
     const purchase = event.eventName === "x402.purchase"
@@ -302,6 +333,12 @@ export function aggregateSceneScoutEvents(input: {
     if (actorId === input.identity.ownerActorId) continue;
     const city = cityFromEnvelope(event.envelope);
     if (!city) continue;
+    if (isFollow) {
+      const followedAt = input.activeFollows?.get(actorId);
+      if (!followedAt || event.occurredAt.getTime() < followedAt.getTime() - FOLLOW_EVENT_CLOCK_TOLERANCE_MS) {
+        continue;
+      }
+    }
 
     const isConsentedEvent = CONSENTED_EVENT_NAMES.has(event.eventName);
     if (isConsentedEvent) {
@@ -335,12 +372,15 @@ export function aggregateSceneScoutEvents(input: {
       accumulator.uniqueActors.add(actorId);
       if (SAVE_EVENT_NAMES.has(event.eventName)) {
         accumulator.saveContributions.add(contributionKey(actorId, trackId));
+      } else if (isFollow) {
+        accumulator.followContributions.add(contributionKey(actorId, catalogTrack.releaseId));
       } else if (event.eventName === "x402.purchase" && purchaseReceiptId) {
         accumulator.purchaseContributions.add(purchaseReceiptId);
       }
     }
 
-    if (!CONSENTED_EVENT_NAMES.has(event.eventName)) continue;
+    // Follows count as demand but are not a resonance event.
+    if (isFollow || !CONSENTED_EVENT_NAMES.has(event.eventName)) continue;
     const groupKey = actorTrackCityKey(actorId, trackId, city);
     const group = resonanceGroups.get(groupKey) ?? {
       artistId: input.artistId,
@@ -416,7 +456,7 @@ export function aggregateSceneScoutEvents(input: {
         windowDays,
         resonantListeners: aggregate.resonantActors.size,
         saves: aggregate.saveContributions.size,
-        // The current analytics event model has no canonical listener-follow event.
+        // #1968: distinct active, consented followers per release, from `artist.followed`.
         follows: aggregate.followContributions.size,
         purchases: aggregate.purchaseContributions.size,
         // Confirmed pledges use a separate consented, expiring campaign/release context.
@@ -492,6 +532,16 @@ export class SceneScoutService implements SceneScoutSource {
     }
 
     const ledger = await this.readBoundedLedgerEvents([...catalogTracks.keys()], from, now);
+    if (!ledger.truncated) {
+      const followEvents = await this.readBoundedFollowEvents(
+        artistId,
+        from,
+        now,
+        SCENE_SCOUT_READ_CAP - ledger.events.length,
+      );
+      ledger.events.push(...followEvents.events);
+      ledger.truncated = followEvents.truncated;
+    }
     if (ledger.truncated) {
       await this.replaceSnapshots(artistId, []);
       return {
@@ -527,11 +577,12 @@ export class SceneScoutService implements SceneScoutSource {
       };
     }
 
-    const [identity, canonicalPurchases] = await Promise.all([
+    const [identity, canonicalPurchases, activeFollows] = await Promise.all([
       this.loadListenerIdentity(ledger.events, artist.userId),
       this.loadCanonicalPurchases(ledger.events, from, now),
+      this.loadActiveFollows(artistId),
     ]);
-    if (identity.incomplete || canonicalPurchases.incomplete) {
+    if (identity.incomplete || canonicalPurchases.incomplete || activeFollows.incomplete) {
       await this.replaceSnapshots(artistId, []);
       return {
         status: "thin_data",
@@ -547,6 +598,7 @@ export class SceneScoutService implements SceneScoutSource {
       catalogTracks,
       identity: identity.context,
       canonicalPurchases: canonicalPurchases.purchases,
+      activeFollows: activeFollows.follows,
       now,
     }).filter((row) => sceneScoutMeetsAudienceThreshold(row.uniqueListeners));
 
@@ -663,6 +715,43 @@ export class SceneScoutService implements SceneScoutSource {
       events.push(...rows);
     }
     return { events, truncated: false };
+  }
+
+  /** Follow events are artist-scoped, so they are read by `payload.artistId`. */
+  private async readBoundedFollowEvents(artistId: string, from: Date, now: Date, remainingReadCapacity: number) {
+    const remaining = Math.max(0, remainingReadCapacity);
+    const rows = await prisma.$queryRaw<LedgerEvent[]>(Prisma.sql`
+      SELECT "eventId", "eventName", "occurredAt", "producer", "actorId", "sessionId",
+             "consentBasis", "payload", "envelope"
+      FROM "AnalyticsEvent"
+      WHERE "eventName" = ${FOLLOW_EVENT_NAME}
+        AND "occurredAt" >= ${from}
+        AND "occurredAt" <= ${now}
+        AND "payload"->>'artistId' = ${artistId}
+      ORDER BY "occurredAt" ASC, "eventId" ASC
+      LIMIT ${remaining + 1}
+    `);
+    return rows.length > remaining
+      ? { events: rows.slice(0, remaining), truncated: true }
+      : { events: rows, truncated: false };
+  }
+
+  /**
+   * Who follows the artist right now. A follow event for someone who has
+   * unfollowed is history, not demand, so the stored row is the authority.
+   */
+  private async loadActiveFollows(artistId: string): Promise<ActiveFollowLoad> {
+    const rows = await prisma.artistFollow.findMany({
+      where: { artistId },
+      orderBy: { id: "asc" },
+      take: SCENE_SCOUT_READ_CAP + 1,
+      select: { userId: true, createdAt: true },
+    });
+    if (rows.length > SCENE_SCOUT_READ_CAP) return { follows: new Map(), incomplete: true };
+    return {
+      follows: new Map(rows.map((row) => [`user:${row.userId.toLowerCase()}`, row.createdAt])),
+      incomplete: false,
+    };
   }
 
   private async loadListenerIdentity(

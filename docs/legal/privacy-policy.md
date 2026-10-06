@@ -33,7 +33,7 @@ data — your device keeps it and only tells us that it verified you.
 with it. See "What we cannot delete" below, because this is the part that is
 permanent.
 
-**What you do on Resonate.** Playback, skips, saves, playlists, searches,
+**What you do on Resonate.** Playback, skips, saves, artist follows, playlists, searches,
 recommendations shown and chosen, purchases, pledges, collects, uploads,
 generations and remix sessions. Every such event records a **privacy tier**,
 and events in the personal and sensitive tiers must also record the **legal

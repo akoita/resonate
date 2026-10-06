@@ -5,7 +5,7 @@ import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.se
 
 const reception: FirstListenerArtistReception = {
   available: true, minimumAudience: 3,
-  releases: [{ releaseId: "r-1", title: "First Light", createdAt: new Date("2026-09-01"), heard: 5, fullPlays: 3, saves: null }],
+  releases: [{ releaseId: "r-1", title: "First Light", createdAt: new Date("2026-09-01"), heard: 5, fullPlays: 3, saves: null, follows: null }],
 };
 
 describe("first-listener reception cockpit", () => {
@@ -13,8 +13,16 @@ describe("first-listener reception cockpit", () => {
     const [card] = firstListenerReceptionCards(reception);
     expect(card.cta.href).toBe("/release/r-1");
     expect(card.reason).toContain("5 listeners heard it; 3 played through; saves: not enough data");
-    expect(card.reason).not.toMatch(/0 saved|followed/);
+    expect(card.reason).toContain("follows: not enough data");
+    expect(card.reason).not.toMatch(/0 saved|0 followed/);
     expect(JSON.stringify(card)).not.toMatch(/userId|actorId|wallet/);
+  });
+  it("reports follows once they clear the audience floor", () => {
+    const [card] = firstListenerReceptionCards({
+      ...reception,
+      releases: [{ ...reception.releases[0], saves: 3, follows: 4 }],
+    });
+    expect(card.reason).toContain("3 saved; 4 followed");
   });
   it("enforces both audience and cockpit thresholds", () => {
     expect(firstListenerReceptionCards({ ...reception, minimumAudience: 6 })).toEqual([]);

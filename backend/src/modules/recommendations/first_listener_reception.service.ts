@@ -40,6 +40,7 @@ interface ReceptionAggregate {
   heard: bigint | number;
   fullPlays: bigint | number;
   saves: bigint | number;
+  follows: bigint | number;
   overflow: boolean;
 }
 
@@ -163,6 +164,7 @@ export class FirstListenerReceptionService {
         const heardCount = aggregate ? Number(aggregate.heard) : 0;
         const fullPlayCount = aggregate ? Number(aggregate.fullPlays) : 0;
         const saveCount = aggregate ? Number(aggregate.saves) : 0;
+        const followCount = aggregate ? Number(aggregate.follows) : 0;
         return {
           releaseId: release.id,
           title: release.title,
@@ -172,6 +174,7 @@ export class FirstListenerReceptionService {
             ? fullPlayCount
             : null,
           saves: heardCount >= threshold && saveCount >= threshold ? saveCount : null,
+          follows: heardCount >= threshold && followCount >= threshold ? followCount : null,
         };
       });
       return { available: true, minimumAudience: threshold, releases: result };
@@ -255,9 +258,43 @@ export class FirstListenerReceptionService {
         ORDER BY event."occurredAt" ASC, event."id" ASC
         LIMIT ${RECEPTION_PLAYBACK_FACT_READ_CAP + 1}
       ),
+      -- #1968: a follow counts only while the listener still follows the release's
+      -- artist, for the current follow, from a consented ledger event after the
+      -- placement and inside the release's first catalog week.
+      "matchedFollowFacts" AS (
+        SELECT
+          x."releaseId",
+          x."actorId",
+          event."id" AS "eventId",
+          event."occurredAt"
+        FROM "qualifiedExposure" x
+        INNER JOIN "Release" release ON release."id" = x."releaseId"
+        INNER JOIN "ArtistFollow" follow
+          ON follow."userId" = x."rawActorId"
+          AND follow."artistId" = release."artistId"
+        INNER JOIN "AnalyticsEvent" event
+          ON event."actorId" IN (x."actorId", x."rawActorId")
+          AND event."privacyTier" = 'pseudonymous'
+          AND event."consentBasis" = 'consent'
+          AND event."eventName" = 'artist.followed'
+          AND event."payload"->>'artistId' = release."artistId"
+          AND event."occurredAt" > x."placedAt"
+          AND (x."resetAt" IS NULL OR event."occurredAt" > x."resetAt")
+          AND event."occurredAt" <= release."createdAt" + INTERVAL '7 days'
+          AND event."occurredAt" >= follow."createdAt" - INTERVAL '1 minute'
+        ORDER BY event."occurredAt" ASC, event."id" ASC
+        LIMIT ${RECEPTION_PLAYBACK_FACT_READ_CAP + 1}
+      ),
+      "followFacts" AS (
+        SELECT * FROM "matchedFollowFacts"
+        ORDER BY "occurredAt" ASC, "eventId" ASC
+        LIMIT ${RECEPTION_PLAYBACK_FACT_READ_CAP}
+      ),
       "overflow" AS (
-        SELECT COUNT(*) > ${RECEPTION_PLAYBACK_FACT_READ_CAP} AS "overflow"
-        FROM "matchedPlaybackFacts"
+        SELECT (
+          (SELECT COUNT(*) FROM "matchedPlaybackFacts") > ${RECEPTION_PLAYBACK_FACT_READ_CAP}
+          OR (SELECT COUNT(*) FROM "matchedFollowFacts") > ${RECEPTION_PLAYBACK_FACT_READ_CAP}
+        ) AS "overflow"
       ),
       "playbackFacts" AS (
         SELECT * FROM "matchedPlaybackFacts"
@@ -289,12 +326,21 @@ export class FirstListenerReceptionService {
           AND fact."eventName" = 'library.saved'
           AND fact."occurredAt" >= heard."heardAt"
       ),
+      "followListeners" AS (
+        SELECT DISTINCT heard."releaseId", heard."actorId"
+        FROM "heard" heard
+        INNER JOIN "followFacts" fact
+          ON fact."releaseId" = heard."releaseId"
+          AND fact."actorId" = heard."actorId"
+          AND fact."occurredAt" >= heard."heardAt"
+      ),
       "metrics" AS (
         SELECT
           heard."releaseId",
           COUNT(*)::bigint AS "heard",
           COUNT(DISTINCT "fullPlayListeners"."actorId")::bigint AS "fullPlays",
-          COUNT(DISTINCT "saveListeners"."actorId")::bigint AS "saves"
+          COUNT(DISTINCT "saveListeners"."actorId")::bigint AS "saves",
+          COUNT(DISTINCT "followListeners"."actorId")::bigint AS "follows"
         FROM "heard"
         LEFT JOIN "fullPlayListeners"
           ON "fullPlayListeners"."releaseId" = heard."releaseId"
@@ -302,6 +348,9 @@ export class FirstListenerReceptionService {
         LEFT JOIN "saveListeners"
           ON "saveListeners"."releaseId" = heard."releaseId"
           AND "saveListeners"."actorId" = heard."actorId"
+        LEFT JOIN "followListeners"
+          ON "followListeners"."releaseId" = heard."releaseId"
+          AND "followListeners"."actorId" = heard."actorId"
         GROUP BY heard."releaseId"
       )
       SELECT
@@ -309,6 +358,7 @@ export class FirstListenerReceptionService {
         COALESCE(metrics."heard", 0)::bigint AS "heard",
         COALESCE(metrics."fullPlays", 0)::bigint AS "fullPlays",
         COALESCE(metrics."saves", 0)::bigint AS "saves",
+        COALESCE(metrics."follows", 0)::bigint AS "follows",
         overflow."overflow"
       FROM (SELECT DISTINCT "releaseId" FROM "qualifiedExposure") exposure
       CROSS JOIN "overflow"

@@ -58,6 +58,7 @@ model User {
   showCampaignDisputes        ShowCampaignDispute[]         @relation("ShowCampaignDisputeInitiator")
   showPledges                 ShowPledge[]
   showPledgeDemandContexts    ShowPledgeDemandContext[]
+  artistFollows               ArtistFollow[]
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
   remixPartTakes              RemixPartTake[]
@@ -615,10 +616,28 @@ model Artist {
   managementGrants          ManagementGrant[]
   sceneScoutCityDemand      SceneScoutCityDemand[]
   unmetDemandSignals        DemandSignal[]
+  followers                 ArtistFollow[]
 
   @@index([displayName])
   @@index([profileType, claimStatus])
   @@index([managementOwnerUserId])
+}
+
+/// #1968. A listener following an artist. Deliberately minimal: no feed, no
+/// notification and no public follower count. The ledger events
+/// `artist.followed` / `artist.unfollowed` carry the consent-governed analytics;
+/// this row is the current state, so demand reads can skip people who have
+/// since unfollowed.
+model ArtistFollow {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  artistId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  artist    Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, artistId])
+  @@index([artistId, createdAt])
 }
 
 enum ArtistClaimRequestStatus {

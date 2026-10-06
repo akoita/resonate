@@ -683,6 +683,9 @@ describe("PersonalDataErasureService integration", () => {
     await seed(SEED_A);
     await seed(SEED_B);
     await seedShared();
+    // Each person follows the other's artist profile (#1968).
+    await prisma.artistFollow.create({ data: { userId: USER_A, artistId: id("artist", "b") } });
+    await prisma.artistFollow.create({ data: { userId: USER_B, artistId: id("artist", "a") } });
 
     const request = await closures.request(USER_A, `${TEST_PREFIX}closure_reason_a`);
     requestId = request.id;
@@ -708,6 +711,13 @@ describe("PersonalDataErasureService integration", () => {
   afterAll(async () => {
     await cleanup();
     await prisma.$disconnect();
+  });
+
+  it("deletes the erased person's artist follows and keeps the other person's", async () => {
+    expect(await prisma.artistFollow.count({ where: { artistId: id("artist", "b") } })).toBe(0);
+    expect(await prisma.artistFollow.findMany({ where: { artistId: id("artist", "a") } })).toEqual([
+      expect.objectContaining({ userId: USER_B }),
+    ]);
   });
 
   it("deletes demand context while retaining the financial pledge and the other person's context", async () => {

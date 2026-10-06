@@ -132,6 +132,18 @@ event's decision and timestamp, rotates `actorUserId` to the pseudonymous user
 id, and scrubs its free-text note when either the claimant or actor is erased.
 Deleting a claim cascades to its decision events.
 
+## Artist follows (#1968)
+
+`ArtistFollow` records which artists a signed-in listener follows. It is private
+listener preference: no endpoint lists or counts an artist's followers, and an
+artist only sees consent-gated, thresholded aggregates. The personal-data export
+includes the holder's own rows (never an artist's follower list); account erasure
+deletes them. The `artist.followed` / `artist.unfollowed` ledger events are
+pseudonymous analytics records emitted only with a current consent grant and
+remain under analytics governance (deletion, retention, withdrawal). Demand reads
+count a follow only while the row exists, so unfollowing or erasure removes the
+contribution from the next snapshot.
+
 ## Scene Scout aggregate snapshots (#1968)
 
 `ShowPledgeDemandContext` holds an authenticated backer’s optional city and
@@ -222,7 +234,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `AgentSignal`, `FirstListenerExposure`, `ListenerTasteMemorySettings`, `ListenerTasteSignalControl`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
-`ShowPledge`, `ShowPledgeDemandContext`, `ShowCampaignEvent`, `PunchlineCollectible`,
+`ShowPledge`, `ShowPledgeDemandContext`, `ArtistFollow`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
 `CrateWatchMatch`.

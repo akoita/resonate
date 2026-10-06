@@ -30,6 +30,13 @@ import { prisma } from "../../db/prisma";
  */
 export const ANALYTICS_CONSENT_POLICY_VERSION = "analytics-consent:2026-10-03";
 
+/**
+ * The `consentBasis` stamped on a ledger event that was emitted after an
+ * explicit, current grant (`isProductAnalyticsAllowed`). Scene Scout and the
+ * first-listener reception read only events carrying this basis.
+ */
+export const PRODUCT_ANALYTICS_CONSENT_BASIS = "consent";
+
 export interface AnalyticsConsentDecision {
   productAnalytics: boolean;
   decided: boolean;

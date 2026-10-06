@@ -115,6 +115,13 @@ describe("personal data export manifest", () => {
       });
     });
 
+    it("exports a person's own artist follows and never an artist's follower list", () => {
+      expect(EXPORTED_MODELS.find((entry) => entry.model === "ArtistFollow")).toMatchObject({
+        primaryKey: "id",
+        keys: [{ kind: "userId", column: "userId" }],
+      });
+    });
+
     it("lists each exported model only once", () => {
       const exported = EXPORTED_MODELS.map((entry) => entry.model);
       expect(exported.length).toBe(new Set(exported).size);

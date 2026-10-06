@@ -270,6 +270,12 @@ Implemented producer helper event names:
 - `artist.action_card_impression`
 - `artist.action_card_clicked`
 - `library.saved`
+- `artist.followed` and `artist.unfollowed` (#1968), emitted server-side by the
+  artist follow service only after a current analytics consent grant
+  (`consentBasis: "consent"`). Payload: `artistId`, `source`, and for follows an
+  optional `releaseId` / `trackId` kept only when it belongs to that artist's
+  catalog. The envelope `geo` is the listener-declared city, as on `library.saved`.
+  Clients cannot emit these names through `/analytics/product/event`.
 - `commerce.settled`
 - `rights.route_decided`
 - `agent.recommendation_selected`

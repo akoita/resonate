@@ -45,7 +45,9 @@ Staging acceptance remains open in
 [resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
 warehouse scheduling and live checks remain open in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). Canonical
-follows are still unavailable without a follow ledger event; pledge demand
+follows now ship as the consent-governed `artist.followed` ledger event
+([Artist follows](../features/artist_follows.md)) and feed city demand and
+first-week reception; pledge demand
 requires canonical release attribution, an indexer-confirmed pledge and a
 consent-governed backer city declaration. Browser city entry remains open. The linked parent
 feature remains open until acceptance and its remaining signal families are
