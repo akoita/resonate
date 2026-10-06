@@ -228,6 +228,7 @@ async function cleanup() {
   await prisma.showCampaign.deleteMany({ where });
   await prisma.wallet.deleteMany({ where });
   await prisma.user.deleteMany({ where });
+  await prisma.artist.deleteMany({ where });
 }
 
 async function exportText(userId: string): Promise<string> {
@@ -261,6 +262,11 @@ describe("PersonalDataExportService integration", () => {
   beforeAll(async () => {
     await seed(SEED_A);
     await seed(SEED_B);
+    // Both people follow one artist; each export holds only the person's own row (#1968).
+    await prisma.artist.create({ data: { id: `${TEST_PREFIX}follow_artist`, displayName: `${TEST_PREFIX}follow_artist` } });
+    for (const person of [SEED_A, SEED_B]) {
+      await prisma.artistFollow.create({ data: { userId: person.userId, artistId: `${TEST_PREFIX}follow_artist` } });
+    }
     // These audit-only fixtures use same-person transfer parties so the
     // cross-person export assertion remains focused on the recovery request's
     // reviewer redaction rather than a legitimate transfer counterparty.
@@ -321,6 +327,14 @@ describe("PersonalDataExportService integration", () => {
         declaredAt: "2026-05-31T00:00:00.000Z", expiresAt: "2026-06-28T00:00:00.000Z",
       }),
     ]);
+  });
+
+  it("exports only the person's own artist follows", () => {
+    expect(documentA.counts.ArtistFollow).toBe(1);
+    expect(documentA.data.ArtistFollow).toEqual([
+      expect.objectContaining({ userId: USER_A, artistId: `${TEST_PREFIX}follow_artist` }),
+    ]);
+    expect(JSON.stringify(documentA.data.ArtistFollow)).not.toContain(USER_B);
   });
 
   it("names every identifier it searched by", () => {

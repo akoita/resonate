@@ -23,8 +23,9 @@ Sprint 31 remains in progress: staging acceptance is tracked in
 [resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
 warehouse scheduling and live checks in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
-Canonical follow demand remains unavailable until a follow ledger event exists;
-pledge demand requires a consent-qualified city declaration captured at intent
+Canonical follows are now a ledger event (`artist.followed`, see
+[Artist follows](artist_follows.md)) and count toward city demand and
+first-week reception; pledge demand requires a consent-qualified city declaration captured at intent
 creation and an indexer-confirmed pledge linked to a release. The browser pledge
 flow offers an optional, consent-gated city field. See the [sprint plan](../sprints/2026-11-19-vision-sprint-31-scene-scout.md) for status.
 
@@ -44,8 +45,13 @@ signals contribute only when their consent basis and coarse geography qualify.
 Only user-declared city geography counts toward listening demand. A campaign's
 target city does not locate its backers. The service resolves releases and
 artist ownership from the catalog, excludes the artist's own activity, and
-reads consent-governed ledger records within bounded windows. Follow counts
-remain zero until the platform has a canonical follow ledger event. Purchases
+reads consent-governed ledger records within bounded windows. A follow counts
+once per listener and release when the `artist.followed` event carries a release
+(or a track of one) from the artist's own catalog, has the same consent basis,
+user-declared city, reset and self-activity qualification as a save, and the
+listener still follows the artist at read time (the `ArtistFollow` row exists and
+predates the event). Follows add to the audience and signal counts but are not a
+resonance event. Purchases
 count verified x402 settlements for a catalog track only when the envelope
 also has a governed user-declared city and a known listener identity. The
 existing purchase bridge does not infer location from a payer or campaign.
@@ -71,8 +77,9 @@ Browser city entry now ships in the Shows pledge panel: while product analytics
 consent is granted, the panel offers an optional, initially empty city and
 country field (never prefilled from the campaign city) and sends it as the
 user-declared `geo` on the pledge intent. Without consent, or with the field
-left blank, the pledge sends no city. Canonical follows remain tracked in open
-#1968. The
+left blank, the pledge sends no city. The follow endpoint accepts a
+user-declared city like the other telemetry routes, but the follow button sends
+none yet, so follows from the current web app do not add city demand. The
 analytics consent wording now explicitly covers optional pledge city demand;
 older decisions require renewal before optional analytics resumes. Affirmative
 grants must include the version bound to the client’s displayed wording
@@ -150,8 +157,8 @@ resets, agent-training opt-out and self-activity exclusions govern the read.
 Forged release payloads cannot override the canonical track/release relationship.
 Bounded-read overflow suppresses the result. Audience and subcount floors hide
 small samples; a card also requires five heard listeners. Suppressed counts say
-**not enough data**, never zero. Follows remain unavailable until a canonical
-follow event exists. User-linked exposures are scoped in privacy exports and
+**not enough data**, never zero. Follows count a heard listener who then followed
+the artist (and still does) under the same subcount floor as saves. User-linked exposures are scoped in privacy exports and
 explicitly deleted during account erasure.
 
 ## API, analytics and lifecycle
@@ -204,4 +211,5 @@ page makes no claim about their deployed state.
 - [Taste Engine RFC](../rfc/taste-engine.md#6-scene-scout-artists)
 - [Analytics dashboards](analytics_dashboard.md)
 - [Coarse geo analytics](geo_analytics_demand_dimension.md)
+- [Artist follows](artist_follows.md)
 - [Change impact checklist](../engineering/change_impact_checklist.md)

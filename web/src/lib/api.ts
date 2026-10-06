@@ -2384,6 +2384,45 @@ export async function getArtistPublic(artistId: string) {
   return artist ? { ...artist, imageUrl: resolveApiAssetUrl(artist.imageUrl ?? null) } : artist;
 }
 
+/** #1968: private follow state of the signed-in listener; there is no public follower count. */
+export type ArtistFollowStatus = { following: boolean };
+
+/** Where the listener was when they followed; only used if it belongs to the artist. */
+export type ArtistFollowContext = {
+  releaseId?: string;
+  trackId?: string;
+  /** Identifier-shaped surface label, e.g. `release_page` or `artist_page`. */
+  source?: string;
+};
+
+export async function getArtistFollowStatus(artistId: string, token: string) {
+  return apiRequest<ArtistFollowStatus>(
+    `/artists/${encodeURIComponent(artistId)}/follow`,
+    {},
+    token,
+  );
+}
+
+export async function followArtist(
+  artistId: string,
+  token: string,
+  context: ArtistFollowContext = {},
+) {
+  return apiRequest<ArtistFollowStatus>(
+    `/artists/${encodeURIComponent(artistId)}/follow`,
+    { method: "PUT", body: JSON.stringify(context) },
+    token,
+  );
+}
+
+export async function unfollowArtist(artistId: string, token: string) {
+  return apiRequest<ArtistFollowStatus>(
+    `/artists/${encodeURIComponent(artistId)}/follow`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
 export async function createArtist(
   token: string,
   input: { displayName: string; payoutAddress: string }

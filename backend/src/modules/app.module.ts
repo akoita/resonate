@@ -8,6 +8,7 @@ import { SharedModule } from "./shared/shared.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AgentsModule } from "./agents/agents.module";
 import { ArtistModule } from "./artist/artist.module";
+import { ArtistFollowModule } from "./artist_follows/artist_follow.module";
 import { AuthModule } from "./auth/auth.module";
 import { RolesGuard } from "./auth/roles.guard";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -64,6 +65,7 @@ import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.mo
     IdentityModule,
     AgentsModule,
     ArtistModule,
+    ArtistFollowModule,
     CurationModule,
     IngestionModule,
     CatalogModule,

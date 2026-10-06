@@ -10,6 +10,7 @@ import { Tabs } from "../../../components/ui/Tabs";
 import { ArtistCommunityTab } from "../../../components/community/ArtistCommunityTab";
 import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLinksRow";
 import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
+import { FollowArtistButton } from "../../../components/artist/FollowArtistButton";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { legacyArtistAliasDestination, legacyArtistAliasSearchName, libraryArtistHref, publicReleaseHref } from "../../../lib/artistRoutes";
 import { summarizeCreditedArtists } from "../../../lib/catalogDisplay";
@@ -40,6 +41,8 @@ export default function ArtistPage() {
     const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
     const canEditProfile = managementAccess?.resourceId === artist?.id
         && managementAccess?.currentUserAccess.scopes.includes("PROFILE_EDIT") === true;
+    const isOwnProfile = managementAccess?.resourceId === artist?.id
+        && (managementAccess?.currentUserAccess.isOwner === true || canEditProfile);
     const playbackTracks = useMemo(() => catalogArtistPlaybackTracks(releases), [releases]);
 
     useEffect(() => {
@@ -234,6 +237,9 @@ export default function ArtistPage() {
                             <p className="artist-bio">{artist.summary}</p>
                         ) : null}
                         <ArtistSocialLinksRow website={artist?.website} socialLinks={artist?.socialLinks} />
+                        {artist ? (
+                            <FollowArtistButton artistId={artist.id} source="artist_page" hidden={isOwnProfile} />
+                        ) : null}
                         {playbackTracks.length > 0 || libraryArtistName ? (
                             <div className="library-artist-actions">
                                 {playbackTracks.length > 0 ? (

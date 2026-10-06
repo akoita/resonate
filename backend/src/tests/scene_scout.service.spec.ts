@@ -326,3 +326,122 @@ describe("SceneScout city aggregation", () => {
     }
   });
 });
+
+describe("SceneScout follow demand (#1968)", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const FOLLOWED_AT = new Date(NOW.getTime() - 3 * DAY);
+
+  function followEvent(input: {
+    id: string;
+    userId: string;
+    occurredAt?: Date;
+    consentBasis?: string | null;
+    geo?: unknown;
+    payload?: Record<string, unknown>;
+  }): AggregateEvent {
+    return {
+      ...event({
+        id: input.id,
+        actorId: pseudonymousAnalyticsActorId(input.userId)!,
+        eventName: "artist.followed",
+        occurredAt: input.occurredAt ?? FOLLOWED_AT,
+        consentBasis: input.consentBasis === null ? undefined : input.consentBasis ?? "consent",
+        geo: input.geo,
+      }),
+      // Follow events are artist-scoped and carry no trackId unless the listener was on a track.
+      payload: { artistId: ARTIST, releaseId: RELEASE, ...(input.payload ?? {}) },
+    };
+  }
+
+  function aggregateFollows(
+    events: AggregateEvent[],
+    users: string[],
+    active: Record<string, Date>,
+    tastePolicies: AggregateInput["identity"]["tastePolicies"] = new Map(),
+  ) {
+    const identity = { ...identityContext(users), tastePolicies };
+    return aggregateSceneScoutEvents({
+      artistId: ARTIST,
+      events,
+      catalogTracks: new Map([[TRACK, { releaseId: RELEASE, releaseTitle: "Northern Lights" }]]),
+      identity,
+      canonicalPurchases: new Map(),
+      activeFollows: new Map(Object.entries(active).map(([userId, at]) => [`user:${userId}`, at])),
+      now: NOW,
+    });
+  }
+
+  it("counts an active, consented follow once per listener and release without making it a resonance signal", () => {
+    const rows = aggregateFollows(
+      [
+        followEvent({ id: "a-release", userId: "listener-a" }),
+        // The same person following again from another page is still one contribution.
+        followEvent({ id: "a-track", userId: "listener-a", payload: { releaseId: undefined, trackId: TRACK } }),
+        followEvent({ id: "b", userId: "listener-b" }),
+        followEvent({ id: "c", userId: "listener-c", occurredAt: new Date(NOW.getTime() - 27 * DAY) }),
+      ],
+      ["listener-a", "listener-b", "listener-c"],
+      { "listener-a": FOLLOWED_AT, "listener-b": FOLLOWED_AT, "listener-c": new Date(NOW.getTime() - 27 * DAY) },
+    );
+    const week = rows.find((row) => row.windowDays === 7)!;
+    const month = rows.find((row) => row.windowDays === 28)!;
+    expect(week).toEqual(expect.objectContaining({
+      follows: 2, uniqueListeners: 2, resonantListeners: 0, saves: 0, signalCount: 2,
+    }));
+    expect(month).toEqual(expect.objectContaining({ follows: 3, uniqueListeners: 3, signalCount: 3 }));
+    expect(JSON.stringify(rows)).not.toContain("listener-a");
+  });
+
+  it("ignores follows that are not active, consented, local, in this catalog, or after a taste reset", () => {
+    const users = ["listener-a", "listener-b", "listener-c", "listener-d", "listener-e", "listener-f", "listener-g"];
+    const active = Object.fromEntries(users.map((userId) => [userId, FOLLOWED_AT]));
+    const rows = aggregateFollows(
+      [
+        followEvent({ id: "ok", userId: "listener-a" }),
+        // Unfollowed: no active row, so the historical event is not demand.
+        followEvent({ id: "unfollowed", userId: "listener-z" }),
+        followEvent({ id: "no-basis", userId: "listener-b", consentBasis: null }),
+        followEvent({ id: "other-artist", userId: "listener-c", payload: { artistId: "someone-else" } }),
+        followEvent({ id: "other-release", userId: "listener-d", payload: { releaseId: "foreign-release" } }),
+        followEvent({ id: "no-release", userId: "listener-e", payload: { releaseId: undefined } }),
+        followEvent({ id: "campaign-geo", userId: "listener-f", geo: { ...CITY, source: "campaign_target" } }),
+        followEvent({ id: "reset", userId: "listener-g" }),
+        followEvent({ id: "owner", userId: "owner" }),
+      ],
+      [...users, "listener-z"],
+      { ...active, owner: FOLLOWED_AT },
+      new Map([["user:listener-g", { resetAt: new Date(FOLLOWED_AT.getTime() + 1000), agentPlaybackTrainingEnabled: true }]]),
+    );
+    expect(rows.find((row) => row.windowDays === 7)).toEqual(
+      expect.objectContaining({ follows: 1, uniqueListeners: 1, signalCount: 1 }),
+    );
+  });
+
+  it("drops an event that predates the current follow of the listener, allowing only clock skew", () => {
+    const refollowedAt = new Date(NOW.getTime() - DAY);
+    const rows = aggregateFollows(
+      [
+        // Consented follow, later unfollowed; the current follow was made without consent.
+        followEvent({ id: "stale", userId: "listener-a", occurredAt: new Date(NOW.getTime() - 3 * DAY) }),
+        followEvent({ id: "skewed", userId: "listener-b", occurredAt: new Date(refollowedAt.getTime() - 5_000) }),
+      ],
+      ["listener-a", "listener-b"],
+      { "listener-a": refollowedAt, "listener-b": refollowedAt },
+    );
+    expect(rows.find((row) => row.windowDays === 7)).toEqual(
+      expect.objectContaining({ follows: 1, uniqueListeners: 1 }),
+    );
+  });
+
+  it("counts nothing when the active-follow set is not supplied", () => {
+    const rows = aggregateSceneScoutEvents({
+      artistId: ARTIST,
+      events: [followEvent({ id: "a", userId: "listener-a" })],
+      catalogTracks: new Map([[TRACK, { releaseId: RELEASE, releaseTitle: "Northern Lights" }]]),
+      identity: identityContext(["listener-a"]),
+      canonicalPurchases: new Map(),
+      now: NOW,
+    });
+    expect(rows).toEqual([]);
+  });
+});

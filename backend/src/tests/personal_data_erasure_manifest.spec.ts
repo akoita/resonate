@@ -485,6 +485,12 @@ describe("personal data erasure manifest", () => {
       expect(EXPORTED_MODELS.some((entry) => entry.model === "DemandSignal")).toBe(true);
     });
 
+    it("deletes the listener's artist follows and exports only the follower's own rows", () => {
+      expect(ERASURE_RULES_BY_MODEL.ArtistFollow.disposition).toBe("delete");
+      expect(cascadingUserColumns("ArtistFollow")).toContain("userId");
+      expect(EXPORTED_MODELS.some((entry) => entry.model === "ArtistFollow")).toBe(true);
+    });
+
     it("deletes pledge city context while retaining the financial pledge", () => {
       expect(ERASURE_RULES_BY_MODEL.ShowPledgeDemandContext.disposition).toBe("delete");
       expect(ERASURE_RULES_BY_MODEL.ShowPledge.disposition).toBe("retain");

@@ -61,6 +61,12 @@ export interface FirstListenerReceptionRelease {
   fullPlays: number | null;
   /** Unique heard listeners who saved a track from the release. */
   saves: number | null;
+  /**
+   * #1968: unique heard listeners who then followed the artist (and still do),
+   * from the canonical `artist.followed` ledger event. Suppressed to null under
+   * the same audience floors as `saves`.
+   */
+  follows: number | null;
 }
 
 export interface FirstListenerArtistReception {

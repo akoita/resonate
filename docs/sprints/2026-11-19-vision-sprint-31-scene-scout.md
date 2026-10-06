@@ -30,7 +30,7 @@ admitted.
   release context when saving and editing a Show draft. The next continuation
   adds consent-governed API pledge city declarations and indexer-qualified demand,
   and the Shows pledge panel now offers optional, consent-gated browser city
-  entry; canonical follows remain open.
+  entry; canonical follows ship as the `artist.followed` ledger event.
 - **#1969:** categorical request/session shortfalls and catalog supply actions
   are merged in [PR #2046](https://github.com/akoita/resonate/pull/2046).
 - **#1970:** taste-fitting fresh release selection and day-seven reception are
@@ -46,7 +46,9 @@ Staging acceptance remains open in
 [resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
 warehouse scheduling and live checks remain open in
 [resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). Canonical
-follows are still unavailable without a follow ledger event; pledge demand
+follows now ship as the consent-governed `artist.followed` ledger event
+([Artist follows](../features/artist_follows.md)) and feed city demand and
+first-week reception; pledge demand
 requires canonical release attribution, an indexer-confirmed pledge and a
 consent-governed backer city declaration, which the Shows pledge panel now collects as an optional field. The linked parent
 feature remains open until acceptance and its remaining signal families are

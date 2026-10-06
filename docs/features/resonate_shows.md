@@ -33,8 +33,7 @@ This reference provides context for the show; it does not grant artist
 authority, change approved financial terms or determine payouts. It also does
 not locate backers. Release-linked pledge demand uses only a city the backer
 chose to declare in the pledge panel (optional, shown only while product
-analytics consent is granted, never prefilled from the campaign city); canonical
-follows remain tracked in
+analytics consent is granted, never prefilled from the campaign city), tracked in
 [#1968](https://github.com/akoita/resonate/issues/1968).
 
 Validate this flow with `shows_source_release.integration.spec.ts`, the Shows

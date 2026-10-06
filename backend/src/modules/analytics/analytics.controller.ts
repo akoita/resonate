@@ -19,6 +19,7 @@ import { AnalyticsAuthorizationService } from "./analytics_authorization.service
 import {
   ANALYTICS_CONSENT_POLICY_VERSION,
   AnalyticsConsentService,
+  PRODUCT_ANALYTICS_CONSENT_BASIS,
 } from "./analytics_consent.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AnalyticsService } from "./analytics.service";
@@ -44,7 +45,7 @@ type ConsentRequest = { productAnalytics?: unknown; policyVersion?: unknown; con
 
 // #1772: the basis stamped on client-emitted telemetry that was collected after
 // an explicit grant. Server-emitted domain records keep their own basis.
-const CLIENT_TELEMETRY_CONSENT_BASIS = "consent";
+const CLIENT_TELEMETRY_CONSENT_BASIS = PRODUCT_ANALYTICS_CONSENT_BASIS;
 const CONSENT_REFUSED_RESPONSE = { recorded: false, reason: "consent_not_granted" } as const;
 const MAX_POLICY_VERSION_LENGTH = 100;
 

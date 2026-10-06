@@ -246,6 +246,13 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
   },
   {
+    model: "ArtistFollow",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "The artists this person follows. Only the follower's own rows are exported; an artist's export never lists their followers.",
+  },
+  {
     model: "FirstListenerExposure",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

@@ -2066,11 +2066,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "artist-profile",
     title: "Your artist page",
     summary:
-      "Edit a profile you manage, or request access to a credited artist profile from Artist management.",
+      "Follow an artist, edit a profile you manage, or request access to a credited artist profile from Artist management.",
     category: "artists",
-    audiences: ["artist", "operator"],
+    audiences: ["listener", "artist", "operator"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "AI suggestions", "MusicBrainz", "claim", "claim review", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
+    keywords: ["follow", "following", "unfollow", "artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "AI suggestions", "MusicBrainz", "claim", "claim review", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
     sections: [
       {
         id: "edit",
@@ -2085,6 +2085,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "Use full web addresses",
             text: "Paste complete links (for example https://instagram.com/yourname). Anything that isn't a normal web address is rejected so your page stays safe to click.",
+          },
+        ],
+      },
+      {
+        id: "follow",
+        heading: "Following an artist",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Choose Follow on an artist page, or beside the artist's name on a release page, to say you want to keep up with them. Choose Following to stop. You need to be connected to follow; if you are not, the button asks you to connect first. You cannot follow a profile you own or manage.",
+          },
+          {
+            kind: "paragraph",
+            text: "Following is private. There is no public follower list or count, no feed and no notifications yet. The artist never sees who follows them. When you have allowed usage measurement, a follow can add to the shared, anonymous totals artists see in Scene Scout city demand and in first-week reception. These totals appear only when enough different listeners are involved. City demand also needs a city you chose to share and a follow made from one of that artist's releases; the app does not yet ask listeners for a city, so ordinary follows do not add city demand yet. If you have not allowed usage measurement, following still works and nothing is recorded for artists. Unfollowing removes you from those totals.",
           },
         ],
       },
@@ -2293,7 +2307,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. Your saved draft keeps the release connection while the selected artist is credited on it; choosing an artist who isn't credited removes that connection. A suggestion does not create or publish a campaign, and it does not predict income. Follow counts remain unavailable. Pledges count only with confirmed payment, a release connection, and a city the backer chose to share with usage measurement on. When usage measurement is on, the pledge card offers an optional \"Your city\" field; leaving it blank means that pledge adds no city demand.",
+            text: "Choose Draft a show to open a campaign with the city and release context filled in. Review and edit the details before saving. Your saved draft keeps the release connection while the selected artist is credited on it; choosing an artist who isn't credited removes that connection. A suggestion does not create or publish a campaign, and it does not predict income. Follows count as demand only from listeners who allowed usage measurement, shared a city and still follow you; they never appear as a public follower count. The app does not yet ask listeners for a city when they follow, so ordinary follows do not add city demand yet. Pledges count only with confirmed payment, a release connection, and a city the backer chose to share with usage measurement on. When usage measurement is on, the pledge card offers an optional \"Your city\" field; leaving it blank means that pledge adds no city demand.",
           },
           {
             kind: "figure",
@@ -2343,7 +2357,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "After seven catalog days, a reception card can show how many discovery listeners actually heard the release, played at least 90% through or saved it. A placement alone is not a play. Counts need enough consenting listeners; a small sample says Not enough discovery listening yet, and suppressed save or full-play totals say not enough data. Follow totals are not available yet. Choose Review release to decide your next step.",
+            text: "After seven catalog days, a reception card can show how many discovery listeners actually heard the release, played at least 90% through or saved it. A placement alone is not a play. Counts need enough consenting listeners; a small sample says Not enough discovery listening yet, and suppressed save, follow or full-play totals say not enough data. A follow counts when a listener who heard the release after its placement followed you and still follows. Choose Review release to decide your next step.",
           },
           {
             kind: "figure",

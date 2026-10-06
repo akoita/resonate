@@ -20,7 +20,7 @@ export function sceneScoutCityCards(result: SceneScoutResult | undefined): Artis
       type: "propose_show_city",
       title: `Consider a show in ${city}`,
       description: `${row.releaseTitle} has qualified listening demand in ${city}, ${row.countryCode}.`,
-      reason: `${row.uniqueListeners} listeners; ${row.resonantListeners} resonated, ${row.saves} saved, ${row.purchases} purchased in ${row.windowDays} days.`,
+      reason: `${row.uniqueListeners} listeners; ${row.resonantListeners} resonated, ${row.saves} saved, ${row.follows} followed, ${row.purchases} purchased in ${row.windowDays} days.`,
       priority: row.signalCount >= 25 ? "high" : "medium",
       confidence: row.signalCount >= 25 ? 0.8 : 0.66,
       sourceSignal: { category: "playback", summary: "Qualified release and city demand", count: row.signalCount },

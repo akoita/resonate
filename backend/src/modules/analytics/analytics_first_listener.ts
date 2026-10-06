@@ -28,12 +28,15 @@ export function firstListenerReceptionCards(result: FirstListenerArtistReception
     .slice(0, 6).map((release) => {
       const fullPlays = release.fullPlays === null ? "full plays: not enough data" : `${release.fullPlays} played through`;
       const saves = release.saves === null ? "saves: not enough data" : `${release.saves} saved`;
+      const follows = release.follows === null || release.follows === undefined
+        ? "follows: not enough data"
+        : `${release.follows} followed`;
       return {
         id: `first_listener_reception:${release.releaseId}`,
         type: "review_first_listener_reception",
         title: `First-week reception for ${release.title}`,
         description: "See how fitting listeners responded after a discovery placement in this release's first seven catalog days.",
-        reason: `${release.heard} listeners heard it; ${fullPlays}; ${saves}. Counts use actual listening after placement.`,
+        reason: `${release.heard} listeners heard it; ${fullPlays}; ${saves}; ${follows}. Counts use actual listening after placement.`,
         priority: "medium",
         confidence: 0.75,
         sourceSignal: { category: "playback", summary: "Consent-qualified first-week discovery reception", count: release.heard! },

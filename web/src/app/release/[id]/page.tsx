@@ -69,6 +69,7 @@ import {
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import { ProcessingFailureCallout } from "../../../components/release/ProcessingFailureCallout";
 import { ReleaseOverviewStrip } from "../../../components/release/ReleaseOverviewStrip";
+import { FollowArtistButton } from "../../../components/artist/FollowArtistButton";
 import { summarizeProcessingFailure } from "../../../components/release/processingFailure";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
@@ -1937,6 +1938,12 @@ export default function ReleaseDetails() {
             })()}
             <span className="dot" />
             <span className="track-count">{release.tracks?.length || 0} tracks</span>
+            <FollowArtistButton
+              artistId={release.artist?.id || release.artistId}
+              releaseId={release.id}
+              source="release_page"
+              hidden={isOwner || Boolean(isCatalogOwner)}
+            />
           </div>
 
           {release.remix && (
