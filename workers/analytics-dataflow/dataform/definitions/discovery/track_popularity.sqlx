@@ -5,7 +5,7 @@ config {
   description: "Trusted track popularity snapshots by 24h/7d/30d window and genre. Rows below minimum audience are omitted.",
   bigquery: {
     partitionBy: "DATE(computed_at)",
-    clusterBy: ["window", "genre", "track_id"],
+    clusterBy: ["`window`", "genre", "track_id"],
   },
 }
 

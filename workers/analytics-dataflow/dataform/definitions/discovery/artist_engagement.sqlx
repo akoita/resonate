@@ -5,7 +5,7 @@ config {
   description: "Trusted artist engagement snapshots by 24h/7d/30d window and genre. Audience is a distinct listener union, not summed track audiences.",
   bigquery: {
     partitionBy: "DATE(computed_at)",
-    clusterBy: ["window", "genre", "artist_id"],
+    clusterBy: ["`window`", "genre", "artist_id"],
   },
 }
 
