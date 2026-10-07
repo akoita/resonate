@@ -587,8 +587,22 @@ describe("Home feed listening rail (#2101)", () => {
     });
     await prisma.release.createMany({
       data: [
-        { id: `${P}jazz_release`, artistId: JAZZ_ARTIST, title: "Blue Room", genre: DECLARED },
-        { id: `${P}techno_release_a`, artistId: TECHNO_ARTIST_A, title: "Warehouse A", genre: LISTENING },
+        {
+          id: `${P}jazz_release`,
+          artistId: JAZZ_ARTIST,
+          title: "Blue Room",
+          genre: DECLARED,
+          artworkMimeType: "image/png",
+          artworkRevision: 2,
+        },
+        {
+          id: `${P}techno_release_a`,
+          artistId: TECHNO_ARTIST_A,
+          title: "Warehouse A",
+          genre: LISTENING,
+          artworkMimeType: "image/jpeg",
+          artworkRevision: 3,
+        },
         { id: `${P}techno_release_b`, artistId: TECHNO_ARTIST_B, title: "Warehouse B", genre: LISTENING },
         { id: `${P}trend_release`, artistId: TREND_ARTIST, title: "Charting", genre: TREND_ONLY },
       ].map((release) => ({ ...release, status: "ready" })),
@@ -690,6 +704,17 @@ describe("Home feed listening rail (#2101)", () => {
       expect(item.genre).toBe(LISTENING);
       expect(item.reasonCode).toBe("listening_pattern");
       expect(item.explanations).toEqual([DISCOVERY_EXPLANATIONS.listening_pattern]);
+    }
+    // Release artwork flows through both genre rails (tiles otherwise fall back
+    // to a letter monogram): seeded on the techno A and jazz releases only.
+    const withArtwork = listening.items.find((item) => item.releaseId === `${P}techno_release_a`);
+    expect(withArtwork).toMatchObject({ artworkMimeType: "image/jpeg", artworkRevision: 3 });
+    const withoutArtwork = listening.items.find((item) => item.releaseId === `${P}techno_release_b`);
+    expect(withoutArtwork).toMatchObject({ artworkMimeType: null, artworkRevision: 1 });
+    const becauseItems = rail(feed, "because_genre")!.items;
+    expect(becauseItems.length).toBeGreaterThan(0);
+    for (const item of becauseItems) {
+      expect(item).toMatchObject({ artworkMimeType: "image/png", artworkRevision: 2 });
     }
     // Feed-wide dedupe still holds across the two genre rails.
     const ids = feed.rails.flatMap((candidate: any) => candidate.items.map((item: any) => item.id));

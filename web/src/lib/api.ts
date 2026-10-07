@@ -3707,6 +3707,8 @@ export type SongRecommendationItem = {
   releaseTitle?: string;
   genre?: string | null;
   moods?: string[];
+  artworkMimeType?: string | null;
+  artworkRevision?: number | null;
   aiDisclosure?: AiDisclosure | null;
   score?: number;
   reasons?: string[];
