@@ -20,15 +20,15 @@ import { PersonalDataResolverService } from "../modules/identity/personal_data_r
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
 import { erasedEmailFor } from "../modules/privacy/personal_data_erasure_manifest";
-import { CRATE_STEM_TYPES, type CrateCandidateFacts } from "../modules/crates/crate.types";
-import { defaultCrateFilters } from "../modules/crates/crate_filters";
-import { computeCoverage } from "../modules/crates/crate_selection";
+import { measuredTrackFeatures } from "../modules/agents/measured_track_features";
+import type { CrateCandidateFacts } from "../modules/crates/crate.types";
 import { SceneScoutService, sceneScoutMinimumAudience } from "../modules/scene_scout/scene_scout.service";
 import { UnmetDemandService } from "../modules/scene_scout/unmet_demand.service";
 import {
   assertSceneScoutAcceptanceMutationRequirements,
   assertSceneScoutAcceptanceStagingEnvironment,
   parseSceneScoutAcceptanceArgs,
+  planSceneScoutAcceptanceUnmetGap,
   SceneScoutAcceptanceInputError,
   SCENE_SCOUT_ACCEPTANCE_ERASE_ORDINAL,
   SCENE_SCOUT_ACCEPTANCE_MARKER_EVENT_NAME,
@@ -1143,12 +1143,13 @@ async function unmetDemandScenario(
 ): Promise<SafeResult> {
   const prefix = sceneScoutAcceptancePrefix(invocation);
 
-  // The simplest honest categorical gap: a required stem type the selected track really lacks.
+  // A stem the track really lacks is the simplest honest gap; a fully stemmed track falls back to
+  // a BPM, key, or energy gap it really fails (see planSceneScoutAcceptanceUnmetGap).
   const track = await prisma.track.findUnique({
     where: { id: target.trackId },
     select: {
       aiDisclosureLevel: true,
-      stems: { where: { isCurrent: true }, select: { type: true } },
+      stems: { where: { isCurrent: true }, select: { type: true, audioFeatures: true } },
     },
   });
   if (!track) return blockedScenario("unmet-demand", "The selected track is no longer available.");
@@ -1159,29 +1160,31 @@ async function unmetDemandScenario(
         .filter((type) => type !== "original" && type !== "master"),
     ),
   ].sort();
-  const missingStem = CRATE_STEM_TYPES.find((stem) => !stemTypes.includes(stem));
-  if (!missingStem) {
-    return blockedScenario("unmet-demand", "The selected track already has every crate stem type, so no stem gap can be produced; choose another track.");
-  }
-  if (String(track.aiDisclosureLevel).toUpperCase() === "ALL") {
-    return blockedScenario("unmet-demand", "The selected track is fully AI-generated and crate requests exclude such tracks by default; choose another track.");
-  }
+  // Measured features come from the current original stem only, as in the crate pipeline.
+  const measured = measuredTrackFeatures(
+    track.stems.find((stem) => stem.type.toLowerCase() === "original")?.audioFeatures,
+  );
   const facts: CrateCandidateFacts = {
     trackId: target.trackId,
     artistId: target.artistId,
     genre: null,
     moods: [],
     aiDisclosureLevel: String(track.aiDisclosureLevel),
-    tempoBpm: null,
-    camelot: null,
-    energy: null,
+    tempoBpm: measured.tempoBpm,
+    camelot: measured.camelot,
+    energy: measured.energy,
     stemTypes,
     listedLicenseTypes: [],
     indicativePriceUsd: {},
     verifiedHuman: false,
   };
-  const filters = { ...defaultCrateFilters(), requiredStems: [missingStem] };
-  const coverage = computeCoverage([facts], 0, filters);
+  const plan = planSceneScoutAcceptanceUnmetGap(facts);
+  if (!plan.gap) return blockedScenario("unmet-demand", plan.blocked);
+  const { filters, coverage } = plan.gap;
+  const gapKind = plan.gap.kind;
+  const gapValue = plan.gap.value;
+  const gapTargetType = plan.gap.targetType;
+  const gapTargetId = gapTargetType === "track" ? target.trackId : target.artistId;
 
   const now = new Date();
   const fixture = await prisma.$transaction(async (tx) => {
@@ -1249,10 +1252,10 @@ async function unmetDemandScenario(
   const result = await service.getArtistUnmetDemand(target.artistId);
   const row = result.demand
     .filter((candidate) =>
-      candidate.targetType === "track" &&
-      candidate.trackId === target.trackId &&
-      candidate.kind === "stem" &&
-      candidate.value === missingStem,
+      candidate.targetType === gapTargetType &&
+      (gapTargetType !== "track" || candidate.trackId === target.trackId) &&
+      candidate.kind === gapKind &&
+      candidate.value === gapValue,
     )
     .sort((a, b) => b.windowDays - a.windowDays)[0];
 
@@ -1274,11 +1277,11 @@ async function unmetDemandScenario(
     observation.sourceType === "crate" &&
     /^[0-9a-f]{64}$/.test(observation.sourceKey) &&
     observation.targetArtistId === target.artistId &&
-    observation.targetId === target.trackId &&
-    observation.targetType === "track" &&
+    observation.targetId === gapTargetId &&
+    observation.targetType === gapTargetType &&
     observation.evidenceTrackId === target.trackId &&
-    observation.kind === "stem" &&
-    observation.value === missingStem,
+    observation.kind === gapKind &&
+    observation.value === gapValue,
   );
 
   // The aggregate response must not expose requester or actor identities, or fixture markers.
@@ -1293,10 +1296,10 @@ async function unmetDemandScenario(
   const stored = await prisma.demandSignal.findFirst({
     where: {
       artistId: target.artistId,
-      targetType: "track",
-      targetId: target.trackId,
-      kind: "stem",
-      value: missingStem,
+      targetType: gapTargetType,
+      targetId: gapTargetId,
+      kind: gapKind,
+      value: gapValue,
     },
     orderBy: { windowDays: "desc" },
     select: { distinctRequesters: true, requestCount: true, windowDays: true },
@@ -1331,7 +1334,9 @@ async function unmetDemandScenario(
     fixtureListenersCreated: fixture.created,
     requestersRecorded: requesters.length,
     observationsRecorded,
-    catalogAction: { targetType: "track", kind: "stem", value: missingStem },
+    gapKind,
+    value: gapValue,
+    catalogAction: { targetType: gapTargetType, kind: gapKind, value: gapValue },
     aggregate: {
       distinctRequesters: row.distinctRequesters,
       requestCount: row.requestCount,

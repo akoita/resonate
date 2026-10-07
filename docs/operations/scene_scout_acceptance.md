@@ -146,15 +146,28 @@ must fall by exactly one listener.
 | --- | --- | --- |
 | `withdraw-consent` | Records `productAnalytics=false` for fixture listener 1 through `AnalyticsConsentService`, refreshes the artist snapshots, and compares served and stored aggregates with the pre-change values. | `contribution_removed`, or `blocked` with a reason. |
 | `erase-listener` | Runs `PersonalDataErasureService.eraseAccount` for fixture listener 2, then compares as above and reports that listener's event count before and after. | `contribution_removed`, or `blocked` with a reason. |
-| `unmet-demand` | Creates (or reuses) the audience-floor count of consenting fixture listeners, records one crate request each through `UnmetDemandService` requiring the first crate stem type the selected track really lacks (normally `vocals`), then reads the artist aggregate. | `verified` with the catalog action (`track`, `stem`, value), requester and request counts, and privacy checks; or `blocked`. |
+| `unmet-demand` | Creates (or reuses) the audience-floor count of consenting fixture listeners, records one crate request each through `UnmetDemandService` requiring the first crate stem type the selected track really lacks (normally `vocals`); when the track has every stem type, it instead uses a categorical filter the track really fails (see below). Then it reads the artist aggregate. | `verified` with `gapKind`, the categorical `value`, the catalog action (`track` + `stem`, or `artist` + `bpm`/`key`/`energy`), requester and request counts, and privacy checks; or `blocked`. |
 | `access-check` | Calls `AnalyticsAuthorizationService.assertCanReadArtistMetrics` with `{ userId, role }` request-user objects, as the JWT strategy shapes them. No token is minted. | Pass/fail per case: target artist owner allowed; a fixture non-artist listener forbidden; the `--show-artist-id` artist's owner forbidden (reported `skipped` when that owner is the target owner or absent). |
 
 `unmet-demand` also checks that the stored observations contain only
-categorical values (crate source, a one-way source digest, the track target,
-`stem`, and the stem name) with no prompt or free text, and that the response
-exposes no fixture user or actor identity. If the selected track is not a clean,
-complete, playable catalog track, or already has every crate stem type, the phase
-is `blocked`; choose another track rather than altering the catalog. It reuses an
+categorical values (crate source, a one-way source digest, the target, the gap
+kind, and its value) with no prompt or free text, and that the response exposes
+no fixture user or actor identity.
+
+A missing stem is the first choice and is a track-level gap. On a fully stemmed
+track (every staging track), the phase falls back, in order, to a BPM, key, or
+energy gap, using the track's measured features from its current `original` stem
+as the crate pipeline reads them: a 10-BPM bin that excludes its tempo (for
+example `180–189 BPM`), the Camelot key half way round the wheel from its key
+(neither the same key nor a neighbour), or an energy band (`low` or `high`) that
+excludes its energy. These describe artist or genre supply, so the observation
+targets the artist (not the track) and counts only because the track fails
+exactly that one filter and passes every other default filter. A kind is used
+only when the pure crate filters and demand derivation yield exactly that
+near-match for this track before anything is recorded. If the selected track is
+not a clean, complete, playable catalog track, is fully AI-generated, or has every
+stem type and no measured tempo, key, or energy, the phase is `blocked`; choose
+another track rather than altering the catalog. It reuses an
 existing seeded fixture's listeners when present, and otherwise creates
 listeners without listening events (so `seed` for that run is then refused as a
 collision).
