@@ -22,6 +22,7 @@ updates:
       - /desktop
       - /examples/mcp-client
       - /scripts/staging-smoke
+      - /workers/analytics-dataflow/dataform-cli
     patterns: ["*"]
     multi-ecosystem-group: monthly-routine-updates
     groups:

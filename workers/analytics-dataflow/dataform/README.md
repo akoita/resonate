@@ -7,8 +7,8 @@ into dependent actions and assertions.
 
 The template is intentionally kept beside the Dataflow worker because Dataflow
 owns the streaming `events_clean` input and Dataform owns the post-Dataflow
-derived marts. The GCP Dataform repository can either mirror this directory or
-import these files during the `resonate-iac` deployment workflow.
+derived marts. A managed GCP Dataform repository consumes the generated
+`dataform/main` branch described below.
 
 ## Agent Taste actions
 
@@ -24,8 +24,9 @@ import these files during the `resonate-iac` deployment workflow.
 
 ## Configuration
 
-Copy `workflow_settings.yaml.example` to the root of the managed Dataform
-repository and replace every `YOUR_*` placeholder in release configuration, not
+The generated `dataform/main` branch (see below) already carries a root
+`workflow_settings.yaml` derived from `workflow_settings.yaml.example`; replace
+every placeholder in release configuration, not
 in source code. The important compilation variables are:
 
 | Variable | Purpose |
@@ -37,6 +38,49 @@ in source code. The important compilation variables are:
 | `scores_table` | Serving score table. Defaults to `user_track_recommendation_scores`. |
 | `model_version` | Version label written to serving rows. |
 | `freshness_hours` | Maximum acceptable score age for assertions. |
+
+## Generated root-level branch (`dataform/main`)
+
+Managed Dataform compiles a git repository whose root holds
+`workflow_settings.yaml`, but this project lives in a subdirectory of the
+monorepo and only ships `workflow_settings.yaml.example` (deployment values are
+never committed). The branch `dataform/main` solves that mismatch:
+
+- `.github/workflows/publish-dataform-root-branch.yml` runs on pushes to `main`
+  that touch this directory, `../dataform-cli/` or the build scripts, and on
+  manual dispatch. It builds the tree, compiles it with the pinned CLI, and only
+  then force-pushes it as a single orphan commit.
+- The generated tree contains `definitions/`, `includes/`, this README, a root
+  `workflow_settings.yaml`, and `GENERATED_FROM` (source commit and path). The
+  settings file is derived from the example with inert placeholder values
+  (`resonate-placeholder-project`, `resonate_placeholder`, `US`) and keeps the
+  vars and `dataformCoreVersion`.
+- The branch is overwritten on every publish. Never edit it and never merge it
+  or open pull requests against it; change the sources in this directory
+  instead.
+- Deployments override every placeholder through Dataform release-config
+  compilation overrides and vars (`defaultProject`, `defaultDataset`,
+  `defaultLocation`, `defaultAssertionDataset` and the `analytics_*` vars), so
+  no real project or dataset ID is ever stored in git. The overrides and the
+  repository connection are configured in `resonate-iac`.
+- `dataformCoreVersion` in `workflow_settings.yaml.example` is the single source
+  of the `@dataform/core` version. `../dataform-cli/package.json` pins the
+  matching `@dataform/cli`; keep them identical (a unit test enforces it). Both
+  are bumped together.
+
+Run the same build and compile check locally (requires network; the CLI installs
+`@dataform/core` for the compile and the check does not modify the tree):
+
+```bash
+tree="$(mktemp -d)/dataform-root"   # must be empty or non-existent
+node scripts/hardened-npm-install.mjs --project workers/analytics-dataflow/dataform-cli
+python3 workers/analytics-dataflow/scripts/build_dataform_root_tree.py \
+  --source workers/analytics-dataflow/dataform \
+  --out "$tree" \
+  --source-commit "$(git rev-parse HEAD)"
+bash workers/analytics-dataflow/scripts/check_dataform_root_tree.sh "$tree"
+(cd workers/analytics-dataflow && python3 -m unittest test_dataform_root_tree)
+```
 
 ## Scheduling and execution
 

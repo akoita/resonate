@@ -80,6 +80,15 @@ staging acceptance remains open in
 [resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264). This feature
 remains `partial` until those checks are complete.
 
+Managed Dataform needs `workflow_settings.yaml` at the repository root, while
+the project lives under `workers/analytics-dataflow/dataform/`. A generated
+branch, `dataform/main`, is therefore published from `main` by
+`.github/workflows/publish-dataform-root-branch.yml` after a pinned-CLI
+compile gate; PR CI runs the same build and compile check. It is generated
+output that must not be edited or merged ([#2115](https://github.com/akoita/resonate/issues/2115);
+connecting it to a managed repository is tracked privately in
+[resonate-iac#275](https://github.com/akoita/resonate-iac/issues/275)).
+
 ## Related documents
 
 - [Discovery Intelligence RFC](../rfc/discovery-intelligence.md)

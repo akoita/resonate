@@ -90,6 +90,20 @@
       "packageLifecycles": {},
       "projectLifecycles": {}
     },
+    "workers/analytics-dataflow/dataform-cli": {
+      "lockfile": "workers/analytics-dataflow/dataform-cli/package-lock.json",
+      "packageLifecycles": {
+        "node_modules/fsevents@2.3.3": {
+          "disposition": "execute",
+          "rationale": "Optional macOS filesystem event bindings require platform installation and must not be disabled without macOS coverage."
+        },
+        "node_modules/protobufjs@7.6.6": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for the Dataform CLI runtime."
+        }
+      },
+      "projectLifecycles": {}
+    },
     "examples/mcp-client": {
       "lockfile": "examples/mcp-client/package-lock.json",
       "packageLifecycles": {

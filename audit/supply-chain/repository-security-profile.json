@@ -142,10 +142,10 @@
         "packages_and_locked_graphs": [
           {
             "ecosystem": "npm",
-            "manifests": ["package.json", "backend/package.json", "web/package.json", "desktop/package.json", "examples/mcp-client/package.json", "scripts/staging-smoke/package.json"],
-            "lockfiles": ["package-lock.json", "backend/package-lock.json", "web/package-lock.json", "desktop/package-lock.json", "scripts/staging-smoke/package-lock.json", "examples/mcp-client/package-lock.json"],
+            "manifests": ["package.json", "backend/package.json", "web/package.json", "desktop/package.json", "examples/mcp-client/package.json", "scripts/staging-smoke/package.json", "workers/analytics-dataflow/dataform-cli/package.json"],
+            "lockfiles": ["package-lock.json", "backend/package-lock.json", "web/package-lock.json", "desktop/package-lock.json", "scripts/staging-smoke/package-lock.json", "examples/mcp-client/package-lock.json", "workers/analytics-dataflow/dataform-cli/package-lock.json"],
             "owner": "Resonate repository maintainer",
-            "evidence": ["package.json:2", "backend/package.json:2", "web/package.json:2", "desktop/package.json:2", "examples/mcp-client/package.json:2", "scripts/staging-smoke/package.json:2"]
+            "evidence": ["package.json:2", "backend/package.json:2", "web/package.json:2", "desktop/package.json:2", "examples/mcp-client/package.json:2", "scripts/staging-smoke/package.json:2", "workers/analytics-dataflow/dataform-cli/package.json:2"]
           },
           {
             "ecosystem": "Python/pip",

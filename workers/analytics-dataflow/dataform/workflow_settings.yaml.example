@@ -2,6 +2,10 @@
 # Replace every YOUR_* placeholder through Dataform release configuration or
 # environment-specific repository setup. Do not commit project or dataset IDs.
 
+# Single source of the @dataform/core version for this repository. The pinned
+# CLI in ../dataform-cli/package.json must carry the same version.
+dataformCoreVersion: 3.0.71
+
 defaultProject: YOUR_DATAFORM_EXECUTION_PROJECT
 defaultDataset: YOUR_DATAFORM_OUTPUT_DATASET
 defaultLocation: YOUR_BIGQUERY_LOCATION
