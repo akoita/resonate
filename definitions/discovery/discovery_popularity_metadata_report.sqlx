@@ -1,0 +1,57 @@
+config {
+  type: "view",
+  name: "discovery_popularity_metadata_report",
+  tags: ["discovery_popularity", "internal"],
+  description: "Counts recent popularity events excluded because actor, consent, owner, AI disclosure, or genre metadata was unavailable or disqualifying.",
+}
+
+WITH raw_basis AS (
+  SELECT
+    eventId,
+    IF(
+      COUNT(DISTINCT JSON_VALUE(envelope, '$.consentBasis')) = 1,
+      ANY_VALUE(JSON_VALUE(envelope, '$.consentBasis')),
+      NULL
+    ) AS consent_basis
+  FROM ${require("includes/discovery_popularity_config").rawTableRef(dataform.projectConfig)}
+  WHERE occurredAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND occurredAt <= CURRENT_TIMESTAMP()
+  GROUP BY eventId
+),
+candidates AS (
+  SELECT
+    c.eventId,
+    c.eventName,
+    c.privacyTier,
+    CAST(c.actorId AS STRING) AS actor_id,
+    JSON_VALUE(c.payload, '$.genre') AS genre,
+    UPPER(JSON_VALUE(c.payload, '$.aiDisclosureLevel')) AS ai_disclosure_level,
+    SAFE_CAST(JSON_VALUE(c.payload, '$.selfEngagement') AS BOOL) AS self_engagement,
+    raw_basis.consent_basis
+  FROM ${require("includes/discovery_popularity_config").cleanTableRef(dataform.projectConfig)} AS c
+  LEFT JOIN raw_basis USING (eventId)
+  WHERE c.occurredDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND c.eventName IN (
+    'playback.completed', 'library.saved', 'playlist.track_added',
+      'commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed'
+    )
+)
+SELECT
+  COUNT(*) AS candidate_events,
+  COUNTIF(NULLIF(TRIM(actor_id), '') IS NULL OR NOT REGEXP_CONTAINS(TRIM(actor_id), r'^user_[0-9a-fA-F]{32}$')) AS excluded_missing_or_noncanonical_actor,
+  COUNTIF(privacyTier != 'pseudonymous') AS excluded_privacy_tier,
+  COUNTIF(consent_basis IS NULL OR TRIM(consent_basis) = '') AS excluded_missing_basis,
+  COUNTIF(
+    consent_basis IS NOT NULL
+    AND NOT (
+      (eventName IN ('playback.completed', 'library.saved', 'playlist.track_added') AND consent_basis = 'consent')
+      OR (eventName IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed') AND consent_basis IN ('contract', 'performance_of_contract'))
+    )
+  ) AS excluded_unapproved_basis,
+  COUNTIF(self_engagement IS NULL) AS excluded_unknown_self_engagement,
+  COUNTIF(self_engagement IS TRUE) AS excluded_self_engagement,
+  COUNTIF(ai_disclosure_level IS NULL OR ai_disclosure_level NOT IN ('NONE', 'PARTLY', 'ALL', 'UNDECLARED')) AS excluded_unknown_ai_disclosure,
+  COUNTIF(ai_disclosure_level = 'ALL') AS excluded_fully_ai_generated,
+  COUNTIF(NULLIF(TRIM(genre), '') IS NULL) AS events_with_unknown_genre_overall_only,
+  CURRENT_TIMESTAMP() AS reported_at
+FROM candidates
