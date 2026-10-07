@@ -21,7 +21,8 @@ type RequestArgs = {
 };
 
 function row(trackId: string, window = "7d") {
-  return { f: [{ v: trackId }, { v: window }, { v: "2026-10-03 11:00:00 UTC" }] };
+  // REST shape for a TIMESTAMP under formatOptions.useInt64Timestamp: epoch microseconds.
+  return { f: [{ v: trackId }, { v: window }, { v: "1791025200123456" }] };
 }
 
 function warehouseConfig(rowLimit = 10) {
@@ -73,14 +74,41 @@ describe("BigQuery discovery popularity mart reader", () => {
     );
 
     await expect(client.readMart("track_popularity", "track")).resolves.toEqual([
-      { track_id: "track-a", window: "7d", computed_at: "2026-10-03 11:00:00 UTC" },
-      { track_id: "track-b", window: "7d", computed_at: "2026-10-03 11:00:00 UTC" },
+      { track_id: "track-a", window: "7d", computed_at: new Date("2026-10-03T11:00:00.123Z") },
+      { track_id: "track-b", window: "7d", computed_at: new Date("2026-10-03T11:00:00.123Z") },
     ]);
     expect(calls).toHaveLength(3);
     expect((calls[0].data as { maximumBytesBilled: string }).maximumBytesBilled).toBe("5000000");
     expect((calls[0].data as { query: string }).query).toContain("purchases, computed_at");
     expect((calls[0].data as { queryParameters: Array<{ parameterValue: { value: string } }> }).queryParameters[0].parameterValue.value).toBe("11");
     expect(calls[2].params?.pageToken).toBe("page-2");
+    expect((calls[0].data as { formatOptions: unknown }).formatOptions).toEqual({ useInt64Timestamp: true });
+    expect(calls.slice(1).every((call) => call.params?.["formatOptions.useInt64Timestamp"] === true)).toBe(true);
+  });
+
+  it("rejects a TIMESTAMP cell that is not integer epoch microseconds", async () => {
+    for (const value of ["1.791025200123456E9", "2026-10-03 11:00:00 UTC", ""]) {
+      const requestClient: BigQueryRequestClient = {
+        async request<T>() {
+          return {
+            data: {
+              jobComplete: true,
+              jobReference: { jobId: "job-1" },
+              schema,
+              totalRows: "1",
+              rows: [{ f: [{ v: "track-a" }, { v: "7d" }, { v: value }] }],
+            } as T,
+          };
+        },
+      };
+      const client = new GoogleAuthDiscoveryPopularityBigQueryClient(
+        warehouseConfig(),
+        requestClient,
+        () => 0,
+        async () => {},
+      );
+      await expect(client.readMart("track_popularity", "track")).rejects.toThrow("invalid computed_at TIMESTAMP");
+    }
   });
 
   it("quotes the reserved window column for both marts and preserves its result name", async () => {
