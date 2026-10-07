@@ -69,7 +69,7 @@ Focused backend tests cover scoring, export pagination/deadlines, transactional
 replacement, audience suppression, authoritative metadata and cache generation.
 Full local Dataform compilation validates the combined action graph; BigQuery
 dry runs validate the generated GoogleSQL and estimate query bytes before a
-build. The marts, assertions and exporter quote the reserved `window` identifier
+build. The marts (including their `clusterBy` keys), assertions and exporter quote the reserved `window` identifier
 while preserving the shared column contract. Existing Agent Taste templates use inline configuration helpers
 so their configuration blocks compile in the same graph. Application
 materialization and export are merged in

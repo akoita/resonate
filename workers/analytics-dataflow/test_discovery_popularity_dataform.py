@@ -50,6 +50,10 @@ class DiscoveryPopularityDataformTest(unittest.TestCase):
             self.assertIn("occurredAt", sql)
             self.assertIn("dry-run bytes", sql)
 
+        # Dataform copies clusterBy into CLUSTER BY verbatim; WINDOW is reserved.
+        self.assertIn('clusterBy: ["`window`", "genre", "track_id"]', track_sql)
+        self.assertIn('clusterBy: ["`window`", "genre", "artist_id"]', artist_sql)
+
         for sql in (track_assertion, artist_assertion):
             self.assertIn("HAVING COUNT(*) > 1", sql)
             self.assertIn("unique_listeners IS NULL", sql)
