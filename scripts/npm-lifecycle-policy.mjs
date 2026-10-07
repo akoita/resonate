@@ -11,6 +11,10 @@ export const FIRST_PARTY_PROJECTS = Object.freeze([
   { project: 'web', lockfile: 'web/package-lock.json' },
   { project: 'desktop', lockfile: 'desktop/package-lock.json' },
   { project: 'scripts/staging-smoke', lockfile: 'scripts/staging-smoke/package-lock.json' },
+  {
+    project: 'workers/analytics-dataflow/dataform-cli',
+    lockfile: 'workers/analytics-dataflow/dataform-cli/package-lock.json',
+  },
   { project: 'examples/mcp-client', lockfile: 'examples/mcp-client/package-lock.json' },
 ]);
 

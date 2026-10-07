@@ -1,0 +1,12 @@
+{
+  "name": "resonate-dataform-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned Dataform CLI used to compile the Dataform project in CI and in the dataform/main publisher (#2115).",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@dataform/cli": "3.0.71"
+  }
+}
