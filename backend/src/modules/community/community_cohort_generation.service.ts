@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { createHash } from "crypto";
 import { prisma } from "../../db/prisma";
+import { resolveCreditedArtistNames } from "../shared/artist_attribution";
 
 const DEFAULT_MINIMUM_SIZE = 5;
 const GENERATED_COHORT_SCHEMA_VERSION = "community-cohort-generation/v1";
@@ -163,11 +164,12 @@ export class CommunityCohortGenerationService {
         userId: true,
         track: {
           select: {
+            artist: true,
             release: {
               select: {
                 genre: true,
-                artistId: true,
-                artist: { select: { displayName: true } },
+                primaryArtist: true,
+                artistCredits: { select: { role: true, displayName: true } },
               },
             },
           },
@@ -188,14 +190,7 @@ export class CommunityCohortGenerationService {
           sourceType: "agent_signal_genre",
         });
       }
-      addUser(candidates, {
-        cohortType: "artist_affinity",
-        signal: row.track.release.artistId,
-        title: `${safeDisplayLabel(row.track.release.artist.displayName, "Shared artist")} listeners`,
-        safeExplanation: "A privacy-safe group for listeners with shared artist affinity.",
-        userId: row.userId,
-        sourceType: "agent_signal_artist",
-      });
+      addArtistAffinityUser(candidates, row.track, row.userId, "agent_signal_artist");
     }
   }
 
@@ -214,10 +209,11 @@ export class CommunityCohortGenerationService {
       where: { id: { in: trackIds } },
       select: {
         id: true,
+        artist: true,
         release: {
           select: {
-            artistId: true,
-            artist: { select: { displayName: true } },
+            primaryArtist: true,
+            artistCredits: { select: { role: true, displayName: true } },
           },
         },
       },
@@ -227,14 +223,7 @@ export class CommunityCohortGenerationService {
     for (const row of rows) {
       const track = row.catalogTrackId ? tracksById.get(row.catalogTrackId) : null;
       if (!track) continue;
-      addUser(candidates, {
-        cohortType: "artist_affinity",
-        signal: track.release.artistId,
-        title: `${safeDisplayLabel(track.release.artist.displayName, "Shared artist")} listeners`,
-        safeExplanation: "A privacy-safe group for listeners with shared artist affinity.",
-        userId: row.userId,
-        sourceType: "library_artist",
-      });
+      addArtistAffinityUser(candidates, track, row.userId, "library_artist");
     }
   }
 
@@ -315,10 +304,11 @@ export class CommunityCohortGenerationService {
               select: {
                 track: {
                   select: {
+                    artist: true,
                     release: {
                       select: {
-                        artistId: true,
-                        artist: { select: { displayName: true } },
+                        primaryArtist: true,
+                        artistCredits: { select: { role: true, displayName: true } },
                       },
                     },
                   },
@@ -332,16 +322,18 @@ export class CommunityCohortGenerationService {
 
     for (const row of rows) {
       const userId = usersByWallet.get(row.buyerAddress.toLowerCase());
-      const release = row.listing.stem?.track.release;
-      if (!userId || !release) continue;
-      addUser(candidates, {
-        cohortType: "collector",
-        signal: release.artistId,
-        title: `${safeDisplayLabel(release.artist.displayName, "Shared artist")} collectors`,
-        safeExplanation: "A privacy-safe group for listeners collecting stems from a shared artist community.",
-        userId,
-        sourceType: "stem_purchase_artist",
-      });
+      const track = row.listing.stem?.track;
+      if (!userId || !track) continue;
+      for (const artistName of creditedArtistNames(track)) {
+        addUser(candidates, {
+          cohortType: "collector",
+          signal: artistSignal(artistName),
+          title: `${safeDisplayLabel(artistName, "Shared artist")} collectors`,
+          safeExplanation: "A privacy-safe group for listeners collecting stems from a shared artist community.",
+          userId,
+          sourceType: "stem_purchase_artist",
+        });
+      }
     }
   }
 
@@ -558,6 +550,54 @@ export class CommunityCohortGenerationService {
       staleMembershipsMarked: staleSuggestedMemberships.count + staleJoinedMemberships.count,
       staleMembershipsRestored: 0,
     };
+  }
+}
+
+type CreditedTrackSource = {
+  artist: string | null;
+  release: {
+    primaryArtist: string | null;
+    artistCredits: Array<{ role: string; displayName: string }>;
+  };
+};
+
+/**
+ * Artist-based cohorts follow the CREDITED artist, never the uploader/manager
+ * account that owns the release. A track with no credit yields no names, so no
+ * artist cohort is created for it.
+ */
+function creditedArtistNames(track: CreditedTrackSource) {
+  return resolveCreditedArtistNames({
+    trackArtist: track.artist,
+    credits: track.release.artistCredits,
+    primaryArtist: track.release.primaryArtist,
+  }).filter((name) => safeSignalToken(name, "") !== "");
+}
+
+/**
+ * `slug()` keeps only [a-z0-9], so names without any (e.g. CJK or Cyrillic)
+ * would all collapse into one cohort; key those by a stable hash instead.
+ */
+function artistSignal(name: string) {
+  if (/[a-z0-9]/i.test(name)) return name;
+  return `artist_${createHash("sha256").update(name.toLowerCase()).digest("hex").slice(0, 16)}`;
+}
+
+function addArtistAffinityUser(
+  candidates: Map<string, CohortCandidate>,
+  track: CreditedTrackSource,
+  userId: string,
+  sourceType: string,
+) {
+  for (const artistName of creditedArtistNames(track)) {
+    addUser(candidates, {
+      cohortType: "artist_affinity",
+      signal: artistSignal(artistName),
+      title: `${safeDisplayLabel(artistName, "Shared artist")} listeners`,
+      safeExplanation: "A privacy-safe group for listeners with shared artist affinity.",
+      userId,
+      sourceType,
+    });
   }
 }
 

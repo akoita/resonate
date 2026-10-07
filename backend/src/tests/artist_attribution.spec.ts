@@ -15,6 +15,7 @@ import {
   MAIN_ARTIST_CREDIT_ROLES,
   normalizeCreditName,
   resolveCreditedArtistName,
+  resolveCreditedArtistNames,
 } from "../modules/shared/artist_attribution";
 
 describe("resolveCreditedArtistName resolution order (#1492)", () => {
@@ -87,6 +88,65 @@ describe("resolveCreditedArtistName resolution order (#1492)", () => {
     expect(MAIN_ARTIST_CREDIT_ROLES.has("primary")).toBe(true);
     expect(MAIN_ARTIST_CREDIT_ROLES.has("featured")).toBe(false);
     expect(normalizeCreditName("  a   b ")).toBe("a b");
+  });
+});
+
+describe("resolveCreditedArtistNames never falls back to the account label", () => {
+  it("returns only the track artist override when present", () => {
+    expect(
+      resolveCreditedArtistNames({
+        trackArtist: "  Track   Credit ",
+        credits: [{ role: "main", displayName: "Credit Artist" }],
+        primaryArtist: "Primary Artist",
+      }),
+    ).toEqual(["Track Credit"]);
+  });
+
+  it("returns each main-role credit, deduped case-insensitively", () => {
+    expect(
+      resolveCreditedArtistNames({
+        credits: [
+          { role: "main", displayName: "First" },
+          { role: "primary", displayName: " Second " },
+          { role: "MAIN", displayName: "first" },
+          { role: "main", displayName: "   " },
+        ],
+        primaryArtist: "Primary Artist",
+      }),
+    ).toEqual(["First", "Second"]);
+  });
+
+  it("ignores feature/guest credits", () => {
+    expect(
+      resolveCreditedArtistNames({
+        credits: [
+          { role: "featured", displayName: "Guest" },
+          { role: "guest", displayName: "Other Guest" },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it("falls back to primaryArtist when there are no main credits", () => {
+    expect(
+      resolveCreditedArtistNames({
+        credits: [{ role: "featured", displayName: "Guest" }],
+        primaryArtist: " Primary   Artist ",
+      }),
+    ).toEqual(["Primary Artist"]);
+  });
+
+  it("returns an empty list when nothing credits an artist (no account fallback)", () => {
+    expect(resolveCreditedArtistNames({})).toEqual([]);
+    expect(
+      resolveCreditedArtistNames({
+        trackArtist: "  ",
+        credits: [],
+        primaryArtist: null,
+        // Extra account label must be ignored even if a caller passes it.
+        ...({ accountDisplayName: "Manager Handle" } as object),
+      }),
+    ).toEqual([]);
   });
 });
 
