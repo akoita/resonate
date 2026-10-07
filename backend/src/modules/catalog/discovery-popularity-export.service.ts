@@ -278,6 +278,7 @@ export class GoogleAuthDiscoveryPopularityBigQueryClient implements DiscoveryPop
           useLegacySql: false,
           useQueryCache: true,
           maximumBytesBilled: this.maximumBytesBilled,
+          formatOptions: { useInt64Timestamp: true },
           timeoutMs: Math.min(10_000, Math.max(1, deadline - this.now())),
           maxResults: BIGQUERY_PAGE_SIZE,
           parameterMode: "NAMED",
@@ -326,6 +327,7 @@ export class GoogleAuthDiscoveryPopularityBigQueryClient implements DiscoveryPop
         {
           params: {
             maxResults: BIGQUERY_PAGE_SIZE,
+            "formatOptions.useInt64Timestamp": true,
             pageToken: requestedPageToken,
             timeoutMs: Math.min(1_000, Math.max(1, deadline - this.now())),
             ...(response.jobReference?.location ? { location: response.jobReference.location } : {}),
@@ -377,6 +379,7 @@ export class GoogleAuthDiscoveryPopularityBigQueryClient implements DiscoveryPop
         {
           params: {
             maxResults: BIGQUERY_PAGE_SIZE,
+            "formatOptions.useInt64Timestamp": true,
             timeoutMs: Math.min(1_000, Math.max(1, deadline - this.now())),
             ...(pageToken ? { pageToken } : {}),
             ...(first.jobReference?.location ? { location: first.jobReference.location } : {}),
@@ -598,8 +601,22 @@ function decodeBigQueryRows(fields: BigQueryField[], rows: BigQueryRow[]) {
     if (!Array.isArray(row.f) || row.f.length !== fields.length) {
       throw new Error("BigQuery popularity mart returned a row with an incomplete schema");
     }
-    return Object.fromEntries(fields.map((field, index) => [field.name, row.f?.[index]?.v]));
+    return Object.fromEntries(fields.map((field, index) => [field.name, decodeBigQueryValue(field, row.f?.[index]?.v)]));
   });
+}
+
+// The REST API returns TIMESTAMP cells as strings, never ISO-8601. Requests set
+// formatOptions.useInt64Timestamp, so they arrive as integer epoch microseconds.
+function decodeBigQueryValue(field: BigQueryField, value: unknown) {
+  if (field.type !== "TIMESTAMP" || value === null || value === undefined) return value;
+  if (typeof value !== "string" || !/^-?\d+$/.test(value)) {
+    throw new Error(`BigQuery popularity mart returned an invalid ${field.name} TIMESTAMP`);
+  }
+  const microseconds = Number(value);
+  if (!Number.isSafeInteger(microseconds)) {
+    throw new Error(`BigQuery popularity mart returned an out-of-range ${field.name} TIMESTAMP`);
+  }
+  return new Date(Math.floor(microseconds / 1000));
 }
 
 function sameSchema(left: BigQueryField[], right: BigQueryField[]) {
