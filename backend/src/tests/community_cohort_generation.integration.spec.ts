@@ -9,6 +9,15 @@ const reconcileUsers = Array.from({ length: 5 }, (_, index) => `${TEST_PREFIX}re
 const zeroRefreshUsers = Array.from({ length: 5 }, (_, index) => `${TEST_PREFIX}zero_${index}`);
 const unsafeSignalUsers = Array.from({ length: 5 }, (_, index) => `${TEST_PREFIX}unsafe_${index}`);
 const cityUsers = Array.from({ length: 5 }, (_, index) => `${TEST_PREFIX}city_${index}`);
+const creditedUsers = Array.from({ length: 5 }, (_, index) => `${TEST_PREFIX}credited_${index}`);
+const uncreditedUsers = Array.from({ length: 5 }, (_, index) => `${TEST_PREFIX}uncredited_${index}`);
+const managerAccountId = `${TEST_PREFIX}manager_account`;
+const managerAccountName = "Manager Handle";
+const creditedArtistName = "Credited Star";
+const creditedReleaseId = `${TEST_PREFIX}credited_release`;
+const creditedTrackId = `${TEST_PREFIX}credited_track`;
+const uncreditedReleaseId = `${TEST_PREFIX}uncredited_release`;
+const uncreditedTrackId = `${TEST_PREFIX}uncredited_track`;
 const optedOutUserId = `${TEST_PREFIX}opted_out`;
 const campaignId = `${TEST_PREFIX}campaign`;
 const tasteGenre = `Dream Pop ${TEST_PREFIX}`;
@@ -31,6 +40,8 @@ describe("CommunityCohortGenerationService integration", () => {
       ...zeroRefreshUsers,
       ...unsafeSignalUsers,
       ...cityUsers,
+      ...creditedUsers,
+      ...uncreditedUsers,
       optedOutUserId,
     ];
     await prisma.user.createMany({
@@ -44,11 +55,50 @@ describe("CommunityCohortGenerationService integration", () => {
         ...zeroRefreshUsers.map((userId) => ({ userId, allowTasteMatching: true, allowCityScenes: false })),
         ...unsafeSignalUsers.map((userId) => ({ userId, allowTasteMatching: true, allowCityScenes: false })),
         ...cityUsers.map((userId) => ({ userId, allowTasteMatching: false, allowCityScenes: true })),
+        ...creditedUsers.map((userId) => ({ userId, allowTasteMatching: true, allowCityScenes: false })),
+        ...uncreditedUsers.map((userId) => ({ userId, allowTasteMatching: true, allowCityScenes: false })),
         { userId: optedOutUserId, allowTasteMatching: false, allowCityScenes: false },
+      ],
+    });
+    // An uploader/manager ACCOUNT whose label must never name an artist cohort.
+    await prisma.artist.create({
+      data: { id: managerAccountId, displayName: managerAccountName },
+    });
+    await prisma.release.createMany({
+      data: [
+        {
+          id: creditedReleaseId,
+          artistId: managerAccountId,
+          title: "Credited Release",
+          primaryArtist: creditedArtistName,
+        },
+        {
+          id: uncreditedReleaseId,
+          artistId: managerAccountId,
+          title: "Uncredited Release",
+        },
+      ],
+    });
+    await prisma.track.createMany({
+      data: [
+        { id: creditedTrackId, releaseId: creditedReleaseId, title: "Credited Track" },
+        { id: uncreditedTrackId, releaseId: uncreditedReleaseId, title: "Uncredited Track" },
       ],
     });
     await prisma.libraryTrack.createMany({
       data: [
+        ...creditedUsers.map((userId) => ({
+          userId,
+          title: "Credited Track",
+          source: "remote",
+          catalogTrackId: creditedTrackId,
+        })),
+        ...uncreditedUsers.map((userId) => ({
+          userId,
+          title: "Uncredited Track",
+          source: "remote",
+          catalogTrackId: uncreditedTrackId,
+        })),
         ...tasteUsers.map((userId, index) => ({
           userId,
           title: `Dream Pop Track ${index}`,
@@ -122,12 +172,17 @@ describe("CommunityCohortGenerationService integration", () => {
         OR: [
           { reasonCode: { contains: "community_cohort_generation" } },
           { reasonCode: "taste:shared_taste" },
+          { reasonCode: "artist_affinity:credited_star" },
+          { reasonCode: { contains: "manager_handle" } },
         ],
       },
     });
     await prisma.showPledge.deleteMany({ where: { campaignId } });
     await prisma.showCampaign.deleteMany({ where: { id: campaignId } });
     await prisma.libraryTrack.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
+    await prisma.track.deleteMany({ where: { id: { in: [creditedTrackId, uncreditedTrackId] } } });
+    await prisma.release.deleteMany({ where: { id: { in: [creditedReleaseId, uncreditedReleaseId] } } });
+    await prisma.artist.deleteMany({ where: { id: managerAccountId } });
     await prisma.communityVisibilitySettings.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.$disconnect();
@@ -339,5 +394,40 @@ describe("CommunityCohortGenerationService integration", () => {
     expect(await prisma.communityCohortMembership.findFirst({
       where: { cohortId: cityCohort!.cohortId, userId: tasteUsers[0] },
     })).toBeNull();
+  });
+
+  it("names and keys artist cohorts by the credited artist, never the uploader account", async () => {
+    const result = await generationService.generateCohorts({ minimumSize: 5, now });
+    const artistCohort = result.cohorts.find((cohort) => cohort.reasonCode === "artist_affinity:credited_star");
+
+    expect(artistCohort).toEqual(expect.objectContaining({
+      cohortType: "artist_affinity",
+      status: "active",
+      visibleMemberCount: 5,
+    }));
+    await expect(prisma.communityCohort.findUniqueOrThrow({
+      where: { id: artistCohort!.cohortId },
+      select: { title: true },
+    })).resolves.toEqual({ title: "Credited Star listeners" });
+    expect(await prisma.communityCohort.count({
+      where: {
+        OR: [
+          { title: { contains: managerAccountName, mode: "insensitive" } },
+          { reasonCode: { contains: "manager_handle" } },
+          { reasonCode: { contains: managerAccountId } },
+        ],
+      },
+    })).toBe(0);
+  });
+
+  it("creates no artist_affinity cohort for a release with no artist credit", async () => {
+    await generationService.generateCohorts({ minimumSize: 5, now });
+
+    expect(await prisma.communityCohortMembership.count({
+      where: {
+        userId: { in: uncreditedUsers },
+        cohort: { cohortType: { in: ["artist_affinity", "collector"] } },
+      },
+    })).toBe(0);
   });
 });

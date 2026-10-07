@@ -71,6 +71,37 @@ export function resolveCreditedArtistName(
   return null;
 }
 
+/**
+ * Resolve every credited artist NAME for a track/release, for surfaces where the
+ * uploader/manager account label must never appear (e.g. community cohorts that
+ * are keyed and titled by artist). Order: track artist override → each main-role
+ * credit (deduped case-insensitively) → `primaryArtist` → `[]`. There is NO
+ * account-label fallback: an uncredited track yields no names.
+ */
+export function resolveCreditedArtistNames(
+  input: Omit<ResolveCreditedArtistInput, "accountDisplayName">,
+): string[] {
+  const trackArtist = normalizeCreditName(input.trackArtist);
+  if (trackArtist) return [trackArtist];
+
+  const seen = new Set<string>();
+  const mainCredits: string[] = [];
+  for (const credit of input.credits || []) {
+    if (!MAIN_ARTIST_CREDIT_ROLES.has(credit.role.toLowerCase())) continue;
+    const name = normalizeCreditName(credit.displayName);
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    mainCredits.push(name);
+  }
+  if (mainCredits.length) return mainCredits;
+
+  const primaryArtist = normalizeCreditName(input.primaryArtist);
+  if (primaryArtist) return [primaryArtist];
+
+  return [];
+}
+
 /** Identity attribution follows the public track credit; manager IDs are never a fallback. */
 export function resolveCreditedArtistIds(input: Omit<ResolveCreditedArtistInput, "credits"> & {
   credits: Array<{ artistId: string; role: string; displayName: string; identityStatus: string }>;
