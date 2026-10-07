@@ -798,6 +798,103 @@ describe("Scene Scout acceptance fixture runner (integration)", () => {
       }
     });
 
+    describe("fully stemmed track", () => {
+      const STEM_TYPES = ["original", "vocals", "drums", "bass", "piano", "guitar", "other"];
+
+      async function createStems(audioFeatures?: Prisma.InputJsonValue) {
+        await prisma.stem.createMany({
+          data: STEM_TYPES.map((type) => ({
+            id: `${TEST_PREFIX}full_${type}_stem`,
+            trackId: TRACK,
+            type,
+            uri: "memory://acceptance-test-stem",
+            ...(type === "original" && audioFeatures ? { audioFeatures } : {}),
+          })),
+        });
+      }
+
+      it("falls back to a categorical BPM gap the track really fails and cleans it up", async () => {
+        const input = { runId: nextRunId("unmet-bpm"), showArtistId: SHOW_ARTIST };
+        await createStems({
+          schemaVersion: "stem-audio-features/v1",
+          extractor: { name: "librosa", version: "0.10" },
+          tempoBpm: 124,
+          tempoConfidence: 0.8,
+        });
+        try {
+          const first = await run("unmet-demand", input);
+          const prefix = sceneScoutAcceptancePrefix(first.invocation);
+          expect(first.result).toMatchObject({
+            phase: "unmet-demand",
+            result: "verified",
+            trackId: TRACK,
+            gapKind: "bpm",
+            value: "180–189 BPM",
+            fixtureListenersCreated: 3,
+            requestersRecorded: 3,
+            observationsRecorded: 3,
+            catalogAction: { targetType: "artist", kind: "bpm", value: "180–189 BPM" },
+            aggregate: { distinctRequesters: 3, requestCount: 3 },
+            storedSnapshot: { present: true, distinctRequesters: 3, requestCount: 3 },
+            privacy: { storedObservations: 3, categoricalOnly: true, promptsStored: false, responseExposesIdentity: false },
+          });
+          expectNoIdentities(first.result, first.invocation);
+
+          const fixtureUserIds = Array.from({ length: 3 }, (_, ordinal) => sceneScoutAcceptanceUserId(prefix, ordinal));
+          const observations = await prisma.demandObservation.findMany({ where: { userId: { in: fixtureUserIds } } });
+          expect(observations).toHaveLength(3);
+          for (const observation of observations) {
+            expect(observation).toMatchObject({
+              sourceType: "crate",
+              targetType: "artist",
+              targetId: ARTIST,
+              targetArtistId: ARTIST,
+              evidenceTrackId: TRACK,
+              kind: "bpm",
+              value: "180–189 BPM",
+            });
+            expect(observation.sourceKey).toMatch(/^[0-9a-f]{64}$/);
+          }
+          expect(await prisma.demandSignal.count({
+            where: { artistId: ARTIST, targetType: "artist", targetId: ARTIST, kind: "bpm", value: "180–189 BPM" },
+          })).toBeGreaterThan(0);
+          expect(await prisma.demandSignal.count({ where: { artistId: ARTIST, kind: "stem" } })).toBe(0);
+
+          const cleaned = await run("cleanup", input);
+          expect(cleaned.result).toMatchObject({
+            result: "cleaned",
+            listenersDeleted: 3,
+            demandObservationsDeleted: 3,
+            unmetDemandSnapshots: { status: "thin_data", rows: 0 },
+          });
+          await expectFixtureGone(first.invocation);
+          expect(await prisma.demandObservation.count({ where: { userId: { in: fixtureUserIds } } })).toBe(0);
+          expect(await prisma.demandSignal.count({ where: { artistId: ARTIST } })).toBe(0);
+        } finally {
+          await prisma.stem.deleteMany({ where: { trackId: TRACK } });
+        }
+      });
+
+      it("blocks without writing when the track has every stem type and no measured tempo, key, or energy", async () => {
+        const input = { runId: nextRunId("unmet-nogap"), showArtistId: SHOW_ARTIST };
+        await createStems();
+        try {
+          const blocked = await run("unmet-demand", input);
+          expect(blocked.result).toMatchObject({
+            phase: "unmet-demand",
+            result: "blocked",
+            reason: expect.stringMatching(/every crate stem type and no measured tempo, key, or energy/),
+          });
+          expect(await prisma.demandObservation.count({
+            where: { userId: { startsWith: sceneScoutAcceptancePrefix(blocked.invocation) } },
+          })).toBe(0);
+          expect(await prisma.demandSignal.count({ where: { artistId: ARTIST } })).toBe(0);
+        } finally {
+          await prisma.stem.deleteMany({ where: { trackId: TRACK } });
+        }
+      });
+    });
+
     it("blocks unmet demand rather than inventing an aggregate when the track is not a complete catalog track", async () => {
       const input = { runId: nextRunId("unmet-pending"), showArtistId: SHOW_ARTIST };
       await prisma.track.update({ where: { id: TRACK }, data: { processingStatus: "pending" } });

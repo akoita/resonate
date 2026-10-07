@@ -3,6 +3,16 @@ import {
   normalizeAnalyticsGeoDimension,
   resolveAnalyticsEnvironment,
 } from "../modules/analytics/analytics_event";
+import {
+  CRATE_STEM_TYPES,
+  type CrateCandidateFacts,
+  type CrateCoverage,
+  type CrateFilters,
+} from "../modules/crates/crate.types";
+import { normalizeCamelotCode } from "../modules/crates/crate_camelot";
+import { defaultCrateFilters } from "../modules/crates/crate_filters";
+import { computeCoverage, failedFilters, isExcludedAsFullyAi } from "../modules/crates/crate_selection";
+import { deriveCrateUnmetDemand } from "../modules/scene_scout/unmet_demand.derivation";
 
 export const SCENE_SCOUT_ACCEPTANCE_PHASES = [
   "preview",
@@ -232,4 +242,82 @@ export function sceneScoutAcceptanceMarkerEventId(
 /** Deterministic request id for one fixture listener's synthetic crate request. */
 export function sceneScoutAcceptanceCrateRequestId(prefix: string, ordinal: number) {
   return `${prefix}crate_request_${String(ordinal).padStart(2, "0")}`;
+}
+
+/** The categorical gap the `unmet-demand` phase will record for the selected track. */
+export interface SceneScoutAcceptanceUnmetGap {
+  kind: "stem" | "bpm" | "key" | "energy";
+  /** A bounded enum, fixed numeric bin, Camelot code, or energy band; never an id or free text. */
+  value: string;
+  targetType: "track" | "artist";
+  filters: CrateFilters;
+  coverage: CrateCoverage;
+}
+
+export type SceneScoutAcceptanceUnmetGapPlan =
+  | { gap: SceneScoutAcceptanceUnmetGap; blocked?: undefined }
+  | { gap?: undefined; blocked: string };
+
+/** Candidate 10-BPM ranges, tried in order; the first one excluding the track's tempo is used. */
+const UNMET_GAP_BPM_RANGES = [
+  { min: 180, max: 189 },
+  { min: 80, max: 89 },
+] as const;
+
+/** Candidate energy ranges that derive the `low` and `high` bands. */
+const UNMET_GAP_ENERGY_RANGES = [
+  { min: 0, max: 0.4 },
+  { min: 0.6, max: 1 },
+] as const;
+
+/** Half way round the Camelot wheel: never the same key and never a neighbour. */
+function oppositeCamelotKey(camelot: string): string | null {
+  const normalized = normalizeCamelotCode(camelot);
+  const match = normalized ? /^(\d{1,2})([AB])$/.exec(normalized) : null;
+  if (!match) return null;
+  return `${((Number(match[1]) - 1 + 6) % 12) + 1}${match[2]}`;
+}
+
+/**
+ * Chooses the categorical gap the selected track really has, from its real
+ * facts, using only the pure crate filter and demand-derivation code the
+ * product uses. A stem gap is preferred; a track with every stem type falls
+ * back to a BPM, then key, then energy gap. A candidate is used only when the
+ * track fails exactly that one filter, a coverage gap is reported for it, and
+ * the derivation yields a draft of that kind for this track, so the recorded
+ * observation is the one the product would record.
+ */
+export function planSceneScoutAcceptanceUnmetGap(facts: CrateCandidateFacts): SceneScoutAcceptanceUnmetGapPlan {
+  const base = defaultCrateFilters();
+  if (isExcludedAsFullyAi(facts, base)) {
+    return { blocked: "The selected track is fully AI-generated and crate requests exclude such tracks by default; choose another track." };
+  }
+
+  const attempts: Array<{ kind: SceneScoutAcceptanceUnmetGap["kind"]; filters: CrateFilters }> = [];
+  const missingStem = CRATE_STEM_TYPES.find((stem) => !facts.stemTypes.includes(stem));
+  if (missingStem) attempts.push({ kind: "stem", filters: { ...base, requiredStems: [missingStem] } });
+  if (facts.tempoBpm !== null) {
+    for (const range of UNMET_GAP_BPM_RANGES) attempts.push({ kind: "bpm", filters: { ...base, bpm: { ...range } } });
+  }
+  const oppositeKey = facts.camelot === null ? null : oppositeCamelotKey(facts.camelot);
+  if (oppositeKey) attempts.push({ kind: "key", filters: { ...base, keys: [oppositeKey] } });
+  if (facts.energy !== null) {
+    for (const range of UNMET_GAP_ENERGY_RANGES) attempts.push({ kind: "energy", filters: { ...base, energy: { ...range } } });
+  }
+
+  for (const { kind, filters } of attempts) {
+    const failed = failedFilters(facts, filters);
+    if (failed.length !== 1) continue;
+    const coverage = computeCoverage([facts], 0, filters);
+    if (!coverage.gaps.some((gap) => gap.filter === failed[0])) continue;
+    const drafts = deriveCrateUnmetDemand({ filters, considered: [facts], coverage }).candidates
+      .filter((draft) => draft.kind === kind && draft.candidateTrackId === facts.trackId);
+    if (drafts.length !== 1) continue;
+    return { gap: { kind, value: drafts[0].value, targetType: drafts[0].targetType, filters, coverage } };
+  }
+  return {
+    blocked: missingStem === undefined
+      ? "The selected track already has every crate stem type and no measured tempo, key, or energy to build a categorical gap from; choose another track."
+      : "No categorical gap could be derived for the selected track; choose another track.",
+  };
 }

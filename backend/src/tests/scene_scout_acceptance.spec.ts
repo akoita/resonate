@@ -2,6 +2,7 @@ import {
   assertSceneScoutAcceptanceMutationRequirements,
   assertSceneScoutAcceptanceStagingEnvironment,
   parseSceneScoutAcceptanceArgs,
+  planSceneScoutAcceptanceUnmetGap,
   sceneScoutAcceptanceCrateRequestId,
   sceneScoutAcceptanceEventId,
   sceneScoutAcceptanceMarkerEventId,
@@ -9,6 +10,8 @@ import {
   sceneScoutAcceptanceUserId,
   type SceneScoutAcceptanceInvocation,
 } from "../scripts/scene_scout_acceptance_support";
+import type { CrateCandidateFacts } from "../modules/crates/crate.types";
+import { deriveCrateUnmetDemand } from "../modules/scene_scout/unmet_demand.derivation";
 
 const REQUIRED_ARGS = [
   "--artist-id", "artist_1",
@@ -213,5 +216,89 @@ describe("Scene Scout acceptance CLI support", () => {
       expect(sceneScoutAcceptanceMarkerEventId(prefix, 1, "erased_account")).toBe(`${prefix}marker_01_erased_account`);
       expect(sceneScoutAcceptanceCrateRequestId(prefix, 2)).toBe(`${prefix}crate_request_02`);
     });
+  });
+});
+
+describe("Scene Scout acceptance unmet-demand gap planning", () => {
+  const ALL_STEMS = ["bass", "drums", "guitar", "other", "piano", "vocals"];
+
+  function facts(overrides: Partial<CrateCandidateFacts> = {}): CrateCandidateFacts {
+    return {
+      trackId: "track_1",
+      artistId: "artist_1",
+      genre: null,
+      moods: [],
+      aiDisclosureLevel: "none",
+      tempoBpm: null,
+      camelot: null,
+      energy: null,
+      stemTypes: ALL_STEMS,
+      listedLicenseTypes: [],
+      indicativePriceUsd: {},
+      verifiedHuman: false,
+      ...overrides,
+    };
+  }
+
+  it("prefers the first stem type the track lacks, as a track-level gap", () => {
+    const plan = planSceneScoutAcceptanceUnmetGap(facts({ stemTypes: ["bass"], tempoBpm: 124 }));
+    expect(plan.gap).toMatchObject({ kind: "stem", targetType: "track" });
+    expect(plan.gap?.filters.requiredStems).toHaveLength(1);
+    expect(plan.gap?.value).toBe(plan.gap?.filters.requiredStems[0]);
+  });
+
+  it("falls back to a BPM bin excluding a fully stemmed track's tempo, as an artist-level gap", () => {
+    expect(planSceneScoutAcceptanceUnmetGap(facts({ tempoBpm: 124 })).gap).toMatchObject({
+      kind: "bpm",
+      targetType: "artist",
+      value: "180–189 BPM",
+    });
+    expect(planSceneScoutAcceptanceUnmetGap(facts({ tempoBpm: 185 })).gap).toMatchObject({
+      kind: "bpm",
+      value: "80–89 BPM",
+    });
+  });
+
+  it("falls back to the opposite Camelot key, never the track's key or a neighbour, when tempo is unknown", () => {
+    expect(planSceneScoutAcceptanceUnmetGap(facts({ camelot: "8A", energy: 0.5 })).gap).toMatchObject({
+      kind: "key",
+      targetType: "artist",
+      value: "2A",
+    });
+    expect(planSceneScoutAcceptanceUnmetGap(facts({ camelot: "2B" })).gap).toMatchObject({ kind: "key", value: "8B" });
+  });
+
+  it("falls back to an energy band excluding the track's energy as the last categorical choice", () => {
+    expect(planSceneScoutAcceptanceUnmetGap(facts({ energy: 0.7 })).gap).toMatchObject({ kind: "energy", value: "low" });
+    expect(planSceneScoutAcceptanceUnmetGap(facts({ energy: 0.2 })).gap).toMatchObject({ kind: "energy", value: "high" });
+  });
+
+  it("blocks a fully stemmed track with no measured tempo, key, or energy", () => {
+    const plan = planSceneScoutAcceptanceUnmetGap(facts());
+    expect(plan.gap).toBeUndefined();
+    expect(plan.blocked).toMatch(/every crate stem type and no measured tempo, key, or energy/);
+  });
+
+  it("blocks a fully AI-generated track even when a gap would otherwise exist", () => {
+    const plan = planSceneScoutAcceptanceUnmetGap(facts({ aiDisclosureLevel: "ALL", stemTypes: [], tempoBpm: 124 }));
+    expect(plan.gap).toBeUndefined();
+    expect(plan.blocked).toMatch(/fully AI-generated/);
+  });
+
+  it("only plans filters the track fails alone, so exactly one near-match draft is attributed to its artist", () => {
+    for (const candidate of [
+      facts({ tempoBpm: 124 }),
+      facts({ camelot: "8A" }),
+      facts({ energy: 0.5 }),
+      facts({ stemTypes: [] }),
+    ]) {
+      const plan = planSceneScoutAcceptanceUnmetGap(candidate);
+      const gap = plan.gap;
+      expect(gap).toBeDefined();
+      const derivation = deriveCrateUnmetDemand({ filters: gap!.filters, considered: [candidate], coverage: gap!.coverage });
+      expect(derivation.candidates).toEqual([
+        { targetType: gap!.targetType, candidateTrackId: "track_1", kind: gap!.kind, value: gap!.value },
+      ]);
+    }
   });
 });
