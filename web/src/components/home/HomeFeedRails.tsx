@@ -36,24 +36,37 @@ const RAIL_ACTIONS: Partial<Record<HomeFeedRail["kind"], { href: string; label: 
   catalog_signal: { href: "/settings?section=taste", label: "Tell us your taste" },
 };
 
-function reasonLabel(item: HomeFeedItem): string {
+/** Neutral kicker for a rail kind this build does not know (newer backend). */
+const UNKNOWN_RAIL_KICKER: { label: string; tone: ShelfTone } = {
+  label: "Discovery",
+  tone: "tertiary",
+};
+
+/**
+ * `label` is the short chip text. `description` is set when the chip is
+ * abbreviated, and carries the full sentence for the tooltip and screen readers.
+ */
+function reasonLabel(item: HomeFeedItem): { label: string; description?: string } {
   const meaningful = item.reasons.filter(
     (reason) => reason && !reason.startsWith("downranked:"),
   );
   const cohort = meaningful.find((reason) => reason.startsWith("cohort:"));
   if (cohort) {
     const label = cohort.slice("cohort:".length).trim();
-    return label ? `From your ${label} cohort` : "Cohort signal";
+    // The ~196px tile chip clips the full sentence; show just the cohort title.
+    return label
+      ? { label, description: `From your ${label} cohort` }
+      : { label: "Cohort signal" };
   }
   const first = meaningful[0];
-  if (!first) return "Catalog signal";
-  if (first.startsWith("genre:")) return "Taste match";
-  if (first.startsWith("mood:")) return "Mood match";
-  if (first.startsWith("trending:")) return "Trending";
-  if (first.startsWith("artist:")) return "Artist you play";
-  if (first.startsWith("exploration:")) return "Fresh find";
-  if (first.startsWith("catalog:")) return "Catalog signal";
-  return first.replace(/_/g, " ");
+  if (!first) return { label: "Catalog signal" };
+  if (first.startsWith("genre:")) return { label: "Taste match" };
+  if (first.startsWith("mood:")) return { label: "Mood match" };
+  if (first.startsWith("trending:")) return { label: "Trending" };
+  if (first.startsWith("artist:")) return { label: "Artist you play" };
+  if (first.startsWith("exploration:")) return { label: "Fresh find" };
+  if (first.startsWith("catalog:")) return { label: "Catalog signal" };
+  return { label: first.replace(/_/g, " ") };
 }
 
 export function HomeFeedRails({
@@ -89,7 +102,7 @@ export function HomeFeedRails({
   return (
     <>
       {feed.rails.map((rail) => {
-        const kicker = RAIL_KICKERS[rail.kind] ?? RAIL_KICKERS.catalog_signal;
+        const kicker = RAIL_KICKERS[rail.kind] ?? UNKNOWN_RAIL_KICKER;
         return (
           <HomeShelf
             key={rail.id}
@@ -104,6 +117,7 @@ export function HomeFeedRails({
             {rail.items.map((item, position) => {
               const seedKey = item.id;
               const starting = startingSeed === seedKey;
+              const reason = reasonLabel(item);
               return (
                 <HomeTile
                   key={item.id}
@@ -128,7 +142,16 @@ export function HomeFeedRails({
                   subtitle={item.artist ?? "Unknown Artist"}
                   meta={item.genre || "Discovery"}
                   // A chip that only repeats the rail's own kicker adds noise.
-                  badge={reasonLabel(item) === kicker.label ? undefined : reasonLabel(item)}
+                  badge={
+                    reason.label === kicker.label ? undefined : reason.description ? (
+                      <span title={reason.description}>
+                        <span aria-hidden>{reason.label}</span>
+                        <span className="visually-hidden">{reason.description}</span>
+                      </span>
+                    ) : (
+                      reason.label
+                    )
+                  }
                   aiDisclosure={item.aiDisclosure}
                   action={
                     onStartSession ? (

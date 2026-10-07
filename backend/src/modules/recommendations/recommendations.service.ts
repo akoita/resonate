@@ -760,6 +760,10 @@ export class RecommendationsService {
         releaseTitle: source.candidate.track.release.title,
         genre: source.candidate.track.release.genre,
         moods: source.candidate.track.release.moods,
+        // Additive: Home rails build tiles from these, so a tile can show the
+        // release artwork instead of a monogram.
+        artworkMimeType: source.candidate.track.release.artworkMimeType ?? null,
+        artworkRevision: source.candidate.track.release.artworkRevision ?? 1,
         aiDisclosure: toAiDisclosureRecord(source.candidate.track),
         score: entry.score,
         reasons,

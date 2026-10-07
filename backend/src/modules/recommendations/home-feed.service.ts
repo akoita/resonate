@@ -410,6 +410,8 @@ export class HomeFeedService {
         releaseTitle: item.releaseTitle,
         genre: item.genre,
         moods: item.moods ?? [],
+        artworkMimeType: item.artworkMimeType,
+        artworkRevision: item.artworkRevision,
         aiDisclosure: item.aiDisclosure,
         reasons: item.reasons,
         reasonCode: item.reasonCode,
@@ -457,6 +459,8 @@ export class HomeFeedService {
         releaseTitle: item.releaseTitle,
         genre: item.genre,
         moods: item.moods ?? [],
+        artworkMimeType: item.artworkMimeType,
+        artworkRevision: item.artworkRevision,
         aiDisclosure: item.aiDisclosure,
         reasons: item.reasons,
       }));

@@ -120,7 +120,9 @@ the minimum visible-size threshold. Home recommendations and AI DJ selection use
 that bounded context as an additive ranking signal and return safe explanation
 copy such as "From your Dream Pop listeners cohort." Suggested-only, left,
 hidden, stale, expired, archived, below-threshold, and consent-disabled cohorts
-do not influence discovery.
+do not influence discovery. On Home tiles the reason chip shows only the cohort
+title (for example "Dream Pop listeners") so it fits the tile; the full sentence
+is the chip's tooltip and accessible label.
 
 This serving path is transactional and does not require Dataflow, BigQuery, or
 warehouse materializations. Batch/streaming analytics may enrich aggregate

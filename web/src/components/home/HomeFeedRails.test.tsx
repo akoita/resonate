@@ -154,6 +154,46 @@ describe("HomeFeedRails", () => {
     expect(withoutHandler).not.toContain("Start session"); // no dead buttons
   });
 
+  it("shows only the cohort title on the chip, with the full sentence as tooltip and label", () => {
+    const html = renderToStaticMarkup(
+      <HomeFeedRails
+        feed={feed([rail({ items: [item({ reasons: ["cohort:Beker listeners"] })] })])}
+      />,
+    );
+    const badge = html.match(/<span class="ng-tile__badge">(.*?)<\/span><\/span><\/div>/)?.[1] ?? "";
+    expect(badge).toContain('title="From your Beker listeners cohort"');
+    expect(badge).toContain('<span aria-hidden="true">Beker listeners</span>');
+    expect(badge).toContain(
+      '<span class="visually-hidden">From your Beker listeners cohort</span>',
+    );
+  });
+
+  it("falls back to a neutral cohort chip when the cohort title is empty", () => {
+    const html = renderToStaticMarkup(
+      <HomeFeedRails feed={feed([rail({ items: [item({ reasons: ["cohort:  "] })] })])} />,
+    );
+    expect(html).toContain("Cohort signal");
+    expect(html).not.toContain("From your");
+  });
+
+  it("gives an unknown rail kind a neutral Discovery kicker, not Catalog signal", () => {
+    const html = renderToStaticMarkup(
+      <HomeFeedRails
+        feed={feed([
+          rail({
+            id: "future_rail",
+            kind: "future_rail" as HomeFeedRail["kind"],
+            title: "Something newer",
+            explanation: "A rail from a newer backend.",
+          }),
+        ])}
+      />,
+    );
+    expect(html).toContain("Something newer");
+    expect(html).toContain("Discovery");
+    expect(html).not.toContain("Catalog signal");
+  });
+
   it("uses optimized canonical release artwork and preserves the monogram fallback", () => {
     const withArtwork = renderToStaticMarkup(
       <HomeFeedRails
