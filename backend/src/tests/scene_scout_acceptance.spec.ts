@@ -2,7 +2,9 @@ import {
   assertSceneScoutAcceptanceMutationRequirements,
   assertSceneScoutAcceptanceStagingEnvironment,
   parseSceneScoutAcceptanceArgs,
+  sceneScoutAcceptanceCrateRequestId,
   sceneScoutAcceptanceEventId,
+  sceneScoutAcceptanceMarkerEventId,
   sceneScoutAcceptancePrefix,
   sceneScoutAcceptanceUserId,
   type SceneScoutAcceptanceInvocation,
@@ -54,6 +56,25 @@ describe("Scene Scout acceptance CLI support", () => {
         countryCode: "CA",
         confirm: true,
       });
+    });
+
+    it.each(["withdraw-consent", "erase-listener", "unmet-demand", "access-check"] as const)(
+      "parses the %s scenario phase with the shared target arguments",
+      (phase) => {
+        expect(invocation([phase, ...REQUIRED_ARGS, "--confirm"])).toMatchObject({
+          phase,
+          artistId: "artist_1",
+          releaseId: "release_1",
+          runId: "run-1",
+          confirm: true,
+        });
+        expect(() => invocation([phase, ...REQUIRED_ARGS.slice(0, -2)])).toThrow(/Missing required flag --country-code/);
+      },
+    );
+
+    it("rejects unknown phases that resemble scenario names", () => {
+      expect(() => invocation(["withdraw", ...REQUIRED_ARGS])).toThrow(/Unknown phase withdraw/);
+      expect(() => invocation(["erase", ...REQUIRED_ARGS])).toThrow(/Unknown phase erase/);
     });
 
     it("rejects unknown, duplicate, and missing flags", () => {
@@ -139,7 +160,14 @@ describe("Scene Scout acceptance CLI support", () => {
       )).not.toThrow();
     });
 
-    it.each(["seed", "verify", "cleanup"] as const)("requires confirmation and salt for %s", (phase) => {
+    it("allows the read-only access check without confirmation or a configured salt", () => {
+      expect(() => assertSceneScoutAcceptanceMutationRequirements(
+        { phase: "access-check", confirm: false },
+        {},
+      )).not.toThrow();
+    });
+
+    it.each(["seed", "verify", "withdraw-consent", "erase-listener", "unmet-demand", "cleanup"] as const)("requires confirmation and salt for %s", (phase) => {
       expect(() => assertSceneScoutAcceptanceMutationRequirements(
         { phase, confirm: false },
         { ANALYTICS_ACTOR_ID_SALT: "test-salt" },
@@ -182,6 +210,8 @@ describe("Scene Scout acceptance CLI support", () => {
       expect(sceneScoutAcceptanceUserId(prefix, 7)).toBe(`${prefix}user_07`);
       expect(sceneScoutAcceptanceEventId(prefix, 7, "playback_completed")).toBe(`${prefix}event_07_playback_completed`);
       expect(sceneScoutAcceptanceEventId(prefix, 7, "library_saved")).toBe(`${prefix}event_07_library_saved`);
+      expect(sceneScoutAcceptanceMarkerEventId(prefix, 1, "erased_account")).toBe(`${prefix}marker_01_erased_account`);
+      expect(sceneScoutAcceptanceCrateRequestId(prefix, 2)).toBe(`${prefix}crate_request_02`);
     });
   });
 });

@@ -25,9 +25,12 @@ distinct listeners, and at least five signals. Activity by the artist's own
 account is excluded. Creating more plays on that account cannot replace a
 prepared acceptance case.
 
-Unmet demand, first-listener placement and reception, access controls, real
-consent withdrawal/erasure, warehouse processing, and scheduling need separate
-acceptance evidence. Do not mark those checks complete from this fixture run.
+The [scenario phases](#acceptance-scenarios) below add evidence for consent
+withdrawal, account erasure, categorical unmet crate demand, and the artist
+analytics authorization decision. First-listener placement and reception,
+first-listener caps, browser consent UI, warehouse processing, and scheduling
+still need separate acceptance evidence. Do not mark those checks complete from
+this fixture run.
 
 ## Prepare a reviewed staging execution
 
@@ -120,6 +123,69 @@ dashboard read refreshes; it creates no additional listeners or events.
 Withdrawn/unavailable release rejection and editing legacy drafts need their
 own appropriate cases. The tool does not withdraw or alter existing catalog
 content to manufacture those cases.
+
+## Acceptance scenarios
+
+These phases run the real application services against the run's synthetic
+fixture users only; they insert no aggregates and relax no thresholds. They use
+the same target arguments and staging, salt, and fixture-ownership checks as the
+other phases, and their output is aggregate counts and pass/fail results only:
+no user, actor, email, wallet, prompt, or secret values. `withdraw-consent`,
+`erase-listener`, and `unmet-demand` require `--confirm`; `access-check` is
+read-only and needs neither `--confirm` nor the salt (it still requires a
+staging label).
+
+Each of `withdraw-consent` and `erase-listener` consumes the seeded fixture: it
+needs a freshly seeded, intact fixture whose city card is currently served, and
+refuses otherwise (including a second attempt on the same fixture). Run
+`cleanup`, then `seed` again, between scenarios. With a floor-sized fixture the
+card and stored city snapshot disappear; with a larger audience the aggregate
+must fall by exactly one listener.
+
+| Phase | Action | Result |
+| --- | --- | --- |
+| `withdraw-consent` | Records `productAnalytics=false` for fixture listener 1 through `AnalyticsConsentService`, refreshes the artist snapshots, and compares served and stored aggregates with the pre-change values. | `contribution_removed`, or `blocked` with a reason. |
+| `erase-listener` | Runs `PersonalDataErasureService.eraseAccount` for fixture listener 2, then compares as above and reports that listener's event count before and after. | `contribution_removed`, or `blocked` with a reason. |
+| `unmet-demand` | Creates (or reuses) the audience-floor count of consenting fixture listeners, records one crate request each through `UnmetDemandService` requiring the first crate stem type the selected track really lacks (normally `vocals`), then reads the artist aggregate. | `verified` with the catalog action (`track`, `stem`, value), requester and request counts, and privacy checks; or `blocked`. |
+| `access-check` | Calls `AnalyticsAuthorizationService.assertCanReadArtistMetrics` with `{ userId, role }` request-user objects, as the JWT strategy shapes them. No token is minted. | Pass/fail per case: target artist owner allowed; a fixture non-artist listener forbidden; the `--show-artist-id` artist's owner forbidden (reported `skipped` when that owner is the target owner or absent). |
+
+`unmet-demand` also checks that the stored observations contain only
+categorical values (crate source, a one-way source digest, the track target,
+`stem`, and the stem name) with no prompt or free text, and that the response
+exposes no fixture user or actor identity. If the selected track is not a clean,
+complete, playable catalog track, or already has every crate stem type, the phase
+is `blocked`; choose another track rather than altering the catalog. It reuses an
+existing seeded fixture's listeners when present, and otherwise creates
+listeners without listening events (so `seed` for that run is then refused as a
+collision).
+
+`erase-listener` runs the production erasure path. Erasure rotates the fixture
+account's id and deletes its events, so before erasing, the tool records two
+marker events in the fixture's namespace (`erasure_started`, then
+`erased_account` carrying the account's new random id; no actor or subject, and
+no personal data). `cleanup` identifies the erased account only through those
+validated markers, additionally requires it to be an erased account created
+after the marker, and refuses (leaving rows in place) if a marker is missing,
+tampered with, or names anything else. If the runtime is configured with a
+BigQuery warehouse, erasure also propagates the deletion to it through the
+normal governance path; a failed warehouse step aborts the erasure and leaves
+the fixture intact for retry or cleanup. A staging exporter may have copied the
+synthetic events before erasure, as for any fixture.
+
+`cleanup` also removes the fixture's demand observations and any erased fixture
+account (with its retained consent row), tolerates consent-withdrawn listeners,
+and recomputes both the Scene Scout and unmet-demand snapshots from remaining
+data. The `verify` phase and the scenario preconditions refuse a fixture that
+has already run `withdraw-consent` or `erase-listener`.
+
+Limits: these phases do not prove the browser consent UI, that the real
+listener flow reaches the same services, first-listener placement caps, or
+warehouse reconciliation. `access-check` exercises the authorization decision
+with constructed request users, not a signed token through the HTTP stack, and
+it does not replace testing as a real second artist in the browser (the web
+analytics page always loads the signed-in user's own artist). Unauthorized
+cross-artist access over HTTP and first-listener caps still need separate
+evidence.
 
 ## Cleanup and evidence limits
 

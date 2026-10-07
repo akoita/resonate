@@ -4,12 +4,33 @@ import {
   resolveAnalyticsEnvironment,
 } from "../modules/analytics/analytics_event";
 
-export const SCENE_SCOUT_ACCEPTANCE_PHASES = ["preview", "seed", "verify", "cleanup"] as const;
+export const SCENE_SCOUT_ACCEPTANCE_PHASES = [
+  "preview",
+  "seed",
+  "verify",
+  "withdraw-consent",
+  "erase-listener",
+  "unmet-demand",
+  "access-check",
+  "cleanup",
+] as const;
 export type SceneScoutAcceptancePhase = (typeof SCENE_SCOUT_ACCEPTANCE_PHASES)[number];
 
-export const SCENE_SCOUT_ACCEPTANCE_PRODUCER = "scene_scout_acceptance";
+/** Phases that write nothing: no --confirm or analytics salt is required (staging is still enforced). */
+export const SCENE_SCOUT_ACCEPTANCE_READ_ONLY_PHASES: readonly SceneScoutAcceptancePhase[] = ["preview", "access-check"];
+
+export const SCENE_SCOUT_ACCEPTANCE_PRODUCER ="scene_scout_acceptance";
 export const SCENE_SCOUT_ACCEPTANCE_MAX_USERS = 50;
-export const SCENE_SCOUT_ACCEPTANCE_MAX_EVENTS = 100;
+/** Listener play/save pairs for the user maximum, plus the erase-scenario markers. */
+export const SCENE_SCOUT_ACCEPTANCE_MAX_EVENTS = 200;
+/** Fixture listener (zero-based ordinal) whose consent the withdraw scenario withdraws. */
+export const SCENE_SCOUT_ACCEPTANCE_WITHDRAW_ORDINAL = 0;
+/** Fixture listener (zero-based ordinal) the erase scenario erases. */
+export const SCENE_SCOUT_ACCEPTANCE_ERASE_ORDINAL = 1;
+/** The only non-listening event the tool writes: it records an erased fixture account's new id. */
+export const SCENE_SCOUT_ACCEPTANCE_MARKER_EVENT_NAME = "scene_scout_acceptance.fixture_marker";
+export const SCENE_SCOUT_ACCEPTANCE_MARKER_KINDS = ["erasure_started", "erased_account"] as const;
+export type SceneScoutAcceptanceMarkerKind = (typeof SCENE_SCOUT_ACCEPTANCE_MARKER_KINDS)[number];
 
 export class SceneScoutAcceptanceInputError extends Error {
   constructor(message: string) {
@@ -163,10 +184,11 @@ export function assertSceneScoutAcceptanceMutationRequirements(
   invocation: Pick<SceneScoutAcceptanceInvocation, "phase" | "confirm">,
   env: Record<string, string | undefined> = process.env,
 ) {
-  if (invocation.phase !== "preview" && !invocation.confirm) {
+  if (SCENE_SCOUT_ACCEPTANCE_READ_ONLY_PHASES.includes(invocation.phase)) return;
+  if (!invocation.confirm) {
     inputError(`Phase ${invocation.phase} requires --confirm`);
   }
-  if (invocation.phase !== "preview" && !env.ANALYTICS_ACTOR_ID_SALT?.trim()) {
+  if (!env.ANALYTICS_ACTOR_ID_SALT?.trim()) {
     inputError("ANALYTICS_ACTOR_ID_SALT is required for mutating Scene Scout acceptance phases");
   }
 }
@@ -197,4 +219,17 @@ export type SceneScoutAcceptanceEventKind = "playback_completed" | "library_save
 
 export function sceneScoutAcceptanceEventId(prefix: string, ordinal: number, kind: SceneScoutAcceptanceEventKind) {
   return `${prefix}event_${String(ordinal).padStart(2, "0")}_${kind}`;
+}
+
+export function sceneScoutAcceptanceMarkerEventId(
+  prefix: string,
+  ordinal: number,
+  kind: SceneScoutAcceptanceMarkerKind,
+) {
+  return `${prefix}marker_${String(ordinal).padStart(2, "0")}_${kind}`;
+}
+
+/** Deterministic request id for one fixture listener's synthetic crate request. */
+export function sceneScoutAcceptanceCrateRequestId(prefix: string, ordinal: number) {
+  return `${prefix}crate_request_${String(ordinal).padStart(2, "0")}`;
 }
