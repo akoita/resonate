@@ -1,6 +1,10 @@
 import "dotenv/config";
 import { createHash } from "crypto";
 import { AccountClosureStatus } from "@prisma/client";
+import {
+  AnalyticsConsentService,
+  PRODUCT_ANALYTICS_CONSENT_BASIS,
+} from "../modules/analytics/analytics_consent.service";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
 import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
 import {
@@ -13,6 +17,7 @@ import { writeStructuredLog } from "../modules/shared/structured_logging";
 import { prisma } from "../db/prisma";
 import {
   AUDIT_EVENT_NAMES,
+  CONSENT_WITHDRAWN_ACTION,
   Expectation,
   GOVERNANCE_VALIDATION_PHASES,
   GovernanceValidationInvocation,
@@ -36,6 +41,11 @@ import {
 /**
  * #1789 / #1771 — the staging validation harness for the two governance
  * mechanisms this sprint shipped: analytics retention and account erasure.
+ * #2119 adds a third: withdrawing product-analytics consent deletes the events
+ * captured under it (`seed-withdrawal` / `verify-withdrawal`). The withdrawal
+ * itself is performed for real by `AnalyticsConsentService.record(.., false)`;
+ * the deletion is carried out by the scheduled `run_due_erasures` job, which
+ * drains the pending withdrawals after the erasures.
  *
  * ## Why this exists
  *
@@ -80,7 +90,8 @@ import {
  *
  * Usage:
  *   node dist/scripts/governance_validation.js <phase> [--run-id <id>]
- *   phases: seed-retention | verify-retention | seed-erasure | verify-erasure | cleanup
+ *   phases: seed-retention | verify-retention | seed-erasure | verify-erasure |
+ *           seed-withdrawal | verify-withdrawal | cleanup
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1190,7 +1201,390 @@ export async function verifyErasure(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 5 — cleanup
+// Phase 5 — seed-withdrawal (#2119)
+// ---------------------------------------------------------------------------
+
+export interface WithdrawalFixtureIdentities {
+  /** The person who grants and then withdraws product-analytics consent. */
+  subjectUserId: string;
+  /** The control: consents, never withdraws. Nothing may touch their events. */
+  controlUserId: string;
+}
+
+export function withdrawalIdentities(withdrawalPrefix: string): WithdrawalFixtureIdentities {
+  return {
+    subjectUserId: `${withdrawalPrefix}subject`,
+    controlUserId: `${withdrawalPrefix}control`,
+  };
+}
+
+/** The consent-based events a withdrawal must remove (subject) or leave alone (control). */
+const WITHDRAWAL_CONSENT_EVENT_KEYS = ["playback", "product"] as const;
+const WITHDRAWAL_EVENT_NAMES: Record<(typeof WITHDRAWAL_CONSENT_EVENT_KEYS)[number], string> = {
+  playback: "playback.completed",
+  product: "product.feature_used",
+};
+
+const withdrawalRowId = (invocation: GovernanceValidationInvocation, key: string) =>
+  `${invocation.withdrawalPrefix}${key}`;
+const withdrawalEventId = (invocation: GovernanceValidationInvocation, key: string) =>
+  `${invocation.withdrawalPrefix}${key}_event`;
+
+export interface WithdrawalSeedSummary {
+  phase: "seed-withdrawal";
+  prefix: string;
+  seededAt: string;
+  withdrawnAt: string;
+  /** Counts only. */
+  rows: Record<string, number>;
+}
+
+/**
+ * Seed two consenting accounts with consent-based events, then really withdraw
+ * consent for one of them.
+ *
+ * What the subject has afterwards, and what the policy says must happen to it:
+ * two consent-based events received before the withdrawal (removed), one
+ * contract-basis event (kept: a record of something that happened, not of
+ * consent), and one consent-based event received *after* the withdrawal (kept:
+ * it stands in for what a later re-grant captures, and an old withdrawal must
+ * never reach it). The control's two consent-based events must all survive.
+ *
+ * The events are written to Postgres only. The warehouse copy is produced by
+ * the batch load, exactly as for the retention and erasure fixtures; the
+ * withdrawal erases from the warehouse first and records the outcome in the
+ * lineage, which is what `verify-withdrawal` checks.
+ */
+export async function seedWithdrawal(
+  invocation: GovernanceValidationInvocation,
+  options: { now?: Date; environmentLabel?: string; consent?: AnalyticsConsentService } = {},
+): Promise<WithdrawalSeedSummary> {
+  const now = options.now ?? new Date();
+  const environment = options.environmentLabel ?? environmentLabelFromEnv();
+  const consent = options.consent ?? new AnalyticsConsentService();
+  const identities = withdrawalIdentities(invocation.withdrawalPrefix);
+
+  await cleanupWithdrawal(invocation);
+
+  for (const userId of [identities.subjectUserId, identities.controlUserId]) {
+    await prisma.user.create({ data: { id: userId, email: `${userId}@governance-validation.invalid` } });
+    await consent.record(userId, true);
+  }
+
+  // Received a minute ago, so strictly before the withdrawal whatever the
+  // clock granularity between this process and the database.
+  const receivedAt = new Date(now.getTime() - 60_000);
+  const writeEvent = (input: {
+    key: string;
+    eventName: string;
+    userId: string;
+    consentBasis: string;
+    receivedAt: Date;
+  }) =>
+    prisma.analyticsEvent.create({
+      data: {
+        id: withdrawalRowId(invocation, input.key),
+        eventId: withdrawalEventId(invocation, input.key),
+        eventName: input.eventName,
+        eventVersion: 1,
+        occurredAt: input.receivedAt,
+        receivedAt: input.receivedAt,
+        producer: GOVERNANCE_VALIDATION_PRODUCER,
+        environment,
+        privacyTier: "pseudonymous",
+        // What the consent-gated telemetry routes write.
+        actorId: pseudonymousAnalyticsActorId(input.userId),
+        consentBasis: input.consentBasis,
+        payload: { [PAYLOAD_KEPT_KEY]: input.key },
+        envelope: { [PAYLOAD_KEPT_KEY]: input.key },
+      },
+    });
+
+  for (const [who, userId] of [
+    ["subject", identities.subjectUserId],
+    ["control", identities.controlUserId],
+  ] as const) {
+    for (const kind of WITHDRAWAL_CONSENT_EVENT_KEYS) {
+      await writeEvent({
+        key: `${who}_consent_${kind}`,
+        eventName: WITHDRAWAL_EVENT_NAMES[kind],
+        userId,
+        consentBasis: PRODUCT_ANALYTICS_CONSENT_BASIS,
+        receivedAt,
+      });
+    }
+  }
+  await writeEvent({
+    key: "subject_contract",
+    eventName: "commerce.fixture_recorded",
+    userId: identities.subjectUserId,
+    consentBasis: "contract",
+    receivedAt,
+  });
+
+  // The real withdrawal: the same call the consent endpoint makes. It writes
+  // the pending `AnalyticsConsentWithdrawal` the scheduled job will drain.
+  const withdrawn = await consent.record(identities.subjectUserId, false);
+  const withdrawnAt = withdrawn.decidedAt ?? new Date();
+
+  // Stands in for an event captured after a later re-grant: same consent
+  // basis, received after the withdrawal. It must survive.
+  await writeEvent({
+    key: "subject_after_withdrawal",
+    eventName: WITHDRAWAL_EVENT_NAMES.playback,
+    userId: identities.subjectUserId,
+    consentBasis: PRODUCT_ANALYTICS_CONSENT_BASIS,
+    receivedAt: new Date(withdrawnAt.getTime() + 60 * 60_000),
+  });
+
+  const summary: WithdrawalSeedSummary = {
+    phase: "seed-withdrawal",
+    prefix: invocation.withdrawalPrefix,
+    seededAt: now.toISOString(),
+    withdrawnAt: withdrawnAt.toISOString(),
+    rows: {
+      users: 2,
+      consentDecisions: 2,
+      pendingWithdrawals: 1,
+      analyticsEvents: 6,
+    },
+  };
+
+  writeStructuredLog({
+    level: "info",
+    event: "governance.validation.withdrawal_seeded",
+    message:
+      "Seeded two consenting accounts, withdrew consent for one, and left a pending withdrawal. " +
+      "Run the due-erasure job (it drains pending consent withdrawals), then verify-withdrawal.",
+    ...summary,
+  });
+
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — verify-withdrawal (#2119)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check what the scheduled job did with the pending withdrawal.
+ *
+ * Judges the same properties as the other verify phases: the thing that should
+ * be gone is gone (Postgres, and the warehouse via its recorded outcome), the
+ * thing that should survive survives (contract-basis, post-withdrawal and the
+ * control's events), and the lineage proves it.
+ */
+export async function verifyWithdrawal(
+  invocation: GovernanceValidationInvocation,
+): Promise<VerificationReport> {
+  const identities = withdrawalIdentities(invocation.withdrawalPrefix);
+  const pseudonym = pseudonymousAnalyticsActorId(identities.subjectUserId) ?? "__none__";
+  const eventIdOf = (key: string) => withdrawalEventId(invocation, key);
+
+  const [withdrawal, controlWithdrawals, subjectConsent, controlConsent] = await Promise.all([
+    prisma.analyticsConsentWithdrawal.findFirst({
+      where: { userId: identities.subjectUserId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.analyticsConsentWithdrawal.count({ where: { userId: identities.controlUserId } }),
+    prisma.analyticsConsent.findUnique({ where: { userId: identities.subjectUserId } }),
+    prisma.analyticsConsent.findUnique({ where: { userId: identities.controlUserId } }),
+  ]);
+
+  const events = await prisma.analyticsEvent.findMany({
+    where: { id: { startsWith: invocation.withdrawalPrefix } },
+    select: { eventId: true, actorId: true },
+  });
+  const survivingEventIds = new Set(events.map((event) => event.eventId));
+  const lineage = await prisma.analyticsGovernanceLog.findMany({
+    where: { eventId: { startsWith: invocation.withdrawalPrefix } },
+    select: { eventId: true, action: true },
+  });
+  const actionsFor = (key: string) =>
+    [...new Set(lineage.filter((row) => row.eventId === eventIdOf(key)).map((row) => row.action))].sort();
+
+  // The default run id is reusable, so scope the warehouse outcomes to this
+  // withdrawal rather than to anything an earlier run left behind.
+  const warehouseRows = withdrawal
+    ? await prisma.analyticsGovernanceLog.findMany({
+        where: {
+          action: WAREHOUSE_ERASURE_ACTION,
+          actorId: pseudonym,
+          createdAt: { gte: withdrawal.createdAt },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { details: true },
+      })
+    : [];
+  const warehouseStatuses = warehouseRows
+    .filter((row) => ((row.details ?? {}) as Record<string, unknown>).sourceAction === CONSENT_WITHDRAWN_ACTION)
+    .map((row) => {
+      const warehouse = (((row.details ?? {}) as Record<string, unknown>).warehouse ?? {}) as Record<string, unknown>;
+      return typeof warehouse.status === "string" ? warehouse.status : "unknown";
+    });
+  const latestWarehouseStatus = warehouseStatuses.at(-1) ?? null;
+
+  const expectations: Expectation[] = [
+    {
+      id: "withdrawal.recorded",
+      what: "Withdrawing a granted consent must have enqueued exactly one pending withdrawal for the subject.",
+      operator: "equals",
+      expected: 1,
+      actual: await prisma.analyticsConsentWithdrawal.count({ where: { userId: identities.subjectUserId } }),
+    },
+    {
+      id: "withdrawal.completed",
+      what: "The scheduled job ran since the seed and finished the withdrawal; a pending row means it never ran or is still retrying.",
+      operator: "equals",
+      expected: "completed",
+      actual: withdrawal?.status ?? null,
+    },
+    {
+      id: "withdrawal.attempted",
+      what: "A completed withdrawal records at least one attempt.",
+      operator: "atLeast",
+      expected: 1,
+      actual: withdrawal?.attempts ?? 0,
+    },
+    {
+      id: "withdrawal.removed_count",
+      what: "The row's own tally agrees: the two consent-based events received before the withdrawal were removed.",
+      operator: "equals",
+      expected: WITHDRAWAL_CONSENT_EVENT_KEYS.length,
+      actual: (withdrawal?.deleted ?? 0) + (withdrawal?.redacted ?? 0),
+    },
+    {
+      id: "withdrawal.subject_decision_is_refusal",
+      what: "The seed performed a real withdrawal: the stored decision is a refusal.",
+      operator: "equals",
+      expected: false,
+      actual: subjectConsent?.productAnalytics ?? null,
+    },
+  ];
+
+  for (const kind of WITHDRAWAL_CONSENT_EVENT_KEYS) {
+    const key = `subject_consent_${kind}`;
+    expectations.push(
+      {
+        id: `withdrawal.${key}.deleted`,
+        what: "A consent-based event received before the withdrawal is deleted from Postgres.",
+        operator: "equals",
+        expected: 0,
+        actual: survivingEventIds.has(eventIdOf(key)) ? 1 : 0,
+      },
+      {
+        id: `withdrawal.${key}.lineage`,
+        what: "The removal must leave lineage, or it is unprovable.",
+        operator: "contains",
+        expected: CONSENT_WITHDRAWN_ACTION,
+        actual: actionsFor(key),
+      },
+    );
+  }
+
+  expectations.push(
+    {
+      id: "withdrawal.subject_contract.survived",
+      what: "A contract-basis event is a record of something that happened, not of consent, and must survive a withdrawal.",
+      operator: "equals",
+      expected: 1,
+      actual: survivingEventIds.has(eventIdOf("subject_contract")) ? 1 : 0,
+    },
+    {
+      id: "withdrawal.subject_contract.no_lineage",
+      what: "Nothing happened to it, so nothing should claim it did.",
+      operator: "equals",
+      expected: 0,
+      actual: actionsFor("subject_contract").length,
+    },
+    {
+      id: "withdrawal.subject_after_withdrawal.survived",
+      what: "A consent-based event received after the withdrawal belongs to a later grant and must never be reached by it.",
+      operator: "equals",
+      expected: 1,
+      actual: survivingEventIds.has(eventIdOf("subject_after_withdrawal")) ? 1 : 0,
+    },
+    {
+      id: "withdrawal.subject_after_withdrawal.no_lineage",
+      what: "Nothing happened to it, so nothing should claim it did.",
+      operator: "equals",
+      expected: 0,
+      actual: actionsFor("subject_after_withdrawal").length,
+    },
+    {
+      id: "withdrawal.warehouse.recorded",
+      what: "The withdrawal must leave at least one warehouse outcome tied to the subject's pseudonymous identity.",
+      operator: "atLeast",
+      expected: 1,
+      actual: warehouseStatuses.length,
+    },
+    {
+      id: "withdrawal.warehouse.latest_succeeded",
+      what: "The latest warehouse attempt must succeed; earlier failures remain useful retry history.",
+      operator: "equals",
+      expected: "ok",
+      actual: latestWarehouseStatus,
+    },
+
+    // The control: a withdrawal scoped to one person.
+    {
+      id: "withdrawal.control.no_withdrawal",
+      what: "The control never withdrew, so no withdrawal may exist for them.",
+      operator: "equals",
+      expected: 0,
+      actual: controlWithdrawals,
+    },
+    {
+      id: "withdrawal.control.consent_intact",
+      what: "The control's consent decision is untouched.",
+      operator: "equals",
+      expected: true,
+      actual: controlConsent?.productAnalytics ?? null,
+    },
+  );
+  for (const kind of WITHDRAWAL_CONSENT_EVENT_KEYS) {
+    const key = `control_consent_${kind}`;
+    expectations.push(
+      {
+        id: `withdrawal.${key}.survived`,
+        what: "Another person's consent-based events must come through a withdrawal untouched.",
+        operator: "equals",
+        expected: 1,
+        actual: survivingEventIds.has(eventIdOf(key)) ? 1 : 0,
+      },
+      {
+        id: `withdrawal.${key}.no_lineage`,
+        what: "Nothing happened to it, so nothing should claim it did.",
+        operator: "equals",
+        expected: 0,
+        actual: actionsFor(key).length,
+      },
+    );
+  }
+
+  return evaluateExpectations("verify-withdrawal", expectations, {
+    prefix: invocation.withdrawalPrefix,
+    withdrawal: withdrawal
+      ? {
+          id: withdrawal.id,
+          status: withdrawal.status,
+          attempts: withdrawal.attempts,
+          lastErrorStatus: withdrawal.lastErrorStatus,
+        }
+      : null,
+    survivingRows: events.length,
+    lineageRows: lineage.length,
+    warehouse: {
+      records: warehouseStatuses.length,
+      statuses: warehouseStatuses,
+      failedAttempts: warehouseStatuses.filter((status) => status === "failed").length,
+      latestStatus: latestWarehouseStatus,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — cleanup
 // ---------------------------------------------------------------------------
 
 export interface CleanupSummary {
@@ -1217,11 +1611,17 @@ export async function cleanupAll(
   if (warehouseCleanup.failures.length > 0) return warehouseCleanup;
   const erasure = await cleanupErasure(invocation);
   const retention = await cleanupRetention(invocation);
+  const withdrawal = await cleanupWithdrawal(invocation);
   return {
     phase: "cleanup",
-    removed: { ...warehouseCleanup.removed, ...erasure.removed, ...retention.removed },
-    failures: [...erasure.failures, ...retention.failures],
-    residue: [...new Set([...erasure.residue, ...retention.residue])],
+    removed: {
+      ...warehouseCleanup.removed,
+      ...erasure.removed,
+      ...retention.removed,
+      ...withdrawal.removed,
+    },
+    failures: [...erasure.failures, ...retention.failures, ...withdrawal.failures],
+    residue: [...new Set([...erasure.residue, ...retention.residue, ...withdrawal.residue])],
   };
 }
 
@@ -1281,6 +1681,42 @@ export async function cleanupRetention(
     residue: [
       `AnalyticsGovernanceLog rows with action "${WAREHOUSE_ERASURE_ACTION}" are batch summaries that ` +
         "carry no eventId and also describe real rows from the same run, so they are left in place.",
+    ],
+  };
+}
+
+export async function cleanupWithdrawal(
+  invocation: GovernanceValidationInvocation,
+): Promise<CleanupSummary> {
+  const prefix = invocation.withdrawalPrefix;
+  const identities = withdrawalIdentities(prefix);
+  const userIds = [identities.subjectUserId, identities.controlUserId];
+  const removed: Record<string, number> = {};
+  const failures: CleanupSummary["failures"] = [];
+
+  await remove(removed, failures, "withdrawal.analyticsGovernanceLog", () =>
+    prisma.analyticsGovernanceLog.deleteMany({ where: { eventId: { startsWith: prefix } } }),
+  );
+  await remove(removed, failures, "withdrawal.analyticsEvent", () =>
+    prisma.analyticsEvent.deleteMany({ where: { id: { startsWith: prefix } } }),
+  );
+  await remove(removed, failures, "withdrawal.analyticsConsentWithdrawal", () =>
+    prisma.analyticsConsentWithdrawal.deleteMany({ where: { userId: { in: userIds } } }),
+  );
+  await remove(removed, failures, "withdrawal.analyticsConsent", () =>
+    prisma.analyticsConsent.deleteMany({ where: { userId: { in: userIds } } }),
+  );
+  await remove(removed, failures, "withdrawal.user", () =>
+    prisma.user.deleteMany({ where: { id: { in: userIds } } }),
+  );
+
+  return {
+    phase: "cleanup:withdrawal",
+    removed,
+    failures,
+    residue: [
+      `AnalyticsGovernanceLog lineage for removed fixture events is deleted by eventId prefix; batch "${WAREHOUSE_ERASURE_ACTION}" ` +
+        "summaries carry no eventId and are left in place.",
     ],
   };
 }
@@ -1388,7 +1824,11 @@ async function remove(
 
 export type GovernanceValidationResult =
   | { kind: "refused"; exitCode: 1; reason: string }
-  | { kind: "seed"; exitCode: 0; summary: RetentionSeedSummary | ErasureSeedSummary }
+  | {
+      kind: "seed";
+      exitCode: 0;
+      summary: RetentionSeedSummary | ErasureSeedSummary | WithdrawalSeedSummary;
+    }
   | { kind: "verify"; exitCode: 0 | 1; report: VerificationReport }
   | { kind: "cleanup"; exitCode: 0 | 1; summary: CleanupSummary };
 
@@ -1426,10 +1866,14 @@ export async function runGovernanceValidation(
       return { kind: "seed", exitCode: 0, summary: await seedRetention(invocation) };
     case "seed-erasure":
       return { kind: "seed", exitCode: 0, summary: await seedErasure(invocation) };
+    case "seed-withdrawal":
+      return { kind: "seed", exitCode: 0, summary: await seedWithdrawal(invocation) };
     case "verify-retention":
       return reportVerification(await verifyRetention(invocation));
     case "verify-erasure":
       return reportVerification(await verifyErasure(invocation));
+    case "verify-withdrawal":
+      return reportVerification(await verifyWithdrawal(invocation));
     case "cleanup": {
       const summary = await cleanupAll(invocation);
       writeStructuredLog({

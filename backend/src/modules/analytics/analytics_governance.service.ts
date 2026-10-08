@@ -35,6 +35,15 @@ export interface AnalyticsDeletionRequest {
 
 export interface AnalyticsConsentWithdrawalRequest extends AnalyticsDeletionRequest {
   consentBasis: string;
+  /**
+   * #2119: only events the server received at or before this instant are
+   * affected. A withdrawal covers what was captured under the grant it ends;
+   * events captured after a later re-grant carry the same `consentBasis` but
+   * belong to the new grant and must not be touched. `receivedAt` rather than
+   * `occurredAt`: it is server time, so a client clock cannot move an event
+   * in or out of the withdrawn window. Absent means no time bound.
+   */
+  receivedBefore?: Date;
 }
 
 /**
@@ -178,6 +187,7 @@ export class AnalyticsGovernanceService {
     const events = await prisma.analyticsEvent.findMany({
       where: {
         consentBasis: input.consentBasis,
+        ...(input.receivedBefore ? { receivedAt: { lte: input.receivedBefore } } : {}),
         OR: [
           ...(input.actorId ? [{ actorId: input.actorId }] : []),
           ...(input.subjectType && input.subjectId
@@ -192,6 +202,7 @@ export class AnalyticsGovernanceService {
       subjectType: input.subjectType,
       subjectId: input.subjectId,
       consentBasis: input.consentBasis,
+      ...(input.receivedBefore ? { receivedBefore: input.receivedBefore.toISOString() } : {}),
     });
   }
 

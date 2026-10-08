@@ -34,6 +34,14 @@ A scheduled job runs `node dist/scripts/run_due_erasures.js` against the backend
 image. **Exit code 0 means every due erasure completed** — including the common
 case where none were due. Exit 1 means at least one failed.
 
+The same execution then drains pending analytics-consent withdrawals (#2119):
+consent-based events received up to each withdrawal are deleted or redacted in
+the warehouse and Postgres. It logs
+`privacy.analytics_consent_withdrawal.scheduled_run` (counts and withdrawal row
+ids only), and a withdrawal that could not complete also makes the run exit 1;
+it stays pending and the next run retries it. See
+[the consent and retention policy](../features/analytics_consent_retention_policy.md).
+
 It deliberately does not run over an HTTP endpoint. Every route on
 `MaintenanceController` requires `AuthGuard("jwt")` + `RolesGuard` +
 `@Roles("admin")`, and a scheduled caller cannot mint an application JWT with an

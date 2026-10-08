@@ -33,6 +33,8 @@ export const GOVERNANCE_VALIDATION_PHASES = [
   "verify-retention",
   "seed-erasure",
   "verify-erasure",
+  "seed-withdrawal",
+  "verify-withdrawal",
   "cleanup",
 ] as const;
 
@@ -62,6 +64,8 @@ export interface GovernanceValidationInvocation {
   retentionPrefix: string;
   /** Rows belonging to the erasure fixtures. */
   erasurePrefix: string;
+  /** Rows belonging to the consent-withdrawal fixtures (#2119). */
+  withdrawalPrefix: string;
 }
 
 export type ParsedInvocation =
@@ -70,7 +74,12 @@ export type ParsedInvocation =
 
 export function prefixesFor(runId: string) {
   const prefix = `${GOVERNANCE_VALIDATION_PREFIX_ROOT}${runId}_`;
-  return { prefix, retentionPrefix: `${prefix}ret_`, erasurePrefix: `${prefix}era_` };
+  return {
+    prefix,
+    retentionPrefix: `${prefix}ret_`,
+    erasurePrefix: `${prefix}era_`,
+    withdrawalPrefix: `${prefix}wdr_`,
+  };
 }
 
 /**
@@ -405,6 +414,9 @@ export const REDACTED_VALUE = "[redacted]";
 export const RETENTION_DELETED_ACTION = "retention_deleted";
 export const RETENTION_REDACTED_ACTION = "retention_redacted";
 export const WAREHOUSE_ERASURE_ACTION = "warehouse_erasure";
+
+/** Lineage action `withdrawConsent` writes per removed event (#2119). */
+export const CONSENT_WITHDRAWN_ACTION = "consent_withdrawn";
 
 /**
  * A payload key the redactor leaves alone.
