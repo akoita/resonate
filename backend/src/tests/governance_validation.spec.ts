@@ -104,14 +104,39 @@ describe("governance validation — phase parsing", () => {
     const parsed = parseInvocation(["seed-erasure", "--run-id", "abc"], {});
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    const { prefix, retentionPrefix, erasurePrefix } = parsed.invocation;
+    const { prefix, retentionPrefix, erasurePrefix, withdrawalPrefix } = parsed.invocation;
     expect(prefix.startsWith(GOVERNANCE_VALIDATION_PREFIX_ROOT)).toBe(true);
     expect(retentionPrefix.startsWith(prefix)).toBe(true);
     expect(erasurePrefix.startsWith(prefix)).toBe(true);
-    // The two fixture sets never overlap, so seeding one cannot wipe the other.
-    expect(retentionPrefix.startsWith(erasurePrefix)).toBe(false);
-    expect(erasurePrefix.startsWith(retentionPrefix)).toBe(false);
-    expect(prefixesFor("abc")).toEqual({ prefix, retentionPrefix, erasurePrefix });
+    expect(withdrawalPrefix.startsWith(prefix)).toBe(true);
+    // The fixture sets never overlap, so seeding one cannot wipe another.
+    const fixtureSets = [retentionPrefix, erasurePrefix, withdrawalPrefix];
+    for (const left of fixtureSets) {
+      for (const right of fixtureSets) {
+        if (left !== right) expect(left.startsWith(right)).toBe(false);
+      }
+    }
+    expect(prefixesFor("abc")).toEqual({ prefix, retentionPrefix, erasurePrefix, withdrawalPrefix });
+  });
+
+  it("includes the consent-withdrawal phases (#2119) after the erasure ones", () => {
+    expect(GOVERNANCE_VALIDATION_PHASES).toEqual([
+      "seed-retention",
+      "verify-retention",
+      "seed-erasure",
+      "verify-erasure",
+      "seed-withdrawal",
+      "verify-withdrawal",
+      "cleanup",
+    ]);
+    for (const phase of ["seed-withdrawal", "verify-withdrawal"]) {
+      const parsed = parseInvocation([phase, "--run-id", "wd1"], {});
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        expect(parsed.invocation.phase).toBe(phase);
+        expect(parsed.invocation.withdrawalPrefix).toBe("govval_wd1_wdr_");
+      }
+    }
   });
 });
 

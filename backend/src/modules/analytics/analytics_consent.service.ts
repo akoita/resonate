@@ -104,6 +104,16 @@ export class AnalyticsConsentService {
    * The stored `policyVersion` is always the server's constant. There is
    * deliberately no parameter for it: the caller cannot record a decision
    * against a version the server is not currently serving.
+   *
+   * #2119: withdrawing a previously granted consent also writes a pending
+   * `AnalyticsConsentWithdrawal` in the same transaction. That row is the
+   * durable instruction to delete the events captured under the grant, which
+   * the scheduled job carries out and retries (see
+   * `ConsentWithdrawalPropagationService`). Only a true -> false transition
+   * qualifies: a refusal from someone who never granted, or a repeated
+   * refusal, has no consent-based events to remove. The previous decision is
+   * read after the `User` row lock, so two concurrent decisions cannot both
+   * observe "granted" and double-enqueue.
    */
   async record(userId: string, productAnalytics: boolean): Promise<AnalyticsConsentDecision> {
     const decidedAt = new Date();
@@ -115,6 +125,10 @@ export class AnalyticsConsentService {
       await tx.$queryRaw(Prisma.sql`
         SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE
       `);
+      const previous = await tx.analyticsConsent.findUnique({
+        where: { userId },
+        select: { productAnalytics: true },
+      });
       const saved = await tx.analyticsConsent.upsert({
         where: { userId },
         create: { userId, productAnalytics, policyVersion, decidedAt },
@@ -123,6 +137,33 @@ export class AnalyticsConsentService {
       });
       if (!productAnalytics) {
         await tx.showPledgeDemandContext.deleteMany({ where: { userId } });
+        if (previous?.productAnalytics === true) {
+          // At most one pending withdrawal per person: a later withdrawal moves
+          // the bound forward instead of queueing another row, so repeated
+          // grant/withdraw toggles cannot crowd other people out of the
+          // job's bounded batch. The later bound covers everything the earlier
+          // one did, including any re-grant window in between. The runner only
+          // completes a row whose bound did not move while it was running.
+          const pending = await tx.analyticsConsentWithdrawal.findFirst({
+            where: { userId, consentBasis: PRODUCT_ANALYTICS_CONSENT_BASIS, status: "pending" },
+            select: { id: true },
+          });
+          if (pending) {
+            await tx.analyticsConsentWithdrawal.update({
+              where: { id: pending.id },
+              data: { withdrawnAt: decidedAt },
+            });
+          } else {
+            await tx.analyticsConsentWithdrawal.create({
+              data: {
+                userId,
+                consentBasis: PRODUCT_ANALYTICS_CONSENT_BASIS,
+                withdrawnAt: decidedAt,
+                status: "pending",
+              },
+            });
+          }
+        }
       }
       return saved;
     });

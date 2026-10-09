@@ -1,10 +1,12 @@
 import {
+  buildConsentWithdrawalService,
   buildErasureService,
   exitCodeFor,
   parseLimit,
   runDueErasuresScript,
 } from "../scripts/run_due_erasures";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
+import { ConsentWithdrawalPropagationService } from "../modules/privacy/consent_withdrawal_propagation.service";
 
 describe("scheduled erasure runner", () => {
   const originalEnvironment = process.env;
@@ -43,7 +45,25 @@ describe("scheduled erasure runner", () => {
     });
   });
 
+  describe("exit code with consent withdrawals (#2119)", () => {
+    it("is a success when erasures and withdrawals both completed, or nothing was pending", () => {
+      expect(exitCodeFor({ failed: 0, withdrawals: { failed: 0 } })).toBe(0);
+    });
+
+    it("is a failure when only the withdrawal half failed", () => {
+      expect(exitCodeFor({ failed: 0, withdrawals: { failed: 1 } })).toBe(1);
+    });
+
+    it("is a failure when only the erasure half failed", () => {
+      expect(exitCodeFor({ failed: 2, withdrawals: { failed: 0 } })).toBe(1);
+    });
+  });
+
   describe("building the service without Nest", () => {
+    it("constructs the withdrawal service with no container either", () => {
+      expect(buildConsentWithdrawalService()).toBeInstanceOf(ConsentWithdrawalPropagationService);
+    });
+
     /**
      * The job constructs its three collaborators directly so its Cloud Run
      * environment stays down to a database URL and the analytics settings —

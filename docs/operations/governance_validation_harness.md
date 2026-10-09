@@ -7,8 +7,8 @@ issue: 1789
 
 # Governance Validation Harness
 
-How to prove, in a non-production environment, that analytics retention and
-account erasure actually do what the policy says — and to see a job execution go
+How to prove, in a non-production environment, that analytics retention,
+account erasure and analytics-consent withdrawal actually do what the policy says — and to see a job execution go
 red when they do not.
 
 > **This harness writes fake data.** Fake analytics events, two fake accounts, a
@@ -64,6 +64,7 @@ Everything the harness writes is named `govval_<runId>_…`:
 
 - `govval_<runId>_ret_…` — the retention fixtures
 - `govval_<runId>_era_…` — the erasure fixtures
+- `govval_<runId>_wdr_…` — the consent-withdrawal fixtures (#2119)
 
 Cleanup filters on `startsWith(prefix)` and on a user-id list derived from rows
 that already matched that prefix. The one widening is rows that *reference* a
@@ -97,6 +98,8 @@ what a *real* scheduled job did in between:
 | `verify-retention` | Checks what the retention run did against what the policy promises |
 | `seed-erasure` | Writes a throwaway account due for erasure, plus a control account |
 | `verify-erasure` | Checks the erasure, including that the control account is untouched |
+| `seed-withdrawal` | Writes two consenting accounts with consent-based events, then really withdraws consent for one |
+| `verify-withdrawal` | Checks the scheduled job completed the withdrawal and removed exactly the right events |
 | `cleanup` | Removes everything by prefix, in foreign-key-safe order |
 
 ### Retention
@@ -159,6 +162,43 @@ fixture and that the latest attempt succeeded. Earlier failed outcomes remain
 visible as retry history; they do not make a later successful, fully verified
 retry fail forever. Neither per-event nor batch lineage may copy the wallet
 address it exists to prove was removed.
+
+### Consent withdrawal
+
+```bash
+node dist/scripts/governance_validation.js seed-withdrawal --run-id sprint23
+node dist/scripts/run_due_erasures.js          # also drains pending consent withdrawals
+node dist/scripts/governance_validation.js verify-withdrawal --run-id sprint23
+```
+
+There is no separate withdrawal job: `run_due_erasures` drains pending
+`AnalyticsConsentWithdrawal` rows after the due erasures, in the same execution.
+Run that job (not an in-process call) between seed and verify.
+
+`seed-withdrawal` creates a subject and a control account, grants analytics
+consent for both through `AnalyticsConsentService.record`, and writes
+consent-based events (`consentBasis: "consent"`, keyed by the real pseudonymous
+actor id) for both: two each. For the subject it also writes one contract-basis
+event, which must survive. It then performs the **real** withdrawal for the
+subject with `AnalyticsConsentService.record(subject, false)`, which is what
+enqueues the pending withdrawal, and finally writes one consent-based event for
+the subject received *after* the withdrawal, standing in for what a later
+re-grant captures, which must also survive. Events are written to Postgres only;
+the warehouse copy comes from the normal batch load, as for the other fixtures,
+and the withdrawal's warehouse outcome is checked through its lineage.
+
+`verify-withdrawal` asserts: exactly one withdrawal exists for the subject and is
+`completed` with at least one attempt and a tally of two removed events; the
+subject's two pre-withdrawal consent events are gone from Postgres and each has
+`consent_withdrawn` lineage; the subject's contract-basis event and
+post-withdrawal event survive with no lineage; the control has no withdrawal, an
+intact consent decision and both events with no lineage; and a
+`warehouse_erasure` summary with `sourceAction: "consent_withdrawn"` exists for
+the subject's pseudonymous id whose latest attempt is `ok` (earlier `failed`
+attempts are retry history). A `pending` withdrawal after the job ran means the
+warehouse refused and the next run will retry; the report's `observations` show
+its attempts and sanitized `lastErrorStatus`. Same exit codes as the other
+verify phases.
 
 ### Cleanup
 

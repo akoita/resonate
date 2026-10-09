@@ -69,6 +69,7 @@ model User {
   generationJobOutcomes       GenerationJobOutcome[]
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
+  analyticsConsentWithdrawals AnalyticsConsentWithdrawal[]
   demandObservations          DemandObservation[]
   firstListenerExposures      FirstListenerExposure[]
   accountClosureRequests      AccountClosureRequest[]
@@ -1457,6 +1458,35 @@ model AnalyticsConsent {
   policyVersion    String
   updatedAt        DateTime @updatedAt
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// #2119: the durable work item behind "withdrawing product-analytics consent
+/// deletes the events captured under it". One row is written, in the same
+/// transaction as the withdrawing decision, only when a previously *granted*
+/// decision flips to refused; a scheduled job (`run_due_erasures`) then drives
+/// `AnalyticsGovernanceService.withdrawConsent` for it and retries while the
+/// warehouse refuses. `withdrawnAt` is the decision's `decidedAt` and bounds
+/// which events are affected, so events captured after a later re-grant are
+/// never touched. `lastErrorStatus` is sanitized (warehouse statuses only).
+model AnalyticsConsentWithdrawal {
+  id              String    @id @default(uuid())
+  userId          String
+  consentBasis    String    @default("consent")
+  withdrawnAt     DateTime
+  status          String    @default("pending")
+  attempts        Int       @default(0)
+  lastAttemptAt   DateTime?
+  completedAt     DateTime?
+  lastErrorStatus String?
+  matched         Int       @default(0)
+  deleted         Int       @default(0)
+  redacted        Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, withdrawnAt])
+  @@index([userId])
 }
 
 model ListenerTasteMemorySettings {

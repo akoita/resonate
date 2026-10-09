@@ -3172,7 +3172,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Your answer is never final. Open Settings and choose Privacy: it shows what you chose and lets you switch it either way, as often as you like. Turning it off stops the collection from that moment and removes optional pledge city declarations. Those declarations expire after 28 days even if you keep measurement on; payment records remain.",
+            text: "Your answer is never final. Open Settings and choose Privacy: it shows what you chose and lets you switch it either way, as often as you like. Turning it off stops the collection from that moment, removes optional pledge city declarations, and also deletes the usage records already collected under your earlier yes. Deletion is carried out by a scheduled clean-up, so it normally finishes within a day and is retried if a system is temporarily unavailable; records of things that actually happened, such as payments, remain. Pledge city declarations expire after 28 days even if you keep measurement on.",
           },
           {
             kind: "steps",

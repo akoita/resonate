@@ -3,6 +3,10 @@ import { AnalyticsGovernanceService } from "../modules/analytics/analytics_gover
 import { assertAnalyticsActorIdSaltConfiguration } from "../modules/analytics/analytics_identity";
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
+import {
+  ConsentWithdrawalPropagationService,
+  RunPendingConsentWithdrawalsResult,
+} from "../modules/privacy/consent_withdrawal_propagation.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
 import { writeStructuredLog } from "../modules/shared/structured_logging";
 import { prisma } from "../db/prisma";
@@ -10,6 +14,15 @@ import { prisma } from "../db/prisma";
 /**
  * #1797 — the scheduled entry point for account erasures whose 30-day window
  * has elapsed.
+ *
+ * #2119 — the same execution then drains pending analytics-consent
+ * withdrawals (`ConsentWithdrawalPropagationService`): withdrawing product
+ * analytics consent deletes the events captured under it, asynchronously and
+ * with the same retry semantics as erasure. It rides this job rather than a new
+ * one because it needs exactly the same environment — a database URL and the
+ * analytics warehouse settings — and the same schedule is ample for a deletion
+ * that is not time-critical to the minute. The withdrawals run after the
+ * erasures, and a failure in either part makes the execution exit `1`.
  *
  * ## Why this is a script and not an HTTP call
  *
@@ -41,8 +54,8 @@ import { prisma } from "../db/prisma";
  *
  * ## Exit codes
  *
- * `0` only when every due erasure completed. A run that erased nobody because
- * nobody was due is also `0` — that is the normal state and must not page
+ * `0` only when every due erasure and every pending consent withdrawal
+ * completed. A run that erased nobody because nobody was due is also `0` — that is the normal state and must not page
  * anyone. Any failure exits `1`, so a failed run shows up as a failed execution
  * rather than a green job that quietly erased nothing.
  *
@@ -60,8 +73,11 @@ export function parseLimit(argv: string[]): number | undefined {
  * contract with the scheduler — a run that erased nobody because nobody was due
  * is a success, and a run that failed one erasure out of ten is not.
  */
-export function exitCodeFor(result: { failed: number }): 0 | 1 {
-  return result.failed > 0 ? 1 : 0;
+export function exitCodeFor(result: {
+  failed: number;
+  withdrawals?: { failed: number };
+}): 0 | 1 {
+  return result.failed > 0 || (result.withdrawals?.failed ?? 0) > 0 ? 1 : 0;
 }
 
 export function buildErasureService(): PersonalDataErasureService {
@@ -72,32 +88,72 @@ export function buildErasureService(): PersonalDataErasureService {
   );
 }
 
+export function buildConsentWithdrawalService(): ConsentWithdrawalPropagationService {
+  return new ConsentWithdrawalPropagationService(new AnalyticsGovernanceService());
+}
+
+function logWithdrawalRun(result: RunPendingConsentWithdrawalsResult) {
+  writeStructuredLog({
+    level: result.failed > 0 ? "error" : "info",
+    event: "privacy.analytics_consent_withdrawal.scheduled_run",
+    message:
+      result.failed > 0
+        ? `Scheduled consent-withdrawal run finished with ${result.failed} failure(s)`
+        : `Scheduled consent-withdrawal run completed: ${result.completed} of ${result.due} pending`,
+    // Counts and withdrawal row ids only — never the person's identifiers.
+    due: result.due,
+    completed: result.completed,
+    failed: result.failed,
+    ranAt: result.ranAt,
+    failedWithdrawalIds: result.results
+      .filter((outcome) => outcome.status === "failed")
+      .map((outcome) => outcome.id),
+  });
+}
+
 export async function runDueErasuresScript(argv: string[] = process.argv.slice(2)) {
   assertAnalyticsActorIdSaltConfiguration();
   const limit = parseLimit(argv);
 
   try {
-    const result = await buildErasureService().runDueErasures(limit ? { limit } : {});
+    // Erasures and withdrawals are independent queues: a crash in one must not
+    // strand the other, so the erasure crash (if any) is rethrown only after
+    // the withdrawals have had their run. Either way the entry point exits 1.
+    let result: Awaited<ReturnType<PersonalDataErasureService["runDueErasures"]>> | undefined;
+    let erasureCrash: unknown;
+    try {
+      result = await buildErasureService().runDueErasures(limit ? { limit } : {});
+    } catch (error) {
+      erasureCrash = error;
+    }
 
-    writeStructuredLog({
-      level: result.failed > 0 ? "error" : "info",
-      event: "privacy.account_erasure.scheduled_run",
-      message:
-        result.failed > 0
-          ? `Scheduled erasure run finished with ${result.failed} failure(s)`
-          : `Scheduled erasure run completed: ${result.erased} of ${result.due} due`,
-      // Counts and request ids only. The whole point of the run is to remove
-      // this person's identifiers; naming them here would put them back.
-      due: result.due,
-      erased: result.erased,
-      failed: result.failed,
-      ranAt: result.ranAt,
-      failedRequestIds: result.results
-        .filter((outcome) => outcome.status === "failed")
-        .map((outcome) => outcome.requestId),
-    });
+    if (result) {
+      writeStructuredLog({
+        level: result.failed > 0 ? "error" : "info",
+        event: "privacy.account_erasure.scheduled_run",
+        message:
+          result.failed > 0
+            ? `Scheduled erasure run finished with ${result.failed} failure(s)`
+            : `Scheduled erasure run completed: ${result.erased} of ${result.due} due`,
+        // Counts and request ids only. The whole point of the run is to remove
+        // this person's identifiers; naming them here would put them back.
+        due: result.due,
+        erased: result.erased,
+        failed: result.failed,
+        ranAt: result.ranAt,
+        failedRequestIds: result.results
+          .filter((outcome) => outcome.status === "failed")
+          .map((outcome) => outcome.requestId),
+      });
+    }
 
-    return result;
+    const withdrawals = await buildConsentWithdrawalService().runPendingWithdrawals(
+      limit ? { limit } : {},
+    );
+    logWithdrawalRun(withdrawals);
+
+    if (erasureCrash !== undefined || !result) throw erasureCrash;
+    return { ...result, withdrawals };
   } finally {
     await prisma.$disconnect();
   }

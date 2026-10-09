@@ -29,7 +29,67 @@ describe("AnalyticsConsentService integration", () => {
   });
 
   beforeEach(async () => {
+    await prisma.analyticsConsentWithdrawal.deleteMany({ where: { userId: { in: [USER_A, USER_B] } } });
     await prisma.analyticsConsent.deleteMany({ where: { userId: { in: [USER_A, USER_B] } } });
+  });
+
+  describe("withdrawal enqueue (#2119)", () => {
+    const pendingFor = (userId: string) =>
+      prisma.analyticsConsentWithdrawal.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
+
+    it("enqueues exactly one pending withdrawal when a granted decision is withdrawn", async () => {
+      await service.record(USER_A, true);
+      expect(await pendingFor(USER_A)).toHaveLength(0);
+
+      const refused = await service.record(USER_A, false);
+
+      const rows = await pendingFor(USER_A);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        status: "pending",
+        consentBasis: "consent",
+        attempts: 0,
+        completedAt: null,
+      });
+      // The window the deletion covers ends at the decision, to the millisecond.
+      expect(rows[0].withdrawnAt.getTime()).toBe(refused.decidedAt!.getTime());
+    });
+
+    it("does not enqueue again when a refusal is re-affirmed", async () => {
+      await service.record(USER_A, true);
+      await service.record(USER_A, false);
+      await service.record(USER_A, false);
+
+      expect(await pendingFor(USER_A)).toHaveLength(1);
+    });
+
+    it("does not enqueue for a refusal from someone who never granted", async () => {
+      await service.record(USER_A, false);
+
+      expect(await pendingFor(USER_A)).toHaveLength(0);
+    });
+
+    it("does not enqueue when a grant is recorded or re-affirmed", async () => {
+      await service.record(USER_A, true);
+      await service.record(USER_A, true);
+
+      expect(await pendingFor(USER_A)).toHaveLength(0);
+    });
+
+    it("keeps one pending withdrawal per person and moves its bound forward on a re-withdrawal", async () => {
+      await service.record(USER_A, true);
+      await service.record(USER_A, false);
+      const [first] = await pendingFor(USER_A);
+      await service.record(USER_A, true);
+      await service.record(USER_A, false);
+      await service.record(USER_B, true);
+
+      const pending = await pendingFor(USER_A);
+      expect(pending).toHaveLength(1);
+      expect(pending[0].id).toBe(first.id);
+      expect(pending[0].withdrawnAt.getTime()).toBeGreaterThan(first.withdrawnAt.getTime());
+      expect(await pendingFor(USER_B)).toHaveLength(0);
+    });
   });
 
   it("treats a missing decision as refusal, not as permission", async () => {

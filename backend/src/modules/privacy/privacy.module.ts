@@ -3,6 +3,7 @@ import { AnalyticsModule } from "../analytics/analytics.module";
 import { IdentityModule } from "../identity/identity.module";
 import { AccountClosureService } from "./account_closure.service";
 import { AccountClosureStepUpService } from "./account_closure_step_up.service";
+import { ConsentWithdrawalPropagationService } from "./consent_withdrawal_propagation.service";
 import { PersonalDataErasureService } from "./personal_data_erasure.service";
 import { PersonalDataExportService } from "./personal_data_export.service";
 import { PrivacyController } from "./privacy.controller";
@@ -26,10 +27,16 @@ import { PrivacyController } from "./privacy.controller";
     AccountClosureService,
     AccountClosureStepUpService,
     PersonalDataErasureService,
+    ConsentWithdrawalPropagationService,
   ],
   // `AccountClosureService` is exported for the sign-in path, which must be
   // able to cancel a scheduled closure; `PersonalDataErasureService` for the
   // maintenance route the external scheduler calls.
-  exports: [PersonalDataExportService, AccountClosureService, PersonalDataErasureService],
+  exports: [
+    PersonalDataExportService,
+    AccountClosureService,
+    PersonalDataErasureService,
+    ConsentWithdrawalPropagationService,
+  ],
 })
 export class PrivacyModule {}

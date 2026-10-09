@@ -268,6 +268,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "person's own consent decision and belongs in their export.",
   },
   {
+    model: "AnalyticsConsentWithdrawal",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2119. The record that the person withdrew product-analytics consent and whether the deletion of "
+      + "the events captured under it has run: timestamps and counts only.",
+  },
+  {
     model: "ListenerTasteMemorySettings",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

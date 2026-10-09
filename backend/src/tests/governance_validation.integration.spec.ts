@@ -23,6 +23,7 @@ import {
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
+import { ConsentWithdrawalPropagationService } from "../modules/privacy/consent_withdrawal_propagation.service";
 import { prisma } from "../db/prisma";
 import {
   cleanupAll,
@@ -30,6 +31,8 @@ import {
   runGovernanceValidation,
   verifyErasure,
   verifyRetention,
+  verifyWithdrawal,
+  withdrawalIdentities,
 } from "../scripts/governance_validation";
 import {
   GovernanceValidationInvocation,
@@ -354,6 +357,111 @@ describe("governance validation harness — erasure", () => {
     ).toBe(0);
 
     // Re-running cleanup on an already-clean prefix is a no-op, not an error.
+    const again = await cleanupAll(INVOCATION);
+    expect(again.failures).toEqual([]);
+  }, 180000);
+});
+
+describe("governance validation harness — consent withdrawal (#2119)", () => {
+  const identities = withdrawalIdentities(INVOCATION.withdrawalPrefix);
+  const eventId = (key: string) => `${INVOCATION.withdrawalPrefix}${key}_event`;
+
+  it("seeds two consenting accounts and really withdraws consent for one", async () => {
+    const result = await runGovernanceValidation(["seed-withdrawal"], ENABLED_ENV);
+    expect(result.kind).toBe("seed");
+    expect(result.exitCode).toBe(0);
+
+    const pending = await prisma.analyticsConsentWithdrawal.findMany({
+      where: { userId: { in: [identities.subjectUserId, identities.controlUserId] } },
+    });
+    // Only the subject withdrew, and the withdrawal is waiting for the job.
+    expect(pending.map((row) => [row.userId, row.status])).toEqual([[identities.subjectUserId, "pending"]]);
+    expect(
+      (await prisma.analyticsConsent.findUnique({ where: { userId: identities.subjectUserId } }))?.productAnalytics,
+    ).toBe(false);
+    expect(
+      (await prisma.analyticsConsent.findUnique({ where: { userId: identities.controlUserId } }))?.productAnalytics,
+    ).toBe(true);
+    expect(
+      await prisma.analyticsEvent.count({ where: { id: { startsWith: INVOCATION.withdrawalPrefix } } }),
+    ).toBe(6);
+  }, 180000);
+
+  it("is red until the scheduled job has run: the withdrawal is still pending", async () => {
+    const report = await verifyWithdrawal(INVOCATION);
+
+    expect(report.status).toBe("fail");
+    const failed = report.failures.map((failure) => failure.id);
+    expect(failed).toContain("withdrawal.completed");
+    expect(failed).toContain("withdrawal.subject_consent_playback.deleted");
+    // The things that must survive do survive, so these are not among the failures.
+    expect(failed).not.toContain("withdrawal.subject_contract.survived");
+    expect(failed).not.toContain("withdrawal.control_consent_playback.survived");
+    const result = await runGovernanceValidation(["verify-withdrawal"], ENABLED_ENV);
+    expect(result.exitCode).toBe(1);
+  }, 180000);
+
+  it("passes after the real withdrawal run, having seen deletion and survival", async () => {
+    // The same call the scheduled `run_due_erasures` job makes after erasures.
+    const run = await new ConsentWithdrawalPropagationService(
+      new AnalyticsGovernanceService(successfulWarehouse),
+    ).runPendingWithdrawals();
+    expect(run.failed).toBe(0);
+
+    const result = await runGovernanceValidation(["verify-withdrawal"], ENABLED_ENV);
+    expect(result.kind).toBe("verify");
+    if (result.kind === "verify") {
+      expect(result.report.failures.map((failure) => failure.id)).toEqual([]);
+      expect(result.report.status).toBe("pass");
+      expect(result.report.observations).toEqual(
+        expect.objectContaining({
+          warehouse: expect.objectContaining({ failedAttempts: 0, latestStatus: "ok" }),
+        }),
+      );
+    }
+    expect(result.exitCode).toBe(0);
+
+    // And the lineage backs the claim, event by event.
+    const removed = await prisma.analyticsGovernanceLog.findMany({
+      where: { eventId: { in: [eventId("subject_consent_playback"), eventId("subject_consent_product")] } },
+    });
+    expect(removed.map((row) => row.action)).toEqual(["consent_withdrawn", "consent_withdrawn"]);
+  }, 180000);
+
+  it("detects a withdrawal that disturbed the control account", async () => {
+    // A withdrawal that deleted everyone's events would satisfy every "the
+    // subject's events are gone" expectation; only the control can tell.
+    await prisma.analyticsEvent.delete({
+      where: { id: `${INVOCATION.withdrawalPrefix}control_consent_playback` },
+    });
+
+    const report = await verifyWithdrawal(INVOCATION);
+
+    expect(report.status).toBe("fail");
+    expect(report.failures.map((failure) => failure.id)).toEqual([
+      "withdrawal.control_consent_playback.survived",
+    ]);
+  }, 180000);
+
+  it("cleans up the withdrawal fixtures, accounts included, and is a no-op the second time", async () => {
+    const summary = await cleanupAll(INVOCATION);
+    expect(summary.failures).toEqual([]);
+
+    expect(await prisma.user.count({ where: { id: { in: [identities.subjectUserId, identities.controlUserId] } } })).toBe(0);
+    expect(
+      await prisma.analyticsConsentWithdrawal.count({
+        where: { userId: { in: [identities.subjectUserId, identities.controlUserId] } },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.analyticsEvent.count({ where: { id: { startsWith: INVOCATION.withdrawalPrefix } } }),
+    ).toBe(0);
+    expect(
+      await prisma.analyticsGovernanceLog.count({
+        where: { eventId: { startsWith: INVOCATION.withdrawalPrefix } },
+      }),
+    ).toBe(0);
+
     const again = await cleanupAll(INVOCATION);
     expect(again.failures).toEqual([]);
   }, 180000);

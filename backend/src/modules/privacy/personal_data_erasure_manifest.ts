@@ -456,6 +456,13 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     note: "The third-party mirror of the export refusing to hand over reports others filed. `reporterUserId` rotates with the cascade, so the row stops naming its author.",
   },
   {
+    model: "AnalyticsConsentWithdrawal",
+    disposition: "delete",
+    reason:
+      "A work item for deleting the person's consent-based analytics (#2119); erasure removes those events directly, "
+      + "so the queue entry has nothing left to do and only names the account.",
+  },
+  {
     model: "AnalyticsConsent",
     disposition: "retain",
     reason: "A consent decision, which the privacy policy keeps indefinitely so we can prove what was and was not agreed to.",

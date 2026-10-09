@@ -78,7 +78,7 @@ summaries as a mature product surface:
 | Yearly summary preference | Lets listeners opt in or out of personalized yearly summaries such as Wrapped-style recaps. Opting out disables summary generation from future eligible facts and hides generated summary surfaces. |
 | Analytics export | Exports the user's linked personal and pseudonymous analytics facts, plus plain-language explanations of aggregate-only data that cannot be attributed back to them. |
 | Analytics deletion | Deletes or redacts raw and fact rows linked to the user's actor ID or subject IDs, except financial/audit facts that must be preserved with personal fields minimized. |
-| Consent withdrawal | Applies deletion/redaction to events captured under a withdrawn `consentBasis`, then records lineage so future backfills do not recreate removed rows. |
+| Consent withdrawal | Applies deletion/redaction to events captured under a withdrawn `consentBasis`, then records lineage so future backfills do not recreate removed rows. Enqueued when a granted decision is withdrawn and carried out asynchronously by the scheduled erasure job (#2119). |
 | Artist privacy boundary | Artists see aggregate catalog and fan behavior metrics, not raw listener event streams or listener actor IDs. |
 | Taste memory controls | Lets listeners reset recommendation taste memory, hide/downrank safe signals, and keep social taste matching disabled unless explicitly enabled. |
 
@@ -253,6 +253,58 @@ every BigQuery loader, and only then applies the Postgres decision per event
 - Deployments without a BigQuery warehouse (`ANALYTICS_WAREHOUSE_TARGET` unset
   or `local_json`) get a disabled target that reports `skipped` and performs no
   work. No new environment variable is involved.
+
+**Consent withdrawal is propagated asynchronously, as of #2119.** Until then
+`withdrawConsent` existed but nothing in production called it, so withdrawing
+consent stopped future collection while leaving every past consent-based event in
+Postgres and the warehouse. Now:
+
+- `AnalyticsConsentService.record(userId, false)` writes a pending
+  `AnalyticsConsentWithdrawal` row in the same transaction as the decision, but
+  only when a previously *granted* decision is being withdrawn. A repeated
+  refusal, or a refusal from someone who never granted, enqueues nothing: there
+  is nothing captured under consent to remove.
+- The scheduled account-erasure job (`backend/src/scripts/run_due_erasures.ts`)
+  drains pending withdrawals after the due erasures, in the same execution and
+  with the same environment, through `ConsentWithdrawalPropagationService`. It
+  calls `AnalyticsGovernanceService.withdrawConsent` once per stored actor id
+  (raw, lowercased and pseudonymous forms) and logs a
+  `privacy.analytics_consent_withdrawal.scheduled_run` event with counts and
+  withdrawal row ids only.
+- **Exact semantics.** Events with `consentBasis: "consent"` that the server
+  received (`receivedAt`) up to the moment of the withdrawal are deleted or, for
+  the audit-preserved families, redacted, in the warehouse first and then in
+  Postgres, with `consent_withdrawn` lineage per event. Events with any other
+  basis (contract, legal obligation, legitimate interest) are not touched. Events
+  received after the withdrawal belong to a later grant and are never touched by
+  an earlier withdrawal. A person has at most one pending withdrawal: a re-grant
+  followed by another withdrawal moves that row's bound forward instead of
+  queueing a second row (the later bound covers the re-grant window too), so
+  repeated toggling cannot crowd other people out of the job's bounded batch. A
+  run that finds the bound moved while it was working reports the row as
+  `requeued` and leaves it pending for the next run.
+- **Retry.** A `failed` warehouse outcome keeps the withdrawal pending, records a
+  sanitized `lastErrorStatus` (warehouse statuses or an error class, never an
+  identifier) and makes the job exit non-zero; the next daily run retries while
+  Postgres still holds the event ids. A `skipped` warehouse (none configured)
+  counts as done, as it does for account erasure.
+- The deletion is therefore eventual, bounded by the job schedule plus any
+  warehouse retry, not immediate. Collection stops immediately at the consent
+  gate.
+- Account erasure deletes any still-pending withdrawal row, because erasure
+  removes the person's analytics itself.
+- **Backfill.** The migration that adds the table enqueues one pending
+  withdrawal for every refusal already recorded, bounded by that decision's
+  `decidedAt`, so people who withdrew before this change get their earlier
+  consent-based events removed too. A person who never granted has nothing
+  captured under consent, so their row completes without a warehouse call.
+- **Known limits.** Like account erasure, only actor ids derived under the
+  current pseudonymization salt are matched. An event whose consent check passed
+  just before the withdrawal committed, but whose `receivedAt` is after it, is
+  outside the bound.
+- The validation harness covers this path with `seed-withdrawal` and
+  `verify-withdrawal`; see
+  [Governance Validation Harness](../operations/governance_validation_harness.md).
 
 **Retention cleanup is on this path too, as of #1789.** It used to call
 `deleteEvent` and `redactEvent` directly rather than going through
