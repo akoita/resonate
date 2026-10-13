@@ -49,7 +49,11 @@ epic [#1952](https://github.com/akoita/resonate/issues/1952)). What works today:
   lists them with the names to save them under, and the lines left out with a
   reason. The crate page's **Export to rekordbox or Serato** panel downloads
   each stem through the existing licensed download path, remembers the folder
-  per browser, and saves the file. Export never grants a right.
+  per browser, and saves the file. Export never grants a right. The files are
+  checked against byte-exact fixtures and read cleanly by open-source parsers
+  (`pyrekordbox`, `serato_crate`); a manual import into rekordbox itself (and
+  optionally Serato) is still to do, in
+  [#2121](https://github.com/akoita/resonate/issues/2121).
 - **`crate.pro` entitlement seam (#1966).** Free for everyone; nothing is gated
   yet. Every gated feature (saving beyond the free number, export, watching)
   asks the resolver, and the crate response carries `pro`, `export` and `watch`
