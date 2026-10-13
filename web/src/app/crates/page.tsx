@@ -151,183 +151,185 @@ function CratesHome() {
         </p>
       )}
 
-      {referenceTrackId ? (
-        <div className="crates-panel crates-composer" aria-live="polite">
-          {building ? <p>Building your crate…</p> : null}
-          {error ? (
-            <>
+      <div className="crates-build-grid">
+        {referenceTrackId ? (
+          <div className="crates-panel crates-composer" aria-live="polite">
+            {building ? <p>Building your crate…</p> : null}
+            {error ? (
+              <>
+                <p className="crates-error" role="alert">
+                  {error}
+                </p>
+                <div className="crates-row">
+                  <button
+                    type="button"
+                    className="crates-btn crates-btn--primary"
+                    onClick={() => {
+                      setBuilding(true);
+                      setError(null);
+                      void build({ referenceTrackId, count: CRATE_DEFAULT_COUNT }, { replace: true });
+                    }}
+                  >
+                    Try again
+                  </button>
+                  <Link className="crates-btn" href="/crates">
+                    Describe a crate instead
+                  </Link>
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <form className="crates-panel crates-composer" onSubmit={onSubmit}>
+            <div className="crates-field">
+              <label htmlFor="crate-request-text">What does your set need?</label>
+              <textarea
+                id="crate-request-text"
+                ref={textareaRef}
+                className="crates-textarea"
+                value={text}
+                maxLength={CRATE_REQUEST_MAX_TEXT_LENGTH}
+                onChange={(event) => setText(event.target.value)}
+                placeholder="Eight melodic house tracks around 122-126 BPM in 8A or 9A, with vocals stems, under $20 each"
+                aria-describedby="crate-request-hint"
+              />
+              <p id="crate-request-hint" className="crates-hint">
+                Tempo, key, energy, genre, mood, stems, license and budget all work. Up to{" "}
+                {CRATE_REQUEST_MAX_TEXT_LENGTH} characters; anything we cannot read is shown back to
+                you. Leave Lines empty to use the number in your sentence.
+              </p>
+              <div className="crates-examples">
+                <span className="crates-examples-label" id="crate-examples-label">
+                  Try
+                </span>
+                <ul aria-labelledby="crate-examples-label">
+                  {CRATE_PROMPT_EXAMPLES.map((example) => (
+                    <li key={example}>
+                      <button
+                        type="button"
+                        className="crates-example"
+                        disabled={building}
+                        onClick={() => {
+                          setText(example);
+                          textareaRef.current?.focus();
+                        }}
+                      >
+                        {example}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="crates-row crates-row--fields">
+              <div className="crates-field">
+                <label htmlFor="crate-request-count">Lines</label>
+                <input
+                  id="crate-request-count"
+                  className="crates-number"
+                  type="number"
+                  inputMode="numeric"
+                  min={CRATE_MIN_COUNT}
+                  max={CRATE_MAX_COUNT}
+                  placeholder={String(CRATE_DEFAULT_COUNT)}
+                  aria-describedby="crate-request-hint"
+                  value={count}
+                  onChange={(event) => setCount(event.target.value)}
+                />
+              </div>
+              <button
+                type="submit"
+                className="crates-btn crates-btn--primary crates-btn--glow"
+                disabled={!trimmed || building}
+              >
+                {building ? "Building…" : "Build crate"}
+              </button>
+            </div>
+            {error ? (
               <p className="crates-error" role="alert">
                 {error}
               </p>
-              <div className="crates-row">
-                <button
-                  type="button"
-                  className="crates-btn crates-btn--primary"
-                  onClick={() => {
-                    setBuilding(true);
-                    setError(null);
-                    void build({ referenceTrackId, count: CRATE_DEFAULT_COUNT }, { replace: true });
-                  }}
-                >
-                  Try again
-                </button>
-                <Link className="crates-btn" href="/crates">
-                  Describe a crate instead
-                </Link>
-              </div>
-            </>
-          ) : null}
-        </div>
-      ) : (
-        <form className="crates-panel crates-composer" onSubmit={onSubmit}>
-          <div className="crates-field">
-            <label htmlFor="crate-request-text">What does your set need?</label>
-            <textarea
-              id="crate-request-text"
-              ref={textareaRef}
-              className="crates-textarea"
-              value={text}
-              maxLength={CRATE_REQUEST_MAX_TEXT_LENGTH}
-              onChange={(event) => setText(event.target.value)}
-              placeholder="Eight melodic house tracks around 122-126 BPM in 8A or 9A, with vocals stems, under $20 each"
-              aria-describedby="crate-request-hint"
-            />
-            <p id="crate-request-hint" className="crates-hint">
-              Tempo, key, energy, genre, mood, stems, license and budget all work. Up to{" "}
-              {CRATE_REQUEST_MAX_TEXT_LENGTH} characters; anything we cannot read is shown back to
-              you. Leave Lines empty to use the number in your sentence.
+            ) : null}
+          </form>
+        )}
+
+        <section aria-labelledby="your-crates-heading" className="crates-panel crates-collection">
+          <div className="crates-section-head">
+            <h2 id="your-crates-heading" ref={collectionHeadingRef} tabIndex={-1}>
+              Your crates
+            </h2>
+            {crates && crates.length > 0 ? <span className="crates-count">{crates.length}</span> : null}
+          </div>
+          {deleteError ? (
+            <p className="crates-error" role="alert">
+              {deleteError}
             </p>
-            <div className="crates-examples">
-              <span className="crates-examples-label" id="crate-examples-label">
-                Try
-              </span>
-              <ul aria-labelledby="crate-examples-label">
-                {CRATE_PROMPT_EXAMPLES.map((example) => (
-                  <li key={example}>
+          ) : null}
+          {listError ? (
+            <p className="crates-error" role="alert">
+              {listError}
+            </p>
+          ) : crates === null ? (
+            <p className="crates-hint">Loading your crates…</p>
+          ) : crates.length === 0 ? (
+            <div className="crates-empty">
+              <span className="crates-card-art crates-card-art--0" aria-hidden="true" />
+              <p className="crates-hint">No crates yet. Describe a set to build your first one.</p>
+            </div>
+          ) : (
+            <ul className="crates-cards">
+              {crates.map((crate, index) => {
+                const saved = crate.status === "saved";
+                const title = crate.title?.trim() || "Untitled crate";
+                return (
+                  <li key={crate.id} className="crates-card-item">
+                    <Link className="crates-card" href={`/crates/${encodeURIComponent(crate.id)}`}>
+                      <span className={`crates-card-art crates-card-art--${index % 3}`} aria-hidden="true" />
+                      <span className="crates-card-body">
+                        <span className="crates-card-title">{title}</span>
+                        <span className="crates-card-meta">
+                          {crate.itemCount} {crate.itemCount === 1 ? "line" : "lines"} ·{" "}
+                          {formatDate(crate.updatedAt)}
+                        </span>
+                      </span>
+                      <span className={`crates-status crates-status--${saved ? "saved" : "draft"}`}>
+                        {saved ? "Saved" : "Draft"}
+                      </span>
+                    </Link>
                     <button
                       type="button"
-                      className="crates-example"
-                      disabled={building}
+                      className="crates-card-delete"
+                      aria-label={`Delete ${title}`}
+                      title="Delete crate"
                       onClick={() => {
-                        setText(example);
-                        textareaRef.current?.focus();
+                        setDeleteError(null);
+                        setPendingDelete(crate);
                       }}
                     >
-                      {example}
+                      <svg
+                        aria-hidden="true"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" />
+                        <line x1="10" y1="11" x2="10" y2="17" />
+                        <line x1="14" y1="11" x2="14" y2="17" />
+                      </svg>
                     </button>
                   </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <div className="crates-row crates-row--fields">
-            <div className="crates-field">
-              <label htmlFor="crate-request-count">Lines</label>
-              <input
-                id="crate-request-count"
-                className="crates-number"
-                type="number"
-                inputMode="numeric"
-                min={CRATE_MIN_COUNT}
-                max={CRATE_MAX_COUNT}
-                placeholder={String(CRATE_DEFAULT_COUNT)}
-                aria-describedby="crate-request-hint"
-                value={count}
-                onChange={(event) => setCount(event.target.value)}
-              />
-            </div>
-            <button
-              type="submit"
-              className="crates-btn crates-btn--primary crates-btn--glow"
-              disabled={!trimmed || building}
-            >
-              {building ? "Building…" : "Build crate"}
-            </button>
-          </div>
-          {error ? (
-            <p className="crates-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </form>
-      )}
-
-      <section aria-labelledby="your-crates-heading" className="crates-panel crates-collection">
-        <div className="crates-section-head">
-          <h2 id="your-crates-heading" ref={collectionHeadingRef} tabIndex={-1}>
-            Your crates
-          </h2>
-          {crates && crates.length > 0 ? <span className="crates-count">{crates.length}</span> : null}
-        </div>
-        {deleteError ? (
-          <p className="crates-error" role="alert">
-            {deleteError}
-          </p>
-        ) : null}
-        {listError ? (
-          <p className="crates-error" role="alert">
-            {listError}
-          </p>
-        ) : crates === null ? (
-          <p className="crates-hint">Loading your crates…</p>
-        ) : crates.length === 0 ? (
-          <div className="crates-empty">
-            <span className="crates-card-art crates-card-art--0" aria-hidden="true" />
-            <p className="crates-hint">No crates yet. Describe a set above to build your first one.</p>
-          </div>
-        ) : (
-          <ul className="crates-cards">
-            {crates.map((crate, index) => {
-              const saved = crate.status === "saved";
-              const title = crate.title?.trim() || "Untitled crate";
-              return (
-                <li key={crate.id} className="crates-card-item">
-                  <Link className="crates-card" href={`/crates/${encodeURIComponent(crate.id)}`}>
-                    <span className={`crates-card-art crates-card-art--${index % 3}`} aria-hidden="true" />
-                    <span className="crates-card-body">
-                      <span className="crates-card-title">{title}</span>
-                      <span className="crates-card-meta">
-                        {crate.itemCount} {crate.itemCount === 1 ? "line" : "lines"} ·{" "}
-                        {formatDate(crate.updatedAt)}
-                      </span>
-                    </span>
-                    <span className={`crates-status crates-status--${saved ? "saved" : "draft"}`}>
-                      {saved ? "Saved" : "Draft"}
-                    </span>
-                  </Link>
-                  <button
-                    type="button"
-                    className="crates-card-delete"
-                    aria-label={`Delete ${title}`}
-                    title="Delete crate"
-                    onClick={() => {
-                      setDeleteError(null);
-                      setPendingDelete(crate);
-                    }}
-                  >
-                    <svg
-                      aria-hidden="true"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" />
-                      <line x1="10" y1="11" x2="10" y2="17" />
-                      <line x1="14" y1="11" x2="14" y2="17" />
-                    </svg>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
 
       <ConfirmDialog
         isOpen={pendingDelete !== null}
@@ -391,7 +393,8 @@ function CratesAndStems() {
   };
 
   return (
-    <div className={`crates-page${tab === "stems" ? " crates-page--wide" : ""}`}>
+    // Both tabs share one width so switching never resizes the hero and tabs.
+    <div className="crates-page crates-page--wide">
       <header className="crates-hero">
         <p className="crates-eyebrow">Crate Digger</p>
         <h1>Crates &amp; Stems</h1>
@@ -442,7 +445,7 @@ function CratesAndStems() {
 
 export default function CratesPage() {
   return (
-    <Suspense fallback={<div className="crates-page">Loading…</div>}>
+    <Suspense fallback={<div className="crates-page crates-page--wide">Loading…</div>}>
       <CratesAndStems />
     </Suspense>
   );

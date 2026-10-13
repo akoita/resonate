@@ -721,9 +721,23 @@
   color: var(--r-primary-soft);
 }
 
-/* Crates & Stems (#2032): two tabs over one page. */
+/* Crates & Stems (#2032): two tabs over one page, always at the same width. */
 .crates-page--wide {
   max-width: none;
+}
+
+/* The build tab fills the shared width: composer beside the crate list. */
+.crates-build-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--r-lg);
+  align-items: start;
+}
+
+@media (min-width: 1200px) {
+  .crates-build-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
 }
 
 .crates-tabs {
