@@ -182,8 +182,11 @@ When staging has no qualifying city card, use the guarded
 to prepare synthetic demand for an explicitly selected artist release. The tool
 preserves real consent and catalog records, uses the normal audience thresholds,
 and provides scoped cleanup. Synthetic evidence can validate the card-to-draft
-flow; it does not prove real listener geography capture or the other Scene Scout
-acceptance scenarios.
+flow; it does not prove real listener geography capture. The same tool's
+scenario phases cover consent withdrawal, erasure, unmet demand, the analytics
+access decision, and first-listener placement and day-seven reception
+suppression (#1970); the first-listener release cap and model-driven picks
+remain covered by integration tests only.
 
 Run the focused Scene Scout backend unit/integration tests, the artist
 analytics card tests and the Shows prefill/form tests. Integration fixtures

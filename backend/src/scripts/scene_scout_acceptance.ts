@@ -24,9 +24,24 @@ import { measuredTrackFeatures } from "../modules/agents/measured_track_features
 import type { CrateCandidateFacts } from "../modules/crates/crate.types";
 import { SceneScoutService, sceneScoutMinimumAudience } from "../modules/scene_scout/scene_scout.service";
 import { UnmetDemandService } from "../modules/scene_scout/unmet_demand.service";
+import { DiscoveryPolicyContextService } from "../modules/recommendations/discovery-policy-context.service";
+import {
+  FIRST_LISTENER_CANDIDATE_LIMIT,
+  FIRST_LISTENER_MAX_RELEASE_PLACEMENTS,
+  FIRST_LISTENER_WINDOW_MS,
+} from "../modules/recommendations/first_listener.contracts";
+import { FirstListenerDiscoveryService } from "../modules/recommendations/first_listener_discovery.service";
+import {
+  FirstListenerReceptionService,
+  parseDiscoveryMinimumAudience,
+} from "../modules/recommendations/first_listener_reception.service";
 import {
   assertSceneScoutAcceptanceMutationRequirements,
   assertSceneScoutAcceptanceStagingEnvironment,
+  FIRST_LISTENER_CANDIDATE_SOURCE_REASONS,
+  FIRST_LISTENER_VERIFICATION_REASONS,
+  firstListenerIneligibilityReasons,
+  type FirstListenerIneligibilityReason,
   parseSceneScoutAcceptanceArgs,
   planSceneScoutAcceptanceUnmetGap,
   SceneScoutAcceptanceInputError,
@@ -196,6 +211,12 @@ async function requireEligibleTarget(
   };
 }
 
+function eventNameForKind(kind: SceneScoutAcceptanceEventKind) {
+  if (kind === "playback_completed") return "playback.completed";
+  if (kind === "playback_started") return "playback.started";
+  return "library.saved";
+}
+
 function buildAnalyticsEvent(input: {
   prefix: string;
   releaseId: string;
@@ -208,7 +229,7 @@ function buildAnalyticsEvent(input: {
   citySlug: string;
   countryCode: string;
 }): AnalyticsEventEnvelope {
-  const eventName = input.kind === "playback_completed" ? "playback.completed" : "library.saved";
+  const eventName = eventNameForKind(input.kind);
   const sourceRefs = {
     acceptanceFixturePrefix: input.prefix,
     acceptanceReleaseId: input.releaseId,
@@ -408,6 +429,7 @@ function objectFromJson(value: Prisma.JsonValue | null): Record<string, unknown>
 function expectedKindFromEventName(eventName: string): SceneScoutAcceptanceEventKind | null {
   if (eventName === "playback.completed") return "playback_completed";
   if (eventName === "library.saved") return "library_saved";
+  if (eventName === "playback.started") return "playback_started";
   return null;
 }
 
@@ -675,6 +697,9 @@ function validateFixtureOwnership(input: {
   }
 
   if (requireCompleteConsentAndEventPairs) {
+    if (events.some(({ eventName }) => eventName === "playback.started")) {
+      fail("The fixture already ran the first-listener-reception scenario and is no longer complete; clean it up and seed a fresh run");
+    }
     if (users.length === 0 || events.length !== users.length * 2) {
       fail("The expected complete fixture is not present; verification is blocked");
     }
@@ -825,8 +850,12 @@ async function cleanupFixture(invocation: SceneScoutAcceptanceInvocation) {
     const accountIds = [...owned.userIds, ...owned.erasedUserIds];
     await refuseIfFixturesHaveCredentials(tx, accountIds);
     let demandObservationsDeleted = 0;
+    let firstListenerExposuresDeleted = 0;
     if (accountIds.length > 0) {
       demandObservationsDeleted = (await tx.demandObservation.deleteMany({ where: { userId: { in: accountIds } } })).count;
+      // Placement rows are identity-linked and go with the account. The release's
+      // placement counter is deliberately not decremented: the budget survives erasure.
+      firstListenerExposuresDeleted = (await tx.firstListenerExposure.deleteMany({ where: { userId: { in: accountIds } } })).count;
     }
     const eventIds = [...owned.eventIds, ...owned.markerEventIds];
     if (eventIds.length > 0) {
@@ -836,7 +865,7 @@ async function cleanupFixture(invocation: SceneScoutAcceptanceInvocation) {
       await tx.analyticsConsent.deleteMany({ where: { userId: { in: accountIds } } });
       await tx.user.deleteMany({ where: { id: { in: accountIds } } });
     }
-    return { ...owned, demandObservationsDeleted };
+    return { ...owned, demandObservationsDeleted, firstListenerExposuresDeleted };
   });
 
   const snapshots = await refreshArtistSnapshots(invocation.artistId);
@@ -852,6 +881,7 @@ async function cleanupFixture(invocation: SceneScoutAcceptanceInvocation) {
     eventsDeleted: deleted.eventCount,
     markerEventsDeleted: deleted.markerEventIds.length,
     demandObservationsDeleted: deleted.demandObservationsDeleted,
+    firstListenerExposuresDeleted: deleted.firstListenerExposuresDeleted,
     snapshots,
     unmetDemandSnapshots,
     note: "Cleanup removed verified local database fixture rows. Downstream staging exports require separate reconciliation.",
@@ -1136,6 +1166,30 @@ async function eraseListenerScenario(
   });
 }
 
+/** Creates fixture listeners with current-policy consent and no listening events. */
+async function createConsentingFixtureListeners(
+  tx: AcceptanceTransaction,
+  prefix: string,
+  listenerCount: number,
+  now: Date,
+) {
+  const users = Array.from({ length: listenerCount }, (_, ordinal) => {
+    const id = sceneScoutAcceptanceUserId(prefix, ordinal);
+    return { id, email: `${id}@test.resonate` };
+  });
+  const decidedAt = new Date(now.getTime() - CONSENT_LEAD_MS);
+  await tx.user.createMany({ data: users });
+  await tx.analyticsConsent.createMany({
+    data: users.map(({ id }) => ({
+      userId: id,
+      productAnalytics: true,
+      policyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
+      decidedAt,
+    })),
+  });
+  return users.map(({ id }) => id);
+}
+
 async function unmetDemandScenario(
   invocation: SceneScoutAcceptanceInvocation,
   target: EligibleTarget,
@@ -1195,21 +1249,8 @@ async function unmetDemandScenario(
     const empty = owned.userIds.length === 0 && owned.eventIds.length === 0 &&
       owned.markers.length === 0 && owned.erasedUserIds.length === 0;
     if (empty) {
-      const users = Array.from({ length: listenerCount }, (_, ordinal) => {
-        const id = sceneScoutAcceptanceUserId(prefix, ordinal);
-        return { id, email: `${id}@test.resonate` };
-      });
-      const decidedAt = new Date(now.getTime() - CONSENT_LEAD_MS);
-      await tx.user.createMany({ data: users });
-      await tx.analyticsConsent.createMany({
-        data: users.map(({ id }) => ({
-          userId: id,
-          productAnalytics: true,
-          policyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
-          decidedAt,
-        })),
-      });
-      return { created: users.length, userIds: users.map(({ id }) => id) };
+      const userIds = await createConsentingFixtureListeners(tx, prefix, listenerCount, now);
+      return { created: userIds.length, userIds };
     }
     if (owned.userIds.length === 0) {
       fail("Fixture prefix has events or markers but no listeners; refusing to add demand listeners");
@@ -1417,11 +1458,518 @@ async function accessCheckScenario(invocation: SceneScoutAcceptanceInvocation, t
   };
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+/** Fixture listeners have default preferences, which exclude explicit tracks. */
+const FIRST_LISTENER_ALLOW_EXPLICIT = false;
+const FIRST_LISTENER_NOTE =
+  "Synthetic acceptance evidence only. Each first-listener run permanently consumes placements from the release's budget; cleanup removes the fixture's placement rows but never restores the counter.";
+
+function failedScenario(phase: string, reason: string, extra: SafeResult = {}): SafeResult {
+  return {
+    phase,
+    result: "failed",
+    provenance: "synthetic_acceptance_fixture",
+    reason,
+    ...extra,
+    note: FIRST_LISTENER_NOTE,
+  };
+}
+
+/** The reception floor, parsed exactly as the reception service parses `DISCOVERY_MIN_AUDIENCE`. */
+function firstListenerAudienceFloor() {
+  const floor = parseDiscoveryMinimumAudience(process.env.DISCOVERY_MIN_AUDIENCE);
+  if (floor > SCENE_SCOUT_ACCEPTANCE_MAX_USERS) {
+    fail(`The current first-listener audience floor requires ${floor} fixtures; the safe maximum is ${SCENE_SCOUT_ACCEPTANCE_MAX_USERS}`);
+  }
+  return floor;
+}
+
+function lowFloorBlock(phase: string, floor: number) {
+  return blockedScenario(phase, "The audience floor is below two listeners, so suppression below it cannot be demonstrated.", {
+    reasons: ["audience_floor_too_low"],
+    floor,
+  });
+}
+
+interface FirstListenerReleaseFacts {
+  artistId: string;
+  createdAt: Date;
+  trackIds: string[];
+  counter: number;
+  exposures: number;
+  reasons: FirstListenerIneligibilityReason[];
+  releaseAgeHours: number;
+}
+
+/** Read-only facts and categorical ineligibility reasons for one release (or one selected track). */
+async function loadFirstListenerReleaseFacts(
+  releaseId: string,
+  trackId: string | undefined,
+  now: Date,
+  placementsNeeded: number,
+): Promise<FirstListenerReleaseFacts | null> {
+  const release = await prisma.release.findUnique({
+    where: { id: releaseId },
+    select: {
+      artistId: true,
+      createdAt: true,
+      status: true,
+      withdrawnAt: true,
+      rightsRoute: true,
+      releaseDate: true,
+      firstListenerPlacementsUsed: true,
+      artist: { select: { userId: true } },
+      tracks: {
+        ...(trackId ? { where: { id: trackId } } : {}),
+        orderBy: [{ position: "asc" }, { id: "asc" }],
+        take: FIRST_LISTENER_CANDIDATE_LIMIT,
+        select: {
+          id: true,
+          processingStatus: true,
+          contentStatus: true,
+          aiDisclosureLevel: true,
+          rightsRoute: true,
+          explicit: true,
+        },
+      },
+    },
+  });
+  if (!release) return null;
+  const artistUserId = release.artist.userId;
+  const [exposures, reputation] = await Promise.all([
+    prisma.firstListenerExposure.count({ where: { releaseId } }),
+    artistUserId
+      ? prisma.curatorReputation.findUnique({
+          where: { walletAddress: artistUserId.toLowerCase() },
+          select: { humanVerificationStatus: true, humanVerifiedAt: true },
+        })
+      : Promise.resolve(null),
+  ]);
+  const reasons = firstListenerIneligibilityReasons({
+    now,
+    release,
+    tracks: release.tracks.map((track) => ({ ...track, aiDisclosureLevel: String(track.aiDisclosureLevel) })),
+    artistUserId,
+    humanVerificationStatus: reputation?.humanVerificationStatus,
+    humanVerifiedAt: reputation?.humanVerifiedAt,
+    placementsUsed: Math.max(release.firstListenerPlacementsUsed, exposures),
+    placementsNeeded,
+  });
+  return {
+    artistId: release.artistId,
+    createdAt: release.createdAt,
+    trackIds: release.tracks.map(({ id }) => id),
+    counter: release.firstListenerPlacementsUsed,
+    exposures,
+    reasons,
+    releaseAgeHours: Math.floor((now.getTime() - release.createdAt.getTime()) / HOUR_MS),
+  };
+}
+
+function capRemaining(counter: number, exposures: number) {
+  return Math.max(0, FIRST_LISTENER_MAX_RELEASE_PLACEMENTS - Math.max(counter, exposures));
+}
+
+/**
+ * #1970: with the real clock, every floor-count fixture listener is offered
+ * the fresh target track by the real candidate source and reserves exactly one
+ * placement; a repeat is refused; an optional ineligible release is excluded.
+ */
+async function firstListenerScenario(
+  invocation: SceneScoutAcceptanceInvocation,
+  target: EligibleTarget,
+): Promise<SafeResult> {
+  const phase = "first-listener";
+  const listenerCount = firstListenerAudienceFloor();
+  if (listenerCount < 2) return lowFloorBlock(phase, listenerCount);
+
+  // Every precondition is read before anything is written; the catalog is never altered.
+  const now = new Date();
+  const facts = await loadFirstListenerReleaseFacts(target.releaseId, target.trackId, now, listenerCount);
+  if (!facts) fail("The target release is no longer available");
+  if (facts.reasons.length > 0) {
+    return blockedScenario(
+      phase,
+      "The target release or track is not eligible for first-listener placement; use a fresh, public, human-verified, playable release instead of altering the catalog.",
+      {
+        reasons: facts.reasons,
+        releaseAgeHours: facts.releaseAgeHours,
+        windowHours: FIRST_LISTENER_WINDOW_MS / HOUR_MS,
+        listenersRequired: listenerCount,
+        capRemaining: capRemaining(facts.counter, facts.exposures),
+      },
+    );
+  }
+
+  let ineligible: FirstListenerReleaseFacts | null = null;
+  if (invocation.ineligibleReleaseId) {
+    ineligible = await loadFirstListenerReleaseFacts(invocation.ineligibleReleaseId, undefined, now, 1);
+    if (!ineligible) fail("--ineligible-release-id must identify an existing release");
+    if (ineligible.reasons.length === 0) {
+      return blockedScenario(
+        phase,
+        "The --ineligible-release-id release is currently eligible for first-listener placement; nothing was reserved.",
+        { reasons: ["ineligible_release_is_eligible"] },
+      );
+    }
+  }
+
+  const prefix = sceneScoutAcceptancePrefix(invocation);
+  const fixture = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${prefix}, 0)) IS NULL AS acquired
+    `);
+    const owned = await inspectFixture(tx, invocation, prefix, false);
+    if (owned.markers.length > 0 || owned.erasedUserIds.length > 0) {
+      fail("The fixture already ran an erase scenario; clean it up and use a fresh run for first-listener acceptance");
+    }
+    if (owned.userIds.length > 0) {
+      const prior = await tx.firstListenerExposure.count({ where: { userId: { in: owned.userIds } } });
+      if (prior > 0) {
+        fail("The fixture already ran the first-listener scenario, which consumes it once; run first-listener-reception, or clean it up and use a fresh run");
+      }
+      return { created: 0, userIds: owned.userIds };
+    }
+    if (owned.eventIds.length > 0) {
+      fail("Fixture prefix has events but no listeners; refusing to add first-listener listeners");
+    }
+    const userIds = await createConsentingFixtureListeners(tx, prefix, listenerCount, now);
+    return { created: userIds.length, userIds };
+  });
+
+  const consents = await prisma.analyticsConsent.findMany({
+    where: { userId: { in: fixture.userIds } },
+    select: { userId: true, productAnalytics: true, policyVersion: true },
+  });
+  const consenting = new Set(
+    consents
+      .filter((consent) => consent.productAnalytics && consent.policyVersion === ANALYTICS_CONSENT_POLICY_VERSION)
+      .map((consent) => consent.userId),
+  );
+  // Fixture ids sort in ordinal order; exactly the floor count of consenting listeners is used.
+  const listeners = [...fixture.userIds].sort().filter((id) => consenting.has(id)).slice(0, listenerCount);
+  if (listeners.length < listenerCount) {
+    return blockedScenario(phase, "Fewer fixture listeners than the audience floor currently have current consent.", {
+      reasons: ["insufficient_consenting_listeners"],
+      fixtureListenersCreated: fixture.created,
+      consentingListeners: listeners.length,
+    });
+  }
+
+  const discovery = new FirstListenerDiscoveryService();
+  const placement = { trackId: target.trackId, releaseId: target.releaseId };
+  const readBudget = async () => {
+    const [release, fixtureExposures, releaseExposures] = await Promise.all([
+      prisma.release.findUnique({ where: { id: target.releaseId }, select: { firstListenerPlacementsUsed: true } }),
+      prisma.firstListenerExposure.count({ where: { releaseId: target.releaseId, userId: { in: listeners } } }),
+      prisma.firstListenerExposure.count({ where: { releaseId: target.releaseId } }),
+    ]);
+    return { counter: release?.firstListenerPlacementsUsed ?? 0, fixtureExposures, releaseExposures };
+  };
+
+  // Every listener must be offered the target by the real candidate source before any reservation.
+  let candidatesServed = 0;
+  for (const userId of listeners) {
+    const candidates = await discovery.getFreshCandidates({
+      userId,
+      allowExplicit: FIRST_LISTENER_ALLOW_EXPLICIT,
+      trackIds: [target.trackId],
+    });
+    if (candidates.some((candidate) => candidate.id === target.trackId && candidate.release.id === target.releaseId)) {
+      candidatesServed += 1;
+    }
+  }
+  if (candidatesServed !== listeners.length) {
+    return failedScenario(phase, "The fresh-candidate source did not offer the target track to every fixture listener; nothing was reserved.", {
+      reasons: ["candidate_not_served"],
+      clock: "real",
+      listeners: listeners.length,
+      candidatesServed,
+      placementsReserved: 0,
+    });
+  }
+
+  const before = await readBudget();
+  let placementsReserved = 0;
+  for (const userId of listeners) {
+    const reserved = await discovery.reservePlacements(userId, [placement], { allowExplicit: FIRST_LISTENER_ALLOW_EXPLICIT });
+    if (reserved.has(target.releaseId)) placementsReserved += 1;
+  }
+  const afterReservations = await readBudget();
+  const reservationsVerified = placementsReserved === listeners.length &&
+    afterReservations.counter === Math.max(before.counter, before.releaseExposures) + listeners.length &&
+    afterReservations.fixtureExposures === listeners.length;
+
+  // One placement per listener and release: a repeat for listener 1 changes nothing.
+  const repeat = await discovery.reservePlacements(listeners[0], [placement], { allowExplicit: FIRST_LISTENER_ALLOW_EXPLICIT });
+  const afterRepeat = await readBudget();
+  const duplicateRefused = !repeat.has(target.releaseId) &&
+    afterRepeat.counter === afterReservations.counter &&
+    afterRepeat.fixtureExposures === afterReservations.fixtureExposures;
+
+  let ineligibleCheck: SafeResult = { checked: false };
+  let ineligibleExcluded = true;
+  if (ineligible && invocation.ineligibleReleaseId) {
+    const releaseId = invocation.ineligibleReleaseId;
+    const sourceApplies = ineligible.reasons.some((reason) => FIRST_LISTENER_CANDIDATE_SOURCE_REASONS.includes(reason));
+    const verificationApplies = ineligible.reasons.some((reason) => FIRST_LISTENER_VERIFICATION_REASONS.includes(reason));
+    const candidates = ineligible.trackIds.length > 0
+      ? await discovery.getFreshCandidates({
+          userId: listeners[0],
+          allowExplicit: FIRST_LISTENER_ALLOW_EXPLICIT,
+          trackIds: ineligible.trackIds,
+        })
+      : [];
+    const served = candidates.filter((candidate) => candidate.release.id === releaseId).length;
+    // Verified-human status is enforced by the shared discovery policy (and again at reservation),
+    // not by the candidate source, so it is checked against the policy context instead.
+    const policyContext = verificationApplies
+      ? await new DiscoveryPolicyContextService().loadContext(listeners[0], [ineligible.artistId])
+      : undefined;
+    const readIneligibleBudget = async () => {
+      const [release, exposures] = await Promise.all([
+        prisma.release.findUnique({ where: { id: releaseId }, select: { firstListenerPlacementsUsed: true } }),
+        prisma.firstListenerExposure.count({ where: { releaseId } }),
+      ]);
+      return { counter: release?.firstListenerPlacementsUsed ?? 0, exposures };
+    };
+    const ineligibleBefore = await readIneligibleBudget();
+    const reservationAttempted = ineligible.trackIds.length > 0;
+    const reserved = reservationAttempted
+      ? await discovery.reservePlacements(
+          listeners[0],
+          [{ trackId: ineligible.trackIds[0], releaseId }],
+          { allowExplicit: FIRST_LISTENER_ALLOW_EXPLICIT },
+        )
+      : new Set<string>();
+    const ineligibleAfter = await readIneligibleBudget();
+    const candidateSourceExcluded = sourceApplies ? served === 0 : null;
+    const verificationPolicyExcluded = policyContext ? !policyContext.verifiedHumanArtistIds.has(ineligible.artistId) : null;
+    const reservationRefused = !reserved.has(releaseId);
+    const budgetUnchanged = ineligibleAfter.counter === ineligibleBefore.counter &&
+      ineligibleAfter.exposures === ineligibleBefore.exposures;
+    ineligibleExcluded = candidateSourceExcluded !== false &&
+      verificationPolicyExcluded !== false &&
+      reservationRefused &&
+      budgetUnchanged;
+    ineligibleCheck = {
+      checked: true,
+      outcome: ineligibleExcluded ? "excluded" : "not_excluded",
+      reasons: ineligible.reasons,
+      candidateSourceExcluded,
+      verificationPolicyExcluded,
+      reservationAttempted,
+      reservationRefused,
+      budgetUnchanged,
+    };
+  }
+
+  const verified = reservationsVerified && duplicateRefused && ineligibleExcluded;
+  return {
+    phase,
+    result: verified ? "verified" : "failed",
+    provenance: "synthetic_acceptance_fixture",
+    analyticsArtistId: target.artistId,
+    releaseId: target.releaseId,
+    trackId: target.trackId,
+    clock: "real",
+    listeners: listeners.length,
+    fixtureListenersCreated: fixture.created,
+    candidatesServed,
+    placementsReserved,
+    counterBefore: before.counter,
+    counterAfter: afterRepeat.counter,
+    fixturePlacements: afterRepeat.fixtureExposures,
+    capRemaining: capRemaining(afterRepeat.counter, afterRepeat.releaseExposures),
+    capExercised: false,
+    duplicateRefused,
+    ineligibleRelease: ineligibleCheck,
+    ...(verified ? {} : {
+      reason: "Placement reservation, uniqueness, or the ineligible-release exclusion did not meet the expected result.",
+    }),
+    note: `${FIRST_LISTENER_NOTE} The per-release placement cap is not exercised live; the integration suite covers it.`,
+  };
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * #1970: after a completed `first-listener` run, day-seven reception must
+ * suppress an audience one below the floor and report exactly the floor once
+ * the last fixture listener has heard the release.
+ */
+async function firstListenerReceptionScenario(
+  invocation: SceneScoutAcceptanceInvocation,
+  target: EligibleTarget,
+): Promise<SafeResult> {
+  const phase = "first-listener-reception";
+  const listenerCount = firstListenerAudienceFloor();
+  if (listenerCount < 2) return lowFloorBlock(phase, listenerCount);
+
+  const prefix = sceneScoutAcceptancePrefix(invocation);
+  const owned = await prisma.$transaction(async (tx) => inspectFixture(tx, invocation, prefix, false));
+  if (owned.markers.length > 0 || owned.erasedUserIds.length > 0) {
+    fail("The fixture already ran an erase scenario; clean it up and use a fresh run for first-listener acceptance");
+  }
+  if (owned.eventIds.some((eventId) => eventId.endsWith("_playback_started"))) {
+    fail("The fixture already ran the first-listener-reception scenario, which consumes it once; clean it up and use a fresh run");
+  }
+
+  const exposures = owned.userIds.length === 0
+    ? []
+    : await prisma.firstListenerExposure.findMany({
+        where: { releaseId: target.releaseId, userId: { in: owned.userIds } },
+        orderBy: { userId: "asc" },
+        select: { userId: true, placedAt: true },
+      });
+  if (exposures.length !== listenerCount) {
+    return blockedScenario(
+      phase,
+      exposures.length === 0
+        ? "Run first-listener for this fixture and target first."
+        : "The fixture's placements do not match the audience floor; clean it up and use a fresh run.",
+      {
+        reasons: [exposures.length === 0 ? "first_listener_not_run" : "fixture_placements_mismatch"],
+        fixturePlacements: exposures.length,
+        floor: listenerCount,
+      },
+    );
+  }
+
+  const release = await prisma.release.findUnique({ where: { id: target.releaseId }, select: { createdAt: true } });
+  if (!release) fail("The target release is no longer available");
+  const windowEnd = new Date(release.createdAt.getTime() + FIRST_LISTENER_WINDOW_MS);
+  // Reception counts only plays inside the release's first seven days, and this phase writes
+  // plays at the real time. A matured release can therefore no longer take valid plays.
+  if (Date.now() >= windowEnd.getTime()) {
+    return blockedScenario(phase, "The release's first seven days have ended, so plays written now cannot count toward its reception.", {
+      reasons: ["release_window_closed"],
+      clock: "real",
+    });
+  }
+  // Read reception exactly at day seven: the earliest time the release is reported at all.
+  const readAt = windowEnd;
+  const clock = "projected";
+  if (exposures.some(({ placedAt }) => placedAt < release.createdAt || placedAt > windowEnd)) {
+    return blockedScenario(phase, "A fixture placement lies outside the release's first seven days.", {
+      reasons: ["placements_outside_window"],
+    });
+  }
+
+  const listeners = exposures.map(({ userId }) => userId);
+  const consents = await prisma.analyticsConsent.findMany({
+    where: { userId: { in: listeners } },
+    select: { userId: true, productAnalytics: true, policyVersion: true },
+  });
+  const consenting = consents.filter((consent) =>
+    consent.productAnalytics && consent.policyVersion === ANALYTICS_CONSENT_POLICY_VERSION).length;
+  if (consenting !== listeners.length) {
+    return blockedScenario(phase, "A placed fixture listener no longer has current consent; clean it up and use a fresh run.", {
+      reasons: ["listener_consent_changed"],
+      consentingListeners: consenting,
+    });
+  }
+
+  // Real listeners' placements on the same release would combine with the fixture's counts.
+  const realPlacements = await prisma.firstListenerExposure.count({
+    where: { releaseId: target.releaseId, userId: { notIn: owned.userIds } },
+  });
+  const reception = new FirstListenerReceptionService();
+  const readRelease = async () => {
+    const result = await reception.getArtistReception(target.artistId, { now: readAt });
+    return {
+      available: result.available,
+      row: result.releases.find(({ releaseId }) => releaseId === target.releaseId),
+    };
+  };
+  const baseline = await readRelease();
+  if (!baseline.available || !baseline.row) {
+    return blockedScenario(phase, "Reception was unavailable for the artist at day seven.", {
+      reasons: ["reception_unavailable"],
+      clock,
+      readAt: readAt.toISOString(),
+    });
+  }
+  if (realPlacements > 0 || baseline.row.heard !== null) {
+    return blockedScenario(phase, "The release already has real first-listener placements or reception that would combine with the fixture's counts.", {
+      reasons: ["real_reception_present"],
+      clock,
+      readAt: readAt.toISOString(),
+    });
+  }
+
+  const ordinalOf = (userId: string) => {
+    const ordinal = Array.from({ length: SCENE_SCOUT_ACCEPTANCE_MAX_USERS }, (_, index) => index)
+      .find((index) => sceneScoutAcceptanceUserId(prefix, index) === userId);
+    if (ordinal === undefined) fail("Fixture user marker collision detected; refusing changes to unexpected ownership");
+    return ordinal;
+  };
+  // A play must follow its placement; never write one before the latest placement's instant.
+  const latestPlacement = Math.max(...exposures.map(({ placedAt }) => placedAt.getTime()));
+  while (Date.now() <= latestPlacement) await sleep(5);
+  const writeHeard = async (userIds: string[]) => {
+    const occurredAt = new Date();
+    if (occurredAt.getTime() > windowEnd.getTime()) {
+      fail("The release's first seven days ended during the run; clean it up and use a fresher release");
+    }
+    const events = userIds.map((userId) => {
+      const actorId = pseudonymousAnalyticsActorId(userId);
+      if (!actorId) fail("Could not derive a pseudonymous fixture actor id");
+      return buildAnalyticsEvent({
+        prefix,
+        releaseId: target.releaseId,
+        trackId: target.trackId,
+        ordinal: ordinalOf(userId),
+        kind: "playback_started",
+        actorId,
+        occurredAt,
+        receivedAt: occurredAt,
+        citySlug: invocation.citySlug,
+        countryCode: invocation.countryCode,
+      });
+    });
+    await prisma.analyticsEvent.createMany({ data: events.map(toPrismaEvent) });
+  };
+
+  await writeHeard(listeners.slice(0, -1));
+  const belowFloor = await readRelease();
+  await writeHeard(listeners.slice(-1));
+  const atFloor = await readRelease();
+
+  const suppressed = belowFloor.available && belowFloor.row !== undefined && belowFloor.row.heard === null;
+  const reported = atFloor.available && atFloor.row !== undefined &&
+    atFloor.row.heard === listenerCount &&
+    atFloor.row.saves === null &&
+    atFloor.row.follows === null;
+  const verified = suppressed && reported;
+  return {
+    phase,
+    result: verified ? "verified" : "failed",
+    provenance: "synthetic_acceptance_fixture",
+    analyticsArtistId: target.artistId,
+    releaseId: target.releaseId,
+    clock,
+    readAt: readAt.toISOString(),
+    floor: listenerCount,
+    playsWritten: listeners.length,
+    heardBelowFloor: belowFloor.row?.heard ?? null,
+    heardAtFloor: atFloor.row?.heard ?? null,
+    fullPlaysAtFloor: atFloor.row?.fullPlays ?? null,
+    savesAtFloor: atFloor.row?.saves ?? null,
+    followsAtFloor: atFloor.row?.follows ?? null,
+    ...(verified ? {} : {
+      reason: "Day-seven reception did not suppress the audience below the floor or report exactly the floor at it.",
+    }),
+    note: "Synthetic acceptance evidence only; the plays are synthetic fixture events. Run cleanup afterwards.",
+  };
+}
+
 /**
  * Execute a parsed invocation. Preview and access-check perform reads only.
- * CLI: `[preview|seed|verify|withdraw-consent|erase-listener|unmet-demand|access-check|cleanup]
- * --artist-id <id> --release-id <id> --run-id <id> --city-slug <slug> --country-code <cc>`;
- * `--show-artist-id` and `--track-id` are optional selectors.
+ * CLI: `[preview|seed|verify|withdraw-consent|erase-listener|unmet-demand|access-check|first-listener|
+ * first-listener-reception|cleanup] --artist-id <id> --release-id <id> --run-id <id> --city-slug <slug>
+ * --country-code <cc>`; `--show-artist-id` and `--track-id` are optional selectors, and
+ * `--ineligible-release-id` is an optional `first-listener` check.
  */
 export async function runSceneScoutAcceptance(
   invocation: SceneScoutAcceptanceInvocation,
@@ -1462,6 +2010,10 @@ export async function runSceneScoutAcceptance(
       return unmetDemandScenario(invocation, target, listenerCount);
     case "access-check":
       return accessCheckScenario(invocation, target);
+    case "first-listener":
+      return firstListenerScenario(invocation, target);
+    case "first-listener-reception":
+      return firstListenerReceptionScenario(invocation, target);
     default:
       return verifyFixture(invocation, target, listenerCount);
   }
@@ -1471,7 +2023,7 @@ async function main(args: string[]) {
   const invocation = parseSceneScoutAcceptanceArgs(args);
   const result = await runSceneScoutAcceptance(invocation);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  if (result.result === "blocked" || result.result === "seeded_but_blocked") process.exitCode = 1;
+  if (["blocked", "seeded_but_blocked", "failed"].includes(String(result.result))) process.exitCode = 1;
 }
 
 if (require.main === module) {

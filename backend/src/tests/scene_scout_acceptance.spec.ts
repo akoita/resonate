@@ -1,6 +1,7 @@
 import {
   assertSceneScoutAcceptanceMutationRequirements,
   assertSceneScoutAcceptanceStagingEnvironment,
+  firstListenerIneligibilityReasons,
   parseSceneScoutAcceptanceArgs,
   planSceneScoutAcceptanceUnmetGap,
   sceneScoutAcceptanceCrateRequestId,
@@ -8,6 +9,7 @@ import {
   sceneScoutAcceptanceMarkerEventId,
   sceneScoutAcceptancePrefix,
   sceneScoutAcceptanceUserId,
+  type FirstListenerEligibilityFacts,
   type SceneScoutAcceptanceInvocation,
 } from "../scripts/scene_scout_acceptance_support";
 import type { CrateCandidateFacts } from "../modules/crates/crate.types";
@@ -61,7 +63,7 @@ describe("Scene Scout acceptance CLI support", () => {
       });
     });
 
-    it.each(["withdraw-consent", "erase-listener", "unmet-demand", "access-check"] as const)(
+    it.each(["withdraw-consent", "erase-listener", "unmet-demand", "access-check", "first-listener", "first-listener-reception"] as const)(
       "parses the %s scenario phase with the shared target arguments",
       (phase) => {
         expect(invocation([phase, ...REQUIRED_ARGS, "--confirm"])).toMatchObject({
@@ -74,6 +76,33 @@ describe("Scene Scout acceptance CLI support", () => {
         expect(() => invocation([phase, ...REQUIRED_ARGS.slice(0, -2)])).toThrow(/Missing required flag --country-code/);
       },
     );
+
+    it("accepts --ineligible-release-id only on the first-listener phase, trimmed and distinct from the target", () => {
+      expect(invocation()).not.toHaveProperty("ineligibleReleaseId");
+      expect(invocation(["first-listener", ...REQUIRED_ARGS, "--ineligible-release-id", " stale_release ", "--confirm"]))
+        .toMatchObject({ phase: "first-listener", releaseId: "release_1", ineligibleReleaseId: "stale_release" });
+      for (const phase of ["preview", "seed", "first-listener-reception", "cleanup"] as const) {
+        expect(() => invocation([phase, ...REQUIRED_ARGS, "--ineligible-release-id", "stale_release"]))
+          .toThrow(/only valid for the first-listener phase/);
+      }
+      expect(() => invocation(["first-listener", ...REQUIRED_ARGS, "--ineligible-release-id", "   "]))
+        .toThrow(/ineligible-release-id must not be empty/);
+      expect(() => invocation(["first-listener", ...REQUIRED_ARGS, "--ineligible-release-id", " release_1 "]))
+        .toThrow(/must differ from --release-id/);
+      expect(() => invocation([
+        "first-listener", ...REQUIRED_ARGS,
+        "--ineligible-release-id", "a",
+        "--ineligible-release-id", "b",
+      ])).toThrow(/Duplicate flag --ineligible-release-id/);
+      expect(() => invocation(["first-listener", ...REQUIRED_ARGS, "--ineligible-release-id"]))
+        .toThrow(/--ineligible-release-id requires a value/);
+    });
+
+    it("keeps the fixture namespace independent of the ineligible-release check", () => {
+      const plain = invocation(["first-listener", ...REQUIRED_ARGS]);
+      const checked = invocation(["first-listener", ...REQUIRED_ARGS, "--ineligible-release-id", "stale_release"]);
+      expect(sceneScoutAcceptancePrefix(checked)).toBe(sceneScoutAcceptancePrefix(plain));
+    });
 
     it("rejects unknown phases that resemble scenario names", () => {
       expect(() => invocation(["withdraw", ...REQUIRED_ARGS])).toThrow(/Unknown phase withdraw/);
@@ -170,7 +199,16 @@ describe("Scene Scout acceptance CLI support", () => {
       )).not.toThrow();
     });
 
-    it.each(["seed", "verify", "withdraw-consent", "erase-listener", "unmet-demand", "cleanup"] as const)("requires confirmation and salt for %s", (phase) => {
+    it.each([
+      "seed",
+      "verify",
+      "withdraw-consent",
+      "erase-listener",
+      "unmet-demand",
+      "first-listener",
+      "first-listener-reception",
+      "cleanup",
+    ] as const)("requires confirmation and salt for %s", (phase) => {
       expect(() => assertSceneScoutAcceptanceMutationRequirements(
         { phase, confirm: false },
         { ANALYTICS_ACTOR_ID_SALT: "test-salt" },
@@ -213,6 +251,7 @@ describe("Scene Scout acceptance CLI support", () => {
       expect(sceneScoutAcceptanceUserId(prefix, 7)).toBe(`${prefix}user_07`);
       expect(sceneScoutAcceptanceEventId(prefix, 7, "playback_completed")).toBe(`${prefix}event_07_playback_completed`);
       expect(sceneScoutAcceptanceEventId(prefix, 7, "library_saved")).toBe(`${prefix}event_07_library_saved`);
+      expect(sceneScoutAcceptanceEventId(prefix, 2, "playback_started")).toBe(`${prefix}event_02_playback_started`);
       expect(sceneScoutAcceptanceMarkerEventId(prefix, 1, "erased_account")).toBe(`${prefix}marker_01_erased_account`);
       expect(sceneScoutAcceptanceCrateRequestId(prefix, 2)).toBe(`${prefix}crate_request_02`);
     });
@@ -300,5 +339,76 @@ describe("Scene Scout acceptance unmet-demand gap planning", () => {
         { targetType: gap!.targetType, candidateTrackId: "track_1", kind: gap!.kind, value: gap!.value },
       ]);
     }
+  });
+});
+
+describe("Scene Scout acceptance first-listener eligibility reasons", () => {
+  const NOW = new Date("2026-10-01T12:00:00.000Z");
+  const HOUR = 60 * 60 * 1000;
+
+  function facts(overrides: Partial<FirstListenerEligibilityFacts> = {}): FirstListenerEligibilityFacts {
+    return {
+      now: NOW,
+      release: {
+        createdAt: new Date(NOW.getTime() - HOUR),
+        status: "published",
+        withdrawnAt: null,
+        rightsRoute: null,
+        releaseDate: null,
+      },
+      tracks: [{ processingStatus: "complete", contentStatus: "clean", aiDisclosureLevel: "NONE", rightsRoute: null, explicit: false }],
+      artistUserId: "artist_user",
+      humanVerificationStatus: "human_verified",
+      humanVerifiedAt: NOW,
+      placementsUsed: 0,
+      placementsNeeded: 3,
+      ...overrides,
+    };
+  }
+
+  it("reports no reason for a fresh, public, playable, human-verified release with budget left", () => {
+    expect(firstListenerIneligibilityReasons(facts())).toEqual([]);
+    expect(firstListenerIneligibilityReasons(facts({
+      release: { ...facts().release, createdAt: new Date(NOW.getTime() - 7 * 24 * HOUR), rightsRoute: "STANDARD_ESCROW" },
+      placementsUsed: 997,
+    }))).toEqual([]);
+  });
+
+  it("reports catalog reasons categorically", () => {
+    const base = facts().release;
+    expect(firstListenerIneligibilityReasons(facts({
+      release: { ...base, createdAt: new Date(NOW.getTime() - 7 * 24 * HOUR - 1) },
+    }))).toEqual(["stale"]);
+    expect(firstListenerIneligibilityReasons(facts({
+      release: {
+        createdAt: new Date(NOW.getTime() + 1),
+        status: "processing",
+        withdrawnAt: NOW,
+        rightsRoute: "BLOCKED",
+        releaseDate: new Date(NOW.getTime() + 1),
+      },
+    }))).toEqual(["future_created", "not_public", "withdrawn", "rights_route", "future_release_date"]);
+  });
+
+  it("distinguishes fully AI-generated, unplayable, and explicit-only tracks", () => {
+    const track = facts().tracks[0];
+    expect(firstListenerIneligibilityReasons(facts({ tracks: [{ ...track, aiDisclosureLevel: "ALL" }] })))
+      .toEqual(["ai_disclosure_all"]);
+    expect(firstListenerIneligibilityReasons(facts({ tracks: [] }))).toEqual(["no_playable_track"]);
+    for (const change of [{ processingStatus: "pending" }, { contentStatus: "quarantined" }, { rightsRoute: "BLOCKED" }]) {
+      expect(firstListenerIneligibilityReasons(facts({ tracks: [{ ...track, ...change }] }))).toEqual(["no_playable_track"]);
+    }
+    expect(firstListenerIneligibilityReasons(facts({ tracks: [{ ...track, explicit: true }] }))).toEqual(["explicit_track"]);
+    expect(firstListenerIneligibilityReasons(facts({
+      tracks: [{ ...track, aiDisclosureLevel: "ALL" }, { ...track, aiDisclosureLevel: "PARTLY" }],
+    }))).toEqual([]);
+  });
+
+  it("requires a human-verified artist account and room for every needed placement", () => {
+    expect(firstListenerIneligibilityReasons(facts({ artistUserId: null }))).toEqual(["artist_without_user"]);
+    expect(firstListenerIneligibilityReasons(facts({ humanVerificationStatus: "unverified" }))).toEqual(["not_human_verified"]);
+    expect(firstListenerIneligibilityReasons(facts({ humanVerificationStatus: null }))).toEqual(["not_human_verified"]);
+    expect(firstListenerIneligibilityReasons(facts({ placementsUsed: 998 }))).toEqual(["placement_cap_reached"]);
+    expect(firstListenerIneligibilityReasons(facts({ placementsUsed: 1000, placementsNeeded: 1 }))).toEqual(["placement_cap_reached"]);
   });
 });
