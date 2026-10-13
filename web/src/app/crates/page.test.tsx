@@ -67,7 +67,9 @@ describe("/crates tabs (#2032)", () => {
     expect(html).toContain("What does your set need?");
     expect(html).toContain("Your crates");
     expect(html).not.toContain('data-testid="marketplace-browse"');
-    expect(html).not.toContain("crates-page--wide");
+    // Same page width as the stems tab, so switching tabs never resizes the shell.
+    expect(html).toContain("crates-page--wide");
+    expect(html).toContain('class="crates-build-grid"');
   });
 
   it("greets the build tab with an eyebrow and example prompts", () => {

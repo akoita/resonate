@@ -693,7 +693,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/crate-digger-request.png`,
-              alt: "The Crate Digger page with a 'What does your set need?' box holding a sentence about melodic house tracks around 122 to 128 BPM, a Lines field showing 8, a Build crate button, and a Your crates list with two earlier crates below.",
+              alt: "The Crate Digger page with a 'What does your set need?' box holding a sentence about melodic house tracks around 122 to 128 BPM, a Lines field showing 8, a Build crate button, and, beside it, a Your crates list with two earlier crates.",
               caption: "Describe your set in your own words, choose how many lines you want, and press Build crate. Your earlier crates are listed underneath.",
               width: 1440,
               height: 900,
