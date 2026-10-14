@@ -1,7 +1,14 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { CampaignDraftEditGate } from "../../../../components/shows/CampaignDraftEditGate";
 import { CampaignDraftForm } from "../../../../components/shows/CampaignDraftForm";
-import { campaignDisplayTitle, getCampaign } from "../../../../lib/shows";
+import {
+  campaignDisplayTitle,
+  campaignHref,
+  canonicalCampaignRedirect,
+  getCampaign,
+} from "../../../../lib/shows";
+import { decodePathSegment } from "../../../../lib/seo";
 
 interface Props {
   params: Promise<{ campaignId: string }>;
@@ -9,9 +16,15 @@ interface Props {
 
 export default async function EditShowCampaignPage({ params }: Props) {
   const { campaignId } = await params;
-  const campaign = await getCampaign(campaignId);
+  const requestedId = decodePathSegment(campaignId);
+  const campaign = await getCampaign(requestedId);
   if (!campaign) {
     notFound();
+  }
+  // #2130: a draft reached by its internal id lands on its slug edit URL.
+  const canonicalRedirect = canonicalCampaignRedirect(requestedId, campaign, "/edit");
+  if (canonicalRedirect) {
+    redirect(canonicalRedirect);
   }
   const displayTitle = campaignDisplayTitle(campaign);
 
@@ -21,7 +34,7 @@ export default async function EditShowCampaignPage({ params }: Props) {
         <nav className="show-detail__breadcrumb" aria-label="Breadcrumb">
           <Link href="/shows">Shows</Link>
           <span aria-hidden>/</span>
-          <Link href={`/shows/${campaign.id}`}>{displayTitle}</Link>
+          <Link href={campaignHref(campaign)}>{displayTitle}</Link>
           <span aria-hidden>/</span>
           <span>Edit</span>
         </nav>
@@ -36,12 +49,14 @@ export default async function EditShowCampaignPage({ params }: Props) {
         </header>
 
         {campaign.rawStatus === "draft" ? (
-          <CampaignDraftForm campaign={campaign} />
+          <CampaignDraftEditGate campaign={campaign}>
+            <CampaignDraftForm campaign={campaign} />
+          </CampaignDraftEditGate>
         ) : (
           <section className="shows-create__panel">
             <h2>Campaign is active</h2>
             <p>Only draft campaigns can be edited from this screen.</p>
-            <Link href={`/shows/${campaign.id}`}>Back to campaign</Link>
+            <Link href={campaignHref(campaign)}>Back to campaign</Link>
           </section>
         )}
       </div>

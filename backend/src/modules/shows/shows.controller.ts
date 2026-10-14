@@ -49,9 +49,10 @@ export class ShowsController {
     });
   }
 
+  // #2130: resolves a slug or the internal campaign id.
   @Get("campaigns/:slug")
-  getCampaign(@Param("slug") slug: string) {
-    return this.showsService.getCampaign(slug);
+  getCampaign(@Param("slug") slugOrId: string) {
+    return this.showsService.getCampaign(slugOrId);
   }
 
   // #2128: artist-side campaign routes (manage, create/update drafts, visuals,

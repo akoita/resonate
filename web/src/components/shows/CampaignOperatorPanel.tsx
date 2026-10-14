@@ -9,6 +9,7 @@ import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
   activateShowCampaign,
   approveShowCampaignAuthority,
+  campaignEditHref,
   cancelShowCampaign,
   formatCampaignFeePercent,
   confirmShowCampaignBooking,
@@ -297,7 +298,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
         </div>
         <div className="show-detail__operator-header-actions">
           {current.rawStatus === "draft" ? (
-            <Link href={`/shows/${current.id}/edit`}>Edit draft</Link>
+            <Link href={campaignEditHref(current)}>Edit draft</Link>
           ) : null}
           <span className="show-detail__soon-pill">{formatStatus(role)}</span>
         </div>

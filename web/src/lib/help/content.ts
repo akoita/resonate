@@ -2783,7 +2783,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "shows",
     audiences: ["artist", "operator"],
     status: "partial",
-    keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist", "fee", "payout", "verified human", "human verification", "eligible for payouts", "get paid"],
+    keywords: ["shows", "create campaign", "edit draft", "draft campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist", "fee", "payout", "verified human", "human verification", "eligible for payouts", "get paid"],
     sections: [
       {
         id: "create",
@@ -2796,6 +2796,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Set the artist, city, goal, deadline, and the visual set fans will see.",
               "Define the fan-risk terms — what backers are promised and what happens if the show doesn't go ahead.",
             ],
+          },
+          {
+            kind: "paragraph",
+            text: "Until a campaign goes live it is a draft. Open its campaign page while signed in with the account that manages the artist and a Draft bar appears at the top with an Edit draft button. Only the campaign's artist and Resonate operators see it; fans can't pledge to a draft.",
           },
         ],
       },
