@@ -1,4 +1,4 @@
-import { exitCodeFor, isDryRun } from "../scripts/run_retention_cleanup";
+import { exitCodeFor, isDryRun, scheduledRunLogFields } from "../scripts/run_retention_cleanup";
 
 describe("scheduled retention runner", () => {
   describe("exit code", () => {
@@ -19,6 +19,31 @@ describe("scheduled retention runner", () => {
 
     it("treats any unrecognised status as a failure, not a success", () => {
       expect(exitCodeFor({ status: "something_new" })).toBe(1);
+    });
+  });
+
+  describe("scheduled run log", () => {
+    // The demand-observation purge is bounded per run, so its count is the only
+    // way to see a backlog draining across scheduled runs.
+    it("reports the demand-observation and pledge-context purges", () => {
+      const fields = scheduledRunLogFields({
+        status: "ok",
+        deleted: 4,
+        redacted: 2,
+        lineageRecords: 6,
+        demandObservationsDeleted: 1000,
+        showPledgeDemandContextsDeleted: 3,
+        policy: { sensitiveDays: 90, personalDays: 395, pseudonymousDays: 730 },
+        warehouse: [],
+        ranAt: "2026-10-14T04:00:00.000Z",
+      });
+      expect(fields).toMatchObject({
+        status: "ok",
+        deleted: 4,
+        redacted: 2,
+        demandObservationsDeleted: 1000,
+        showPledgeDemandContextsDeleted: 3,
+      });
     });
   });
 

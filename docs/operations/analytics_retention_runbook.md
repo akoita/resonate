@@ -25,6 +25,15 @@ recomputed from the facts that survive.
 The windows come from `ANALYTICS_RETENTION_*` settings and default to 90 days
 sensitive, 395 personal, 730 pseudonymous.
 
+A run also deletes expired Scene Scout demand observations (28-day expiry, up to
+1,000 per run) and expired Shows pledge demand contexts. These records never
+enter the warehouse, so they are deleted from Postgres directly. Each run logs
+one `analytics.retention.scheduled_run` line with counts only: `deleted`,
+`redacted`, `lineageRecords`, `demandObservationsDeleted`,
+`showPledgeDemandContextsDeleted`, the policy and the per-tier warehouse
+outcomes. A backlog larger than one batch shows as
+`demandObservationsDeleted: 1000` on successive runs until it drains.
+
 ## Size it before you run it
 
 ```bash
