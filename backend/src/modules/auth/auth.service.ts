@@ -171,6 +171,9 @@ export class AuthService {
       });
     }
 
+    // Sign-in is the authority for the wallet address: mark it verified so a
+    // later provider refresh keeps it instead of deriving a pseudo-address (#2023).
+    const addressVerifiedAt = new Date();
     return prisma.wallet.upsert({
       where: { userId },
       update: {
@@ -184,6 +187,7 @@ export class AuthService {
         paymaster: process.env.AA_PAYMASTER,
         bundler: process.env.AA_BUNDLER,
         salt: process.env.AA_SALT,
+        addressVerifiedAt,
       },
       create: {
         userId,
@@ -197,6 +201,7 @@ export class AuthService {
         paymaster: process.env.AA_PAYMASTER,
         bundler: process.env.AA_BUNDLER,
         salt: process.env.AA_SALT,
+        addressVerifiedAt,
       },
     });
   }
