@@ -85,6 +85,28 @@ export async function previewRetention(governance = new AnalyticsGovernanceServi
   return { ranAt: now.toISOString(), policy, tiers: expired };
 }
 
+type RetentionRunResult = Awaited<ReturnType<AnalyticsGovernanceService["runRetentionCleanup"]>>;
+
+/**
+ * The counts a scheduled run logs. Counts and policy only: the events being
+ * aged out are the thing whose identifiers we are removing, and naming them
+ * here would defeat the run. The demand-observation and pledge-context purges
+ * are bounded per run, so their counts are what shows a backlog draining.
+ */
+export function scheduledRunLogFields(result: RetentionRunResult) {
+  return {
+    status: result.status,
+    deleted: result.deleted,
+    redacted: result.redacted,
+    lineageRecords: result.lineageRecords,
+    demandObservationsDeleted: result.demandObservationsDeleted,
+    showPledgeDemandContextsDeleted: result.showPledgeDemandContextsDeleted,
+    policy: result.policy,
+    warehouse: result.warehouse,
+    ranAt: result.ranAt,
+  };
+}
+
 export async function runRetentionCleanupScript(argv: string[] = process.argv.slice(2)) {
   try {
     const governance = new AnalyticsGovernanceService();
@@ -109,15 +131,7 @@ export async function runRetentionCleanupScript(argv: string[] = process.argv.sl
         result.status === "ok"
           ? `Retention run completed: ${result.deleted} deleted, ${result.redacted} redacted`
           : `Retention run cleared Postgres but the warehouse did not complete`,
-      // Counts and policy only. The events being aged out are the thing whose
-      // identifiers we are removing; naming them here would defeat the run.
-      status: result.status,
-      deleted: result.deleted,
-      redacted: result.redacted,
-      lineageRecords: result.lineageRecords,
-      policy: result.policy,
-      warehouse: result.warehouse,
-      ranAt: result.ranAt,
+      ...scheduledRunLogFields(result),
     });
 
     return { ...result, dryRun: false as const };
