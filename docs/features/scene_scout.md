@@ -19,10 +19,16 @@ popularity snapshots (#1450, [PR #2045](https://github.com/akoita/resonate/pull/
 unmet crate/session demand (#1969, [PR #2046](https://github.com/akoita/resonate/pull/2046)),
 first-listener reception (#1970, [PR #2047](https://github.com/akoita/resonate/pull/2047)),
 and UI polish ([PR #2048](https://github.com/akoita/resonate/pull/2048)).
-Sprint 31 remains in progress: staging acceptance is tracked in
-[resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264), and
-warehouse scheduling and live checks in
-[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263).
+Sprint 31 closed on 2026-10-14. Later slices added pledge city demand
+(#2058, #2104), canonical follows (#2105), staging acceptance phases (#2071,
+#2110, #2113, #2125), retention purge counts (#2127), and ownership-based
+authorization for the artist-side Shows routes the city card opens (#2128,
+#2129). Warehouse scheduling and live checks are done in
+[resonate-iac#263](https://github.com/akoita/resonate-iac/issues/263). The
+remaining staging checks are tracked in
+[resonate-iac#264](https://github.com/akoita/resonate-iac/issues/264): the
+cross-artist access check with a real second artist, and the demand-retention
+drain once observations start expiring.
 Canonical follows are now a ledger event (`artist.followed`, see
 [Artist follows](artist_follows.md)) and count toward city demand and
 first-week reception; pledge demand requires a consent-qualified city declaration captured at intent
