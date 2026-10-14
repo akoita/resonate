@@ -415,12 +415,15 @@ tokens come from `PAYMENT_ASSETS_JSON`. No new variable.
 - The quote buys for the wallet on file (`Wallet.address`). The web should send
   the smart account it will sign with as `buyerAddress`; a different address is
   a 409 `wallet_mismatch` ("sign in again"), and omitting it behaves as before.
-  `Wallet.address` is rewritten at every passkey sign-in, but
-  `WalletService.refreshWallet` (the `/wallet/aa/enable`, `/wallet/aa/refresh`
-  and `/wallet/agent/enable` routes) can overwrite it with a derived
-  pseudo-address until the next sign-in. That is tracked in
-  [#2023](https://github.com/akoita/resonate/issues/2023) and not
-  changed here; the `buyerAddress` check is what protects a quote from it.
+  `Wallet.address` is rewritten at every passkey sign-in, which also marks it
+  verified (`Wallet.addressVerifiedAt`). `WalletService.refreshWallet` (the
+  `/wallet/aa/enable`, `/wallet/aa/refresh` and `/wallet/agent/enable` routes,
+  and the admin `/wallet/refresh` and `/wallet/provider` routes) never
+  overwrites a verified address with a provider-derived one: it returns the
+  wallet unchanged, and an admin switch to another provider is a 409
+  `wallet_address_verified`
+  ([#2023](https://github.com/akoita/resonate/issues/2023)). The
+  `buyerAddress` check still guards against a wallet no sign-in has verified.
 - If the chain cannot be read when settling, the quote stays `submitted` and
   the web retries.
 - The chain simulation needs an RPC that supports `eth_simulateV1`. Without it

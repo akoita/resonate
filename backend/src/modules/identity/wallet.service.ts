@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { ConflictException, Injectable, Logger } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { Erc4337Client } from "./erc4337/erc4337_client";
@@ -68,8 +68,31 @@ export class WalletService {
   async refreshWallet(input: { userId: string; provider?: WalletProviderName }) {
     const wallet = await this.getOrCreate(input.userId, input.provider);
     const existingProvider = (wallet as any).provider as WalletProviderName | undefined;
+    if (wallet.addressVerifiedAt) {
+      // #2023: sign-in (/auth/verify) wrote this address, so it is the account
+      // the user actually transacts from. A provider-derived address (for
+      // erc4337 a hash of userId, factory, entry point and salt) must never
+      // replace it; purchase flows trust Wallet.address as the buyer.
+      if (input.provider && input.provider !== existingProvider) {
+        throw new ConflictException({
+          code: "wallet_address_verified",
+          message:
+            "This wallet's address was verified at sign-in and cannot be replaced by a provider-derived address.",
+        });
+      }
+      this.logger.debug(
+        `refreshWallet kept the sign-in verified address for wallet ${wallet.id}`,
+      );
+      return wallet;
+    }
     const provider = this.providerRegistry.getProvider(input.provider ?? existingProvider);
-    const account = provider.getAccount(input.userId);
+    const derivedAccount = provider.getAccount(input.userId);
+    // Same rule as getOrCreate: a wallet/passkey account's userId IS its
+    // smart-account address, so never trade it for the derived pseudo-address.
+    const account =
+      derivedAccount.provider === "erc4337" && ETH_ADDRESS_PATTERN.test(input.userId)
+        ? { ...derivedAccount, address: input.userId.toLowerCase(), ownerAddress: null }
+        : derivedAccount;
     return prisma.wallet.update({
       where: { id: wallet.id },
       data: {
@@ -151,6 +174,9 @@ export class WalletService {
     return { allowed: true, remaining: updated.monthlyCapUsd - updated.spentUsd };
   }
 
+  // A wallet created here is never address-verified: for a non-address userId
+  // the derived address is a placeholder until sign-in writes the real one
+  // (AuthService.upsertWalletIdentity sets addressVerifiedAt, #2023).
   private async getOrCreate(userId: string, provider?: WalletProviderName) {
     const existing = await prisma.wallet.findFirst({ where: { userId } });
     if (existing) {

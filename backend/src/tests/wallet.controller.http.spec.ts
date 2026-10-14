@@ -8,7 +8,7 @@
  */
 
 import request from 'supertest';
-import { INestApplication } from '@nestjs/common';
+import { ConflictException, INestApplication } from '@nestjs/common';
 import { WalletController } from '../modules/identity/wallet.controller';
 import { WalletService } from '../modules/identity/wallet.service';
 import { SessionKeyService } from '../modules/identity/session_key.service';
@@ -114,6 +114,23 @@ describe('WalletController (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ userId: 'u1', provider: 'erc4337' })
       .expect(201);
+  });
+
+  it('POST /wallet/provider → 409 when the sign-in verified address would be replaced (#2023)', async () => {
+    mockWalletService.setProvider.mockRejectedValueOnce(
+      new ConflictException({
+        code: 'wallet_address_verified',
+        message: 'This wallet\'s address was verified at sign-in and cannot be replaced by a provider-derived address.',
+      }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .post('/wallet/provider')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: 'u1', provider: 'local' })
+      .expect(409);
+
+    expect(res.body.code).toBe('wallet_address_verified');
   });
 
   // ----- Agent wallet routing -----

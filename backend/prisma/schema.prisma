@@ -249,6 +249,8 @@ model Wallet {
   bundler          String?
   salt             String?
   deploymentTxHash String?
+  /// Set when sign-in (/auth/verify) wrote `address`; refresh never overwrites a verified address (#2023).
+  addressVerifiedAt DateTime?
   user             User    @relation(fields: [userId], references: [id])
 }
 
