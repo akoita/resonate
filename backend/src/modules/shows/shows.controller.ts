@@ -54,9 +54,12 @@ export class ShowsController {
     return this.showsService.getCampaign(slug);
   }
 
+  // #2128: artist-side campaign routes (manage, create/update drafts, visuals,
+  // request-authority, activate, cancel, campaign updates) require sign-in only.
+  // Authority is the service's ownership check (campaign artist owner/manager,
+  // or admin/operator), not a JWT role: no `artist` JWT role is ever issued.
   // #949: operator/owner-scoped read (sensitive authority evidence + disputes).
   @UseGuards(AuthGuard("jwt"))
-  @Roles("admin", "operator", "artist")
   @Get("campaigns/:id/manage")
   getManagedCampaign(@Param("id") id: string, @Request() req: any) {
     return this.showsService.getManagedCampaign(this.actorFromRequest(req), id);
@@ -65,7 +68,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Get("campaigns/:id/community")
   getCampaignCommunity(@Param("id") id: string, @Request() req: any) {
-    return this.communityRoomsService.getShowCampaignCommunity(req.user.userId, id);
+    return this.communityRoomsService.getShowCampaignCommunity(req.user.userId, id, req.user.role);
   }
 
   @UseGuards(AuthGuard("jwt"))
@@ -80,8 +83,7 @@ export class ShowsController {
     return this.communityRoomsService.joinShowCampaignCityDemand(req.user.userId, id);
   }
 
-  @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("artist", "admin", "operator")
+  @UseGuards(AuthGuard("jwt"))
   @Post("campaigns/:id/community/updates")
   createCampaignUpdate(
     @Param("id") id: string,
@@ -148,14 +150,12 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Post("campaigns")
   createCampaign(@Request() req: any, @Body() body: any) {
     return this.showsService.createDraftCampaign(this.actorFromRequest(req), body);
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id")
   updateCampaign(
     @Param("id") id: string,
@@ -166,7 +166,6 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id/visuals")
   @UseInterceptors(
     new ContentLengthLimitInterceptor(getShowsVisualMaxTotalBytes(), "Campaign visual"),
@@ -204,7 +203,6 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id/visuals/order")
   reorderCampaignVisuals(
     @Param("id") id: string,
@@ -217,7 +215,6 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id/visuals/:visualRef")
   @UseInterceptors(FileInterceptor("visual", { limits: { fileSize: getShowsVisualMaxBytes() } }))
   replaceCampaignVisual(
@@ -230,7 +227,6 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Delete("campaigns/:id/visuals/:visualRef")
   deleteCampaignVisual(
     @Param("id") id: string,
@@ -241,7 +237,6 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Post("campaigns/:id/request-authority")
   requestAuthority(
     @Param("id") id: string,
@@ -296,7 +291,6 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Post("campaigns/:id/activate")
   activateCampaign(
     @Param("id") id: string,
@@ -408,7 +402,6 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Roles("artist", "admin", "operator")
   @Post("campaigns/:id/cancel")
   cancelCampaign(
     @Param("id") id: string,

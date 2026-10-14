@@ -182,6 +182,11 @@ Initial API:
 | `POST /shows/campaigns/:id/confirm-booking` | artist/admin/operator | Mark a funded campaign as booking-confirmed after evidence review |
 | `POST /shows/campaigns/:id/confirm-fulfillment` | operator | Mark fulfillment evidence accepted and start release/dispute window |
 
+"artist" in this table means the owner or catalog manager of the campaign's
+artist profile, checked by the Shows service; it is not a JWT role. No `artist`
+role is issued, so these routes require sign-in plus that ownership, or the
+admin/operator role (#2128).
+
 Use the existing centralized frontend `API_BASE` from `web/src/lib/api.ts`.
 Do not introduce per-file API base constants.
 

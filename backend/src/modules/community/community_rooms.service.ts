@@ -187,7 +187,7 @@ export class CommunityRoomsService {
     ]);
   }
 
-  async getShowCampaignCommunity(userId: string, campaignIdOrSlug: string) {
+  async getShowCampaignCommunity(userId: string, campaignIdOrSlug: string, role?: string | null) {
     await this.ensureUser(userId);
     const campaign = await this.findShowCampaign(campaignIdOrSlug);
     const rooms: RoomRecord[] = [];
@@ -210,6 +210,8 @@ export class CommunityRoomsService {
     return {
       schemaVersion: "show-campaign-community/v1",
       campaign: campaignDto(campaign),
+      // #2128: ownership-derived viewer flag; same rule as requireCampaignOperator.
+      canPostCampaignUpdates: await this.canOperateCampaign({ userId, role }, campaign),
       rooms: await Promise.all(
         rooms.map(async (room) => {
           const membership = await this.reconcileMembershipAccess(userId, room, membershipsByRoom.get(room.id));
@@ -731,13 +733,21 @@ export class CommunityRoomsService {
   }
 
   private async requireCampaignOperator(actor: Actor, campaign: { artistId: string | null }) {
-    if (actor.role === "admin" || actor.role === "operator" || actor.userId === "admin" || actor.userId === "operator") {
+    if (isPrivilegedCommunityActor(actor)) {
       return;
     }
     if (!campaign.artistId) {
       throw new ForbiddenException("Campaign updates require the campaign artist or an operator");
     }
     await this.requireArtistOperator(actor.userId, campaign.artistId);
+  }
+
+  /** Non-throwing form of requireCampaignOperator, used for viewer capability flags. */
+  private async canOperateCampaign(actor: Actor, campaign: { artistId: string | null }) {
+    if (isPrivilegedCommunityActor(actor)) return true;
+    if (!campaign.artistId) return false;
+    const artist = await prisma.artist.findUnique({ where: { id: campaign.artistId } });
+    return Boolean(artist && canOperateArtist(actor.userId, artist));
   }
 
   private async requireArtistOperator(userId: string, artistId: string) {
@@ -1155,6 +1165,10 @@ function isShowCampaignCityDemandAvailable(campaign: { campaignLevel: string; st
   }
   return ["provisional_campaign", "active_escrow_campaign"].includes(campaign.campaignLevel)
     && SHOW_CITY_DEMAND_CAMPAIGN_STATUSES.includes(campaign.status as (typeof SHOW_CITY_DEMAND_CAMPAIGN_STATUSES)[number]);
+}
+
+function isPrivilegedCommunityActor(actor: Actor) {
+  return actor.role === "admin" || actor.role === "operator" || actor.userId === "admin" || actor.userId === "operator";
 }
 
 function canOperateArtist(userId: string, artist: { userId: string | null }) {

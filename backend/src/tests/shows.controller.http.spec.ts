@@ -1,5 +1,5 @@
 import request from "supertest";
-import { BadRequestException, INestApplication } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, INestApplication } from "@nestjs/common";
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 import { ShowsController } from "../modules/shows/shows.controller";
@@ -10,11 +10,15 @@ const mockShowsService = {
   listCampaigns: jest.fn().mockResolvedValue([]),
   getCampaign: jest.fn().mockResolvedValue({ id: "campaign-1" }),
   getCampaignVisual: jest.fn().mockResolvedValue(null),
+  getManagedCampaign: jest.fn(),
   getMyPledges: jest.fn().mockResolvedValue([]),
   createSignal: jest.fn(),
   createDraftCampaign: jest.fn(),
   updateDraftCampaign: jest.fn(),
   uploadCampaignVisuals: jest.fn(),
+  reorderCampaignVisuals: jest.fn(),
+  replaceCampaignVisual: jest.fn(),
+  deleteCampaignVisual: jest.fn(),
   requestAuthority: jest.fn(),
   approveAuthority: jest.fn(),
   rejectAuthority: jest.fn(),
@@ -52,7 +56,8 @@ const mockCommunityRoomsService = {
 
 describe("ShowsController (http)", () => {
   let app: INestApplication;
-  const token = authToken("user-1", "artist");
+  // #2128: real artists sign in with the `listener` role; no `artist` role is issued.
+  const token = authToken("user-1", "listener");
 
   beforeAll(async () => {
     app = await createControllerTestApp(ShowsController, [
@@ -98,7 +103,7 @@ describe("ShowsController (http)", () => {
         expect(res.body.schemaVersion).toBe("show-campaign-community/v1");
       });
 
-    expect(mockCommunityRoomsService.getShowCampaignCommunity).toHaveBeenCalledWith("user-1", "campaign-1");
+    expect(mockCommunityRoomsService.getShowCampaignCommunity).toHaveBeenCalledWith("user-1", "campaign-1", "listener");
   });
 
   it("joins campaign community with JWT", async () => {
@@ -127,20 +132,93 @@ describe("ShowsController (http)", () => {
       .expect(201);
 
     expect(mockCommunityRoomsService.createShowCampaignUpdate).toHaveBeenCalledWith(
-      { userId: "user-1", role: "artist" },
+      { userId: "user-1", role: "listener" },
       "campaign-1",
       { body: "Campaign update" },
     );
   });
 
-  it("rejects listener role for campaign updates", async () => {
+  it("returns the service's ownership refusal for campaign updates by a non-owner", async () => {
+    mockCommunityRoomsService.createShowCampaignUpdate.mockRejectedValueOnce(
+      new ForbiddenException("Artist community management is restricted to the artist owner or operators"),
+    );
+
     await request(app.getHttpServer())
       .post("/shows/campaigns/campaign-1/community/updates")
-      .set("Authorization", `Bearer ${authToken("user-1", "listener")}`)
+      .set("Authorization", `Bearer ${authToken("stranger-1", "listener")}`)
       .send({ body: "Campaign update" })
-      .expect(403);
+      .expect(403)
+      .expect((res) => {
+        expect(res.body.message).toContain("restricted to the artist owner");
+      });
 
-    expect(mockCommunityRoomsService.createShowCampaignUpdate).not.toHaveBeenCalled();
+    expect(mockCommunityRoomsService.createShowCampaignUpdate).toHaveBeenCalledWith(
+      { userId: "stranger-1", role: "listener" },
+      "campaign-1",
+      { body: "Campaign update" },
+    );
+  });
+
+  // #2128: the artist-side routes authorize by ownership in the service, not by a
+  // JWT role. A listener-role JWT must reach the service; unauthenticated requests
+  // are still refused by AuthGuard("jwt").
+  describe("artist-side routes authorize by ownership, not JWT role (#2128)", () => {
+    type Route = {
+      name: string;
+      method: "get" | "post" | "patch" | "delete";
+      path: string;
+      service: jest.Mock;
+      status: number;
+      body?: Record<string, unknown>;
+    };
+    const routes: Route[] = [
+      { name: "manage read", method: "get", path: "/shows/campaigns/campaign-1/manage", service: mockShowsService.getManagedCampaign, status: 200 },
+      { name: "campaign update post", method: "post", path: "/shows/campaigns/campaign-1/community/updates", service: mockCommunityRoomsService.createShowCampaignUpdate, status: 201, body: { body: "Update" } },
+      { name: "draft create", method: "post", path: "/shows/campaigns", service: mockShowsService.createDraftCampaign, status: 201, body: { city: "Lyon" } },
+      { name: "draft update", method: "patch", path: "/shows/campaigns/campaign-1", service: mockShowsService.updateDraftCampaign, status: 200, body: { city: "Lyon" } },
+      { name: "visual upload", method: "patch", path: "/shows/campaigns/campaign-1/visuals", service: mockShowsService.uploadCampaignVisuals, status: 200 },
+      { name: "visual reorder", method: "patch", path: "/shows/campaigns/campaign-1/visuals/order", service: mockShowsService.reorderCampaignVisuals, status: 200, body: { visualIds: ["v1"] } },
+      { name: "visual replace", method: "patch", path: "/shows/campaigns/campaign-1/visuals/hero", service: mockShowsService.replaceCampaignVisual, status: 200 },
+      { name: "visual delete", method: "delete", path: "/shows/campaigns/campaign-1/visuals/hero", service: mockShowsService.deleteCampaignVisual, status: 200 },
+      { name: "authority request", method: "post", path: "/shows/campaigns/campaign-1/request-authority", service: mockShowsService.requestAuthority, status: 201, body: {} },
+      { name: "activation", method: "post", path: "/shows/campaigns/campaign-1/activate", service: mockShowsService.activateCampaign, status: 201, body: {} },
+      { name: "cancellation", method: "post", path: "/shows/campaigns/campaign-1/cancel", service: mockShowsService.cancelCampaign, status: 201, body: {} },
+    ];
+
+    it.each(routes)("lets a listener-role JWT reach the service for $name", async (route) => {
+      route.service.mockResolvedValueOnce({ id: "campaign-1" });
+
+      let req = request(app.getHttpServer())[route.method](route.path)
+        .set("Authorization", `Bearer ${authToken("artist-owner-1", "listener")}`);
+      if (route.body) req = req.send(route.body);
+      await req.expect(route.status);
+
+      expect(route.service).toHaveBeenCalledTimes(1);
+      expect(route.service.mock.calls[0][0]).toEqual({ userId: "artist-owner-1", role: "listener" });
+    });
+
+    it.each(routes)("surfaces the service's ownership refusal as 403 for $name", async (route) => {
+      route.service.mockRejectedValueOnce(
+        new ForbiddenException("Only the campaign artist or an operator can update this campaign"),
+      );
+
+      let req = request(app.getHttpServer())[route.method](route.path)
+        .set("Authorization", `Bearer ${authToken("stranger-1", "listener")}`);
+      if (route.body) req = req.send(route.body);
+      await req.expect(403).expect((res) => {
+        expect(res.body.message).toContain("Only the campaign artist or an operator");
+      });
+
+      expect(route.service).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(routes)("still requires a JWT for $name", async (route) => {
+      let req = request(app.getHttpServer())[route.method](route.path);
+      if (route.body) req = req.send(route.body);
+      await req.expect(401);
+
+      expect(route.service).not.toHaveBeenCalled();
+    });
   });
 
   it("re-syncs campaign chain state for operators", async () => {
