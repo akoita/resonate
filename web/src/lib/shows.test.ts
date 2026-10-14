@@ -3,6 +3,9 @@ import {
   discoverShowCampaignOnChain,
   buildCatalogArtistCandidates,
   campaignArtistHref,
+  campaignEditHref,
+  campaignHref,
+  canonicalCampaignRedirect,
   createPledgeIntent,
   createShowCampaignDraft,
   findArtistCampaigns,
@@ -91,6 +94,23 @@ describe("Shows campaign presentation", () => {
     expect(campaignDisplayTitle(campaign)).toBe("Sennarin in Paris");
     expect(campaignDisplayInitial(campaign)).toBe("S");
     expect(campaignRouteCode(campaign)).toBe("SEN-PAR");
+  });
+
+  it("builds slug-based campaign and edit URLs, encoding the slug", () => {
+    expect(campaignHref({ id: "my-show" })).toBe("/shows/my-show");
+    expect(campaignEditHref({ id: "my-show" })).toBe("/shows/my-show/edit");
+    expect(campaignHref({ id: "a b/c" })).toBe("/shows/a%20b%2Fc");
+    expect(campaignEditHref({ id: "a b/c" })).toBe("/shows/a%20b%2Fc/edit");
+  });
+
+  it("redirects a campaign reached by internal id to its slug URL (#2130)", () => {
+    const campaign = { id: "my-show" };
+    const uuid = "3f0c1a52-8f5e-4c1e-9d7a-2b6f1e0c9a41";
+
+    expect(canonicalCampaignRedirect("my-show", campaign)).toBeNull();
+    expect(canonicalCampaignRedirect("my-show", campaign, "/edit")).toBeNull();
+    expect(canonicalCampaignRedirect(uuid, campaign)).toBe("/shows/my-show");
+    expect(canonicalCampaignRedirect(uuid, campaign, "/edit")).toBe("/shows/my-show/edit");
   });
 
   it("falls back to the platform artist name when a legacy campaign has no title", () => {

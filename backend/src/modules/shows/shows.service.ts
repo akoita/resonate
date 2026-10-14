@@ -1070,16 +1070,21 @@ export class ShowsService {
     return campaigns.map((campaign) => serializePublicShowCampaign(campaign));
   }
 
-  async getCampaign(slug: string) {
-    const campaign = await prisma.showCampaign.findUnique({
-      where: { slug },
-      include: {
-        artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
-        tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
-        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-        disputes: { select: { status: true } },
-      },
-    });
+  /**
+   * Public campaign read by slug or, failing that, by internal id (#2130): the
+   * create/update API and some backend-built hrefs carry the id, so `/shows/<id>`
+   * must resolve too. The slug is tried first and stays the canonical URL.
+   */
+  async getCampaign(slugOrId: string) {
+    const include = {
+      artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
+      tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" as const } },
+      visuals: { orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }] },
+      disputes: { select: { status: true } },
+    };
+    const campaign =
+      (await prisma.showCampaign.findUnique({ where: { slug: slugOrId }, include }))
+      ?? (await prisma.showCampaign.findUnique({ where: { id: slugOrId }, include }));
     if (!campaign) {
       throw new NotFoundException("Show campaign not found");
     }

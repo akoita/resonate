@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, stringToHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
@@ -772,6 +772,17 @@ describe("ShowsService integration", () => {
       draft.id,
       { visualIds: [gallery[2].id] },
     )).rejects.toThrow(BadRequestException);
+  });
+
+  it("resolves the public campaign read by slug or internal id (#2130)", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Nantes");
+
+    const bySlug = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
+    const byId = (await service.getCampaign(campaign.id)) as Record<string, unknown>;
+
+    expect(byId).toEqual(bySlug);
+    expect(byId).toMatchObject({ id: campaign.id, slug: campaign.slug });
+    await expect(service.getCampaign(`${TEST_PREFIX}missing`)).rejects.toThrow(NotFoundException);
   });
 
   it("exposes campaign fee accounting and goal payout estimates", async () => {

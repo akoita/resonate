@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CampaignDetailHero } from "../../../components/shows/CampaignDetailHero";
+import { CampaignDraftOwnerBar } from "../../../components/shows/CampaignDraftOwnerBar";
 import { CampaignGallery } from "../../../components/shows/CampaignGallery";
 import { CampaignCommunityPanel } from "../../../components/shows/CampaignCommunityPanel";
 import { CampaignMobilePledgeBar } from "../../../components/shows/CampaignMobilePledgeBar";
@@ -11,6 +12,7 @@ import { CampaignTrustPanel } from "../../../components/shows/CampaignTrustPanel
 import {
   campaignArtistHref,
   campaignDisplayTitle,
+  canonicalCampaignRedirect,
   getCampaign,
   type CampaignTier,
 } from "../../../lib/shows";
@@ -50,7 +52,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       image,
       imageAlt: title,
-      path: canonicalPath("shows", decodedCampaignId),
+      path: canonicalPath("shows", campaign.id),
     });
   } catch {
     return publicMetadata({
@@ -63,9 +65,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CampaignDetailPage({ params }: Props) {
   const { campaignId } = await params;
-  const campaign = await getCampaign(campaignId);
+  const requestedId = decodePathSegment(campaignId);
+  const campaign = await getCampaign(requestedId);
   if (!campaign) {
     notFound();
+  }
+  // #2130: a campaign reached by its internal id lands on its slug URL.
+  const canonicalRedirect = canonicalCampaignRedirect(requestedId, campaign);
+  if (canonicalRedirect) {
+    redirect(canonicalRedirect);
   }
 
   const displayTitle = campaignDisplayTitle(campaign);
@@ -103,6 +111,8 @@ export default async function CampaignDetailPage({ params }: Props) {
             <span aria-hidden="true">→</span>
           </Link>
         </div>
+
+        <CampaignDraftOwnerBar campaign={campaign} />
 
         <CampaignDetailHero campaign={campaign}>
           <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />

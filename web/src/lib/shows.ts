@@ -212,6 +212,30 @@ export function campaignArtistHref(campaign: Pick<Campaign, "artistName"> & Part
     : catalogArtistHref(campaign.artistName.trim());
 }
 
+/** Canonical public campaign URL; the frontend `Campaign.id` is the slug. */
+export function campaignHref(campaign: Pick<Campaign, "id">): string {
+  return `/shows/${encodeURIComponent(campaign.id)}`;
+}
+
+export function campaignEditHref(campaign: Pick<Campaign, "id">): string {
+  return `${campaignHref(campaign)}/edit`;
+}
+
+/**
+ * #2130: the public read resolves a campaign by slug or internal id, so a
+ * route reached by id (e.g. after a draft save) resolves too. Returns the
+ * slug URL to redirect to when the decoded route param is not the slug, or
+ * null when the request is already canonical.
+ */
+export function canonicalCampaignRedirect(
+  requestedId: string,
+  campaign: Pick<Campaign, "id">,
+  suffix: "" | "/edit" = "",
+): string | null {
+  if (requestedId === campaign.id) return null;
+  return `${campaignHref(campaign)}${suffix}`;
+}
+
 export type ArtistCampaignIdentity = {
   artistId?: string | null;
   artistName?: string | null;
