@@ -21,6 +21,7 @@ import { AddToCrateControl } from "./AddToCrateControl";
 import { BuyModal } from "./BuyModal";
 import type { LicenseType } from "./LicenseTypeSelector";
 import { artistProfileHref } from "../../lib/artistRoutes";
+import { PURCHASED_STEMS_HREF } from "../../lib/ownedStems";
 import "../../styles/marketplace.css";
 import "../../styles/license-badges.css";
 
@@ -535,6 +536,12 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                         </p>
                     </div>
                     <div className="marketplace-hero__actions">
+                        {/* The library needs sign-in: no link for signed-out visitors. */}
+                        {signerAddress && (
+                            <Link href={PURCHASED_STEMS_HREF} className="marketplace-secondary-link">
+                                My purchased stems
+                            </Link>
+                        )}
                         <Link href="/artist/listings" className="marketplace-secondary-link">
                             Manage listings
                         </Link>
@@ -640,6 +647,9 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                                 <span className="marketplace-toggle__slider" />
                                 <span className="marketplace-toggle__label">Hide my listings</span>
                             </label>
+                            <Link href={PURCHASED_STEMS_HREF} className="marketplace-manage-link">
+                                My purchased stems
+                            </Link>
                             <Link href="/artist/listings" className="marketplace-manage-link">
                                 Manage my listings
                             </Link>
@@ -874,6 +884,8 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                     listingId={BigInt(buyModalListing.listingId)}
                     stemId={buyModalListing.stemId}
                     artistId={buyModalListing.artistId}
+                    trackId={buyModalListing.listing.stem?.trackId}
+                    trackTitle={buyModalListing.listing.stem?.track}
                     listingChainId={buyModalListing.chainId}
                     licenseType={buyModalListing.licenseType}
                     initialListing={buyModalListing.listing}
@@ -886,8 +898,9 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                     isOpen={true}
                     onClose={() => setBuyModalListing(null)}
                     onSuccess={() => {
-                        setBuyModalListing(null);
-                        addToast({ type: "success", title: "Purchase Successful!", message: "You now own this stem NFT." });
+                        // The modal stays open on its success view, which
+                        // shows the handoff (View in your library / Open in
+                        // Remix Studio, #2042); Done or × closes it.
                         fetchListings(false);
                     }}
                 />

@@ -284,6 +284,22 @@ from the JWT, never the request body.
   the buy surface). The collection API (`GET /api/metadata/collection/:address`)
   exposes the source `trackId` to drive it. Unminted stems render without a
   link.
+- UI (#2042): Library → Stems knows the license each stem is held under. The
+  collection API returns `licenseType` (best standard tier across the
+  wallet's purchases of the stem) and `holding` (`purchased` / `listed`).
+  Remix and Commercial holders get the `RemixCta` chip without the hidden
+  license state (eligibility still decides); Personal holders get it with
+  the license-required label **Upgrade to Remix license** (new
+  `licenseRequiredLabel` prop), which opens the stem page to buy the Remix
+  tier; listed-only stems keep the #1175 behaviour. When the holder owns two
+  or more remix-ready stems of the same source track, a strip above the list
+  shows one **Remix N stems together** action per track: a `RemixCta`
+  (new `remixLabel` prop) scoped to all those stem ids, so a single
+  eligibility check opens (or reuses) one Studio session holding every stem.
+  The buy modal's success state offers **Open in Remix Studio** for
+  Remix/Commercial purchases through `launchRemixStudio`; a refusal right
+  after purchase (indexer lag) shows a "still being confirmed" note instead
+  of failing silently.
 - Artist-owner access (#1174, policy `2026-06-12.v4`): the user who owns the
   source artist profile counts as remix-licensed for their own material — no
   self-purchase required, so owners see `Remix` instead of `Get remix

@@ -334,6 +334,87 @@
   transform: translateX(14px);
 }
 
+/* ---------- Stems: license filter, badges, remix-together (#2042) ---- */
+
+.library-v3 .library-stem-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-v3 .library-license-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.library-v3 .library-license-badge--remix {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.14);
+  color: #d8b4fe;
+}
+
+.library-v3 .library-license-badge--commercial {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+}
+
+.library-v3 .library-remix-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.library-v3 .library-remix-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(168, 85, 247, 0.28);
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.library-v3 .library-remix-group__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.library-v3 .library-remix-group__title {
+  color: #fff;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.library-v3 .library-remix-group__meta {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+}
+
+.library-v3 .library-inline-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent, #a085ff);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* ---------- Track list ------------------------------------------------ */
 
 .library-v3 .library-list {
