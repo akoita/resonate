@@ -26,11 +26,12 @@ account is excluded. Creating more plays on that account cannot replace a
 prepared acceptance case.
 
 The [scenario phases](#acceptance-scenarios) below add evidence for consent
-withdrawal, account erasure, categorical unmet crate demand, and the artist
-analytics authorization decision. First-listener placement and reception,
-first-listener caps, browser consent UI, warehouse processing, and scheduling
-still need separate acceptance evidence. Do not mark those checks complete from
-this fixture run.
+withdrawal, account erasure, categorical unmet crate demand, the artist
+analytics authorization decision, and first-listener placement eligibility,
+uniqueness, exclusion, and day-seven reception suppression. The 1,000-placement
+release cap, model-driven discovery picks, browser consent UI, warehouse
+processing, and scheduling still need separate acceptance evidence. Do not mark
+those checks complete from this fixture run.
 
 ## Prepare a reviewed staging execution
 
@@ -131,9 +132,9 @@ fixture users only; they insert no aggregates and relax no thresholds. They use
 the same target arguments and staging, salt, and fixture-ownership checks as the
 other phases, and their output is aggregate counts and pass/fail results only:
 no user, actor, email, wallet, prompt, or secret values. `withdraw-consent`,
-`erase-listener`, and `unmet-demand` require `--confirm`; `access-check` is
-read-only and needs neither `--confirm` nor the salt (it still requires a
-staging label).
+`erase-listener`, `unmet-demand`, `first-listener`, and
+`first-listener-reception` require `--confirm`; `access-check` is read-only and
+needs neither `--confirm` nor the salt (it still requires a staging label).
 
 Each of `withdraw-consent` and `erase-listener` consumes the seeded fixture: it
 needs a freshly seeded, intact fixture whose city card is currently served, and
@@ -148,6 +149,8 @@ must fall by exactly one listener.
 | `erase-listener` | Runs `PersonalDataErasureService.eraseAccount` for fixture listener 2, then compares as above and reports that listener's event count before and after. | `contribution_removed`, or `blocked` with a reason. |
 | `unmet-demand` | Creates (or reuses) the audience-floor count of consenting fixture listeners, records one crate request each through `UnmetDemandService` requiring the first crate stem type the selected track really lacks (normally `vocals`); when the track has every stem type, it instead uses a categorical filter the track really fails (see below). Then it reads the artist aggregate. | `verified` with `gapKind`, the categorical `value`, the catalog action (`track` + `stem`, or `artist` + `bpm`/`key`/`energy`), requester and request counts, and privacy checks; or `blocked`. |
 | `access-check` | Calls `AnalyticsAuthorizationService.assertCanReadArtistMetrics` with `{ userId, role }` request-user objects, as the JWT strategy shapes them. No token is minted. | Pass/fail per case: target artist owner allowed; a fixture non-artist listener forbidden; the `--show-artist-id` artist's owner forbidden (reported `skipped` when that owner is the target owner or absent). |
+| `first-listener` | With the real clock, uses exactly the `DISCOVERY_MIN_AUDIENCE` floor count of consenting fixture listeners (reusing the run's fixture listeners, or creating them without listening events). Each must be offered the selected track by `FirstListenerDiscoveryService.getFreshCandidates`, then reserves it through `reservePlacements`; a repeat reservation for listener 1 must change nothing. With `--ineligible-release-id`, it also checks that release is excluded (see below). | `verified` with listener, candidate and placement counts, the release counter before and after, `capRemaining`, `capExercised: false`, `duplicateRefused`, and the ineligible-release outcome and reasons; or `blocked` with categorical `reasons`; or `failed`. |
+| `first-listener-reception` | After a `first-listener` run on the same fixture, writes a synthetic `playback.started` event (same envelope and pseudonymous actor derivation as `seed`) for all but one placed listener, reads `FirstListenerReceptionService.getArtistReception` at day seven, then writes the last listener's play and reads again. | `verified` with `floor`, `heardBelowFloor` (`null`, suppressed), `heardAtFloor` (exactly the floor), saves and follows (`null`), `clock`, and `readAt`; or `blocked`/`failed`. |
 
 `unmet-demand` also checks that the stored observations contain only
 categorical values (crate source, a one-way source digest, the target, the gap
@@ -185,20 +188,75 @@ normal governance path; a failed warehouse step aborts the erasure and leaves
 the fixture intact for retry or cleanup. A staging exporter may have copied the
 synthetic events before erasure, as for any fixture.
 
+### First-listener phases
+
+The first-listener phases need a target release that is eligible for placement
+**now**: created within the last seven days, `ready` or `published`,
+unwithdrawn, on a permitted rights route, with no future release date, whose
+selected track is complete, clean, not explicit (fixture listeners keep the
+default preference), and not fully AI-generated (`aiDisclosureLevel` `ALL`), by
+an artist whose account is human-verified, with enough placement budget left
+for the floor count. Each unmet condition is reported as a categorical reason
+(`stale` with the release age in whole hours and the 168-hour window,
+`not_public`, `withdrawn`, `rights_route`, `future_release_date`,
+`no_playable_track`, `ai_disclosure_all`, `explicit_track`,
+`artist_without_user`, `not_human_verified`, `placement_cap_reached`) and the
+phase is `blocked` before anything is written. The tool never alters catalog
+content: an operator may need to publish a dedicated release through the normal
+upload flow and have its artist verified before running these phases.
+
+`--ineligible-release-id <release-id>` is accepted only by `first-listener`;
+omit it for every other phase, including `cleanup`. It names an existing release
+expected to be excluded (for example a stale, unverified, or fully AI-generated
+one). The tool derives its reasons from the database; if it has none, the phase
+is `blocked` (`ineligible_release_is_eligible`) and nothing is reserved. Otherwise
+it checks that the release is not offered by the candidate source (for catalog
+reasons), that the shared verified-human discovery policy excludes its artist
+(for `artist_without_user` or `not_human_verified`, which the candidate source
+does not check), and that a reservation by fixture listener 1 on its first track
+reserves nothing and leaves its counter and placement rows unchanged.
+
+`first-listener` consumes the fixture once: it refuses a fixture that already
+has placements or ran an erase scenario. `first-listener-reception` likewise
+refuses a fixture whose reception plays already exist, and is `blocked` when
+the fixture has no placements (`first_listener_not_run`), placements that do not
+match the floor, a placed listener whose consent changed, any real (non-fixture)
+placement on the release or a non-suppressed baseline reception
+(`real_reception_present`), or when the release's first seven days have already
+ended (`release_window_closed`). Reception counts only plays that follow the
+placement and fall inside the release's first seven days, while a release is
+reported only once those seven days have passed. The plays are written at the
+real time, so the phase reads reception at exactly the release's day-seven
+instant (`clock: "projected"`, `readAt` in the output) instead of waiting a week.
+Run it during the release's first week, after `first-listener`.
+
+Every `first-listener` run permanently uses the floor count of the release's
+1,000 first-listener placements: `Release.firstListenerPlacementsUsed` is
+deliberately never decremented, including by `cleanup` or account erasure. The
+cap itself is not exercised live, because that would mean consuming the real
+budget; `backend/src/tests/first_listener.integration.spec.ts` covers it.
+
 `cleanup` also removes the fixture's demand observations and any erased fixture
 account (with its retained consent row), tolerates consent-withdrawn listeners,
 and recomputes both the Scene Scout and unmet-demand snapshots from remaining
-data. The `verify` phase and the scenario preconditions refuse a fixture that
-has already run `withdraw-consent` or `erase-listener`.
+data. It deletes the fixture accounts' first-listener placement rows (reported
+as `firstListenerExposuresDeleted`) and their reception plays, but leaves the
+release's placement counter unchanged. The `verify` phase and the scenario
+preconditions refuse a fixture that has already run `withdraw-consent`,
+`erase-listener`, or `first-listener-reception`.
 
 Limits: these phases do not prove the browser consent UI, that the real
-listener flow reaches the same services, first-listener placement caps, or
-warehouse reconciliation. `access-check` exercises the authorization decision
+listener flow reaches the same services, or warehouse reconciliation.
+First-listener eligibility, one placement per listener and release, and the
+stale/unverified/AI exclusion are exercised live through the real candidate
+source and reservation, and reception suppression through the real reception
+read; the 1,000-placement release cap and the model-driven discovery pick that
+selects a fresh release for a listener are not. `access-check` exercises the authorization decision
 with constructed request users, not a signed token through the HTTP stack, and
 it does not replace testing as a real second artist in the browser (the web
 analytics page always loads the signed-in user's own artist). Unauthorized
-cross-artist access over HTTP and first-listener caps still need separate
-evidence.
+cross-artist access over HTTP, the first-listener release cap, and
+model-driven first-listener picks still need separate evidence.
 
 ## Cleanup and evidence limits
 

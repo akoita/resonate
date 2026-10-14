@@ -24,6 +24,26 @@ const TRACK = `${TEST_PREFIX}track`;
 const SIBLING_RELEASE = `${TEST_PREFIX}sibling_release`;
 const SIBLING_TRACK = `${TEST_PREFIX}sibling_track`;
 const OTHER_OWNER = `${TEST_PREFIX}other_owner`;
+// #1970 first-listener catalog: a human-verified artist with fresh, stale and fully AI releases,
+// plus an unverified artist. Release ids are distinct so each target has its own namespace.
+const FL_OWNER = `${TEST_PREFIX}fl_owner`;
+const FL_ARTIST = `${TEST_PREFIX}fl_artist`;
+const FL_RELEASE = `${TEST_PREFIX}fl_release`;
+const FL_TRACK = `${TEST_PREFIX}fl_track`;
+const FL_WINDOW_RELEASE = `${TEST_PREFIX}fl_window_release`;
+const FL_WINDOW_TRACK = `${TEST_PREFIX}fl_window_track`;
+const FL_STALE_RELEASE = `${TEST_PREFIX}fl_stale_release`;
+const FL_STALE_TRACK = `${TEST_PREFIX}fl_stale_track`;
+const FL_AI_RELEASE = `${TEST_PREFIX}fl_ai_release`;
+const FL_AI_TRACK = `${TEST_PREFIX}fl_ai_track`;
+const FL_UNVERIFIED_OWNER = `${TEST_PREFIX}fl_unverified_owner`;
+const FL_UNVERIFIED_ARTIST = `${TEST_PREFIX}fl_unverified_artist`;
+const FL_UNVERIFIED_RELEASE = `${TEST_PREFIX}fl_unverified_release`;
+const FL_UNVERIFIED_TRACK = `${TEST_PREFIX}fl_unverified_track`;
+const FL_REAL_LISTENER = `${TEST_PREFIX}fl_real_listener`;
+const FL_RELEASES = [FL_RELEASE, FL_WINDOW_RELEASE, FL_STALE_RELEASE, FL_AI_RELEASE, FL_UNVERIFIED_RELEASE];
+const FL_TRACKS = [FL_TRACK, FL_WINDOW_TRACK, FL_STALE_TRACK, FL_AI_TRACK, FL_UNVERIFIED_TRACK];
+const DAY_MS = 24 * 60 * 60 * 1000;
 const ORGANIC_CITY = "vancouver";
 const ORGANIC_COUNTRY = "CA";
 const FIXTURE_CITY = "chicago";
@@ -53,19 +73,23 @@ function makeArgs(
     countryCode?: string;
     showArtistId?: string;
     trackId?: string;
+    artistId?: string;
+    releaseId?: string;
+    ineligibleReleaseId?: string;
   },
   confirm = phase !== "preview",
 ) {
   const args = [
     phase,
-    "--artist-id", ARTIST,
-    "--release-id", RELEASE,
+    "--artist-id", input.artistId ?? ARTIST,
+    "--release-id", input.releaseId ?? RELEASE,
     "--run-id", input.runId,
     "--city-slug", input.citySlug ?? FIXTURE_CITY,
     "--country-code", input.countryCode ?? FIXTURE_COUNTRY,
   ];
   if (input.showArtistId) args.push("--show-artist-id", input.showArtistId);
   if (input.trackId) args.push("--track-id", input.trackId);
+  if (input.ineligibleReleaseId) args.push("--ineligible-release-id", input.ineligibleReleaseId);
   if (confirm) args.push("--confirm");
   return args;
 }
@@ -264,6 +288,46 @@ describe("Scene Scout acceptance fixture runner (integration)", () => {
         },
       ],
     });
+
+    await prisma.user.createMany({
+      data: [FL_OWNER, FL_UNVERIFIED_OWNER].map((id) => ({ id, email: `${id}@test.resonate` })),
+    });
+    await prisma.artist.create({ data: { id: FL_ARTIST, userId: FL_OWNER, displayName: "First Listener Artist" } });
+    await prisma.artist.create({
+      data: { id: FL_UNVERIFIED_ARTIST, userId: FL_UNVERIFIED_OWNER, displayName: "Unverified First Listener Artist" },
+    });
+    await prisma.curatorReputation.create({
+      data: { walletAddress: FL_OWNER.toLowerCase(), humanVerificationStatus: "human_verified", humanVerifiedAt: new Date() },
+    });
+    const flCatalog: Array<{ releaseId: string; trackId: string; artistId: string; createdAt?: Date; ai?: boolean }> = [
+      { releaseId: FL_RELEASE, trackId: FL_TRACK, artistId: FL_ARTIST },
+      { releaseId: FL_WINDOW_RELEASE, trackId: FL_WINDOW_TRACK, artistId: FL_ARTIST },
+      { releaseId: FL_STALE_RELEASE, trackId: FL_STALE_TRACK, artistId: FL_ARTIST, createdAt: new Date(Date.now() - 8 * DAY_MS) },
+      { releaseId: FL_AI_RELEASE, trackId: FL_AI_TRACK, artistId: FL_ARTIST, ai: true },
+      { releaseId: FL_UNVERIFIED_RELEASE, trackId: FL_UNVERIFIED_TRACK, artistId: FL_UNVERIFIED_ARTIST },
+    ];
+    for (const entry of flCatalog) {
+      await prisma.release.create({
+        data: {
+          id: entry.releaseId,
+          artistId: entry.artistId,
+          title: `First Listener ${entry.releaseId.slice(TEST_PREFIX.length)}`,
+          status: "published",
+          ...(entry.createdAt ? { createdAt: entry.createdAt } : {}),
+        },
+      });
+      await prisma.track.create({
+        data: {
+          id: entry.trackId,
+          releaseId: entry.releaseId,
+          title: "First Listener Track",
+          position: 1,
+          processingStatus: "complete",
+          contentStatus: "clean",
+          aiDisclosureLevel: entry.ai ? "ALL" : "NONE",
+        },
+      });
+    }
   });
 
   afterAll(async () => {
@@ -291,7 +355,15 @@ describe("Scene Scout acceptance fixture runner (integration)", () => {
       }
     }
 
-    await prisma.sceneScoutCityDemand.deleteMany({ where: { artistId: ARTIST } }).catch(() => undefined);
+    await prisma.firstListenerExposure.deleteMany({
+      where: { OR: [{ releaseId: { in: FL_RELEASES } }, { userId: { startsWith: TEST_PREFIX } }] },
+    }).catch(() => undefined);
+    await prisma.sceneScoutCityDemand.deleteMany({ where: { artistId: { in: [ARTIST, FL_ARTIST] } } }).catch(() => undefined);
+    await prisma.track.deleteMany({ where: { id: { in: FL_TRACKS } } }).catch(() => undefined);
+    await prisma.release.deleteMany({ where: { id: { in: FL_RELEASES } } }).catch(() => undefined);
+    await prisma.curatorReputation.deleteMany({ where: { walletAddress: FL_OWNER.toLowerCase() } }).catch(() => undefined);
+    await prisma.artist.deleteMany({ where: { id: { in: [FL_ARTIST, FL_UNVERIFIED_ARTIST] } } }).catch(() => undefined);
+    await prisma.user.deleteMany({ where: { id: { in: [FL_OWNER, FL_UNVERIFIED_OWNER, FL_REAL_LISTENER] } } }).catch(() => undefined);
     await prisma.analyticsEvent.deleteMany({ where: { eventId: { startsWith: TEST_PREFIX } } }).catch(() => undefined);
     const organicIds = Array.from({ length: 3 }, (_, index) => `${TEST_PREFIX}organic_${index}`);
     await prisma.analyticsConsent.deleteMany({ where: { userId: { in: organicIds } } }).catch(() => undefined);
@@ -961,6 +1033,263 @@ describe("Scene Scout acceptance fixture runner (integration)", () => {
       expect(await fixtureState(seeded.invocation)).toEqual(stateBefore);
       await run("cleanup", input);
       await expectFixtureGone(seeded.invocation);
+    });
+
+    describe("first-listener scenarios (#1970)", () => {
+      beforeEach(() => {
+        process.env.DISCOVERY_MIN_AUDIENCE = "3";
+      });
+
+      async function placementCounter(releaseId: string) {
+        const release = await prisma.release.findUniqueOrThrow({
+          where: { id: releaseId },
+          select: { firstListenerPlacementsUsed: true },
+        });
+        return release.firstListenerPlacementsUsed;
+      }
+
+      function fixturePlacements(invocation: SceneScoutAcceptanceInvocation, releaseId?: string) {
+        return prisma.firstListenerExposure.count({
+          where: {
+            userId: { startsWith: sceneScoutAcceptancePrefix(invocation) },
+            ...(releaseId ? { releaseId } : {}),
+          },
+        });
+      }
+
+      it("reserves one placement per floor listener on a fresh verified release, refuses repeats, and reports day-seven reception at the floor", async () => {
+        const input = { runId: nextRunId("fl"), artistId: FL_ARTIST, releaseId: FL_RELEASE };
+        const counterBefore = await placementCounter(FL_RELEASE);
+
+        const placed = await run("first-listener", input);
+        expect(placed.result).toMatchObject({
+          phase: "first-listener",
+          result: "verified",
+          clock: "real",
+          listeners: 3,
+          fixtureListenersCreated: 3,
+          candidatesServed: 3,
+          placementsReserved: 3,
+          counterBefore,
+          counterAfter: counterBefore + 3,
+          fixturePlacements: 3,
+          capRemaining: 1000 - counterBefore - 3,
+          capExercised: false,
+          duplicateRefused: true,
+          ineligibleRelease: { checked: false },
+        });
+        expectNoIdentities(placed.result, placed.invocation, [FL_OWNER]);
+        expect(await fixturePlacements(placed.invocation, FL_RELEASE)).toBe(3);
+        expect(await placementCounter(FL_RELEASE)).toBe(counterBefore + 3);
+        expect((await fixtureState(placed.invocation)).events).toHaveLength(0);
+
+        // The fixture is consumed once: a second run refuses before reserving anything.
+        await expect(run("first-listener", input)).rejects.toThrow(/consumes it once/);
+        expect(await placementCounter(FL_RELEASE)).toBe(counterBefore + 3);
+
+        const release = await prisma.release.findUniqueOrThrow({ where: { id: FL_RELEASE }, select: { createdAt: true } });
+        const received = await run("first-listener-reception", input);
+        expect(received.result).toMatchObject({
+          phase: "first-listener-reception",
+          result: "verified",
+          clock: "projected",
+          readAt: new Date(release.createdAt.getTime() + 7 * DAY_MS).toISOString(),
+          floor: 3,
+          playsWritten: 3,
+          heardBelowFloor: null,
+          heardAtFloor: 3,
+          savesAtFloor: null,
+          followsAtFloor: null,
+        });
+        expectNoIdentities(received.result, received.invocation, [FL_OWNER]);
+        const events = (await fixtureState(received.invocation)).events;
+        expect(events).toHaveLength(3);
+        expect(events.every(({ eventName }) => eventName === "playback.started")).toBe(true);
+        for (const event of events) {
+          expect(parseAnalyticsEventEnvelope(event.envelope)).toMatchObject({
+            producer: "scene_scout_acceptance",
+            privacyTier: "pseudonymous",
+            consentBasis: "consent",
+            subjectId: FL_TRACK,
+            payload: { synthetic: true, trackId: FL_TRACK, acceptanceReleaseId: FL_RELEASE },
+          });
+        }
+        await expect(run("first-listener-reception", input)).rejects.toThrow(/consumes it once/);
+
+        const cleaned = await run("cleanup", input);
+        expect(cleaned.result).toMatchObject({
+          phase: "cleanup",
+          result: "cleaned",
+          listenersDeleted: 3,
+          eventsDeleted: 3,
+          firstListenerExposuresDeleted: 3,
+        });
+        await expectFixtureGone(placed.invocation);
+        expect(await fixturePlacements(placed.invocation)).toBe(0);
+        // The release budget survives cleanup by design.
+        expect(await placementCounter(FL_RELEASE)).toBe(counterBefore + 3);
+      });
+
+      it("reuses a seeded fixture whose earlier plays and saves precede placement and do not count", async () => {
+        const input = { runId: nextRunId("fl-seeded"), artistId: FL_ARTIST, releaseId: FL_RELEASE };
+        await run("seed", input);
+        const placed = await run("first-listener", input);
+        expect(placed.result).toMatchObject({ result: "verified", fixtureListenersCreated: 0, placementsReserved: 3 });
+
+        const received = await run("first-listener-reception", input);
+        expect(received.result).toMatchObject({
+          result: "verified",
+          heardBelowFloor: null,
+          heardAtFloor: 3,
+          fullPlaysAtFloor: null,
+          savesAtFloor: null,
+        });
+        await expect(run("verify", input)).rejects.toThrow(/first-listener-reception scenario/);
+
+        const cleaned = await run("cleanup", input);
+        expect(cleaned.result).toMatchObject({
+          result: "cleaned",
+          listenersDeleted: 3,
+          eventsDeleted: 9,
+          firstListenerExposuresDeleted: 3,
+        });
+        await expectFixtureGone(placed.invocation);
+      });
+
+      it("blocks a stale release, an unverified artist, and a fully AI-generated track without writing", async () => {
+        const cases = [
+          { artistId: FL_ARTIST, releaseId: FL_STALE_RELEASE, reasons: ["stale"] },
+          { artistId: FL_UNVERIFIED_ARTIST, releaseId: FL_UNVERIFIED_RELEASE, reasons: ["not_human_verified"] },
+          { artistId: FL_ARTIST, releaseId: FL_AI_RELEASE, reasons: ["ai_disclosure_all"] },
+        ];
+        for (const entry of cases) {
+          const counterBefore = await placementCounter(entry.releaseId);
+          const blocked = await run("first-listener", { runId: nextRunId("fl-block"), ...entry });
+          expect(blocked.result).toMatchObject({
+            phase: "first-listener",
+            result: "blocked",
+            reasons: entry.reasons,
+            windowHours: 168,
+            listenersRequired: 3,
+          });
+          expectNoIdentities(blocked.result, blocked.invocation);
+          const state = await fixtureState(blocked.invocation);
+          expect(state.users).toHaveLength(0);
+          expect(state.events).toHaveLength(0);
+          expect(await prisma.firstListenerExposure.count({ where: { releaseId: entry.releaseId } })).toBe(0);
+          expect(await placementCounter(entry.releaseId)).toBe(counterBefore);
+        }
+        const stale = await run("first-listener", { runId: nextRunId("fl-age"), artistId: FL_ARTIST, releaseId: FL_STALE_RELEASE });
+        expect((stale.result as Record<string, number>).releaseAgeHours).toBeGreaterThanOrEqual(8 * 24);
+      });
+
+      it("reports an ineligible release's categorical reasons without placing it, and refuses an eligible one", async () => {
+        const eligibleInput = {
+          runId: nextRunId("fl-elig"),
+          artistId: FL_ARTIST,
+          releaseId: FL_RELEASE,
+          ineligibleReleaseId: FL_WINDOW_RELEASE,
+        };
+        const counterBefore = await placementCounter(FL_RELEASE);
+        const refused = await run("first-listener", eligibleInput);
+        expect(refused.result).toMatchObject({ result: "blocked", reasons: ["ineligible_release_is_eligible"] });
+        expect((await fixtureState(refused.invocation)).users).toHaveLength(0);
+        expect(await placementCounter(FL_RELEASE)).toBe(counterBefore);
+        expect(await prisma.firstListenerExposure.count({ where: { releaseId: FL_WINDOW_RELEASE } })).toBe(0);
+
+        const aiInput = { runId: nextRunId("fl-ai"), artistId: FL_ARTIST, releaseId: FL_RELEASE, ineligibleReleaseId: FL_AI_RELEASE };
+        const ai = await run("first-listener", aiInput);
+        expect(ai.result).toMatchObject({
+          result: "verified",
+          placementsReserved: 3,
+          ineligibleRelease: {
+            checked: true,
+            outcome: "excluded",
+            reasons: ["ai_disclosure_all"],
+            candidateSourceExcluded: true,
+            verificationPolicyExcluded: null,
+            reservationAttempted: true,
+            reservationRefused: true,
+            budgetUnchanged: true,
+          },
+        });
+        expectNoIdentities(ai.result, ai.invocation);
+
+        // Verified-human status is enforced by shared policy and reservation, not the candidate source.
+        const unverifiedInput = {
+          runId: nextRunId("fl-unv"),
+          artistId: FL_ARTIST,
+          releaseId: FL_RELEASE,
+          ineligibleReleaseId: FL_UNVERIFIED_RELEASE,
+        };
+        const unverified = await run("first-listener", unverifiedInput);
+        expect(unverified.result).toMatchObject({
+          result: "verified",
+          ineligibleRelease: {
+            outcome: "excluded",
+            reasons: ["not_human_verified"],
+            candidateSourceExcluded: null,
+            verificationPolicyExcluded: true,
+            reservationRefused: true,
+            budgetUnchanged: true,
+          },
+        });
+        expect(await prisma.firstListenerExposure.count({ where: { releaseId: { in: [FL_AI_RELEASE, FL_UNVERIFIED_RELEASE] } } })).toBe(0);
+        expect(await placementCounter(FL_AI_RELEASE)).toBe(0);
+        expect(await placementCounter(FL_UNVERIFIED_RELEASE)).toBe(0);
+
+        for (const input of [aiInput, unverifiedInput]) {
+          // The ineligible-release check is first-listener only; cleanup takes the shared target arguments.
+          const cleaned = await run("cleanup", { ...input, ineligibleReleaseId: undefined });
+          expect(cleaned.result).toMatchObject({ result: "cleaned", firstListenerExposuresDeleted: 3 });
+        }
+      });
+
+      it("blocks reception without a first-listener run, with real placements present, or after the first week", async () => {
+        const input = { runId: nextRunId("fl-recv"), artistId: FL_ARTIST, releaseId: FL_WINDOW_RELEASE };
+        const missing = await run("first-listener-reception", input);
+        expect(missing.result).toMatchObject({ result: "blocked", reasons: ["first_listener_not_run"], fixturePlacements: 0 });
+        expect((await fixtureState(missing.invocation)).users).toHaveLength(0);
+
+        process.env.DISCOVERY_MIN_AUDIENCE = "1";
+        const lowFloor = await run("first-listener", input);
+        expect(lowFloor.result).toMatchObject({ result: "blocked", reasons: ["audience_floor_too_low"], floor: 1 });
+        process.env.DISCOVERY_MIN_AUDIENCE = "3";
+
+        const placed = await run("first-listener", input);
+        expect(placed.result).toMatchObject({ result: "verified", placementsReserved: 3 });
+
+        await prisma.user.create({ data: { id: FL_REAL_LISTENER, email: `${FL_REAL_LISTENER}@test.resonate` } });
+        await prisma.firstListenerExposure.create({
+          data: { id: `${TEST_PREFIX}fl_real_exposure`, userId: FL_REAL_LISTENER, releaseId: FL_WINDOW_RELEASE },
+        });
+        try {
+          const shared = await run("first-listener-reception", input);
+          expect(shared.result).toMatchObject({ result: "blocked", reasons: ["real_reception_present"], clock: "projected" });
+          expectNoIdentities(shared.result, shared.invocation, [FL_REAL_LISTENER]);
+          expect((await fixtureState(placed.invocation)).events).toHaveLength(0);
+        } finally {
+          await prisma.firstListenerExposure.deleteMany({ where: { userId: FL_REAL_LISTENER } });
+          await prisma.user.deleteMany({ where: { id: FL_REAL_LISTENER } });
+        }
+
+        const original = await prisma.release.findUniqueOrThrow({ where: { id: FL_WINDOW_RELEASE }, select: { createdAt: true } });
+        await prisma.release.update({
+          where: { id: FL_WINDOW_RELEASE },
+          data: { createdAt: new Date(Date.now() - 8 * DAY_MS) },
+        });
+        try {
+          const closed = await run("first-listener-reception", input);
+          expect(closed.result).toMatchObject({ result: "blocked", reasons: ["release_window_closed"], clock: "real" });
+          expect((await fixtureState(placed.invocation)).events).toHaveLength(0);
+        } finally {
+          await prisma.release.update({ where: { id: FL_WINDOW_RELEASE }, data: { createdAt: original.createdAt } });
+        }
+
+        const cleaned = await run("cleanup", input);
+        expect(cleaned.result).toMatchObject({ result: "cleaned", listenersDeleted: 3, eventsDeleted: 0, firstListenerExposuresDeleted: 3 });
+        await expectFixtureGone(placed.invocation);
+      });
     });
   });
 });

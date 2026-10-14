@@ -13,6 +13,12 @@ import { normalizeCamelotCode } from "../modules/crates/crate_camelot";
 import { defaultCrateFilters } from "../modules/crates/crate_filters";
 import { computeCoverage, failedFilters, isExcludedAsFullyAi } from "../modules/crates/crate_selection";
 import { deriveCrateUnmetDemand } from "../modules/scene_scout/unmet_demand.derivation";
+import {
+  FIRST_LISTENER_MAX_RELEASE_PLACEMENTS,
+  FIRST_LISTENER_PUBLIC_RIGHTS_ROUTES,
+  FIRST_LISTENER_WINDOW_MS,
+} from "../modules/recommendations/first_listener.contracts";
+import { deriveCreatorVerificationStates } from "../modules/trust/verification-semantics";
 
 export const SCENE_SCOUT_ACCEPTANCE_PHASES = [
   "preview",
@@ -22,6 +28,8 @@ export const SCENE_SCOUT_ACCEPTANCE_PHASES = [
   "erase-listener",
   "unmet-demand",
   "access-check",
+  "first-listener",
+  "first-listener-reception",
   "cleanup",
 ] as const;
 export type SceneScoutAcceptancePhase = (typeof SCENE_SCOUT_ACCEPTANCE_PHASES)[number];
@@ -31,7 +39,10 @@ export const SCENE_SCOUT_ACCEPTANCE_READ_ONLY_PHASES: readonly SceneScoutAccepta
 
 export const SCENE_SCOUT_ACCEPTANCE_PRODUCER ="scene_scout_acceptance";
 export const SCENE_SCOUT_ACCEPTANCE_MAX_USERS = 50;
-/** Listener play/save pairs for the user maximum, plus the erase-scenario markers. */
+/**
+ * Listener play/save pairs for the user maximum, one first-listener reception
+ * play each, plus the erase-scenario markers.
+ */
 export const SCENE_SCOUT_ACCEPTANCE_MAX_EVENTS = 200;
 /** Fixture listener (zero-based ordinal) whose consent the withdraw scenario withdraws. */
 export const SCENE_SCOUT_ACCEPTANCE_WITHDRAW_ORDINAL = 0;
@@ -40,6 +51,8 @@ export const SCENE_SCOUT_ACCEPTANCE_ERASE_ORDINAL = 1;
 /** The only non-listening event the tool writes: it records an erased fixture account's new id. */
 export const SCENE_SCOUT_ACCEPTANCE_MARKER_EVENT_NAME = "scene_scout_acceptance.fixture_marker";
 export const SCENE_SCOUT_ACCEPTANCE_MARKER_KINDS = ["erasure_started", "erased_account"] as const;
+/** The only phase that accepts `--ineligible-release-id`. */
+export const SCENE_SCOUT_ACCEPTANCE_INELIGIBLE_RELEASE_PHASE: SceneScoutAcceptancePhase = "first-listener";
 export type SceneScoutAcceptanceMarkerKind = (typeof SCENE_SCOUT_ACCEPTANCE_MARKER_KINDS)[number];
 
 export class SceneScoutAcceptanceInputError extends Error {
@@ -61,6 +74,12 @@ export interface SceneScoutAcceptanceInvocation {
   showArtistId: string;
   /** The `first` selector is stable for cleanup even if the catalog later changes. */
   trackId?: string;
+  /**
+   * `first-listener` only: an existing release the operator expects to be
+   * ineligible. It is read and reservation is attempted, but it is never
+   * changed and it does not take part in the fixture namespace.
+   */
+  ineligibleReleaseId?: string;
   runId: string;
   citySlug: string;
   countryCode: string;
@@ -72,6 +91,7 @@ const VALUE_FLAGS: ReadonlyMap<string, string> = new Map([
   ["--release-id", "releaseId"],
   ["--show-artist-id", "showArtistId"],
   ["--track-id", "trackId"],
+  ["--ineligible-release-id", "ineligibleReleaseId"],
   ["--run-id", "runId"],
   ["--city-slug", "citySlug"],
   ["--country-code", "countryCode"],
@@ -138,6 +158,16 @@ export function parseSceneScoutAcceptanceArgs(args: string[]): SceneScoutAccepta
   const trackId = values.trackId === undefined ? undefined : values.trackId.trim();
   if (values.showArtistId !== undefined && !showArtistId) inputError("--show-artist-id must not be empty");
   if (values.trackId !== undefined && !trackId) inputError("--track-id must not be empty");
+  const ineligibleReleaseId = values.ineligibleReleaseId === undefined ? undefined : values.ineligibleReleaseId.trim();
+  if (values.ineligibleReleaseId !== undefined) {
+    if (!ineligibleReleaseId) inputError("--ineligible-release-id must not be empty");
+    if (selectedPhase !== SCENE_SCOUT_ACCEPTANCE_INELIGIBLE_RELEASE_PHASE) {
+      inputError(`--ineligible-release-id is only valid for the ${SCENE_SCOUT_ACCEPTANCE_INELIGIBLE_RELEASE_PHASE} phase`);
+    }
+    if (ineligibleReleaseId === releaseId) {
+      inputError("--ineligible-release-id must differ from --release-id");
+    }
+  }
 
   let city: ReturnType<typeof normalizeAnalyticsGeoDimension>;
   try {
@@ -160,6 +190,7 @@ export function parseSceneScoutAcceptanceArgs(args: string[]): SceneScoutAccepta
     releaseId,
     showArtistId,
     trackId,
+    ...(ineligibleReleaseId === undefined ? {} : { ineligibleReleaseId }),
     runId,
     citySlug: city.citySlug,
     countryCode: city.countryCode,
@@ -225,7 +256,8 @@ export function sceneScoutAcceptanceUserId(prefix: string, ordinal: number) {
   return `${prefix}user_${String(ordinal).padStart(2, "0")}`;
 }
 
-export type SceneScoutAcceptanceEventKind = "playback_completed" | "library_saved";
+/** `playback_started` is written only by the `first-listener-reception` phase. */
+export type SceneScoutAcceptanceEventKind = "playback_completed" | "library_saved" | "playback_started";
 
 export function sceneScoutAcceptanceEventId(prefix: string, ordinal: number, kind: SceneScoutAcceptanceEventKind) {
   return `${prefix}event_${String(ordinal).padStart(2, "0")}_${kind}`;
@@ -320,4 +352,118 @@ export function planSceneScoutAcceptanceUnmetGap(facts: CrateCandidateFacts): Sc
       ? "The selected track already has every crate stem type and no measured tempo, key, or energy to build a categorical gap from; choose another track."
       : "No categorical gap could be derived for the selected track; choose another track.",
   };
+}
+
+/**
+ * Categorical reasons a release (or one selected track of it) cannot receive a
+ * first-listener placement, mirroring `FirstListenerDiscoveryService` with the
+ * default listener preference (explicit tracks excluded). Never an id or text.
+ */
+export const FIRST_LISTENER_INELIGIBILITY_REASONS = [
+  "stale",
+  "future_created",
+  "not_public",
+  "withdrawn",
+  "rights_route",
+  "future_release_date",
+  "no_playable_track",
+  "ai_disclosure_all",
+  "explicit_track",
+  "artist_without_user",
+  "not_human_verified",
+  "placement_cap_reached",
+] as const;
+export type FirstListenerIneligibilityReason = (typeof FIRST_LISTENER_INELIGIBILITY_REASONS)[number];
+
+/** Reasons the fresh-candidate source itself enforces; the others are enforced by shared policy or reservation. */
+export const FIRST_LISTENER_CANDIDATE_SOURCE_REASONS: readonly FirstListenerIneligibilityReason[] = [
+  "stale",
+  "future_created",
+  "not_public",
+  "withdrawn",
+  "rights_route",
+  "future_release_date",
+  "no_playable_track",
+  "ai_disclosure_all",
+  "explicit_track",
+];
+
+/** Reasons enforced by the shared verified-human discovery policy (and again at reservation). */
+export const FIRST_LISTENER_VERIFICATION_REASONS: readonly FirstListenerIneligibilityReason[] = [
+  "artist_without_user",
+  "not_human_verified",
+];
+
+/** Mirrors the discovery service's public release statuses. */
+const FIRST_LISTENER_PUBLIC_RELEASE_STATUSES = ["ready", "published"];
+
+export interface FirstListenerEligibilityFacts {
+  now: Date;
+  release: {
+    createdAt: Date;
+    status: string;
+    withdrawnAt: Date | null;
+    rightsRoute: string | null;
+    releaseDate: Date | null;
+  };
+  /** The selected target track only, or every (bounded) track of the release. */
+  tracks: Array<{
+    processingStatus: string;
+    contentStatus: string;
+    aiDisclosureLevel: string;
+    rightsRoute: string | null;
+    explicit: boolean;
+  }>;
+  artistUserId: string | null;
+  humanVerificationStatus?: string | null;
+  humanVerifiedAt?: Date | null;
+  /** max(Release.firstListenerPlacementsUsed, exposure rows), as the reservation computes it. */
+  placementsUsed: number;
+  /** Placements this run needs; the cap must leave room for all of them. */
+  placementsNeeded: number;
+}
+
+function permittedRightsRoute(route: string | null) {
+  return route === null || (FIRST_LISTENER_PUBLIC_RIGHTS_ROUTES as readonly string[]).includes(route);
+}
+
+export function firstListenerIneligibilityReasons(facts: FirstListenerEligibilityFacts): FirstListenerIneligibilityReason[] {
+  const reasons: FirstListenerIneligibilityReason[] = [];
+  const now = facts.now.getTime();
+  const { release } = facts;
+  if (release.createdAt.getTime() < now - FIRST_LISTENER_WINDOW_MS) reasons.push("stale");
+  if (release.createdAt.getTime() > now) reasons.push("future_created");
+  if (!FIRST_LISTENER_PUBLIC_RELEASE_STATUSES.includes(release.status)) reasons.push("not_public");
+  if (release.withdrawnAt !== null) reasons.push("withdrawn");
+  if (!permittedRightsRoute(release.rightsRoute)) reasons.push("rights_route");
+  if (release.releaseDate !== null && release.releaseDate.getTime() > now) reasons.push("future_release_date");
+
+  const tracks = facts.tracks;
+  const playable = tracks.filter((track) =>
+    track.processingStatus === "complete" &&
+    track.contentStatus === "clean" &&
+    track.aiDisclosureLevel !== "ALL" &&
+    permittedRightsRoute(track.rightsRoute),
+  );
+  if (tracks.length > 0 && tracks.every((track) => track.aiDisclosureLevel === "ALL")) {
+    reasons.push("ai_disclosure_all");
+  } else if (playable.length === 0) {
+    reasons.push("no_playable_track");
+  } else if (playable.every((track) => track.explicit)) {
+    reasons.push("explicit_track");
+  }
+
+  if (!facts.artistUserId) {
+    reasons.push("artist_without_user");
+  } else if (deriveCreatorVerificationStates({
+    humanVerificationStatus: facts.humanVerificationStatus,
+    humanVerifiedAt: facts.humanVerifiedAt,
+  }).humanVerificationStatus !== "human_verified") {
+    reasons.push("not_human_verified");
+  }
+
+  if (facts.placementsUsed + facts.placementsNeeded > FIRST_LISTENER_MAX_RELEASE_PLACEMENTS) {
+    reasons.push("placement_cap_reached");
+  }
+  return reasons;
 }
