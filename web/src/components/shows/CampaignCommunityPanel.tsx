@@ -42,8 +42,14 @@ export function campaignCommunityAction(room?: ShowCampaignCommunityRoom | null)
   return { label: "Unavailable", disabled: true, reason: "The supporter room is not available right now." };
 }
 
-export function canPostCampaignUpdate(role: string | null) {
-  return role === "artist" || role === "admin" || role === "operator";
+/**
+ * #2128: posting campaign updates is authorized by campaign ownership, which only
+ * the backend knows (`canPostCampaignUpdates`). There is no `artist` JWT role, so
+ * the fallback for a response without the flag is admin/operator only.
+ */
+export function canPostCampaignUpdate(role: string | null, canPostCampaignUpdates?: boolean | null) {
+  if (typeof canPostCampaignUpdates === "boolean") return canPostCampaignUpdates;
+  return role === "admin" || role === "operator";
 }
 
 export function isCampaignSupporterRoomAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {
@@ -75,11 +81,12 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
   const [messageBody, setMessageBody] = useState("");
   const [updateBody, setUpdateBody] = useState("");
   const [notice, setNotice] = useState<Notice>(null);
+  const [canPostUpdates, setCanPostUpdates] = useState<boolean | null>(null);
 
   const joined = isCampaignSupporterRoomJoined(supporterRoom);
   const cityJoined = isCityDemandRoomJoined(cityDemandRoom);
   const action = campaignCommunityAction(supporterRoom);
-  const updateAllowed = canPostCampaignUpdate(role);
+  const updateAllowed = canPostCampaignUpdate(role, canPostUpdates);
   const campaignCommunityAvailable = isCampaignCommunityAvailable(campaign);
   const supporterRoomAvailable = isCampaignSupporterRoomAvailable(campaign);
   const cityDemandAvailable = isCityDemandAvailable(campaign);
@@ -98,6 +105,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
       setSupporterRoom(null);
       setCityDemandRoom(null);
       setMessages([]);
+      setCanPostUpdates(null);
       return;
     }
 
@@ -109,9 +117,11 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
         if (!active) return;
         const nextSupporterRoom = community.rooms.find((candidate) => candidate.roomType === "show_campaign_supporter") ?? null;
         const nextCityDemandRoom = community.rooms.find((candidate) => candidate.roomType === "show_city_demand") ?? null;
+        const nextCanPostUpdates = canPostCampaignUpdate(role, community.canPostCampaignUpdates);
         setSupporterRoom(nextSupporterRoom);
         setCityDemandRoom(nextCityDemandRoom);
-        if (nextSupporterRoom && (isCampaignSupporterRoomJoined(nextSupporterRoom) || updateAllowed)) {
+        setCanPostUpdates(nextCanPostUpdates);
+        if (nextSupporterRoom && (isCampaignSupporterRoomJoined(nextSupporterRoom) || nextCanPostUpdates)) {
           const response = await listCommunityRoomMessages(token, nextSupporterRoom.id);
           if (active) setMessages(response.messages);
         } else {
@@ -129,7 +139,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     return () => {
       active = false;
     };
-  }, [campaign, campaignCommunityAvailable, token, updateAllowed]);
+  }, [campaign, campaignCommunityAvailable, token, role]);
 
   async function refreshMessages(nextRoom = supporterRoom) {
     if (!token || !nextRoom || (!isCampaignSupporterRoomJoined(nextRoom) && !updateAllowed)) return;

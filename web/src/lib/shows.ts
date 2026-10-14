@@ -984,6 +984,8 @@ export type ShowCampaignCommunity = {
     status: string;
     campaignLevel: string;
   };
+  /** #2128: viewer may post campaign updates (campaign artist owner, or admin/operator). */
+  canPostCampaignUpdates?: boolean;
   rooms: ShowCampaignCommunityRoom[];
 };
 

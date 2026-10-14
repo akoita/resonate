@@ -829,6 +829,41 @@ describe("CommunityRoomsService integration", () => {
     }));
   });
 
+  // #2128: no `artist` JWT role is issued, so the campaign artist owner signs in
+  // as `listener`; posting rights come from ownership, surfaced as a viewer flag.
+  it("derives the campaign update capability from ownership, not the JWT role", async () => {
+    const owner = await service.getShowCampaignCommunity(artistUserId, campaignSlug, "listener");
+    const stranger = await service.getShowCampaignCommunity(otherUserId, campaignSlug, "listener");
+    const operator = await service.getShowCampaignCommunity(otherUserId, campaignSlug, "operator");
+
+    expect(owner.canPostCampaignUpdates).toBe(true);
+    expect(stranger.canPostCampaignUpdates).toBe(false);
+    expect(operator.canPostCampaignUpdates).toBe(true);
+
+    const update = await service.createShowCampaignUpdate(
+      { userId: artistUserId, role: "listener" },
+      campaignId,
+      { body: "Listener-role owner update." },
+    );
+    expect(update.message).toMatchObject({ messageType: "campaign_update" });
+    await expect(service.createShowCampaignUpdate(
+      { userId: otherUserId, role: "listener" },
+      campaignId,
+      { body: "Not my campaign." },
+    )).rejects.toThrow(ForbiddenException);
+
+    // The panel loads supporter-room messages for an owner who has not joined.
+    const supporterRoom = owner.rooms.find((room) => room.roomType === "show_campaign_supporter");
+    expect(supporterRoom).toBeDefined();
+    expect(supporterRoom?.membership).toBeNull();
+    const ownerMessages = await service.listMessages(artistUserId, supporterRoom!.id);
+    expect(ownerMessages.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: update.message.id, messageType: "campaign_update" }),
+    ]));
+
+    await service.deleteMessage(artistUserId, update.message.id);
+  });
+
   it("revokes stale supporter-room reads when campaign support enters refund lifecycle", async () => {
     const joined = await service.joinShowCampaignCommunity(listenerUserId, campaignId);
 

@@ -67,10 +67,19 @@ describe("CampaignCommunityPanel helpers", () => {
     });
   });
 
-  it("limits campaign update posting to artist and operator roles", () => {
-    expect(canPostCampaignUpdate("artist")).toBe(true);
+  it("authorizes campaign update posting from the backend ownership flag", () => {
+    // #2128: a campaign artist owner signs in with the listener role.
+    expect(canPostCampaignUpdate("listener", true)).toBe(true);
+    expect(canPostCampaignUpdate("listener", false)).toBe(false);
+    expect(canPostCampaignUpdate("operator", false)).toBe(false);
+  });
+
+  it("falls back to admin/operator roles only when the flag is absent", () => {
     expect(canPostCampaignUpdate("operator")).toBe(true);
+    expect(canPostCampaignUpdate("admin", null)).toBe(true);
+    expect(canPostCampaignUpdate("artist")).toBe(false);
     expect(canPostCampaignUpdate("listener")).toBe(false);
+    expect(canPostCampaignUpdate(null)).toBe(false);
   });
 
   it("exposes city demand for active campaign and signal lifecycles", () => {
