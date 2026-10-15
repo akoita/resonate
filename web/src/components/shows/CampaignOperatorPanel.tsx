@@ -24,6 +24,7 @@ import {
 } from "../../lib/shows";
 import { getAddresses } from "../../contracts_abi";
 import { REPO_URL } from "../../lib/buildInfo";
+import { UnclaimedRefundsSection } from "./UnclaimedRefundsSection";
 
 /** GitHub link to the ops runbook that explains creating the on-chain campaign. */
 const OPERATIONS_RUNBOOK_URL = `${REPO_URL}/blob/main/docs/smart-contracts/operations-runbook.md`;
@@ -312,6 +313,10 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
           </div>
         ))}
       </div>
+
+      {isOperator && ["refund_available", "cancelled"].includes(current.rawStatus) ? (
+        <UnclaimedRefundsSection campaignId={campaign.backendId} />
+      ) : null}
 
       <div className="show-detail__operator-grid">
         <fieldset>

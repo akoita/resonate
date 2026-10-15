@@ -2018,6 +2018,40 @@ export async function getManagedShowCampaign(input: {
   return mapBackendCampaign(await response.json() as BackendShowCampaign);
 }
 
+/** #2149 operator view: refunds that are claimable but unclaimed, per campaign. */
+export type UnclaimedRefundCampaign = {
+  campaignId: string;
+  slug: string;
+  title: string;
+  artistDisplayName: string;
+  city: string;
+  status: string;
+  asset: { symbol: string; decimals: number };
+  backerCount: number;
+  /** Pledged units of the unclaimed backers; the claimable amount can be lower after an early deposit release. */
+  totalUnclaimedUnits: string;
+  refundsOpenedAt: string;
+  oldestAgeDays: number;
+  /** Highest reminder step sent (0 = on opening, 1 = day 7, 2 = day 30), or null. */
+  lastReminderStep: number | null;
+};
+
+export async function getUnclaimedShowRefunds(input: {
+  token: string;
+  campaignId?: string;
+}): Promise<UnclaimedRefundCampaign[]> {
+  const query = input.campaignId ? `?campaignId=${encodeURIComponent(input.campaignId)}` : "";
+  const response = await fetch(`${API_BASE}/shows/operator/unclaimed-refunds${query}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json", Authorization: `Bearer ${input.token}` },
+  });
+  if (!response.ok) {
+    throw new Error("Could not load unclaimed refunds");
+  }
+  const body = (await response.json()) as { campaigns?: UnclaimedRefundCampaign[] };
+  return body.campaigns ?? [];
+}
+
 /**
  * #950 operator-only: raise a dispute against a campaign in the booking →
  * release window. Returns the created dispute; refetch the managed campaign to
