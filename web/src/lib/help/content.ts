@@ -1289,7 +1289,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Relist an eligible expired or cancelled listing in one step.",
-              "Use batch relist to bring several listings back at once.",
+              "Use batch relist to bring several listings back at once: select them, set the terms once, and confirm once (one confirmation for each group of up to 10 stems). Each listing keeps its license tier.",
+              "If a group can't be relisted, you'll see which stems were not listed and why; stems in earlier groups stay listed, and you can retry the rest.",
               "Search your inventory and review what has sold.",
             ],
           },

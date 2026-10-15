@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
-import { useListStem, useProtocolFee } from "../../../hooks/useContracts";
+import { RelistPreflightError, useProtocolFee, useRelistMany } from "../../../hooks/useContracts";
 import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import {
   findPaymentAssetForToken,
@@ -23,6 +23,15 @@ import {
   type MarketplaceListingAsset,
 } from "../../../lib/listingPricing";
 import { postNotifyListing } from "../../../lib/listingTiers";
+import {
+  buildRelistNotifyPayloads,
+  describeRelistFailure,
+  normalizeRelistLicense,
+  RELIST_CHUNK_SIZE,
+  type RelistChunk,
+  type RelistItem,
+  type RelistTerms,
+} from "../../../lib/batchRelist";
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
 import { sellerNetProceedsLine } from "../../../lib/marketplaceProceeds";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
@@ -94,6 +103,10 @@ function formatShortDate(value?: string | null) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+function listingLabel(listing: OwnerListing) {
+  return listing.stem?.title ?? `Token #${listing.tokenId}`;
+}
+
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
@@ -143,7 +156,7 @@ export default function MarketplaceListingManagerPage() {
   const highlightedListingId = searchParams.get("listing");
   const { address, smartAccountAddress, token } = useAuth();
   const { chainId } = useZeroDev();
-  const { list, pending, error } = useListStem();
+  const { planRelist, sendRelistChunk, pending } = useRelistMany();
   const { feeBps: protocolFeeBps, loading: protocolFeeLoading } = useProtocolFee();
   const {
     assets: paymentAssets,
@@ -165,7 +178,8 @@ export default function MarketplaceListingManagerPage() {
   const [paymentToken, setPaymentToken] = useState<string>(ZERO_PAYMENT_TOKEN);
   const [success, setSuccess] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; count: number } | null>(null);
+  const [relistFailure, setRelistFailure] = useState<string | null>(null);
   const lastInventoryAnalyticsKeyRef = useRef<string | null>(null);
 
   const marketplaceAssets = useMemo(
@@ -323,61 +337,95 @@ export default function MarketplaceListingManagerPage() {
     setPaymentToken(firstListing.paymentToken || ZERO_PAYMENT_TOKEN);
     setSuccess(null);
     setBatchProgress(null);
+    setRelistFailure(null);
   };
 
+  const closeRelist = () => {
+    setRelistingListings([]);
+    setRelistFailure(null);
+  };
+
+  // One confirmation per chunk of up to RELIST_CHUNK_SIZE stems; each
+  // relisted listing keeps its own license tier (#2030).
   const submitRelist = async () => {
     if (relistingListings.length === 0) return;
-    const priceUnits = parseListingPriceUnits({ price, asset: selectedAsset });
-    const durationSeconds = String(parseInt(duration) * 24 * 60 * 60);
-
+    setRelistFailure(null);
+    const terms: RelistTerms = {
+      amount: BigInt(amount),
+      pricePerUnit: parseListingPriceUnits({ price, asset: selectedAsset }),
+      paymentToken: listingPaymentToken(selectedAsset) as Address,
+      durationSeconds: BigInt(parseInt(duration) * 24 * 60 * 60),
+    };
+    const items: RelistItem[] = relistingListings.map((listing) => ({
+      key: listing.id,
+      tokenId: BigInt(listing.tokenId),
+      licenseType: normalizeRelistLicense(listing.licenseType),
+      label: listingLabel(listing),
+      stemId: listing.stem?.id ?? null,
+    }));
+    const relistCount = relistingListings.length;
+    const succeededKeys = new Set<string>();
+    let chunks: RelistChunk[] = [];
     let intentDelayed = false;
-    try {
-      for (let index = 0; index < relistingListings.length; index += 1) {
-        const listing = relistingListings[index];
-        setBatchProgress({
-          current: index + 1,
-          total: relistingListings.length,
-          title: listing.stem?.title ?? `Token #${listing.tokenId}`,
-        });
 
-        const txHash = await list({
-          tokenId: BigInt(listing.tokenId),
-          amount: BigInt(amount),
-          pricePerUnit: priceUnits,
-          paymentToken: listingPaymentToken(selectedAsset) as Address,
-          durationSeconds: BigInt(durationSeconds),
-        });
+    setBatchProgress({ current: 0, total: 0, count: relistCount });
+    try {
+      chunks = await planRelist(items, terms);
+      for (const chunk of chunks) {
+        setBatchProgress({ current: chunk.index + 1, total: chunks.length, count: chunk.listings.length });
+        let sent: Awaited<ReturnType<typeof sendRelistChunk>>;
+        try {
+          sent = await sendRelistChunk(chunk);
+        } catch (err) {
+          // A batch reverts as a whole: nothing in this chunk was listed.
+          setRelistFailure(
+            describeRelistFailure({
+              chunkIndex: chunk.index,
+              chunkCount: chunks.length,
+              failedLabels: chunk.listings.map((listing) => listing.label),
+              succeededLabels: items.filter((item) => succeededKeys.has(item.key)).map((item) => item.label),
+              notSentLabels: chunks.slice(chunk.index + 1).flatMap((later) => later.listings.map((listing) => listing.label)),
+              reason: err instanceof Error ? err.message : String(err),
+              failingLabel: err instanceof RelistPreflightError ? err.listing.label : null,
+            }),
+          );
+          if (succeededKeys.size > 0) {
+            // Keep only the stems still to relist so a retry never lists one twice.
+            setRelistingListings((current) => current.filter((listing) => !succeededKeys.has(listing.id)));
+            setSelectedListingIds((current) => new Set([...current].filter((id) => !succeededKeys.has(id))));
+            void fetchListings();
+          }
+          return;
+        }
+        chunk.listings.forEach((listing) => succeededKeys.add(listing.key));
 
         // Best-effort and non-blocking: the relist is already on-chain and
-        // the indexer records it even if the intent is refused (#2041).
-        const notified = await postNotifyListing(
-          {
-            tokenId: listing.tokenId,
+        // the indexer records it even if an intent is refused (#2041).
+        const notified = await Promise.all(
+          buildRelistNotifyPayloads(chunk, {
+            terms,
             chainId,
             seller: sellerAddress,
-            sellerAddress,
-            price: priceUnits.toString(),
-            amount,
-            paymentToken: listingPaymentToken(selectedAsset),
-            licenseType: listing.licenseType,
-            durationSeconds,
-            transactionHash: txHash,
-            stemId: listing.stem?.id,
-          },
-          token,
+            transactionHash: sent.hash,
+            listingIdsByToken: sent.listingIdsByToken,
+          }).map((payload) => postNotifyListing(payload, token)),
         );
-        if (!notified.ok) intentDelayed = true;
+        if (notified.some((result) => !result.ok)) intentDelayed = true;
       }
 
       setSuccess(
-        (relistingListings.length === 1
+        (relistCount === 1
           ? "Listing transaction submitted. The indexer will attach the new listing shortly."
-          : `${relistingListings.length} listing transactions submitted. The indexer will attach the new listings shortly.`) +
+          : `${relistCount} stems relisted with ${chunks.length === 1 ? "one confirmation" : `${chunks.length} confirmations`}. The indexer will attach the new listings shortly.`) +
           (intentDelayed ? " License tiers may take a moment to show." : ""),
       );
       setRelistingListings([]);
       setSelectedListingIds(new Set());
       await fetchListings();
+    } catch (err) {
+      setRelistFailure(
+        `Could not prepare the relist: ${err instanceof Error ? err.message : String(err)}. Nothing was submitted.`,
+      );
     } finally {
       setBatchProgress(null);
     }
@@ -646,7 +694,7 @@ export default function MarketplaceListingManagerPage() {
             <button
               type="button"
               className="marketplace-manager-modal__close"
-              onClick={() => setRelistingListings([])}
+              onClick={closeRelist}
               aria-label="Close"
               disabled={Boolean(batchProgress)}
             >
@@ -659,7 +707,10 @@ export default function MarketplaceListingManagerPage() {
             </h2>
             {relistingListings.length > 1 && (
               <div className="marketplace-manager-modal__selection">
-                <p>Apply the same terms to every selected stem. Each listing still submits as its own transaction.</p>
+                <p>
+                  Apply the same terms to every selected stem; each keeps its license tier. The selected stems are
+                  relisted with one confirmation for each group of up to {RELIST_CHUNK_SIZE}.
+                </p>
                 <div>
                   {relistingListings.slice(0, 6).map((listing) => (
                     <span key={listing.id}>{listing.stem?.title ?? `Token #${listing.tokenId}`}</span>
@@ -744,17 +795,25 @@ export default function MarketplaceListingManagerPage() {
                 )
                 : "Enter a price and quantity"}
             </div>
-            {error && <div className="marketplace-manager-alert marketplace-manager-alert--error">{error.message}</div>}
+            {relistFailure && (
+              <div className="marketplace-manager-alert marketplace-manager-alert--error" role="alert">
+                {relistFailure}
+              </div>
+            )}
             {batchProgress && (
-              <div className="marketplace-manager-modal__progress">
-                Submitting {batchProgress.current} / {batchProgress.total}: {batchProgress.title}
+              <div className="marketplace-manager-modal__progress" role="status">
+                {batchProgress.total === 0
+                  ? "Preparing relist..."
+                  : batchProgress.total === 1
+                    ? `Relisting ${batchProgress.count} stem${batchProgress.count === 1 ? "" : "s"}... Confirm once to continue.`
+                    : `Relisting group ${batchProgress.current} of ${batchProgress.total} (${batchProgress.count} stem${batchProgress.count === 1 ? "" : "s"})... Confirm once to continue.`}
               </div>
             )}
             <div className="marketplace-manager-modal__actions">
               <button
                 type="button"
                 className="marketplace-clear-btn"
-                onClick={() => setRelistingListings([])}
+                onClick={closeRelist}
                 disabled={pending || Boolean(batchProgress)}
               >
                 Cancel
@@ -763,7 +822,7 @@ export default function MarketplaceListingManagerPage() {
                 type="button"
                 className="marketplace-action-btn"
                 onClick={() => void submitRelist()}
-                disabled={pending || paymentAssetsLoading || !price || !amount}
+                disabled={pending || Boolean(batchProgress) || paymentAssetsLoading || !price || !amount}
               >
                 {pending || batchProgress
                   ? "Submitting..."

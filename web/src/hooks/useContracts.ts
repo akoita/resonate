@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { decodeEventLog, type Address, encodeFunctionData, formatEther, formatUnits, type Hex, http, type PublicClient } from "viem";
+import { BaseError, decodeEventLog, type Address, encodeFunctionData, ExecutionRevertedError, formatEther, formatUnits, type Hex, http, parseAbi, type PublicClient, RawContractError } from "viem";
 import { useZeroDev } from "../components/auth/ZeroDevProviderClient";
 import { useAuth } from "../components/auth/AuthProvider";
 import {
@@ -46,6 +46,13 @@ import {
   type ListTiersPlan,
   type PlannedTierListing,
 } from "../lib/multiTierListing";
+import {
+  planRelistChunks,
+  type RelistChunk,
+  type RelistChunkListing,
+  type RelistItem,
+  type RelistTerms,
+} from "../lib/batchRelist";
 
 // Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2341,6 +2348,138 @@ export function useListStemTiers() {
   );
 
   return { listTiers, pending, error, txHash };
+}
+
+const IS_APPROVED_FOR_ALL_ABI = parseAbi([
+  "function isApprovedForAll(address account, address operator) view returns (bool)",
+]);
+
+/** A relist chunk that would revert, found before asking for a signature (#2030). */
+export class RelistPreflightError extends Error {
+  readonly listing: RelistChunkListing;
+
+  constructor(message: string, listing: RelistChunkListing) {
+    super(message);
+    this.name = "RelistPreflightError";
+    this.listing = listing;
+  }
+}
+
+function isRevertError(err: unknown): boolean {
+  return err instanceof BaseError
+    && Boolean(err.walk((cause) => cause instanceof ExecutionRevertedError || cause instanceof RawContractError));
+}
+
+/**
+ * Simulate each list() of a chunk from the seller's account so a failing
+ * stem can be named before the user signs. Only meaningful once the
+ * marketplace is approved; RPC trouble other than a revert is ignored and the
+ * chunk is sent as usual.
+ */
+async function preflightRelistChunk(
+  publicClient: PublicClient,
+  owner: Address,
+  chunk: RelistChunk
+): Promise<void> {
+  const offset = chunk.includeApproval ? 1 : 0;
+  const results = await Promise.all(
+    chunk.listings.map(async (listing, index) => {
+      const call = chunk.calls[index + offset];
+      if (!call || typeof call.data !== "string") return null;
+      try {
+        await publicClient.call({ account: owner, to: call.to, data: call.data });
+        return null;
+      } catch (err) {
+        return isRevertError(err) ? { listing, err } : null;
+      }
+    })
+  );
+  const failure = results.find((result) => result !== null);
+  if (failure) {
+    throw new RelistPreflightError(normalizeContractWriteError(failure.err).message, failure.listing);
+  }
+}
+
+/**
+ * Relist several stems with one confirmation per chunk (#2030). planRelist
+ * checks the marketplace approval once and splits the selection into chunks;
+ * sendRelistChunk sends one chunk as a single batched UserOperation and reads
+ * the new listing ids per token from its receipt.
+ */
+export function useRelistMany() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount, smartAccountAddress } = useAuth();
+  const [pending, setPending] = useState(false);
+  const owner = (smartAccountAddress || address || null) as Address | null;
+
+  const planRelist = useCallback(
+    async (items: RelistItem[], terms: RelistTerms): Promise<RelistChunk[]> => {
+      const addresses = getContractAddresses(chainId);
+      let needsApproval = true;
+      if (owner) {
+        try {
+          const approved = await publicClient.readContract({
+            address: addresses.stemNFT as Address,
+            abi: IS_APPROVED_FOR_ALL_ABI,
+            functionName: "isApprovedForAll",
+            args: [owner, addresses.marketplace as Address],
+          });
+          needsApproval = !approved;
+        } catch {
+          // Unknown approval state: include the (idempotent) approval call.
+          needsApproval = true;
+        }
+      }
+      return planRelistChunks(items, {
+        terms,
+        needsApproval,
+        stemNFT: addresses.stemNFT as Address,
+        marketplace: addresses.marketplace as Address,
+      });
+    },
+    [publicClient, chainId, owner]
+  );
+
+  const sendRelistChunk = useCallback(
+    async (chunk: RelistChunk): Promise<{ hash: string; listingIdsByToken: Map<string, bigint[]> }> => {
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+      setPending(true);
+      try {
+        const addresses = getContractAddresses(chainId);
+        if (!chunk.includeApproval && owner) {
+          await preflightRelistChunk(publicClient, owner, chunk);
+        }
+        const hash = await sendBatchContractTransactions(
+          publicClient,
+          chainId,
+          chunk.calls,
+          address as Address,
+          kernelAccount
+        );
+        let logs: Parameters<typeof listingIdsFromReceipt>[0] = [];
+        try {
+          const receipt = await publicClient.getTransactionReceipt({ hash: hash as Hex });
+          logs = receipt.logs;
+        } catch {
+          // Best-effort: notifies fall back to ordinals without listing ids.
+        }
+        const listingIdsByToken = new Map(
+          chunk.groups.map((group) => [
+            group.tokenId.toString(),
+            listingIdsFromReceipt(logs, group.tokenId, addresses.marketplace as Address),
+          ])
+        );
+        return { hash, listingIdsByToken };
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, address, status, chainId, kernelAccount, owner]
+  );
+
+  return { planRelist, sendRelistChunk, pending };
 }
 
 /**
