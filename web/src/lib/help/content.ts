@@ -182,6 +182,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "When a moderator removes a community message you posted, or removes or bans you from a community room after reviewing a reported message, you get one Moderation notice. It names the room, says what was done, and gives the reason category. It never includes the reporter's words or the moderator's private notes.",
           },
           {
+            kind: "paragraph",
+            text: "If a copyright complaint against one of your tracks is upheld, the track and its stems are removed and the person who manages the release gets one Moderation notice. It names the track and release and says the reason was a copyright complaint. It never shows who complained or what they wrote. You cannot file a counter-notice in the app yet.",
+          },
+          {
             kind: "callout",
             tone: "note",
             title: "Appeals",

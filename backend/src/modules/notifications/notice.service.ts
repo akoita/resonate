@@ -43,6 +43,7 @@ const LIST_LIMIT = 50;
 /** Help article every moderation notice links to. */
 export const NOTICES_HELP_PATH = "/help/platform-notices";
 const MODERATION_ACTOR: NoticeActor = { userId: "system:community-moderation" };
+const DMCA_ACTOR: NoticeActor = { userId: "system:dmca" };
 
 type NoticeRow = Prisma.NoticeGetPayload<{ include: { reads: { select: { readAt: true } } } }>;
 
@@ -289,6 +290,71 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
       { dedupeKey: `community_moderation_report:${input.reportId}` },
     );
   }
+
+  /**
+   * One `moderation` notice to the creator when a takedown report is upheld.
+   * Keyed on the report id, so resolving or replaying it again sends nothing
+   * new. Rejected or still-pending reports send nothing.
+   */
+  async notifyDmcaTakedown(reportId: string) {
+    const notice = await buildDmcaTakedownNotice(reportId);
+    if (!notice) return null;
+    if (!notice.ownerUserId) {
+      this.logger.warn(`Takedown notice skipped for DMCA report ${reportId}: no owner account to notify`);
+      return null;
+    }
+    return this.sendTargeted(
+      {
+        userIds: [notice.ownerUserId],
+        category: "moderation",
+        title: notice.title,
+        body: notice.body,
+        link: NOTICES_HELP_PATH,
+      },
+      DMCA_ACTOR,
+      { dedupeKey: `dmca_report:${reportId}` },
+    );
+  }
+}
+
+/**
+ * #2146: tell the creator that an upheld takedown removed their upload. The
+ * recipient is the release's management owner, else the artist's account —
+ * the same owner rule `management-access.ts` uses. States the release and
+ * track and the reason category (copyright complaint); never the
+ * complainant's identity, contact details or written reason.
+ */
+export async function buildDmcaTakedownNotice(reportId: string) {
+  const report = await prisma.dmcaReport.findUnique({
+    where: { id: reportId },
+    select: {
+      status: true,
+      track: {
+        select: {
+          title: true,
+          release: {
+            select: {
+              title: true,
+              managementOwnerUserId: true,
+              artist: { select: { userId: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!report || report.status !== "upheld") return null;
+  const release = report.track.release;
+  const ownerUserId = release.managementOwnerUserId ?? release.artist?.userId ?? null;
+  if (!ownerUserId) return { ownerUserId: null } as const;
+  return {
+    ownerUserId,
+    title: "Your track was removed after a copyright complaint",
+    body:
+      `Your track "${report.track.title}" on the release "${release.title}" was removed after a rights complaint ` +
+      "was reviewed and upheld. Reason: copyright complaint. Its stems are no longer available. " +
+      "A counter-notice cannot be filed from the app yet; the help page explains what this notice means.",
+  } as const;
 }
 
 const APPEAL_SENTENCE =

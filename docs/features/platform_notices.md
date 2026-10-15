@@ -88,6 +88,26 @@ notice to the author of the reported message.
   so a replayed event never sends a second notice.
 - `no_action`, `pause_room` and `archive_room` send nothing.
 
+## Takedown notice
+
+When `DmcaService.resolveReport` upholds a report, the track becomes
+`dmca_removed` and its stems are delisted. `NoticeService.notifyDmcaTakedown`
+then sends one targeted `moderation` notice from the `system:dmca` actor.
+
+- **Recipient:** the release's `managementOwnerUserId`, else the artist's
+  `userId`. This is the owner rule `management-access.ts` uses. If neither
+  exists, the notice is logged and skipped.
+- **Copy:** names the track and release and gives the reason category,
+  "copyright complaint". It never includes the complainant's name, email or
+  written reason.
+- **Where to respond:** a counter-notice cannot be filed from the app yet, and
+  the notice says so and links to the User Guide article.
+- **Idempotent:** keyed `dmca_report:<reportId>`, so resolving or replaying the
+  report again sends nothing new.
+- **Rejected reports** send nothing.
+- **Failure handling:** a notice failure is logged and never fails the
+  takedown.
+
 ## Web
 
 - **Notification bell**: lists notices, each with a category chip.
@@ -115,7 +135,6 @@ notice to the author of the reported message.
 - Account suspension (#2147) and refund reminders (#2149) will call
   `sendTargeted`.
 - An appeal path for community moderation.
-- The DMCA takedown resolution path (`DmcaService.resolveReport`) does not yet
-  send a moderation notice.
+- An in-app DMCA counter-notice path. The API route exists; there is no UI.
 - There is no operator UI for targeted sends yet; the route exists.
 - No WebSocket push: notices refresh on a 45 s poll and when the bell opens.

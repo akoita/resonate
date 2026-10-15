@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
+import { NoticeService } from "../notifications/notice.service";
 
 @Injectable()
 export class DmcaService {
@@ -8,6 +9,8 @@ export class DmcaService {
 
   constructor(
     private readonly uploadRightsRoutingService: UploadRightsRoutingService,
+    @Optional()
+    private readonly noticeService?: NoticeService,
   ) {}
 
   /**
@@ -113,11 +116,25 @@ export class DmcaService {
           `track removed + ${report.track.stems.length} stems delisted`,
         );
       }
+      await this.notifyCreatorOfTakedown(reportId);
     } else {
       this.logger.log(`DMCA rejected for track ${report.trackId}`);
     }
 
     return { outcome, trackId: report.trackId };
+  }
+
+  /**
+   * #2146: one in-app `moderation` notice to the creator, keyed on the report.
+   * A notice failure never undoes or fails the takedown itself.
+   */
+  private async notifyCreatorOfTakedown(reportId: string) {
+    if (!this.noticeService) return;
+    try {
+      await this.noticeService.notifyDmcaTakedown(reportId);
+    } catch (error) {
+      this.logger.error(`Takedown notice for DMCA report ${reportId} failed: ${(error as Error).message}`);
+    }
   }
 
   /**
