@@ -42,7 +42,7 @@ describe("HomeHeroEmpty", () => {
     expect(html).toMatch(/<h2 class="ng-hero__title">Fans bring the show\.<\/h2>/);
     expect(text).toContain("No campaigns are open for pledges right now.");
     expect(text).toMatch(/propose a show for an artist in their city/);
-    expect(text).toMatch(/held in escrow and refunded automatically if the show doesn't happen/);
+    expect(text).toMatch(/held in escrow and backers can claim them back if the show doesn't happen/);
   });
 
   it("shows no image and no campaign-specific claims", () => {

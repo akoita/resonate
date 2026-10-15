@@ -767,7 +767,7 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
   it("never promises a guaranteed ticket", () => {
     const summary = pledgeConfirmSummary(campaign, tier).toLowerCase();
     expect(summary).toContain("never guarantees a ticket");
-    expect(summary).toContain("refunded automatically");
+    expect(summary).toContain("refunds open automatically and you claim your pledge back");
     expect(summary).not.toContain("guaranteed ticket");
   });
 

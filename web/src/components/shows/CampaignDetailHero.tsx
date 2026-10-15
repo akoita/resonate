@@ -117,7 +117,7 @@ export function CampaignDetailHero({ campaign, children }: Props) {
               <dt>Deadline</dt>
               <dd>
                 <strong>{daysLeft}d left</strong>
-                <small>closes {deadlineFmt}, then auto-refund</small>
+                <small>closes {deadlineFmt}; refunds open if the goal isn&apos;t met</small>
               </dd>
             </div>
             <div className="campaign-detail-hero__stat">

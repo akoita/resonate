@@ -738,7 +738,7 @@ export function pledgeConfirmSummary(
   }
   lines.push("");
   lines.push(
-    "Funds are held in escrow. Funding never guarantees a ticket — your pledge is refunded automatically if the show isn't confirmed.",
+    "Funds are held in escrow. Funding never guarantees a ticket — if the show isn't confirmed, refunds open automatically and you claim your pledge back.",
   );
   return lines.join("\n");
 }

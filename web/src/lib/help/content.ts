@@ -2745,7 +2745,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "shows-back",
     title: "Back a show (Resonate Shows)",
     summary:
-      "Turn 'I'd go to that' into a real concert: signal demand and pledge funds into escrow that's refunded automatically if the show doesn't happen.",
+      "Turn 'I'd go to that' into a real concert: signal demand and pledge funds into escrow that you can claim back if the show doesn't happen.",
     category: "shows",
     audiences: ["listener"],
     status: "partial",
@@ -2757,7 +2757,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Pick an artist and a city, lock funds in a smart contract, and if enough fans commit, the artist's team gets a demand signal backed by money — not just likes. If the show isn't confirmed, every pledge is refunded automatically.",
+            text: "Pick an artist and a city, lock funds in a smart contract, and if enough fans commit, the artist's team gets a demand signal backed by money — not just likes. If the show isn't confirmed, refunds open automatically and every backer can claim their pledge back.",
           },
           {
             kind: "paragraph",
@@ -2828,7 +2828,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The fan-risk terms are approved by the artist and then locked — they can't be quietly changed after you pledge.",
               "The campaign page shows any success-only platform fee up front, including that it comes from the artist payout and never from failed-campaign refunds.",
               "You can open the escrow contract in a block explorer to see its verified code, transactions, and events.",
-              "If the goal isn't met or the show isn't confirmed, your pledge is refunded automatically.",
+              "If the goal isn't met or the show isn't confirmed, refunds open automatically and you claim yours from the campaign page — no fee.",
               "If a campaign has a booking deposit and the show is cancelled after the deposit was paid to the artist, your refund is your share of what remains — the campaign page states the percentage before you pledge.",
               "A campaign page shows a trust badge (demand signal, provisional, or artist-authorized escrow) so you always know what stage you're backing.",
               "After a show is marked fulfilled, funds release only once a dispute window closes; while a dispute is under review, release stays paused. The campaign page shows the dispute status and the window's close date.",

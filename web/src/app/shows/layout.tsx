@@ -4,7 +4,7 @@ export const metadata = {
   ...publicMetadata({
     title: "Shows",
     description:
-      "Fan-funded artist booking. Pledge to bring an artist to your city — refunded automatically if the threshold isn't met.",
+      "Fan-funded artist booking. Pledge to bring an artist to your city — claim your pledge back if the threshold isn't met.",
     path: "/shows",
   }),
   title: {
