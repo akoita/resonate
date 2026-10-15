@@ -22,6 +22,7 @@ import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { CommunityRoomsService } from "../community/community_rooms.service";
 import { ShowsService } from "./shows.service";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import {
   getShowsVisualMaxBytes,
   getShowsVisualMaxTotalBytes,
@@ -392,7 +393,9 @@ export class ShowsController {
     return this.showsService.confirmPledge(this.actorFromRequest(req), id, body);
   }
 
+  // A refund is the backer's money: it is never blocked by suspension (#2147).
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("pledges/:id/refund/confirm")
   confirmPledgeRefund(
     @Param("id") id: string,

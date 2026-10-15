@@ -111,6 +111,14 @@ export class AccountClosureService {
     const pending = await this.findPending(userId);
     if (!pending) return null;
 
+    // An operator closure (#2147) is not the person's to call off: neither a
+    // sign-in nor the cancel route may undo an erasure an operator scheduled.
+    const account = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { accountStatus: true },
+    });
+    if (account?.accountStatus === "closed") return null;
+
     const cancelledAt = new Date();
     const moved = await prisma.accountClosureRequest.updateMany({
       where: { id: pending.id, status: AccountClosureStatus.pending },
