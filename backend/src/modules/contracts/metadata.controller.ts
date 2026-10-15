@@ -545,6 +545,11 @@ export class MetadataController {
           purchasedAt: stem.purchasedAt?.toISOString(),
           durationSeconds: stem.durationSeconds,
           activeListingId: stem.activeListingId,
+          // Best standard license tier this wallet bought for the stem
+          // (personal < remix < commercial), or null when it only lists the
+          // stem; `holding` says which (#2042).
+          licenseType: stem.licenseType ?? null,
+          holding: stem.holding,
         };
       }),
     };

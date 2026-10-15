@@ -1,6 +1,7 @@
 import { sanitizeStemAudioFeatures } from "../ingestion/stem-audio-features";
 import { measuredTrackFeatures } from "../agents/measured_track_features";
 import { CRATE_STEM_TYPES, type CrateLicenseType } from "./crate.types";
+import { bestStandardLicenseTier } from "../contracts/stem_license_tier";
 
 /**
  * Crate export to rekordbox XML and a Serato crate (#1965,
@@ -51,11 +52,7 @@ export type CrateExportLicenseType = (typeof CRATE_EXPORT_LICENSE_TYPES)[number]
 export function bestExportLicense(
   licenseTypes: Iterable<CrateLicenseType | string>,
 ): CrateExportLicenseType | null {
-  const owned = new Set<string>(licenseTypes);
-  for (const tier of [...CRATE_EXPORT_LICENSE_TYPES].reverse()) {
-    if (owned.has(tier)) return tier;
-  }
-  return null;
+  return bestStandardLicenseTier(licenseTypes);
 }
 
 /** Why a crate line is not in the export. */
