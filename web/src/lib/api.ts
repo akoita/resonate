@@ -822,12 +822,17 @@ export type ArtistAnalyticsMeta = {
   };
 };
 
+/** What the analytics "payout" amounts measure: gross settled sales before the platform fee and splits. */
+export type ArtistAnalyticsPayoutBasis = "gross_settled";
+
 export type ArtistAnalyticsDashboard = {
   summary: {
     artistId: string;
     days: number;
     totalPlays: number;
     totalPayoutUsd: number;
+    /** `totalPayoutUsd` and every `payoutUsd` are gross settled sales, not the artist's net share (#2144). */
+    payoutBasis?: ArtistAnalyticsPayoutBasis;
     payoutsByAsset: ArtistAnalyticsPayout[];
   };
   tracks: ArtistAnalyticsTrack[];
@@ -867,6 +872,7 @@ export type ArtistAnalyticsDashboard = {
     days: number;
     totalPlays: number;
     totalPayoutUsd: number;
+    payoutBasis?: ArtistAnalyticsPayoutBasis;
     payoutsByAsset: ArtistAnalyticsPayout[];
     generatedAt: string;
     source: "warehouse_export" | "bigquery";

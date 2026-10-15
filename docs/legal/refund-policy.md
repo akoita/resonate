@@ -46,6 +46,14 @@ In the last case every backer is treated identically: each receives the same
 proportion of the remaining balance as their pledge bore to the total. We take
 no fee from that refund.
 
+**You are told before you pledge.** Each campaign's locked terms fix the share
+of the pledged money that can be released to the artist as a deposit once the
+booking is confirmed; some campaigns have no deposit at all. When a campaign has
+one, the campaign page and the pledge confirmation state it in plain words
+before you commit — for example, with a 10% deposit, a refund after that deposit
+is about 90% of your pledge. A campaign with no deposit shows no such warning,
+because its refund is always your full pledge.
+
 Cancellation is not automatic — it is an operator action, available while a
 campaign can still be unwound, and it becomes unavailable once a fulfilled
 campaign's dispute window has closed and the artist's payout has matured.
@@ -152,10 +160,12 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
 4. **Partial refunds after a deposit release.** `claimRefund` pays a backer's
    pro-rata share of `totalPledged - totalReleased`, so a cancellation during
    the dispute window returns less than the pledge. The table above states that
-   honestly, but two questions follow: whether a consumer can be left short
-   this way when the cancellation was an operator decision, and whether the
-   campaign page discloses the possibility **before** the pledge rather than
-   only in this policy. If not, the disclosure belongs in the pledge flow.
+   honestly, and the campaign page and pledge confirmation now disclose the
+   resulting refund share before the pledge, computed from the campaign's
+   locked deposit-release term
+   ([#2150](https://github.com/akoita/resonate/issues/2150)). One question
+   remains: whether a consumer can be left short this way when the cancellation
+   was an operator decision.
 5. **Response window.** `{{RESPONSE_WINDOW}}` is unset, and statutory refund
    deadlines may impose one regardless of what we choose. Note also that every
    route in this policy ends at a human reading {{OPERATOR_CONTACT_EMAIL}}, and

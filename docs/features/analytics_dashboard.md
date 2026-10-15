@@ -19,7 +19,7 @@ The dashboard follows the **Obsidian Frequency (v2)** design system guidelines, 
 
 ## Audience & Value
 
-- **For Artists**: Provides clear visual tracking of plays over time, real-time USDC payout rollups, content protection route decision counts (Marketplace Ready vs Restricted/Blocked), first-slice recommended action cards, and detailed EVM staking escrow histories (Coup De Goule, Ah W Nass, etc.).
+- **For Artists**: Provides clear visual tracking of plays over time, gross settled sales rollups (labelled **Gross sales**, not payout; see below), content protection route decision counts (Marketplace Ready vs Restricted/Blocked), first-slice recommended action cards, and detailed EVM staking escrow histories (Coup De Goule, Ah W Nass, etc.).
 - **For Operators/Product Owners**: Provides aggregate AI DJ recommendation quality metrics so analytics-powered taste changes can be monitored before model promotion.
 - **For Developers**: Demonstrates how to map versioned analytics facts from the BigQuery/Postgres ledger directly to standard React UI layers using performant, responsive SVG charting without heavy external chart libraries.
 
@@ -53,6 +53,22 @@ and plays-over-time chart from the same bounded `analytics_facts` slice. Daily
 `analytics_views` remain available for warehouse consumers, but the artist
 dashboard does not prefer them over facts so partial current-day windows cannot
 drift from the rest of the report.
+
+**Gross sales, not payout (#2144).** `summary.totalPayoutUsd`, the per-track,
+per-session and plays-over-time `payoutUsd`, and `export.totalPayoutUsd` keep
+their field names for API compatibility, but they sum the gross settled
+stablecoin sale amount (`commerce.settled`, see
+[analytics_event_ledger.md](analytics_event_ledger.md#settled-commerce-facts-1894)).
+They are taken before the on-chain marketplace platform fee and the royalty
+splits. Native-token sales count in `payoutsByAsset`, but they add nothing to
+the USD sums. They are not the artist's net share. `GET /analytics/artist/:id`
+and `GET /analytics/artist/:id/v1` state this explicitly with
+`summary.payoutBasis: "gross_settled"` (also on `export.payoutBasis` in the v1
+response). The dashboard labels the KPI and the track-table column **Gross
+sales**. The KPI shows the line "Settled stablecoin sales before the platform
+fee and royalty splits. Native-token sales are counted but not converted to
+USD." The fee percentage appears only after the page has read the live on-chain
+marketplace fee. A net artist-share figure remains open in #2144.
 
 The same `GET /analytics/artist/:id/v1?days=N` response now includes an
 `actions` array with stable artist action cards:

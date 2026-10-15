@@ -27,6 +27,7 @@ import {
   campaignFeeNotice,
   formatCampaignFeePercent,
   pledgeConfirmSummary,
+  refundDisclosure,
   pledgeDemandGeo,
   showsCampaignListPath,
   validateCampaignDeadlines,
@@ -766,7 +767,7 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
   it("never promises a guaranteed ticket", () => {
     const summary = pledgeConfirmSummary(campaign, tier).toLowerCase();
     expect(summary).toContain("never guarantees a ticket");
-    expect(summary).toContain("refunded automatically");
+    expect(summary).toContain("refunds open automatically and you claim your pledge back");
     expect(summary).not.toContain("guaranteed ticket");
   });
 
@@ -778,6 +779,56 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
     expect(summary).not.toContain("Deposit released on booking");
     // Other known rows still present.
     expect(summary).toContain("Dispute window: 7 days");
+  });
+
+  it("warns before signing that a refund after the deposit is about 90% (#2150)", () => {
+    const summary = pledgeConfirmSummary(campaign, tier);
+    expect(summary).toContain("Refund after a deposit: Once the booking is confirmed, 10% of the money pledged");
+    expect(summary).toContain("you would get back about 90% of your pledge.");
+  });
+
+  it("adds no reduction wording to the summary when no deposit can be released (#2150)", () => {
+    const summary = pledgeConfirmSummary({ ...campaign, depositReleaseBps: 0 } as unknown as Campaign, tier);
+    expect(summary).not.toContain("Refund after a deposit");
+    expect(summary).not.toContain("get back about");
+  });
+});
+
+describe("refundDisclosure (#2150)", () => {
+  it("returns null when the campaign cannot release a deposit", () => {
+    expect(refundDisclosure({ depositReleaseBps: 0 })).toBeNull();
+    expect(refundDisclosure({ depositReleaseBps: null })).toBeNull();
+    expect(refundDisclosure({})).toBeNull();
+  });
+
+  it("returns null for invalid shares rather than inventing numbers", () => {
+    expect(refundDisclosure({ depositReleaseBps: -100 })).toBeNull();
+    expect(refundDisclosure({ depositReleaseBps: 10_000 })).toBeNull();
+    expect(refundDisclosure({ depositReleaseBps: 12.5 })).toBeNull();
+  });
+
+  it("derives both percentages from the 10% deposit term", () => {
+    expect(refundDisclosure({ depositReleaseBps: 1000 })).toBe(
+      "Once the booking is confirmed, 10% of the money pledged can be released to the artist as a deposit. If the show is cancelled after that, refunds share only what is left: you would get back about 90% of your pledge.",
+    );
+  });
+
+  it("covers the 25% and 30% (escrow maximum) deposit terms", () => {
+    const quarter = refundDisclosure({ depositReleaseBps: 2500 });
+    expect(quarter).toContain("25% of the money pledged");
+    expect(quarter).toContain("about 75% of your pledge");
+    const max = refundDisclosure({ depositReleaseBps: 3000 });
+    expect(max).toContain("30% of the money pledged");
+    expect(max).toContain("about 70% of your pledge");
+  });
+
+  it("keeps fractional shares exact so the two figures add up to 100%", () => {
+    const half = refundDisclosure({ depositReleaseBps: 1250 });
+    expect(half).toContain("12.5% of the money pledged");
+    expect(half).toContain("about 87.5% of your pledge");
+    const fine = refundDisclosure({ depositReleaseBps: 1 });
+    expect(fine).toContain("0.01% of the money pledged");
+    expect(fine).toContain("about 99.99% of your pledge");
   });
 });
 
@@ -1026,5 +1077,27 @@ describe("Pledge city declaration (#1968)", () => {
     });
     expect(JSON.parse(calls[1][1].body as string)).toEqual({ tierId: "tier-1", walletAddress: "0xabc" });
     expect(JSON.parse(calls[2][1].body as string)).not.toHaveProperty("geo");
+  });
+
+  it("records the shown refund disclosure as intent metadata only when one was shown (#2150)", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+    const base = {
+      campaign: { backendId: "campaign-1" } as Campaign,
+      tierId: "tier-1",
+      walletAddress: "0xabc",
+      token: "test-token",
+    };
+
+    await createPledgeIntent({ ...base, refundDisclosureDepositReleaseBps: 1000 });
+    await createPledgeIntent({ ...base, refundDisclosureDepositReleaseBps: null });
+
+    const calls = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(JSON.parse(calls[0][1].body as string)).toEqual({
+      tierId: "tier-1",
+      walletAddress: "0xabc",
+      metadata: { refundDisclosureShown: true, refundDisclosureDepositReleaseBps: 1000 },
+    });
+    expect(JSON.parse(calls[1][1].body as string)).not.toHaveProperty("metadata");
   });
 });

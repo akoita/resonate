@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
+import {
+  fetchWalletNotifications,
+  markAllWalletNotificationsRead,
+  markWalletNotificationRead,
+} from "../lib/walletNotifications";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -99,10 +104,26 @@ export function normalizeIncomingNotification(data: IncomingNotificationEvent): 
   };
 }
 
+/**
+ * Socket.IO options for the notification socket. The backend only lets a
+ * socket join a wallet room when its handshake carries a verified sign-in
+ * token for that wallet, so the token goes in the handshake `auth` payload.
+ */
+export function buildDisputeNotificationSocketOptions(token: string | null | undefined) {
+  return {
+    transports: ["websocket", "polling"],
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    ...(token ? { auth: { token } } : {}),
+  };
+}
+
 export function registerDisputeNotificationSocketHandlers(
   socket: Pick<Socket, "on" | "emit">,
   options: {
     walletAddress: string;
+    /** Join the wallet room on connect; false when signed out. */
+    joinWallet: boolean;
     refetch: () => void | Promise<void>;
     onNotification: (notification: DisputeNotification) => void;
     onDisputeStatus: (update: DisputeStatusUpdate) => void;
@@ -111,7 +132,7 @@ export function registerDisputeNotificationSocketHandlers(
   const normalizedWallet = options.walletAddress.toLowerCase();
 
   socket.on("connect", () => {
-    socket.emit("wallet:join", normalizedWallet);
+    if (options.joinWallet) socket.emit("wallet:join", normalizedWallet);
     void options.refetch();
   });
 
@@ -124,8 +145,19 @@ export function registerDisputeNotificationSocketHandlers(
   });
 }
 
-export function useDisputeNotifications(walletAddress?: string) {
+/**
+ * Wallet notification feed for the signed-in user. The REST routes require
+ * the user's sign-in token and only serve their own addresses: without a
+ * token no request is sent and the feed stays empty, and a refused request
+ * reads as an empty feed. The live socket sends the token in its handshake
+ * and joins the wallet room only when signed in; a token change opens a new
+ * socket, so no join outlives the token it was made with.
+ */
+export function useDisputeNotifications(walletAddress?: string, token?: string | null) {
   const normalizedWalletAddress = walletAddress?.toLowerCase() ?? null;
+  const hasToken = Boolean(token);
+  // REST callbacks read the token through a ref so their identity stays stable.
+  const tokenRef = useRef<string | null>(token ?? null);
   const sessionScope = useMemo(
     () => normalizedWalletAddress ? Symbol("wallet-notification-session") : null,
     [normalizedWalletAddress],
@@ -145,7 +177,9 @@ export function useDisputeNotifications(walletAddress?: string) {
   const activeWalletAddressRef = useRef<string | null>(normalizedWalletAddress);
   const activeSessionScopeRef = useRef<symbol | null>(sessionScope);
   const fetchSequenceRef = useRef(0);
-  const visibleSnapshot = getVisibleWalletNotificationSnapshot(snapshot, normalizedWalletAddress, sessionScope);
+  const visibleSnapshot = hasToken
+    ? getVisibleWalletNotificationSnapshot(snapshot, normalizedWalletAddress, sessionScope)
+    : { notifications: [], unreadCount: 0 };
   const disputeUpdate = isWalletNotificationSnapshotCurrent(
     disputeUpdateSnapshot.walletAddress,
     normalizedWalletAddress,
@@ -157,26 +191,21 @@ export function useDisputeNotifications(walletAddress?: string) {
     if (!requestedWalletAddress || !sessionScope
       || activeWalletAddressRef.current !== requestedWalletAddress
       || activeSessionScopeRef.current !== sessionScope) return;
+    const requestToken = tokenRef.current;
+    if (!requestToken) return;
     const requestSequence = ++fetchSequenceRef.current;
-    try {
-      const res = await fetch(`/api/metadata/notifications/${requestedWalletAddress}`);
-      if (res.ok && requestSequence === fetchSequenceRef.current
-        && activeWalletAddressRef.current === requestedWalletAddress
-        && activeSessionScopeRef.current === sessionScope) {
-        const data = await res.json();
-        if (requestSequence === fetchSequenceRef.current
-          && activeWalletAddressRef.current === requestedWalletAddress
-          && activeSessionScopeRef.current === sessionScope) {
-          setSnapshot({
-            walletAddress: requestedWalletAddress,
-            sessionScope,
-            notifications: data.notifications || [],
-            unreadCount: data.unreadCount || 0,
-          });
-        }
-      }
-    } catch {
-      // silent
+    // Never throws: signed out or refused reads as an empty feed, any other
+    // failure as null (keep what is shown).
+    const feed = await fetchWalletNotifications<DisputeNotification>(requestedWalletAddress, requestToken);
+    if (feed && requestSequence === fetchSequenceRef.current
+      && activeWalletAddressRef.current === requestedWalletAddress
+      && activeSessionScopeRef.current === sessionScope) {
+      setSnapshot({
+        walletAddress: requestedWalletAddress,
+        sessionScope,
+        notifications: feed.notifications,
+        unreadCount: feed.unreadCount,
+      });
     }
   }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, setSnapshot]);
 
@@ -186,8 +215,10 @@ export function useDisputeNotifications(walletAddress?: string) {
     if (!requestedWalletAddress || !sessionScope
       || activeWalletAddressRef.current !== requestedWalletAddress
       || activeSessionScopeRef.current !== sessionScope) return;
+    const requestToken = tokenRef.current;
+    if (!requestToken) return;
     try {
-      await fetch(`/api/metadata/notifications/${notificationId}/read`, { method: "PATCH" });
+      await markWalletNotificationRead(notificationId, requestToken);
       if (activeWalletAddressRef.current !== requestedWalletAddress
         || activeSessionScopeRef.current !== sessionScope) return;
       setSnapshot((prev) => {
@@ -213,8 +244,10 @@ export function useDisputeNotifications(walletAddress?: string) {
     if (!requestedWalletAddress || !sessionScope
       || activeWalletAddressRef.current !== requestedWalletAddress
       || activeSessionScopeRef.current !== sessionScope) return;
+    const requestToken = tokenRef.current;
+    if (!requestToken) return;
     try {
-      await fetch(`/api/metadata/notifications/${requestedWalletAddress}/read-all`, { method: "PATCH" });
+      await markAllWalletNotificationsRead(requestedWalletAddress, requestToken);
       if (activeWalletAddressRef.current !== requestedWalletAddress
         || activeSessionScopeRef.current !== sessionScope) return;
       setSnapshot((prev) => isWalletNotificationSnapshotCurrent(prev.walletAddress, requestedWalletAddress)
@@ -230,7 +263,12 @@ export function useDisputeNotifications(walletAddress?: string) {
     }
   }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, setSnapshot]);
 
-  // Scope state to the active wallet and invalidate older requests when it changes.
+  useEffect(() => {
+    tokenRef.current = token ?? null;
+  }, [token]);
+
+  // Scope state to the active wallet and invalidate older requests when it
+  // changes; refetch once the sign-in token becomes available.
   useEffect(() => {
     activeWalletAddressRef.current = normalizedWalletAddress;
     activeSessionScopeRef.current = sessionScope;
@@ -245,21 +283,19 @@ export function useDisputeNotifications(walletAddress?: string) {
       }
       if (activeSessionScopeRef.current === sessionScope) activeSessionScopeRef.current = null;
     };
-  }, [activeSessionScopeRef, activeWalletAddressRef, fetchNotifications, normalizedWalletAddress, sessionScope]);
+  }, [activeSessionScopeRef, activeWalletAddressRef, fetchNotifications, hasToken, normalizedWalletAddress, sessionScope]);
 
   // WebSocket connection
   useEffect(() => {
     if (!normalizedWalletAddress || !sessionScope) return;
 
-    const socket = io(SOCKET_URL, {
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-    });
+    const socketToken = token ?? null;
+    const socket = io(SOCKET_URL, buildDisputeNotificationSocketOptions(socketToken));
     socketRef.current = socket;
 
     registerDisputeNotificationSocketHandlers(socket, {
       walletAddress: normalizedWalletAddress,
+      joinWallet: Boolean(socketToken),
       refetch: fetchNotifications,
       onNotification: (notification) => {
         if (activeWalletAddressRef.current !== normalizedWalletAddress
@@ -274,11 +310,11 @@ export function useDisputeNotifications(walletAddress?: string) {
     });
 
     return () => {
-      socket.emit("wallet:leave", normalizedWalletAddress);
+      if (socketToken) socket.emit("wallet:leave", normalizedWalletAddress);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, fetchNotifications]);
+  }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, fetchNotifications, token]);
 
   return {
     notifications: visibleSnapshot.notifications,

@@ -124,7 +124,7 @@ export default function NotificationBell() {
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
   const isAuthenticated = status === "authenticated" && Boolean(token);
   const { notifications, unreadCount, markAsRead, markAllAsRead, refetch: refetchWalletNotifications } =
-    useDisputeNotifications(address ?? undefined);
+    useDisputeNotifications(address ?? undefined, isAuthenticated ? token : null);
   const { invitations, refetch: refetchManagementInvitations } = useManagementInvitations(
     isAuthenticated ? token : null,
     userId,

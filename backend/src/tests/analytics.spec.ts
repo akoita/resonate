@@ -42,6 +42,8 @@ describe("analytics", () => {
     const result = await analytics.getArtistStats("artist-1", 7);
     expect(result.summary.totalPlays).toBe(1);
     expect(result.summary.totalPayoutUsd).toBe(1.5);
+    // #2144: the "payout" figure is the gross settled sale amount, not the artist's net share.
+    expect(result.summary.payoutBasis).toBe("gross_settled");
     expect(result.summary.payoutsByAsset).toEqual([
       expect.objectContaining({
         paymentToken: "0x0000000000000000000000000000000000000000",
@@ -104,6 +106,8 @@ describe("analytics", () => {
 
     const result = await analytics.getArtistDashboard("artist-2", 30);
     expect(result.summary.totalPlays).toBe(1);
+    expect(result.summary.payoutBasis).toBe("gross_settled");
+    expect(result.export.payoutBasis).toBe("gross_settled");
     expect(result.sessions[0].payoutUsd).toBe(2);
     expect(result.sessions[0].payoutsByAsset[0]).toEqual(
       expect.objectContaining({

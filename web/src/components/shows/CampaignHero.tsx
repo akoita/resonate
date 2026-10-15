@@ -104,7 +104,7 @@ export function CampaignHero({ campaign }: Props) {
           {campaign.isSample
             ? "Fictional fan-created sample — no artist endorsement, venue hold, or live escrow is implied."
             : hasLinkedEscrow
-              ? "Funds held in a smart contract, not a company bank account. If the threshold isn't met, every pledge is refunded automatically — enforced by code."
+              ? "Funds held in a smart contract, not a company bank account. If the threshold isn't met, refunds open automatically — enforced by code — and every backer can claim theirs back."
               : "Escrow is not linked yet, so this campaign is not accepting pledges."}
         </p>
       </div>

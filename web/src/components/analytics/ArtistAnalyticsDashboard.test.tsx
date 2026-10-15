@@ -106,7 +106,7 @@ describe("ArtistAnalyticsDashboard", () => {
       />,
     );
 
-    expect(html).toContain("No plays or payouts in the last 30 days");
+    expect(html).toContain("No plays or sales in the last 30 days");
     expect(html).toContain("No events yet");
     expect(html).not.toContain("11,480");
     expect(html).not.toContain("3,420");
@@ -149,6 +149,30 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Open expired listings");
     expect(html).toContain("Improve marketplace checkout conversion");
     expect(html).toContain("Review active listings");
+  });
+
+  it("labels the settled-sale figure as gross sales, never as a payout (#2144)", () => {
+    const html = renderToStaticMarkup(
+      <ArtistAnalyticsDashboard status="ready" days={30} data={dashboard} platformFeeBps={1000n} onDaysChange={() => {}} />,
+    );
+    const summary = html.match(/<section class="kpi-row" aria-label="Artist analytics summary">[\s\S]*?<\/section>/)?.[0] ?? "";
+
+    expect(summary).toContain("Gross sales");
+    expect(summary).toContain("$87.65");
+    expect(summary).toContain(
+      "Settled stablecoin sales before the 10% platform fee and royalty splits. Native-token sales are counted but not converted to USD.",
+    );
+    expect(summary).not.toMatch(/payout/i);
+    expect(html).toContain("<th>Gross sales</th>");
+    expect(html).not.toContain("<th>Payout</th>");
+  });
+
+  it("names the platform fee without a percentage when the on-chain fee is unknown", () => {
+    const html = renderToStaticMarkup(
+      <ArtistAnalyticsDashboard status="ready" days={30} data={dashboard} onDaysChange={() => {}} />,
+    );
+
+    expect(html).toContain("Settled stablecoin sales before the platform fee and royalty splits.");
   });
 
   it("renders a disabled CTA with its reason when the backend marks a card unavailable", () => {

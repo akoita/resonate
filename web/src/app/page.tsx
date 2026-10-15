@@ -912,8 +912,8 @@ export default function Home() {
                 </h2>
                 <p className="ng-hero__body">
                   {activeHeroCampaign.tagline} Lock funds in a smart contract to
-                  bring this show to life — refunded automatically if the
-                  threshold isn&apos;t met.
+                  bring this show to life — if the threshold isn&apos;t met,
+                  refunds open automatically and every backer can claim theirs.
                 </p>
                 <div className="ng-hero__actions">
                   <Link

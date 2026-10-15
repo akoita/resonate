@@ -34,6 +34,14 @@ import { unmetDemandCards } from "./analytics_unmet_demand";
 import { UNMET_DEMAND_SOURCE, type UnmetDemandSource } from "../scene_scout/unmet_demand.contracts";
 import { FIRST_LISTENER_RECEPTION_SOURCE, firstListenerReceptionCards, type FirstListenerReceptionSource } from "./analytics_first_listener";
 
+/**
+ * What `payoutUsd` / `totalPayoutUsd` measure in the artist analytics responses (#2144).
+ * The figures sum the gross settled stablecoin sale amount, before the on-chain platform
+ * fee and royalty splits; native-token sales are counted per asset but carry no USD value.
+ * They are not the artist's net share. The field names stay for API compatibility.
+ */
+export const ARTIST_PAYOUT_BASIS = "gross_settled" as const;
+
 interface TrackStats {
   trackId: string;
   title: string;
@@ -290,6 +298,7 @@ export class AnalyticsService {
       days: data.metadata.timeWindow.days,
       totalPlays: 0,
       totalPayoutUsd: 0,
+      payoutBasis: ARTIST_PAYOUT_BASIS,
     };
     const tracks: TrackStats[] = [];
     const trackMap = new Map<string, TrackStats>();
@@ -337,6 +346,7 @@ export class AnalyticsService {
       days: data.metadata.timeWindow.days,
       totalPlays: 0,
       totalPayoutUsd: 0,
+      payoutBasis: ARTIST_PAYOUT_BASIS,
     };
     const trackMap = new Map<string, TrackStats>();
     const sessionMap = new Map<string, SessionStats>();
@@ -384,6 +394,7 @@ export class AnalyticsService {
       days: data.metadata.timeWindow.days,
       totalPlays: summary.totalPlays,
       totalPayoutUsd: summary.totalPayoutUsd,
+      payoutBasis: ARTIST_PAYOUT_BASIS,
       payoutsByAsset: this.aggregateAssetPayouts(
         [...trackMap.values()].flatMap((track) => track.payoutsByAsset),
       ),

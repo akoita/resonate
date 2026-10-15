@@ -101,10 +101,24 @@ context and creates route reassessments for affected releases.
 - Backend trusted-source workflow:
   `backend/src/modules/rights/trusted-source.service.ts`
 
+### DMCA Notice API
+
+`backend/src/modules/dmca/dmca.controller.ts`. No web client calls these
+routes yet.
+
+| Route | Access | Notes |
+| --- | --- | --- |
+| `POST /api/dmca/report` | Public, rate limited per IP (10 per hour) | Claimants may not have an account. Returns only the new report's `id`, `trackId`, `status` and `createdAt`. |
+| `POST /api/dmca/counter` | Signed-in caller who owns the reported track's release (release management owner, else the artist account) or holds an active catalog-metadata grant on it; admins and operators also allowed | `404` for an unknown report, `400` once the report is `countered` or `rejected`, `403` otherwise unauthorized. The response omits claimant contact details. |
+| `PATCH /api/dmca/:id/resolve` | `admin` or `operator` role | `upheld` marks the track `dmca_removed` and delists its stems. The resolver is the authenticated caller, recorded in the audit log; any resolver field in the body is ignored. |
+| `GET /api/dmca` | `admin` or `operator` role | Lists reports with claimant contact details; no other route returns them. |
+
 ## Tests
 
 - `cd backend && npm run test -- upload-rights-policy.spec.ts`
 - `cd backend && npm run test:integration -- --testPathPattern='trusted-source.service.integration|upload-rights-routing.integration|rights-route-reassessment.integration'`
+- `cd backend && npm run test -- dmca.controller.http.spec.ts`
+- `cd backend && npm run test:integration -- --testPathPattern='dmca.service.integration'`
 - `cd web && npx vitest run src/lib/api.test.ts src/lib/__tests__/rightsOnboarding.test.ts`
 
 ## References

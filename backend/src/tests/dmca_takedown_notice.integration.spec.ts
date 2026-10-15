@@ -33,6 +33,8 @@ async function fileReport(trackId: string) {
   });
 }
 
+const REVIEWER = { userId: "dmca-notice-reviewer", role: "operator" };
+
 describe("DMCA takedown notice (integration)", () => {
   beforeAll(async () => {
     await prisma.user.createMany({
@@ -75,7 +77,7 @@ describe("DMCA takedown notice (integration)", () => {
 
   it("sends the artist exactly one notice when a report is upheld, even when resolved or replayed again", async () => {
     const report = await fileReport(ownTrack);
-    await dmca.resolveReport(report.id, "upheld");
+    await dmca.resolveReport(report.id, "upheld", REVIEWER);
 
     const rows = await prisma.notice.findMany({ where: { dedupeKey: `dmca_report:${report.id}` } });
     expect(rows).toHaveLength(1);
@@ -96,7 +98,7 @@ describe("DMCA takedown notice (integration)", () => {
     expect(notice.body).not.toContain("complainant@example.com");
     expect(notice.body).not.toContain("private explanation");
 
-    await dmca.resolveReport(report.id, "upheld");
+    await dmca.resolveReport(report.id, "upheld", REVIEWER);
     await expect(notices.notifyDmcaTakedown(report.id)).resolves.toEqual({ recipientCount: 1, created: 0 });
     expect(await prisma.notice.count({ where: { dedupeKey: `dmca_report:${report.id}` } })).toBe(1);
 
@@ -106,14 +108,14 @@ describe("DMCA takedown notice (integration)", () => {
 
   it("notifies the management owner of a managed release, not the artist account", async () => {
     const report = await fileReport(managedTrack);
-    await dmca.resolveReport(report.id, "upheld");
+    await dmca.resolveReport(report.id, "upheld", REVIEWER);
     const rows = await prisma.notice.findMany({ where: { dedupeKey: `dmca_report:${report.id}` } });
     expect(rows.map((row) => row.recipientUserId)).toEqual([managerUser]);
   });
 
   it("sends nothing when a report is rejected", async () => {
     const report = await fileReport(rejectedTrack);
-    await dmca.resolveReport(report.id, "rejected");
+    await dmca.resolveReport(report.id, "rejected", REVIEWER);
     expect(await prisma.notice.count({ where: { dedupeKey: `dmca_report:${report.id}` } })).toBe(0);
     await expect(notices.notifyDmcaTakedown(report.id)).resolves.toBeNull();
   });

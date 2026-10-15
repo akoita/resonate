@@ -77,7 +77,7 @@ export function HomeHeroEmpty() {
         <p className="ng-hero__body">
           No campaigns are open for pledges right now. Fans can propose a
           show for an artist in their city — pledges are held in escrow and
-          refunded automatically if the show doesn&apos;t happen.
+          backers can claim them back if the show doesn&apos;t happen.
         </p>
         <div className="ng-hero__actions">
           <Link href="/shows/create" className="ng-btn ng-btn--primary">
