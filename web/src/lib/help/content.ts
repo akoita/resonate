@@ -2319,11 +2319,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "artist-analytics",
     title: "Artist analytics & your action cockpit",
     summary:
-      "See plays, payouts, and protection activity in one dashboard — with a cockpit of suggested next actions tailored to your catalog.",
+      "See plays, gross sales, and protection activity in one dashboard — with a cockpit of suggested next actions tailored to your catalog.",
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["analytics", "dashboard", "plays", "payouts", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
+    keywords: ["analytics", "dashboard", "plays", "payouts", "gross sales", "sales", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
     sections: [
       {
         id: "dashboard",
@@ -2333,7 +2333,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Plays over time, shown as a trend you can scan at a glance.",
-              "Stablecoin payout totals from sales and royalties.",
+              "Gross sales: settled stablecoin sales of your music before the platform fee and royalty splits. This is not the amount you received. Sales paid in a native token are counted, but not converted to US dollars.",
               "Content-protection activity and your staking history.",
             ],
           },
@@ -2341,8 +2341,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/artist-analytics.png`,
-              alt: "The Artist Analytics page showing seven recent plays, a USDC payout total, Groove Track as the top track, a plays-over-time chart, playback sources, and content-protection status.",
-              caption: "Artist Analytics: recent plays, payouts, playback sources, and protection signals in one view.",
+              alt: "The Artist Analytics page showing seven recent plays, a gross sales total in USDC, Groove Track as the top track, a plays-over-time chart, playback sources, and content-protection status.",
+              caption: "Artist Analytics: recent plays, gross sales, playback sources, and protection signals in one view.",
               width: 1440,
               height: 900,
               source: LOCAL,
@@ -2437,7 +2437,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Artist analytics", href: "/artist/analytics", description: "Plays, payouts, protection, and suggested actions." },
+      { label: "Artist analytics", href: "/artist/analytics", description: "Plays, gross sales, protection, and suggested actions." },
     ],
     related: ["marketplace-sell", "upload-music", "shows-run", "withdraw-a-release", "community"],
   },

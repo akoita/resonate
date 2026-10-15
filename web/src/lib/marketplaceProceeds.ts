@@ -51,3 +51,15 @@ function toSafeBps(value: bigint | number | null | undefined) {
   const numeric = typeof value === "bigint" ? Number(value) : value;
   return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : 0;
 }
+
+/**
+ * Explains the artist analytics "Gross sales" figure (#2144). The figure sums gross
+ * settled stablecoin sales, so it must not read as money the artist received. The
+ * platform fee percentage comes from the on-chain marketplace fee when it is known;
+ * otherwise the line names the fee without a number.
+ */
+export function grossSalesExplainer(protocolFeeBps?: bigint | number | null) {
+  const feePercent = formatBpsPercent(protocolFeeBps);
+  const fee = feePercent ? `the ${feePercent} platform fee` : "the platform fee";
+  return `Settled stablecoin sales before ${fee} and royalty splits. Native-token sales are counted but not converted to USD.`;
+}

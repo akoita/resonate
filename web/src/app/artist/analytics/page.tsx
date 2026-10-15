@@ -5,6 +5,7 @@ import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import ArtistAnalyticsDashboard from "../../../components/analytics/ArtistAnalyticsDashboard";
 import StakingOverview from "../../../components/analytics/StakingOverview";
+import { useProtocolFee } from "../../../hooks/useContracts";
 import {
   getArtistAnalyticsDashboard,
   getArtistMe,
@@ -22,6 +23,9 @@ export default function ArtistAnalyticsPage() {
   const { token } = useAuth();
   const [days, setDays] = useState(30);
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const { feeBps, loading: feeLoading, error: feeError } = useProtocolFee();
+  // Only name a fee percentage once the on-chain marketplace fee is actually known.
+  const platformFeeBps = feeLoading || feeError ? null : feeBps;
 
   const load = useCallback(async () => {
     if (!token) {
@@ -106,6 +110,7 @@ export default function ArtistAnalyticsPage() {
             days={days}
             artistName={state.artist.displayName}
             data={state.data}
+            platformFeeBps={platformFeeBps}
             onDaysChange={setDays}
           />
           <StakingOverview />
