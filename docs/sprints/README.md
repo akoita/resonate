@@ -47,12 +47,12 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest closed: [Vision Sprint 29 — Audio-aware discovery foundations](2026-10-15-vision-sprint-29-audio-aware-discovery.md),
-the second of four original taste engine sprints (28 to 31) in the
+Latest closed: [Vision Sprint 31 — Scene Scout v1](2026-11-19-vision-sprint-31-scene-scout.md),
+the last of the four original taste engine sprints (28 to 31) in the
 [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md).
-Sprints 30 and 31 have merged application work but remain in acceptance. The
-owner-approved [Vision Sprint 32 — Purchased stems ready to remix](2026-10-03-vision-sprint-32-purchased-stems.md)
-is queued after that acceptance.
+[Vision Sprint 32 — Purchased stems ready to remix](2026-10-03-vision-sprint-32-purchased-stems.md)
+has its work merged and waits on its staging purchase walkthrough. Current:
+[Vision Sprint 33 — Every license tier on sale](2026-10-15-vision-sprint-33-every-license-tier.md).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -88,4 +88,5 @@ is queued after that acceptance.
 | [2026-10-15](2026-10-15-vision-sprint-29-audio-aware-discovery.md) | Vision Sprint 29 — audio-aware discovery foundations (full-mix features, embeddings, measurement) | ✅ Closed 2026-10-02 — all five approved items merged; follow-ups remain separately tracked; [milestone-31 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-31-vision-sprint-29-audio-aware-discovery) records the application milestone, not a deployment |
 | [2026-10-29](2026-10-29-vision-sprint-30-crate-digger.md) | Vision Sprint 30 — Crate Digger v1 (quoted, rights-clear crates for DJs) | ✅ Closed 2026-10-14 — all six items closed; the manual rekordbox/Serato import check carries over to #2121 and optional auto-buy to #2027; [milestone-32 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-32-vision-sprint-30-crate-digger) records the application milestone, not a deployment |
 | [2026-11-19](2026-11-19-vision-sprint-31-scene-scout.md) | Vision Sprint 31 — Scene Scout v1 (qualified demand and next actions for artists) | ✅ Closed 2026-10-14 — all four items closed; the cross-artist access check and demand-retention drain carry over to resonate-iac#264; [milestone-33 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-33-vision-sprint-31-scene-scout) records the application milestone, not a deployment |
-| [2026-10-03](2026-10-03-vision-sprint-32-purchased-stems.md) | Vision Sprint 32 — Purchased stems ready to remix | 🗓 Owner-approved; queued after Sprints 30 and 31 acceptance; no start date or capacity estimate |
+| [2026-10-03](2026-10-03-vision-sprint-32-purchased-stems.md) | Vision Sprint 32 — Purchased stems ready to remix | ◐ Acceptance in progress — #2023, #2042 and #2139 merged and deployed; the staging purchase → Library → Remix Studio walkthrough remains |
+| [2026-10-15](2026-10-15-vision-sprint-33-every-license-tier.md) | Vision Sprint 33 — Every license tier on sale (multi-tier listing, one-signature relist, live payout facts) | ◐ In progress — owner-approved 2026-10-15; milestone 35 |
