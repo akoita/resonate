@@ -593,6 +593,25 @@ export function resetStructure(
 }
 
 /**
+ * Switch to a given structure (null = the original order), with masks
+ * remapped by source section as in `resetStructure`: each block takes the
+ * value of the FIRST current block that plays its section; on when none
+ * does. Used to carry lanes the caller did not plan (the beat, AI parts)
+ * onto a shape computed elsewhere, e.g. by "Describe it" (#1936). Null when
+ * the grid is empty.
+ */
+export function remapToStructure(
+  state: RemixStructureEditState,
+  structure: unknown,
+): RemixStructureEditResult | null {
+  if (state.sectionCount < 1) return null;
+  const blocks =
+    normalizeRemixStructure(structure, state.sectionCount)?.blocks ??
+    identityBlocks(state.sectionCount);
+  return withSectionMasks(state, state.sectionCount, blocks);
+}
+
+/**
  * Whether section 0 is a pickup: more than one section and section 0 spans
  * less than 0.75 × `grid.sectionSeconds`.
  */
