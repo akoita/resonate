@@ -43,14 +43,6 @@ describe('RecommendationsService (integration)', () => {
         { id: `${TEST_PREFIX}track1`, title: 'Pulse', releaseId: release.id, position: 1 },
         { id: `${TEST_PREFIX}track2`, title: 'Glow', releaseId: release.id, position: 2 },
         { id: `${TEST_PREFIX}track3`, title: 'Drift', releaseId: release.id, position: 3 },
-        {
-          id: `${TEST_PREFIX}track_ai`,
-          title: 'Generated Pulse',
-          releaseId: release.id,
-          position: 4,
-          aiDisclosureLevel: 'ALL',
-          aiDisclosureSource: 'artist',
-        },
       ],
     });
   });
@@ -64,6 +56,10 @@ describe('RecommendationsService (integration)', () => {
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}cohort_release` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}jazz_release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}jazz_release` } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}ai_release` } }).catch(() => {});
+    await prisma.release.delete({ where: { id: `${TEST_PREFIX}ai_release` } }).catch(() => {});
+    await prisma.recommendationProfile.deleteMany({ where: { userId: `${TEST_PREFIX}ai_listener` } }).catch(() => {});
+    await prisma.user.delete({ where: { id: `${TEST_PREFIX}ai_listener` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}cohort_release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
@@ -107,13 +103,43 @@ describe('RecommendationsService (integration)', () => {
   });
 
   it('excludes fully AI-generated tracks from recommendations without hiding catalog peers', async () => {
+    // Every suite seeds the shared catalog, and the policy stage caps a page at
+    // two tracks per artist, so a catalog-wide page cannot say which of this
+    // file's tracks appear. A genre only this release carries makes the
+    // preference matches exactly its two tracks; a fresh listener has no
+    // stored mood or served history to widen or rotate that set.
+    const genre = `${TEST_PREFIX}ai_peer_genre`;
+    await prisma.user.create({
+      data: { id: `${TEST_PREFIX}ai_listener`, email: `${TEST_PREFIX}ai_listener@test.resonate` },
+    });
+    await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}ai_release`,
+        title: 'AI Peer Album',
+        artistId: `${TEST_PREFIX}artist`,
+        status: 'published',
+        genre,
+      },
+    });
+    await prisma.track.createMany({
+      data: [
+        { id: `${TEST_PREFIX}ai_peer`, title: 'Human Pulse', releaseId: `${TEST_PREFIX}ai_release`, position: 1 },
+        {
+          id: `${TEST_PREFIX}ai_generated`,
+          title: 'Generated Pulse',
+          releaseId: `${TEST_PREFIX}ai_release`,
+          position: 2,
+          aiDisclosureLevel: 'ALL',
+          aiDisclosureSource: 'artist',
+        },
+      ],
+    });
     const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
-    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 10);
 
-    expect(result.items.map((item) => item.id)).not.toContain(`${TEST_PREFIX}track_ai`);
-    expect(result.items.map((item) => item.id)).toEqual(
-      expect.arrayContaining([`${TEST_PREFIX}track1`]),
-    );
+    const result = await service.getRecommendations(`${TEST_PREFIX}ai_listener`, 10, { genres: [genre] });
+
+    expect(result.items.map((item) => item.id)).toEqual([`${TEST_PREFIX}ai_peer`]);
+    expect(result.items[0].reasons).toContain(`genre:${genre}`);
   });
 
   it('uses joined cohort context as a safe additive recommendation signal', async () => {
