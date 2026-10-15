@@ -264,8 +264,9 @@ describe("StemFeatureBackfillService (integration)", () => {
 
     // `remaining` follows the requested filter; `remainingByType` shows every
     // type so the operator sees the whole picture.
+    // (The seeded vocals stem is held back after the previous test's failed
+    // analysis, #2012, so the unfiltered type checked here is guitar.)
     expect(result.remainingByType.guitar).toBeGreaterThanOrEqual(1);
-    expect(result.remainingByType.vocals).toBeGreaterThanOrEqual(1);
     expect(result.remaining).toBe(result.remainingByType.original ?? 0);
   });
 
@@ -340,8 +341,18 @@ describe("StemFeatureBackfillService (integration)", () => {
         stemId: ID("an_badbucket"),
         reason: "audio_unavailable",
       });
-      // In flight stems still count as remaining.
-      expect(result.remaining).toBeGreaterThanOrEqual(5);
+      // In flight stems still count as remaining; the two unavailable ones
+      // are recorded as failed and held back (#2012).
+      expect(result.remaining).toBeGreaterThanOrEqual(3);
+      expect(result.failed).toBeGreaterThanOrEqual(2);
+      const held = await prisma.stem.findMany({
+        where: { id: { in: [ID("an_nouri"), ID("an_badbucket"), ID("an_gcs")] } },
+        select: { id: true, audioFeaturesFailureCount: true, audioFeaturesFailedAt: true },
+        orderBy: { id: "asc" },
+      });
+      expect(
+        Object.fromEntries(held.map((row) => [row.id, row.audioFeaturesFailureCount])),
+      ).toEqual({ [ID("an_nouri")]: 1, [ID("an_badbucket")]: 1, [ID("an_gcs")]: 0 });
 
       const rows = await prisma.stem.findMany({
         where: { id: { in: analysisStems.map((s) => s.id) } },
@@ -370,7 +381,7 @@ describe("StemFeatureBackfillService (integration)", () => {
           skipped: [],
         }),
       );
-      expect(result.remaining).toBeGreaterThanOrEqual(5);
+      expect(result.remaining + result.failed).toBeGreaterThanOrEqual(5);
       expect(publisher.publishAnalysisJob).not.toHaveBeenCalled();
       expect(fetchSpy).not.toHaveBeenCalled();
     });
@@ -414,6 +425,15 @@ describe("StemFeatureBackfillService (integration)", () => {
         const row = await prisma.stem.findUnique({ where: { id }, select: { audioFeatures: true } });
         expect(row?.audioFeatures).toBeNull();
       }
+      // Missing and malformed results count as failed analyses (#2012); nouri
+      // already failed once at dispatch.
+      const failures = await prisma.stem.findMany({
+        where: { id: { in: [gcs, local, nouri] } },
+        select: { id: true, audioFeaturesFailureCount: true },
+      });
+      expect(
+        Object.fromEntries(failures.map((row) => [row.id, row.audioFeaturesFailureCount])),
+      ).toEqual({ [gcs]: 0, [local]: 1, [nouri]: 2 });
 
       // Redelivery with different features must not overwrite measured data.
       const again = await service.applyAnalysisResults({
@@ -474,6 +494,10 @@ describe("StemFeatureBackfillService (integration)", () => {
     });
 
     beforeEach(async () => {
+      await prisma.stem.updateMany({
+        where: { id: { in: ourIds } },
+        data: { audioFeaturesFailedAt: null, audioFeaturesFailureCount: 0 },
+      });
       await prisma.stem.update({
         where: { id: nullId },
         data: { audioFeatures: Prisma.DbNull },
@@ -566,6 +590,30 @@ describe("StemFeatureBackfillService (integration)", () => {
         where: { type: "bass", isEncrypted: true, trackId: TRACK_ID },
       });
       expect(encrypted).toBe(1);
+    });
+
+    it("refresh holds back recently failed stems unless retryFailed (#2012)", async () => {
+      delete process.env.DEMUCS_WORKER_URL;
+      publisher.isAvailable.mockReturnValue(true);
+      await prisma.stem.update({
+        where: { id: rev1Id },
+        data: { audioFeaturesFailedAt: new Date(), audioFeaturesFailureCount: 1 },
+      });
+
+      const status = await service.status({ types: ["bass"], refresh: true });
+      expect(status).toEqual(
+        expect.objectContaining({ remaining: 3, failed: 1 }),
+      );
+      expect(status.remainingByType.bass).toBe(3);
+
+      const result = await service.backfill({ limit: 50, types: ["bass"], refresh: true });
+      expect(dispatchedIds().sort()).toEqual([nullId, rev2Id, badRevId].sort());
+      expect(result).toEqual(expect.objectContaining({ remaining: 3, failed: 1 }));
+
+      publisher.publishAnalysisJob.mockClear();
+      await service.backfill({ limit: 50, types: ["bass"], refresh: true, retryFailed: true });
+      // Fewest failures first: the failed stem comes last.
+      expect(dispatchedIds()).toEqual([...[nullId, rev2Id, badRevId].sort(), rev1Id]);
     });
 
     it("http refresh overwrites older revisions and leaves the current one", async () => {
@@ -672,6 +720,139 @@ describe("StemFeatureBackfillService (integration)", () => {
       const filled = await featuresOf(nullId);
       expect(filled?.tempoBpm).toBe(142);
       expect(filled).not.toHaveProperty("analysisRevision");
+    });
+  });
+
+  describe("failed analyses are held back (#2012)", () => {
+    const ID = (name: string) => `${TEST_PREFIX}${name}`;
+    // Ids sort as listed: the failing stem would come first by id.
+    const failId = ID("ms_a_fail");
+    const okB = ID("ms_b_ok");
+    const okC = ID("ms_c_ok");
+    const ourIds = [failId, okB, okC];
+    const DAY_AND_AN_HOUR_MS = 25 * 60 * 60 * 1000;
+
+    const analyzedNames = () =>
+      fetchSpy.mock.calls
+        .filter(([url]) => String(url).endsWith("/analyze"))
+        .map(([, init]) => (((init as RequestInit).body as FormData).get("file") as File).name);
+    const failureOf = async (id: string) =>
+      prisma.stem.findUnique({
+        where: { id },
+        select: { audioFeatures: true, audioFeaturesFailedAt: true, audioFeaturesFailureCount: true },
+      });
+    const ageLastFailure = (id: string) =>
+      prisma.stem.update({
+        where: { id },
+        data: { audioFeaturesFailedAt: new Date(Date.now() - DAY_AND_AN_HOUR_MS) },
+      });
+
+    beforeAll(async () => {
+      // "master" is used by no other test here.
+      await prisma.stem.createMany({
+        data: ourIds.map((id) => ({
+          id,
+          trackId: TRACK_ID,
+          type: "master",
+          uri: "db://bytes",
+          data: Buffer.from("fake-audio"),
+        })),
+      });
+    });
+
+    beforeEach(() => {
+      // The worker always fails to analyze the failing stem (HTTP 500).
+      fetchSpy.mockImplementation(async (_url: unknown, init?: RequestInit) => {
+        const file = (init?.body as FormData).get("file") as File;
+        if (file.name === `${failId}.audio`) {
+          return { ok: false, status: 500, json: async () => ({}) } as any;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ status: "success", features: WORKER_FEATURES }),
+        } as any;
+      });
+    });
+
+    it("does not re-pick a failing stem within the window and counts it in failed, not remaining", async () => {
+      const first = await service.backfill({ limit: 1, types: ["master"] });
+      expect(first.skipped).toEqual([{ stemId: failId, reason: "analysis_failed" }]);
+      expect(first).toEqual(
+        expect.objectContaining({ updated: 0, remaining: 2, failed: 1 }),
+      );
+      const failedRow = await failureOf(failId);
+      expect(failedRow?.audioFeaturesFailureCount).toBe(1);
+      expect(failedRow?.audioFeaturesFailedAt).toBeInstanceOf(Date);
+      expect(failedRow?.audioFeatures).toBeNull();
+
+      // Each later batch moves on to an untried stem.
+      const second = await service.backfill({ limit: 1, types: ["master"] });
+      expect(second).toEqual(
+        expect.objectContaining({ scanned: 1, updated: 1, remaining: 1, failed: 1 }),
+      );
+      const third = await service.backfill({ limit: 1, types: ["master"] });
+      expect(third).toEqual(
+        expect.objectContaining({ scanned: 1, updated: 1, remaining: 0, failed: 1 }),
+      );
+      const fourth = await service.backfill({ limit: 1, types: ["master"] });
+      expect(fourth).toEqual(
+        expect.objectContaining({ scanned: 0, updated: 0, remaining: 0, failed: 1 }),
+      );
+
+      expect(analyzedNames()).toEqual([`${failId}.audio`, `${okB}.audio`, `${okC}.audio`]);
+      expect(await service.status({ types: ["master"] })).toEqual(
+        expect.objectContaining({ remaining: 0, failed: 1 }),
+      );
+      for (const id of [okB, okC]) {
+        expect((await failureOf(id))?.audioFeaturesFailureCount).toBe(0);
+      }
+    });
+
+    it("retries after the window with untried stems first, then holds the stem at the failure cap", async () => {
+      // An untried stem sorts after the failing one by id but is picked first.
+      await prisma.stem.update({ where: { id: okC }, data: { audioFeatures: Prisma.DbNull } });
+      await ageLastFailure(failId);
+
+      const untried = await service.backfill({ limit: 1, types: ["master"] });
+      expect(untried).toEqual(expect.objectContaining({ updated: 1, remaining: 1, failed: 0 }));
+      expect(analyzedNames()).toEqual([`${okC}.audio`]);
+
+      // Failure 2, then (after the window again) failure 3.
+      await service.backfill({ limit: 1, types: ["master"] });
+      expect((await failureOf(failId))?.audioFeaturesFailureCount).toBe(2);
+      await ageLastFailure(failId);
+      await service.backfill({ limit: 1, types: ["master"] });
+      expect((await failureOf(failId))?.audioFeaturesFailureCount).toBe(3);
+
+      // At the cap the window no longer releases it.
+      await ageLastFailure(failId);
+      fetchSpy.mockClear();
+      const capped = await service.backfill({ limit: 1, types: ["master"] });
+      expect(capped).toEqual(
+        expect.objectContaining({ scanned: 0, remaining: 0, failed: 1 }),
+      );
+      expect(analyzedNames()).toEqual([]);
+    });
+
+    it("retryFailed re-attempts held-back stems and a success resets the failure fields", async () => {
+      // The worker can now analyze it.
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success", features: WORKER_FEATURES }),
+      } as any);
+
+      const result = await service.backfill({ types: ["master"], retryFailed: true });
+
+      expect(analyzedNames()).toEqual([`${failId}.audio`]);
+      expect(result).toEqual(
+        expect.objectContaining({ updated: 1, remaining: 0, failed: 0 }),
+      );
+      const row = await failureOf(failId);
+      expect(row?.audioFeatures).toEqual(expect.objectContaining({ tempoBpm: 110.2 }));
+      expect(row?.audioFeaturesFailureCount).toBe(0);
+      expect(row?.audioFeaturesFailedAt).toBeNull();
     });
   });
 });

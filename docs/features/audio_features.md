@@ -116,6 +116,8 @@ Request body:
   an older `analysisRevision` than the current one. Without it, only stems
   with no features are selected. Results never overwrite features of the same
   or a newer revision, so redelivered or older results are no-ops.
+- `retryFailed`: when `true`, also re-attempt stems held back after failed
+  analyses (see below).
 
 Response: `transport`, `status` (`ok`, `dispatched` or `worker_unavailable`),
 `scanned`, `updated`, `dispatched`, `skipped[]`, `remaining` (stems still
@@ -125,7 +127,7 @@ re-run until `remaining` reaches 0. With the `pubsub` transport, `remaining`
 still counts the stems in flight. Call the POST once per batch, then poll
 `GET /admin/stems/backfill-audio-features?types=original` (add `&refresh=true`
 to count outdated stems too; same admin guard;
-returns `remaining` and `remainingByType` without analyzing anything) until it
+returns `remaining`, `failed` and `remainingByType` without analyzing anything) until it
 stops falling, before dispatching the next batch. Re-dispatching a batch that
 is still in flight is harmless but wasted work: results only fill stems that
 still lack features. GCS stems are handed to the worker as their
@@ -133,7 +135,14 @@ canonical `https://storage.googleapis.com/…` URL, including those stored in th
 historical bucket-relative `/{bucket}/{object}` form. A stem without a stored
 URI, or with one the storage provider rejects, is reported as
 `audio_unavailable` and is not dispatched. Per-stem analysis failures are
-logged by the backend and the stem stays pending. Backfilled features carry
+logged by the backend and the stem stays pending. Since
+[#2012](https://github.com/akoita/resonate/issues/2012) every failure
+(`audio_unavailable`, `analysis_failed`, `error`, or a missing or malformed
+worker result) is recorded on the stem, which is then held back from default
+runs for 24 hours, and indefinitely after 3 failures, and counted in the
+response's `failed` field instead of `remaining` (and `remainingByType`), so
+`remaining` reaches 0 even when some stems keep failing; `retryFailed: true`
+re-attempts them, and a success resets the record. Backfilled features carry
 `camelot` too.
 
 The staging backfill run is tracked in the private deployment repository; this
