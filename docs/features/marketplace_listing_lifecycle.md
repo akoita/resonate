@@ -43,8 +43,13 @@ buyer and machine-commerce surfaces strict about availability.
 - Expired and cancelled listings can be relisted from the owner view by creating
   a new on-chain listing transaction.
 - The owner view supports selecting relistable stems and applying shared relist
-  terms across the selection. Each selected stem still submits through the
-  existing listing transaction path.
+  terms across the selection. The selection is relisted with one confirmation
+  per group of up to 10 stems (#2030): each group is one batched transaction
+  (marketplace approval only when it is missing, then one listing per stem),
+  and every relisted listing keeps its own license tier. A group fails as a
+  whole; the dialog names the group's stems, the stem a pre-sign check found
+  failing when it can, the stems already relisted in earlier groups, and keeps
+  only the unlisted stems selected for a retry.
 - Marketplace card stem titles and release-page minted-stem chips link to the
   stem detail page (`/stem/:tokenId`), the asset page showing identity,
   active license tiers, preview, and Buy/Remix/List actions (#1145).
@@ -111,8 +116,8 @@ buyer and machine-commerce surfaces strict about availability.
 2. Filter by Active, Expiring, Expired, Sold, or Cancelled.
 3. Select eligible expired or cancelled rows, or use Relist on a single row.
 4. Apply price, payment asset, quantity, and duration once for the selection.
-5. Confirm the listing transactions; the indexer attaches the new listing rows
-   after the chain events are observed.
+5. Confirm once per group of up to 10 stems; the indexer attaches the new
+   listing rows after the chain events are observed.
 
 ### Artist: offering several license tiers (#2041)
 
@@ -149,8 +154,15 @@ buyer and machine-commerce surfaces strict about availability.
 - Notification preferences:
   - `GET /api/metadata/notifications/:address/preferences`
   - `PATCH /api/metadata/notifications/:address/preferences`
-- Relisting uses the existing `StemMarketplaceV2.list` transaction path through
-  `useListStem`; it does not mutate the expired listing.
+- Relisting uses `StemMarketplaceV2.list` through `useRelistMany` and the pure
+  planner in `web/src/lib/batchRelist.ts` (#2030); it does not mutate the
+  expired listing. The planner groups listings by token with tiers ordered
+  personal → remix → commercial, never splits one token's tiers across chunks,
+  and moves a repeat relist of the same token and tier to a later chunk. Each
+  chunk sends one notify per token with the shared transaction hash: a single
+  tier uses the single-tier body, several tiers of one token use `tiers[]` with
+  ordinals (and listing ids read from the receipt). Once the marketplace is
+  approved, each `list()` is simulated before signing to name a failing stem.
 - Per-tier listing intents (#2041). `POST /api/contracts/notify-listing`
   (`POST /metadata/notify-listing`) requires a JWT and a `sellerAddress` that
   is one of the caller's own addresses (sign-in account address or the
@@ -219,7 +231,7 @@ buyer and machine-commerce surfaces strict about availability.
 | --- | --- |
 | Public stem browsing (`/crates?tab=stems`) | Excludes expired and sold-out listings; sellers manage theirs from **Listings**. One card per stem: a stem listed under several tiers shows a chip per tier with its price, opening checkout on that tier (#2041). |
 | Storefront/x402/MCP/agent commerce | Storefront, x402 settlement lookup, MCP catalog search, player actions, and AI DJ catalog search treat expired and sold-out listings as unavailable. |
-| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist progress. Its empty state points buyers to Library › Stems (#2042). |
+| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist with one confirmation per group of up to 10 stems (#2030). Its empty state points buyers to Library › Stems (#2042). |
 | Buyer purchases (`/library?tab=stems`) | Purchased stems with their best license tier, a license filter, Remix / Upgrade to Remix license actions, and a multi-stem Remix action per source track (#2042). Reached from **My purchased stems** on Browse stems (signed in) and the buy modal's success view. |
 | Notification bell | Routes listing lifecycle notifications to `/artist/listings`. |
 
