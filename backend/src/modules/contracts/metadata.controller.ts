@@ -35,6 +35,7 @@ import type {
 import { RightsRouteReassessmentService } from "../rights/rights-route-reassessment.service";
 import { TrustedSourceService } from "../rights/trusted-source.service";
 import { toAiDisclosureRecord } from "../catalog/ai-disclosure.policy";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -1704,6 +1705,7 @@ export class MetadataController {
    * otherwise 404, so the route never confirms that an id exists.
    */
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Patch("notifications/:id/read")
   async markNotificationRead(@Request() req: any, @Param("id") id: string) {
     const userId = typeof req?.user?.userId === "string" ? req.user.userId : "";
@@ -1723,6 +1725,7 @@ export class MetadataController {
    * PATCH /api/metadata/notifications/:address/read-all
    */
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Patch("notifications/:address/read-all")
   async markAllNotificationsRead(@Request() req: any, @Param("address") address: string) {
     await this.assertCanAccessNotifications(req?.user, address, "write");

@@ -120,7 +120,10 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     matchOn: "id",
     note:
       "`email` is @unique, so the placeholder must be derived from the new UUID — see "
-      + "`erasedEmailFor`. `closedAt` and `erasedAt` are set by the engine, not scrubbed.",
+      + "`erasedEmailFor`. `closedAt` and `erasedAt` are set by the engine, not scrubbed. The operator account "
+      + "state (#2147: `accountStatus`, `accountStatusReason` category, `accountStatusUntil`, `accountStatusChangedAt`) "
+      + "is retained on the anonymized row as the record that the platform restricted or closed the account; it "
+      + "holds no free text. `accountStatusChangedBy` names an operator and is in `DANGLING_PERSON_COLUMNS`.",
   },
   {
     model: "AccountClosureRequest",
@@ -1023,6 +1026,14 @@ export interface DanglingPersonColumn {
  * relation (on `initiatorUserId`), so a per-model check would have missed it too.
  */
 export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
+  {
+    model: "User",
+    column: "accountStatusChangedBy",
+    action: "rewrite",
+    reason:
+      "The operator who suspended, unsuspended or closed an account (#2147). It has no User relation, so when "
+      + "that operator is erased the retained status record on other accounts must stop naming them.",
+  },
   {
     model: "ReleaseArtistCredit",
     column: "identityReviewerUserId",

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { NoticeService } from "./notice.service";
@@ -21,6 +22,7 @@ export class NoticeController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @HttpCode(200)
   @Post(":id/read")
   markRead(@Req() req: any, @Param("id") id: string) {

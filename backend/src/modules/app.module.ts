@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { GLOBAL_RATE_LIMIT } from "./shared/rate_limits";
 import { ConfigModule } from "@nestjs/config";
@@ -46,6 +46,8 @@ import { PunchlineModule } from "./punchline/punchline.module";
 import { PrivacyModule } from "./privacy/privacy.module";
 import { ManagementModule } from "./management/management.module";
 import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.module";
+import { AccountsModule } from "./accounts/accounts.module";
+import { AccountStatusInterceptor } from "./accounts/account_status.interceptor";
 
 @Module({
   imports: [
@@ -100,10 +102,14 @@ import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.mo
     ManagementModule,
     DiscoveryJournalModule,
     CratesModule,
+    AccountsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // #2147: refuses mutating requests from suspended/closed accounts. An
+    // interceptor, not a guard, so it runs after the route's AuthGuard has set req.user.
+    { provide: APP_INTERCEPTOR, useClass: AccountStatusInterceptor },
   ],
 })
 export class AppModule { }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
+import { useOwnAccountStatus } from "../account/AccountStatusBanner";
 import { cancelScheduledAccountClosure, describeTimeUntilClosure, formatClosureDate } from "./AccountClosurePanel";
 import {
   getAccountClosureState,
@@ -45,6 +46,8 @@ export default function AccountClosureNotice() {
   const { addToast } = useToast();
   const [closure, setClosure] = useState<AccountClosureState>(() => getAccountClosureState());
   const [cancelling, setCancelling] = useState(false);
+  // #2147: an operator closure is not the person's to cancel; the account banner explains it instead.
+  const operatorClosed = useOwnAccountStatus()?.status === "closed";
 
   useEffect(() => subscribeToAccountClosure(setClosure), []);
 
@@ -69,7 +72,7 @@ export default function AccountClosureNotice() {
   };
 
   const request = closure.known ? closure.request : null;
-  if (status !== "authenticated" || !token || !request) return null;
+  if (status !== "authenticated" || !token || !request || operatorClosed) return null;
 
   return (
     <AccountClosureBanner

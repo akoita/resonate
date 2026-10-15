@@ -14,6 +14,7 @@ import AgentDjContinuation from "../agent/AgentDjContinuation";
 import AnalyticsConsentPrompt from "../analytics/AnalyticsConsentPrompt";
 import AccountClosureNotice from "../settings/AccountClosureNotice";
 import PlatformNoticeBanner from "../notifications/PlatformNoticeBanner";
+import AccountStatusBanner from "../account/AccountStatusBanner";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
 import { LegalFooter } from "../legal/LegalFooter";
 
@@ -49,6 +50,8 @@ export default function AppShell({
           {/* #2146: an unread policy/terms/incident broadcast, dismissible,
             * in the same in-flow slot for the same reasons. */}
           <PlatformNoticeBanner />
+          {/* #2147: a suspended or closed account says so here, persistently. */}
+          <AccountStatusBanner />
           <main id="main-content" className="app-content" tabIndex={-1}>
             <div className="app-page">
               <Suspense fallback={null}>
