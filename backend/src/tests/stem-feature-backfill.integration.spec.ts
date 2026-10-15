@@ -364,6 +364,16 @@ describe("StemFeatureBackfillService (integration)", () => {
     it("propagates a dispatch failure", async () => {
       publisher.publishAnalysisJob.mockRejectedValueOnce(new Error("run job failed"));
       await expect(service.backfill({ types: ["piano"] })).rejects.toThrow("run job failed");
+      // A publisher failure is not the stems' fault (#2012).
+      const rows = await prisma.stem.findMany({
+        where: { id: { in: [ID("an_gcs"), ID("an_local"), ID("an_gcsrel")] } },
+        select: { audioFeaturesFailureCount: true, audioFeaturesFailedAt: true },
+      });
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        expect(row.audioFeaturesFailureCount).toBe(0);
+        expect(row.audioFeaturesFailedAt).toBeNull();
+      }
     });
 
     it("reports worker_unavailable without touching stems or the network when no transport exists", async () => {
@@ -761,11 +771,12 @@ describe("StemFeatureBackfillService (integration)", () => {
     });
 
     beforeEach(() => {
-      // The worker always fails to analyze the failing stem (HTTP 500).
+      // The worker always rejects the failing stem's audio (HTTP 422, its
+      // answer when feature extraction fails).
       fetchSpy.mockImplementation(async (_url: unknown, init?: RequestInit) => {
         const file = (init?.body as FormData).get("file") as File;
         if (file.name === `${failId}.audio`) {
-          return { ok: false, status: 500, json: async () => ({}) } as any;
+          return { ok: false, status: 422, json: async () => ({}) } as any;
         }
         return {
           ok: true,
@@ -853,6 +864,62 @@ describe("StemFeatureBackfillService (integration)", () => {
       expect(row?.audioFeatures).toEqual(expect.objectContaining({ tempoBpm: 110.2 }));
       expect(row?.audioFeaturesFailureCount).toBe(0);
       expect(row?.audioFeaturesFailedAt).toBeNull();
+    });
+
+    it("worker outages (503, network error, non-JSON body) never mark stems failed; they are re-picked", async () => {
+      await prisma.stem.updateMany({
+        where: { id: { in: ourIds } },
+        data: {
+          audioFeatures: Prisma.DbNull,
+          audioFeaturesFailedAt: null,
+          audioFeaturesFailureCount: 0,
+        },
+      });
+      const outages: Array<() => void> = [
+        () =>
+          fetchSpy.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) } as any),
+        () => fetchSpy.mockRejectedValue(new TypeError("fetch failed")),
+        () =>
+          fetchSpy.mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => {
+              throw new SyntaxError("Unexpected token <");
+            },
+          } as any),
+      ];
+
+      for (const outage of outages) {
+        fetchSpy.mockReset();
+        outage();
+        const result = await service.backfill({ limit: 50, types: ["master"] });
+
+        // Every stem was attempted, none was held back.
+        expect(analyzedNames().sort()).toEqual(ourIds.map((id) => `${id}.audio`).sort());
+        expect(result.skipped).toEqual(
+          ourIds.map((stemId) => ({ stemId, reason: "worker_unavailable" })),
+        );
+        expect(result).toEqual(
+          expect.objectContaining({ updated: 0, remaining: 3, failed: 0 }),
+        );
+        for (const id of ourIds) {
+          const row = await failureOf(id);
+          expect(row?.audioFeaturesFailureCount).toBe(0);
+          expect(row?.audioFeaturesFailedAt).toBeNull();
+          expect(row?.audioFeatures).toBeNull();
+        }
+      }
+
+      // Once the worker is back, the next run picks the same stems.
+      fetchSpy.mockReset().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success", features: WORKER_FEATURES }),
+      } as any);
+      const recovered = await service.backfill({ limit: 50, types: ["master"] });
+      expect(recovered).toEqual(
+        expect.objectContaining({ updated: 3, remaining: 0, failed: 0 }),
+      );
     });
   });
 });

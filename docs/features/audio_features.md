@@ -136,14 +136,20 @@ historical bucket-relative `/{bucket}/{object}` form. A stem without a stored
 URI, or with one the storage provider rejects, is reported as
 `audio_unavailable` and is not dispatched. Per-stem analysis failures are
 logged by the backend and the stem stays pending. Since
-[#2012](https://github.com/akoita/resonate/issues/2012) every failure
-(`audio_unavailable`, `analysis_failed`, `error`, or a missing or malformed
-worker result) is recorded on the stem, which is then held back from default
-runs for 24 hours, and indefinitely after 3 failures, and counted in the
-response's `failed` field instead of `remaining` (and `remainingByType`), so
-`remaining` reaches 0 even when some stems keep failing; `retryFailed: true`
-re-attempts them, and a success resets the record. Backfilled features carry
-`camelot` too.
+[#2012](https://github.com/akoita/resonate/issues/2012) a failure attributable
+to the stem is recorded on it. These are `audio_unavailable`, `analysis_failed`
+(the worker rejected the audio with 400, 413, 415 or 422, or answered without
+usable features), and a missing or malformed per-stem result in job mode. The
+stem is then held back from default runs for 24 hours, and indefinitely after 3
+failures, and counted in the response's `failed` field instead of `remaining`
+(and `remainingByType`). This lets `remaining` reach 0 even when some stems
+keep failing. `retryFailed: true` re-attempts them, and a success resets the
+record. Worker or transport failures are only logged and leave the stem
+eligible for the next run. Over HTTP these are a network error, a timeout, any
+other non-2xx status or a non-JSON body, reported as `worker_unavailable`. In
+job mode they are a publish failure or a whole-message `status: "failed"`.
+Unexpected errors, reported as `error`, are treated the same way. Backfilled
+features carry `camelot` too.
 
 The staging backfill run is tracked in the private deployment repository; this
 page holds no environment URLs or schedules.

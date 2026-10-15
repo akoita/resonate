@@ -35,6 +35,24 @@ export const BACKFILL_FAILURE_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
  */
 export const BACKFILL_MAX_FAILURES = 3;
 
+/**
+ * Worker `/analyze` statuses that reject the stem's audio itself (#2012):
+ * unreadable or unanalyzable audio (422, 400, 415) or an oversized upload
+ * (413). Any other non-2xx status is treated as the worker being unavailable.
+ */
+const STEM_REJECTION_STATUSES = new Set([400, 413, 415, 422]);
+
+/**
+ * Skip reasons attributable to the stem, which are recorded as failures and
+ * hold it back (#2012). `worker_unavailable` (network error, timeout, other
+ * non-2xx status or non-JSON body) and `error` (any other unexpected failure)
+ * are logged only and leave the stem eligible.
+ */
+const STEM_FAILURE_REASONS = new Set(["audio_unavailable", "analysis_failed"]);
+
+/** The analysis worker could not be reached or answered abnormally. */
+class WorkerUnavailableError extends Error {}
+
 /** Stem types that exist in the catalog; `original` is the full mix (#1959). */
 export const BACKFILL_STEM_TYPES = [
   "original",
@@ -260,8 +278,10 @@ export class StemFeatureBackfillService {
   }
 
   /**
-   * Records a failed analysis (#2012) so the stem is held back from the next
-   * default runs; reset when features are written.
+   * Records a failure attributable to the stem (#2012; see
+   * `STEM_FAILURE_REASONS`) so it is held back from the next default runs;
+   * reset when features are written. Worker, transport and publisher
+   * failures are never recorded.
    */
   private async recordFailures(stemIds: string[]): Promise<void> {
     if (stemIds.length === 0) return;
@@ -569,16 +589,25 @@ export class StemFeatureBackfillService {
         });
         updated++;
       } catch (error) {
+        // Not attributable to the stem (#2012): logged, the stem stays eligible.
+        const workerDown = error instanceof WorkerUnavailableError;
         this.logger.warn(
-          `Backfill failed for stem ${stem.id}: ${
+          `Backfill ${workerDown ? "worker unavailable" : "failed"} for stem ${stem.id}: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
-        skipped.push({ stemId: stem.id, reason: "error" });
+        skipped.push({
+          stemId: stem.id,
+          reason: workerDown ? "worker_unavailable" : "error",
+        });
       }
     }
 
-    await this.recordFailures(skipped.map((skip) => skip.stemId));
+    await this.recordFailures(
+      skipped
+        .filter((skip) => STEM_FAILURE_REASONS.has(skip.reason))
+        .map((skip) => skip.stemId),
+    );
 
     const counts = await this.countRemaining(filters);
     this.logger.log(
@@ -608,19 +637,34 @@ export class StemFeatureBackfillService {
       }),
       `${stem.id}.audio`,
     );
-    const response = await fetch(`${workerBaseUrl}/analyze`, {
-      method: "POST",
-      body: form,
-      signal: AbortSignal.timeout(120_000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${workerBaseUrl}/analyze`, {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch (error) {
+      throw new WorkerUnavailableError(
+        `request failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     if (!response.ok) {
+      if (!STEM_REJECTION_STATUSES.has(response.status)) {
+        throw new WorkerUnavailableError(`returned ${response.status}`);
+      }
       this.logger.warn(
-        `Worker /analyze returned ${response.status} for stem ${stem.id}`,
+        `Worker /analyze rejected stem ${stem.id} with ${response.status}`,
       );
       return null;
     }
-    const body = (await response.json()) as { features?: unknown };
-    return body.features ?? null;
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new WorkerUnavailableError("returned a non-JSON body");
+    }
+    return (body as { features?: unknown } | null)?.features ?? null;
   }
 
   /** Same fetch order as ingestion reads: DB bytes, local uploads, provider. */
