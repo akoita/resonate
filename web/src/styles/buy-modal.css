@@ -536,3 +536,34 @@
     width: 100%;
   }
 }
+
+/* Post-purchase next steps (#2042) */
+.buy-modal__handoff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 8px;
+}
+
+.buy-modal__handoff-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #10b981;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.buy-modal__handoff-btn[aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.buy-modal__handoff-note {
+  flex-basis: 100%;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}

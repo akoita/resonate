@@ -1002,10 +1002,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "library-playlists",
     title: "Your library & playlists",
     summary:
-      "Save tracks to your library, organize them into playlists, and share a playlist publicly — by link or in the global catalog.",
+      "Save tracks to your library, find the stems you bought, organize them into playlists, and share a playlist publicly — by link or in the global catalog.",
     category: "library",
-    audiences: ["listener"],
-    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog"],
+    audiences: ["listener", "producer"],
+    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog", "stems", "my stems", "purchased stems", "my purchases", "license", "remix-ready", "upgrade"],
     sections: [
       {
         id: "library",
@@ -1037,6 +1037,30 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 900,
               source: LOCAL,
             },
+          },
+        ],
+      },
+      {
+        id: "stems",
+        heading: "Your stems",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Every stem you buy lands in the Stems tab of your library. A new purchase can take a few minutes to show up. Stems you are selling appear there too, marked with a price tag.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "License badge", description: "Each stem you bought shows the best license you hold for it: Personal, Remix, or Commercial. If you bought the same stem twice, at Personal and later at Remix, it shows Remix." },
+              { term: "Filter", description: "All shows every stem. Remix-ready shows the stems you hold at Remix or Commercial. Personal shows the ones you hold for your own listening." },
+              { term: "Remix", description: "Opens the stem in Remix Studio when you hold a Remix or Commercial license." },
+              { term: "Upgrade to Remix license", description: "Shown on stems you hold at Personal. It opens the stem's page, where you can buy the Remix license if the seller offers one." },
+              { term: "Remix stems together", description: "When you own two or more remix-ready stems from the same song, one button above the list opens a single Remix Studio session with all of them." },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "You can also reach this tab from My purchased stems on Browse stems, or from the confirmation shown after you buy.",
           },
         ],
       },
@@ -1099,9 +1123,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Your library", href: "/library", description: "Saved tracks and folders." },
       { label: "Playlists", href: "/library?tab=playlists", description: "Create, manage, and share playlists." },
+      { label: "Your stems", href: "/library?tab=stems", description: "Stems you bought, with their licenses." },
       { label: "Browse the catalog", href: "/catalog", description: "Find public playlists from other listeners." },
     ],
-    related: ["playing-music", "discover-music", "withdraw-a-release"],
+    related: ["playing-music", "discover-music", "withdraw-a-release", "marketplace-buy", "remix-studio"],
   },
 
   // ─────────────────────────── Collect & sell ─────────────────────────────
@@ -1112,7 +1137,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Preview and collect licensed audio stems from artists worldwide, choosing the license tier that fits how you'll use them.",
     category: "marketplace",
     audiences: ["listener", "producer"],
-    keywords: ["marketplace", "buy", "collect", "stem", "license", "personal", "remix", "commercial", "purchase", "checkout", "x402", "receipt", "nft"],
+    keywords: ["marketplace", "buy", "collect", "stem", "license", "personal", "remix", "commercial", "purchase", "checkout", "x402", "receipt", "nft", "library", "my purchased stems", "my purchases", "where are my stems", "upgrade"],
     sections: [
       {
         id: "browse",
@@ -1174,11 +1199,32 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "after-buying",
+        heading: "Finding the stems you bought",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Stems you buy live in your library, in the Stems tab. When a purchase goes through, the confirmation offers View in your library, plus Open in Remix Studio when you bought a Remix or Commercial license; choose Done to close it. My purchased stems at the top of Browse stems always takes you there too. A new purchase can take a few minutes to appear. A stablecoin (x402) payment shows up there when it settles through the marketplace; otherwise you get the file and a receipt to keep.",
+          },
+          {
+            kind: "paragraph",
+            text: "Each stem shows a badge with the license you hold: Personal, Remix, or Commercial. Use the filter to see only your remix-ready stems or only your personal ones. If you bought a stem at Personal and now want to remix it, choose Upgrade to Remix license on that stem to buy the Remix tier.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Manage listings is for selling",
+            text: "Manage listings shows stems you put up for sale, not the ones you bought. Your purchases are always in Library › Stems.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Browse stems", href: "/crates?tab=stems", description: "Browse and collect stems." },
+      { label: "My purchased stems", href: "/library?tab=stems", description: "Stems you bought, with their licenses." },
     ],
-    related: ["smart-wallet", "remix-studio", "marketplace-sell"],
+    related: ["smart-wallet", "remix-studio", "marketplace-sell", "library-playlists"],
   },
   {
     slug: "marketplace-sell",
@@ -1331,7 +1377,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "beginner", "intermediate", "professional", "glossary"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade"],
     levelIntros: {
       beginner: {
         title: "Your first remix in 3 minutes",
@@ -1360,6 +1406,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "If the Remix button is greyed out",
             text: "It tells you why, usually that a remix license is required. Collect the stem at the remix tier from Browse stems to unlock it.",
+          },
+          {
+            kind: "paragraph",
+            text: "You can also start from your library. In Library › Stems, stems you hold at Remix or Commercial show a Remix button, and stems you hold at Personal show Upgrade to Remix license. When you own two or more remix-ready stems from the same song, Remix stems together opens one studio session with all of them loaded.",
           },
         ],
       },
@@ -1935,8 +1985,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Browse the catalog", href: "/catalog", description: "Open a release or stem to find its Remix button." },
       { label: "Browse stems", href: "/crates?tab=stems", description: "Collect a remix-tier stem to get started." },
+      { label: "Your stems", href: "/library?tab=stems", description: "Remix the stems you already own." },
     ],
-    related: ["marketplace-buy", "marketplace-sell", "create-ai-music", "rights-protection"],
+    related: ["marketplace-buy", "marketplace-sell", "create-ai-music", "rights-protection", "library-playlists"],
   },
 
   // ───────────────────────────── For artists ──────────────────────────────

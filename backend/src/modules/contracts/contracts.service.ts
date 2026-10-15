@@ -36,6 +36,7 @@ import {
   LISTING_EXPIRING_SOON_WINDOW_MS,
   type ListingLifecycleStatus,
 } from "./listing-lifecycle";
+import { bestStandardLicenseTier } from "./stem_license_tier";
 import type {
   NormalizedRightsEvidenceBundle,
   RightsEvidenceBundleInput,
@@ -1887,6 +1888,18 @@ export class ContractsService implements OnModuleInit {
       },
     });
 
+    // Every license the holder bought per stem: a buyer can hold a stem under
+    // several tiers (personal first, remix later), and Library › Stems shows
+    // the best one (#2042).
+    const licensesByStem = new Map<string, string[]>();
+    for (const purchase of purchases) {
+      const stem = purchase.listing?.stem;
+      if (!stem) continue;
+      const licenses = licensesByStem.get(stem.id) ?? [];
+      licenses.push(purchase.licenseType);
+      licensesByStem.set(stem.id, licenses);
+    }
+
     // Deduplicate stems
     const stemMap = new Map<string, any>();
 
@@ -1899,6 +1912,8 @@ export class ContractsService implements OnModuleInit {
           purchasedAt: purchase.purchasedAt,
           tokenId: purchase.listing.tokenId,
           chainId: purchase.listing.chainId,
+          holding: "purchased" as const,
+          licenseType: bestStandardLicenseTier(licensesByStem.get(stem.id) ?? []),
           // We'll fill activeListingId later
         });
       }
@@ -1916,6 +1931,9 @@ export class ContractsService implements OnModuleInit {
             tokenId: listing.tokenId,
             chainId: listing.chainId,
             activeListingId: listing.listingId.toString(),
+            // Listed but not bought by this wallet: no purchased license.
+            holding: "listed" as const,
+            licenseType: null,
           });
         } else {
           // Update existing entry from purchase with the active listing info

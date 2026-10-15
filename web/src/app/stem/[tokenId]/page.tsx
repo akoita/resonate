@@ -689,7 +689,9 @@ export default function StemDetailPage() {
                         setRefreshNonce((n) => n + 1);
                     }}
                     onSuccess={(_txHash, purchase?: BuyModalPurchase) => {
-                        setBuyListing(null);
+                        // The modal stays open on its success view with the
+                        // handoff links (#2042); onClose above closes it and
+                        // refreshes once more.
                         if (purchase) {
                             // Optimistic inventory: never keep selling what the
                             // buyer just consumed while the indexer catches up.

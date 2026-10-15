@@ -122,6 +122,8 @@ export function RemixCta({
   onGetLicense,
   licenseUnavailableReason,
   hideWhenLicenseRequired = false,
+  remixLabel,
+  licenseRequiredLabel,
 }: {
   trackId: string;
   stemIds?: string[];
@@ -148,6 +150,16 @@ export function RemixCta({
    * "Remix" once the license is owned.
    */
   hideWhenLicenseRequired?: boolean;
+  /**
+   * Replaces "Remix" in the allowed state, e.g. "Remix 3 stems together" on a
+   * multi-stem action. Eligibility still decides whether it shows.
+   */
+  remixLabel?: string;
+  /**
+   * Replaces "Get remix license" in the license_required state, e.g.
+   * "Upgrade to Remix license" for a stem the user holds under Personal.
+   */
+  licenseRequiredLabel?: string;
 }) {
   const { token, login } = useAuth();
   const router = useRouter();
@@ -325,6 +337,12 @@ export function RemixCta({
       : licenseBlocked
         ? licenseUnavailableReason!
         : state.reason;
+  const label =
+    state.kind === "remix" && remixLabel
+      ? remixLabel
+      : state.kind === "license_required" && licenseRequiredLabel
+        ? licenseRequiredLabel
+        : state.label;
   const handleGuardedClick = (event: React.MouseEvent) => {
     if (inert) {
       event.preventDefault();
@@ -345,7 +363,7 @@ export function RemixCta({
         aria-disabled={inert || undefined}
         title={title}
       >
-        {creating ? "Opening Remix Studio..." : state.label}
+        {creating ? "Opening Remix Studio..." : label}
         {!interactive && <span className="sr-only"> — {title}</span>}
       </button>
     );
@@ -385,7 +403,7 @@ export function RemixCta({
       aria-disabled={inert || undefined}
       title={title}
     >
-      {creating ? "Opening..." : state.label}
+      {creating ? "Opening..." : label}
       {!interactive && (
         <span className="sr-only"> — {title}</span>
       )}

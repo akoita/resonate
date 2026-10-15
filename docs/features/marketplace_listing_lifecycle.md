@@ -61,6 +61,32 @@ buyer and machine-commerce surfaces strict about availability.
 - Seller listing and manager surfaces show estimated net proceeds from the
   current marketplace protocol fee and the stem's royalty bps. These values
   are derived from on-chain/API fields, not hardcoded display constants.
+- Buyers have one home for purchased stems (#2042): **Library › Stems**
+  (`/library?tab=stems`). The collection endpoint
+  (`GET /api/metadata/collection/:walletAddress`) now returns, per stem,
+  `licenseType` (the best standard tier the wallet bought across every
+  purchase of that stem: `personal` < `remix` < `commercial`, or `null`) and
+  `holding` (`purchased`, or `listed` for a stem the wallet only sells). The
+  tier ranking is shared with crate export
+  (`backend/src/modules/contracts/stem_license_tier.ts`). Library › Stems shows
+  a license badge per stem, an All / Remix-ready / Personal filter, Remix for
+  Remix/Commercial holders, **Upgrade to Remix license** (opens the stem page)
+  for Personal holders, one **Remix N stems together** action per source track
+  with two or more remix-ready stems, and an empty state pointing to Browse
+  stems. Browse stems adds **My purchased stems** (signed-in only, since the
+  library needs sign-in) next to **Manage listings** (hero) and **Manage my
+  listings** (toolbar); the Listing Manager empty state tells buyers their
+  purchases live in Library › Stems. After a purchase the buy modal stays open
+  on a success view (Browse stems and the stem page no longer close it in
+  `onSuccess`; their refreshes still run): the outcome, **View in your
+  library** and, for Remix/Commercial purchases with a known track, **Open in
+  Remix Studio** (eligibility-checked), with a single **Done** button and no
+  purchase control, so the buyer cannot pay twice. The success view is
+  captured at purchase time and does not depend on the (possibly refreshed or
+  sold-out) listing. The old "You now own this stem NFT" toast is gone. An x402
+  payment shows the library link only when it settled through the marketplace
+  (`contract_backed`), since only then does a purchase row exist. Business
+  model: ADR-BM-6 Line 3 (marketplace); no fee, price, or payout change.
 
 ## How To Use
 
@@ -104,7 +130,8 @@ buyer and machine-commerce surfaces strict about availability.
 | --- | --- |
 | Public stem browsing (`/crates?tab=stems`) | Excludes expired and sold-out listings; sellers manage theirs from **Listings**. |
 | Storefront/x402/MCP/agent commerce | Storefront, x402 settlement lookup, MCP catalog search, player actions, and AI DJ catalog search treat expired and sold-out listings as unavailable. |
-| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist progress. |
+| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist progress. Its empty state points buyers to Library › Stems (#2042). |
+| Buyer purchases (`/library?tab=stems`) | Purchased stems with their best license tier, a license filter, Remix / Upgrade to Remix license actions, and a multi-stem Remix action per source track (#2042). Reached from **My purchased stems** on Browse stems (signed in) and the buy modal's success view. |
 | Notification bell | Routes listing lifecycle notifications to `/artist/listings`. |
 
 ## Tests
@@ -113,6 +140,7 @@ buyer and machine-commerce surfaces strict about availability.
 cd backend && npm run test -- listing_lifecycle.spec.ts notification.service.spec.ts
 cd backend && npm run test:integration -- --runInBand --testPathPattern=metadata.controller.integration.spec.ts
 cd backend && npm run test:integration -- --runInBand --testPathPattern=agent_catalog_search.integration.spec.ts
+cd web && ./node_modules/.bin/vitest run src/lib/ownedStems.test.ts src/components/marketplace/PurchaseHandoff.test.tsx
 ```
 
 Frontend validation is currently covered by TypeScript/lint and manual UI review
@@ -131,3 +159,8 @@ listing manager stabilizes.
   - `backend/src/modules/contracts/metadata.controller.ts`
   - `backend/src/modules/agents/tools/tool_registry.ts`
   - `web/src/app/artist/listings/page.tsx`
+  - `backend/src/modules/contracts/stem_license_tier.ts`
+  - `web/src/lib/ownedStems.ts`
+  - `web/src/app/library/page.tsx`
+  - `web/src/components/marketplace/PurchaseHandoff.tsx`
+- Buyer home for purchased stems: [#2042](https://github.com/akoita/resonate/issues/2042)

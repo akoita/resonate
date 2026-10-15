@@ -243,6 +243,110 @@ describe('MetadataController (integration)', () => {
           .catch(() => {});
       }
     });
+
+    describe('license tier and holding (#2042)', () => {
+      const tierPrefix = `${TEST_PREFIX}tier_`;
+      let listingSeq = 920420n;
+
+      async function seedListing(sellerAddress: string, status: 'sold' | 'active', tag: string) {
+        listingSeq += 1n;
+        return prisma.stemListing.create({
+          data: {
+            listingId: listingSeq,
+            stemId,
+            tokenId: 42n,
+            chainId: 31337,
+            contractAddress: '0xStemMarket',
+            sellerAddress,
+            pricePerUnit: '1000000',
+            amount: 1n,
+            paymentToken: `0x${'6'.repeat(40)}`,
+            expiresAt: new Date(Date.now() + 86_400_000),
+            transactionHash: `${tierPrefix}listing_${tag}`,
+            blockNumber: 300n,
+            status,
+            listedAt: new Date(),
+          },
+        });
+      }
+
+      async function seedPurchase(
+        listingDbId: string,
+        buyerAddress: string,
+        licenseType: 'personal' | 'remix' | 'commercial',
+        tag: string,
+        purchasedAt: Date,
+      ) {
+        await prisma.stemPurchase.create({
+          data: {
+            listingId: listingDbId,
+            buyerAddress,
+            amount: 1n,
+            totalPaid: '1000000',
+            royaltyPaid: '0',
+            protocolFeePaid: '0',
+            sellerReceived: '1000000',
+            licenseType,
+            transactionHash: `${tierPrefix}buy_${tag}`,
+            blockNumber: 301n,
+            purchasedAt,
+          },
+        });
+      }
+
+      afterEach(async () => {
+        await prisma.stemPurchase
+          .deleteMany({ where: { transactionHash: { startsWith: tierPrefix } } })
+          .catch(() => {});
+        await prisma.stemListing
+          .deleteMany({ where: { transactionHash: { startsWith: tierPrefix } } })
+          .catch(() => {});
+      });
+
+      it('returns the best tier across every purchase of the same stem', async () => {
+        const buyerAddress = `0x${'a2042'.padEnd(40, '1')}`.toLowerCase();
+        const seller = `0x${'5'.repeat(40)}`;
+        const personalListing = await seedListing(seller, 'sold', 'personal');
+        const remixListing = await seedListing(seller, 'sold', 'remix');
+        // Personal first, remix later: the newest purchase is the remix one,
+        // and the older personal purchase must not hide it.
+        await seedPurchase(personalListing.id, buyerAddress, 'personal', 'p1', new Date(Date.now() - 60_000));
+        await seedPurchase(remixListing.id, buyerAddress, 'remix', 'r1', new Date());
+
+        const result = await controller.getCollection(buyerAddress);
+        expect(result.total).toBe(1);
+        expect(result.stems[0]).toEqual(
+          expect.objectContaining({ id: stemId, licenseType: 'remix', holding: 'purchased' }),
+        );
+      });
+
+      it('keeps the higher tier even when a lower tier was bought last', async () => {
+        const buyerAddress = `0x${'b2042'.padEnd(40, '1')}`.toLowerCase();
+        const seller = `0x${'5'.repeat(40)}`;
+        const commercialListing = await seedListing(seller, 'sold', 'commercial');
+        const remixListing = await seedListing(seller, 'sold', 'remix2');
+        await seedPurchase(commercialListing.id, buyerAddress, 'commercial', 'c1', new Date(Date.now() - 60_000));
+        await seedPurchase(remixListing.id, buyerAddress, 'remix', 'r2', new Date());
+
+        const result = await controller.getCollection(buyerAddress);
+        expect(result.total).toBe(1);
+        expect(result.stems[0]).toEqual(
+          expect.objectContaining({ id: stemId, licenseType: 'commercial', holding: 'purchased' }),
+        );
+      });
+
+      it('returns no license for a stem the wallet only lists', async () => {
+        const sellerAddress = `0x${'c2042'.padEnd(40, '1')}`.toLowerCase();
+        await seedListing(sellerAddress, 'active', 'listed');
+
+        const result = await controller.getCollection(sellerAddress);
+        expect(result.total).toBe(1);
+        expect(result.stems[0]).toEqual(
+          expect.objectContaining({ id: stemId, licenseType: null, holding: 'listed' }),
+        );
+        expect(result.stems[0].activeListingId).toBeDefined();
+      });
+    });
   });
 
   // ===== getListings =====

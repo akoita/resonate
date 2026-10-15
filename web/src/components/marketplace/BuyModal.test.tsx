@@ -1,10 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  PurchaseSuccessPanel,
   X402QuoteBreakdown,
   isConsumedOnchainListing,
+  resolveBuyModalView,
   showLegacyNativeWarning,
+  type CompletedPurchase,
 } from "./BuyModal";
+import type { X402PaymentResult } from "../../lib/x402Pay";
+
+vi.mock("../auth/AuthProvider", () => ({
+  useAuth: () => ({ token: "jwt-token" }),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const SELLER = "0x46213007a5e229d789f74b408625dda265e00c28";
@@ -100,5 +111,93 @@ describe("X402QuoteBreakdown (#1581)", () => {
     );
     expect(html).toContain("Quote details unavailable");
     expect(html).toContain("Unavailable");
+  });
+});
+
+describe("resolveBuyModalView (#2042)", () => {
+  const onchain: CompletedPurchase = { method: "onchain", licenseType: "remix", txHash: "0xabc" };
+
+  it("shows the success view once a purchase finished, whatever the listing does next", () => {
+    expect(resolveBuyModalView({ completed: onchain, listingLoading: false, hasListing: true, consumed: false })).toBe("success");
+    // The bought listing sold out, is reloading, or disappeared: still success.
+    expect(resolveBuyModalView({ completed: onchain, listingLoading: false, hasListing: true, consumed: true })).toBe("success");
+    expect(resolveBuyModalView({ completed: onchain, listingLoading: true, hasListing: false, consumed: false })).toBe("success");
+    expect(resolveBuyModalView({ completed: onchain, listingLoading: false, hasListing: false, consumed: false })).toBe("success");
+  });
+
+  it("keeps the pre-purchase views otherwise", () => {
+    expect(resolveBuyModalView({ completed: null, listingLoading: true, hasListing: false, consumed: false })).toBe("loading");
+    expect(resolveBuyModalView({ completed: null, listingLoading: false, hasListing: true, consumed: true })).toBe("consumed");
+    expect(resolveBuyModalView({ completed: null, listingLoading: false, hasListing: true, consumed: false })).toBe("listing");
+    expect(resolveBuyModalView({ completed: null, listingLoading: false, hasListing: false, consumed: false })).toBe("not_found");
+  });
+});
+
+describe("PurchaseSuccessPanel (#2042)", () => {
+  it("shows Done and the handoff, and no purchase control, after a wallet purchase", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{ method: "onchain", licenseType: "remix", txHash: "0xabc" }}
+        trackId="track-1"
+        stemId="stem-1"
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("Purchase successful!");
+    expect(html).toContain(">Done<");
+    expect(html).toContain('href="/library?tab=stems"');
+    expect(html).toContain("Open in Remix Studio");
+    expect(html).not.toContain("Confirm wallet purchase");
+    expect(html).not.toContain("Cancel");
+    expect(html).not.toContain("Pay ");
+  });
+
+  it("offers only the library after a personal wallet purchase", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{ method: "onchain", licenseType: "personal", txHash: "0xabc" }}
+        trackId="track-1"
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("View in your library");
+    expect(html).not.toContain("Open in Remix Studio");
+  });
+
+  function x402Result(status: "contract_backed" | "download_only"): X402PaymentResult {
+    return {
+      audio: new Blob(["x"]),
+      filename: "stem.mp3",
+      receiptId: "r-1",
+      receipt: { settlement: { status } },
+    } as unknown as X402PaymentResult;
+  }
+
+  it("links the library after an x402 payment settled through the marketplace", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{ method: "x402", licenseType: "personal", result: x402Result("contract_backed") }}
+        x402DownloadUrl="blob:stem"
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("Payment settled.");
+    expect(html).toContain("Download stem");
+    expect(html).toContain("View in your library");
+    expect(html).toContain(">Done<");
+    expect(html).not.toContain("Pay ");
+  });
+
+  it("does not link the library after a download-only x402 payment", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{ method: "x402", licenseType: "personal", result: x402Result("download_only") }}
+        x402DownloadUrl="blob:stem"
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("Download stem");
+    expect(html).not.toContain("View in your library");
+    expect(html).toContain(">Done<");
   });
 });

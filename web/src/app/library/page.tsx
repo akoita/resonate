@@ -51,6 +51,17 @@ import { QueueActionsButton } from "../../components/player/QueueActionsButton";
 import { useUIStore } from "../../lib/uiStore";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { RemixCta } from "../../components/remix/RemixCta";
+import {
+    groupRemixReadyStemsBySourceTrack,
+    isRemixReadyTier,
+    isStemLicenseTier,
+    matchesStemLicenseFilter,
+    mergeCollectionStem,
+    STEM_LICENSE_FILTERS,
+    STEM_LICENSE_LABELS,
+    type StemHolding,
+    type StemLicenseFilter,
+} from "../../lib/ownedStems";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
@@ -148,6 +159,8 @@ export default function LibraryPage() {
     }, [tracks, ownedStems]);
 
     const [showStems, setShowStems] = useState(false);
+    // Library › Stems license filter (#2042)
+    const [stemLicenseFilter, setStemLicenseFilter] = useState<StemLicenseFilter>("all");
 
     // Filtered tracks
     const filteredTracks = useMemo(() => {
@@ -157,9 +170,9 @@ export default function LibraryPage() {
         if (activeTab === "tracks" && !showStems) {
             source = source.filter(t => !t.stemType); // exclude stems
         }
-        // In "Stems" tab, only show stems
+        // In "Stems" tab, only show stems, narrowed by the license filter
         else if (activeTab === "stems") {
-            source = ownedStems;
+            source = ownedStems.filter(t => matchesStemLicenseFilter(t, stemLicenseFilter));
         }
 
         if (!searchQuery.trim()) return source;
@@ -169,7 +182,14 @@ export default function LibraryPage() {
             (t.artist && t.artist.toLowerCase().includes(q)) ||
             (t.album && t.album.toLowerCase().includes(q))
         );
-    }, [unifiedTracks, ownedStems, activeTab, searchQuery, showStems]);
+    }, [unifiedTracks, ownedStems, activeTab, searchQuery, showStems, stemLicenseFilter]);
+
+    // Source tracks with two or more remix-ready stems in view: one Remix
+    // Studio session can load them together (#2042).
+    const remixReadyGroups = useMemo(
+        () => (activeTab === "stems" ? groupRemixReadyStemsBySourceTrack(filteredTracks) : []),
+        [activeTab, filteredTracks],
+    );
 
     // Grouped data from filtered tracks
     const artists = useMemo(() => groupByArtist(filteredTracks), [filteredTracks]);
@@ -212,6 +232,7 @@ export default function LibraryPage() {
                 title: string;
                 artist?: string;
                 trackId?: string;
+                trackTitle?: string;
                 releaseTitle?: string;
                 genre?: string;
                 durationSeconds?: number;
@@ -222,6 +243,9 @@ export default function LibraryPage() {
                 uri?: string;
                 artworkUrl?: string;
                 previewUrl?: string;
+                // Best license tier bought; null when only listed (#2042)
+                licenseType?: string | null;
+                holding?: StemHolding | null;
             };
 
             const allStemsMap = new Map<string, RemoteStem>();
@@ -233,7 +257,10 @@ export default function LibraryPage() {
                     const data = await response.json();
                     if (data.stems) {
                         data.stems.forEach((stem: RemoteStem) => {
-                            allStemsMap.set(stem.id, stem);
+                            // The same stem can come back for the sign-in
+                            // wallet and the smart account: keep the higher
+                            // license and the purchase over a listing (#2042).
+                            allStemsMap.set(stem.id, mergeCollectionStem(allStemsMap.get(stem.id), stem));
                         });
                     }
                 } catch (e) {
@@ -257,6 +284,9 @@ export default function LibraryPage() {
                 stemType: stem.type,
                 tokenId: stem.tokenId,
                 sourceTrackId: stem.trackId,
+                sourceTrackTitle: stem.trackTitle,
+                licenseType: isStemLicenseTier(stem.licenseType) ? stem.licenseType : null,
+                holding: stem.holding ?? undefined,
                 listingId: stem.activeListingId,
                 purchaseDate: stem.purchasedAt,
                 isOwned: true,
@@ -785,6 +815,14 @@ export default function LibraryPage() {
                                     {track.stemType}
                                 </span>
                             )}
+                            {track.stemType && track.licenseType && (
+                                <span
+                                    className={`library-license-badge library-license-badge--${track.licenseType}`}
+                                    title={`You hold a ${STEM_LICENSE_LABELS[track.licenseType]} license for this stem`}
+                                >
+                                    {STEM_LICENSE_LABELS[track.licenseType]}
+                                </span>
+                            )}
                             <TrackUnavailableNote availability={availability} />
                         </div>
                         <div
@@ -817,13 +855,29 @@ export default function LibraryPage() {
                         <div className="library-item-actions">
                             {track.stemType && track.sourceTrackId && (
                                 <span onClick={(e) => e.stopPropagation()}>
-                                    <RemixCta
-                                        trackId={track.sourceTrackId}
-                                        stemIds={[track.id]}
-                                        trackTitle={track.title}
-                                        variant="chip"
-                                        hideWhenLicenseRequired
-                                    />
+                                    {track.licenseType === "personal" ? (
+                                        // Personal holders see the upgrade path; it opens
+                                        // the stem page, which sells the Remix tier.
+                                        <RemixCta
+                                            trackId={track.sourceTrackId}
+                                            stemIds={[track.id]}
+                                            trackTitle={track.title}
+                                            variant="chip"
+                                            licenseRequiredLabel="Upgrade to Remix license"
+                                            onGetLicense={track.tokenId ? () => router.push(`/stem/${track.tokenId}`) : undefined}
+                                        />
+                                    ) : (
+                                        // Remix and Commercial holders get Remix; eligibility
+                                        // still decides. Listed-only stems keep the quiet
+                                        // behaviour (no license prompt).
+                                        <RemixCta
+                                            trackId={track.sourceTrackId}
+                                            stemIds={[track.id]}
+                                            trackTitle={track.title}
+                                            variant="chip"
+                                            hideWhenLicenseRequired={!isRemixReadyTier(track.licenseType)}
+                                        />
+                                    )}
                                 </span>
                             )}
                             <TrackActionMenu
@@ -848,6 +902,35 @@ export default function LibraryPage() {
             })}
         </div>
     );
+    };
+
+    // One action per source track where the holder can remix two or more
+    // stems: a single Remix Studio session loads them together (#2042).
+    // Eligibility is checked by the CTA before anything opens.
+    const renderRemixGroups = () => {
+        if (remixReadyGroups.length === 0) return null;
+        return (
+            <section className="library-remix-groups" aria-label="Remix stems together">
+                {remixReadyGroups.map((group) => (
+                    <div key={group.sourceTrackId} className="library-remix-group">
+                        <div className="library-remix-group__text">
+                            <span className="library-remix-group__title">{group.sourceTrackTitle || "Untitled track"}</span>
+                            <span className="library-remix-group__meta">
+                                {group.stemIds.length} remix-ready stems you own
+                            </span>
+                        </div>
+                        <RemixCta
+                            trackId={group.sourceTrackId}
+                            stemIds={group.stemIds}
+                            trackTitle={group.sourceTrackTitle ?? undefined}
+                            variant="chip"
+                            remixLabel={`Remix ${group.stemIds.length} stems together`}
+                            hideWhenLicenseRequired
+                        />
+                    </div>
+                ))}
+            </section>
+        );
     };
 
     const renderArtists = () => (
@@ -1148,6 +1231,27 @@ export default function LibraryPage() {
                             </button>
                         </div>
                         
+                        {activeTab === "stems" && ownedStems.length > 0 && (
+                            <div className="library-stem-filter" role="group" aria-label="Filter stems by license">
+                                {STEM_LICENSE_FILTERS.map((option) => {
+                                    const count = ownedStems.filter(t => matchesStemLicenseFilter(t, option.value)).length;
+                                    const selected = stemLicenseFilter === option.value;
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            className={`library-tab ${selected ? "active" : ""}`}
+                                            aria-pressed={selected}
+                                            onClick={() => setStemLicenseFilter(option.value)}
+                                        >
+                                            {option.label}{" "}
+                                            <span className="library-tab__count">{count}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         {activeTab === "tracks" && (
                             <div className="library-filter-toggle">
                                 <label className="library-switch">
@@ -1166,7 +1270,26 @@ export default function LibraryPage() {
                     {/* Sidebar + Content Layout */}
                     <div className="library-layout">
                         <div className="library-content w-full">
-                            {loading && tracks.length === 0 && activeTab !== "playlists" && activeTab !== "ai_creations" ? (
+                            {activeTab === "stems" && ownedStems.length === 0 ? (
+                                isCollectionLoading ? (
+                                    <div className="home-subtitle">Loading your stems...</div>
+                                ) : (
+                                    <div className="library-empty">
+                                        <div className="library-empty__icon" aria-hidden="true">
+                                            <span className="ms-icon">graphic_eq</span>
+                                        </div>
+                                        <h2 className="library-empty__title">Stems you buy appear here</h2>
+                                        <p className="library-empty__text">
+                                            Buy a stem in the marketplace and it lands here with its license, ready to play, download or open in Remix Studio. A new purchase can take a few minutes to show up.
+                                        </p>
+                                        <div className="library-empty__actions">
+                                            <Link href="/crates?tab=stems">
+                                                <Button variant="primary">Browse stems</Button>
+                                            </Link>
+                                        </div>
+                                    </div>
+                                )
+                            ) : loading && tracks.length === 0 && activeTab !== "playlists" && activeTab !== "ai_creations" ? (
                                 <div className="home-subtitle">Loading your library...</div>
                             ) : activeTab !== "playlists" && activeTab !== "ai_creations" && unifiedTracks.length === 0 && !isCollectionLoading ? (
                                 <div className="library-empty">
@@ -1196,7 +1319,9 @@ export default function LibraryPage() {
                                         ? <>No results found for &quot;{searchQuery}&quot;</>
                                         : activeTab === "tracks" && !showStems && ownedStems.length > 0
                                             ? <>No local tracks yet. Enable <strong>Show Stems</strong> to see your {ownedStems.length} owned stem{ownedStems.length !== 1 ? "s" : ""}.</>
-                                            : <>No tracks to display.</>
+                                            : activeTab === "stems" && stemLicenseFilter !== "all"
+                                                ? <>No stems with this license yet. <button type="button" className="library-inline-link" onClick={() => setStemLicenseFilter("all")}>Show all stems</button></>
+                                                : <>No tracks to display.</>
                                     }
                                 </div>
                             ) : (
@@ -1218,7 +1343,12 @@ export default function LibraryPage() {
                                             />
                                         )
                                     )}
-                                    {activeTab === "stems" && renderTrackList(ownedStems)}
+                                    {activeTab === "stems" && (
+                                        <>
+                                            {renderRemixGroups()}
+                                            {renderTrackList(filteredTracks)}
+                                        </>
+                                    )}
                                     {activeTab === "moments" && (
                                         <PunchlineInventory
                                             items={ownedMoments}

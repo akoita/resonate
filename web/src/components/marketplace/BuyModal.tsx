@@ -35,6 +35,7 @@ import {
 } from "../../lib/x402StemQuote";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
+import { PurchaseHandoff } from "./PurchaseHandoff";
 import type { Listing } from "../../lib/contracts";
 import "../../styles/buy-modal.css";
 import "../../styles/license-terms.css";
@@ -73,6 +74,9 @@ interface BuyModalProps {
   listingId: bigint;
   stemId?: string;
   artistId?: string;
+  /** Source catalog track: enables "Open in Remix Studio" after a remix-ready purchase (#2042). */
+  trackId?: string;
+  trackTitle?: string;
   listingChainId?: number;
   initialListing?: IndexedListingSnapshot;
   licenseType?: LicenseType;
@@ -91,6 +95,35 @@ export type BuyModalPurchase = {
 };
 
 const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
+
+/**
+ * A purchase that finished inside the modal (#2042). Captured at the moment
+ * of success so the success view no longer depends on the listing, which the
+ * caller may refresh, consume, or swap underneath the open modal.
+ */
+export type CompletedPurchase =
+  | { method: "onchain"; licenseType: LicenseType; txHash: string }
+  | { method: "x402"; licenseType: LicenseType; result: X402PaymentResult };
+
+export type BuyModalView = "success" | "loading" | "consumed" | "listing" | "not_found";
+
+/**
+ * Which body the modal shows. A finished purchase always wins: once the buyer
+ * has paid, the modal shows the outcome and next steps (and nothing that can
+ * buy again), even if the listing has since sold out or is reloading.
+ */
+export function resolveBuyModalView(input: {
+  completed: CompletedPurchase | null;
+  listingLoading: boolean;
+  hasListing: boolean;
+  consumed: boolean;
+}): BuyModalView {
+  if (input.completed) return "success";
+  if (input.listingLoading) return "loading";
+  if (input.hasListing && input.consumed) return "consumed";
+  if (input.hasListing) return "listing";
+  return "not_found";
+}
 
 /**
  * A consumed or cancelled marketplace listing reads back from the contract
@@ -130,6 +163,8 @@ export function BuyModal({
   listingId,
   stemId,
   artistId,
+  trackId,
+  trackTitle,
   listingChainId,
   initialListing,
   licenseType = "personal",
@@ -149,6 +184,7 @@ export function BuyModal({
   const [x402Error, setX402Error] = useState<string | null>(null);
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
   const [x402Payer, setX402Payer] = useState<string | null>(null);
+  const [completed, setCompleted] = useState<CompletedPurchase | null>(null);
   const { status: authStatus, webAuthnKey, login, token } = useAuth();
   const { chainId } = useZeroDev();
   const { assets: paymentAssets } = usePaymentAssets(chainId);
@@ -181,7 +217,7 @@ export function BuyModal({
   const { feeBps: protocolFeeBps } = useProtocolFee();
   const canQuoteOnchain = !listingChainMismatch && selectedListingId !== undefined;
   const { quote, loading: quoteLoading } = useBuyQuote(canQuoteOnchain ? selectedListingId : undefined, amount);
-  const { buy, pending, error, txHash } = useBuyStem();
+  const { buy, pending, error } = useBuyStem();
   const { config: x402Config } = useX402PublicConfig();
   const x402Asset = x402Config?.enabled ? x402Config.asset : null;
   const x402Symbol = x402Asset?.symbol ?? "USDC";
@@ -312,10 +348,10 @@ export function BuyModal({
     setX402Payer(null);
     setX402QuoteLoading(false);
     setX402QuoteError(null);
+    setCompleted(null);
   }, [isOpen]);
 
   const maxAmount = listing?.amount || 1n;
-  const txExplorerUrl = getExplorerTxUrl(txHash);
   useEffect(() => {
     if (amount > maxAmount) {
       setAmount(maxAmount > 0n ? maxAmount : 1n);
@@ -356,6 +392,7 @@ export function BuyModal({
     try {
       if (listingChainMismatch) return;
       const hash = await buy(selectedListingId, amount);
+      setCompleted({ method: "onchain", licenseType: selectedLicense, txHash: hash });
       onSuccess?.(hash, {
         licenseType: selectedLicense,
         amount,
@@ -410,12 +447,20 @@ export function BuyModal({
         onPayer: setX402Payer,
       });
       setX402Result(result);
+      setCompleted({ method: "x402", licenseType: selectedLicense, result });
     } catch (err) {
       setX402Error(err instanceof Error ? err.message : String(err));
     } finally {
       setX402Status(null);
     }
   };
+
+  const view = resolveBuyModalView({
+    completed,
+    listingLoading,
+    hasListing: Boolean(listing),
+    consumed: isConsumedListing,
+  });
 
   return (
     <div className="buy-modal-overlay">
@@ -435,12 +480,21 @@ export function BuyModal({
           </h2>
         </div>
 
-        {listingLoading ? (
+        {view === "success" && completed ? (
+          <PurchaseSuccessPanel
+            completed={completed}
+            x402DownloadUrl={x402DownloadUrl}
+            trackId={trackId}
+            trackTitle={trackTitle}
+            stemId={stemId}
+            onDone={onClose}
+          />
+        ) : view === "loading" ? (
           <div className="buy-modal__skeleton">
             <div className="buy-modal__skeleton-line" />
             <div className="buy-modal__skeleton-line" />
           </div>
-        ) : listing && isConsumedListing ? (
+        ) : view === "consumed" ? (
           <div className="buy-modal__body">
             <div className="buy-modal__info-card" role="status">
               <div className="buy-modal__info-icon">⌛</div>
@@ -463,7 +517,7 @@ export function BuyModal({
               </button>
             </div>
           </div>
-        ) : listing ? (
+        ) : view === "listing" && listing ? (
           <div className="buy-modal__body">
             {/* Listing Info */}
             <div className="buy-modal__info-card">
@@ -718,60 +772,6 @@ export function BuyModal({
               </div>
             )}
 
-            {/* Success */}
-            {activePaymentMethod === "onchain" && txHash && (
-              <div className="buy-modal__alert buy-modal__alert--success">
-                Purchase successful!{" "}
-                {txExplorerUrl && (
-                  <a
-                    href={txExplorerUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View transaction →
-                  </a>
-                )}
-              </div>
-            )}
-            {activePaymentMethod === "x402" && x402Result && x402DownloadUrl && (
-              <div className="buy-modal__alert buy-modal__alert--success">
-                Payment settled.{" "}
-                <a
-                  href={x402DownloadUrl}
-                  download={x402Result.filename}
-                >
-                  Download stem →
-                </a>
-                {x402Result.receiptId && (
-                  <div className="buy-modal__x402-status">
-                    Receipt {x402Result.receiptId}
-                    {x402Result.receipt?.payment && (
-                      <span>
-                        {" "}
-                        · {x402Result.receipt.payment.canonicalAmountUsd ?? x402Result.receipt.payment.amountUsd} USD
-                        {" "}
-                        settled as {x402Result.receipt.payment.settlementAmount ?? x402Result.receipt.payment.amount}
-                        {" "}
-                        {x402Result.receipt.payment.asset?.symbol ?? x402Result.receipt.payment.currency}
-                      </span>
-                    )}
-                    {x402Result.receipt?.settlement?.status === "contract_required_missing" && (
-                      <span>
-                        {" "}
-                        · contract settlement pending
-                      </span>
-                    )}
-                    {x402Result.receipt?.settlement?.status === "contract_backed" && (
-                      <span>
-                        {" "}
-                        · contract-backed
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Actions */}
             <div className="buy-modal__actions">
               <button className="buy-modal__btn buy-modal__btn--cancel" onClick={onClose}>
@@ -807,6 +807,112 @@ export function BuyModal({
         ) : (
           <p className="buy-modal__not-found">Listing not found</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The modal body once a purchase finished (#2042): the outcome, where the
+ * stem lives next, and a single Done button. It renders no purchase control,
+ * so the buyer cannot pay twice from the success state.
+ */
+export function PurchaseSuccessPanel({
+  completed,
+  x402DownloadUrl,
+  trackId,
+  trackTitle,
+  stemId,
+  onDone,
+}: {
+  completed: CompletedPurchase;
+  x402DownloadUrl?: string | null;
+  trackId?: string;
+  trackTitle?: string;
+  stemId?: string;
+  onDone: () => void;
+}) {
+  const txExplorerUrl = completed.method === "onchain" ? getExplorerTxUrl(completed.txHash) : null;
+  const x402Result = completed.method === "x402" ? completed.result : null;
+  const settlementStatus = x402Result?.receipt?.settlement?.status;
+  return (
+    <div className="buy-modal__body">
+      {completed.method === "onchain" ? (
+        <div className="buy-modal__alert buy-modal__alert--success" role="status">
+          Purchase successful!{" "}
+          {txExplorerUrl && (
+            <a
+              href={txExplorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View transaction →
+            </a>
+          )}
+          {/* Where the purchase lives next (#2042). */}
+          <PurchaseHandoff
+            licenseType={completed.licenseType}
+            trackId={trackId}
+            trackTitle={trackTitle}
+            stemId={stemId}
+            inLibrary
+          />
+        </div>
+      ) : x402Result ? (
+        <div className="buy-modal__alert buy-modal__alert--success" role="status">
+          Payment settled.{" "}
+          {x402DownloadUrl && (
+            <a
+              href={x402DownloadUrl}
+              download={x402Result.filename}
+            >
+              Download stem →
+            </a>
+          )}
+          {x402Result.receiptId && (
+            <div className="buy-modal__x402-status">
+              Receipt {x402Result.receiptId}
+              {x402Result.receipt?.payment && (
+                <span>
+                  {" "}
+                  · {x402Result.receipt.payment.canonicalAmountUsd ?? x402Result.receipt.payment.amountUsd} USD
+                  {" "}
+                  settled as {x402Result.receipt.payment.settlementAmount ?? x402Result.receipt.payment.amount}
+                  {" "}
+                  {x402Result.receipt.payment.asset?.symbol ?? x402Result.receipt.payment.currency}
+                </span>
+              )}
+              {settlementStatus === "contract_required_missing" && (
+                <span>
+                  {" "}
+                  · contract settlement pending
+                </span>
+              )}
+              {settlementStatus === "contract_backed" && (
+                <span>
+                  {" "}
+                  · contract-backed
+                </span>
+              )}
+            </div>
+          )}
+          {/* Only a marketplace-settled x402 payment records a purchase,
+            * so only then does the stem appear in the library (#2042). */}
+          <PurchaseHandoff
+            licenseType={completed.licenseType}
+            inLibrary={settlementStatus === "contract_backed"}
+          />
+        </div>
+      ) : null}
+
+      <div className="buy-modal__actions">
+        <button
+          type="button"
+          className="buy-modal__btn buy-modal__btn--confirm"
+          onClick={onDone}
+        >
+          Done
+        </button>
       </div>
     </div>
   );

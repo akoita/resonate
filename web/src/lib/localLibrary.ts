@@ -131,6 +131,12 @@ export interface LocalTrack {
     tokenId?: string;
     // Source catalog track id (drives the eligibility-backed Remix CTA, #1175)
     sourceTrackId?: string;
+    // Source catalog track title, for the multi-stem Remix action (#2042)
+    sourceTrackTitle?: string;
+    // Best license tier the holder bought; null when only listed (#2042)
+    licenseType?: "personal" | "remix" | "commercial" | null;
+    // Bought, or only listed for sale by this wallet (#2042)
+    holding?: "purchased" | "listed";
     listingId?: string; // If listed for sale
     purchaseDate?: string;
     isOwned?: boolean;

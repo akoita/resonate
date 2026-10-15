@@ -25,6 +25,7 @@ import {
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
 import { sellerNetProceedsLine } from "../../../lib/marketplaceProceeds";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
+import { PURCHASED_STEMS_HREF } from "../../../lib/ownedStems";
 import "../../../styles/marketplace.css";
 
 type ListingLifecycleStatus =
@@ -533,7 +534,13 @@ export default function MarketplaceListingManagerPage() {
           <div className="marketplace-empty__icon">♪</div>
           <h3 className="marketplace-empty__title">No listings in this state</h3>
           <p className="marketplace-empty__text">Switch filters, browse the public marketplace, or mint a new stem listing.</p>
+          <p className="marketplace-empty__text">
+            Looking for stems you bought? This page is for stems you sell; your purchases live in Library › Stems.
+          </p>
           <div className="marketplace-manager-empty__actions">
+            <Link href={PURCHASED_STEMS_HREF} className="marketplace-secondary-link">
+              My purchased stems
+            </Link>
             <Link href="/crates?tab=stems" className="marketplace-secondary-link">
               Browse stems
             </Link>
