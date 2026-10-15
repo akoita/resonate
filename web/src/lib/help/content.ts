@@ -136,7 +136,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "A campaign that misses its goal, or is cancelled before any artist release, makes your full pledge refundable with no platform fee deducted. If a deposit was already released, the refund is your proportional share of what remains in escrow. You claim it from the campaign with the wallet that pledged.",
+            text: "A campaign that misses its goal, or is cancelled before any artist release, makes your full pledge refundable with no platform fee deducted. If a deposit was already released, the refund is your proportional share of what remains in escrow. You claim it from the campaign with the wallet that pledged. If you have not claimed once refunds open, Resonate reminds you in your notifications when they open, after 7 days and after 30 days, with a link to the campaign; claiming never costs a fee.",
           },
         ],
       },
