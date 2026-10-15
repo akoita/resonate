@@ -16,7 +16,10 @@ import { SignupFaucetService, type AuthMode } from "./signup_faucet.service";
 import { EventBus } from "../shared/event_bus";
 import { AccountClosureService } from "../privacy/account_closure.service";
 import { writeStructuredLog } from "../shared/structured_logging";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 
+// Sign-in must always work for a restricted account (#2147).
+@AllowWhileSuspended()
 @Controller("auth")
 export class AuthController {
   constructor(

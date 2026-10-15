@@ -21,6 +21,7 @@ import { AccountClosureStepUpService } from "./account_closure_step_up.service";
 import { PersonalDataExportService } from "./personal_data_export.service";
 import { hours } from "../shared/rate_limits";
 import { writeStructuredLog } from "../shared/structured_logging";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 
 type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
 
@@ -51,6 +52,9 @@ function closureView(request: AccountClosureRequest | null) {
  */
 const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
+// Data export and erasure are the person's rights over their own data, so a
+// suspended or closed account keeps every route here (#2147).
+@AllowWhileSuspended()
 @Controller("privacy")
 export class PrivacyController {
   constructor(

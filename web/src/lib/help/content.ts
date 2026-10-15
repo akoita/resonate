@@ -222,6 +222,88 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["legal-privacy-refunds", "getting-started"],
   },
   {
+    slug: "account-suspension",
+    title: "If your account is suspended or closed",
+    summary:
+      "What a suspension or closure means, what still works while it lasts, how you are told, and how to appeal. For operators: how to suspend, lift or close an account.",
+    category: "account",
+    audiences: ["everyone", "operator"],
+    status: "partial",
+    keywords: ["suspended", "suspension", "account closed", "banned", "restricted", "403", "appeal", "refund", "operator", "admin", "accounts"],
+    sections: [
+      {
+        id: "what-it-means",
+        heading: "What a suspension means",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "If Resonate suspends your account, a bar at the top of the app says so, and you get an Account notice in your notifications. The notice gives the reason category (for example a terms violation, fraud, abuse or a rights infringement) and the end date if there is one. It never includes the operator's private notes.",
+          },
+          {
+            kind: "paragraph",
+            text: "While you are suspended you cannot make changes: uploading, listing, buying, pledging, posting and similar actions are refused with a message that your account is suspended. A suspension with an end date lifts by itself on that date. A closed account stays restricted for good.",
+          },
+        ],
+      },
+      {
+        id: "what-still-works",
+        heading: "What still works",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Signing in and reading your own data and notices.",
+              "Claiming any refund you are owed. A suspension never traps your money.",
+              "Downloading your data and asking for your account to be deleted.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Wallet limits",
+            text: "Resonate restricts what you can do through the app. Anything you sign directly from your own wallet happens on the network and is outside Resonate's control.",
+          },
+        ],
+      },
+      {
+        id: "appeal",
+        heading: "How to appeal",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "There is no in-app appeal yet. To contest a suspension or closure, contact support using the details on the Imprint & contact page, and quote the date in your notice.",
+          },
+        ],
+      },
+      {
+        id: "closing-accounts",
+        heading: "Suspending or closing an account (admins)",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open Accounts in the sidebar (admins only) and look the person up by user id or wallet address.",
+              "Pick a reason category. For a suspension, optionally set an end date; leave it empty for no end date.",
+              "Add an internal note if useful. It is kept in the audit record only and is never shown to the person.",
+              "Choose Suspend, Lift suspension or Close account, and confirm. The person is sent a notice at once.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Closing and erasure",
+            text: "Closing an account cannot be undone from this page. You can also schedule erasure of the person's data after the normal 30-day grace period; the person cannot cancel an erasure an operator scheduled. You cannot suspend or close your own account or another admin's.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Accounts (admins)", href: "/admin/accounts", description: "Look up an account and suspend, lift or close it." },
+      { label: "Imprint & contact", href: "/imprint", description: "How to reach support to appeal." },
+    ],
+    related: ["platform-notices", "download-your-data", "delete-your-account"],
+  },
+  {
     slug: "smart-wallet",
     title: "Your wallet & smart account",
     summary:

@@ -82,7 +82,9 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     model: "User",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "id" }],
-    note: "The account row: email and signup date.",
+    note:
+      "The account row: email, signup date and, since #2147, the operator account state "
+      + "(status, reason category, end date, change date). The acting operator's id is redacted.",
   },
   {
     model: "AccountClosureRequest",
@@ -792,6 +794,9 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
  * redaction is not a filter applied to a row that already exists in memory.
  */
 export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  User: {
+    accountStatusChangedBy: "Internal operator identity (#2147); the person can export their account state, reason category and dates without the operator's account id.",
+  },
   ArtistClaimRequest: {
     reviewerUserId: "Internal operator identity; the claimant can export the decision and note without the operator's account id.",
   },

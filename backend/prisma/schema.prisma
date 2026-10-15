@@ -21,6 +21,17 @@ model User {
   // null on a live account.
   closedAt                    DateTime?
   erasedAt                    DateTime?
+  // #2147 operator account state, enforced server-side for every mutating
+  // route (see `AccountStatusInterceptor`). `suspended` ends at
+  // `accountStatusUntil` when set (lazy expiry on read), else stays until an
+  // operator lifts it; `closed` is an operator closure. `accountStatusChangedBy`
+  // is the acting operator's user id (no relation); the free-text note an
+  // operator gives lives only in the audit record.
+  accountStatus               AccountStatus                 @default(active)
+  accountStatusReason         AccountStatusReason?
+  accountStatusUntil          DateTime?
+  accountStatusChangedAt      DateTime?
+  accountStatusChangedBy      String?
   artist                      Artist?
   artistClaimsSubmitted       ArtistClaimRequest[]           @relation("ArtistClaimRequestClaimant")
   artistClaimsReviewed        ArtistClaimRequest[]           @relation("ArtistClaimRequestReviewer")
@@ -84,6 +95,20 @@ model User {
   managementRecoveryRequestsReviewed  ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryReviewer")
   noticesReceived             Notice[]                      @relation("NoticeRecipient")
   noticeReads                 NoticeRead[]
+}
+
+enum AccountStatus {
+  active
+  suspended
+  closed
+}
+
+enum AccountStatusReason {
+  terms_violation
+  fraud
+  abuse
+  rights_infringement
+  other
 }
 
 // #1771 slice 3. A request to close an account and erase the person from it.
