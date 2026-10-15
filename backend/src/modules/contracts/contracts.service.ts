@@ -1791,6 +1791,26 @@ export class ContractsService implements OnModuleInit {
   }
 
   /**
+   * The addresses an authenticated caller may act as (#2139): the wallet-auth
+   * userId when it is an address (it is the lowercased smart-account address),
+   * plus the address and ownerAddress of the caller's own Wallet row. All
+   * lowercased. Never includes another user's addresses.
+   */
+  async getCallerWalletAddresses(userId: string): Promise<Set<string>> {
+    const addresses = new Set<string>();
+    if (/^0x[0-9a-fA-F]{40}$/.test(userId)) {
+      addresses.add(userId.toLowerCase());
+    }
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId },
+      select: { address: true, ownerAddress: true },
+    });
+    if (wallet?.address) addresses.add(wallet.address.toLowerCase());
+    if (wallet?.ownerAddress) addresses.add(wallet.ownerAddress.toLowerCase());
+    return addresses;
+  }
+
+  /**
    * Get all stems owned by a wallet address (via purchases).
    * Also checks purchases made by the user's linked smart account
    * (agent purchases go through the Kernel AA wallet, not the EOA).

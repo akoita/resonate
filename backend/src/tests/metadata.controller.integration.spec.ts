@@ -182,8 +182,82 @@ describe('MetadataController (integration)', () => {
   // ===== getCollection =====
 
   describe('getCollection', () => {
+    // Owner-only since #2139: a wallet-auth caller's userId IS its address.
+    const ownerRequest = (address: string) => ({ user: { userId: address, role: 'listener' } });
+
+    describe('caller address set (#2139)', () => {
+      const callerId = `${TEST_PREFIX}caller`;
+      const strangerId = `${TEST_PREFIX}stranger`;
+      const callerSmartAccount = `0x${'7a'.repeat(20)}`;
+      const callerEoa = `0x${'7b'.repeat(20)}`;
+      const strangerAddress = `0x${'7c'.repeat(20)}`;
+      const strangerEoa = `0x${'7d'.repeat(20)}`;
+
+      beforeAll(async () => {
+        await prisma.user.createMany({
+          data: [
+            { id: callerId, email: `${TEST_PREFIX}caller@test.resonate` },
+            { id: strangerId, email: `${TEST_PREFIX}stranger@test.resonate` },
+            { id: callerSmartAccount, email: `${TEST_PREFIX}sa@test.resonate` },
+          ],
+        });
+        // Mixed case in storage proves the set is lowercased.
+        await prisma.wallet.createMany({
+          data: [
+            {
+              userId: callerId,
+              address: `0x${callerSmartAccount.slice(2).toUpperCase()}`,
+              ownerAddress: `0x${callerEoa.slice(2).toUpperCase()}`,
+              chainId: 31337,
+            },
+            { userId: strangerId, address: strangerAddress, ownerAddress: strangerEoa, chainId: 31337 },
+          ],
+        });
+      });
+
+      afterAll(async () => {
+        await prisma.wallet
+          .deleteMany({ where: { userId: { in: [callerId, strangerId] } } })
+          .catch(() => {});
+        await prisma.user
+          .deleteMany({ where: { id: { in: [callerId, strangerId, callerSmartAccount] } } })
+          .catch(() => {});
+      });
+
+      it("returns the caller's wallet address and owner EOA, lowercased, and nothing of other users", async () => {
+        const addresses = await contractsService.getCallerWalletAddresses(callerId);
+        expect([...addresses].sort()).toEqual([callerSmartAccount, callerEoa].sort());
+        expect(addresses.has(strangerAddress)).toBe(false);
+        expect(addresses.has(strangerEoa)).toBe(false);
+      });
+
+      it('includes the wallet-auth userId when it is an address', async () => {
+        const addresses = await contractsService.getCallerWalletAddresses(callerSmartAccount);
+        expect([...addresses]).toEqual([callerSmartAccount]);
+      });
+
+      it('returns an empty set for a non-address user without a wallet', async () => {
+        const addresses = await contractsService.getCallerWalletAddresses(`${TEST_PREFIX}nobody`);
+        expect(addresses.size).toBe(0);
+      });
+
+      it("lets the caller read their own owner EOA's collection but not another user's", async () => {
+        const caller = { user: { userId: callerId, role: 'listener' } };
+        await expect(controller.getCollection(caller, callerEoa)).resolves.toEqual(
+          expect.objectContaining({ total: 0 }),
+        );
+        await expect(controller.getCollection(caller, strangerAddress)).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+        await expect(controller.getCollection(caller, strangerEoa)).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+      });
+    });
+
     it('returns empty collection for wallet with no stems', async () => {
-      const result = await controller.getCollection('0xEmpty');
+      const emptyWallet = `0x${'e'.repeat(40)}`;
+      const result = await controller.getCollection(ownerRequest(emptyWallet), emptyWallet);
       expect(result.total).toBe(0);
       expect(result.stems).toEqual([]);
     });
@@ -225,7 +299,7 @@ describe('MetadataController (integration)', () => {
       });
 
       try {
-        const result = await controller.getCollection(buyerAddress);
+        const result = await controller.getCollection(ownerRequest(buyerAddress), buyerAddress);
         expect(result.total).toBe(1);
         expect(result.stems[0]).toEqual(
           expect.objectContaining({
@@ -313,7 +387,7 @@ describe('MetadataController (integration)', () => {
         await seedPurchase(personalListing.id, buyerAddress, 'personal', 'p1', new Date(Date.now() - 60_000));
         await seedPurchase(remixListing.id, buyerAddress, 'remix', 'r1', new Date());
 
-        const result = await controller.getCollection(buyerAddress);
+        const result = await controller.getCollection(ownerRequest(buyerAddress), buyerAddress);
         expect(result.total).toBe(1);
         expect(result.stems[0]).toEqual(
           expect.objectContaining({ id: stemId, licenseType: 'remix', holding: 'purchased' }),
@@ -328,7 +402,7 @@ describe('MetadataController (integration)', () => {
         await seedPurchase(commercialListing.id, buyerAddress, 'commercial', 'c1', new Date(Date.now() - 60_000));
         await seedPurchase(remixListing.id, buyerAddress, 'remix', 'r2', new Date());
 
-        const result = await controller.getCollection(buyerAddress);
+        const result = await controller.getCollection(ownerRequest(buyerAddress), buyerAddress);
         expect(result.total).toBe(1);
         expect(result.stems[0]).toEqual(
           expect.objectContaining({ id: stemId, licenseType: 'commercial', holding: 'purchased' }),
@@ -339,7 +413,7 @@ describe('MetadataController (integration)', () => {
         const sellerAddress = `0x${'c2042'.padEnd(40, '1')}`.toLowerCase();
         await seedListing(sellerAddress, 'active', 'listed');
 
-        const result = await controller.getCollection(sellerAddress);
+        const result = await controller.getCollection(ownerRequest(sellerAddress), sellerAddress);
         expect(result.total).toBe(1);
         expect(result.stems[0]).toEqual(
           expect.objectContaining({ id: stemId, licenseType: null, holding: 'listed' }),

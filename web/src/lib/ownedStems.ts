@@ -79,6 +79,56 @@ export function mergeCollectionStem<T extends CollectionStemLicenseFields>(
   };
 }
 
+/**
+ * Loads the signed-in user's collection for each of their addresses (the
+ * sign-in wallet and the smart account) and merges the results.
+ *
+ * The collection API is owner-only (#2139): it needs the user's token and only
+ * answers for the caller's own addresses. Without a token nothing is fetched.
+ * A refused (401/403) or failed request counts as "no stems" for that address
+ * rather than an error, and nothing about the address is logged.
+ */
+export async function fetchOwnedCollectionStems<
+  T extends CollectionStemLicenseFields & { id: string },
+>(input: {
+  addresses: ReadonlyArray<string | null | undefined>;
+  token: string | null | undefined;
+  fetchImpl?: typeof fetch;
+}): Promise<T[]> {
+  const { token } = input;
+  if (!token) return [];
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const seen = new Set<string>();
+  const addresses = input.addresses.filter((addr): addr is string => {
+    if (!addr) return false;
+    const key = addr.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const merged = new Map<string, T>();
+  await Promise.all(
+    addresses.map(async (addr) => {
+      try {
+        const response = await fetchImpl(`/api/metadata/collection/${encodeURIComponent(addr)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) return;
+        const data = (await response.json()) as { stems?: T[] };
+        for (const stem of data.stems ?? []) {
+          // The same stem can come back for the sign-in wallet and the smart
+          // account: keep the higher license and the purchase over a listing.
+          merged.set(stem.id, mergeCollectionStem(merged.get(stem.id), stem));
+        }
+      } catch {
+        console.error("Failed to load part of your stem collection");
+      }
+    }),
+  );
+  return Array.from(merged.values());
+}
+
 /** Library › Stems filter chips. */
 export type StemLicenseFilter = "all" | "remix_ready" | "personal";
 

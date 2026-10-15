@@ -505,11 +505,21 @@ export class MetadataController {
   }
 
   /**
-   * Get all stems owned by a wallet (purchased)
-   * GET /api/metadata/collection/:walletAddress
+   * Get all stems a wallet holds (purchased or listed), with the license tier
+   * it bought. GET /api/metadata/collection/:walletAddress
+   *
+   * Owner-only (#2139): holdings and license tiers are private to the account.
+   * Requires a JWT; the requested address must be one of the caller's own
+   * addresses (wallet-auth userId, Wallet.address, Wallet.ownerAddress).
+   * admin/operator may read any wallet for support.
    */
+  @UseGuards(AuthGuard("jwt"))
   @Get("collection/:walletAddress")
-  async getCollection(@Param("walletAddress") walletAddress: string) {
+  async getCollection(
+    @Request() req: any,
+    @Param("walletAddress") walletAddress: string,
+  ) {
+    await this.assertCanAccessCollection(req?.user, walletAddress);
     const stems = await this.contractsService.getStemsByOwner(walletAddress);
 
     return {
@@ -555,6 +565,24 @@ export class MetadataController {
     };
   }
 
+
+  private async assertCanAccessCollection(user: any, walletAddress: string) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress ?? "")) {
+      throw new BadRequestException("walletAddress must be a 0x-prefixed 20-byte hex address");
+    }
+    const userId = typeof user?.userId === "string" ? user.userId : "";
+    if (!userId) {
+      throw new ForbiddenException("Authentication required");
+    }
+    if (user.role === "admin" || user.role === "operator") {
+      return;
+    }
+    const ownAddresses = await this.contractsService.getCallerWalletAddresses(userId);
+    if (!ownAddresses.has(walletAddress.toLowerCase())) {
+      // Generic on purpose: never reveal whether the wallet holds anything.
+      throw new ForbiddenException("Cannot access another account's collection");
+    }
+  }
 
   /**
    * List marketplace listings

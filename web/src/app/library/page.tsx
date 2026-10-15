@@ -52,11 +52,11 @@ import { useUIStore } from "../../lib/uiStore";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { RemixCta } from "../../components/remix/RemixCta";
 import {
+    fetchOwnedCollectionStems,
     groupRemixReadyStemsBySourceTrack,
     isRemixReadyTier,
     isStemLicenseTier,
     matchesStemLicenseFilter,
-    mergeCollectionStem,
     STEM_LICENSE_FILTERS,
     STEM_LICENSE_LABELS,
     type StemHolding,
@@ -216,16 +216,11 @@ export default function LibraryPage() {
     };
 
     const fetchCollection = useCallback(async () => {
-        if (!address) return;
+        // The collection API is owner-only (#2139): signed out, there is
+        // nothing to load.
+        if (!address || !token) return;
         setIsCollectionLoading(true);
         try {
-            const addressesToQuery = new Set<string>([address]);
-
-            // Include the smart account address (on-chain identity) for collection queries
-            if (smartAccountAddress && smartAccountAddress !== address) {
-                addressesToQuery.add(smartAccountAddress);
-            }
-
             // Minimal type for stem response to avoid 'any'
             type RemoteStem = {
                 id: string;
@@ -248,28 +243,15 @@ export default function LibraryPage() {
                 holding?: StemHolding | null;
             };
 
-            const allStemsMap = new Map<string, RemoteStem>();
-
-            await Promise.all(Array.from(addressesToQuery).map(async (addr) => {
-                try {
-                    const response = await fetch(`/api/metadata/collection/${addr}`);
-                    if (!response.ok) return; // Skip failed fetches
-                    const data = await response.json();
-                    if (data.stems) {
-                        data.stems.forEach((stem: RemoteStem) => {
-                            // The same stem can come back for the sign-in
-                            // wallet and the smart account: keep the higher
-                            // license and the purchase over a listing (#2042).
-                            allStemsMap.set(stem.id, mergeCollectionStem(allStemsMap.get(stem.id), stem));
-                        });
-                    }
-                } catch (e) {
-                    console.error(`Failed to fetch for ${addr}:`, e);
-                }
-            }));
+            // Sign-in wallet plus the smart account (on-chain identity),
+            // merged per stem (#2042), sent with the user's token (#2139).
+            const remoteStems = await fetchOwnedCollectionStems<RemoteStem>({
+                addresses: [address, smartAccountAddress],
+                token,
+            });
 
             // Map backend data to LocalTrack format
-            const mappedStems: LocalTrack[] = Array.from(allStemsMap.values()).map((stem: RemoteStem) => ({
+            const mappedStems: LocalTrack[] = remoteStems.map((stem: RemoteStem) => ({
                 id: stem.id,
                 title: stem.title,
                 artist: stem.artist || "Unknown Artist",
@@ -312,7 +294,7 @@ export default function LibraryPage() {
         } finally {
             setIsCollectionLoading(false);
         }
-    }, [address, addToast, smartAccountAddress]);
+    }, [address, token, addToast, smartAccountAddress]);
 
 
     useEffect(() => {
