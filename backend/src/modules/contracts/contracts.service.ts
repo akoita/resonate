@@ -57,6 +57,10 @@ import {
   ZERO_PAYMENT_TOKEN,
 } from "../payments/payment-asset-metadata";
 import {
+  loadMarketplaceCommerceSettled,
+  publishCommerceSettled,
+} from "../analytics/analytics_commerce_settled";
+import {
   dedupeFlags,
   getUploadRightsActions,
   type UploadRightsFlag,
@@ -897,6 +901,18 @@ export class ContractsService implements OnModuleInit {
         }
 
         this.logger.log(`Stored StemPurchase: listingId=${event.listingId}`);
+
+        // #1894: one settled-commerce fact per NEW purchase (the replay paths
+        // above return before this point). Never fails the indexing path.
+        await publishCommerceSettled(
+          this.eventBus,
+          () => loadMarketplaceCommerceSettled({
+            transactionHash: event.transactionHash,
+            logIndex: event.logIndex,
+          }),
+          this.logger,
+          `marketplace tx=${event.transactionHash} log=${event.logIndex}`,
+        );
       } catch (error) {
         this.logger.error(`Failed to process StemSold: ${error}`);
       }

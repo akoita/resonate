@@ -229,7 +229,15 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "payments-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["paymentId", "trackId", "artistId", "canonicalAmountUsd", "settlementAsset"],
+    // #1894: emitted live by the marketplace (new StemPurchase) and x402
+    // (final, non-contract-backed X402Settlement) rails; see
+    // analytics_commerce_settled.ts. USD fields are null for non-stablecoin assets.
+    payloadFields: [
+      "paymentId", "settlementKey", "rail", "paymentRail", "resourceKind", "stemId", "momentId", "trackId",
+      "releaseId", "artistId", "licenseType", "listingId", "receiptId", "chainId", "transactionHash", "logIndex",
+      "status", "amountUsd", "canonicalAmountUsd", "paymentToken", "paymentAssetId", "paymentAssetSymbol",
+      "paymentAssetDecimals", "settlementAmount", "settlementAmountUnits",
+    ],
   },
   {
     eventName: "rights.route_decided",
