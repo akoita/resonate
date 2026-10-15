@@ -630,6 +630,25 @@ export function campaignFeeNotice(campaign: Pick<Campaign, "feeBps">): string | 
   return `A ${percent} platform fee applies only if the campaign is funded — deducted from the artist payout at release. If the campaign fails, you are refunded 100%.`;
 }
 
+/**
+ * #2150: plain-language warning that a refund after a deposit release is
+ * smaller than the pledge. The escrow releases the deposit once (a fixed
+ * `depositReleaseBps` share of everything pledged, only after booking is
+ * confirmed) and a later refund pays each backer a pro-rata share of what is
+ * left, so the remaining share is `100% - deposit%`. Pro-rata rounding can
+ * shave a fraction of a cent, hence "about". Returns null when the campaign
+ * has no deposit release (refunds are then always the full pledge) or the
+ * share is unknown or invalid.
+ */
+export function refundDisclosure(campaign: Pick<Campaign, "depositReleaseBps">): string | null {
+  const bps = campaign.depositReleaseBps;
+  if (bps == null || !Number.isSafeInteger(bps) || bps <= 0 || bps >= 10_000) return null;
+  const released = formatCampaignFeePercent(bps);
+  const remaining = formatCampaignFeePercent(10_000 - bps);
+  if (!released || !remaining) return null;
+  return `Once the booking is confirmed, ${released} of the money pledged can be released to the artist as a deposit. If the show is cancelled after that, refunds share only what is left: you would get back about ${remaining} of your pledge.`;
+}
+
 export function maskAddress(address?: string | null): string {
   if (!address) return "—";
   const value = address.trim();
@@ -712,6 +731,10 @@ export function pledgeConfirmSummary(
   const feeNotice = campaignFeeNotice(campaign);
   if (feeNotice) {
     lines.push(`Platform fee: ${feeNotice}`);
+  }
+  const refundNotice = refundDisclosure(campaign);
+  if (refundNotice) {
+    lines.push(`Refund after a deposit: ${refundNotice}`);
   }
   lines.push("");
   lines.push(
@@ -1525,8 +1548,15 @@ export async function createPledgeIntent(input: {
   token: string;
   /** Optional, consent-gated city the backer chose to share (never the campaign city). */
   declaredCity?: { countryCode: string; city: string } | null;
+  /**
+   * #2150: the deposit-release share whose refund disclosure was on screen when
+   * the backer pledged. Recorded on the intent's audit event through the
+   * existing free-form `metadata` field; omitted when no disclosure was shown.
+   */
+  refundDisclosureDepositReleaseBps?: number | null;
 }): Promise<ShowPledgeIntent> {
   const geo = pledgeDemandGeo(input.declaredCity);
+  const disclosedBps = input.refundDisclosureDepositReleaseBps;
   const response = await fetch(
     `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/pledges/intent`,
     {
@@ -1539,6 +1569,14 @@ export async function createPledgeIntent(input: {
         tierId: input.tierId,
         walletAddress: input.walletAddress,
         ...(geo ? { geo } : {}),
+        ...(disclosedBps != null
+          ? {
+            metadata: {
+              refundDisclosureShown: true,
+              refundDisclosureDepositReleaseBps: disclosedBps,
+            },
+          }
+          : {}),
       }),
     },
   );

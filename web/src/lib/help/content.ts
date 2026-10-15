@@ -2785,7 +2785,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Open a campaign to see its goal, deadline, backers, venue target, and the artist-approved terms.",
               "Pick a tier in the pledge card at the top of the campaign page (on mobile, the bottom Pledge bar jumps straight to it).",
-              "Before signing, a confirmation step recaps your pledge amount and the refund and release terms — review it, then confirm.",
+              "Before signing, a confirmation step recaps your pledge amount and the refund and release terms, including how much a refund would return if a deposit was already paid to the artist — review it, then confirm.",
               "Approve the pledge with your passkey; it's held in escrow, not paid out yet.",
             ],
           },
@@ -2799,7 +2799,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Some funded campaigns include a platform fee shown on the campaign page before you pledge. That fee is deducted from the artist payout only if the campaign succeeds and funds are released. If the campaign misses its goal or moves to refunds, backers are refunded 100% of their pledge.",
+            text: "Some funded campaigns include a platform fee shown on the campaign page before you pledge. That fee is deducted from the artist payout only if the campaign succeeds and funds are released. It never comes out of a refund: if the campaign misses its goal, or is cancelled before any deposit goes to the artist, backers are refunded 100% of their pledge.",
+          },
+          {
+            kind: "paragraph",
+            text: "Some campaigns let part of the money go to the artist as a deposit once the booking is confirmed, to secure the venue. If such a show is cancelled after the deposit was paid, refunds share only what is left. The campaign terms show the deposit share, and right above the pledge button the page tells you what that means for you — for example, with a 10% deposit you would get back about 90% of your pledge. The confirmation step repeats it before you sign. Campaigns without a deposit show no such warning, because a refund there is always your full pledge.",
           },
           {
             kind: "figure",
@@ -2825,6 +2829,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The campaign page shows any success-only platform fee up front, including that it comes from the artist payout and never from failed-campaign refunds.",
               "You can open the escrow contract in a block explorer to see its verified code, transactions, and events.",
               "If the goal isn't met or the show isn't confirmed, your pledge is refunded automatically.",
+              "If a campaign has a booking deposit and the show is cancelled after the deposit was paid to the artist, your refund is your share of what remains — the campaign page states the percentage before you pledge.",
               "A campaign page shows a trust badge (demand signal, provisional, or artist-authorized escrow) so you always know what stage you're backing.",
               "After a show is marked fulfilled, funds release only once a dispute window closes; while a dispute is under review, release stays paused. The campaign page shows the dispute status and the window's close date.",
             ],

@@ -70,6 +70,21 @@ describe("CampaignTrustPanel (#949)", () => {
     expect(html).not.toContain("platform fee applies");
   });
 
+  it("discloses the smaller refund after a 10% deposit release (#2150)", () => {
+    const html = renderToStaticMarkup(<CampaignTrustPanel campaign={baseCampaign} />);
+    expect(html).toContain("campaign-trust__refund-note");
+    expect(html).toContain("10% of the money pledged can be released to the artist as a deposit");
+    expect(html).toContain("you would get back about 90% of your pledge.");
+  });
+
+  it("shows no reduction wording for a 0% deposit campaign (#2150)", () => {
+    const html = renderToStaticMarkup(
+      <CampaignTrustPanel campaign={{ ...baseCampaign, depositReleaseBps: 0 }} />,
+    );
+    expect(html).not.toContain("campaign-trust__refund-note");
+    expect(html).not.toContain("get back about");
+  });
+
   it("never leaks sensitive authority evidence/credential ids", () => {
     const html = renderToStaticMarkup(<CampaignTrustPanel campaign={baseCampaign} />);
     expect(html).not.toContain("secret-credential-123");
