@@ -360,6 +360,15 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** The wallet address a notification belongs to, or null when it does not exist. */
+  async getNotificationWalletAddress(notificationId: string): Promise<string | null> {
+    const notification = await prisma.notification.findUnique({
+      where: { id: notificationId },
+      select: { walletAddress: true },
+    });
+    return notification?.walletAddress ?? null;
+  }
+
   async markAsRead(notificationId: string) {
     return prisma.notification.update({
       where: { id: notificationId },

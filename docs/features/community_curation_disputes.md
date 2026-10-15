@@ -176,6 +176,18 @@ Delivered across PRs #436 (notification infrastructure), #461 (mounted notificat
 - ✅ `NotificationService` — event bus → persist → WebSocket emit
 - ✅ `Notification` + `NotificationPreference` Prisma models
 - ✅ 5 REST endpoints (list, read, read-all, get/update preferences)
+  - All five require sign-in (a JWT) and only serve the caller's own
+    notifications. `:address` must be one of the caller's addresses (the
+    wallet-auth account address, or the wallet record's `address` /
+    `ownerAddress`): no token `401`, malformed address `400`, another
+    account's address `403` with a generic message. `PATCH
+    /api/metadata/notifications/:id/read` answers `404` unless the
+    notification belongs to one of the caller's addresses. `admin` /
+    `operator` may read any address's feed and preferences for support but
+    cannot modify them.
+  - The web client (`web/src/lib/walletNotifications.ts`) sends the user's
+    token on every call, sends nothing when signed out, and treats a refused
+    request as an empty feed. The live WebSocket feed is unchanged.
 - ✅ WebSocket gateway: 4 dispute event subscriptions + wallet room targeting
 - ✅ `useDisputeNotifications` hook, `NotificationBell`, `NotificationPreferences`
 - ✅ Real-time auto-refresh in `DisputeDashboard`

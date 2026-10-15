@@ -154,6 +154,9 @@ buyer and machine-commerce surfaces strict about availability.
 - Notification preferences:
   - `GET /api/metadata/notifications/:address/preferences`
   - `PATCH /api/metadata/notifications/:address/preferences`
+  - Both require sign-in and answer only for the caller's own addresses (see
+    the notification routes in
+    [community_curation_disputes.md](community_curation_disputes.md)).
 - Relisting uses `StemMarketplaceV2.list` through `useRelistMany` and the pure
   planner in `web/src/lib/batchRelist.ts` (#2030); it does not mutate the
   expired listing. The planner groups listings by token with tiers ordered

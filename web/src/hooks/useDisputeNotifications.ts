@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
+import {
+  fetchWalletNotifications,
+  markAllWalletNotificationsRead,
+  markWalletNotificationRead,
+} from "../lib/walletNotifications";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -124,8 +129,17 @@ export function registerDisputeNotificationSocketHandlers(
   });
 }
 
-export function useDisputeNotifications(walletAddress?: string) {
+/**
+ * Wallet notification feed for the signed-in user. The REST routes require
+ * the user's sign-in token and only serve their own addresses: without a
+ * token no request is sent and the feed stays empty, and a refused request
+ * reads as an empty feed. The live socket feed is unchanged.
+ */
+export function useDisputeNotifications(walletAddress?: string, token?: string | null) {
   const normalizedWalletAddress = walletAddress?.toLowerCase() ?? null;
+  const hasToken = Boolean(token);
+  // Read through a ref so a token refresh does not reconnect the socket.
+  const tokenRef = useRef<string | null>(token ?? null);
   const sessionScope = useMemo(
     () => normalizedWalletAddress ? Symbol("wallet-notification-session") : null,
     [normalizedWalletAddress],
@@ -145,7 +159,9 @@ export function useDisputeNotifications(walletAddress?: string) {
   const activeWalletAddressRef = useRef<string | null>(normalizedWalletAddress);
   const activeSessionScopeRef = useRef<symbol | null>(sessionScope);
   const fetchSequenceRef = useRef(0);
-  const visibleSnapshot = getVisibleWalletNotificationSnapshot(snapshot, normalizedWalletAddress, sessionScope);
+  const visibleSnapshot = hasToken
+    ? getVisibleWalletNotificationSnapshot(snapshot, normalizedWalletAddress, sessionScope)
+    : { notifications: [], unreadCount: 0 };
   const disputeUpdate = isWalletNotificationSnapshotCurrent(
     disputeUpdateSnapshot.walletAddress,
     normalizedWalletAddress,
@@ -157,26 +173,21 @@ export function useDisputeNotifications(walletAddress?: string) {
     if (!requestedWalletAddress || !sessionScope
       || activeWalletAddressRef.current !== requestedWalletAddress
       || activeSessionScopeRef.current !== sessionScope) return;
+    const requestToken = tokenRef.current;
+    if (!requestToken) return;
     const requestSequence = ++fetchSequenceRef.current;
-    try {
-      const res = await fetch(`/api/metadata/notifications/${requestedWalletAddress}`);
-      if (res.ok && requestSequence === fetchSequenceRef.current
-        && activeWalletAddressRef.current === requestedWalletAddress
-        && activeSessionScopeRef.current === sessionScope) {
-        const data = await res.json();
-        if (requestSequence === fetchSequenceRef.current
-          && activeWalletAddressRef.current === requestedWalletAddress
-          && activeSessionScopeRef.current === sessionScope) {
-          setSnapshot({
-            walletAddress: requestedWalletAddress,
-            sessionScope,
-            notifications: data.notifications || [],
-            unreadCount: data.unreadCount || 0,
-          });
-        }
-      }
-    } catch {
-      // silent
+    // Never throws: signed out or refused reads as an empty feed, any other
+    // failure as null (keep what is shown).
+    const feed = await fetchWalletNotifications<DisputeNotification>(requestedWalletAddress, requestToken);
+    if (feed && requestSequence === fetchSequenceRef.current
+      && activeWalletAddressRef.current === requestedWalletAddress
+      && activeSessionScopeRef.current === sessionScope) {
+      setSnapshot({
+        walletAddress: requestedWalletAddress,
+        sessionScope,
+        notifications: feed.notifications,
+        unreadCount: feed.unreadCount,
+      });
     }
   }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, setSnapshot]);
 
@@ -186,8 +197,10 @@ export function useDisputeNotifications(walletAddress?: string) {
     if (!requestedWalletAddress || !sessionScope
       || activeWalletAddressRef.current !== requestedWalletAddress
       || activeSessionScopeRef.current !== sessionScope) return;
+    const requestToken = tokenRef.current;
+    if (!requestToken) return;
     try {
-      await fetch(`/api/metadata/notifications/${notificationId}/read`, { method: "PATCH" });
+      await markWalletNotificationRead(notificationId, requestToken);
       if (activeWalletAddressRef.current !== requestedWalletAddress
         || activeSessionScopeRef.current !== sessionScope) return;
       setSnapshot((prev) => {
@@ -213,8 +226,10 @@ export function useDisputeNotifications(walletAddress?: string) {
     if (!requestedWalletAddress || !sessionScope
       || activeWalletAddressRef.current !== requestedWalletAddress
       || activeSessionScopeRef.current !== sessionScope) return;
+    const requestToken = tokenRef.current;
+    if (!requestToken) return;
     try {
-      await fetch(`/api/metadata/notifications/${requestedWalletAddress}/read-all`, { method: "PATCH" });
+      await markAllWalletNotificationsRead(requestedWalletAddress, requestToken);
       if (activeWalletAddressRef.current !== requestedWalletAddress
         || activeSessionScopeRef.current !== sessionScope) return;
       setSnapshot((prev) => isWalletNotificationSnapshotCurrent(prev.walletAddress, requestedWalletAddress)
@@ -230,7 +245,12 @@ export function useDisputeNotifications(walletAddress?: string) {
     }
   }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, setSnapshot]);
 
-  // Scope state to the active wallet and invalidate older requests when it changes.
+  useEffect(() => {
+    tokenRef.current = token ?? null;
+  }, [token]);
+
+  // Scope state to the active wallet and invalidate older requests when it
+  // changes; refetch once the sign-in token becomes available.
   useEffect(() => {
     activeWalletAddressRef.current = normalizedWalletAddress;
     activeSessionScopeRef.current = sessionScope;
@@ -245,7 +265,7 @@ export function useDisputeNotifications(walletAddress?: string) {
       }
       if (activeSessionScopeRef.current === sessionScope) activeSessionScopeRef.current = null;
     };
-  }, [activeSessionScopeRef, activeWalletAddressRef, fetchNotifications, normalizedWalletAddress, sessionScope]);
+  }, [activeSessionScopeRef, activeWalletAddressRef, fetchNotifications, hasToken, normalizedWalletAddress, sessionScope]);
 
   // WebSocket connection
   useEffect(() => {
