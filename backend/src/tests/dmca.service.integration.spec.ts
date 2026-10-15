@@ -9,7 +9,7 @@
 
 import { prisma } from "../db/prisma";
 import { DmcaService } from "../modules/dmca/dmca.service";
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { UploadRightsRoutingService } from "../modules/rights/upload-rights-routing.service";
 
 const P = `dmca_${Date.now()}_`;
@@ -21,13 +21,19 @@ describe("DmcaService (integration)", () => {
   const artistId = `${P}artist`;
   const releaseId = `${P}release`;
   const trackId = `${P}track`;
+  const outsiderId = `${P}outsider`;
+  const owner = { userId, role: "artist" };
+  const outsider = { userId: outsiderId, role: "listener" };
+  const reviewer = { userId: `${P}admin`, role: "admin" };
   let reportId: string;
+  let rejectedReportId: string;
 
   beforeAll(async () => {
     service = new DmcaService(new UploadRightsRoutingService());
 
     // Seed test data
     await prisma.user.create({ data: { id: userId, email: `${P}@test.resonate` } });
+    await prisma.user.create({ data: { id: outsiderId, email: `${P}outsider@test.resonate` } });
     await prisma.artist.create({
       data: { id: artistId, userId, displayName: "DMCA Test Artist", payoutAddress: "0x" + "D".repeat(40) },
     });
@@ -61,6 +67,7 @@ describe("DmcaService (integration)", () => {
     await prisma.release.delete({ where: { id: releaseId } }).catch(() => {});
     await prisma.artist.delete({ where: { id: artistId } }).catch(() => {});
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await prisma.user.delete({ where: { id: outsiderId } }).catch(() => {});
   });
 
   it("creates a pending DMCA report", async () => {
@@ -74,6 +81,8 @@ describe("DmcaService (integration)", () => {
 
     expect(result.status).toBe("pending");
     expect(result.trackId).toBe(trackId);
+    expect(result).not.toHaveProperty("claimantName");
+    expect(result).not.toHaveProperty("claimantEmail");
     reportId = result.id;
 
     // Verify in DB
@@ -94,11 +103,53 @@ describe("DmcaService (integration)", () => {
     ).rejects.toThrow(NotFoundException);
   });
 
+  it("rejects an incomplete report with BadRequestException", async () => {
+    await expect(
+      service.fileReport({
+        trackId,
+        claimantName: "",
+        claimantEmail: "test@test.com",
+        originalWorkUrl: "https://example.com",
+        reason: "Test reason",
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it("refuses a counter-notification from a user who does not own or manage the release", async () => {
+    await expect(
+      service.fileCounter(reportId, "Not mine", outsider),
+    ).rejects.toThrow(ForbiddenException);
+
+    const report = await prisma.dmcaReport.findUnique({ where: { id: reportId } });
+    expect(report!.status).toBe("pending");
+    expect(report!.counterNotice).toBeNull();
+  });
+
+  it("throws NotFoundException for a counter-notification on an unknown report", async () => {
+    await expect(
+      service.fileCounter(`${P}missing`, "Proof", owner),
+    ).rejects.toThrow(NotFoundException);
+  });
+
   it("files a counter-notification", async () => {
-    const result = await service.fileCounter(reportId, "I own this content, here is my proof");
+    const result = await service.fileCounter(reportId, "I own this content, here is my proof", owner);
 
     expect(result.status).toBe("countered");
     expect(result.counterNotice).toBe("I own this content, here is my proof");
+    expect(result).not.toHaveProperty("claimantName");
+    expect(result).not.toHaveProperty("claimantEmail");
+  });
+
+  it("refuses a second counter-notification on an already countered report", async () => {
+    await expect(
+      service.fileCounter(reportId, "Again", owner),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it("rejects an unknown resolve outcome", async () => {
+    await expect(
+      service.resolveReport(reportId, "maybe" as "upheld", reviewer),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it("resolves report as upheld — cascades to track and stems", async () => {
@@ -108,7 +159,7 @@ describe("DmcaService (integration)", () => {
       data: { status: "pending", counterNotice: null },
     });
 
-    const result = await service.resolveReport(reportId, "upheld");
+    const result = await service.resolveReport(reportId, "upheld", reviewer);
 
     expect(result.outcome).toBe("upheld");
     expect(result.trackId).toBe(trackId);
@@ -149,7 +200,8 @@ describe("DmcaService (integration)", () => {
       data: { uri: "/stems/restored.mp3" },
     });
 
-    const result = await service.resolveReport(report2.id, "rejected");
+    const result = await service.resolveReport(report2.id, "rejected", reviewer);
+    rejectedReportId = report2.id;
 
     expect(result.outcome).toBe("rejected");
 
@@ -161,6 +213,58 @@ describe("DmcaService (integration)", () => {
     const stems = await prisma.stem.findMany({ where: { trackId } });
     for (const stem of stems) {
       expect(stem.uri).not.toBe("");
+    }
+  });
+
+  it("refuses a counter-notification on a rejected report", async () => {
+    await expect(
+      service.fileCounter(rejectedReportId, "Proof", owner),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it("accepts a counter-notification from an admin on a pending report", async () => {
+    const pending = await service.fileReport({
+      trackId,
+      claimantName: "Claimant",
+      claimantEmail: "claimant@example.com",
+      originalWorkUrl: "https://example.com/original",
+      reason: "Pending claim",
+    });
+
+    const result = await service.fileCounter(pending.id, "Reviewed on behalf of the owner", reviewer);
+    expect(result.status).toBe("countered");
+  });
+
+  it("accepts a counter-notification from a catalog manager of the release", async () => {
+    const managerId = `${P}manager`;
+    await prisma.user.create({ data: { id: managerId, email: `${P}manager@test.resonate` } });
+    const grant = await prisma.managementGrant.create({
+      data: {
+        releaseId,
+        granteeUserId: managerId,
+        inviterUserId: userId,
+        scopes: ["CATALOG_METADATA"],
+        status: "active",
+      },
+    });
+    try {
+      const pending = await service.fileReport({
+        trackId,
+        claimantName: "Claimant",
+        claimantEmail: "claimant@example.com",
+        originalWorkUrl: "https://example.com/original",
+        reason: "Pending claim",
+      });
+
+      const result = await service.fileCounter(
+        pending.id,
+        "Filed by the release manager",
+        { userId: managerId, role: "listener" },
+      );
+      expect(result.status).toBe("countered");
+    } finally {
+      await prisma.managementGrant.delete({ where: { id: grant.id } }).catch(() => {});
+      await prisma.user.delete({ where: { id: managerId } }).catch(() => {});
     }
   });
 });
