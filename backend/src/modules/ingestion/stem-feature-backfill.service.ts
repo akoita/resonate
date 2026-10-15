@@ -131,6 +131,12 @@ export type StemFeatureBackfillResult = {
   dispatched: number;
   /** Analysis job id of the published message (pubsub only). */
   jobId?: string;
+  /**
+   * HTTP only (#2012): set when the run stopped at the first stem the worker
+   * could not serve. `scanned` then counts the stems attempted; the rest of
+   * the batch was not attempted and stays in `remaining`.
+   */
+  stoppedEarly?: "worker_unavailable";
 };
 
 export type StemFeatureBackfillStatus = Pick<
@@ -562,9 +568,12 @@ export class StemFeatureBackfillService {
     });
 
     let updated = 0;
+    let attempted = 0;
+    let stoppedEarly: "worker_unavailable" | undefined;
     const skipped: Array<{ stemId: string; reason: string }> = [];
 
     for (const stem of stems) {
+      attempted++;
       try {
         const audio = await this.loadStemAudio(stem);
         if (!audio) {
@@ -600,7 +609,17 @@ export class StemFeatureBackfillService {
           stemId: stem.id,
           reason: workerDown ? "worker_unavailable" : "error",
         });
+        if (workerDown) {
+          // Circuit break: the rest of the batch would hit the same outage.
+          stoppedEarly = "worker_unavailable";
+          break;
+        }
       }
+    }
+    if (stoppedEarly) {
+      this.logger.warn(
+        `[backfill] worker unavailable: stopped after ${attempted} of ${stems.length} stems; the rest stay pending`,
+      );
     }
 
     await this.recordFailures(
@@ -611,16 +630,17 @@ export class StemFeatureBackfillService {
 
     const counts = await this.countRemaining(filters);
     this.logger.log(
-      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${counts.remaining} failed=${counts.failed} types=${types ? types.join(",") : "all"} refresh=${refresh}`,
+      `[backfill] scanned=${attempted} updated=${updated} skipped=${skipped.length} remaining=${counts.remaining} failed=${counts.failed} types=${types ? types.join(",") : "all"} refresh=${refresh}${stoppedEarly ? ` stoppedEarly=${stoppedEarly}` : ""}`,
     );
     return {
-      scanned: stems.length,
+      scanned: attempted,
       updated,
       skipped,
       ...counts,
       transport: "http",
       status: "ok",
       dispatched: 0,
+      ...(stoppedEarly ? { stoppedEarly } : {}),
     };
   }
 

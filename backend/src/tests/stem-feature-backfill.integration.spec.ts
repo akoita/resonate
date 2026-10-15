@@ -866,7 +866,7 @@ describe("StemFeatureBackfillService (integration)", () => {
       expect(row?.audioFeaturesFailedAt).toBeNull();
     });
 
-    it("worker outages (503, network error, non-JSON body) never mark stems failed; they are re-picked", async () => {
+    it("a worker outage (503, network error, non-JSON body) stops the batch at the first stem, marks nothing failed, and the stems are re-picked", async () => {
       await prisma.stem.updateMany({
         where: { id: { in: ourIds } },
         data: {
@@ -894,13 +894,19 @@ describe("StemFeatureBackfillService (integration)", () => {
         outage();
         const result = await service.backfill({ limit: 50, types: ["master"] });
 
-        // Every stem was attempted, none was held back.
-        expect(analyzedNames().sort()).toEqual(ourIds.map((id) => `${id}.audio`).sort());
-        expect(result.skipped).toEqual(
-          ourIds.map((stemId) => ({ stemId, reason: "worker_unavailable" })),
-        );
+        // Circuit break: only the first stem (by id) was attempted, and the
+        // rest of the batch was neither attempted nor reported as skipped.
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(analyzedNames()).toEqual([`${failId}.audio`]);
+        expect(result.skipped).toEqual([{ stemId: failId, reason: "worker_unavailable" }]);
         expect(result).toEqual(
-          expect.objectContaining({ updated: 0, remaining: 3, failed: 0 }),
+          expect.objectContaining({
+            scanned: 1,
+            updated: 0,
+            remaining: 3,
+            failed: 0,
+            stoppedEarly: "worker_unavailable",
+          }),
         );
         for (const id of ourIds) {
           const row = await failureOf(id);
@@ -918,8 +924,10 @@ describe("StemFeatureBackfillService (integration)", () => {
       } as any);
       const recovered = await service.backfill({ limit: 50, types: ["master"] });
       expect(recovered).toEqual(
-        expect.objectContaining({ updated: 3, remaining: 0, failed: 0 }),
+        expect.objectContaining({ scanned: 3, updated: 3, remaining: 0, failed: 0 }),
       );
+      expect(recovered).not.toHaveProperty("stoppedEarly");
+      expect(analyzedNames().sort()).toEqual(ourIds.map((id) => `${id}.audio`).sort());
     });
   });
 });

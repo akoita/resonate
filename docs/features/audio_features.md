@@ -146,7 +146,11 @@ failures, and counted in the response's `failed` field instead of `remaining`
 keep failing. `retryFailed: true` re-attempts them, and a success resets the
 record. Worker or transport failures are only logged and leave the stem
 eligible for the next run. Over HTTP these are a network error, a timeout, any
-other non-2xx status or a non-JSON body, reported as `worker_unavailable`. In
+other non-2xx status or a non-JSON body, reported as `worker_unavailable`. The
+first such failure stops the HTTP run. The response then carries
+`stoppedEarly: "worker_unavailable"`, and `scanned` counts only the stems
+attempted. The rest of the batch is not attempted, not reported in `skipped`,
+and stays in `remaining`. In
 job mode they are a publish failure or a whole-message `status: "failed"`.
 Unexpected errors, reported as `error`, are treated the same way. Backfilled
 features carry `camelot` too.
