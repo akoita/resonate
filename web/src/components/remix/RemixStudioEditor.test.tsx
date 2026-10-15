@@ -47,6 +47,8 @@ import {
   AUDITION_PART_ID,
   REMOVE_PART_CONFIRM_MESSAGE,
   applyDescribedEdits,
+  describedLaneSnapshot,
+  undoDescribedEdits,
   projectStructure,
   structureEditStateFor,
   AUTOSAVE_DELAY_MS,
@@ -2401,6 +2403,50 @@ describe("Describe it (#1900)", () => {
       expect(next.structure).toBeNull();
       // Sections 0 and 3 were not played: on, like the song-shape buttons.
       expect(next.beat?.blocks).toEqual([true, true, false, true]);
+    });
+
+    // Beat off on sections 1 and 3, bass off on sections 2 and 3: the short
+    // edit keeps sections 0-2, so section 3's off blocks are dropped.
+    const shortEditApplied = () => {
+      const before = {
+        ...withLanes(),
+        beat: { ...beat, blocks: [true, false, true, false] },
+        parts: {
+          schemaVersion: "remix-parts/v1" as const,
+          parts: [
+            { id: "bass-1", role: "bass" as const, takeId: "t1", blocks: [true, true, false, false] },
+            { id: "keys-1", role: "keys" as const, takeId: "t2" },
+          ],
+        },
+      };
+      const proposal = describeRemix("short edit", describeContext(before));
+      const after = applyDescribedEdits(before, proposal.edits, sectionGrid);
+      return { before, after, snapshot: describedLaneSnapshot(before, after) };
+    };
+
+    it("Undo after a short edit restores off blocks on the dropped section exactly", () => {
+      const { before, after, snapshot } = shortEditApplied();
+      expect(after.beat?.blocks).toEqual([true, false, true]);
+      expect(after.parts?.parts[0].blocks).toEqual([true, true, false]);
+      const undone = undoDescribedEdits(after, before, snapshot, sectionGrid);
+      expect(undone.structure).toBeNull();
+      expect(undone.beat?.blocks).toEqual([true, false, true, false]);
+      expect(undone.parts?.parts[0].blocks).toEqual([true, true, false, false]);
+      expect(undone.parts?.parts[1].blocks).toBeUndefined();
+      expect(undone.stems).toEqual(before.stems);
+      // Without a snapshot, section 3 can only come back on (remap by section).
+      const remapped = undoDescribedEdits(after, before, null, sectionGrid);
+      expect(remapped.beat?.blocks).toEqual([true, false, true, true]);
+      expect(remapped.parts?.parts[0].blocks).toEqual([true, true, false, true]);
+    });
+
+    it("Undo keeps a later beat edit (remapped) and restores the untouched part exactly", () => {
+      const { before, after, snapshot } = shortEditApplied();
+      // The listener turns the beat off on the first block after the Apply.
+      const edited = { ...after, beat: { ...after.beat!, blocks: [false, false, true] } };
+      const undone = undoDescribedEdits(edited, before, snapshot, sectionGrid);
+      expect(undone.beat?.blocks).toEqual([false, false, true, true]);
+      expect(undone.parts?.parts[0].blocks).toEqual([true, true, false, false]);
     });
 
     it("an edit that keeps the structure leaves the masks untouched", () => {

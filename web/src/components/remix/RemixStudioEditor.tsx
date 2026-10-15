@@ -1364,6 +1364,75 @@ export function applyDescribedEdits(
   };
 }
 
+/** One lane's blocks before a described Apply, and its fingerprint after. */
+type DescribedLaneMark = { blocks: boolean[] | null; after: string };
+
+/**
+ * Describe it's undo snapshot (#1936) of the lanes its slice does not carry:
+ * the beat's and each AI part's blocks as they were BEFORE the Apply, plus
+ * a fingerprint of the lane right AFTER it (null beat = there was none).
+ */
+export type DescribedLaneSnapshot = {
+  beat: DescribedLaneMark | null;
+  parts: Record<string, DescribedLaneMark>;
+};
+
+const laneFingerprint = (lane: unknown) => JSON.stringify(lane ?? null);
+
+/** The snapshot of an Apply that turned `before` into `after`. */
+export function describedLaneSnapshot(
+  before: Pick<ProjectEdits, "beat" | "parts">,
+  after: Pick<ProjectEdits, "beat" | "parts">,
+): DescribedLaneSnapshot {
+  const parts: Record<string, DescribedLaneMark> = {};
+  for (const part of before.parts?.parts ?? []) {
+    const next = after.parts?.parts.find((entry) => entry.id === part.id);
+    if (next) {
+      parts[part.id] = { blocks: part.blocks ?? null, after: laneFingerprint(next) };
+    }
+  }
+  return {
+    beat:
+      before.beat && after.beat
+        ? { blocks: before.beat.blocks ?? null, after: laneFingerprint(after.beat) }
+        : null,
+    parts,
+  };
+}
+
+/**
+ * Undoes a "Describe it" Apply (#1936): restores the previous slice like
+ * `applyDescribedEdits` (stem masks exactly), and the beat and each AI part
+ * exactly as they were before the Apply when they are still what the Apply
+ * produced. A lane edited since (or without a snapshot) keeps the later
+ * edit, its blocks remapped by section.
+ */
+export function undoDescribedEdits(
+  edits: ProjectEdits,
+  previous: RemixDescribeEdits,
+  snapshot: DescribedLaneSnapshot | null,
+  grid: RemixSectionGrid | null,
+): ProjectEdits {
+  const restored = applyDescribedEdits(edits, previous, grid);
+  if (!snapshot) return restored;
+  let beat = restored.beat;
+  if (
+    beat &&
+    snapshot.beat &&
+    laneFingerprint(edits.beat) === snapshot.beat.after
+  ) {
+    beat = { ...beat, blocks: snapshot.beat.blocks };
+  }
+  let parts = restored.parts ?? null;
+  for (const part of edits.parts?.parts ?? []) {
+    const mark = snapshot.parts[part.id];
+    if (mark && laneFingerprint(part) === mark.after) {
+      parts = withPartBlocks(parts, part.id, mark.blocks);
+    }
+  }
+  return { ...restored, beat, parts };
+}
+
 export function stemPreviewStates(
   project: RemixProject,
   edits: ProjectEdits,
@@ -2976,9 +3045,20 @@ export function RemixStudioEditor({
     })),
     grid: sectionGrid,
   };
-  const handleApplyDescribedEdits = (next: RemixDescribeEdits) => {
-    if (published) return;
+  // Apply returns the beat/AI-part snapshot (#1936) the panel hands back on
+  // Undo, so masks on sections a shape dropped come back exactly.
+  const handleApplyDescribedEdits = (
+    next: RemixDescribeEdits,
+    undo?: { token: unknown },
+  ): DescribedLaneSnapshot | null => {
+    if (published) return null;
+    if (undo) {
+      const snapshot = (undo.token as DescribedLaneSnapshot | null | undefined) ?? null;
+      setEdits((prev) => undoDescribedEdits(prev, next, snapshot, sectionGrid));
+      return null;
+    }
     setEdits((prev) => applyDescribedEdits(prev, next, sectionGrid));
+    return describedLaneSnapshot(edits, applyDescribedEdits(edits, next, sectionGrid));
   };
   const replaceStemOptions = project.stems
     .filter((stem) => !referenceIds.has(stem.stemId))

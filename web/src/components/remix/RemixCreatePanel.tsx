@@ -125,8 +125,12 @@ export type RemixCreatePanelProps = {
    * is computed from; absent = the box is hidden.
    */
   describeContext?: RemixDescribeContext;
-  /** Sets the described edits (Apply) or restores the previous ones (Undo). */
-  onApplyEdits?(edits: RemixDescribeEdits): void;
+  /**
+   * Sets the described edits (Apply) or restores the previous ones (Undo).
+   * Apply may return an opaque undo token (the studio's snapshot of the
+   * lanes the slice does not carry, #1936); Undo hands it back in `undo`.
+   */
+  onApplyEdits?(edits: RemixDescribeEdits, undo?: { token: unknown }): unknown;
   /**
    * Beat maker (#1902): the current beat (null = none) and whether the
    * track has a bar grid with a measured tempo. The "Add a beat" section
@@ -815,7 +819,7 @@ function DescribeRemixSection({
   locked,
 }: {
   context: RemixDescribeContext;
-  onApplyEdits(edits: RemixDescribeEdits): void;
+  onApplyEdits(edits: RemixDescribeEdits, undo?: { token: unknown }): unknown;
   locked: boolean;
 }) {
   const [text, setText] = useState("");
@@ -823,6 +827,8 @@ function DescribeRemixSection({
   const [applied, setApplied] = useState<{
     before: RemixDescribeEdits;
     after: RemixDescribeEdits;
+    /** What Apply returned, handed back on Undo. */
+    undoToken: unknown;
   } | null>(null);
   const proposal = plan ? describeProposal(plan, context) : null;
   // Undo is only offered while the applied edits are still in place.
@@ -842,15 +848,15 @@ function DescribeRemixSection({
       proposal={proposal}
       onApply={() => {
         if (locked || !proposal || proposal.changes.length === 0) return;
-        onApplyEdits(proposal.edits);
-        setApplied({ before: context.edits, after: proposal.edits });
+        const undoToken = onApplyEdits(proposal.edits);
+        setApplied({ before: context.edits, after: proposal.edits, undoToken });
         setPlan(null);
       }}
       onCancel={() => setPlan(null)}
       applied={undoable}
       onUndo={() => {
         if (locked || !applied) return;
-        onApplyEdits(applied.before);
+        onApplyEdits(applied.before, { token: applied.undoToken });
         setApplied(null);
       }}
       locked={locked}
