@@ -962,6 +962,10 @@ model Stem {
   // Measured musical features (tempo/key/beats/energy) extracted by the
   // demucs worker (#1184). The JSON carries its own schemaVersion.
   audioFeatures      Json?
+  // Audio-feature backfill failures (#2012): last failed attempt and the
+  // failure count; both reset when features are written.
+  audioFeaturesFailedAt     DateTime?
+  audioFeaturesFailureCount Int       @default(0)
   encryptionMetadata String?
   isEncrypted        Boolean             @default(false)
   storageProvider    String              @default("local")
