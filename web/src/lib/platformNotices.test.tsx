@@ -83,6 +83,55 @@ describe("platform notice banner (#2146)", () => {
     expect(selectBannerNotice(getPlatformNoticesState().notices)?.id).toBe(policy.id);
   });
 
+  // The crate-digger e2e mock answers every unmocked API path with `[]`; a
+  // notices payload of the wrong shape must never reach render.
+  it.each([
+    ["an array", []],
+    ["an error body", { message: "Unauthorized", statusCode: 401 }],
+    ["notices that is not a list", { notices: null, unreadCount: 0 }],
+    ["null", null],
+    ["a string", "ok"],
+  ])("shows no banner when the response is %s", async (_label, payload) => {
+    vi.mocked(getPlatformNotices).mockResolvedValue(payload as never);
+    await expect(loadPlatformNotices("token-1")).resolves.toBeDefined();
+    expect(getPlatformNoticesState().notices).toEqual([]);
+    expect(selectBannerNotice(getPlatformNoticesState().notices)).toBeNull();
+    expect(getPlatformNoticesState().unreadCount).toBe(0);
+  });
+
+  it("drops malformed entries and keeps the valid ones", async () => {
+    vi.mocked(getPlatformNotices).mockResolvedValue({
+      notices: [null, 7, { id: "x" }, { ...policy, category: "mystery" }, policy],
+      unreadCount: "many",
+    } as never);
+    await loadPlatformNotices("token-1");
+    expect(getPlatformNoticesState().notices.map((notice) => notice.id)).toEqual([policy.id]);
+    expect(getPlatformNoticesState().unreadCount).toBe(1);
+  });
+
+  it("shows no banner and does not throw when the request rejects", async () => {
+    vi.mocked(getPlatformNotices).mockRejectedValue(new Error("network down"));
+    await expect(loadPlatformNotices("token-1")).resolves.toBeDefined();
+    expect(getPlatformNoticesState().notices).toEqual([]);
+    expect(selectBannerNotice(getPlatformNoticesState().notices)).toBeNull();
+  });
+
+  it("shows no banner when the server answers with a non-OK status", async () => {
+    vi.mocked(getPlatformNotices).mockRejectedValue(Object.assign(new Error("API 503"), { status: 503 }));
+    await loadPlatformNotices("token-1");
+    expect(getPlatformNoticesState().notices).toEqual([]);
+  });
+
+  it("keeps the notices already shown when a later refresh fails or is malformed", async () => {
+    vi.mocked(getPlatformNotices).mockResolvedValueOnce({ notices: [policy], unreadCount: 1 });
+    await loadPlatformNotices("token-1");
+    vi.mocked(getPlatformNotices).mockRejectedValueOnce(new Error("blip"));
+    await loadPlatformNotices("token-1");
+    vi.mocked(getPlatformNotices).mockResolvedValueOnce([] as never);
+    await loadPlatformNotices("token-1");
+    expect(selectBannerNotice(getPlatformNoticesState().notices)?.id).toBe(policy.id);
+  });
+
   it("shows nothing when signed out", async () => {
     await loadPlatformNotices(null);
     expect(getPlatformNotices).not.toHaveBeenCalled();

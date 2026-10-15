@@ -2,6 +2,7 @@ import {
   getPlatformNotices,
   markPlatformNoticeRead,
   type PlatformNotice,
+  type PlatformNoticeList,
   type PlatformNoticeCategory,
 } from "./api";
 
@@ -48,15 +49,57 @@ export function resetPlatformNotices() {
   publish({ ...EMPTY });
 }
 
-/** Load the person's notices. A failed load keeps what is already shown. */
+const NOTICE_KINDS: readonly string[] = ["broadcast", "targeted"];
+const NOTICE_CATEGORIES: readonly string[] = ["policy", "terms", "incident", "moderation", "account", "refund"];
+
+function asNotice(value: unknown): PlatformNotice | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== "string" || !raw.id) return null;
+  if (typeof raw.title !== "string" || typeof raw.body !== "string") return null;
+  if (typeof raw.kind !== "string" || !NOTICE_KINDS.includes(raw.kind)) return null;
+  if (typeof raw.category !== "string" || !NOTICE_CATEGORIES.includes(raw.category)) return null;
+  const text = (field: unknown) => (typeof field === "string" ? field : null);
+  return {
+    id: raw.id,
+    kind: raw.kind as PlatformNotice["kind"],
+    category: raw.category as PlatformNoticeCategory,
+    title: raw.title,
+    body: raw.body,
+    link: text(raw.link),
+    effectiveAt: text(raw.effectiveAt),
+    createdAt: text(raw.createdAt) ?? "",
+    readAt: text(raw.readAt),
+  };
+}
+
+/**
+ * The notices response is untrusted input to a surface that renders on every
+ * page: anything that is not the expected `{ notices: [...] }` shape (an
+ * array, an error body, a half-migrated payload) yields null, and malformed
+ * entries are dropped, so a bad answer can never throw during render.
+ */
+export function normalizePlatformNoticeList(value: unknown): PlatformNoticeList | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw.notices)) return null;
+  const notices = raw.notices.map(asNotice).filter((notice): notice is PlatformNotice => notice !== null);
+  const unreadCount =
+    typeof raw.unreadCount === "number" && Number.isFinite(raw.unreadCount) && raw.unreadCount >= 0
+      ? Math.floor(raw.unreadCount)
+      : notices.filter((notice) => !notice.readAt).length;
+  return { notices, unreadCount };
+}
+
+/** Load the person's notices. A failed or malformed load keeps what is already shown. */
 export async function loadPlatformNotices(token: string | null | undefined) {
   if (!token) {
     resetPlatformNotices();
     return state;
   }
   try {
-    const list = await getPlatformNotices(token);
-    publish({ token, notices: list.notices, unreadCount: list.unreadCount });
+    const list = normalizePlatformNoticeList(await getPlatformNotices(token));
+    if (list) publish({ token, notices: list.notices, unreadCount: list.unreadCount });
   } catch {
     // Keep the previous list; the next poll or bell open retries.
   }
@@ -90,6 +133,7 @@ export const BANNER_NOTICE_CATEGORIES: readonly PlatformNoticeCategory[] = ["pol
 
 /** The newest unread broadcast that warrants a banner, if any. */
 export function selectBannerNotice(notices: readonly PlatformNotice[]): PlatformNotice | null {
+  if (!Array.isArray(notices)) return null;
   return (
     notices.find(
       (notice) =>
