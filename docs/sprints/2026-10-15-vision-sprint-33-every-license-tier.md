@@ -1,7 +1,10 @@
 # Vision Sprint 33: Every license tier on sale
 
-**Status:** Owner-approved 2026-10-15; in progress. No due date: it closes when
-its exit checks pass on staging, as Sprints 30 to 32 did.
+**Status:** Closed 2026-10-15. All six items are closed and their work is merged
+and deployed to staging; the owner-signed listing checks carry over to
+[#2154](https://github.com/akoita/resonate/issues/2154).
+**Release:** [Milestone 35 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-35-vision-sprint-33-every-license-tier) records the closed
+application milestone, not a software version or deployment event.
 **Milestone:** [35](https://github.com/akoita/resonate/milestone/35).
 **Goal:** An artist offers each stem under Personal, Remix and Commercial in
 one flow and manages listings without one signature per stem, so the buyer's
@@ -46,6 +49,22 @@ decision.
   untried ones; the Describe-it fix is merged with a regression test.
 - #1777's child issues are filed, each with a build or defer decision.
 - The User Guide and feature pages describe the new listing flow.
+
+## Outcome (2026-10-15)
+
+| Issue | Status | Where |
+| --- | --- | --- |
+| #2041 | `implemented` | #2142: one stem listed under several tiers in one batched UserOperation, with missing editions minted in the same batch; grouped marketplace cards with tier chips; per-seller, per-tier listing intents matched by listing id or log order. It also hardened `notify-listing`: sign-in required, the seller must be the caller, on-chain price and amount win, and only a stem's own artist links it |
+| #2030 | `implemented` | #2143: relisting selected stems takes one confirmation per group of up to 10, keeps each stem's tier, and names a failing stem before signing |
+| #1894 | `implemented` | #2145: one live `commerce.settled` fact per marketplace or x402 settlement, idempotent by settlement key. Follow-ups in #2144: payout is gross, not net; agent and MCP download rails aren't counted yet |
+| #2012 | `implemented` | #2152: the audio-feature backfill holds back stems that keep failing, counts them as `failed`, ignores worker outages and stops a run at the first one |
+| #1936 | `implemented` | #2151: Describe it keeps beat and AI-part masks aligned after a structure change; Undo restores them exactly |
+| #1777 | split | Five child issues with build or defer decisions: #2146 notices, #2147 suspension, #2148 outbound channel (owner decision), #2149 unclaimed refunds, #2150 refund disclosure |
+
+Exit criteria: the payout facts, backfill and Describe-it fixes are merged with
+tests and deployed; the #1777 children are filed. Multi-tier listing and
+one-signature relist are deployed and tested; the owner-signed checks on staging
+carry over to #2154.
 
 ## Not in this sprint
 

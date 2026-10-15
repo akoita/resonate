@@ -1,8 +1,11 @@
 # Vision Sprint 32: Purchased stems ready to remix
 
-**Status:** Owner-approved; queued after Sprint 30 and 31 acceptance. No start
-date or capacity estimate is set.
+**Status:** Closed 2026-10-15. All three items are merged and deployed to
+staging; the owner-signed purchase walkthrough carries over to
+[#2154](https://github.com/akoita/resonate/issues/2154).
 **Milestone:** [34](https://github.com/akoita/resonate/milestone/34).
+**Release:** [Milestone 34 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-34-vision-sprint-32-purchased-stems) records the closed
+application milestone, not a software version or deployment event.
 **Goal:** A buyer can find purchased stems in the library, understand the
 license they bought, and open eligible stems in Remix Studio.
 
@@ -70,6 +73,20 @@ prerequisites or admitted scope for this sprint.
   purchased stems or gain Remix eligibility from client-supplied state.
 - Update the relevant marketplace, library, and Remix Studio feature pages and
   the in-app User Guide.
+
+## Outcome (2026-10-15)
+
+| Issue | Status | Where |
+| --- | --- | --- |
+| #2023 | `implemented` | #2133: sign-in marks `Wallet.address` verified; wallet refresh never replaces a verified address (409 `wallet_address_verified` for a provider switch), and an unverified erc4337 refresh keeps an address-shaped user id. The staging backfill marked all existing wallets verified |
+| #2042 | `implemented` | #2134: Library › Stems shows each stem's license tier, an All / Remix-ready / Personal filter, a Remix action for Remix and Commercial holdings, "Upgrade to Remix license" for Personal, and "Remix N stems together" per source track; the buy dialog stays on a success view with "View in your library" and "Open in Remix Studio"; a buyer entry point sits next to "Manage listings" |
+| #2139 | `implemented` (added mid-sprint for the exit criterion on buyer privacy) | #2140: the purchased-stems collection requires sign-in and answers only for the caller's own addresses (or admin/operator); verified on staging (401 without sign-in). Remix eligibility is proven server-derived |
+
+Exit criteria: the owner-only collection and the server-side license
+eligibility are verified; the code paths for reload and wallet refresh are
+covered by tests. The owner-signed purchase → Library → Remix Studio
+walkthrough on staging carries over to #2154 because it needs the owner's
+passkey.
 
 ## Revenue line
 
