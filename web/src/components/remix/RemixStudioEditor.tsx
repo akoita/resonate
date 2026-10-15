@@ -125,6 +125,7 @@ import {
 import {
   gateIntervalsForBlocks,
   normalizeRemixStructure,
+  remapToStructure,
   sameRemixStructure,
   structureEditState,
   structureTimeline,
@@ -1328,13 +1329,27 @@ export function lanePartsFor(
  * Sets a "Describe it" result (#1900) in one update: the mute/mask state of
  * the project's stems, the effects and the structure. Everything else
  * (title, prompt, gains, AI target) keeps the latest value, so a proposal
- * computed a moment ago never clobbers unrelated typing.
+ * computed a moment ago never clobbers unrelated typing. When the structure
+ * changes, the beat's and every AI part's blocks (#1936) move with their
+ * blocks through the Session's structure op path, by source section like
+ * the song-shape buttons: a block takes the value of the first current
+ * block that plays its section; on when none does.
  */
 export function applyDescribedEdits(
   edits: ProjectEdits,
   next: RemixDescribeEdits,
+  grid: RemixSectionGrid | null,
 ): ProjectEdits {
-  const stems = { ...edits.stems };
+  const sectionCount = grid?.sections.length ?? 0;
+  const remapped =
+    grid &&
+    sectionCount > 0 &&
+    !sameRemixStructure(edits.structure ?? null, next.structure, sectionCount)
+      ? editsAfterStructureOp(edits, grid, (state) =>
+          remapToStructure(state, next.structure),
+        )
+      : edits;
+  const stems = { ...remapped.stems };
   for (const [stemId, edit] of Object.entries(next.stems)) {
     const current = stems[stemId];
     if (current) {
@@ -1342,7 +1357,7 @@ export function applyDescribedEdits(
     }
   }
   return {
-    ...edits,
+    ...remapped,
     stems,
     effects: next.effects,
     structure: next.structure,
@@ -2963,7 +2978,7 @@ export function RemixStudioEditor({
   };
   const handleApplyDescribedEdits = (next: RemixDescribeEdits) => {
     if (published) return;
-    setEdits((prev) => applyDescribedEdits(prev, next));
+    setEdits((prev) => applyDescribedEdits(prev, next, sectionGrid));
   };
   const replaceStemOptions = project.stems
     .filter((stem) => !referenceIds.has(stem.stemId))

@@ -19,6 +19,7 @@ import {
   moveBlock,
   normalizeBlockMask,
   normalizeRemixStructure,
+  remapToStructure,
   removeBlock,
   repeatBlock,
   resetStructure,
@@ -380,6 +381,27 @@ describe("structure edit operations (#1899)", () => {
       b: [true, false, true, true, true],
       c: null,
     });
+  });
+
+  it("remaps masks onto a given structure by source section (#1936)", () => {
+    const target = {
+      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+      blocks: [{ section: 1 }, { section: 1 }, { section: 3, fadeOut: true }],
+    };
+    const result = remapToStructure(
+      state(identity, { a: [true, false, true, false, true], b: null }),
+      target,
+    )!;
+    expect(result.structure).toEqual(target);
+    expect(result.masks).toEqual({ a: [false, false, false], b: null });
+    // Null = the original order, as in resetStructure.
+    const reset = remapToStructure(
+      state([{ section: 2 }, { section: 1 }], { a: [false, true] }),
+      null,
+    )!;
+    expect(reset.structure).toBeNull();
+    expect(reset.masks).toEqual({ a: [true, true, false, true, true] });
+    expect(remapToStructure({ sectionCount: 0, blocks: [], masks: {} }, null)).toBeNull();
   });
 });
 

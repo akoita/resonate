@@ -78,6 +78,7 @@ import {
 import RemixStudioPage from "../../app/remix/studio/[projectId]/page";
 import { blockActionResult } from "./RemixSessionLanes";
 import { REMIX_STRUCTURE_SCHEMA_VERSION } from "../../lib/remixStructure";
+import { describeRemix } from "../../lib/remixDescribe";
 import {
   defaultBeat,
   normalizeRemixBeat,
@@ -2305,7 +2306,7 @@ describe("Describe it (#1900)", () => {
       },
       effects,
       structure,
-    });
+    }, sectionGrid);
     expect(next.title).toBe("Typed meanwhile");
     expect(next.prompt).toBe(edits.prompt);
     expect(next.aiTarget).toBe(edits.aiTarget);
@@ -2319,6 +2320,97 @@ describe("Describe it (#1900)", () => {
     expect(buildProjectPatch(project({ sectionGrid }), next)).toMatchObject({
       effects,
       structure,
+    });
+  });
+
+  describe("keeps the beat and AI part block masks aligned (#1936)", () => {
+    const beat = defaultBeat("boom_bap");
+    // The beat is off on section 1, the bass part on section 2.
+    const withLanes = (overrides: Partial<RemixProject> = {}) =>
+      initialEdits(
+        project({
+          sectionGrid,
+          beat: { ...beat, blocks: [true, false, true, true] },
+          parts: {
+            schemaVersion: "remix-parts/v1",
+            parts: [
+              { id: "bass-1", role: "bass", takeId: "t1", blocks: [true, true, false, true] },
+              { id: "keys-1", role: "keys", takeId: "t2" },
+            ],
+          },
+          ...overrides,
+        }),
+      );
+    const describeContext = (edits: ReturnType<typeof initialEdits>) => ({
+      edits,
+      stems: project().stems.map((stem) => ({
+        stemId: stem.stemId,
+        type: stem.type,
+        name: stem.title ?? stem.type,
+        reference: false,
+      })),
+      grid: sectionGrid,
+    });
+    const sections = (edits: ReturnType<typeof initialEdits>) =>
+      edits.structure?.blocks.map((block) => block.section) ?? null;
+
+    it("an extended mix carries off blocks onto every block of their section", () => {
+      const edits = withLanes();
+      const proposal = describeRemix("longer", describeContext(edits));
+      const next = applyDescribedEdits(edits, proposal.edits, sectionGrid);
+      expect(sections(next)).toEqual([0, 0, 1, 2, 3, 3]);
+      expect(next.beat?.blocks).toEqual([true, true, false, true, true, true]);
+      expect(next.parts?.parts[0].blocks).toEqual([true, true, true, false, true, true]);
+      // An all-on part stays all on.
+      expect(next.parts?.parts[1].blocks).toBeUndefined();
+      expect(buildProjectPatch(project({ sectionGrid }), next)).toMatchObject({
+        structure: next.structure,
+        beat: { blocks: [true, true, false, true, true, true] },
+      });
+      // Undo restores the original shape with the masks back in place.
+      const undone = applyDescribedEdits(next, edits, sectionGrid);
+      expect(undone.structure).toBeNull();
+      expect(undone.beat?.blocks).toEqual([true, false, true, true]);
+      expect(undone.parts?.parts[0].blocks).toEqual([true, true, false, true]);
+    });
+
+    it("a short edit drops the masks of the removed sections", () => {
+      const edits = withLanes();
+      const proposal = describeRemix("short edit", describeContext(edits));
+      const next = applyDescribedEdits(edits, proposal.edits, sectionGrid);
+      expect(sections(next)).toEqual([0, 1, 2]);
+      expect(next.beat?.blocks).toEqual([true, false, true]);
+      expect(next.parts?.parts[0].blocks).toEqual([true, true, false]);
+    });
+
+    it("a reordered shape keeps each section's value; new sections start on", () => {
+      // Custom shape: section 2 then section 1; the beat is off on section 2.
+      const edits = {
+        ...withLanes(),
+        structure: {
+          schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+          blocks: [{ section: 2 }, { section: 1 }],
+        },
+        beat: { ...beat, blocks: [false, true] },
+      };
+      const next = applyDescribedEdits(
+        edits,
+        { stems: {}, effects: null, structure: null },
+        sectionGrid,
+      );
+      expect(next.structure).toBeNull();
+      // Sections 0 and 3 were not played: on, like the song-shape buttons.
+      expect(next.beat?.blocks).toEqual([true, true, false, true]);
+    });
+
+    it("an edit that keeps the structure leaves the masks untouched", () => {
+      const edits = withLanes();
+      const proposal = describeRemix("mute the vocals", describeContext(edits));
+      expect(proposal.edits.structure).toBe(edits.structure);
+      const next = applyDescribedEdits(edits, proposal.edits, sectionGrid);
+      expect(next.stems["stem-1"].muted).toBe(true);
+      expect(next.beat).toBe(edits.beat);
+      expect(next.parts).toBe(edits.parts);
     });
   });
 
@@ -2420,11 +2512,11 @@ describe("beat maker (#1902)", () => {
 
   it("Describe it leaves the beat alone", () => {
     const edits = initialEdits(project({ sectionGrid, beat }));
-    const next = applyDescribedEdits(edits, {
-      stems: {},
-      effects: null,
-      structure: null,
-    });
+    const next = applyDescribedEdits(
+      edits,
+      { stems: {}, effects: null, structure: null },
+      sectionGrid,
+    );
     expect(next.beat).toBe(edits.beat);
   });
 
