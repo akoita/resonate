@@ -13,6 +13,7 @@ import AgentOnboardingGate from "../agent/AgentOnboardingGate";
 import AgentDjContinuation from "../agent/AgentDjContinuation";
 import AnalyticsConsentPrompt from "../analytics/AnalyticsConsentPrompt";
 import AccountClosureNotice from "../settings/AccountClosureNotice";
+import PlatformNoticeBanner from "../notifications/PlatformNoticeBanner";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
 import { LegalFooter } from "../legal/LegalFooter";
 
@@ -45,6 +46,9 @@ export default function AppShell({
             * where the consent banner (9999) outranks the update pill (9998),
             * rather than adding a third undismissable thing to that corner. */}
           <AccountClosureNotice />
+          {/* #2146: an unread policy/terms/incident broadcast, dismissible,
+            * in the same in-flow slot for the same reasons. */}
+          <PlatformNoticeBanner />
           <main id="main-content" className="app-content" tabIndex={-1}>
             <div className="app-page">
               <Suspense fallback={null}>

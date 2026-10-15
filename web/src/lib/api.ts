@@ -7463,3 +7463,71 @@ export function respondToManagementTransfer(
     { method: "POST" }, token,
   );
 }
+
+// ============ Platform notices (#2146) ============
+
+export type PlatformNoticeCategory = "policy" | "terms" | "incident" | "moderation" | "account" | "refund";
+export type PlatformNoticeAudienceRole = "listener" | "artist" | "operator" | "admin";
+export type PlatformNoticeAudience = "all" | `role:${PlatformNoticeAudienceRole}`;
+
+export type PlatformNotice = {
+  id: string;
+  kind: "broadcast" | "targeted";
+  category: PlatformNoticeCategory;
+  title: string;
+  body: string;
+  link: string | null;
+  effectiveAt: string | null;
+  createdAt: string;
+  readAt: string | null;
+};
+
+export type PlatformNoticeList = { notices: PlatformNotice[]; unreadCount: number };
+
+export type SentBroadcastNotice = {
+  id: string;
+  category: PlatformNoticeCategory;
+  title: string;
+  body: string;
+  link: string | null;
+  audience: PlatformNoticeAudience;
+  effectiveAt: string | null;
+  expiresAt: string | null;
+  active: boolean;
+  createdBy: string;
+  createdAt: string;
+  readCount: number;
+};
+
+export type BroadcastNoticeInput = {
+  audience: PlatformNoticeAudience;
+  category: PlatformNoticeCategory;
+  title: string;
+  body: string;
+  effectiveAt?: string;
+  expiresAt?: string;
+};
+
+export function getPlatformNotices(token: string) {
+  return apiRequest<PlatformNoticeList>("/notices", { cache: "no-store" }, token);
+}
+
+export function markPlatformNoticeRead(token: string, noticeId: string) {
+  return apiRequest<{ id: string; readAt: string }>(
+    `/notices/${encodeURIComponent(noticeId)}/read`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export function sendBroadcastNotice(token: string, input: BroadcastNoticeInput) {
+  return apiRequest<SentBroadcastNotice>(
+    "/notices/broadcast",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export function getSentBroadcastNotices(token: string) {
+  return apiRequest<{ notices: SentBroadcastNotice[] }>("/notices/sent", { cache: "no-store" }, token);
+}

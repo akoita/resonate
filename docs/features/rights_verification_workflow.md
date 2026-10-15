@@ -52,6 +52,18 @@ Upload-rights decisions now expose four product-facing uploader classes:
 Metadata conflicts, quarantined audio, and DMCA takedowns override these classes
 and push releases into `QUARANTINED_REVIEW` or `BLOCKED`.
 
+When an admin upholds a DMCA report (`PATCH /api/dmca/:id/resolve` with
+`upheld`), the track becomes `dmca_removed` and its stems are delisted. The
+creator also gets one in-app `moderation` notice: the release's management
+owner, else the artist's account; if neither resolves, the notice is logged and
+skipped. The notice names the track and release and gives the reason category,
+"copyright complaint". It never includes the complainant's name, email or
+written reason. It is keyed on the report (`dmca_report:<id>`), so resolving
+the report again sends nothing new. A rejected report sends nothing. A
+counter-notice cannot yet be filed from the app, and the notice says so. See
+[Platform notices](platform_notices.md) and
+[#2146](https://github.com/akoita/resonate/issues/2146).
+
 ## How To Use
 
 Artists can submit release-specific marketplace-rights upgrade requests from
