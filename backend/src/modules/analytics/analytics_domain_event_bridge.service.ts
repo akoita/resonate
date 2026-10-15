@@ -3,6 +3,7 @@ import { Subscription } from "rxjs";
 import {
   CatalogReleaseReadyEvent,
   CatalogTrackStatusEvent,
+  CommerceSettledEvent,
   StemsFailedEvent,
   StemsProcessedEvent,
   StemsUploadedEvent,
@@ -12,6 +13,7 @@ import { pseudonymousAnalyticsActorId } from "./analytics_identity";
 import { EventBus } from "../shared/event_bus";
 import { AnalyticsEventInput, AnalyticsPrivacyTier } from "./analytics_event";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
+import { commerceSettledAnalyticsEvent } from "./analytics_commerce_settled";
 
 type ResonateDomainEvent = {
   eventName: string;
@@ -1582,6 +1584,11 @@ export class AnalyticsDomainEventBridgeService implements OnModuleInit, OnModule
       ),
       this.eventBus.subscribe<CatalogReleaseReadyEvent>("catalog.release_ready", (event) =>
         this.recordCatalogReleaseReady(event),
+      ),
+      // #1894: live settled-commerce facts; the eventId is derived from the
+      // settlement's idempotency key, so a replay upserts the same row.
+      this.eventBus.subscribe<CommerceSettledEvent>("commerce.settled", (event) =>
+        this.ingest(commerceSettledAnalyticsEvent(event)),
       ),
       ...HIGH_VALUE_DOMAIN_EVENT_BRIDGES.map((config) =>
         this.eventBus.subscribe(config.eventName, (event) =>

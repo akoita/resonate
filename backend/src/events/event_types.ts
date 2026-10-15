@@ -1358,6 +1358,43 @@ export interface AgentPurchaseCompletedEvent extends BaseEvent {
   mode: string;
 }
 
+/**
+ * #1894: one settled sale, emitted server-side by the settlement rail that
+ * recorded it (a new StemPurchase for the marketplace rail, a final
+ * non-contract-backed X402Settlement for the x402 rail). `settlementKey` is the
+ * idempotency key the analytics bridge turns into a deterministic eventId.
+ * `buyerActorId` is already pseudonymous; no raw wallet address travels here.
+ */
+export interface CommerceSettledEvent extends BaseEvent {
+  eventName: "commerce.settled";
+  settlementKey: string;
+  /** StemPurchase.id or X402Settlement.id of the recorded settlement. */
+  paymentId: string;
+  rail: "marketplace" | "x402";
+  paymentRail?: string;
+  resourceKind: "stem" | "punchline_moment";
+  stemId?: string;
+  momentId?: string;
+  trackId?: string;
+  releaseId?: string;
+  artistId?: string;
+  licenseType?: string;
+  listingId?: string;
+  receiptId?: string;
+  chainId?: number;
+  transactionHash?: string;
+  logIndex?: number;
+  buyerActorId?: string;
+  /** Exact USD for the configured USD stablecoin; null for any other asset. */
+  amountUsd: number | null;
+  paymentToken?: string;
+  paymentAssetId?: string;
+  paymentAssetSymbol?: string;
+  paymentAssetDecimals?: number;
+  settlementAmount?: string;
+  settlementAmountUnits?: string;
+}
+
 export interface AgentPurchaseFailedEvent extends BaseEvent {
   eventName: "agent.purchase_failed";
   sessionId: string;
@@ -1659,6 +1696,7 @@ export type ResonateEvent =
   | AgentPurchaseCompletedEvent
   | AgentPurchaseFailedEvent
   | X402PurchaseEvent
+  | CommerceSettledEvent
   | X402PurchaseFailedEvent
   | X402RefundDueStaleEvent
   | AgentGenerationTriggeredEvent

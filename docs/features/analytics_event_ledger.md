@@ -276,7 +276,8 @@ Implemented producer helper event names:
   optional `releaseId` / `trackId` kept only when it belongs to that artist's
   catalog. The envelope `geo` is the listener-declared city, as on `library.saved`.
   Clients cannot emit these names through `/analytics/product/event`.
-- `commerce.settled`
+- `commerce.settled` (#1894), emitted live server-side, one fact per real
+  settlement (see "Settled commerce facts" below)
 - `rights.route_decided`
 - `agent.recommendation_selected`
 - `generation.created`
@@ -342,6 +343,35 @@ The warehouse export and Dataflow transform accept `player.segment_loop_*` and
 `player.repeat_count_*` control events. Facts retain segment boundaries and repeat
 settings; these events do not increment play counts or payouts. The shared event
 fixture covers all six control events in both transforms.
+
+## Settled commerce facts (#1894)
+
+`commerce.settled` feeds `payoutUsd` (warehouse and BigQuery daily views), the
+artist dashboard payout totals, `artistSettledCommerceCount` and the "purchase"
+agent-quality outcome. Two settlement rails emit it, through the shared
+`EventBus` and the analytics domain bridge (`analytics_commerce_settled.ts`):
+the marketplace rail emits when the `contract.stem_sold` handler creates a new
+`StemPurchase`. That covers batched purchases and contract-backed x402 `buyFor`
+sales. The x402 rail emits when an `X402Settlement` reaches a final state
+(`download_granted` for stems, `collected` for Punchline moments) without going
+through the marketplace contract. Contract-backed x402 rows are left to the
+marketplace rail so a sale is never counted twice, and failed or `refund_due`
+rows are not counted. Each fact's eventId comes from an idempotency key
+(`commerce.settled:marketplace:<chainId>:<txHash>:<logIndex>` or
+`commerce.settled:x402:<settlementId>`), so a replayed Sold log or a repeated
+emission upserts the same row. The payload carries the gross amount and asset,
+rail, stem/moment, track, release, artist, license tier, and a pseudonymous
+buyer actor id (the owning user when the wallet is known, otherwise the hashed
+address; raw wallet addresses are never stored). `amountUsd` and
+`canonicalAmountUsd` are exact only for the configured USD stablecoin (USDC or
+a `usd_pegged` asset). For native-token (ETH) or other sales they are `null`:
+the sale counts toward settled-commerce counts and appears in the per-asset
+payout breakdown, but adds nothing to USD sums, because no USD price is
+invented. `payoutUsd` is therefore the gross settled stablecoin amount. The
+artist's net share is not derived at emission time, because the marketplace
+protocol fee is read on-chain and royalty and seller amounts arrive in later
+events. `payment.settled` stays accepted as a legacy alias in every aggregate,
+so historic rows still count, but no live request path emits it.
 
 ## Listening habit context (#2062)
 

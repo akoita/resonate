@@ -38,6 +38,7 @@ import { buildStorefrontStemDetail } from '../storefront/storefront.presenter';
 import { PaymentsService } from '../payments/payments.service';
 import { StorageProvider } from '../storage/storage_provider';
 import { EventBus } from '../shared/event_bus';
+import { loadX402CommerceSettled, publishCommerceSettled } from '../analytics/analytics_commerce_settled';
 
 type SmartAccountPaymentBody = {
   txHash?: string;
@@ -629,6 +630,16 @@ export class X402Controller {
       });
 
       this.logger.log(`x402 purchase recorded for stem ${stemId}`);
+
+      // #1894: one settled-commerce fact for an x402 settlement that did not
+      // go through the marketplace contract; a contract-backed one is counted
+      // when its Sold log is indexed. Never fails the download.
+      await publishCommerceSettled(
+        this.eventBus,
+        () => loadX402CommerceSettled({ receiptId: receipt.receiptId }),
+        this.logger,
+        `x402 receipt=${receipt.receiptId}`,
+      );
 
       // 4. Serve the audio
       this.writePaidStemResponse({
