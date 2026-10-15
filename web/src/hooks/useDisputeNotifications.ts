@@ -104,10 +104,26 @@ export function normalizeIncomingNotification(data: IncomingNotificationEvent): 
   };
 }
 
+/**
+ * Socket.IO options for the notification socket. The backend only lets a
+ * socket join a wallet room when its handshake carries a verified sign-in
+ * token for that wallet, so the token goes in the handshake `auth` payload.
+ */
+export function buildDisputeNotificationSocketOptions(token: string | null | undefined) {
+  return {
+    transports: ["websocket", "polling"],
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    ...(token ? { auth: { token } } : {}),
+  };
+}
+
 export function registerDisputeNotificationSocketHandlers(
   socket: Pick<Socket, "on" | "emit">,
   options: {
     walletAddress: string;
+    /** Join the wallet room on connect; false when signed out. */
+    joinWallet: boolean;
     refetch: () => void | Promise<void>;
     onNotification: (notification: DisputeNotification) => void;
     onDisputeStatus: (update: DisputeStatusUpdate) => void;
@@ -116,7 +132,7 @@ export function registerDisputeNotificationSocketHandlers(
   const normalizedWallet = options.walletAddress.toLowerCase();
 
   socket.on("connect", () => {
-    socket.emit("wallet:join", normalizedWallet);
+    if (options.joinWallet) socket.emit("wallet:join", normalizedWallet);
     void options.refetch();
   });
 
@@ -133,12 +149,14 @@ export function registerDisputeNotificationSocketHandlers(
  * Wallet notification feed for the signed-in user. The REST routes require
  * the user's sign-in token and only serve their own addresses: without a
  * token no request is sent and the feed stays empty, and a refused request
- * reads as an empty feed. The live socket feed is unchanged.
+ * reads as an empty feed. The live socket sends the token in its handshake
+ * and joins the wallet room only when signed in; a token change opens a new
+ * socket, so no join outlives the token it was made with.
  */
 export function useDisputeNotifications(walletAddress?: string, token?: string | null) {
   const normalizedWalletAddress = walletAddress?.toLowerCase() ?? null;
   const hasToken = Boolean(token);
-  // Read through a ref so a token refresh does not reconnect the socket.
+  // REST callbacks read the token through a ref so their identity stays stable.
   const tokenRef = useRef<string | null>(token ?? null);
   const sessionScope = useMemo(
     () => normalizedWalletAddress ? Symbol("wallet-notification-session") : null,
@@ -271,15 +289,13 @@ export function useDisputeNotifications(walletAddress?: string, token?: string |
   useEffect(() => {
     if (!normalizedWalletAddress || !sessionScope) return;
 
-    const socket = io(SOCKET_URL, {
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-    });
+    const socketToken = token ?? null;
+    const socket = io(SOCKET_URL, buildDisputeNotificationSocketOptions(socketToken));
     socketRef.current = socket;
 
     registerDisputeNotificationSocketHandlers(socket, {
       walletAddress: normalizedWalletAddress,
+      joinWallet: Boolean(socketToken),
       refetch: fetchNotifications,
       onNotification: (notification) => {
         if (activeWalletAddressRef.current !== normalizedWalletAddress
@@ -294,11 +310,11 @@ export function useDisputeNotifications(walletAddress?: string, token?: string |
     });
 
     return () => {
-      socket.emit("wallet:leave", normalizedWalletAddress);
+      if (socketToken) socket.emit("wallet:leave", normalizedWalletAddress);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, fetchNotifications]);
+  }, [activeSessionScopeRef, activeWalletAddressRef, normalizedWalletAddress, sessionScope, fetchNotifications, token]);
 
   return {
     notifications: visibleSnapshot.notifications,

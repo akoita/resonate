@@ -187,7 +187,13 @@ Delivered across PRs #436 (notification infrastructure), #461 (mounted notificat
     cannot modify them.
   - The web client (`web/src/lib/walletNotifications.ts`) sends the user's
     token on every call, sends nothing when signed out, and treats a refused
-    request as an empty feed. The live WebSocket feed is unchanged.
+    request as an empty feed.
+  - The live feed's Socket.IO `wallet:join` joins `wallet:<address>` only
+    when the handshake `auth.token` verifies and the address is one of that
+    user's addresses; otherwise the socket joins nothing and receives
+    `wallet:error` (optional ack `false`). The web hook sends the token in
+    the handshake, opens a new socket when the token changes, and does not
+    join while signed out.
 - ✅ WebSocket gateway: 4 dispute event subscriptions + wallet room targeting
 - ✅ `useDisputeNotifications` hook, `NotificationBell`, `NotificationPreferences`
 - ✅ Real-time auto-refresh in `DisputeDashboard`
