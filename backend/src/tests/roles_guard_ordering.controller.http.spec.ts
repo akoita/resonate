@@ -33,6 +33,7 @@ import { SocialRecoveryService } from "../modules/identity/social_recovery.servi
 import { WalletController } from "../modules/identity/wallet.controller";
 import { WalletService } from "../modules/identity/wallet.service";
 import { ShowsController } from "../modules/shows/shows.controller";
+import { ShowRefundReminderService } from "../modules/shows/show-refund-reminder.service";
 import { ShowsService } from "../modules/shows/shows.service";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
 
@@ -82,6 +83,7 @@ describe("global RolesGuard ordering (http)", () => {
         { provide: AgentWalletService, useValue: {} },
         { provide: AgentPurchaseService, useValue: {} },
         { provide: ShowsService, useValue: mockShowsService },
+        { provide: ShowRefundReminderService, useValue: {} },
         { provide: CommunityRoomsService, useValue: {} },
         { provide: CurationService, useValue: mockCurationService },
       ],
