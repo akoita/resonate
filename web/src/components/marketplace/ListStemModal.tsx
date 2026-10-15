@@ -1,30 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useListStem, useProtocolFee, useStemBalance, useStemData } from "../../hooks/useContracts";
+import { useEffect, useMemo, useState } from "react";
+import { useListStemTiers, useProtocolFee, useStemBalance, useStemData } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
+import { useStemTierPricing } from "../../hooks/useStemTierPricing";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { getExplorerTxUrl } from "../../lib/explorer";
-import { API_BASE } from "../../lib/api";
+import { getListingsByStem } from "../../lib/api";
 import {
   formatListingPrice,
   listingPaymentToken,
-  parseListingPriceUnits,
   selectDefaultMarketplaceListingAsset,
 } from "../../lib/listingPricing";
 import {
-  buildNotifyListingPayload,
-  multiTierEditionHint,
-  tierDefaultPriceUsd,
-  type StemTierPricing,
-} from "../../lib/listingTiers";
-import {
-  LicenseTypeSelector,
-  type LicenseType,
-} from "./LicenseTypeSelector";
+  buildTierNotifyPayload,
+  describeTierPlan,
+  initialTierDrafts,
+  planTierListings,
+  TIER_LABELS,
+  validateTierDrafts,
+  committedEditionsForPlan,
+} from "../../lib/multiTierListing";
+import { TierPicker, useTierDrafts } from "./TierPicker";
 import { sellerNetProceedsLine } from "../../lib/marketplaceProceeds";
+import { NOTIFY_LISTING_DELAYED_MESSAGE, postNotifyListing } from "../../lib/listingTiers";
 
 interface ListStemModalProps {
   tokenId: bigint;
@@ -35,12 +36,66 @@ interface ListStemModalProps {
   onSuccess?: (txHash: string) => void;
 }
 
+type CommittedState =
+  | { status: "loading" }
+  | { status: "ok"; amount: bigint }
+  | { status: "unknown" };
+
+/**
+ * Editions already offered in the seller's active listings of this token.
+ * Listings do not reserve balance, so these count against what is free to
+ * list again (#2041).
+ */
+function useCommittedEditions(input: {
+  stemId?: string | null;
+  tokenId: bigint;
+  seller?: string | null;
+  enabled: boolean;
+}): CommittedState {
+  const { stemId, tokenId, seller, enabled } = input;
+  const key = enabled && stemId && seller ? `${stemId}:${tokenId}:${seller.toLowerCase()}` : null;
+  const [result, setResult] = useState<{ key: string; state: CommittedState } | null>(null);
+
+  useEffect(() => {
+    if (!key || !stemId || !seller) return;
+    let cancelled = false;
+    const sellerLower = seller.toLowerCase();
+    getListingsByStem(stemId)
+      .then((listings) => {
+        if (cancelled) return;
+        const amount = (listings ?? [])
+          .filter(
+            (listing) =>
+              listing.seller?.toLowerCase() === sellerLower &&
+              listing.tokenId === tokenId.toString(),
+          )
+          .reduce((sum, listing) => {
+            try {
+              return sum + BigInt(listing.amount);
+            } catch {
+              return sum;
+            }
+          }, 0n);
+        setResult({ key, state: { status: "ok", amount } });
+      })
+      .catch(() => {
+        if (!cancelled) setResult({ key, state: { status: "unknown" } });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, seller, stemId, tokenId]);
+
+  if (!key) return { status: "unknown" };
+  return result?.key === key ? result.state : { status: "loading" };
+}
+
 export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: ListStemModalProps) {
   const { balance } = useStemBalance(tokenId);
   const { data: stemData } = useStemData(tokenId);
   const { feeBps: protocolFeeBps, loading: protocolFeeLoading } = useProtocolFee();
-  const { list, pending, error, txHash } = useListStem();
-  const { address, smartAccountAddress } = useAuth();
+  const { listTiers, pending, error, txHash } = useListStemTiers();
+  const { address, smartAccountAddress, token } = useAuth();
   const { addToast } = useToast();
   const { chainId } = useZeroDev();
   const {
@@ -48,12 +103,9 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
     defaultAsset,
     loading: paymentAssetsLoading,
   } = usePaymentAssets(chainId);
+  const tierPricing = useStemTierPricing(stemId);
 
-  const [price, setPrice] = useState("0.01");
-  const [amount, setAmount] = useState("1");
   const [duration, setDuration] = useState("7"); // Days
-  const [licenseType, setLicenseType] = useState<LicenseType>("personal");
-  const [tierPricing, setTierPricing] = useState<StemTierPricing | null>(null);
   const listingAsset = selectDefaultMarketplaceListingAsset({
     assets: paymentAssets,
     chainId,
@@ -62,104 +114,82 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
   const listingToken = listingPaymentToken(listingAsset);
   const listingSymbol = listingAsset?.symbol ?? "ETH";
   const listingStep = listingAsset?.decimals === 6 ? "0.000001" : "0.000000000000000001";
-  const usdDenominated = listingSymbol.toUpperCase().includes("USD");
-  let priceUnits = 0n;
-  try {
-    priceUnits = parseListingPriceUnits({ price: price || "0", asset: listingAsset });
-  } catch {
-    priceUnits = 0n;
-  }
 
-  // Per-tier price defaults from the stem's catalog pricing.
-  useEffect(() => {
-    if (!stemId) {
-      setTierPricing(null);
-      return;
-    }
-    let cancelled = false;
-    fetch(`${API_BASE}/api/stem-pricing/${stemId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!cancelled && data) {
-          setTierPricing({
-            remixLicenseUsd: data.remixLicenseUsd ?? null,
-            commercialLicenseUsd: data.commercialLicenseUsd ?? null,
-          });
-        }
-      })
-      .catch(() => {
-        /* no prefill — manual pricing still works */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [stemId]);
+  // Per-tier price defaults from the stem's catalog pricing; they keep
+  // following the listing asset and pricing until the seller edits a price.
+  const tierDefaults = useMemo(
+    () => initialTierDrafts({ personalPrice: "0.01", asset: listingAsset, pricing: tierPricing }),
+    [listingAsset, tierPricing],
+  );
+  const [drafts, setDrafts] = useTierDrafts(tierDefaults);
+
+  const seller = smartAccountAddress || address;
+  const committed = useCommittedEditions({ stemId, tokenId, seller, enabled: isOpen });
+  // Only the stem's creator can mint more editions to cover extra tiers.
+  const canMintMore = Boolean(
+    seller && stemData?.creator && stemData.creator.toLowerCase() === seller.toLowerCase(),
+  );
 
   if (!isOpen) return null;
 
-  const handleSelectTier = (tier: LicenseType) => {
-    setLicenseType(tier);
-    // Prefill only for USD-denominated listing assets, where catalog USD
-    // pricing maps 1:1; the seller can always overwrite the price.
-    const defaultUsd = tierDefaultPriceUsd(tierPricing, tier);
-    if (usdDenominated && defaultUsd != null) {
-      setPrice(String(defaultUsd));
-    }
-  };
+  const validated = validateTierDrafts(drafts, { asset: listingAsset });
+  const committedAmount = committedEditionsForPlan({
+    status: committed.status,
+    amount: committed.status === "ok" ? committed.amount : undefined,
+    balance,
+    tierCount: validated.valid ? validated.tiers.length : 0,
+  });
+  const plan = validated.valid
+    ? planTierListings({
+      tiers: validated.tiers,
+      balance,
+      committedAmount,
+      canMintMore,
+    })
+    : null;
+  const planReady = plan?.ok === true ? plan : null;
+  const planError = plan && !plan.ok ? plan.message : null;
 
   const handleList = async () => {
+    if (!planReady) return;
     try {
       const durationSeconds = BigInt(parseInt(duration) * 24 * 60 * 60);
-      const listAmount = BigInt(amount);
-      const hash = await list({
+      const { hash, listingIds } = await listTiers(planReady, {
         tokenId,
-        amount: listAmount,
-        pricePerUnit: priceUnits,
         paymentToken: listingToken,
         durationSeconds,
       });
-      // Record the listing intent so the indexer stamps the chosen license
-      // tier (the on-chain listing carries no license type). Best-effort:
-      // the listing itself already succeeded — but for non-personal tiers,
-      // a failed intent means the listing will index as Personal, so the
-      // seller must be told.
-      const seller = smartAccountAddress || address;
-      const warnTierMayBeLost = () => {
-        if (licenseType === "personal") return;
+      // Record the listing intent so the indexer stamps each listing's
+      // license tier (the on-chain listing carries no license type).
+      // Best-effort and non-blocking: the listings already exist and the
+      // indexer still records them, so a failure (including a refused
+      // sign-in) only shows a notice.
+      const warnTierDelayed = () => {
         addToast({
           type: "warning",
-          title: "License tier may not have been recorded",
-          message:
-            "Your listing was created, but it may appear as a Personal license. If it does, cancel and relist it.",
+          title: "Listing created",
+          message: NOTIFY_LISTING_DELAYED_MESSAGE,
         });
       };
       if (seller) {
-        fetch("/api/contracts/notify-listing", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            buildNotifyListingPayload({
-              tokenId,
-              chainId,
-              seller,
-              priceUnits,
-              amount: listAmount,
-              paymentToken: listingToken,
-              durationSeconds,
-              transactionHash: hash,
-              licenseType,
-              stemId,
-            }),
-          ),
-        })
-          .then((res) => {
-            if (!res.ok) warnTierMayBeLost();
-          })
-          .catch(() => {
-            warnTierMayBeLost();
-          });
+        void postNotifyListing(
+          buildTierNotifyPayload({
+            tokenId,
+            chainId,
+            seller,
+            paymentToken: listingToken,
+            durationSeconds,
+            transactionHash: hash,
+            stemId,
+            tiers: planReady.tiers,
+            listingIds,
+          }),
+          token,
+        ).then((result) => {
+          if (!result.ok) warnTierDelayed();
+        });
       } else {
-        warnTierMayBeLost();
+        warnTierDelayed();
       }
       onSuccess?.(hash);
     } catch {
@@ -167,20 +197,39 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
     }
   };
 
-  const maxAmount = balance;
   const txExplorerUrl = getExplorerTxUrl(txHash);
-  const editionHint = multiTierEditionHint({ balance, tier: licenseType });
-  const manualPriceUsd = usdDenominated ? parseFloat(price) || 0 : 0;
-  const parsedAmount = Math.max(1, Number.parseInt(amount || "1", 10) || 1);
-  const proceedsLine = protocolFeeLoading
+  const totalValueUnits = validated.tiers.reduce(
+    (sum, tier) => sum + tier.pricePerUnit * tier.amount,
+    0n,
+  );
+  const proceedsLine = protocolFeeLoading || totalValueUnits <= 0n
     ? null
     : sellerNetProceedsLine({
-      priceUnits,
-      quantity: BigInt(parsedAmount),
+      priceUnits: totalValueUnits,
+      quantity: 1n,
       asset: listingAsset,
       protocolFeeBps,
       royaltyBps: stemData?.royaltyBps,
     });
+  const planSummary = planReady ? (
+    <p className="listing-tier-plan">
+      {describeTierPlan({
+        tierCount: planReady.tiers.length,
+        totalAmount: planReady.totalAmount,
+        mintAmount: planReady.mintAmount,
+        mode: "list",
+      })}
+    </p>
+  ) : planError ? (
+    <p className="listing-tier-plan listing-tier-plan--error text-red-400">{planError}</p>
+  ) : null;
+  const committedNote =
+    committed.status === "ok" && committed.amount > 0n
+      ? `${committed.amount} of your editions are already in active listings, so they are not counted as free to list.`
+      : committed.status === "unknown" && stemId
+        ? "We couldn't check your active listings for this stem; make sure you hold enough editions for every tier."
+        : null;
+  const selectedTierNames = validated.tiers.map((tier) => TIER_LABELS[tier.licenseType]).join(", ");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -213,59 +262,21 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
             <p className="text-white">{balance.toString()} editions</p>
           </div>
 
-          {/* License Tier */}
-          <div>
-            <LicenseTypeSelector
-              selected={licenseType}
-              onSelect={handleSelectTier}
-              personalPriceUsd={licenseType === "personal" ? manualPriceUsd : 0}
-              remixPriceUsd={tierDefaultPriceUsd(tierPricing, "remix") ?? 5}
-              commercialPriceUsd={tierDefaultPriceUsd(tierPricing, "commercial") ?? 25}
-            />
-            <p className="text-xs text-zinc-500 mt-1">
-              Buyers receive the rights of the license tier you list. A remix
-              license is what unlocks Remix Studio for this stem.
-            </p>
-            {editionHint && (
-              <p className="text-xs text-amber-400/90 mt-1 listing-edition-hint">
-                {editionHint}
-              </p>
-            )}
-          </div>
-
-          {/* Price Input */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-1">
-              {listingSymbol} price per edition
-            </label>
-            <input
-              type="number"
-              min="0"
-              step={listingStep}
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-white"
-            />
-          </div>
-
-          {/* Amount Input */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-1">
-              Quantity to List (max: {maxAmount.toString()})
-            </label>
-            <input
-              type="number"
-              min="1"
-              max={maxAmount.toString()}
-              value={amount}
-              onChange={(e) => {
-                const val = parseInt(e.target.value || "1");
-                const max = Number(maxAmount);
-                setAmount(Math.min(Math.max(val, 1), max).toString());
-              }}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-white"
-            />
-          </div>
+          {/* License tiers: one or more, each with its own price and editions */}
+          <TierPicker
+            value={drafts}
+            onChange={setDrafts}
+            errors={validated.errors}
+            formError={validated.formError}
+            assetSymbol={listingSymbol}
+            priceStep={listingStep}
+            idPrefix={`list-${tokenId.toString()}`}
+            disabled={pending}
+            summary={planSummary}
+          />
+          {committedNote && (
+            <p className="text-xs text-zinc-500 listing-edition-hint">{committedNote}</p>
+          )}
 
           {/* Duration Select */}
           <div>
@@ -289,14 +300,14 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
           {/* Summary */}
           <div className="bg-zinc-800 rounded-lg p-4 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-zinc-400">License</span>
-              <span className="text-white capitalize">{licenseType}</span>
+              <span className="text-zinc-400">License tiers</span>
+              <span className="text-white">{selectedTierNames || "None"}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-zinc-400">Total Value</span>
               <span className="text-white">
                 {formatListingPrice({
-                  priceUnits: priceUnits * BigInt(parseInt(amount || "1")),
+                  priceUnits: totalValueUnits,
                   asset: listingAsset,
                 })}
               </span>
@@ -363,10 +374,18 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
             </button>
             <button
               onClick={handleList}
-              disabled={pending || paymentAssetsLoading || maxAmount === 0n || !price || priceUnits <= 0n}
+              disabled={pending || paymentAssetsLoading || committed.status === "loading" || !planReady}
               className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white py-3 rounded-md transition-colors"
             >
-              {paymentAssetsLoading ? "Loading asset..." : pending ? "Listing..." : "List for Sale"}
+              {paymentAssetsLoading
+                ? "Loading asset..."
+                : committed.status === "loading"
+                  ? "Checking editions..."
+                  : pending
+                    ? "Listing..."
+                    : planReady && planReady.tiers.length > 1
+                      ? `List ${planReady.tiers.length} tiers`
+                      : "List for Sale"}
             </button>
           </div>
         </div>

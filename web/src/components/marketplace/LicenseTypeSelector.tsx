@@ -17,7 +17,7 @@ interface LicenseTypeSelectorProps {
   }>>;
 }
 
-const LICENSE_OPTIONS: {
+export const LICENSE_OPTIONS: {
   type: LicenseType;
   label: string;
   desc: string;

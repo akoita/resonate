@@ -27,6 +27,7 @@ import { foundry, sepolia, baseSepolia } from "viem/chains";
 import { CuratorReputationService } from "./curator-reputation.service";
 import { HumanVerificationService } from "./human-verification.service";
 import { isPubliclyPurchasableListing } from "./listing-lifecycle";
+import { reconcileIndexedListingsWithIntents } from "./listing-intent-matching";
 import type {
   RightsEvidenceBundleInput,
   RightsEvidenceDraftInput,
@@ -2112,16 +2113,72 @@ export class MetadataController {
   }
 
   /**
+   * notify-listing writes listing intents for `sellerAddress`; only that
+   * seller (one of the caller's own addresses) or admin/operator may do so.
+   */
+  /** True when the caller is admin/operator or owns or manages the stem's release artist. */
+  private async callerMayLinkStem(user: any, stemId: string): Promise<boolean> {
+    if (user?.role === "admin" || user?.role === "operator") return true;
+    const userId = typeof user?.userId === "string" ? user.userId : "";
+    if (!userId) return false;
+    const stem = await prisma.stem.findUnique({
+      where: { id: stemId },
+      select: {
+        track: {
+          select: {
+            release: {
+              select: {
+                managementOwnerUserId: true,
+                artist: { select: { userId: true, managementOwnerUserId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const release = stem?.track?.release;
+    if (!release) return false;
+    const owners = [release.managementOwnerUserId, release.artist?.userId, release.artist?.managementOwnerUserId]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    if (owners.includes(userId.toLowerCase())) return true;
+    const ownAddresses = await this.contractsService.getCallerWalletAddresses(userId);
+    return owners.some((owner) => ownAddresses.has(owner));
+  }
+
+  private async assertCallerOwnsSellerAddress(user: any, sellerAddress: string) {
+    const userId = typeof user?.userId === "string" ? user.userId : "";
+    if (!userId) {
+      throw new ForbiddenException("Authentication required");
+    }
+    if (user.role === "admin" || user.role === "operator") {
+      return;
+    }
+    const ownAddresses = await this.contractsService.getCallerWalletAddresses(userId);
+    if (!ownAddresses.has(sellerAddress)) {
+      throw new ForbiddenException("sellerAddress is not one of your addresses");
+    }
+  }
+
+  /**
    * POST /metadata/notify-listing
-   * Frontend calls this after a successful on-chain mintAndList to
+   * Frontend calls this after a successful on-chain mintAndList / list to
    * broadcast a WebSocket event to all connected clients immediately,
-   * bypassing the indexer polling delay.
+   * bypassing the indexer polling delay, and to record the listing intent
+   * (license tier, payment asset) the on-chain Listed event does not carry.
+   *
+   * #2041: `tiers` describes several list() calls for the same token in one
+   * transaction (one per license tier). When present, the top-level
+   * licenseType/price/amount are ignored and one intent is stored per tier.
+   * Requires a JWT; `sellerAddress` must be one of the caller's addresses.
    */
   @Post("notify-listing")
-  async notifyListingCreated(@Body() body: {
+  @UseGuards(AuthGuard("jwt"))
+  async notifyListingCreated(@Request() req: any, @Body() body: {
     tokenId?: string;
     chainId?: number | string;
-    seller?: string;
+    /** Required: the listing seller, one of the caller's own addresses. */
+    sellerAddress?: string;
     price?: string;
     amount?: string;
     paymentToken?: string;
@@ -2129,8 +2186,17 @@ export class MetadataController {
     transactionHash?: string;
     stemId?: string;
     licenseType?: "personal" | "remix" | "commercial";
+    tiers?: NotifyListingTierInput[];
   }) {
-    this.logger.log(`Notify listing: tokenId=${body.tokenId}, stemId=${body.stemId}`);
+    this.logger.log(`Notify listing: tokenId=${body?.tokenId}, stemId=${body?.stemId}`);
+    // Validate and authorize before the best-effort block below so a bad body
+    // is a 400 and a foreign seller a 403, with nothing written.
+    if (typeof body?.sellerAddress !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(body.sellerAddress)) {
+      throw new BadRequestException("sellerAddress must be a 0x-prefixed 20-byte hex address");
+    }
+    const seller = body.sellerAddress.toLowerCase();
+    const tiers = parseNotifyListingTiers(body.tiers);
+    await this.assertCallerOwnsSellerAddress(req?.user, seller);
 
     try {
       // Listing rows MUST be stamped with the same chainId the polling
@@ -2155,55 +2221,95 @@ export class MetadataController {
 
       // Link stem to its NFT tokenId so the indexer can correlate
       // StemListed events (which carry tokenId) back to our stem record.
-      if (body.stemId && body.tokenId) {
+      // Only the stem's own artist (owner or manager) or an operator may link
+      // it; a foreign caller is skipped, not refused, so its listing intents
+      // still record (#2041).
+      if (body.stemId && body.tokenId && await this.callerMayLinkStem(req?.user, body.stemId)) {
         await prisma.stem.update({
           where: { id: body.stemId },
           data: { ipnftId: body.tokenId },
         }).catch((e) => this.logger.warn(`Failed to set ipnftId on stem: ${e}`));
       }
       if (body.transactionHash && body.tokenId) {
-        await prisma.stemListingIntent.upsert({
-          where: {
-            transactionHash_tokenId: {
-              transactionHash: body.transactionHash,
-              tokenId: BigInt(body.tokenId),
-            },
-          },
-          create: {
-            transactionHash: body.transactionHash,
-            tokenId: BigInt(body.tokenId),
-            chainId,
-            stemId: body.stemId,
-            sellerAddress: body.seller?.toLowerCase(),
+        const transactionHash = body.transactionHash;
+        const tokenId = BigInt(body.tokenId);
+        const intentTiers: Array<{
+          licenseType: LicenseType;
+          pricePerUnit?: string;
+          amount?: string;
+          logOrdinal: number | null;
+          listingId: bigint | null;
+        }> = tiers
+          ? tiers.map((tier) => ({
+            licenseType: tier.licenseType,
+            pricePerUnit: tier.pricePerUnit,
+            amount: tier.amount,
+            logOrdinal: tier.ordinal,
+            listingId: tier.listingId ?? null,
+          }))
+          : [{
+            licenseType: (body.licenseType ?? "personal") as LicenseType,
             pricePerUnit: body.price,
-            amount: body.amount ? BigInt(body.amount) : undefined,
-            paymentToken: body.paymentToken,
-            licenseType: body.licenseType ?? "personal",
-          },
-          update: {
-            stemId: body.stemId,
-            sellerAddress: body.seller?.toLowerCase(),
-            pricePerUnit: body.price,
-            amount: body.amount ? BigInt(body.amount) : undefined,
-            paymentToken: body.paymentToken,
-            licenseType: body.licenseType ?? "personal",
-          },
+            amount: body.amount,
+            logOrdinal: null,
+            listingId: null,
+          }];
+
+        // A tiers notify replaces every earlier intent of this seller for the
+        // tx/token; a single-tier notify replaces the seller's other
+        // single-tier intents, so a corrected retry wins.
+        await prisma.$transaction(async (db) => {
+          await db.stemListingIntent.deleteMany({
+            where: tiers
+              ? { transactionHash, tokenId, sellerAddress: seller }
+              : {
+                transactionHash,
+                tokenId,
+                sellerAddress: seller,
+                logOrdinal: null,
+                licenseType: { not: intentTiers[0].licenseType },
+              },
+          });
+          for (const tier of intentTiers) {
+            // Price and amount are recorded for reference only: indexed
+            // listings always keep the on-chain values.
+            const intentData = {
+              stemId: body.stemId,
+              pricePerUnit: tier.pricePerUnit,
+              amount: tier.amount ? BigInt(tier.amount) : undefined,
+              paymentToken: body.paymentToken,
+              logOrdinal: tier.logOrdinal,
+              listingId: tier.listingId,
+            };
+            await db.stemListingIntent.upsert({
+              where: {
+                transactionHash_tokenId_sellerAddress_licenseType: {
+                  transactionHash,
+                  tokenId,
+                  sellerAddress: seller,
+                  licenseType: tier.licenseType,
+                },
+              },
+              create: {
+                transactionHash,
+                tokenId,
+                chainId,
+                sellerAddress: seller,
+                licenseType: tier.licenseType,
+                ...intentData,
+              },
+              update: intentData,
+            });
+          }
         }).catch((e) => this.logger.warn(`Failed to store listing intent: ${e}`));
 
-        await prisma.stemListing.updateMany({
-          where: {
-            transactionHash: body.transactionHash,
-            tokenId: BigInt(body.tokenId),
-            chainId,
-          },
-          data: {
-            stemId: body.stemId,
-            sellerAddress: body.seller?.toLowerCase(),
-            pricePerUnit: body.price,
-            amount: body.amount ? BigInt(body.amount) : undefined,
-            paymentToken: body.paymentToken,
-            licenseType: body.licenseType ?? "personal",
-          },
+        // The Listed event may already be indexed (it can beat this call):
+        // apply each tier to its own listing row.
+        await reconcileIndexedListingsWithIntents({
+          transactionHash,
+          tokenId,
+          chainId,
+          logger: this.logger,
         }).catch((e) => this.logger.warn(`Failed to reconcile listing intent: ${e}`));
 
         try {
@@ -2218,21 +2324,29 @@ export class MetadataController {
       // so that only the WebSocket broadcast fires — no DB handler.
       // The actual DB listing is created by the indexer when it picks up
       // the on-chain StemListed event with the correct listing ID.
-      this.eventBus.publish({
-        eventName: "marketplace.listing_notify",
-        eventVersion: 1,
-        occurredAt: new Date().toISOString(),
-        listingId: "pending",
-        tokenId: body.tokenId || "0",
-        chainId,
-        sellerAddress: (body.seller || "").toLowerCase(),
-        amount: body.amount || "1",
-        pricePerUnit: body.price || "10000000000000000",
-        paymentToken: body.paymentToken,
+      // One notification per tier (#2041).
+      const broadcastTiers = tiers ?? [{
         licenseType: body.licenseType ?? "personal",
-        stemId: body.stemId,
-        transactionHash: body.transactionHash,
-      } as any);
+        pricePerUnit: body.price,
+        amount: body.amount,
+      }];
+      for (const tier of broadcastTiers) {
+        this.eventBus.publish({
+          eventName: "marketplace.listing_notify",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          listingId: "pending",
+          tokenId: body.tokenId || "0",
+          chainId,
+          sellerAddress: seller,
+          amount: tier.amount || "1",
+          pricePerUnit: tier.pricePerUnit || "10000000000000000",
+          paymentToken: body.paymentToken,
+          licenseType: tier.licenseType,
+          stemId: body.stemId,
+          transactionHash: body.transactionHash,
+        } as any);
+      }
 
       this.logger.log(`Listing notification sent for stemId=${body.stemId}, tokenId=${body.tokenId}.`);
       return {
@@ -2247,4 +2361,80 @@ export class MetadataController {
       return { success: false, error: String(error) };
     }
   }
+}
+
+/** One license tier of a multi-tier notify-listing body (#2041). */
+export interface NotifyListingTierInput {
+  licenseType: "personal" | "remix" | "commercial";
+  pricePerUnit: string;
+  amount: string;
+  /** 0-based order of this token's list() calls inside the transaction. */
+  ordinal: number;
+  /** On-chain listing id, when the client read it from the receipt. */
+  listingId?: string;
+}
+
+const NOTIFY_LISTING_TIER_LICENSES = new Set(["personal", "remix", "commercial"]);
+const NOTIFY_LISTING_MAX_TIERS = 3;
+const NUMERIC_STRING = /^\d+$/;
+
+/**
+ * Validates the optional `tiers` array of POST /metadata/notify-listing.
+ * Returns undefined when the body uses the legacy single-tier shape.
+ */
+export function parseNotifyListingTiers(
+  raw: unknown,
+): Array<Omit<NotifyListingTierInput, "listingId" | "licenseType"> & {
+  licenseType: LicenseType;
+  listingId?: bigint;
+}> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > NOTIFY_LISTING_MAX_TIERS) {
+    throw new BadRequestException(
+      `tiers must be an array of 1 to ${NOTIFY_LISTING_MAX_TIERS} entries`,
+    );
+  }
+  const seenLicenses = new Set<string>();
+  const seenOrdinals = new Set<number>();
+  return raw.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new BadRequestException(`tiers[${index}] must be an object`);
+    }
+    const tier = entry as Record<string, unknown>;
+    if (typeof tier.licenseType !== "string" || !NOTIFY_LISTING_TIER_LICENSES.has(tier.licenseType)) {
+      throw new BadRequestException(
+        `tiers[${index}].licenseType must be one of personal, remix, commercial`,
+      );
+    }
+    if (seenLicenses.has(tier.licenseType)) {
+      throw new BadRequestException(`tiers[${index}].licenseType duplicates another tier`);
+    }
+    seenLicenses.add(tier.licenseType);
+    if (typeof tier.ordinal !== "number" || !Number.isInteger(tier.ordinal) || tier.ordinal < 0) {
+      throw new BadRequestException(`tiers[${index}].ordinal must be a non-negative integer`);
+    }
+    if (seenOrdinals.has(tier.ordinal)) {
+      throw new BadRequestException(`tiers[${index}].ordinal duplicates another tier`);
+    }
+    seenOrdinals.add(tier.ordinal);
+    if (typeof tier.pricePerUnit !== "string" || !NUMERIC_STRING.test(tier.pricePerUnit)) {
+      throw new BadRequestException(`tiers[${index}].pricePerUnit must be a numeric string`);
+    }
+    if (typeof tier.amount !== "string" || !NUMERIC_STRING.test(tier.amount)) {
+      throw new BadRequestException(`tiers[${index}].amount must be a numeric string`);
+    }
+    if (
+      tier.listingId !== undefined &&
+      (typeof tier.listingId !== "string" || !NUMERIC_STRING.test(tier.listingId))
+    ) {
+      throw new BadRequestException(`tiers[${index}].listingId must be a numeric string`);
+    }
+    return {
+      licenseType: tier.licenseType as LicenseType,
+      pricePerUnit: tier.pricePerUnit,
+      amount: tier.amount,
+      ordinal: tier.ordinal,
+      listingId: tier.listingId === undefined ? undefined : BigInt(tier.listingId),
+    };
+  });
 }

@@ -22,6 +22,7 @@ import {
   parseListingPriceUnits,
   type MarketplaceListingAsset,
 } from "../../../lib/listingPricing";
+import { postNotifyListing } from "../../../lib/listingTiers";
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
 import { sellerNetProceedsLine } from "../../../lib/marketplaceProceeds";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
@@ -329,6 +330,7 @@ export default function MarketplaceListingManagerPage() {
     const priceUnits = parseListingPriceUnits({ price, asset: selectedAsset });
     const durationSeconds = String(parseInt(duration) * 24 * 60 * 60);
 
+    let intentDelayed = false;
     try {
       for (let index = 0; index < relistingListings.length; index += 1) {
         const listing = relistingListings[index];
@@ -346,12 +348,14 @@ export default function MarketplaceListingManagerPage() {
           durationSeconds: BigInt(durationSeconds),
         });
 
-        await fetch("/api/contracts/notify-listing", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        // Best-effort and non-blocking: the relist is already on-chain and
+        // the indexer records it even if the intent is refused (#2041).
+        const notified = await postNotifyListing(
+          {
             tokenId: listing.tokenId,
+            chainId,
             seller: sellerAddress,
+            sellerAddress,
             price: priceUnits.toString(),
             amount,
             paymentToken: listingPaymentToken(selectedAsset),
@@ -359,14 +363,17 @@ export default function MarketplaceListingManagerPage() {
             durationSeconds,
             transactionHash: txHash,
             stemId: listing.stem?.id,
-          }),
-        }).catch(() => undefined);
+          },
+          token,
+        );
+        if (!notified.ok) intentDelayed = true;
       }
 
       setSuccess(
-        relistingListings.length === 1
+        (relistingListings.length === 1
           ? "Listing transaction submitted. The indexer will attach the new listing shortly."
-          : `${relistingListings.length} listing transactions submitted. The indexer will attach the new listings shortly.`,
+          : `${relistingListings.length} listing transactions submitted. The indexer will attach the new listings shortly.`) +
+          (intentDelayed ? " License tiers may take a moment to show." : ""),
       );
       setRelistingListings([]);
       setSelectedListingIds(new Set());

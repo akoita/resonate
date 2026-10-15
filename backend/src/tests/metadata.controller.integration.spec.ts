@@ -559,7 +559,8 @@ describe('MetadataController (integration)', () => {
           chainId: 31337,
           contractAddress: '0xMarketplace',
           sellerAddress: creatorWalletAddress,
-          pricePerUnit: '0',
+          // On-chain price from the Listed event (chain values win, #2041).
+          pricePerUnit: '50000',
           amount: 1n,
           paymentToken: '0x0000000000000000000000000000000000000000',
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -572,11 +573,11 @@ describe('MetadataController (integration)', () => {
 
       try {
         indexerService.indexTransaction.mockClear();
-        await controller.notifyListingCreated({
+        await controller.notifyListingCreated({ user: { userId: creatorWalletAddress } }, {
           tokenId: '42',
           chainId: 31337,
-          seller: creatorWalletAddress,
-          price: '50000',
+          sellerAddress: creatorWalletAddress,
+          price: '99999',
           amount: '1',
           paymentToken: stablecoinToken,
           durationSeconds: '86400',
@@ -623,10 +624,10 @@ describe('MetadataController (integration)', () => {
 
       try {
         indexerService.indexTransaction.mockClear();
-        await controller.notifyListingCreated({
+        await controller.notifyListingCreated({ user: { userId: creatorWalletAddress } }, {
           tokenId: '99',
           chainId: notifiedChainId,
-          seller: creatorWalletAddress,
+          sellerAddress: creatorWalletAddress,
           price: '50000',
           amount: '1',
           paymentToken: ('0x' + '9'.repeat(40)).toLowerCase(),
@@ -682,7 +683,8 @@ describe('MetadataController (integration)', () => {
           chainId: 31337,
           contractAddress: '0xMarketplace',
           sellerAddress: creatorWalletAddress,
-          pricePerUnit: '0',
+          // On-chain price; only the payment asset is backfilled (#2041).
+          pricePerUnit: '40000',
           amount: 1n,
           paymentToken: '0x0000000000000000000000000000000000000000',
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -698,13 +700,13 @@ describe('MetadataController (integration)', () => {
         const listing = result.listings.find((item) => item.listingId === '860');
         expect(listing).toBeDefined();
         expect(listing!.paymentToken).toBe(stablecoinToken);
-        expect(listing!.price).toBe('50000');
+        expect(listing!.price).toBe('40000');
 
         const persisted = await prisma.stemListing.findFirst({
           where: { transactionHash, listingId: 860n },
         });
         expect(persisted!.paymentToken).toBe(stablecoinToken);
-        expect(persisted!.pricePerUnit).toBe('50000');
+        expect(persisted!.pricePerUnit).toBe('40000');
       } finally {
         await prisma.stemListingIntent.deleteMany({ where: { transactionHash } });
         await prisma.stemListing.deleteMany({ where: { transactionHash } });

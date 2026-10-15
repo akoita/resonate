@@ -1166,7 +1166,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Each listing is sold under a license tier that defines what you may do with it:",
+            text: "Each listing is sold under a license tier that defines what you may do with it. When an artist offers a stem in several tiers, its card in Browse stems shows a button for each tier with its price; pick one to open checkout on that tier.",
           },
           {
             kind: "definitions",
@@ -1230,11 +1230,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "marketplace-sell",
     title: "List & manage your stems",
     summary:
-      "Put your stems up for sale, choose a license tier and price, and manage active, expiring, sold, and relistable listings from one workspace.",
+      "Put your stems up for sale under one or more license tiers, each with its own price and number of editions, and manage active, expiring, sold, and relistable listings from one workspace.",
     category: "marketplace",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["sell", "list", "listing", "mint", "manage listings", "relist", "expire", "price", "license tier", "marketplace", "payout", "verified human", "eligible for payouts"],
+    keywords: ["sell", "list", "listing", "mint", "manage listings", "relist", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
     sections: [
       {
         id: "listing",
@@ -1243,10 +1243,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "From a stem on one of your releases, choose List for sale (or use Mint & list from Listings).",
-              "Pick the license tier buyers will receive — personal, remix, or commercial.",
-              "Set the price (prefilled from your catalog price when available) and confirm.",
+              "From a stem on one of your releases, choose Mint & list (or List for sale on a stem you already minted). To list several stems of a release at once, select them and use batch Mint & list.",
+              "Tick each license tier you want to offer — personal, remix, commercial, or any combination.",
+              "For each tier, set the price per edition (prefilled from your catalog price when available) and how many editions to offer.",
+              "Check the summary line, then confirm once. One confirmation creates every tier's listing.",
             ],
+          },
+          {
+            kind: "paragraph",
+            text: "Each tier is its own listing, and every sale hands the buyer one edition of the stem. Resonate makes sure you hold enough editions for all the tiers you offer: if you don't, it mints the missing editions in the same confirmation and tells you how many before you confirm. Editions already offered in your other active listings of that stem don't count as free.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Only the stem's creator can mint more editions",
+            text: "If you are reselling a stem you bought, you can only offer as many editions as you hold and haven't already listed. Lower the edition counts if the app says you don't have enough.",
           },
           {
             kind: "paragraph",
@@ -1256,7 +1267,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Remix-tier listings power Remix Studio",
-            text: "When you list a stem at the remix tier, buyers of that listing can open it in Remix Studio.",
+            text: "When you list a stem at the remix tier, buyers of that listing can open it in Remix Studio. In Browse stems, a stem offered in several tiers shows once, with a button per tier and its price.",
           },
           {
             kind: "callout",

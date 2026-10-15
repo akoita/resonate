@@ -1688,6 +1688,27 @@
   background: rgba(16, 185, 129, 0.08);
 }
 
+/* Clickable tier chips on a multi-tier stem card (#2041): sit above the
+ * stretched title link and open checkout on that tier's listing. */
+.stem-card__tier-chip {
+  position: relative;
+  z-index: 2;
+  font-family: inherit;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.stem-card__tier-chip:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.stem-card__tier-chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .stem-card__editions {
   margin-left: auto;
   font-size: 11px;

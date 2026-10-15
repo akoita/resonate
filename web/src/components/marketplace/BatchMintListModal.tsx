@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import {
@@ -20,6 +20,18 @@ import {
   isStakeCappedListingPriceUnits,
   resolveStakeSafeListingPriceUnits,
 } from "../../lib/stakeSafeListingPrice";
+import {
+  describeTierPlan,
+  formatPriceInput,
+  initialTierDrafts,
+  orderTiers,
+  resolveListingPriceCapUnits,
+  TIER_LABELS,
+  validateTierDrafts,
+} from "../../lib/multiTierListing";
+import { TierPicker, useTierDrafts } from "./TierPicker";
+import { useToast } from "../ui/Toast";
+import { NOTIFY_LISTING_DELAYED_MESSAGE } from "../../lib/listingTiers";
 
 interface BatchMintListModalProps {
   stems: BatchStemItem[];
@@ -30,6 +42,15 @@ interface BatchMintListModalProps {
   resolveReleaseProtectionId?: () => Promise<bigint | undefined | false>;
   onClose: () => void;
   onComplete?: () => void;
+}
+
+function onceOnly(fn: () => void): () => void {
+  let called = false;
+  return () => {
+    if (called) return;
+    called = true;
+    fn();
+  };
 }
 
 const STEM_EMOJI: Record<string, string> = {
@@ -59,6 +80,12 @@ export function BatchMintListModal({
   onComplete,
 }: BatchMintListModalProps) {
   const { executeBatch, pending } = useBatchMintAndList();
+  const { addToast } = useToast();
+  // One non-blocking notice per batch when listing intents could not be
+  // recorded; the listings still exist and the indexer records them.
+  const notifyFailed = useCallback(() => {
+    addToast({ type: "warning", title: "Listings created", message: NOTIFY_LISTING_DELAYED_MESSAGE });
+  }, [addToast]);
   const { chainId } = useZeroDev();
   const {
     assets: paymentAssets,
@@ -68,7 +95,6 @@ export function BatchMintListModal({
   const [phase, setPhase] = useState<"confirm" | "progress">("confirm");
   const [results, setResults] = useState<BatchStemResult[]>([]);
   const [batchError, setBatchError] = useState<string | null>(null);
-  const [licenseType, setLicenseType] = useState<"personal" | "remix" | "commercial">("personal");
   const listingAsset = selectDefaultMarketplaceListingAsset({
     assets: paymentAssets,
     chainId,
@@ -91,13 +117,46 @@ export function BatchMintListModal({
   });
   const listingPriceUnavailable = !paymentAssetsLoading && listingPriceUnits <= 0n;
 
+  // License tiers for every stem in the batch (#2041): each stem mints the
+  // summed editions and lists each chosen tier at its own price.
+  const maxPriceUnits = resolveListingPriceCapUnits({
+    asset: listingAsset,
+    releaseProtection,
+    trustTier,
+  });
+  const tierDefaults = useMemo(
+    () =>
+      initialTierDrafts({
+        personalPrice: formatPriceInput(listingPriceUnits, listingAsset),
+        asset: listingAsset,
+        maxPriceUnits,
+      }),
+    [listingAsset, listingPriceUnits, maxPriceUnits],
+  );
+  const [tierDrafts, setTierDrafts] = useTierDrafts(tierDefaults);
+  const maxPriceLabel =
+    maxPriceUnits != null
+      ? formatListingPrice({ priceUnits: maxPriceUnits, asset: listingAsset })
+      : undefined;
+  const validatedTiers = validateTierDrafts(tierDrafts, {
+    asset: listingAsset,
+    maxPriceUnits,
+    maxPriceLabel,
+  });
+  const orderedTiers = validatedTiers.valid ? orderTiers(validatedTiers.tiers) : null;
+  const plannedTiers = orderedTiers?.ok ? orderedTiers : null;
+  const tierSummaryLabel = plannedTiers
+    ? plannedTiers.tiers.map((tier) => TIER_LABELS[tier.licenseType]).join(" · ")
+    : "—";
+
   const handleConfirm = useCallback(async () => {
     setBatchError(null);
-    if (listingPriceUnits <= 0n) {
-      setBatchError("Marketplace listing price must be greater than zero.");
+    if (!plannedTiers) {
+      setBatchError("Choose at least one license tier with a valid price and edition count.");
       return;
     }
     setPhase("progress");
+    const notifyOnce = onceOnly(notifyFailed);
     try {
       const resolvedProtectionId = resolveReleaseProtectionId
         ? await resolveReleaseProtectionId()
@@ -107,10 +166,10 @@ export function BatchMintListModal({
         return;
       }
       await executeBatch(stems, {
-        pricePerUnit: listingPriceUnits,
         paymentToken: listingToken,
         releaseProtectionId: resolvedProtectionId,
-        licenseType,
+        tiers: plannedTiers.tiers,
+        onNotifyFailed: notifyOnce,
         onProgress: (r) => setResults([...r]),
       });
       onComplete?.();
@@ -120,15 +179,16 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Batch transaction failed"
       );
     }
-  }, [stems, executeBatch, licenseType, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
+  }, [stems, executeBatch, notifyFailed, plannedTiers, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const handleRetryFailed = useCallback(async () => {
     const failedStems = stems.filter(s =>
       results.find(r => r.stemId === s.stemId && r.status === "failed")
     );
-    if (failedStems.length === 0) return;
+    if (failedStems.length === 0 || !plannedTiers) return;
 
     setBatchError(null);
+    const notifyOnce = onceOnly(notifyFailed);
     try {
       const resolvedProtectionId = resolveReleaseProtectionId
         ? await resolveReleaseProtectionId()
@@ -137,10 +197,10 @@ export function BatchMintListModal({
         return;
       }
       await executeBatch(failedStems, {
-        pricePerUnit: listingPriceUnits,
         paymentToken: listingToken,
         releaseProtectionId: resolvedProtectionId,
-        licenseType,
+        tiers: plannedTiers.tiers,
+        onNotifyFailed: notifyOnce,
         onProgress: (newResults) => {
           setResults(prev => {
             const updated = [...prev];
@@ -159,7 +219,7 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Retry failed"
       );
     }
-  }, [stems, results, executeBatch, licenseType, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
+  }, [stems, results, executeBatch, notifyFailed, plannedTiers, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const doneCount = results.filter(r => r.status === "done").length;
   const failedCount = results.filter(r => r.status === "failed").length;
@@ -183,12 +243,12 @@ export function BatchMintListModal({
         {phase === "confirm" && (
           <>
             <p className="batch-modal-desc">
-              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace at <strong>{listingPriceLabel}</strong> each using the configured marketplace settlement asset.
+              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace under the license tiers you choose, using the configured marketplace settlement asset. Everything happens in one confirmation.
             </p>
 
             {listingPriceCapped && (
               <div className="batch-cap-note">
-                Current Content Protection stake caps this release to <strong>{listingPriceLabel}</strong> per stem listing.
+                Current Content Protection stake caps this release to <strong>{listingPriceLabel}</strong> per edition.
               </div>
             )}
 
@@ -198,25 +258,30 @@ export function BatchMintListModal({
               </div>
             )}
 
-            <div style={{ margin: "12px 0" }}>
-              <label
-                htmlFor="batch-license-type"
-                style={{ display: "block", fontSize: 13, marginBottom: 4, opacity: 0.8 }}
-              >
-                License tier for these listings
-              </label>
-              <select
-                id="batch-license-type"
-                value={licenseType}
-                onChange={(e) =>
-                  setLicenseType(e.target.value as "personal" | "remix" | "commercial")
+            <div style={{ margin: "12px 0 16px" }}>
+              <TierPicker
+                value={tierDrafts}
+                onChange={setTierDrafts}
+                errors={validatedTiers.errors}
+                formError={validatedTiers.formError}
+                assetSymbol={listingAsset?.symbol ?? "ETH"}
+                priceStep={listingAsset?.decimals === 6 ? "0.000001" : "0.000000000000000001"}
+                idPrefix="batch-tier"
+                disabled={pending}
+                summary={
+                  plannedTiers ? (
+                    <p>
+                      Each stem:{" "}
+                      {describeTierPlan({
+                        tierCount: plannedTiers.tiers.length,
+                        totalAmount: plannedTiers.totalAmount,
+                        mintAmount: plannedTiers.totalAmount,
+                        mode: "mint",
+                      })}
+                    </p>
+                  ) : null
                 }
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 6 }}
-              >
-                <option value="personal">Personal — stream &amp; collect</option>
-                <option value="remix">Remix — derivative works, unlocks Remix Studio</option>
-                <option value="commercial">Commercial — ads, films, monetized content</option>
-              </select>
+              />
             </div>
 
             <div className="batch-stems-list">
@@ -231,7 +296,7 @@ export function BatchMintListModal({
                     </span>
                     <span className="batch-stem-track">{stem.trackTitle}</span>
                   </div>
-                  <span className="batch-stem-price">{listingPriceLabel}</span>
+                  <span className="batch-stem-price">{tierSummaryLabel}</span>
                 </div>
               ))}
             </div>
@@ -243,7 +308,7 @@ export function BatchMintListModal({
               <button
                 className="batch-btn-confirm"
                 onClick={handleConfirm}
-                disabled={pending || paymentAssetsLoading || listingPriceUnavailable}
+                disabled={pending || paymentAssetsLoading || listingPriceUnavailable || !plannedTiers}
               >
                 {paymentAssetsLoading ? "Loading asset..." : pending ? "Starting..." : listingPriceUnavailable ? "Price unavailable" : `Confirm All (${stems.length})`}
               </button>
