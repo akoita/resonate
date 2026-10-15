@@ -70,9 +70,12 @@ from your wallet. **We never take a fee out of a refund** — what the table
 above says you are owed is what you receive.
 
 **If something goes wrong.** Contact us at {{OPERATOR_CONTACT_EMAIL}} and we
-will investigate. We do not currently monitor for refunds that are claimable
-but unclaimed, so a refund you never claim will sit waiting rather than being
-sent to you.
+will investigate. A refund is never sent to you automatically: you claim it
+yourself. When a campaign's refunds open and you have not yet claimed, we
+remind you in the app with a notice that links to the campaign page where you
+claim — once when refunds open, again after 7 days and a last time after 30
+days — and then we stop. A refund you never claim keeps waiting for you in the
+escrow.
 
 ## What a pledge is not
 

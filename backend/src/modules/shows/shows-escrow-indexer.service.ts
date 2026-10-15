@@ -83,7 +83,7 @@ const ESCROW_EVENTS = [
 ] as const;
 
 const RPC_OVERRIDE = process.env.RPC_URL || "";
-const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
+export const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
   31337: {
     chain: foundry,
     rpcUrl:

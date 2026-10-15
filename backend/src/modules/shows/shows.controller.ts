@@ -21,6 +21,7 @@ import { Response } from "express";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { CommunityRoomsService } from "../community/community_rooms.service";
+import { ShowRefundReminderService } from "./show-refund-reminder.service";
 import { ShowsService } from "./shows.service";
 import {
   getShowsVisualMaxBytes,
@@ -34,6 +35,7 @@ export class ShowsController {
   constructor(
     private readonly showsService: ShowsService,
     private readonly communityRoomsService: CommunityRoomsService,
+    private readonly refundReminders: ShowRefundReminderService,
   ) {}
 
   @Get("campaigns")
@@ -327,6 +329,20 @@ export class ShowsController {
       contractCampaignId,
       sinceMinutes: sinceMinutes !== undefined ? Number(sinceMinutes) : undefined,
       limit: limit !== undefined ? Number(limit) : undefined,
+    });
+  }
+
+  // #2149: refunds that are claimable but unclaimed, per campaign. Database
+  // state only (no RPC). Operator/admin only.
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Get("operator/unclaimed-refunds")
+  listUnclaimedRefunds(
+    @Request() req: any,
+    @Query("campaignId") campaignId?: string,
+  ) {
+    return this.refundReminders.getUnclaimedRefunds(this.actorFromRequest(req), {
+      campaignId: campaignId || undefined,
     });
   }
 

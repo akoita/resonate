@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException, INestApplication } from "@nest
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 import { ShowsController } from "../modules/shows/shows.controller";
+import { ShowRefundReminderService } from "../modules/shows/show-refund-reminder.service";
 import { ShowsService } from "../modules/shows/shows.service";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
 
@@ -38,6 +39,10 @@ const mockShowsService = {
   confirmFulfillment: jest.fn(),
 };
 
+const mockRefundReminders = {
+  getUnclaimedRefunds: jest.fn(),
+};
+
 const mockCommunityRoomsService = {
   getShowCampaignCommunity: jest.fn().mockResolvedValue({
     schemaVersion: "show-campaign-community/v1",
@@ -63,6 +68,7 @@ describe("ShowsController (http)", () => {
     app = await createControllerTestApp(ShowsController, [
       { provide: ShowsService, useValue: mockShowsService },
       { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
+      { provide: ShowRefundReminderService, useValue: mockRefundReminders },
       RolesGuard,
     ]);
   });
@@ -364,6 +370,30 @@ describe("ShowsController (http)", () => {
       .expect(403);
 
     expect(mockShowsService.listReconciliationMismatches).not.toHaveBeenCalled();
+  });
+
+  it("lists unclaimed refunds for operators and passes the campaign filter", async () => {
+    mockRefundReminders.getUnclaimedRefunds.mockResolvedValue({ campaigns: [], generatedAt: "now" });
+
+    await request(app.getHttpServer())
+      .get("/shows/operator/unclaimed-refunds?campaignId=campaign-1")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200);
+
+    expect(mockRefundReminders.getUnclaimedRefunds).toHaveBeenCalledWith(
+      { userId: "operator-1", role: "operator" },
+      { campaignId: "campaign-1" },
+    );
+  });
+
+  it("requires JWT and an operator role for unclaimed refunds", async () => {
+    await request(app.getHttpServer()).get("/shows/operator/unclaimed-refunds").expect(401);
+    await request(app.getHttpServer())
+      .get("/shows/operator/unclaimed-refunds")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    expect(mockRefundReminders.getUnclaimedRefunds).not.toHaveBeenCalled();
   });
 
   it("acknowledges an exact reconciliation identity for operators", async () => {
