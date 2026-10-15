@@ -82,6 +82,8 @@ model User {
   managementTransfersReceived  ManagementTransfer[]           @relation("ManagementTransferRecipient")
   managementRecoveryRequestsSubmitted ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryRequester")
   managementRecoveryRequestsReviewed  ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryReviewer")
+  noticesReceived             Notice[]                      @relation("NoticeRecipient")
+  noticeReads                 NoticeRead[]
 }
 
 // #1771 slice 3. A request to close an account and erase the person from it.
@@ -2880,6 +2882,57 @@ model NotificationPreference {
   evidenceSubmitted   Boolean @default(true)
   listingExpiringSoon Boolean @default(true)
   listingExpired      Boolean @default(true)
+}
+
+/// #2146 platform notices: messages the platform itself originates.
+///
+/// A broadcast is ONE row (`audience` = `all` or `role:<role>`,
+/// `recipientUserId` null) resolved at read time, so it reaches users who sign
+/// up after it was sent without a per-user fan-out. A targeted notice is one
+/// row per recipient (`audience` = `user`, `recipientUserId` set) and is only
+/// ever listed to that recipient. Kept apart from the wallet-keyed
+/// `Notification` table because that table's read routes are keyed by a public
+/// wallet address and cannot hold content visible to one person only.
+model Notice {
+  id              String       @id @default(uuid())
+  /// policy | terms | incident | moderation | account | refund
+  category        String
+  title           String
+  body            String       @db.Text
+  /// Optional in-app path the notice leads to (e.g. `/help/platform-notices`).
+  link            String?
+  /// `all` | `role:<role>` | `user`
+  audience        String
+  recipientUserId String?
+  /// Idempotency key for system-originated notices (moderation: one per
+  /// report). Unique per recipient; null for operator sends.
+  dedupeKey       String?
+  /// When the policy/terms change takes effect. Informational; not a filter.
+  effectiveAt     DateTime?
+  /// Broadcasts stop being listed after this instant.
+  expiresAt       DateTime?
+  /// Who sent it: the operator's user id, or a `system:<source>` actor.
+  createdBy       String
+  createdAt       DateTime     @default(now())
+  recipient       User?        @relation("NoticeRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  reads           NoticeRead[]
+
+  @@unique([dedupeKey, recipientUserId])
+  @@index([audience, createdAt])
+  @@index([recipientUserId, createdAt])
+}
+
+/// #2146 per-user read state for notices (broadcast and targeted). Dismissing
+/// a banner is marking the notice read.
+model NoticeRead {
+  noticeId String
+  userId   String
+  readAt   DateTime @default(now())
+  notice   Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, userId])
+  @@index([userId])
 }
 
 enum PunchlineDropStatus {

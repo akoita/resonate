@@ -489,6 +489,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "address", column: "walletAddress" }],
   },
   {
+    model: "Notice",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "recipientUserId" }],
+    note: "Added by #2146. Platform notices addressed to this person; broadcasts name nobody and are not exported.",
+  },
+  {
     model: "CuratorReputation",
     primaryKey: "id",
     keys: [{ kind: "address", column: "walletAddress" }],
@@ -759,6 +765,8 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
   CommunityDiscordSyncAttempt: "Delivery attempt log keyed by bridgeId, reachable only through the exported CommunityDiscordBridge.",
   ListenerTasteNoteEmbedding: "Machine-generated vector of a written taste note, keyed by controlId; the note text itself is exported with ListenerTasteSignalControl.",
   TrackPopularity: "Aggregate popularity of a track across all listeners; no individual is identifiable in it.",
+  NoticeRead:
+    "Read receipts for platform notices (#2146) keyed by the composite (noticeId, userId), with no single-column key to page by; the person's targeted notices themselves are exported as Notice.",
 
   // Someone else's personal data.
   DmcaReport:

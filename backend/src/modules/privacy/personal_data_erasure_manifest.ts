@@ -746,6 +746,20 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Delivery preferences for notifications that will no longer be sent.",
     note: "`walletAddress` is the primary key here, and it is personal data — this row cannot be anonymized, only removed.",
   },
+  {
+    model: "Notice",
+    disposition: "retain",
+    reason:
+      "Platform notices (#2146) are the record that the platform told a person about a moderation action, an "
+      + "account change or a refund, so they are kept as that evidence; `recipientUserId` rotates by cascade so a "
+      + "retained targeted notice no longer names the account, and broadcasts name nobody.",
+    note: "`createdBy` (the sending operator) has no User relation and is listed in `DANGLING_PERSON_COLUMNS`.",
+  },
+  {
+    model: "NoticeRead",
+    disposition: "delete",
+    reason: "Per-person read receipts for notices (#2146); behavioural state with no retention basis once the person is gone.",
+  },
 
   // ---------------------------------------------------------------------
   // Detach — legacy artist ownership is cleared; the catalogue survives for
@@ -1067,6 +1081,14 @@ export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
     reason:
       "The operator who granted or dismissed a credit request (#1885). It has no User relation, so the "
       + "cascade that rotates the requester's `userId` never reaches it.",
+  },
+  {
+    model: "Notice",
+    column: "createdBy",
+    action: "rewrite",
+    reason:
+      "The operator who sent a platform notice (#2146). It has no User relation (system senders use a "
+      + "`system:<source>` actor), so the id rotation never reaches it; the retained notice keeps a rewritten id.",
   },
   {
     model: "CommunityRoom",
