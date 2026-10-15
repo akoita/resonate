@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  fetchOwnedCollectionStems,
   groupRemixReadyStemsBySourceTrack,
   higherLicenseTier,
   isRemixReadyTier,
@@ -128,5 +129,92 @@ describe("groupRemixReadyStemsBySourceTrack (#2042)", () => {
     ]);
     expect(groups.map((group) => group.sourceTrackId)).toEqual(["t9", "t8"]);
     expect(groups[0]).toEqual({ sourceTrackId: "t9", sourceTrackTitle: "A", stemIds: ["x1", "x2"] });
+  });
+});
+
+describe("fetchOwnedCollectionStems (#2139)", () => {
+  const EOA = `0x${"a1".repeat(20)}`;
+  const SMART_ACCOUNT = `0x${"b2".repeat(20)}`;
+
+  function jsonResponse(status: number, body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  it("sends the bearer token for every address", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(200, { stems: [] }));
+    await fetchOwnedCollectionStems({ addresses: [EOA, SMART_ACCOUNT], token: "tok-1", fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const urls = fetchImpl.mock.calls.map((call) => (call as unknown[])[0]);
+    expect(urls).toEqual([`/api/metadata/collection/${EOA}`, `/api/metadata/collection/${SMART_ACCOUNT}`]);
+    for (const call of fetchImpl.mock.calls) {
+      const init = (call as unknown[])[1] as RequestInit;
+      expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok-1");
+    }
+  });
+
+  it("makes no request without a token", async () => {
+    const fetchImpl = vi.fn();
+    const stems = await fetchOwnedCollectionStems({ addresses: [EOA], token: null, fetchImpl });
+    expect(stems).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("treats a 403 as no stems, without logging", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchImpl = vi.fn(async () => jsonResponse(403, { message: "Forbidden" }));
+    const stems = await fetchOwnedCollectionStems({ addresses: [EOA], token: "tok-1", fetchImpl });
+    expect(stems).toEqual([]);
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("skips duplicate and missing addresses", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(200, { stems: [] }));
+    await fetchOwnedCollectionStems({
+      addresses: [EOA, EOA.toUpperCase().replaceAll("0X", "0x"), null, undefined],
+      token: "tok-1",
+      fetchImpl,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges the same stem across the sign-in wallet and the smart account", async () => {
+    const fetchImpl = vi.fn(async (url: string) =>
+      url.endsWith(EOA)
+        ? jsonResponse(200, { stems: [{ id: "s1", licenseType: "personal", holding: "purchased" }] })
+        : jsonResponse(200, {
+            stems: [
+              { id: "s1", licenseType: "remix", holding: "listed", activeListingId: "9" },
+              { id: "s2", licenseType: null, holding: "listed" },
+            ],
+          }),
+    );
+    const stems = await fetchOwnedCollectionStems<{
+      id: string;
+      licenseType?: string | null;
+      holding?: "purchased" | "listed" | null;
+      activeListingId?: string | null;
+    }>({ addresses: [EOA, SMART_ACCOUNT], token: "tok-1", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    const byId = new Map(stems.map((stem) => [stem.id, stem]));
+    expect(byId.get("s1")).toEqual(
+      expect.objectContaining({ licenseType: "remix", holding: "purchased", activeListingId: "9" }),
+    );
+    expect(byId.get("s2")).toEqual(expect.objectContaining({ holding: "listed" }));
+  });
+
+  it("treats a network failure as no stems and logs nothing about the address", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("offline");
+    });
+    const stems = await fetchOwnedCollectionStems({ addresses: [EOA], token: "tok-1", fetchImpl });
+    expect(stems).toEqual([]);
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(EOA);
+    errorSpy.mockRestore();
   });
 });

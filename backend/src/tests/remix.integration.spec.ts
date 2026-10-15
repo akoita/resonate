@@ -605,6 +605,33 @@ describe("Remix eligibility and projects (integration)", () => {
       expect(result.requiredLicense).toBe("remix");
     });
 
+    it("derives the license from the caller's own wallet, never from stem ids another wallet holds (#2139)", async () => {
+      // A caller with their own (different) wallet who names a stem that
+      // CREATOR_WALLET holds a remix license for must stay unlicensed: the
+      // service only takes the JWT userId, and resolves that user's wallet
+      // server-side — no client-supplied address can widen it.
+      const strangerId = `${TEST_PREFIX}stranger`;
+      await prisma.user.create({
+        data: { id: strangerId, email: `${TEST_PREFIX}stranger@test.resonate` },
+      });
+      await prisma.wallet.create({
+        data: { userId: strangerId, address: `0x${"d4".repeat(20)}`, chainId: 31337 },
+      });
+      try {
+        const result = await eligibilityService.checkEligibility({
+          userId: strangerId,
+          trackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID, X402_STEM_ID],
+        });
+        expect(result.allowed).toBe(false);
+        expect(result.requiredLicense).toBe("remix");
+        expect(result.stems.map((stem) => stem.licensed)).toEqual([false, false]);
+      } finally {
+        await prisma.wallet.deleteMany({ where: { userId: strangerId } });
+        await prisma.user.deleteMany({ where: { id: strangerId } });
+      }
+    });
+
     it("404s for unknown tracks", async () => {
       await expect(
         eligibilityService.checkEligibility({

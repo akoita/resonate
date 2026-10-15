@@ -102,6 +102,15 @@ buyer and machine-commerce surfaces strict about availability.
 
 ### Developer
 
+- The collection endpoint is owner-only (#2139): it requires sign-in (a JWT)
+  and answers only for the caller's own addresses — the wallet-auth account
+  address, and the `address`/`ownerAddress` of the caller's wallet record —
+  so a wallet's holdings and license tiers are no longer publicly readable.
+  Other wallets get `403` with a generic message, a malformed address `400`,
+  and no token `401`; `admin`/`operator` keep support access. Library › Stems
+  sends the user's token for the sign-in wallet and the smart account and
+  treats a refused request as no stems. Remix eligibility was already derived
+  server-side from the authenticated user's own wallet and is unchanged.
 - Public listings: `GET /api/metadata/listings`
 - Owner listings: authenticated `GET /api/metadata/listings/owner/:seller`
   for the seller, a linked EOA/smart-account address, or admin.
