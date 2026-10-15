@@ -56,6 +56,10 @@
  *   touched is never scrubbed as if it were theirs.
  */
 
+/** The neutral text a targeted notice keeps after its recipient is erased (#2167). */
+export const ERASED_NOTICE_TITLE = "Notice";
+export const ERASED_NOTICE_BODY = "Content removed when the account was deleted.";
+
 /**
  * What erasure does to a model.
  *
@@ -751,12 +755,19 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
   },
   {
     model: "Notice",
-    disposition: "retain",
+    disposition: "anonymize",
     reason:
-      "Platform notices (#2146) are the record that the platform told a person about a moderation action, an "
-      + "account change or a refund, so they are kept as that evidence; `recipientUserId` rotates by cascade so a "
-      + "retained targeted notice no longer names the account, and broadcasts name nobody.",
-    note: "`createdBy` (the sending operator) has no User relation and is listed in `DANGLING_PERSON_COLUMNS`.",
+      "What must be provable later is that a notice of a given category was sent on a given date (#2146), so a "
+      + "targeted notice keeps its category, audience, dates and dedupe key; its title and body can be personal "
+      + "(\"your track X was removed\"), so they are replaced and the link is cleared (#2167). `recipientUserId` "
+      + "rotates by cascade so the kept record no longer names the account. Broadcasts have no recipient, match "
+      + "nothing here and are untouched.",
+    scrub: ["title", "body", "link"],
+    matchOn: "recipientUserId",
+    note:
+      "The engine must write a neutral placeholder into `title` and `body` (a required column's generic empty "
+      + "value would leave a blank notice); see `ERASED_NOTICE_TITLE` and `ERASED_NOTICE_BODY`. `createdBy` (the "
+      + "sending operator) has no User relation and is listed in `DANGLING_PERSON_COLUMNS`.",
   },
   {
     model: "NoticeRead",
@@ -1099,7 +1110,7 @@ export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
     action: "rewrite",
     reason:
       "The operator who sent a platform notice (#2146). It has no User relation (system senders use a "
-      + "`system:<source>` actor), so the id rotation never reaches it; the retained notice keeps a rewritten id.",
+      + "`system:<source>` actor), so the id rotation never reaches it; the kept notice record carries a rewritten id.",
   },
   {
     model: "CommunityRoom",

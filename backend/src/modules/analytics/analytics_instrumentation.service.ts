@@ -5,6 +5,7 @@ import {
   AnalyticsGeoDimension,
   resolveAnalyticsEnvironment,
 } from "./analytics_event";
+import { AccountStandingService } from "../accounts/account_standing.service";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import {
@@ -148,6 +149,14 @@ const PRODUCT_ARTIST_CACHE_TTL_MS = 5 * 60 * 1000;
 const PRODUCT_ARTIST_CACHE_MAX_ENTRIES = 2000;
 const LOOP_INTENT_EVENTS = new Set(["player.segment_loop_enabled", "player.repeat_count_set"]);
 
+/** What a playback write answers when the actor's account is restricted (#2167); nothing was recorded. */
+export const NOT_COUNTED: { status: string; eventId: string; ingested: number; reason: string } = {
+  status: "skipped",
+  eventId: "",
+  ingested: 0,
+  reason: "account_restricted",
+};
+
 @Injectable()
 export class AnalyticsInstrumentationService {
   constructor(
@@ -155,11 +164,24 @@ export class AnalyticsInstrumentationService {
     private readonly catalogMetadataService?: AnalyticsCatalogMetadataService,
     @Optional()
     private readonly agentLearningService?: AgentLearningService,
+    @Optional()
+    private readonly accountStanding?: AccountStandingService,
   ) {}
+
+  /**
+   * #2167: a suspended or closed account may keep listening, but nothing it
+   * plays counts. This is the one place playback becomes a fact, a popularity
+   * input or an agent/taste signal, so a restricted actor is dropped here,
+   * before any of those writes, and playback itself is untouched.
+   */
+  private async playbackNotCounted(userId: string | undefined): Promise<boolean> {
+    return (await this.accountStanding?.isRestricted(userId)) === true;
+  }
 
   private readonly productArtistCache = new Map<string, { value: ResolvedProductArtist; expiresAt: number }>();
 
   async recordPlaybackCompleted(input: PlaybackCompletedAnalyticsInput) {
+    if (await this.playbackNotCounted(input.actorUserId)) return NOT_COUNTED;
     const catalog = await this.resolvePlaybackCatalog(input);
 
     const result = await this.emit({
@@ -246,6 +268,7 @@ export class AnalyticsInstrumentationService {
   }
 
   async recordPlaybackLifecycle(input: PlaybackLifecycleAnalyticsInput) {
+    if (await this.playbackNotCounted(input.actorUserId)) return NOT_COUNTED;
     const catalog = await this.resolvePlaybackCatalog(input);
 
     const result = await this.emit({
@@ -356,6 +379,10 @@ export class AnalyticsInstrumentationService {
   }
 
   async recordProductEvent(input: ProductAnalyticsInput) {
+    // A client must not be able to record a play through the generic product route either.
+    if (input.eventName.startsWith("playback.") && (await this.playbackNotCounted(input.actorUserId))) {
+      return NOT_COUNTED;
+    }
     // A retry has a new server timestamp, but remains the same client action.
     // Scope the key to the authenticated actor so callers cannot suppress each other's events.
     const playerAction = input.eventName === "player.action_impression" || input.eventName === "player.action_selected";

@@ -254,6 +254,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Signing in and reading your own data and notices.",
               "Claiming any refund you are owed. A suspension never traps your money.",
+              "Listening to music. Your plays still play, but while your account is restricted they do not count: they add nothing to play counts, rankings or recommendations.",
               "Downloading your data and asking for your account to be deleted.",
             ],
           },

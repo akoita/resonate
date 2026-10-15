@@ -122,8 +122,16 @@ then sends one targeted `moderation` notice from the `system:dmca` actor.
 
 ## Privacy
 
-- `Notice` is retained on erasure. It is the evidence that the person was told,
-  and `recipientUserId` rotates by cascade.
+- A **targeted** `Notice` is kept as a minimal record on erasure (#2167). What
+  must be provable later is that a notice of a given category was sent on a
+  given date, so `id`, `category`, `audience`, `createdAt`, `effectiveAt`,
+  `expiresAt` and `dedupeKey` stay, and `recipientUserId` rotates by cascade.
+  The text can be personal ("your track X was removed"), so `title` and `body`
+  are replaced with a neutral placeholder ("Notice" / "Content removed when the
+  account was deleted.") and `link` is cleared. The erasure manifest rule is
+  `anonymize`, matched on `recipientUserId`.
+- **Broadcasts** (`all`, `role:*`) have no recipient, name nobody and are
+  untouched.
 - `Notice.createdBy` is listed as a dangling column and is rewritten on
   erasure.
 - `NoticeRead` is deleted on erasure.

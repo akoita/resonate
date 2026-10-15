@@ -1,7 +1,9 @@
 # Account suspension and closure
 
 Status: `in-progress` — tracked in
-[#2147](https://github.com/akoita/resonate/issues/2147) (child of #1777, gap 1).
+[#2147](https://github.com/akoita/resonate/issues/2147) (child of #1777, gap 1);
+listening while suspended in
+[#2167](https://github.com/akoita/resonate/issues/2167).
 
 Revenue line: vision-neutral readiness (`vision:keep`). There are no fee, split,
 price or payout changes.
@@ -37,11 +39,46 @@ route's `AuthGuard("jwt")`, so `request.user` is not set yet at guard time.
   `account_status_allowlist.spec.ts` pins the exact set: sign-in
   (`AuthController`), the Shows refund confirmation
   (`POST /shows/pledges/:id/refund/confirm`), every privacy route (data export
-  and account closure request/cancel), `POST /notices/:id/read`, and the
-  notification read routes. A suspension never traps a person's money.
+  and account closure request/cancel), `POST /notices/:id/read`, the
+  notification read routes, and the listening routes below. A suspension never
+  traps a person's money.
 - An operator closure with scheduled erasure cannot be cancelled by the person:
   `AccountClosureService.cancel` (used by sign-in and the cancel route) does
   nothing for a `closed` account.
+
+### Listening while suspended (#2167)
+
+Suspension exists to stop abuse of participation; listening harms no one. So a
+suspended or closed account can keep playing, but **its plays do not count**.
+Purchases, uploads, listings, pledges and posting stay blocked.
+
+- **Allowed** (`@AllowWhileSuspended()`, pinned by `account_status_allowlist.spec.ts`):
+  the player telemetry routes (`POST /analytics/playback/event` and
+  `/analytics/playback/completed`), DJ session start/stop/next
+  (`POST /agents/config/session`, `/agents/config/session/stop`,
+  `/sessions/start`, `/sessions/stop`, `/sessions/agent/next`) and the
+  playback-intent routes (`/sessions/playback/{device,resolve,queue,play,control,commands/:id/confirm}`).
+  Audio is served by `GET`, which is never blocked.
+- **Still refused**: priced session play (`POST /sessions/play`, an agent
+  purchase), playback capability grants, `POST /analytics/ingest`,
+  `/analytics/product/event` and `POST /agents/config/signals`.
+- **Not counted**: `AnalyticsInstrumentationService.recordPlaybackCompleted`,
+  `recordPlaybackLifecycle` and `recordProductEvent` (for `playback.*` names)
+  drop the event when the actor's account is not active, before anything is
+  written. That is the one place a play becomes a `playback.*` fact (which feeds
+  discovery popularity, artist engagement, first-listener reception, home-feed
+  and Scene Scout inputs), a taste/learning signal (`AgentSignal`) and any
+  future payout signal. The route answers `201` with
+  `{ status: "skipped", reason: "account_restricted" }` so the player keeps
+  working. There is no per-track or per-release play counter in the schema: all
+  counts derive from those facts.
+- The status read is the same 30-second cache the interceptor uses
+  (`AccountStandingService`, a dependency-free read split out of
+  `AccountStatusService` so analytics can use it without an import cycle). A
+  play right after a suspension can therefore still count on another instance
+  for up to 30 seconds.
+- Plays already recorded before the suspension are not removed; this is a
+  forward-looking rule.
 
 ### Known limits
 
@@ -49,7 +86,6 @@ route's `AuthGuard("jwt")`, so `request.user` is not set yet at guard time.
   wallet never reaches the backend, so this is a platform-level restriction, not
   an on-chain one.
 - WebSocket events are not covered.
-- Music playback sessions are `POST` routes and are blocked like other writes.
 - The audit service is in-memory plus structured logs, as for every other
   audited action; the durable record is `accountStatusChangedBy` and the notice.
 
@@ -98,7 +134,8 @@ redacted) and the erasure manifest (status retained on the anonymized row;
 ## Tests
 
 `account_suspension.integration.spec.ts`, `admin_accounts.controller.http.spec.ts`,
-`account_status_allowlist.spec.ts`, the two privacy manifest specs,
+`account_status_allowlist.spec.ts`, `suspended_listening.integration.spec.ts`,
+the two privacy manifest specs,
 `accountStatus.test.tsx`, `AccountRestrictionPanel.test.tsx`.
 
 ## Remaining
