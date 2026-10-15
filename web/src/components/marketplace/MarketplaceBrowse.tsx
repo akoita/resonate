@@ -22,6 +22,7 @@ import { BuyModal } from "./BuyModal";
 import type { LicenseType } from "./LicenseTypeSelector";
 import { artistProfileHref } from "../../lib/artistRoutes";
 import { PURCHASED_STEMS_HREF } from "../../lib/ownedStems";
+import { groupListingsByStem, groupTierOrder } from "../../lib/marketplaceStemGroups";
 import "../../styles/marketplace.css";
 import "../../styles/license-badges.css";
 
@@ -323,17 +324,13 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
             .catch(err => console.error("Batch pricing fetch error:", err));
     }, [batchStemIdsKey]);
 
+    // One card per stem (#2041): a stem listed under several license tiers
+    // has one listing per tier; group them so each card offers its tiers.
     const tierListingsByStem = useMemo(() => {
         const byStem: Record<string, Partial<Record<LicenseType, string>>> = {};
-        for (const listing of listings) {
-            const stemId = listing.stem?.id;
-            if (!stemId) continue;
-            const licenseType = listing.licenseType ?? "personal";
-            byStem[stemId] = {
-                ...byStem[stemId],
-                ...(listing.tierListings ?? {}),
-                [licenseType]: listing.listingId,
-            };
+        for (const group of groupListingsByStem(listings)) {
+            const stemId = group.primary.stem?.id;
+            if (stemId) byStem[stemId] = group.tierListingIds;
         }
         return byStem;
     }, [listings]);
@@ -416,6 +413,8 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
         return true;
     }), [listings, stemType, selectedGenre, selectedArtist]);
 
+    const stemGroups = useMemo(() => groupListingsByStem(filteredListings), [filteredListings]);
+
     const hasActiveFilters = stemType !== "all" || selectedGenre !== "all" || selectedArtist !== "all" || search !== "";
     const formatListingPayment = useCallback((listing: ListingData) => {
         const asset = findPaymentAssetForToken(paymentAssets, chainId, listing.paymentToken);
@@ -467,7 +466,10 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
         setHideOwnListings(true);
     };
 
-    const openBuyModal = (listing: ListingData) => {
+    const openBuyModal = (
+        listing: ListingData,
+        tierChoice?: { licenseType: LicenseType; listingId: string },
+    ) => {
         void recordProductAnalytics(token, "marketplace.listing_viewed", {
             source: "marketplace_grid",
             subjectType: "marketplace_listing",
@@ -510,11 +512,11 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
             });
         }
         setBuyModalListing({
-            listingId: listing.listingId,
+            listingId: tierChoice?.listingId ?? listing.listingId,
             stemId: listing.stem?.id || "",
             artistId: listing.stem?.artistId,
             chainId: listing.chainId,
-            licenseType: listing.licenseType ?? "personal",
+            licenseType: tierChoice?.licenseType ?? listing.licenseType ?? "personal",
             listing,
         });
     };
@@ -718,9 +720,9 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                         </div>
                     )}
                     <div className="marketplace-grid">
-                        {filteredListings.map(listing => (
+                        {stemGroups.map(({ key: groupKey, primary: listing, tiers: groupTiers, tierListingIds }) => (
                             <div
-                                key={`${listing.listingId}-${listing.tokenId}`}
+                                key={groupKey}
                                 className="stem-card"
                                 data-testid="stem-card"
                                 draggable={!!listing.stem}
@@ -811,21 +813,61 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                                         )}
                                     </div>
 
-                                    {/* One quiet meta row: listed tier, extra tiers, editions */}
+                                    {/* One quiet meta row: available tiers, editions */}
                                     <div className="stem-card__metarow">
-                                        <span className={`stem-card__tier stem-card__tier--${listing.licenseType ?? "personal"}`}>
-                                            {LICENSE_LABELS[listing.licenseType ?? "personal"]}
-                                        </span>
-                                        {listing.stem?.id && tierListingsByStem[listing.stem.id]?.remix && (listing.licenseType ?? "personal") !== "remix" && (
-                                            <span className="stem-card__tier stem-card__tier--remix">
-                                                Remix{pricingMap[listing.stem.id]?.remixLicenseUsd != null ? ` $${pricingMap[listing.stem.id].remixLicenseUsd}` : ""}
-                                            </span>
-                                        )}
-                                        {listing.stem?.id && tierListingsByStem[listing.stem.id]?.commercial && (listing.licenseType ?? "personal") !== "commercial" && (
-                                            <span className="stem-card__tier stem-card__tier--commercial">
-                                                Commercial{pricingMap[listing.stem.id]?.commercialLicenseUsd != null ? ` $${pricingMap[listing.stem.id].commercialLicenseUsd}` : ""}
-                                            </span>
-                                        )}
+                                        {(() => {
+                                            const pageTiers = groupTierOrder({ tiers: groupTiers });
+                                            const siblingTiers = (["remix", "commercial"] as const).filter(
+                                                (tier) => !groupTiers[tier] && tierListingIds[tier],
+                                            );
+                                            if (pageTiers.length + siblingTiers.length <= 1) {
+                                                return (
+                                                    <span className={`stem-card__tier stem-card__tier--${listing.licenseType ?? "personal"}`}>
+                                                        {LICENSE_LABELS[listing.licenseType ?? "personal"]}
+                                                    </span>
+                                                );
+                                            }
+                                            const isOwn = (seller: string) =>
+                                                Boolean(signerAddress && seller.toLowerCase() === signerAddress);
+                                            return (
+                                                <>
+                                                    {pageTiers.map((tier) => {
+                                                        const tierListing = groupTiers[tier]!;
+                                                        const price = formatListingPayment(tierListing);
+                                                        const own = isOwn(tierListing.seller);
+                                                        return (
+                                                            <button
+                                                                key={tier}
+                                                                type="button"
+                                                                className={`stem-card__tier stem-card__tier--${tier} stem-card__tier-chip`}
+                                                                title={own
+                                                                    ? `Your ${LICENSE_LABELS[tier]} listing · ${tierListing.amount} left`
+                                                                    : `Buy the ${LICENSE_LABELS[tier]} license · ${tierListing.amount} left`}
+                                                                disabled={own || buyPending}
+                                                                onClick={() => openBuyModal(listing, { licenseType: tier, listingId: tierListing.listingId })}
+                                                            >
+                                                                {LICENSE_LABELS[tier]} {price.amount} {price.symbol}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    {siblingTiers.map((tier) => (
+                                                        <button
+                                                            key={tier}
+                                                            type="button"
+                                                            className={`stem-card__tier stem-card__tier--${tier} stem-card__tier-chip`}
+                                                            title={`Buy the ${LICENSE_LABELS[tier]} license`}
+                                                            disabled={buyPending || isOwn(listing.seller)}
+                                                            onClick={() => openBuyModal(listing, { licenseType: tier, listingId: tierListingIds[tier]! })}
+                                                        >
+                                                            {LICENSE_LABELS[tier]}
+                                                            {listing.stem?.id && pricingMap[listing.stem.id]?.[tier === "remix" ? "remixLicenseUsd" : "commercialLicenseUsd"] != null
+                                                                ? ` $${pricingMap[listing.stem.id][tier === "remix" ? "remixLicenseUsd" : "commercialLicenseUsd"]}`
+                                                                : ""}
+                                                        </button>
+                                                    ))}
+                                                </>
+                                            );
+                                        })()}
                                         <span className="stem-card__editions">
                                             {listing.amount} left
                                         </span>

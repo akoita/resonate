@@ -1091,6 +1091,8 @@ export interface ContractStemListedEvent extends BaseEvent {
   chainId: number;
   contractAddress: string;
   transactionHash: string;
+  /** Position of the Listed log in the transaction receipt (#2041). */
+  logIndex?: number;
   blockNumber: string;
 }
 

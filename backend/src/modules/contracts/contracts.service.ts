@@ -37,6 +37,12 @@ import {
   type ListingLifecycleStatus,
 } from "./listing-lifecycle";
 import { bestStandardLicenseTier } from "./stem_license_tier";
+import {
+  intentsForSeller,
+  loadTokenListingSiblings,
+  matchListingIntent,
+  sellerListingOrdinal,
+} from "./listing-intent-matching";
 import type {
   NormalizedRightsEvidenceBundle,
   RightsEvidenceBundleInput,
@@ -641,16 +647,59 @@ export class ContractsService implements OnModuleInit {
             chainId: event.chainId,
           },
         });
-        const listingIntent = await prisma.stemListingIntent.findFirst({
+        // #2041: a transaction can list the same token under several license
+        // tiers — match this Listed log to its own per-tier intent.
+        const allTokenIntents = await prisma.stemListingIntent.findMany({
           where: {
             transactionHash: event.transactionHash,
             tokenId: BigInt(event.tokenId),
           },
           orderBy: { createdAt: "desc" },
         });
-        const licenseType = normalizeListingLicenseType(
-          event.licenseType ?? listingIntent?.licenseType,
+        // Only the on-chain seller's own intents may describe this listing.
+        const { applicable: tokenIntents, foreign } = intentsForSeller(
+          allTokenIntents,
+          event.sellerAddress,
         );
+        if (foreign > 0) {
+          this.logger.warn(
+            `Ignoring ${foreign} listing intent(s) from another seller for listingId=${event.listingId} ` +
+            `tokenId=${event.tokenId} tx=${event.transactionHash}`,
+          );
+        }
+        const listingIdValue = BigInt(event.listingId);
+        const siblings = tokenIntents.length > 1
+          ? await loadTokenListingSiblings({
+            transactionHash: event.transactionHash,
+            tokenId: BigInt(event.tokenId),
+            chainId: event.chainId,
+          })
+          : [];
+        const { intent: listingIntent } = matchListingIntent(tokenIntents, {
+          listingId: listingIdValue,
+          ordinal: tokenIntents.length > 1
+            ? sellerListingOrdinal(listingIdValue, event.sellerAddress, siblings)
+            : null,
+        });
+        if (tokenIntents.length > 0 && !listingIntent) {
+          this.logger.warn(
+            `No unambiguous listing intent for listingId=${event.listingId} tokenId=${event.tokenId} ` +
+            `tx=${event.transactionHash} (${tokenIntents.length} intents); using the default license tier`,
+          );
+        }
+        // Token-level fields (stem, payment asset) are shared by every tier of
+        // one notify call, so any of the seller's intents can supply them.
+        // Price, amount and seller always come from the chain event.
+        const tokenIntent = listingIntent ?? tokenIntents[0] ?? null;
+        const licenseType = normalizeListingLicenseType(
+          listingIntent?.licenseType ?? event.licenseType,
+        );
+        // The Listed event carries no payment token (the indexer stamps the
+        // zero address), so the seller's intent supplies the payment asset.
+        const paymentToken =
+          event.paymentToken.toLowerCase() === ZERO_PAYMENT_TOKEN && tokenIntent?.paymentToken
+            ? tokenIntent.paymentToken
+            : event.paymentToken;
 
         let expiresAt = new Date(parseInt(event.expiresAt) * 1000);
         // If expiresAt is 0 (on-chain query failed or not available), default to 1 year
@@ -668,7 +717,7 @@ export class ContractsService implements OnModuleInit {
           sellerAddress: event.sellerAddress.toLowerCase(),
           pricePerUnit: event.pricePerUnit,
           amount: BigInt(event.amount),
-          paymentToken: listingIntent?.paymentToken ?? event.paymentToken,
+          paymentToken,
           expiresAt,
           transactionHash: event.transactionHash,
           blockNumber: BigInt(event.blockNumber),
@@ -679,8 +728,8 @@ export class ContractsService implements OnModuleInit {
 
         if (nftMint?.stemId) {
           listingData.stem = { connect: { id: nftMint.stemId } };
-        } else if (listingIntent?.stemId) {
-          listingData.stem = { connect: { id: listingIntent.stemId } };
+        } else if (tokenIntent?.stemId) {
+          listingData.stem = { connect: { id: tokenIntent.stemId } };
         } else {
           // Fallback: try finding stem via ipnftId (handles race condition
           // where Listed event arrives before StemMinted is fully processed)
@@ -1579,10 +1628,12 @@ export class ContractsService implements OnModuleInit {
 
   private async hydrateListingsFromIntents<T extends {
     id: string;
+    listingId: bigint;
     transactionHash: string;
     tokenId: bigint;
+    licenseType: LicenseType;
+    sellerAddress: string;
     paymentToken: string;
-    pricePerUnit: string;
   }>(listings: T[]): Promise<T[]> {
     const nativeListings = listings.filter((listing) =>
       listing.paymentToken.toLowerCase() === ZERO_PAYMENT_TOKEN,
@@ -1599,28 +1650,51 @@ export class ContractsService implements OnModuleInit {
       select: {
         transactionHash: true,
         tokenId: true,
+        licenseType: true,
+        listingId: true,
+        sellerAddress: true,
         paymentToken: true,
-        pricePerUnit: true,
       },
     });
     if (intents.length === 0) return listings;
 
-    const intentByListingKey = new Map<string, typeof intents[number]>();
+    // The Listed event carries no payment token, so the indexer stamps the
+    // zero address; the seller's intent supplies the real payment asset. Only
+    // the asset is backfilled — price and amount stay the on-chain values,
+    // which are already denominated in that asset's units.
+    // #2041: one transaction can carry several tiers of the same token, so an
+    // intent is matched per listing — only the on-chain seller's intents, by
+    // listingId first, then by the tier the listing was indexed under, then
+    // the sole intent of a legacy single-tier notify.
+    const intentsByToken = new Map<string, typeof intents>();
     for (const intent of intents) {
       if (intent.tokenId === null) continue;
-      intentByListingKey.set(`${intent.transactionHash}:${intent.tokenId.toString()}`, intent);
+      const key = `${intent.transactionHash}:${intent.tokenId.toString()}`;
+      const group = intentsByToken.get(key);
+      if (group) group.push(intent);
+      else intentsByToken.set(key, [intent]);
     }
+    const intentForListing = (listing: T) => {
+      const group = intentsForSeller(
+        intentsByToken.get(`${listing.transactionHash}:${listing.tokenId.toString()}`) ?? [],
+        listing.sellerAddress,
+      ).applicable;
+      return (
+        group.find((intent) => intent.listingId === listing.listingId) ??
+        group.find((intent) =>
+          intent.licenseType === listing.licenseType &&
+          (intent.listingId === null || intent.listingId === listing.listingId)) ??
+        (group.length === 1 && group[0].listingId === null ? group[0] : undefined)
+      );
+    };
     const updates: Promise<unknown>[] = [];
 
     const hydrated = listings.map((listing) => {
       if (listing.paymentToken.toLowerCase() !== ZERO_PAYMENT_TOKEN) return listing;
-      const intent = intentByListingKey.get(`${listing.transactionHash}:${listing.tokenId.toString()}`);
+      const intent = intentForListing(listing);
       if (!intent?.paymentToken || intent.paymentToken.toLowerCase() === ZERO_PAYMENT_TOKEN) return listing;
 
-      const data = {
-        paymentToken: intent.paymentToken,
-        pricePerUnit: intent.pricePerUnit ?? listing.pricePerUnit,
-      };
+      const data = { paymentToken: intent.paymentToken };
       updates.push(
         prisma.stemListing.update({
           where: { id: listing.id },

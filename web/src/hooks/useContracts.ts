@@ -37,6 +37,15 @@ import { persistStemMarketplaceStatus } from "../lib/stemMarketplaceStatus";
 import { getBundlerUrl, isLocalDevEnvironment, isPaymasterEnabled } from "../lib/bundlerConfig";
 import { getPasskeyRpId, getPasskeyServerUrl, getZeroDevProjectId } from "../lib/passkeyConfig";
 import { buildDirectMarketplaceBuyPlan } from "../lib/onchainCheckout";
+import { postNotifyListing } from "../lib/listingTiers";
+import {
+  buildListLastMintTierCalls,
+  buildListTiersCalls,
+  buildTierNotifyPayload,
+  listingIdsFromReceipt,
+  type ListTiersPlan,
+  type PlannedTierListing,
+} from "../lib/multiTierListing";
 
 // Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -138,6 +147,26 @@ async function getStemMintedEventsForTransaction(
   }
 
   return mintedEvents;
+}
+
+/**
+ * Marketplace listing ids created for `tokenId` in a transaction, in log
+ * order (#2041). Best-effort: an unreadable receipt yields no ids.
+ */
+async function getListingIdsForTransaction(
+  publicClient: PublicClient,
+  transactionHash: string,
+  tokenId: bigint,
+  marketplaceAddress: Address
+): Promise<bigint[]> {
+  try {
+    const receipt = await publicClient.getTransactionReceipt({
+      hash: transactionHash as Hex,
+    });
+    return listingIdsFromReceipt(receipt.logs, tokenId, marketplaceAddress);
+  } catch {
+    return [];
+  }
 }
 
 async function getReportedDisputeForTransaction(
@@ -1655,7 +1684,15 @@ export function useMintAndListStem() {
   const [txHash, setTxHash] = useState<string | null>(null);
 
   const mintAndList = useCallback(
-    async (params: Omit<MintParams, 'to' | 'royaltyReceiver'> & Omit<ListParams, 'tokenId'>) => {
+    async (
+      params: Omit<MintParams, 'to' | 'royaltyReceiver'> & Omit<ListParams, 'tokenId'> & {
+        /**
+         * Several license tiers (#2041): mints the summed editions and lists
+         * each tier with its own price and amount in the same batch.
+         */
+        tiers?: PlannedTierListing[];
+      }
+    ) => {
 
       if (status !== "authenticated" || !address) {
         throw new Error("Wallet not connected");
@@ -1671,11 +1708,15 @@ export function useMintAndListStem() {
           (kernelAccount?.address as Address | undefined) ||
           (smartAccountAddress as Address | undefined) ||
           (address as Address);
+        const tiers = params.tiers && params.tiers.length > 0 ? params.tiers : null;
+        const mintParams = tiers
+          ? { ...params, amount: tiers.reduce((sum, tier) => sum + tier.amount, BigInt(0)) }
+          : params;
         const authorization = await resolveMintAuthorization(
           token,
           chainId,
           callerAddress,
-          params
+          mintParams
         );
         if (authorization) {
           await assertMintAuthorizationSupported(
@@ -1688,7 +1729,7 @@ export function useMintAndListStem() {
         const tokenURI = authorization?.tokenURI || params.tokenURI;
         const royaltyReceiver =
           authorization?.royaltyReceiver || callerAddress;
-        const mintAmount = authorization?.amount || params.amount;
+        const mintAmount = authorization?.amount || mintParams.amount;
         const remixable = authorization?.remixable ?? params.remixable;
         const parentIds = authorization?.parentIds || params.parentIds;
 
@@ -1738,36 +1779,46 @@ export function useMintAndListStem() {
           }),
         };
 
-        // 3. Prepare List Call
-        const listCall = {
-          to: addresses.marketplace as Address,
-          data: encodeFunctionData({
-            abi: StemMarketplaceABI,
-            functionName: "listLastMint",
-            args: [
-              mintAmount,
-              params.pricePerUnit,
-              params.paymentToken,
-              params.durationSeconds,
-              authorization?.protectionId ?? BigInt(0),
-            ],
-          }),
-        };
+        // 3. Prepare List Call(s): one per license tier when tiers are given
+        const listCalls = tiers
+          ? buildListLastMintTierCalls(tiers, {
+            paymentToken: params.paymentToken,
+            durationSeconds: params.durationSeconds,
+            releaseProtectionId: authorization?.protectionId ?? BigInt(0),
+            marketplace: addresses.marketplace as Address,
+          })
+          : [{
+            to: addresses.marketplace as Address,
+            data: encodeFunctionData({
+              abi: StemMarketplaceABI,
+              functionName: "listLastMint",
+              args: [
+                mintAmount,
+                params.pricePerUnit,
+                params.paymentToken,
+                params.durationSeconds,
+                authorization?.protectionId ?? BigInt(0),
+              ],
+            }),
+          }];
 
         // 4. Send as a single batch UserOperation
         const hash = await sendBatchContractTransactions(
           publicClient,
           chainId,
-          [mintCall, approveCall, listCall],
+          [mintCall, approveCall, ...listCalls],
           address as Address,
           kernelAccount
         );
 
         const mintedEvents = await getStemMintedEventsForTransaction(publicClient, hash);
         const tokenId = mintedEvents[0]?.tokenId;
+        const listingIds = tokenId != null
+          ? await getListingIdsForTransaction(publicClient, hash, tokenId, addresses.marketplace as Address)
+          : [];
 
         setTxHash(hash);
-        return { hash, tokenId };
+        return { hash, tokenId, listingIds };
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         setError(error);
@@ -1823,7 +1874,14 @@ export function useBatchMintAndList() {
         durationSeconds?: bigint;
         releaseProtectionId?: bigint;
         licenseType?: "personal" | "remix" | "commercial";
+        /**
+         * Several license tiers per stem (#2041). Each stem mints the summed
+         * editions and lists every tier; overrides pricePerUnit/licenseType.
+         */
+        tiers?: PlannedTierListing[];
         onProgress?: (results: BatchStemResult[]) => void;
+        /** Called when recording a stem's listing intent fails (e.g. 401). */
+        onNotifyFailed?: (stemId: string) => void;
       }
     ) => {
       if (status !== "authenticated" || !address) {
@@ -1837,6 +1895,16 @@ export function useBatchMintAndList() {
       const pricePerUnit = options?.pricePerUnit ?? BigInt("10000000000000000"); // 0.01 in 18-decimal fallback units
       const paymentToken = options?.paymentToken ?? ZERO_ADDRESS;
       const durationSeconds = options?.durationSeconds ?? BigInt(7 * 24 * 60 * 60); // 7 days
+      const tiers: PlannedTierListing[] =
+        options?.tiers && options.tiers.length > 0
+          ? options.tiers
+          : [{
+            licenseType: options?.licenseType ?? "personal",
+            pricePerUnit,
+            amount: BigInt(1),
+            ordinal: 0,
+          }];
+      const editionsPerStem = tiers.reduce((sum, tier) => sum + tier.amount, BigInt(0));
 
       // Initialize all stems as pending
       const initialResults: BatchStemResult[] = stems.map(s => ({
@@ -1864,7 +1932,7 @@ export function useBatchMintAndList() {
             chainId,
             minterAddress: callerAddress,
             to: callerAddress,
-            amount: "1",
+            amount: editionsPerStem.toString(),
             royaltyReceiver: callerAddress,
             royaltyBps: 500,
             remixable: true,
@@ -1912,21 +1980,15 @@ export function useBatchMintAndList() {
             }),
           });
 
-          // List call
-          calls.push({
-            to: addresses.marketplace as Address,
-            data: encodeFunctionData({
-              abi: StemMarketplaceABI,
-              functionName: "listLastMint",
-              args: [
-                BigInt(1),
-                pricePerUnit,
-                paymentToken,
-                durationSeconds,
-                authorization.protectionId,
-              ],
-            }),
-          });
+          // List call(s): one listLastMint per license tier
+          calls.push(
+            ...buildListLastMintTierCalls(tiers, {
+              paymentToken,
+              durationSeconds,
+              releaseProtectionId: authorization.protectionId,
+              marketplace: addresses.marketplace as Address,
+            })
+          );
         }
 
         // Mark all as processing
@@ -1972,27 +2034,44 @@ export function useBatchMintAndList() {
           persistStemMarketplaceStatus(stemId, "listing_pending", tokenId);
         }
 
-        // 5. Notify backend for each stem (best-effort, non-blocking)
+        // 5. Notify backend for each stem (best-effort, non-blocking).
+        // Several tiers carry their ordinal and, when readable from the
+        // receipt, their on-chain listing id (#2041).
+        let receiptLogs: Parameters<typeof listingIdsFromReceipt>[0] = [];
+        if (tiers.length > 1) {
+          try {
+            const receipt = await publicClient.getTransactionReceipt({ hash: hash as Hex });
+            receiptLogs = receipt.logs;
+          } catch {
+            receiptLogs = [];
+          }
+        }
         for (let i = 0; i < stems.length; i++) {
           const tokenId =
             tokenIdByTokenUri.get(authorizations[i].tokenURI) ?? fallbackTokenIds[i];
           if (tokenId == null) continue;
-          fetch("/api/contracts/notify-listing", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tokenId: tokenId.toString(),
+          void postNotifyListing(
+            buildTierNotifyPayload({
+              tokenId,
               chainId,
               seller: callerAddress,
-              price: pricePerUnit.toString(),
-              amount: "1",
               paymentToken,
-              licenseType: options?.licenseType ?? "personal",
-              durationSeconds: durationSeconds.toString(),
+              durationSeconds,
               transactionHash: hash,
               stemId: stems[i].stemId,
+              tiers,
+              listingIds: listingIdsFromReceipt(
+                receiptLogs,
+                tokenId,
+                addresses.marketplace as Address
+              ),
             }),
-          }).catch(() => { /* indexer will catch up */ });
+            token
+          ).then((result) => {
+            // The indexer still records the listing; the caller only shows
+            // a non-blocking notice that the tier label may lag.
+            if (!result.ok) options?.onNotifyFailed?.(stems[i].stemId);
+          });
         }
 
         return doneResults;
@@ -2197,6 +2276,71 @@ export function useListStem() {
   );
 
   return { list, pending, error, txHash };
+}
+
+/**
+ * Hook to list one stem under several license tiers in a single batched
+ * UserOperation (#2041): marketplace approval, minting any missing editions,
+ * then one list() per tier, following a plan from planTierListings().
+ */
+export function useListStemTiers() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const listTiers = useCallback(
+    async (
+      plan: ListTiersPlan,
+      params: { tokenId: bigint; paymentToken: Address; durationSeconds: bigint }
+    ) => {
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+
+      setPending(true);
+      setError(null);
+      setTxHash(null);
+
+      try {
+        const addresses = getContractAddresses(chainId);
+        const calls = buildListTiersCalls(plan, {
+          tokenId: params.tokenId,
+          paymentToken: params.paymentToken,
+          durationSeconds: params.durationSeconds,
+          stemNFT: addresses.stemNFT as Address,
+          marketplace: addresses.marketplace as Address,
+        });
+
+        const hash = await sendBatchContractTransactions(
+          publicClient,
+          chainId,
+          calls,
+          address as Address,
+          kernelAccount
+        );
+        const listingIds = await getListingIdsForTransaction(
+          publicClient,
+          hash,
+          params.tokenId,
+          addresses.marketplace as Address
+        );
+
+        setTxHash(hash);
+        return { hash, listingIds };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError(error);
+        throw error;
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, address, status, chainId, kernelAccount]
+  );
+
+  return { listTiers, pending, error, txHash };
 }
 
 /**

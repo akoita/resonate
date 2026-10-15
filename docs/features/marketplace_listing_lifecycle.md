@@ -51,13 +51,27 @@ buyer and machine-commerce surfaces strict about availability.
 - Sellers choose the listing's license tier (personal / remix / commercial)
   when listing (#1141): the stem page "List for Sale" modal has a tier picker
   with per-tier price prefill from the stem's catalog pricing
-  (`GET /api/stem-pricing/:stemId`), and the batch mint-and-list modal has a
-  tier select. License tier is an off-chain listing attribute recorded via
+  (`GET /api/stem-pricing/:stemId`), shared with Mint & List and the batch
+  mint-and-list modal. License tier is an off-chain listing attribute recorded via
   `POST /metadata/notify-listing` → `StemListingIntent`; the on-chain listing
   carries no license type. Remix-tier purchases are what satisfy Remix Studio
   eligibility. Relist keeps the original listing's tier (tier change on relist
-  is a deferred follow-up). Offering several tiers at once requires several
-  editions, since one active listing consumes the listed units.
+  is a deferred follow-up).
+- Sellers can offer one stem under several license tiers at once (#2041),
+  each with its own price per edition and edition count, in one confirmation
+  (one batched smart-account UserOperation; no contract change). The stem-page
+  **List for Sale** modal, the release page **Mint & List** button (which now
+  opens a tier dialog) and **Batch Mint & List** share one tier picker
+  (`web/src/components/marketplace/TierPicker.tsx`). Because listings do not
+  reserve balance and every sale transfers one edition, the planner
+  (`web/src/lib/multiTierListing.ts`) never creates a listing the seller
+  cannot fill: editions free to list = balance − editions in the seller's
+  active listings of that token (floored at 0); any shortfall is minted with
+  `StemNFT.mintMore` in the same batch, and a seller who is not the stem's
+  creator (and so cannot mint) is blocked with a plain explanation instead.
+  Mint flows mint the summed editions and call `listLastMint` once per tier.
+  Browse stems shows one card per stem with a chip per available tier and its
+  listing price; a chip opens checkout on that tier's listing.
 - Seller listing and manager surfaces show estimated net proceeds from the
   current marketplace protocol fee and the stem's royalty bps. These values
   are derived from on-chain/API fields, not hardcoded display constants.
@@ -100,6 +114,24 @@ buyer and machine-commerce surfaces strict about availability.
 5. Confirm the listing transactions; the indexer attaches the new listing rows
    after the chain events are observed.
 
+### Artist: offering several license tiers (#2041)
+
+1. From a stem chip on your release page choose **Mint & List** (or **List
+   for Sale** for a minted stem), select stems for **Batch Mint & List**, or
+   open **List for Sale** on the stem page.
+2. Tick Personal, Remix and/or Commercial. Each ticked tier takes a price per
+   edition (prefilled from the stem's catalog pricing for stablecoin listings)
+   and an edition count (default 1). Prices above the release's current price
+   limit are flagged inline.
+3. Read the summary line, e.g. "Lists 2 license tiers (2 editions); mints 1
+   more edition to cover them, in one confirmation.", then confirm once.
+4. The listing intent sent to the backend carries every tier with its order
+   in the transaction and, when readable from the receipt, its listing id, so
+   each listing is labelled with the right tier. Every web caller sends it
+   with the user's sign-in token and `sellerAddress` (the Next proxy forwards
+   `Authorization`); if it is refused or fails, the listing stays on-chain and
+   a non-blocking notice says the tier may take a moment to show.
+
 ### Developer
 
 - The collection endpoint is owner-only (#2139): it requires sign-in (a JWT)
@@ -119,6 +151,54 @@ buyer and machine-commerce surfaces strict about availability.
   - `PATCH /api/metadata/notifications/:address/preferences`
 - Relisting uses the existing `StemMarketplaceV2.list` transaction path through
   `useListStem`; it does not mutate the expired listing.
+- Per-tier listing intents (#2041). `POST /api/contracts/notify-listing`
+  (`POST /metadata/notify-listing`) requires a JWT and a `sellerAddress` that
+  is one of the caller's own addresses (sign-in account address or the
+  wallet record's `address`/`ownerAddress`; `admin`/`operator` may notify for
+  any seller): no token `401`, missing or malformed `sellerAddress` `400`,
+  another seller `403`, with nothing written. It keeps the single-tier body
+  (`licenseType`, `price`, `amount`) and also accepts
+  `tiers: [{ licenseType, pricePerUnit, amount, ordinal, listingId? }]` for a
+  transaction that calls `list()` once per tier for the same token. `ordinal`
+  is the 0-based order of that token's `list()` calls (= its `Listed` logs) in
+  the transaction; `listingId` is the on-chain id when the client read it from
+  the receipt. With `tiers`, the top-level tier fields are ignored. Invalid
+  tiers (not 1–3 entries, duplicate `licenseType` or `ordinal`, unknown
+  tier, non-integer or negative `ordinal`, non-numeric price/amount/listingId)
+  return `400`. Each tier is stored as one `StemListingIntent`, unique on
+  `(transactionHash, tokenId, sellerAddress, licenseType)` (an ERC-4337
+  bundle transaction can carry several senders), with `logOrdinal` and
+  `listingId` (both null for the single-tier body). A `tiers` notify replaces
+  all of that seller's earlier intents for the transaction and token; a
+  single-tier notify replaces the seller's other single-tier intents, so a
+  corrected retry wins.
+- Trust: an intent applies to a listing only when its `sellerAddress` equals
+  the on-chain seller (case-insensitive); intents written before #2041 have no
+  seller and still apply. Chain values win: an indexed listing's price,
+  amount and seller always come from the `Listed` event and are never
+  overwritten by notify. Intents supply only the license tier, the stem link,
+  and the payment asset of a native-token fallback row (the `Listed` event
+  carries no payment token, so the indexer stamps the zero address; the price
+  on chain is already in the asset's units).
+- Matching a `Listed` event to its tier
+  (`backend/src/modules/contracts/listing-intent-matching.ts`), over the
+  on-chain seller's intents for the same transaction and token: (a) the intent
+  whose `listingId` equals the event's; (b) when every intent has a
+  `logOrdinal`, the one equal to the listing's ordinal; (c) the only intent,
+  for single-tier bodies; otherwise the default tier (`personal`) and a
+  warning. An intent pinned to a different `listingId` is never used for (b)
+  or (c). The ordinal is the listing's rank among the seller's listing ids for
+  the token in the transaction: `StemMarketplaceV2` assigns ids with
+  `++listingId`, so id order equals log order. Siblings come from the raw
+  `Listed` `ContractEvent` rows (the indexer stores each log before publishing
+  it and walks a receipt in log order) plus already-indexed `StemListing`
+  rows, so the result does not depend on the order the handlers run in. If
+  the `Listed` events are indexed before the notify call, the call applies the
+  same rule to the already-indexed rows (tier, stem link, fallback payment
+  asset). Listing reads that backfill native-token fallback rows match per
+  listing too (listing id, then tier, then the only intent). Relisting a tier
+  still supersedes the same seller's active listing of that token and tier
+  only; other tiers stay active.
 - Buyer quote-backed checkout surfaces expose price, royalty, platform fee,
   seller proceeds, and total payment amounts where those fields are available.
 
@@ -137,7 +217,7 @@ buyer and machine-commerce surfaces strict about availability.
 
 | Surface | Current behavior |
 | --- | --- |
-| Public stem browsing (`/crates?tab=stems`) | Excludes expired and sold-out listings; sellers manage theirs from **Listings**. |
+| Public stem browsing (`/crates?tab=stems`) | Excludes expired and sold-out listings; sellers manage theirs from **Listings**. One card per stem: a stem listed under several tiers shows a chip per tier with its price, opening checkout on that tier (#2041). |
 | Storefront/x402/MCP/agent commerce | Storefront, x402 settlement lookup, MCP catalog search, player actions, and AI DJ catalog search treat expired and sold-out listings as unavailable. |
 | Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist progress. Its empty state points buyers to Library › Stems (#2042). |
 | Buyer purchases (`/library?tab=stems`) | Purchased stems with their best license tier, a license filter, Remix / Upgrade to Remix license actions, and a multi-stem Remix action per source track (#2042). Reached from **My purchased stems** on Browse stems (signed in) and the buy modal's success view. |
@@ -149,7 +229,10 @@ buyer and machine-commerce surfaces strict about availability.
 cd backend && npm run test -- listing_lifecycle.spec.ts notification.service.spec.ts
 cd backend && npm run test:integration -- --runInBand --testPathPattern=metadata.controller.integration.spec.ts
 cd backend && npm run test:integration -- --runInBand --testPathPattern=agent_catalog_search.integration.spec.ts
+cd backend && npm run test:integration -- multi_tier_listing
+cd backend && npm run test -- listing_intent_matching.spec.ts metadata_notify_listing.controller.http.spec.ts
 cd web && ./node_modules/.bin/vitest run src/lib/ownedStems.test.ts src/components/marketplace/PurchaseHandoff.test.tsx
+cd web && ./node_modules/.bin/vitest run src/lib/multiTierListing.test.ts src/lib/marketplaceStemGroups.test.ts src/components/marketplace/TierPicker.test.tsx src/components/marketplace/ListStemModal.test.tsx
 ```
 
 Frontend validation is currently covered by TypeScript/lint and manual UI review
@@ -166,10 +249,14 @@ listing manager stabilizes.
   - `backend/src/modules/contracts/listing-lifecycle.ts`
   - `backend/src/modules/contracts/contracts.service.ts`
   - `backend/src/modules/contracts/metadata.controller.ts`
+  - `backend/src/modules/contracts/listing-intent-matching.ts`
   - `backend/src/modules/agents/tools/tool_registry.ts`
   - `web/src/app/artist/listings/page.tsx`
   - `backend/src/modules/contracts/stem_license_tier.ts`
   - `web/src/lib/ownedStems.ts`
   - `web/src/app/library/page.tsx`
   - `web/src/components/marketplace/PurchaseHandoff.tsx`
+  - `web/src/lib/multiTierListing.ts`
+  - `web/src/lib/marketplaceStemGroups.ts`
+  - `web/src/components/marketplace/TierPicker.tsx`
 - Buyer home for purchased stems: [#2042](https://github.com/akoita/resonate/issues/2042)

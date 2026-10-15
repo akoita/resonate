@@ -1091,11 +1091,21 @@ model StemListingIntent {
   amount          BigInt?
   paymentToken    String?
   licenseType     LicenseType @default(personal)
+  // #2041: one intent per seller and license tier. logOrdinal is the 0-based
+  // position of this tier's list() call among the seller's Listed logs for the
+  // token in the tx; listingId is the on-chain listing id when the client read
+  // it from the receipt. Both are null for the legacy single-tier notify body.
+  // sellerAddress is part of the key (an ERC-4337 bundle transaction can carry
+  // several senders) and must match the on-chain seller for the intent to
+  // apply; it is null only on rows written before #2041.
+  logOrdinal      Int?
+  listingId       BigInt?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  @@unique([transactionHash, tokenId], name: "transactionHash_tokenId")
+  @@unique([transactionHash, tokenId, sellerAddress, licenseType], name: "transactionHash_tokenId_sellerAddress_licenseType", map: "StemListingIntent_tx_token_seller_license_key")
   @@index([transactionHash])
+  @@index([transactionHash, listingId])
   @@index([stemId])
   @@index([licenseType])
 }

@@ -1,8 +1,26 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
-import { useListStem, useMintAndListStem } from "../../hooks/useContracts";
+import type { Address } from "viem";
+import {
+    useListStemTiers,
+    useMintAndListStem,
+    useStemBalance,
+} from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
+import { useStemTierPricing } from "../../hooks/useStemTierPricing";
+import { getBalance, getStemData } from "../../lib/contracts";
+import {
+    buildTierNotifyPayload,
+    describeTierPlan,
+    orderTiers,
+    planTierListings,
+    resolveListingPriceCapUnits,
+    type PlannedTierListing,
+    type TierListingInput,
+} from "../../lib/multiTierListing";
+import { TierPickerDialog, type TierDialogPlanCheck } from "./TierPickerDialog";
+import { NOTIFY_LISTING_DELAYED_MESSAGE, postNotifyListing } from "../../lib/listingTiers";
 import {
     getListingsByStem,
     getStemNftInfo,
@@ -85,6 +103,7 @@ interface MintStemButtonProps {
 // Keep a successful wallet transaction visible while the backend indexer catches up.
 // "Listed" is reserved for listings confirmed by the marketplace API.
 const LISTING_PENDING_TTL_MS = 60 * 60 * 1000;
+const LISTING_DURATION_SECONDS = 7 * 24 * 60 * 60;
 type MintStemButtonState = "idle" | "confirming_mint" | "minted" | "confirming_list" | "listing_pending" | "listed";
 
 export function MintStemButton({
@@ -99,14 +118,14 @@ export function MintStemButton({
     disabledReason,
     disabledLabel,
 }: MintStemButtonProps) {
-    const { address, status, smartAccountAddress } = useAuth();
-    const { chainId } = useZeroDev();
+    const { address, status, smartAccountAddress, token } = useAuth();
+    const { chainId, publicClient } = useZeroDev();
     const {
         assets: paymentAssets,
         defaultAsset,
         loading: paymentAssetsLoading,
     } = usePaymentAssets(chainId);
-    const { list, pending: listPending } = useListStem();
+    const { listTiers, pending: listPending } = useListStemTiers();
     const { mintAndList, pending: mintAndListPending } = useMintAndListStem();
     const { addToast } = useToast();
     const listingAsset = selectDefaultMarketplaceListingAsset({
@@ -125,31 +144,50 @@ export function MintStemButton({
         asset: listingAsset,
     });
     const listingPriceUnavailable = !paymentAssetsLoading && listingPriceUnits <= 0n;
+    // Per-edition price limit for this release (stake or trust-tier cap);
+    // every tier price must stay within it.
+    const maxPriceUnits = resolveListingPriceCapUnits({
+        asset: listingAsset,
+        releaseProtection,
+        trustTier,
+    });
+    // Tier picker (#2041): "mint" for Mint & List, "list" for an already
+    // minted stem. Price defaults come from the stem's catalog pricing.
+    const [tierDialog, setTierDialog] = useState<"mint" | "list" | null>(null);
+    const tierPricing = useStemTierPricing(tierDialog ? stemId : null);
     // State machine: "idle" -> "minted" -> "listing_pending" -> "listed"
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
     const [state, setState] = useState<MintStemButtonState>("idle");
     const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null);
+    const { balance: mintedBalance } = useStemBalance(
+        tierDialog === "list" && mintedTokenId != null ? mintedTokenId : undefined,
+    );
     const notifyListing = useCallback(async (input: {
         tokenId: bigint;
         transactionHash: string;
+        tiers: PlannedTierListing[];
+        listingIds?: bigint[];
     }) => {
-        await fetch("/api/contracts/notify-listing", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                tokenId: input.tokenId.toString(),
+        const result = await postNotifyListing(
+            buildTierNotifyPayload({
+                tokenId: input.tokenId,
                 chainId,
-                seller: smartAccountAddress || address,
-                price: listingPriceUnits.toString(),
-                amount: "1",
+                seller: smartAccountAddress || address || "",
                 paymentToken: listingToken,
-                licenseType,
-                durationSeconds: String(7 * 24 * 60 * 60),
+                durationSeconds: BigInt(LISTING_DURATION_SECONDS),
                 transactionHash: input.transactionHash,
                 stemId,
+                tiers: input.tiers,
+                listingIds: input.listingIds,
             }),
-        });
-    }, [address, chainId, licenseType, listingPriceUnits, listingToken, smartAccountAddress, stemId]);
+            token,
+        );
+        if (!result.ok) {
+            // Non-blocking: the listing exists on-chain and the indexer
+            // still records it; only the tier label may lag.
+            addToast({ type: "warning", title: "Listing created", message: NOTIFY_LISTING_DELAYED_MESSAGE });
+        }
+    }, [addToast, address, chainId, listingToken, smartAccountAddress, stemId, token]);
     const applyStatusDetail = useCallback((detail: StemMarketplaceStatusEventDetail) => {
         if (detail.stemId !== stemId) return;
 
@@ -272,8 +310,9 @@ export function MintStemButton({
         };
     }, [applyStatusDetail, checkStatus, stemId]);
 
-    const handleList = async () => {
-        if (!address || !mintedTokenId) {
+    const handleList = async (tiers: TierListingInput[]) => {
+        const seller = (smartAccountAddress || address) as Address | undefined;
+        if (!seller || !mintedTokenId) {
             addToast({
                 type: "error",
                 title: "Error",
@@ -281,23 +320,30 @@ export function MintStemButton({
             });
             return;
         }
-        if (listingPriceUnits <= 0n) {
-            addToast({
-                type: "error",
-                title: "Listing price unavailable",
-                message: "Marketplace listing price must be greater than zero.",
-            });
-            return;
-        }
 
         try {
-            // List for the resolved marketplace price, 1 unit, 7 days
-            const hash = await list({
+            // Re-read balance and creator at confirm time so the plan never
+            // lists more editions than the seller holds or can mint.
+            const [balance, stemData] = await Promise.all([
+                getBalance(publicClient, chainId, seller, mintedTokenId),
+                getStemData(publicClient, chainId, mintedTokenId),
+            ]);
+            const plan = planTierListings({
+                tiers,
+                balance,
+                // "minted" means the marketplace has no active listing yet.
+                committedAmount: 0n,
+                canMintMore: stemData.creator.toLowerCase() === seller.toLowerCase(),
+            });
+            if (!plan.ok) {
+                addToast({ type: "error", title: "Cannot list these tiers", message: plan.message });
+                return;
+            }
+            setTierDialog(null);
+            const { hash, listingIds } = await listTiers(plan, {
                 tokenId: mintedTokenId,
-                pricePerUnit: listingPriceUnits,
-                amount: BigInt(1),
                 paymentToken: listingToken,
-                durationSeconds: BigInt(7 * 24 * 60 * 60),
+                durationSeconds: BigInt(LISTING_DURATION_SECONDS),
             });
 
             // Tx confirmed on-chain — wait for backend indexer to confirm listing
@@ -307,6 +353,8 @@ export function MintStemButton({
                 await notifyListing({
                     tokenId: mintedTokenId,
                     transactionHash: hash,
+                    tiers: plan.tiers,
+                    listingIds,
                 });
             } catch {
                 // Best-effort — indexer can still catch up from chain events.
@@ -319,7 +367,7 @@ export function MintStemButton({
                 addToast({
                     type: "success",
                     title: "Listed for Sale!",
-                    message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for ${listingPriceLabel}`,
+                    message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace in ${plan.tiers.length} license tier${plan.tiers.length === 1 ? "" : "s"}`,
                 });
             } else {
                 setState("listing_pending");
@@ -339,7 +387,7 @@ export function MintStemButton({
         }
     };
 
-    const handleMintAndList = async () => {
+    const openTierDialog = (mode: "mint" | "list") => {
         if (!address) {
             addToast({ type: "error", title: "Wallet Required", message: "Connect your wallet" });
             return;
@@ -352,6 +400,56 @@ export function MintStemButton({
             });
             return;
         }
+        setTierDialog(mode);
+    };
+
+    const checkTierPlan = (tiers: TierListingInput[]): TierDialogPlanCheck => {
+        if (tierDialog === "list") {
+            const plan = planTierListings({
+                tiers,
+                balance: mintedBalance,
+                committedAmount: 0n,
+                // Confirm re-checks the creator on-chain; the release owner
+                // who minted the stem is its creator.
+                canMintMore: true,
+            });
+            return plan.ok
+                ? {
+                    ok: true,
+                    summary: describeTierPlan({
+                        tierCount: plan.tiers.length,
+                        totalAmount: plan.totalAmount,
+                        mintAmount: plan.mintAmount,
+                        mode: "list",
+                    }),
+                }
+                : { ok: false, message: plan.message };
+        }
+        const ordered = orderTiers(tiers);
+        return ordered.ok
+            ? {
+                ok: true,
+                summary: describeTierPlan({
+                    tierCount: ordered.tiers.length,
+                    totalAmount: ordered.totalAmount,
+                    mintAmount: ordered.totalAmount,
+                    mode: "mint",
+                }),
+            }
+            : { ok: false, message: ordered.message };
+    };
+
+    const handleMintAndList = async (tierInputs: TierListingInput[]) => {
+        if (!address) {
+            addToast({ type: "error", title: "Wallet Required", message: "Connect your wallet" });
+            return;
+        }
+        const ordered = orderTiers(tierInputs);
+        if (!ordered.ok) {
+            addToast({ type: "error", title: "Cannot list these tiers", message: ordered.message });
+            return;
+        }
+        setTierDialog(null);
 
         try {
             let releaseProtectionId: bigint | undefined;
@@ -372,16 +470,17 @@ export function MintStemButton({
 
             setState("confirming_mint");
 
-            const { hash, tokenId } = await mintAndList({
+            const { hash, tokenId, listingIds } = await mintAndList({
                 stemId,
-                amount: BigInt(1),
+                amount: ordered.totalAmount,
                 royaltyBps: 500,
                 remixable: true,
                 parentIds: [],
                 protectionId: releaseProtectionId,
-                pricePerUnit: listingPriceUnits,
+                pricePerUnit: ordered.tiers[0].pricePerUnit,
                 paymentToken: listingToken,
-                durationSeconds: BigInt(7 * 24 * 60 * 60),
+                durationSeconds: BigInt(LISTING_DURATION_SECONDS),
+                tiers: ordered.tiers,
             });
 
             const actualTokenId = tokenId ?? await pollForMintedTokenId(stemId);
@@ -395,6 +494,8 @@ export function MintStemButton({
                 await notifyListing({
                     tokenId: actualTokenId,
                     transactionHash: hash,
+                    tiers: ordered.tiers,
+                    listingIds: tokenId != null ? listingIds : undefined,
                 });
             } catch {
                 // Best-effort — indexer can still catch up from chain events.
@@ -407,7 +508,9 @@ export function MintStemButton({
                 addToast({
                     type: "success",
                     title: "Minted & Listed!",
-                    message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for ${listingPriceLabel}`,
+                    message: ordered.tiers.length > 1
+                        ? `${stemType} stem (Token #${actualTokenId}) is now on the marketplace in ${ordered.tiers.length} license tiers`
+                        : `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for ${formatListingPrice({ priceUnits: ordered.tiers[0].pricePerUnit, asset: listingAsset })}`,
                 });
             } else {
                 setState("listing_pending");
@@ -542,10 +645,38 @@ export function MintStemButton({
         );
     }
 
+    const tierDialogNode = tierDialog ? (
+        <TierPickerDialog
+            title={tierDialog === "mint" ? `Mint & list ${stemType}` : `List ${stemType} for sale`}
+            confirmLabel={tierDialog === "mint" ? "Mint & list" : "List for sale"}
+            asset={listingAsset}
+            personalPriceUnits={listingPriceUnits}
+            pricing={tierPricing}
+            initialTier={licenseType}
+            maxPriceUnits={maxPriceUnits}
+            checkPlan={checkTierPlan}
+            onConfirm={(tiers) => {
+                if (tierDialog === "mint") void handleMintAndList(tiers);
+                else void handleList(tiers);
+            }}
+            onClose={() => setTierDialog(null)}
+            pending={tierDialog === "mint" ? mintAndListPending : listPending}
+            notice={
+                <p className="text-xs text-zinc-400">
+                    {maxPriceUnits != null
+                        ? `Suggested price ${listingPriceLabel} per edition. This release's current limit is ${formatListingPrice({ priceUnits: maxPriceUnits, asset: listingAsset })} per edition.`
+                        : `Suggested price ${listingPriceLabel} per edition. Listings run for 7 days.`}
+                </p>
+            }
+        />
+    ) : null;
+
     if (state === "minted") {
         return (
+            <>
+            {tierDialogNode}
             <button
-                onClick={handleList}
+                onClick={() => openTierDialog("list")}
                 disabled={listPending || paymentAssetsLoading || listingPriceUnavailable}
                 style={{
                     width: "100%",
@@ -563,12 +694,15 @@ export function MintStemButton({
             >
                 {paymentAssetsLoading ? "Loading asset..." : listPending ? "Listing..." : listingPriceUnavailable ? "Price unavailable" : "List for Sale"}
             </button>
+            </>
         );
     }
 
     return (
+        <>
+        {tierDialogNode}
         <button
-            onClick={handleMintAndList}
+            onClick={() => openTierDialog("mint")}
             disabled={mintAndListPending || paymentAssetsLoading || listingPriceUnavailable}
             style={{
                 width: "100%",
@@ -586,5 +720,6 @@ export function MintStemButton({
         >
             {paymentAssetsLoading ? "Loading asset..." : mintAndListPending ? "Processing..." : listingPriceUnavailable ? "Price unavailable" : "Mint & List"}
         </button>
+        </>
     );
 }
