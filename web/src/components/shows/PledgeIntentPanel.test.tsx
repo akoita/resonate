@@ -103,6 +103,36 @@ describe("PledgeIntentPanel campaign fee copy", () => {
   });
 });
 
+describe("PledgeIntentPanel refund disclosure (#2150)", () => {
+  it("states the smaller refund after a 10% deposit before the pledge button", () => {
+    const html = renderToStaticMarkup(
+      <PledgeIntentPanel campaign={{ ...campaign, depositReleaseBps: 1000 }} fallbackTiers={tiers} />,
+    );
+    const disclosure = html.indexOf("10% of the money pledged can be released to the artist as a deposit");
+    expect(disclosure).toBeGreaterThan(-1);
+    expect(html).toContain("you would get back about 90% of your pledge.");
+    expect(disclosure).toBeLessThan(html.indexOf("Connect wallet to pledge"));
+  });
+
+  it("shows no reduction wording for a 0% deposit campaign", () => {
+    const html = renderToStaticMarkup(
+      <PledgeIntentPanel campaign={{ ...campaign, depositReleaseBps: 0 }} fallbackTiers={tiers} />,
+    );
+    expect(html).not.toContain("released to the artist as a deposit");
+    expect(html).not.toContain("get back about");
+  });
+
+  it("does not show the disclosure once pledging is closed", () => {
+    const html = renderToStaticMarkup(
+      <PledgeIntentPanel
+        campaign={{ ...campaign, depositReleaseBps: 1000, rawStatus: "cancelled" }}
+        fallbackTiers={tiers}
+      />,
+    );
+    expect(html).not.toContain("get back about");
+  });
+});
+
 describe("PledgeIntentPanel optional city entry (#1968)", () => {
   beforeEach(() => {
     consent.allowed = false;

@@ -56,7 +56,8 @@ export default async function ShowsExplorerPage({
             Pick an artist and a city, lock funds in a smart-contract escrow,
             and if enough fans commit, the artist&apos;s team gets a demand
             signal backed by money&nbsp;— not likes. If they don&apos;t
-            confirm, every pledge is refunded automatically.
+            confirm, refunds open automatically and every backer can claim
+            their pledge back.
           </p>
         </div>
 
@@ -106,7 +107,8 @@ export default async function ShowsExplorerPage({
             </strong>
             <p>
               Propose a show for an artist in your city. Pledges are held in
-              escrow and refunded automatically if the show doesn&apos;t happen.
+              escrow, and backers can claim them back if the show doesn&apos;t
+              happen.
             </p>
             <Link href="/shows/create" className="shows-page__create-link">
               Create campaign
