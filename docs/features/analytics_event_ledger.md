@@ -347,7 +347,8 @@ fixture covers all six control events in both transforms.
 ## Settled commerce facts (#1894)
 
 `commerce.settled` feeds `payoutUsd` (warehouse and BigQuery daily views), the
-artist dashboard payout totals, `artistSettledCommerceCount` and the "purchase"
+artist dashboard gross sales totals (labelled as gross sales; responses carry
+`payoutBasis: "gross_settled"`, #2144), `artistSettledCommerceCount` and the "purchase"
 agent-quality outcome. Two settlement rails emit it, through the shared
 `EventBus` and the analytics domain bridge (`analytics_commerce_settled.ts`):
 the marketplace rail emits when the `contract.stem_sold` handler creates a new

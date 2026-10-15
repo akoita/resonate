@@ -3,13 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ArtistActionCard, ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
+import { grossSalesExplainer } from "../../lib/marketplaceProceeds";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 type DashboardState =
   | { status: "loading"; days: number }
   | { status: "error"; days: number; message: string; onRetry: () => void }
   | { status: "no-artist"; days: number }
-  | { status: "ready"; days: number; data: ArtistAnalyticsDashboardData };
+  | {
+      status: "ready";
+      days: number;
+      data: ArtistAnalyticsDashboardData;
+      /** On-chain marketplace platform fee, when known, for the "Gross sales" explanation. */
+      platformFeeBps?: bigint | number | null;
+    };
 
 type Props = DashboardState & {
   artistName?: string;
@@ -49,16 +56,24 @@ export default function ArtistAnalyticsDashboard(props: Props) {
       {props.status === "loading" ? <LoadingDashboard /> : null}
       {props.status === "error" ? <ErrorDashboard message={props.message} onRetry={props.onRetry} /> : null}
       {props.status === "no-artist" ? <NoArtistDashboard /> : null}
-      {props.status === "ready" ? <ReadyDashboard data={props.data} /> : null}
+      {props.status === "ready" ? <ReadyDashboard data={props.data} platformFeeBps={props.platformFeeBps} /> : null}
     </main>
   );
 }
 
-function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
+function ReadyDashboard({
+  data,
+  platformFeeBps,
+}: {
+  data: ArtistAnalyticsDashboardData;
+  platformFeeBps?: bigint | number | null;
+}) {
   const topTrack = data.topTracks[0] ?? data.trackPerformance[0] ?? null;
   const sourceLabel = data.meta.source === "bigquery" ? "BigQueryFactTable" : "LocalEventLedger";
   const freshnessLabel = formatFreshness(data.meta.freshness.asOf, data.meta.freshness.lagSeconds);
-  const payoutLabel = formatUsd(data.summary.totalPayoutUsd);
+  // `totalPayoutUsd` is the gross settled sale amount (payoutBasis "gross_settled"), not
+  // the artist's net share, so it is labelled as gross sales (#2144).
+  const grossSalesLabel = formatUsd(data.summary.totalPayoutUsd);
   const actions = data.actions ?? [];
 
   if (data.meta.isEmpty) {
@@ -92,7 +107,12 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
 
       <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
-        <Kpi label="Total payout" value={payoutLabel} detail={primaryPayoutAsset(data.summary.payoutsByAsset)} />
+        <Kpi
+          label="Gross sales"
+          value={grossSalesLabel}
+          detail={primarySettledAsset(data.summary.payoutsByAsset)}
+          note={grossSalesExplainer(platformFeeBps)}
+        />
         <Kpi label="Top track" value={topTrack?.title ?? "No track yet"} detail={topTrack ? `${formatNumber(topTrack.plays)} plays` : "Waiting for play events"} />
         <Kpi
           label="Protected releases"
@@ -363,7 +383,7 @@ function EmptyDashboard({ days }: { days: number }) {
       <p style={{ color: "var(--r-on-surface-muted)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>
         No Playback Events
       </p>
-      <h2 style={{ fontSize: "20px", marginTop: "8px" }}>No plays or payouts in the last {days} days</h2>
+      <h2 style={{ fontSize: "20px", marginTop: "8px" }}>No plays or sales in the last {days} days</h2>
       <p style={{ opacity: 0.6, fontSize: "13px", marginTop: "8px" }}>
         Once listeners play tracks or stablecoin settlements complete, this page will fill dynamically.
       </p>
@@ -371,11 +391,11 @@ function EmptyDashboard({ days }: { days: number }) {
   );
 }
 
-function Kpi({ label, value, detail }: { label: string; value: string; detail: string }) {
+function Kpi({ label, value, detail, note }: { label: string; value: string; detail: string; note?: string }) {
   const isAgent = label.toLowerCase().includes("top track");
   const icon = label.toLowerCase().includes("plays")
     ? "▶"
-    : label.toLowerCase().includes("payout")
+    : label.toLowerCase().includes("sales")
     ? "$"
     : label.toLowerCase().includes("track")
     ? "★"
@@ -393,6 +413,11 @@ function Kpi({ label, value, detail }: { label: string; value: string; detail: s
       <div className="kpi-subtitle-trend">
         <span>{detail}</span>
       </div>
+      {note ? (
+        <p className="kpi-subtitle-trend" style={{ margin: "4px 0 0", lineHeight: 1.4 }}>
+          {note}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -603,7 +628,7 @@ function TrackPerformanceTable({ tracks }: { tracks: ArtistAnalyticsDashboardDat
         <tr>
           <th>Track</th>
           <th>Plays</th>
-          <th>Payout</th>
+          <th>Gross sales</th>
           <th>Assets</th>
         </tr>
       </thead>
@@ -696,9 +721,9 @@ function formatUsd(value: number) {
   }).format(value);
 }
 
-function primaryPayoutAsset(payouts: ArtistAnalyticsDashboardData["summary"]["payoutsByAsset"]) {
-  const primary = payouts[0];
-  return primary ? `${primary.settlementAmount} ${primary.symbol}` : "No settlement rows";
+function primarySettledAsset(settlements: ArtistAnalyticsDashboardData["summary"]["payoutsByAsset"]) {
+  const primary = settlements[0];
+  return primary ? `${primary.settlementAmount} ${primary.symbol} settled` : "No settled sales yet";
 }
 
 // Helper: safe formatting for NaN cases
