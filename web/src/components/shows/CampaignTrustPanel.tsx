@@ -4,6 +4,7 @@ import {
   campaignFeeNotice,
   campaignDisputeView,
   maskAddress,
+  refundDisclosure,
   type Campaign,
 } from "../../lib/shows";
 import { CampaignTrustBadge } from "./CampaignTrustBadge";
@@ -58,6 +59,7 @@ export function CampaignTrustPanel({ campaign }: Props) {
   const trust = campaignTrustState(campaign);
   const terms = campaignTerms(campaign);
   const feeNotice = campaignFeeNotice(campaign);
+  const refundNotice = refundDisclosure(campaign);
   const dispute = campaignDisputeView(campaign);
   // Only surface the dispute row when there's something to say: an active or
   // resolved dispute, or an open post-fulfillment dispute window.
@@ -101,6 +103,9 @@ export function CampaignTrustPanel({ campaign }: Props) {
         </p>
         {feeNotice ? (
           <p className="campaign-trust__fee-note">{feeNotice}</p>
+        ) : null}
+        {refundNotice ? (
+          <p className="campaign-trust__refund-note">{refundNotice}</p>
         ) : null}
       </div>
 

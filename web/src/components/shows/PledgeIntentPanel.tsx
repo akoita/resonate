@@ -21,6 +21,7 @@ import {
   pledgeConfirmSummary,
   pledgeDemandGeo,
   pledgeStateLabel,
+  refundDisclosure,
   type Campaign,
   type CampaignTier,
   type ShowPledgeIntent,
@@ -93,6 +94,9 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     : null;
   const latestPledgeCampaignStatus = latestPledge?.campaign?.status ?? campaign.rawStatus;
   const feeNotice = campaignFeeNotice(campaign);
+  // #2150: shown above the pledge button and in the confirm dialog, so a backer
+  // reads it before committing.
+  const refundNotice = refundDisclosure(campaign);
   const refundAvailable = Boolean(
     latestPledge &&
     latestPledge.status !== "refunded" &&
@@ -167,6 +171,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
           pledgeDemandGeo({ countryCode: declaredCountry, city: declaredCity })
             ? { countryCode: declaredCountry, city: declaredCity }
             : null,
+        refundDisclosureDepositReleaseBps: refundNotice ? campaign.depositReleaseBps : null,
       });
       setIntent(next);
       if (next.contractCall) {
@@ -290,6 +295,10 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
             <small>Loading receipts...</small>
           )}
         </div>
+      ) : null}
+
+      {pledgingOpen && refundNotice ? (
+        <p className="show-detail__refund-note">{refundNotice}</p>
       ) : null}
 
       {pledgingOpen ? (

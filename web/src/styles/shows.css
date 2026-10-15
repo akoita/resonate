@@ -2854,7 +2854,8 @@
   color: rgba(255, 255, 255, 0.62);
 }
 
-.show-detail__fee-note {
+.show-detail__fee-note,
+.show-detail__refund-note {
   margin: 12px 0 0;
   padding: 12px 14px;
   border-radius: 14px;
@@ -4030,7 +4031,8 @@
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.6);
 }
-.campaign-trust__fee-note {
+.campaign-trust__fee-note,
+.campaign-trust__refund-note {
   margin: 10px 0 0;
   padding: 10px 12px;
   border-radius: 12px;
