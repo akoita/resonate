@@ -13,6 +13,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { getAddress, type Address } from "viem";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { loadX402CommerceSettled, publishCommerceSettled } from "../analytics/analytics_commerce_settled";
 import { X402Config } from "../x402/x402.config";
 import { PaymentsService } from "../payments/payments.service";
 import { resolveX402AssetInfo, type X402AssetInfo } from "../x402/x402.public";
@@ -276,6 +277,15 @@ export class PunchlineX402Service {
         entitlement: "punchline_edition",
         payer,
       });
+
+      // #1894: one settled-commerce fact per collected paid edition. Never
+      // fails the collect.
+      await publishCommerceSettled(
+        this.eventBus,
+        () => loadX402CommerceSettled({ receiptId: settlementData.receiptId }),
+        this.logger,
+        `x402 moment receipt=${settlementData.receiptId}`,
+      );
 
       return this.collectService.finalizeCollect(userId, moment, collectible);
     } catch (error) {
