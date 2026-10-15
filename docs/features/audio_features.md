@@ -116,6 +116,8 @@ Request body:
   an older `analysisRevision` than the current one. Without it, only stems
   with no features are selected. Results never overwrite features of the same
   or a newer revision, so redelivered or older results are no-ops.
+- `retryFailed`: when `true`, also re-attempt stems held back after failed
+  analyses (see below).
 
 Response: `transport`, `status` (`ok`, `dispatched` or `worker_unavailable`),
 `scanned`, `updated`, `dispatched`, `skipped[]`, `remaining` (stems still
@@ -125,7 +127,7 @@ re-run until `remaining` reaches 0. With the `pubsub` transport, `remaining`
 still counts the stems in flight. Call the POST once per batch, then poll
 `GET /admin/stems/backfill-audio-features?types=original` (add `&refresh=true`
 to count outdated stems too; same admin guard;
-returns `remaining` and `remainingByType` without analyzing anything) until it
+returns `remaining`, `failed` and `remainingByType` without analyzing anything) until it
 stops falling, before dispatching the next batch. Re-dispatching a batch that
 is still in flight is harmless but wasted work: results only fill stems that
 still lack features. GCS stems are handed to the worker as their
@@ -133,8 +135,25 @@ canonical `https://storage.googleapis.com/…` URL, including those stored in th
 historical bucket-relative `/{bucket}/{object}` form. A stem without a stored
 URI, or with one the storage provider rejects, is reported as
 `audio_unavailable` and is not dispatched. Per-stem analysis failures are
-logged by the backend and the stem stays pending. Backfilled features carry
-`camelot` too.
+logged by the backend and the stem stays pending. Since
+[#2012](https://github.com/akoita/resonate/issues/2012) a failure attributable
+to the stem is recorded on it. These are `audio_unavailable`, `analysis_failed`
+(the worker rejected the audio with 400, 413, 415 or 422, or answered without
+usable features), and a missing or malformed per-stem result in job mode. The
+stem is then held back from default runs for 24 hours, and indefinitely after 3
+failures, and counted in the response's `failed` field instead of `remaining`
+(and `remainingByType`). This lets `remaining` reach 0 even when some stems
+keep failing. `retryFailed: true` re-attempts them, and a success resets the
+record. Worker or transport failures are only logged and leave the stem
+eligible for the next run. Over HTTP these are a network error, a timeout, any
+other non-2xx status or a non-JSON body, reported as `worker_unavailable`. The
+first such failure stops the HTTP run. The response then carries
+`stoppedEarly: "worker_unavailable"`, and `scanned` counts only the stems
+attempted. The rest of the batch is not attempted, not reported in `skipped`,
+and stays in `remaining`. In
+job mode they are a publish failure or a whole-message `status: "failed"`.
+Unexpected errors, reported as `error`, are treated the same way. Backfilled
+features carry `camelot` too.
 
 The staging backfill run is tracked in the private deployment repository; this
 page holds no environment URLs or schedules.

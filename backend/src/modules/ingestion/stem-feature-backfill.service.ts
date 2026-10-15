@@ -22,6 +22,37 @@ import { toWorkerFetchableUri } from "./worker-fetchable-uri";
 /** Stems per analysis message on the Pub/Sub transport (contract: 1-50). */
 const PUBSUB_MAX_STEMS_PER_MESSAGE = 50;
 
+/**
+ * A stem whose analysis failed is held back from the default selection for
+ * this long after its last failure (#2012), so a batch moves on to other
+ * stems instead of re-trying the same failures on every run.
+ */
+export const BACKFILL_FAILURE_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * After this many failed analyses a stem is held back until a run passes
+ * `retryFailed: true` (#2012).
+ */
+export const BACKFILL_MAX_FAILURES = 3;
+
+/**
+ * Worker `/analyze` statuses that reject the stem's audio itself (#2012):
+ * unreadable or unanalyzable audio (422, 400, 415) or an oversized upload
+ * (413). Any other non-2xx status is treated as the worker being unavailable.
+ */
+const STEM_REJECTION_STATUSES = new Set([400, 413, 415, 422]);
+
+/**
+ * Skip reasons attributable to the stem, which are recorded as failures and
+ * hold it back (#2012). `worker_unavailable` (network error, timeout, other
+ * non-2xx status or non-JSON body) and `error` (any other unexpected failure)
+ * are logged only and leave the stem eligible.
+ */
+const STEM_FAILURE_REASONS = new Set(["audio_unavailable", "analysis_failed"]);
+
+/** The analysis worker could not be reached or answered abnormally. */
+class WorkerUnavailableError extends Error {}
+
 /** Stem types that exist in the catalog; `original` is the full mix (#1959). */
 export const BACKFILL_STEM_TYPES = [
   "original",
@@ -49,6 +80,11 @@ export type StemFeatureBackfillRequest = {
    * as 1. Default false: only stems without features are targeted.
    */
   refresh?: boolean;
+  /**
+   * Also re-attempt stems held back after failed analyses (#2012): those that
+   * failed within the retry window or reached the failure cap. Default false.
+   */
+  retryFailed?: boolean;
 };
 
 export type StemFeatureBackfillResult = {
@@ -60,12 +96,24 @@ export type StemFeatureBackfillResult = {
   updated: number;
   skipped: Array<{ stemId: string; reason: string }>;
   /**
-   * Unprocessed stems still lacking features after this run. On the `pubsub`
-   * transport this still counts stems that are in flight (dispatched but not
-   * yet written back), so re-poll it until it stops decreasing.
+   * Stems still lacking features that the next default run can select: never
+   * tried, or past the retry window after a failure (#2012). Stems held back
+   * after failures are counted in `failed` instead, so this reaches 0 even
+   * when some stems keep failing. On the `pubsub` transport this still counts
+   * stems that are in flight (dispatched but not yet written back), so
+   * re-poll it until it stops decreasing.
    */
   remaining: number;
-  /** Stems still lacking features per type, across ALL types (ignores `types`). */
+  /**
+   * Stems still lacking features that are held back after failed analyses
+   * (#2012): failed within the retry window or reached the failure cap. Same
+   * `types`/`refresh` filter as `remaining`; `retryFailed` re-attempts them.
+   */
+  failed: number;
+  /**
+   * Selectable stems (as `remaining`) per type, across ALL types (ignores
+   * `types`).
+   */
   remainingByType: Record<string, number>;
   /**
    * Transport used (#2013): `http` when `DEMUCS_WORKER_URL` is set, `pubsub`
@@ -83,11 +131,17 @@ export type StemFeatureBackfillResult = {
   dispatched: number;
   /** Analysis job id of the published message (pubsub only). */
   jobId?: string;
+  /**
+   * HTTP only (#2012): set when the run stopped at the first stem the worker
+   * could not serve. `scanned` then counts the stems attempted; the rest of
+   * the batch was not attempted and stays in `remaining`.
+   */
+  stoppedEarly?: "worker_unavailable";
 };
 
 export type StemFeatureBackfillStatus = Pick<
   StemFeatureBackfillResult,
-  "remaining" | "remainingByType"
+  "remaining" | "failed" | "remainingByType"
 >;
 
 /**
@@ -100,6 +154,35 @@ const STORED_REVISION_SQL = Prisma.sql`(CASE WHEN jsonb_typeof("audioFeatures"->
 /** Features are missing, or were produced by a revision older than `revisionSql`. */
 function needsMeasurementSql(currentRevision: number | Prisma.Sql): Prisma.Sql {
   return Prisma.sql`("audioFeatures" IS NULL OR jsonb_typeof("audioFeatures") = 'null' OR ${STORED_REVISION_SQL} < ${currentRevision})`;
+}
+
+/** Failures before this instant are past the retry window. */
+function retryCutoff(): Date {
+  return new Date(Date.now() - BACKFILL_FAILURE_RETRY_WINDOW_MS);
+}
+
+/**
+ * Not held back after failures (#2012): never failed, or below the failure
+ * cap with the last failure older than the retry window.
+ */
+function selectableWhere(cutoff: Date): Prisma.StemWhereInput {
+  return {
+    OR: [
+      { audioFeaturesFailureCount: 0 },
+      {
+        audioFeaturesFailureCount: { lt: BACKFILL_MAX_FAILURES },
+        OR: [
+          { audioFeaturesFailedAt: null },
+          { audioFeaturesFailedAt: { lt: cutoff } },
+        ],
+      },
+    ],
+  };
+}
+
+/** SQL twin of {@link selectableWhere}. */
+function selectableSql(cutoff: Date): Prisma.Sql {
+  return Prisma.sql`("audioFeaturesFailureCount" = 0 OR ("audioFeaturesFailureCount" < ${BACKFILL_MAX_FAILURES} AND ("audioFeaturesFailedAt" IS NULL OR "audioFeaturesFailedAt" < ${cutoff})))`;
 }
 
 function refreshPredicate(types: string[] | null): Prisma.Sql {
@@ -128,7 +211,11 @@ function sanitizeTypes(types: unknown): string[] | null {
  * analysis-only Pub/Sub message through the separation job dispatch when the
  * worker runs in job mode (results are applied by `applyAnalysisResults`).
  * With neither, the call reports `worker_unavailable`. Admin-triggered and
- * batch-bounded: run it repeatedly until `remaining` reaches 0. Stems whose generation drafts
+ * batch-bounded: run it repeatedly until `remaining` reaches 0. A stem whose
+ * analysis fails is recorded on the row and held back (#2012) for
+ * `BACKFILL_FAILURE_RETRY_WINDOW_MS`, and indefinitely after
+ * `BACKFILL_MAX_FAILURES` failures, unless a run passes `retryFailed`; such
+ * stems are reported in `failed`, not `remaining`. Stems whose generation drafts
  * recorded `grounding: prompt_only` only because features were missing
  * (#1192) become feature-conditioned on their next generation.
  */
@@ -142,8 +229,13 @@ export class StemFeatureBackfillService {
   ) {}
 
   /** Pending-stem filters shared by backfill and status. */
-  private pendingFilters(requestedTypes: unknown, refresh = false) {
+  private pendingFilters(
+    requestedTypes: unknown,
+    refresh = false,
+    retryFailed = false,
+  ) {
     const types = sanitizeTypes(requestedTypes);
+    const cutoff = retryCutoff();
     // AnyNull: the column is nullable JSON, so match DB null and JSON null.
     const pendingWhere: Prisma.StemWhereInput = {
       audioFeatures: { equals: Prisma.AnyNull },
@@ -152,60 +244,100 @@ export class StemFeatureBackfillService {
     const where: Prisma.StemWhereInput = types
       ? { ...pendingWhere, type: { in: types } }
       : pendingWhere;
-    return { types, pendingWhere, where, refresh };
+    return { types, pendingWhere, where, refresh, retryFailed, cutoff };
   }
 
   /**
-   * Query arguments selecting up to `limit` pending stems ordered by id. With
-   * `refresh`, the ids come from a raw query (the revision lives inside the
-   * JSON column) and the rows are then loaded by id.
+   * Query arguments selecting up to `limit` pending stems, fewest failures
+   * first, then by id; stems held back after failures are excluded unless
+   * `retryFailed` (#2012). With `refresh`, the ids come from a raw query (the
+   * revision lives inside the JSON column) and the rows are then loaded by id.
    */
   private async pendingSelection(
     filters: ReturnType<StemFeatureBackfillService["pendingFilters"]>,
     limit: number,
   ): Promise<{
     where: Prisma.StemWhereInput;
-    orderBy: { id: "asc" };
+    orderBy: Prisma.StemOrderByWithRelationInput[];
     take?: number;
   }> {
+    const orderBy: Prisma.StemOrderByWithRelationInput[] = [
+      { audioFeaturesFailureCount: "asc" },
+      { id: "asc" },
+    ];
     if (!filters.refresh) {
-      return { where: filters.where, orderBy: { id: "asc" }, take: limit };
+      return {
+        where: filters.retryFailed
+          ? filters.where
+          : { AND: [filters.where, selectableWhere(filters.cutoff)] },
+        orderBy,
+        take: limit,
+      };
     }
+    const selectable = filters.retryFailed
+      ? Prisma.empty
+      : Prisma.sql` AND ${selectableSql(filters.cutoff)}`;
     const rows = await prisma.$queryRaw<Array<{ id: string }>>(
-      Prisma.sql`SELECT "id" FROM "Stem" WHERE ${refreshPredicate(filters.types)} ORDER BY "id" ASC LIMIT ${limit}`,
+      Prisma.sql`SELECT "id" FROM "Stem" WHERE ${refreshPredicate(filters.types)}${selectable} ORDER BY "audioFeaturesFailureCount" ASC, "id" ASC LIMIT ${limit}`,
     );
-    return { where: { id: { in: rows.map((row) => row.id) } }, orderBy: { id: "asc" } };
+    return { where: { id: { in: rows.map((row) => row.id) } }, orderBy };
+  }
+
+  /**
+   * Records a failure attributable to the stem (#2012; see
+   * `STEM_FAILURE_REASONS`) so it is held back from the next default runs;
+   * reset when features are written. Worker, transport and publisher
+   * failures are never recorded.
+   */
+  private async recordFailures(stemIds: string[]): Promise<void> {
+    if (stemIds.length === 0) return;
+    await prisma.stem.updateMany({
+      where: { id: { in: stemIds } },
+      data: {
+        audioFeaturesFailedAt: new Date(),
+        audioFeaturesFailureCount: { increment: 1 },
+      },
+    });
   }
 
   private async countRemaining(
     filters: ReturnType<StemFeatureBackfillService["pendingFilters"]>,
   ): Promise<StemFeatureBackfillStatus> {
     if (filters.refresh) {
+      const selectable = selectableSql(filters.cutoff);
       const [totalRows, groupedRows] = await Promise.all([
-        prisma.$queryRaw<Array<{ count: bigint }>>(
-          Prisma.sql`SELECT COUNT(*) AS "count" FROM "Stem" WHERE ${refreshPredicate(filters.types)}`,
+        prisma.$queryRaw<Array<{ remaining: bigint; failed: bigint }>>(
+          Prisma.sql`SELECT COUNT(*) FILTER (WHERE ${selectable}) AS "remaining", COUNT(*) FILTER (WHERE NOT ${selectable}) AS "failed" FROM "Stem" WHERE ${refreshPredicate(filters.types)}`,
         ),
         prisma.$queryRaw<Array<{ type: string; count: bigint }>>(
-          Prisma.sql`SELECT "type", COUNT(*) AS "count" FROM "Stem" WHERE ${refreshPredicate(null)} GROUP BY "type"`,
+          Prisma.sql`SELECT "type", COUNT(*) AS "count" FROM "Stem" WHERE ${refreshPredicate(null)} AND ${selectable} GROUP BY "type"`,
         ),
       ]);
       const remainingByType: Record<string, number> = {};
       for (const row of groupedRows) {
         remainingByType[row.type] = Number(row.count);
       }
-      return { remaining: Number(totalRows[0]?.count ?? 0), remainingByType };
+      return {
+        remaining: Number(totalRows[0]?.remaining ?? 0),
+        failed: Number(totalRows[0]?.failed ?? 0),
+        remainingByType,
+      };
     }
-    const remaining = await prisma.stem.count({ where: filters.where });
-    const grouped = await prisma.stem.groupBy({
-      by: ["type"],
-      where: filters.pendingWhere,
-      _count: { _all: true },
-    });
+    const selectable = selectableWhere(filters.cutoff);
+    const [remaining, failed, grouped] = await Promise.all([
+      prisma.stem.count({ where: { AND: [filters.where, selectable] } }),
+      prisma.stem.count({ where: { AND: [filters.where, { NOT: selectable }] } }),
+      prisma.stem.groupBy({
+        by: ["type"],
+        where: { AND: [filters.pendingWhere, selectable] },
+        _count: { _all: true },
+      }),
+    ]);
     const remainingByType: Record<string, number> = {};
     for (const row of grouped) {
       remainingByType[row.type] = row._count._all;
     }
-    return { remaining, remainingByType };
+    return { remaining, failed, remainingByType };
   }
 
   /** Remaining stems lacking (or, with `refresh`, outdated) features; no worker calls. */
@@ -229,11 +361,15 @@ export class StemFeatureBackfillService {
     }
 
     // No localhost fallback (#2013): without a worker every stem would fail.
-    const filters = this.pendingFilters(request.types, request.refresh === true);
+    const filters = this.pendingFilters(
+      request.types,
+      request.refresh === true,
+      request.retryFailed === true,
+    );
     const { types, refresh } = filters;
     const counts = await this.countRemaining(filters);
     this.logger.warn(
-      `[backfill] worker_unavailable: neither DEMUCS_WORKER_URL nor the Pub/Sub publisher is available (types=${types ? types.join(",") : "all"}, refresh=${refresh}, remaining=${counts.remaining})`,
+      `[backfill] worker_unavailable: neither DEMUCS_WORKER_URL nor the Pub/Sub publisher is available (types=${types ? types.join(",") : "all"}, refresh=${refresh}, remaining=${counts.remaining}, failed=${counts.failed})`,
     );
     return {
       scanned: 0,
@@ -253,7 +389,11 @@ export class StemFeatureBackfillService {
       PUBSUB_MAX_STEMS_PER_MESSAGE,
       Math.max(1, Math.floor(request.limit ?? 25)),
     );
-    const filters = this.pendingFilters(request.types, request.refresh === true);
+    const filters = this.pendingFilters(
+      request.types,
+      request.refresh === true,
+      request.retryFailed === true,
+    );
     const { types, refresh } = filters;
     const stems = await prisma.stem.findMany({
       ...(await this.pendingSelection(filters, limit)),
@@ -299,6 +439,8 @@ export class StemFeatureBackfillService {
       });
     }
 
+    await this.recordFailures(skipped.map((skip) => skip.stemId));
+
     let jobId: string | undefined;
     if (dispatchable.length > 0) {
       jobId = `analyze_${Date.now()}_${randomBytes(4).toString("hex")}`;
@@ -320,7 +462,7 @@ export class StemFeatureBackfillService {
 
     const counts = await this.countRemaining(filters);
     this.logger.log(
-      `[backfill] transport=pubsub scanned=${stems.length} dispatched=${dispatchable.length} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"} refresh=${refresh}${jobId ? ` jobId=${jobId}` : ""}`,
+      `[backfill] transport=pubsub scanned=${stems.length} dispatched=${dispatchable.length} skipped=${skipped.length} remaining=${counts.remaining} failed=${counts.failed} types=${types ? types.join(",") : "all"} refresh=${refresh}${jobId ? ` jobId=${jobId}` : ""}`,
     );
     return {
       scanned: stems.length,
@@ -354,6 +496,7 @@ export class StemFeatureBackfillService {
     let updated = 0;
     let failed = 0;
     let malformed = 0;
+    const failedIds: string[] = [];
     const results = Array.isArray(message.results) ? message.results : [];
     for (const raw of results) {
       if (!raw || typeof raw !== "object") continue;
@@ -367,6 +510,7 @@ export class StemFeatureBackfillService {
 
       if (result.features == null) {
         failed++;
+        failedIds.push(stemId);
         this.logger.warn(
           `[backfill] analysis failed for stem ${stemId} (job ${message.jobId}): ${
             typeof result.error === "string" ? result.error : "no features"
@@ -378,6 +522,7 @@ export class StemFeatureBackfillService {
       const sanitized = sanitizeStemAudioFeatures(result.features);
       if (!sanitized) {
         malformed++;
+        failedIds.push(stemId);
         this.logger.warn(
           `[backfill] malformed audio features for stem ${stemId} (job ${message.jobId})`,
         );
@@ -387,10 +532,11 @@ export class StemFeatureBackfillService {
       // Compare-and-set in one statement so concurrent redeliveries cannot
       // overwrite a payload of the same or a newer revision.
       const written = await prisma.$executeRaw(
-        Prisma.sql`UPDATE "Stem" SET "audioFeatures" = ${JSON.stringify(withCamelot(sanitized))}::jsonb WHERE "id" = ${stemId} AND ${needsMeasurementSql(stemAnalysisRevision(sanitized))}`,
+        Prisma.sql`UPDATE "Stem" SET "audioFeatures" = ${JSON.stringify(withCamelot(sanitized))}::jsonb, "audioFeaturesFailedAt" = NULL, "audioFeaturesFailureCount" = 0 WHERE "id" = ${stemId} AND ${needsMeasurementSql(stemAnalysisRevision(sanitized))}`,
       );
       updated += written;
     }
+    await this.recordFailures(failedIds);
 
     this.logger.log(
       `[backfill] analysis job ${message.jobId} applied: results=${results.length} updated=${updated} failed=${failed} malformed=${malformed}`,
@@ -403,7 +549,11 @@ export class StemFeatureBackfillService {
     workerBaseUrl: string,
   ): Promise<StemFeatureBackfillResult> {
     const limit = Math.min(100, Math.max(1, Math.floor(request.limit ?? 25)));
-    const filters = this.pendingFilters(request.types, request.refresh === true);
+    const filters = this.pendingFilters(
+      request.types,
+      request.refresh === true,
+      request.retryFailed === true,
+    );
     const { types, refresh } = filters;
     const stems = await prisma.stem.findMany({
       ...(await this.pendingSelection(filters, limit)),
@@ -418,9 +568,12 @@ export class StemFeatureBackfillService {
     });
 
     let updated = 0;
+    let attempted = 0;
+    let stoppedEarly: "worker_unavailable" | undefined;
     const skipped: Array<{ stemId: string; reason: string }> = [];
 
     for (const stem of stems) {
+      attempted++;
       try {
         const audio = await this.loadStemAudio(stem);
         if (!audio) {
@@ -439,31 +592,55 @@ export class StemFeatureBackfillService {
           where: { id: stem.id },
           data: {
             audioFeatures: withCamelot(sanitized) as Prisma.InputJsonValue,
+            audioFeaturesFailedAt: null,
+            audioFeaturesFailureCount: 0,
           },
         });
         updated++;
       } catch (error) {
+        // Not attributable to the stem (#2012): logged, the stem stays eligible.
+        const workerDown = error instanceof WorkerUnavailableError;
         this.logger.warn(
-          `Backfill failed for stem ${stem.id}: ${
+          `Backfill ${workerDown ? "worker unavailable" : "failed"} for stem ${stem.id}: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
-        skipped.push({ stemId: stem.id, reason: "error" });
+        skipped.push({
+          stemId: stem.id,
+          reason: workerDown ? "worker_unavailable" : "error",
+        });
+        if (workerDown) {
+          // Circuit break: the rest of the batch would hit the same outage.
+          stoppedEarly = "worker_unavailable";
+          break;
+        }
       }
     }
+    if (stoppedEarly) {
+      this.logger.warn(
+        `[backfill] worker unavailable: stopped after ${attempted} of ${stems.length} stems; the rest stay pending`,
+      );
+    }
+
+    await this.recordFailures(
+      skipped
+        .filter((skip) => STEM_FAILURE_REASONS.has(skip.reason))
+        .map((skip) => skip.stemId),
+    );
 
     const counts = await this.countRemaining(filters);
     this.logger.log(
-      `[backfill] scanned=${stems.length} updated=${updated} skipped=${skipped.length} remaining=${counts.remaining} types=${types ? types.join(",") : "all"} refresh=${refresh}`,
+      `[backfill] scanned=${attempted} updated=${updated} skipped=${skipped.length} remaining=${counts.remaining} failed=${counts.failed} types=${types ? types.join(",") : "all"} refresh=${refresh}${stoppedEarly ? ` stoppedEarly=${stoppedEarly}` : ""}`,
     );
     return {
-      scanned: stems.length,
+      scanned: attempted,
       updated,
       skipped,
       ...counts,
       transport: "http",
       status: "ok",
       dispatched: 0,
+      ...(stoppedEarly ? { stoppedEarly } : {}),
     };
   }
 
@@ -480,19 +657,34 @@ export class StemFeatureBackfillService {
       }),
       `${stem.id}.audio`,
     );
-    const response = await fetch(`${workerBaseUrl}/analyze`, {
-      method: "POST",
-      body: form,
-      signal: AbortSignal.timeout(120_000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${workerBaseUrl}/analyze`, {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch (error) {
+      throw new WorkerUnavailableError(
+        `request failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     if (!response.ok) {
+      if (!STEM_REJECTION_STATUSES.has(response.status)) {
+        throw new WorkerUnavailableError(`returned ${response.status}`);
+      }
       this.logger.warn(
-        `Worker /analyze returned ${response.status} for stem ${stem.id}`,
+        `Worker /analyze rejected stem ${stem.id} with ${response.status}`,
       );
       return null;
     }
-    const body = (await response.json()) as { features?: unknown };
-    return body.features ?? null;
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new WorkerUnavailableError("returned a non-JSON body");
+    }
+    return (body as { features?: unknown } | null)?.features ?? null;
   }
 
   /** Same fetch order as ingestion reads: DB bytes, local uploads, provider. */

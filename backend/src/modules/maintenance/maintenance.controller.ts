@@ -30,7 +30,9 @@ export class MaintenanceController {
    * analysis message through the Pub/Sub/Cloud Run Job dispatch (result is
    * `status: "dispatched"`; poll `remaining` or the GET route). With neither,
    * `status: "worker_unavailable"`. Body `refresh: true` also re-measures
-   * stems analyzed with an older analysis revision (#2016).
+   * stems analyzed with an older analysis revision (#2016). Stems whose
+   * analysis failed are held back and counted in `failed` (#2012); body
+   * `retryFailed: true` re-attempts them.
    */
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
