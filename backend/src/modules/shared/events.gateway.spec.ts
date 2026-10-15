@@ -179,27 +179,104 @@ describe("EventsGateway", () => {
     gateway.onModuleDestroy();
   });
 
-  it("joins and leaves wallet rooms on socket commands", () => {
-    const { gateway } = createGateway();
-    const client = {
-      id: "client-1",
-      on: jest.fn(),
-      join: jest.fn(),
-      leave: jest.fn(),
-    } as any;
+  describe("wallet rooms", () => {
+    const OWN_WALLET = `0x${"Ab".repeat(20)}`;
+    const OTHER_WALLET = `0x${"c3".repeat(20)}`;
+    const flushJoin = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-    gateway.handleConnection(client);
+    function connectForWallet(token?: string) {
+      const { gateway, authService } = createGateway();
+      authService.isAddressForUser = jest.fn(
+        async (userId: string, address: string) =>
+          userId === "user-1" && address.toLowerCase() === OWN_WALLET.toLowerCase(),
+      );
+      if (token === undefined) authService.verifyAccessToken.mockReturnValue(null);
+      const client = createClient("client-1", token as string);
+      gateway.handleConnection(client);
+      client.join.mockClear();
+      const handler = (name: string) => client.on.mock.calls.find(([event]: [string]) => event === name)?.[1];
+      return { gateway, authService, client, join: handler("wallet:join"), leave: handler("wallet:leave") };
+    }
 
-    const joinHandler = client.on.mock.calls.find(([name]: [string]) => name === "wallet:join")?.[1];
-    const leaveHandler = client.on.mock.calls.find(([name]: [string]) => name === "wallet:leave")?.[1];
+    it("joins the room of the caller's own wallet and acknowledges", async () => {
+      const { gateway, authService, client, join, leave } = connectForWallet("token-1");
+      const ack = jest.fn();
 
-    joinHandler("0xAbC");
-    leaveHandler("0xAbC");
+      join(OWN_WALLET, ack);
+      await flushJoin();
 
-    expect(client.join).toHaveBeenCalledWith("wallet:0xabc");
-    expect(client.leave).toHaveBeenCalledWith("wallet:0xabc");
+      expect(authService.isAddressForUser).toHaveBeenCalledWith("user-1", OWN_WALLET);
+      expect(client.join).toHaveBeenCalledWith(`wallet:${OWN_WALLET.toLowerCase()}`);
+      expect(ack).toHaveBeenCalledWith(true);
 
-    gateway.onModuleDestroy();
+      leave(OWN_WALLET);
+      expect(client.leave).toHaveBeenCalledWith(`wallet:${OWN_WALLET.toLowerCase()}`);
+      gateway.onModuleDestroy();
+    });
+
+    it("does not join without a verified token", async () => {
+      const { gateway, authService, client, join } = connectForWallet(undefined);
+      const ack = jest.fn();
+
+      join(OWN_WALLET, ack);
+      await flushJoin();
+
+      expect(client.join).not.toHaveBeenCalled();
+      expect(authService.isAddressForUser).not.toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledWith("wallet:error", {
+        code: "AUTH_REQUIRED",
+        message: "Authentication required",
+      });
+      expect(ack).toHaveBeenCalledWith(false);
+      gateway.onModuleDestroy();
+    });
+
+    it("does not join another account's wallet room", async () => {
+      const { gateway, client, join } = connectForWallet("token-1");
+      const ack = jest.fn();
+
+      join(OTHER_WALLET, ack);
+      await flushJoin();
+
+      expect(client.join).not.toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledWith("wallet:error", {
+        code: "WALLET_ACCESS_DENIED",
+        message: "Wallet room unavailable",
+      });
+      expect(ack).toHaveBeenCalledWith(false);
+      gateway.onModuleDestroy();
+    });
+
+    it("does not join for a malformed address or when the ownership lookup fails", async () => {
+      const { gateway, authService, client, join } = connectForWallet("token-1");
+
+      join("0xAbC");
+      await flushJoin();
+      expect(client.emit).toHaveBeenCalledWith("wallet:error", {
+        code: "INVALID_REQUEST",
+        message: "Invalid wallet address",
+      });
+
+      authService.isAddressForUser.mockRejectedValueOnce(new Error("db down"));
+      join(OWN_WALLET);
+      await flushJoin();
+
+      expect(client.join).not.toHaveBeenCalled();
+      gateway.onModuleDestroy();
+    });
+
+    it("does not join when the socket disconnected during the ownership check", async () => {
+      const { gateway, client, join } = connectForWallet("token-1");
+      const ack = jest.fn();
+      client.connected = false;
+
+      join(OWN_WALLET, ack);
+      await flushJoin();
+
+      expect(client.join).not.toHaveBeenCalled();
+      expect(ack).toHaveBeenCalledWith(false);
+      gateway.onModuleDestroy();
+    });
   });
 
   it("rejects realtime start when auth is missing or invalid", async () => {

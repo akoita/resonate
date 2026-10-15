@@ -505,13 +505,10 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
             this.logger.log(`Client ${client.id} joined its authenticated user room`);
         }
 
-        // Allow clients to join their wallet room for targeted notifications
-        client.on('wallet:join', (walletAddress: string) => {
-            if (walletAddress && typeof walletAddress === 'string') {
-                const room = `wallet:${walletAddress.toLowerCase()}`;
-                client.join(room);
-                this.logger.log(`Client ${client.id} joined room ${room}`);
-            }
+        // Signed-in clients may join the room of one of their own wallets for
+        // targeted notifications. The optional ack reports whether it joined.
+        client.on('wallet:join', (walletAddress: unknown, ack?: unknown) => {
+            void this.handleWalletJoin(client, walletAddress, typeof ack === 'function' ? ack as (joined: boolean) => void : undefined);
         });
 
         client.on('wallet:leave', (walletAddress: string) => {
@@ -521,6 +518,59 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                 this.logger.log(`Client ${client.id} left room ${room}`);
             }
         });
+    }
+
+    /**
+     * Join `wallet:<address>` only when the socket's handshake token verifies
+     * and the address belongs to that user (the user id itself, or the
+     * wallet record's address / owner address). Otherwise the socket joins
+     * nothing and receives `wallet:error`.
+     */
+    private async handleWalletJoin(
+        client: Socket,
+        walletAddress: unknown,
+        ack?: (joined: boolean) => void,
+    ): Promise<void> {
+        const refuse = (code: 'AUTH_REQUIRED' | 'INVALID_REQUEST' | 'WALLET_ACCESS_DENIED') => {
+            const messages = {
+                AUTH_REQUIRED: 'Authentication required',
+                INVALID_REQUEST: 'Invalid wallet address',
+                WALLET_ACCESS_DENIED: 'Wallet room unavailable',
+            } as const;
+            client.emit('wallet:error', { code, message: messages[code] });
+            ack?.(false);
+        };
+
+        const userId = this.authenticateSocket(client);
+        if (!userId) {
+            refuse('AUTH_REQUIRED');
+            return;
+        }
+        if (typeof walletAddress !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
+            refuse('INVALID_REQUEST');
+            return;
+        }
+
+        let owned = false;
+        try {
+            owned = (await this.authService?.isAddressForUser(userId, walletAddress)) ?? false;
+        } catch {
+            owned = false;
+        }
+        if (!owned) {
+            refuse('WALLET_ACCESS_DENIED');
+            return;
+        }
+        // The socket may have disconnected while ownership was resolved.
+        if (client.connected === false) {
+            ack?.(false);
+            return;
+        }
+
+        const room = `wallet:${walletAddress.toLowerCase()}`;
+        client.join(room);
+        this.logger.log(`Client ${client.id} joined its wallet room`);
+        ack?.(true);
     }
 
     handleDisconnect(client: Socket) {
