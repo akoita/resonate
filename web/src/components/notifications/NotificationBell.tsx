@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useDisputeNotifications, DisputeNotification } from "../../hooks/useDisputeNotifications";
 import { toManagementInvitationItems, useManagementInvitations } from "../../hooks/useManagementInvitations";
+import { usePlatformNotices } from "../../hooks/usePlatformNotices";
+import type { PlatformNotice } from "../../lib/api";
+import PlatformNoticeItems from "./PlatformNoticeItems";
 
 const typeIcon = (type: string) => {
   switch (type) {
@@ -132,7 +135,13 @@ export default function NotificationBell() {
   );
   const walletNotifications = address ? notifications : [];
   const walletUnreadCount = address ? unreadCount : 0;
-  const badgeCount = walletUnreadCount + managementInvitationItems.length;
+  const {
+    notices: platformNotices,
+    unreadCount: noticeUnreadCount,
+    refetch: refetchPlatformNotices,
+    markRead: markNoticeRead,
+  } = usePlatformNotices();
+  const badgeCount = walletUnreadCount + managementInvitationItems.length + noticeUnreadCount;
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [menuTop, setMenuTop] = useState(0);
@@ -160,6 +169,7 @@ export default function NotificationBell() {
       measureMenuTop();
       void refetchManagementInvitations();
       void refetchWalletNotifications();
+      void refetchPlatformNotices();
     }
     setOpen((prev) => !prev);
   };
@@ -178,6 +188,16 @@ export default function NotificationBell() {
     }
     setOpen(false);
     router.push(getNotificationHref(notification, role));
+  };
+
+  const handleNoticeSelect = (notice: PlatformNotice) => {
+    if (!notice.readAt) {
+      void markNoticeRead(notice.id).catch(() => undefined);
+    }
+    if (notice.link) {
+      setOpen(false);
+      router.push(notice.link);
+    }
   };
 
   // Close dropdown on outside click
@@ -225,10 +245,11 @@ export default function NotificationBell() {
             </div>
           </div>
 
-          {walletNotifications.length === 0 && managementInvitationItems.length === 0 ? (
+          {walletNotifications.length === 0 && managementInvitationItems.length === 0 && platformNotices.length === 0 ? (
             <div style={emptyStyle}>No notifications or invitations yet</div>
           ) : (
             <div style={{ maxHeight: "360px", overflowY: "auto" }}>
+              <PlatformNoticeItems notices={platformNotices.slice(0, 20)} onSelect={handleNoticeSelect} />
               {managementInvitationItems.map((invitation) => {
                 const expiryDate = invitation.expiresAt ? new Date(invitation.expiresAt) : null;
                 const expiryLabel = expiryDate && !Number.isNaN(expiryDate.getTime())

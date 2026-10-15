@@ -446,6 +446,21 @@ export default function Sidebar() {
               <span className="link-text">Credit Requests</span>
             </Link>
             <Link
+              href="/admin/notices"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/admin/notices" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/notices" ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z" />
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                  <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+                </svg>
+              </span>
+              <span className="link-text">Notices</span>
+            </Link>
+            <Link
               href="/admin/management-recovery"
               prefetch={false}
               className={`sidebar-link ${pathname === "/admin/management-recovery" ? 'active' : ''}`}

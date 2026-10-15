@@ -150,6 +150,74 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["getting-started", "settings-privacy", "download-your-data"],
   },
   {
+    slug: "platform-notices",
+    title: "Platform notices",
+    summary:
+      "Messages from Resonate itself: policy and terms changes, incidents, and notices about your account or content. They appear in your notifications and stay until you read them.",
+    category: "account",
+    audiences: ["everyone", "operator"],
+    status: "partial",
+    keywords: ["notice", "announcement", "policy change", "terms change", "incident", "outage", "moderation", "removed", "banned", "bell", "banner"],
+    sections: [
+      {
+        id: "where-notices-appear",
+        heading: "Where notices appear",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Notices appear in the notification bell when you are signed in, each labelled with its category: Policy, Terms, Incident, Moderation, Account or Refund. A policy, terms or incident notice also shows as a bar at the top of the app until you dismiss it. Dismissing it marks it read; it stays in your notifications.",
+          },
+          {
+            kind: "paragraph",
+            text: "Notices are kept, so you still see one that was sent while you were away or before you signed up. Read state is yours alone and follows your account, not your device.",
+          },
+        ],
+      },
+      {
+        id: "moderation-notices",
+        heading: "If a moderator acts on your content",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "When a moderator removes a community message you posted, or removes or bans you from a community room after reviewing a reported message, you get one Moderation notice. It names the room, says what was done, and gives the reason category. It never includes the reporter's words or the moderator's private notes.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Appeals",
+            text: "There is no in-app appeal for community moderation yet. Disputes about a track or release use the dispute center instead.",
+          },
+        ],
+      },
+      {
+        id: "sending-notices",
+        heading: "Sending a notice (operators)",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open Notices in the sidebar (operators and admins only).",
+              "Pick a category (Policy, Terms or Incident) and an audience: everyone, or listeners, artists, operators or admins.",
+              "Write a title and message. Add the date a change takes effect if there is one.",
+              "Preview the bar people will see, then choose Review and send and confirm.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Sent notices cannot be recalled",
+            text: "A broadcast reaches everyone in its audience, including people who sign up later, and cannot be edited. Never include personal data in a broadcast.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Notices (operators)", href: "/admin/notices", description: "Compose a broadcast and see the ones already sent." },
+      { label: "Dispute center", href: "/disputes", description: "Disputes about a track or release." },
+    ],
+    related: ["legal-privacy-refunds", "getting-started"],
+  },
+  {
     slug: "smart-wallet",
     title: "Your wallet & smart account",
     summary:
