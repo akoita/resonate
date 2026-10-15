@@ -2,18 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import {
+  fetchNotificationPreferences,
+  updateNotificationPreferences,
+  type NotificationPreferenceValues,
+} from "../../lib/walletNotifications";
 
-interface Preferences {
-  disputeFiled: boolean;
-  disputeResolved: boolean;
-  disputeAppealed: boolean;
-  evidenceSubmitted: boolean;
-  listingExpiringSoon: boolean;
-  listingExpired: boolean;
-}
+type Preferences = NotificationPreferenceValues;
 
 export default function NotificationPreferences() {
-  const { address } = useAuth();
+  const { address, status, token } = useAuth();
+  const sessionToken = status === "authenticated" ? token : null;
   const [prefs, setPrefs] = useState<Preferences>({
     disputeFiled: true,
     disputeResolved: true,
@@ -26,39 +25,34 @@ export default function NotificationPreferences() {
   const [saved, setSaved] = useState(false);
 
   const fetchPrefs = useCallback(async () => {
-    if (!address) return;
-    try {
-      const res = await fetch(`/api/metadata/notifications/${address}/preferences`);
-      if (res.ok) setPrefs(await res.json());
-    } catch {
-      // silent
-    }
-  }, [address]);
+    if (!address || !sessionToken) return;
+    // Never throws; signed out, refused or failed keeps the defaults.
+    const loaded = await fetchNotificationPreferences(address, sessionToken);
+    if (loaded) setPrefs(loaded);
+  }, [address, sessionToken]);
 
   useEffect(() => {
     fetchPrefs();
   }, [fetchPrefs]);
 
   const toggle = async (key: keyof Preferences) => {
-    if (!address) return;
+    if (!address || !sessionToken) return;
     const updated = { ...prefs, [key]: !prefs[key] };
     setPrefs(updated);
     setSaving(true);
     setSaved(false);
     try {
-      await fetch(`/api/metadata/notifications/${address}/preferences`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [key]: updated[key] }),
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      const ok = await updateNotificationPreferences(address, sessionToken, { [key]: updated[key] });
+      if (ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  if (!address) return null;
+  if (!address || !sessionToken) return null;
 
   const items: { key: keyof Preferences; label: string; shortLabel: string; description: string }[] = [
     { key: "disputeFiled", label: "Content Flagged", shortLabel: "CF", description: "When someone flags your content" },

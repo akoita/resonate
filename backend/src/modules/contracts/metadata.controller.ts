@@ -568,21 +568,48 @@ export class MetadataController {
 
 
   private async assertCanAccessCollection(user: any, walletAddress: string) {
-    if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress ?? "")) {
-      throw new BadRequestException("walletAddress must be a 0x-prefixed 20-byte hex address");
+    // Generic denial on purpose: never reveal whether the wallet holds anything.
+    await this.assertCallerOwnsAddress(user, walletAddress, {
+      paramName: "walletAddress",
+      allowSupportAccess: true,
+      deniedMessage: "Cannot access another account's collection",
+    });
+  }
+
+  /**
+   * Require `address` to be a well-formed address (else 400) that belongs to
+   * the caller: the wallet-auth userId, Wallet.address or Wallet.ownerAddress
+   * (else 403 with `deniedMessage`). With `allowSupportAccess`, admin/operator
+   * pass without owning the address.
+   */
+  private async assertCallerOwnsAddress(
+    user: any,
+    address: string,
+    options: { paramName: string; allowSupportAccess: boolean; deniedMessage: string },
+  ) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address ?? "")) {
+      throw new BadRequestException(`${options.paramName} must be a 0x-prefixed 20-byte hex address`);
     }
     const userId = typeof user?.userId === "string" ? user.userId : "";
     if (!userId) {
       throw new ForbiddenException("Authentication required");
     }
-    if (user.role === "admin" || user.role === "operator") {
+    if (options.allowSupportAccess && (user.role === "admin" || user.role === "operator")) {
       return;
     }
     const ownAddresses = await this.contractsService.getCallerWalletAddresses(userId);
-    if (!ownAddresses.has(walletAddress.toLowerCase())) {
-      // Generic on purpose: never reveal whether the wallet holds anything.
-      throw new ForbiddenException("Cannot access another account's collection");
+    if (!ownAddresses.has(address.toLowerCase())) {
+      throw new ForbiddenException(options.deniedMessage);
     }
+  }
+
+  /** Notification routes: own addresses only; admin/operator may read for support. */
+  private assertCanAccessNotifications(user: any, address: string, access: "read" | "write") {
+    return this.assertCallerOwnsAddress(user, address, {
+      paramName: "address",
+      allowSupportAccess: access === "read",
+      deniedMessage: "Cannot access another account's notifications",
+    });
   }
 
   /**
@@ -1641,17 +1668,25 @@ export class MetadataController {
   }
 
   // ============ NOTIFICATION ENDPOINTS ============
+  //
+  // All notification routes require a JWT. `:address` must be one of the
+  // caller's own addresses (wallet-auth userId, Wallet.address,
+  // Wallet.ownerAddress); admin/operator may read (not modify) any address
+  // for support.
 
   /**
    * Get notifications for a wallet
    * GET /api/metadata/notifications/:address
    */
+  @UseGuards(AuthGuard("jwt"))
   @Get("notifications/:address")
   async getNotifications(
+    @Request() req: any,
     @Param("address") address: string,
     @Query("limit") limitStr?: string,
     @Query("offset") offsetStr?: string,
   ) {
+    await this.assertCanAccessNotifications(req?.user, address, "read");
     const limit = Math.min(parseInt(limitStr || "20"), 100);
     const offset = parseInt(offsetStr || "0");
     const [notifications, unreadCount] = await Promise.all([
@@ -1664,9 +1699,22 @@ export class MetadataController {
   /**
    * Mark notification as read
    * PATCH /api/metadata/notifications/:id/read
+   *
+   * The notification must belong to one of the caller's own addresses;
+   * otherwise 404, so the route never confirms that an id exists.
    */
+  @UseGuards(AuthGuard("jwt"))
   @Patch("notifications/:id/read")
-  async markNotificationRead(@Param("id") id: string) {
+  async markNotificationRead(@Request() req: any, @Param("id") id: string) {
+    const userId = typeof req?.user?.userId === "string" ? req.user.userId : "";
+    if (!userId) {
+      throw new ForbiddenException("Authentication required");
+    }
+    const owner = await this.notificationService.getNotificationWalletAddress(id);
+    const ownAddresses = owner ? await this.contractsService.getCallerWalletAddresses(userId) : null;
+    if (!owner || !ownAddresses?.has(owner.toLowerCase())) {
+      throw new NotFoundException("Notification not found");
+    }
     return this.notificationService.markAsRead(id);
   }
 
@@ -1674,8 +1722,10 @@ export class MetadataController {
    * Mark all notifications as read for a wallet
    * PATCH /api/metadata/notifications/:address/read-all
    */
+  @UseGuards(AuthGuard("jwt"))
   @Patch("notifications/:address/read-all")
-  async markAllNotificationsRead(@Param("address") address: string) {
+  async markAllNotificationsRead(@Request() req: any, @Param("address") address: string) {
+    await this.assertCanAccessNotifications(req?.user, address, "write");
     return this.notificationService.markAllAsRead(address.toLowerCase());
   }
 
@@ -1683,8 +1733,10 @@ export class MetadataController {
    * Get notification preferences
    * GET /api/metadata/notifications/:address/preferences
    */
+  @UseGuards(AuthGuard("jwt"))
   @Get("notifications/:address/preferences")
-  async getNotificationPreferences(@Param("address") address: string) {
+  async getNotificationPreferences(@Request() req: any, @Param("address") address: string) {
+    await this.assertCanAccessNotifications(req?.user, address, "read");
     return this.notificationService.getPreferences(address.toLowerCase());
   }
 
@@ -1692,8 +1744,10 @@ export class MetadataController {
    * Update notification preferences
    * PATCH /api/metadata/notifications/:address/preferences
    */
+  @UseGuards(AuthGuard("jwt"))
   @Patch("notifications/:address/preferences")
   async updateNotificationPreferences(
+    @Request() req: any,
     @Param("address") address: string,
     @Body() body: {
       disputeFiled?: boolean;
@@ -1704,6 +1758,7 @@ export class MetadataController {
       listingExpired?: boolean;
     },
   ) {
+    await this.assertCanAccessNotifications(req?.user, address, "write");
     return this.notificationService.updatePreferences(address.toLowerCase(), body);
   }
 

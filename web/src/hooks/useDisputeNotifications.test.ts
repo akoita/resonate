@@ -5,6 +5,7 @@ import {
   isWalletNotificationSnapshotCurrent,
   prependWalletNotification,
   registerDisputeNotificationSocketHandlers,
+  buildDisputeNotificationSocketOptions,
   type DisputeNotification,
   type DisputeStatusUpdate,
 } from "./useDisputeNotifications";
@@ -112,6 +113,7 @@ describe("useDisputeNotifications helpers", () => {
 
     registerDisputeNotificationSocketHandlers(socket as never, {
       walletAddress: "0xAbC",
+      joinWallet: true,
       refetch,
       onNotification,
       onDisputeStatus,
@@ -138,6 +140,7 @@ describe("useDisputeNotifications helpers", () => {
 
     registerDisputeNotificationSocketHandlers(socket as never, {
       walletAddress: "0xabc",
+      joinWallet: true,
       refetch: vi.fn(),
       onNotification: (notification) => { seenNotifications.push(notification); },
       onDisputeStatus: (update) => { seenUpdates.push(update); },
@@ -168,5 +171,38 @@ describe("useDisputeNotifications helpers", () => {
         timestamp: "2026-04-07T11:01:00.000Z",
       },
     ]);
+  });
+
+  it("does not join the wallet room when signed out but still refetches on connect", async () => {
+    const handlers = new Map<string, TestHandler>();
+    const socket: TestSocket = {
+      on: vi.fn((event: string, handler: TestHandler) => {
+        handlers.set(event, handler);
+        return socket;
+      }),
+      emit: vi.fn(),
+    };
+    const refetch = vi.fn();
+
+    registerDisputeNotificationSocketHandlers(socket as never, {
+      walletAddress: "0xAbC",
+      joinWallet: false,
+      refetch,
+      onNotification: vi.fn(),
+      onDisputeStatus: vi.fn(),
+    });
+    await handlers.get("connect")?.();
+
+    expect(socket.emit).not.toHaveBeenCalledWith("wallet:join", expect.anything());
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the sign-in token in the socket handshake auth only when signed in", () => {
+    expect(buildDisputeNotificationSocketOptions("session-token")).toMatchObject({
+      auth: { token: "session-token" },
+      transports: ["websocket", "polling"],
+    });
+    expect(buildDisputeNotificationSocketOptions(null)).not.toHaveProperty("auth");
+    expect(buildDisputeNotificationSocketOptions(undefined)).not.toHaveProperty("auth");
   });
 });

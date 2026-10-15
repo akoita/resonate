@@ -272,11 +272,14 @@ const outcomeColorMap: Record<string, string> = {
 };
 
 export default function DisputeDashboard() {
-  const { address } = useAuth();
+  const { address, status: authStatus, token } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { disputeUpdate } = useDisputeNotifications(address ?? undefined);
+  const { disputeUpdate } = useDisputeNotifications(
+    address ?? undefined,
+    authStatus === "authenticated" ? token : null,
+  );
   const { isPhone } = useBreakpoint();
   const requestedTab = searchParams.get("tab");
   const highlightedDisputeId = searchParams.get("dispute");
