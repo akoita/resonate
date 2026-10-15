@@ -120,6 +120,15 @@ export class AccountStatusService {
     return this.applyExpiry(value, now, true);
   }
 
+  /** The signed-in person's own state: what restricts them, until when, and any erasure an operator scheduled. */
+  async getOwnStatus(userId: string) {
+    const [state, pending] = await Promise.all([this.getEffective(userId), this.closures.findPending(userId)]);
+    return {
+      ...state,
+      erasureScheduledFor: state.status === "closed" ? (pending?.dueAt.toISOString() ?? null) : null,
+    };
+  }
+
   /** Drop a cached read; called on every change made by this process. */
   invalidate(userId: string) {
     this.cache.delete(userId);

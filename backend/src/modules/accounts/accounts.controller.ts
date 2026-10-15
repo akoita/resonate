@@ -16,7 +16,7 @@ export class AccountController {
   @UseGuards(AuthGuard("jwt"))
   @Get("status")
   status(@Req() req: any) {
-    return this.accounts.getEffective(req.user.userId);
+    return this.accounts.getOwnStatus(req.user.userId);
   }
 }
 

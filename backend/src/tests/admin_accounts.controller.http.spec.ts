@@ -21,7 +21,7 @@ const mockAccounts = {
   suspend: jest.fn().mockResolvedValue(status),
   unsuspend: jest.fn().mockResolvedValue(status),
   close: jest.fn().mockResolvedValue(status),
-  getEffective: jest.fn().mockResolvedValue({ status: "active", reason: null, until: null, changedAt: null }),
+  getOwnStatus: jest.fn().mockResolvedValue({ status: "active", reason: null, until: null, changedAt: null }),
 };
 
 describe("AdminAccountsController (http)", () => {
@@ -126,7 +126,7 @@ describe("AdminAccountsController (http)", () => {
     it("requires a JWT and returns only the caller's own state", async () => {
       await request(server()).get("/account/status").expect(401);
       await request(server()).get("/account/status").set(bearer("user-9", "listener")).expect(200);
-      expect(mockAccounts.getEffective).toHaveBeenCalledWith("user-9");
+      expect(mockAccounts.getOwnStatus).toHaveBeenCalledWith("user-9");
     });
   });
 });

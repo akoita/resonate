@@ -164,7 +164,7 @@ describe("account suspension (integration)", () => {
 
     it("sees its own state at GET /account/status", async () => {
       const res = await request(server()).get("/account/status").set(as(user)).expect(200);
-      expect(res.body).toMatchObject({ status: "suspended", reason: "terms_violation", until: null });
+      expect(res.body).toMatchObject({ status: "suspended", reason: "terms_violation", until: null, erasureScheduledFor: null });
     });
 
     it("does not affect other accounts or unauthenticated routes", async () => {
@@ -268,6 +268,8 @@ describe("account suspension (integration)", () => {
       expect(res.body.erasureScheduledFor).toEqual(expect.any(String));
       const pending = await prisma.accountClosureRequest.findFirst({ where: { userId: user, status: "pending" } });
       expect(pending).not.toBeNull();
+      const own = await request(server()).get("/account/status").set(as(user)).expect(200);
+      expect(own.body).toMatchObject({ status: "closed", erasureScheduledFor: pending!.dueAt.toISOString() });
       expect(pending!.reason).not.toContain("SECRET");
       const windowMs = pending!.dueAt.getTime() - pending!.requestedAt.getTime();
       expect(windowMs).toBe(30 * 24 * 3600 * 1000);

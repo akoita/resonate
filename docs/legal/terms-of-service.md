@@ -219,6 +219,18 @@ operating the service, with notice where we can give it. The notice limitation
 in section 11 still applies: there is no general contractual- or policy-change
 notice workflow today.
 
+**Suspension and closure of an account.** An operator can suspend an account,
+for a set period or until lifted, or close it, for a stated reason category:
+terms violation, fraud, abuse, rights infringement, or another reason covered by
+these terms. The person is told in an in-app notice that names the category and
+any end date. While an account is suspended or closed the platform refuses
+changes made through it, such as uploads, listings, purchases, pledges and
+posts; signing in, reading your own data and notices, claiming a refund you are
+owed, exporting your data and asking for deletion keep working. Transactions you
+sign directly with your own wallet happen on the network and are not controlled
+by the platform. There is no in-app appeal yet: to contest a decision, write to
+{{OPERATOR_CONTACT_EMAIL}}.
+
 Obligations that make sense beyond termination survive it: completed
 transactions, licences already granted, and the limits in section 12.
 

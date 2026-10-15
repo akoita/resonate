@@ -5,6 +5,7 @@ import type {
   RightsReviewState,
   RightsVerificationState,
 } from "./verificationSemantics";
+import { accountRestrictionMessage } from "./accountRestriction";
 import { invalidateStoredAuthSession } from "./authSession";
 import { rememberDjAttribution } from "./discoveryAttribution";
 import { withCurrentMyMixContext } from "./agentMyMix";
@@ -125,6 +126,14 @@ function formatApiErrorMessage(status: number, statusText: string, detail: strin
 
   try {
     const payload = JSON.parse(trimmedDetail) as { message?: string | string[]; error?: string };
+
+    // #2147: a suspended or closed account is told what still works, without
+    // the "API 403:" prefix, so every mutating screen can show it as is.
+    if (status === 403) {
+      const restriction = accountRestrictionMessage(payload);
+      if (restriction) return restriction;
+    }
+
     const message = Array.isArray(payload.message)
       ? payload.message.join(", ")
       : payload.message || payload.error;
@@ -7530,4 +7539,75 @@ export function sendBroadcastNotice(token: string, input: BroadcastNoticeInput) 
 
 export function getSentBroadcastNotices(token: string) {
   return apiRequest<{ notices: SentBroadcastNotice[] }>("/notices/sent", { cache: "no-store" }, token);
+}
+
+// ============ Account suspension and closure (#2147) ============
+
+export type AccountStatusValue = "active" | "suspended" | "closed";
+export type AccountStatusReason = "terms_violation" | "fraud" | "abuse" | "rights_infringement" | "other";
+
+/** The signed-in person's own account state (`GET /account/status`). */
+export type OwnAccountStatus = {
+  status: AccountStatusValue;
+  reason: AccountStatusReason | null;
+  until: string | null;
+  changedAt: string | null;
+  erasureScheduledFor?: string | null;
+};
+
+/** An operator's view of one account (`/admin/accounts/:userId/*`). */
+export type AdminAccountStatus = {
+  userId: string;
+  walletAddress: string | null;
+  status: AccountStatusValue;
+  effectiveStatus: AccountStatusValue;
+  reason: AccountStatusReason | null;
+  until: string | null;
+  changedAt: string | null;
+  changedBy: string | null;
+  erasureScheduledFor: string | null;
+};
+
+export function getOwnAccountStatus(token: string) {
+  return apiRequest<OwnAccountStatus>("/account/status", { cache: "no-store" }, token);
+}
+
+export function getAdminAccountStatus(token: string, idOrAddress: string) {
+  return apiRequest<AdminAccountStatus>(
+    `/admin/accounts/${encodeURIComponent(idOrAddress)}/status`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export function suspendAccount(
+  token: string,
+  idOrAddress: string,
+  input: { reason: AccountStatusReason; until?: string; note?: string },
+) {
+  return apiRequest<AdminAccountStatus>(
+    `/admin/accounts/${encodeURIComponent(idOrAddress)}/suspend`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export function unsuspendAccount(token: string, idOrAddress: string, input: { note?: string } = {}) {
+  return apiRequest<AdminAccountStatus>(
+    `/admin/accounts/${encodeURIComponent(idOrAddress)}/unsuspend`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export function closeAccount(
+  token: string,
+  idOrAddress: string,
+  input: { reason: AccountStatusReason; note?: string; scheduleErasure?: boolean },
+) {
+  return apiRequest<AdminAccountStatus>(
+    `/admin/accounts/${encodeURIComponent(idOrAddress)}/close`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
 }
