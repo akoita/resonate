@@ -3,7 +3,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { AccountStatus, AccountStatusReason } from "@prisma/client";
@@ -12,6 +11,10 @@ import { prisma } from "../../db/prisma";
 import { AuditService } from "../audit/audit.service";
 import { NoticeService } from "../notifications/notice.service";
 import { AccountClosureService } from "../privacy/account_closure.service";
+import { AccountStandingService, EffectiveAccountStatus } from "./account_standing.service";
+
+export { ACCOUNT_STATUS_CACHE_TTL_MS } from "./account_standing.service";
+export type { EffectiveAccountStatus } from "./account_standing.service";
 
 export const ACCOUNT_STATUS_REASONS = [
   "terms_violation",
@@ -21,22 +24,12 @@ export const ACCOUNT_STATUS_REASONS = [
   "other",
 ] as const satisfies readonly AccountStatusReason[];
 
-/** How long a status read is reused before the database is asked again. */
-export const ACCOUNT_STATUS_CACHE_TTL_MS = 30_000;
 export const ACCOUNT_NOTE_MAX = 1000;
 /** A suspension may not be set further out than this; longer is a closure. */
 export const SUSPENSION_MAX_DAYS = 365 * 2;
 
 /** The article a restricted person is pointed to; it explains how to reach support. */
 export const ACCOUNT_STATUS_HELP_PATH = "/help/account-suspension";
-
-export interface EffectiveAccountStatus {
-  status: AccountStatus;
-  reason: AccountStatusReason | null;
-  /** Suspension end, ISO; null for an indefinite suspension or any other status. */
-  until: string | null;
-  changedAt: string | null;
-}
 
 export interface AccountActor {
   userId: string;
@@ -50,8 +43,6 @@ const REASON_LABELS: Record<AccountStatusReason, string> = {
   rights_infringement: "a rights infringement",
   other: "another reason covered by the terms of service",
 };
-
-const ACTIVE: EffectiveAccountStatus = { status: "active", reason: null, until: null, changedAt: null };
 
 const STILL_WORKS =
   "You can still sign in, claim any refund you are owed, read your notices, and export or request erasure of your data.";
@@ -83,41 +74,17 @@ function isPrivilegedAccount(userId: string): boolean {
  */
 @Injectable()
 export class AccountStatusService {
-  private readonly logger = new Logger(AccountStatusService.name);
-  private readonly cache = new Map<string, { value: EffectiveAccountStatus; expiresAt: number }>();
-
   constructor(
     private readonly audit: AuditService,
     private readonly notices: NoticeService,
     private readonly closures: AccountClosureService,
+    private readonly standing: AccountStandingService,
   ) {}
 
   // ============ Enforcement read ============
 
-  async getEffective(userId: string, now: Date = new Date()): Promise<EffectiveAccountStatus> {
-    const cached = this.cache.get(userId);
-    if (cached && cached.expiresAt > now.getTime()) {
-      return this.applyExpiry(cached.value, now);
-    }
-    const row = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        accountStatus: true,
-        accountStatusReason: true,
-        accountStatusUntil: true,
-        accountStatusChangedAt: true,
-      },
-    });
-    const value: EffectiveAccountStatus = row
-      ? {
-          status: row.accountStatus,
-          reason: row.accountStatusReason,
-          until: row.accountStatusUntil?.toISOString() ?? null,
-          changedAt: row.accountStatusChangedAt?.toISOString() ?? null,
-        }
-      : ACTIVE;
-    this.cache.set(userId, { value, expiresAt: now.getTime() + ACCOUNT_STATUS_CACHE_TTL_MS });
-    return this.applyExpiry(value, now, true);
+  getEffective(userId: string, now: Date = new Date()): Promise<EffectiveAccountStatus> {
+    return this.standing.getEffective(userId, now);
   }
 
   /** The signed-in person's own state: what restricts them, until when, and any erasure an operator scheduled. */
@@ -131,38 +98,12 @@ export class AccountStatusService {
 
   /** Drop a cached read; called on every change made by this process. */
   invalidate(userId: string) {
-    this.cache.delete(userId);
+    this.standing.invalidate(userId);
   }
 
   /** Forget every cached read (tests, and a hard reset after a bulk change). */
   clearCache() {
-    this.cache.clear();
-  }
-
-  private applyExpiry(value: EffectiveAccountStatus, now: Date, flip = false): EffectiveAccountStatus {
-    if (value.status !== "suspended" || !value.until || new Date(value.until).getTime() > now.getTime()) {
-      return value;
-    }
-    if (flip) void this.flipExpiredSuspensions(now);
-    return ACTIVE;
-  }
-
-  /** Best effort: the read already treats an expired suspension as active. */
-  private async flipExpiredSuspensions(now: Date) {
-    try {
-      await prisma.user.updateMany({
-        where: { accountStatus: "suspended", accountStatusUntil: { lte: now } },
-        data: {
-          accountStatus: "active",
-          accountStatusReason: null,
-          accountStatusUntil: null,
-          accountStatusChangedAt: now,
-          accountStatusChangedBy: null,
-        },
-      });
-    } catch (error) {
-      this.logger.warn(`Could not persist suspension expiry: ${(error as Error).message}`);
-    }
+    this.standing.clearCache();
   }
 
   // ============ Operator reads and changes ============

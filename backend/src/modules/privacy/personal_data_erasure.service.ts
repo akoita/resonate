@@ -20,6 +20,8 @@ import { writeStructuredLog } from "../shared/structured_logging";
 import { AccountClosureService } from "./account_closure.service";
 import {
   DANGLING_PERSON_COLUMNS,
+  ERASED_NOTICE_BODY,
+  ERASED_NOTICE_TITLE,
   ERASURE_RULES,
   ErasureRule,
   erasedEmailFor,
@@ -726,6 +728,12 @@ export class PersonalDataErasureService {
         // A kept playlist must not stay publicly browsable under an erased
         // account, as the manifest's note requires.
         data.visibility = "private";
+      }
+      if (rule.model === "Notice") {
+        // Keep the minimal record (category, audience, dates, dedupe key) and
+        // replace the possibly personal text with a neutral placeholder (#2167).
+        data.title = ERASED_NOTICE_TITLE;
+        data.body = ERASED_NOTICE_BODY;
       }
       if (Object.keys(data).length === 0) continue;
       const result = await delegateFor(tx, rule.model).updateMany({ where, data });

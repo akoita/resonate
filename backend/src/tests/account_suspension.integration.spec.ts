@@ -14,6 +14,7 @@ import request from "supertest";
 import { applyGlobalValidation } from "../config/validation";
 import { prisma } from "../db/prisma";
 import { AccountStatusInterceptor } from "../modules/accounts/account_status.interceptor";
+import { AccountStandingService } from "../modules/accounts/account_standing.service";
 import { AccountStatusService } from "../modules/accounts/account_status.service";
 import { AccountController, AdminAccountsController } from "../modules/accounts/accounts.controller";
 import { AllowWhileSuspended } from "../modules/accounts/allow_while_suspended.decorator";
@@ -96,6 +97,7 @@ describe("account suspension (integration)", () => {
         { provide: APP_GUARD, useClass: RolesGuard },
         { provide: APP_INTERCEPTOR, useClass: AccountStatusInterceptor },
         AccountStatusService,
+        AccountStandingService,
         NoticeService,
         AccountClosureService,
         { provide: AuditService, useValue: audit },

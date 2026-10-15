@@ -24,6 +24,7 @@ import {
   type AgentSessionRequest,
   type AgentSessionParseResponse,
 } from "./agent_session_request";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { EventBus } from "../shared/event_bus";
 import { minutes } from "../shared/rate_limits";
 import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../crates/crate.types";
@@ -264,6 +265,7 @@ export class AgentConfigController {
         return listeningRequestFromCrateParse(await this.requestParser.parse(text));
     }
 
+    @AllowWhileSuspended()
     @Post("session")
     @UseGuards(AuthGuard("jwt"))
     async startSession(
@@ -557,6 +559,7 @@ export class AgentConfigController {
         return { status: "started", sessionId: session.id };
     }
 
+    @AllowWhileSuspended()
     @Post("session/stop")
     @UseGuards(AuthGuard("jwt"))
     async stopSession(@Req() req: any) {

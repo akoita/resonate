@@ -14,6 +14,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { Response } from "express";
 import { AnalyticsAuthorizationService } from "./analytics_authorization.service";
 import {
@@ -217,6 +218,7 @@ export class AnalyticsController {
    * error — the route answers 202 with `recorded: false` so the client can stop
    * emitting, and nothing is written.
    */
+  @AllowWhileSuspended()
   @Post("playback/completed")
   async recordPlaybackCompleted(
     @Body() body: PlaybackCompletedRequest,
@@ -237,6 +239,7 @@ export class AnalyticsController {
     );
   }
 
+  @AllowWhileSuspended()
   @Post("playback/event")
   async recordPlaybackEvent(
     @Body() body: PlaybackLifecycleRequest,

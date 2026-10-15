@@ -18,6 +18,8 @@
 import { Prisma } from "@prisma/client";
 import {
   DANGLING_PERSON_COLUMNS,
+  ERASED_NOTICE_BODY,
+  ERASED_NOTICE_TITLE,
   ERASURE_RULES,
   ERASURE_RULES_BY_MODEL,
   ErasureDisposition,
@@ -495,6 +497,18 @@ describe("personal data erasure manifest", () => {
       expect(ERASURE_RULES_BY_MODEL.ShowPledgeDemandContext.disposition).toBe("delete");
       expect(ERASURE_RULES_BY_MODEL.ShowPledge.disposition).toBe("retain");
       expect(EXPORTED_MODELS.some((entry) => entry.model === "ShowPledgeDemandContext")).toBe(true);
+    });
+
+    it("keeps a minimal targeted-notice record and replaces its text (#2167)", () => {
+      const notice = ERASURE_RULES_BY_MODEL.Notice;
+      expect(notice.disposition).toBe("anonymize");
+      // Only the possibly personal text goes; category, dates and dedupe reference stay.
+      expect([...(notice.scrub ?? [])].sort()).toEqual(["body", "link", "title"]);
+      // Matched on the recipient, so broadcasts (no recipient) are never touched.
+      expect(notice.matchOn).toBe("recipientUserId");
+      expect(ERASURE_RULES_BY_MODEL.NoticeRead.disposition).toBe("delete");
+      expect(ERASED_NOTICE_TITLE.trim().length).toBeGreaterThan(0);
+      expect(ERASED_NOTICE_BODY.trim().length).toBeGreaterThan(0);
     });
 
     it("leaves analytics to the governance service", () => {

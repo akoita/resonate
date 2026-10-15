@@ -2,7 +2,9 @@
  * The suspension allowlist (#2147) is a decorator on handlers, so this spec
  * pins the exact set of routes that carry it. Adding a route here is a decision
  * that a suspended account may call it: it must protect the person's money or
- * their rights over their own data (sign-in, refunds, export/erasure, notices).
+ * their rights over their own data (sign-in, refunds, export/erasure, notices),
+ * or be listening (#2167: playback and DJ-session routes, whose plays are not
+ * counted). Purchases, uploads, listings, pledges and posting never belong here.
  */
 import { RequestMethod } from "@nestjs/common";
 import { METHOD_METADATA } from "@nestjs/common/constants";
@@ -10,10 +12,13 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { ALLOW_WHILE_SUSPENDED_KEY } from "../modules/accounts/allow_while_suspended.decorator";
 import { AdminAccountsController } from "../modules/accounts/accounts.controller";
+import { AgentConfigController } from "../modules/agents/agent_config.controller";
+import { AnalyticsController } from "../modules/analytics/analytics.controller";
 import { AuthController } from "../modules/auth/auth.controller";
 import { MetadataController } from "../modules/contracts/metadata.controller";
 import { NoticeController } from "../modules/notifications/notice.controller";
 import { PrivacyController } from "../modules/privacy/privacy.controller";
+import { SessionsController } from "../modules/sessions/sessions.controller";
 import { ShowsController } from "../modules/shows/shows.controller";
 
 type Ctor = { prototype: Record<string, unknown>; name: string };
@@ -25,6 +30,9 @@ const CONTROLLERS = [
   ShowsController,
   MetadataController,
   AdminAccountsController,
+  SessionsController,
+  AnalyticsController,
+  AgentConfigController,
 ] as unknown as Ctor[];
 
 const MUTATING = new Set([RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE]);
@@ -48,7 +56,7 @@ function allowedMutatingHandlers(): string[] {
 }
 
 describe("@AllowWhileSuspended allowlist", () => {
-  it("is exactly the sign-in, refund, privacy and notice-read routes", () => {
+  it("is exactly the sign-in, refund, privacy, notice-read and listening routes", () => {
     expect(allowedMutatingHandlers()).toEqual(
       [
         // Sign-in and token issuance.
@@ -65,8 +73,37 @@ describe("@AllowWhileSuspended allowlist", () => {
         "NoticeController.markRead",
         "MetadataController.markNotificationRead",
         "MetadataController.markAllNotificationsRead",
+        // Listening (#2167): player telemetry, DJ session start/stop/next and the
+        // playback-intent routes. Plays from a restricted account are not counted.
+        "AnalyticsController.recordPlaybackCompleted",
+        "AnalyticsController.recordPlaybackEvent",
+        "AgentConfigController.startSession",
+        "AgentConfigController.stopSession",
+        "SessionsController.start",
+        "SessionsController.stop",
+        "SessionsController.agentNext",
+        "SessionsController.registerPlaybackDevice",
+        "SessionsController.resolvePlaybackIntent",
+        "SessionsController.queuePlaybackIntent",
+        "SessionsController.playPlaybackIntent",
+        "SessionsController.controlPlaybackIntent",
+        "SessionsController.confirmPlaybackCommand",
       ].sort(),
     );
+  });
+
+  it("never allows a route that spends money or makes a purchase", () => {
+    const allowed = allowedMutatingHandlers();
+    // Priced session play (an agent purchase), generic product/ingest events and agent signals stay blocked.
+    for (const blocked of [
+      "SessionsController.play",
+      "SessionsController.createPlaybackCapability",
+      "AnalyticsController.ingest",
+      "AnalyticsController.recordProductEvent",
+      "AgentConfigController.recordSignal",
+    ]) {
+      expect(allowed).not.toContain(blocked);
+    }
   });
 
   it("covers every privacy route, including the data export", () => {

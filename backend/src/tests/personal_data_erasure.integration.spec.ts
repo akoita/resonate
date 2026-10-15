@@ -26,7 +26,11 @@ import { AnalyticsGovernanceService } from "../modules/analytics/analytics_gover
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
-import { ERASED_EMAIL_DOMAIN } from "../modules/privacy/personal_data_erasure_manifest";
+import {
+  ERASED_EMAIL_DOMAIN,
+  ERASED_NOTICE_BODY,
+  ERASED_NOTICE_TITLE,
+} from "../modules/privacy/personal_data_erasure_manifest";
 import {
   hasArtistManagementAccess,
   hasReleaseManagementAccess,
@@ -96,6 +100,25 @@ async function seed(person: Seed) {
   await prisma.user.create({
     data: { id: person.userId, email: `${person.userId}@wallet.resonate` },
   });
+
+  // #2146 / #2167: a targeted notice with personal text, read by its recipient.
+  await prisma.notice.create({
+    data: {
+      id: own("notice"),
+      category: "moderation",
+      title: `${TEST_PREFIX}notice_title_${person.suffix}`,
+      body: `${TEST_PREFIX}notice_body_${person.suffix}: your track "Private Demo" was removed`,
+      link: `/releases/${TEST_PREFIX}private_${person.suffix}`,
+      audience: "user",
+      recipientUserId: person.userId,
+      dedupeKey: `${TEST_PREFIX}dedupe_${person.suffix}`,
+      effectiveAt: new Date("2026-03-01T00:00:00.000Z"),
+      expiresAt: new Date("2026-12-01T00:00:00.000Z"),
+      createdBy: "system:moderation",
+      createdAt: new Date("2026-03-02T10:00:00.000Z"),
+    },
+  });
+  await prisma.noticeRead.create({ data: { noticeId: own("notice"), userId: person.userId } });
 
   // --- the address-to-person mappings, which erasure severs ----------------
   await prisma.wallet.create({
@@ -396,6 +419,20 @@ async function seed(person: Seed) {
  * decide whether `matchOn` is honoured.
  */
 async function seedShared() {
+  // A broadcast names nobody and must come through an erasure untouched.
+  await prisma.notice.create({
+    data: {
+      id: id("notice", "broadcast"),
+      category: "policy",
+      title: `${TEST_PREFIX}broadcast_title`,
+      body: `${TEST_PREFIX}broadcast_body`,
+      link: "/help/platform-notices",
+      audience: "all",
+      createdBy: "system:operator",
+      createdAt: new Date("2026-03-03T10:00:00.000Z"),
+    },
+  });
+  await prisma.noticeRead.create({ data: { noticeId: id("notice", "broadcast"), userId: USER_B } });
   // Simulate a transfer from B's legacy owner to A. If erasure clears the
   // explicit override, the access helper falls back to B's legacy ownership.
   await prisma.artist.update({
@@ -620,6 +657,8 @@ async function cleanup() {
     ]),
   ];
 
+  await prisma.noticeRead.deleteMany({ where: { noticeId: { startsWith: TEST_PREFIX } } });
+  await prisma.notice.deleteMany({ where });
   await prisma.generationCreditRequest.deleteMany({ where });
   await prisma.showCampaignDispute.deleteMany({ where });
   await prisma.showCampaign.deleteMany({ where });
@@ -1055,6 +1094,47 @@ describe("PersonalDataErasureService integration", () => {
       resolvedAt: null,
       note: `${TEST_PREFIX}credit_note_b_pending`,
     });
+  });
+
+  it("keeps a minimal record of the erased person's targeted notice and replaces its text (#2167)", async () => {
+    const notice = await prisma.notice.findUnique({ where: { id: id("notice", "a") } });
+    expect(notice).not.toBeNull();
+    // Category, audience, dates and the dedupe reference are the proof the notice was sent.
+    expect(notice?.category).toBe("moderation");
+    expect(notice?.audience).toBe("user");
+    expect(notice?.dedupeKey).toBe(`${TEST_PREFIX}dedupe_a`);
+    expect(notice?.createdAt.toISOString()).toBe("2026-03-02T10:00:00.000Z");
+    expect(notice?.effectiveAt?.toISOString()).toBe("2026-03-01T00:00:00.000Z");
+    expect(notice?.expiresAt?.toISOString()).toBe("2026-12-01T00:00:00.000Z");
+    expect(notice?.createdBy).toBe("system:moderation");
+    // It no longer names the account, and the possibly personal text is gone.
+    expect(notice?.recipientUserId).toBe(newUserId);
+    expect(notice?.title).toBe(ERASED_NOTICE_TITLE);
+    expect(notice?.body).toBe(ERASED_NOTICE_BODY);
+    expect(notice?.link).toBeNull();
+    expect(JSON.stringify(notice)).not.toContain("Private Demo");
+    // Read receipts are behavioural state and are deleted.
+    expect(await prisma.noticeRead.count({ where: { noticeId: id("notice", "a") } })).toBe(0);
+  });
+
+  it("leaves broadcasts and the other person's targeted notice untouched (#2167)", async () => {
+    const broadcast = await prisma.notice.findUnique({ where: { id: id("notice", "broadcast") } });
+    expect(broadcast).toMatchObject({
+      title: `${TEST_PREFIX}broadcast_title`,
+      body: `${TEST_PREFIX}broadcast_body`,
+      link: "/help/platform-notices",
+      audience: "all",
+      recipientUserId: null,
+    });
+    const other = await prisma.notice.findUnique({ where: { id: id("notice", "b") } });
+    expect(other).toMatchObject({
+      title: `${TEST_PREFIX}notice_title_b`,
+      recipientUserId: USER_B,
+      link: `/releases/${TEST_PREFIX}private_b`,
+    });
+    expect(await prisma.noticeRead.count({ where: { noticeId: id("notice", "b") } })).toBe(1);
+    // A read receipt on a broadcast belongs to its reader, not to the erased person.
+    expect(await prisma.noticeRead.count({ where: { noticeId: id("notice", "broadcast") } })).toBe(1);
   });
 
   it("does not touch the other person", async () => {

@@ -23,6 +23,7 @@ import { AnalyticsDomainEventBridgeService } from "./analytics_domain_event_brid
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsDiscoveryMetadataService } from "./analytics_discovery_metadata.service";
 import { AnalyticsPipelineObservabilityService } from "./analytics_observability.service";
+import { AccountStandingModule } from "../accounts/account_standing.module";
 import { SharedModule } from "../shared/shared.module";
 import { AgentsModule } from "../agents/agents.module";
 import { DiscoveryJournalModule } from "../discovery_journal/discovery_journal.module";
@@ -35,7 +36,7 @@ import { FirstListenerReceptionService } from "../recommendations/first_listener
 import { FIRST_LISTENER_RECEPTION_SOURCE, entitledFirstListenerReceptionSource } from "./analytics_first_listener";
 
 @Module({
-  imports: [SharedModule, AgentsModule, DiscoveryJournalModule, SceneScoutModule, FirstListenerModule],
+  imports: [SharedModule, AccountStandingModule, AgentsModule, DiscoveryJournalModule, SceneScoutModule, FirstListenerModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,

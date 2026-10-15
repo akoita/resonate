@@ -160,6 +160,13 @@ nothing in the database resolves that address back to an account. Doing it the
 other way round would cost operator reconciliation and give the person nothing,
 since the chain publishes the address anyway.
 
+**A targeted notice keeps a minimal record, not its text** (#2167). The platform
+must be able to show later that a notice of a given category was sent on a
+given date, but the text of a targeted notice can be personal. `Notice` is
+therefore `anonymize`: category, audience, dates and dedupe key stay, `title`
+and `body` become a neutral placeholder, `link` is cleared, and read receipts
+(`NoticeRead`) are deleted. Broadcasts name nobody and are unchanged.
+
 **An artist's erasure is not a private act**, so artists detach rather than
 disappear: their releases are withdrawn through #1793 rather than deleted out
 from under the people who bought them.

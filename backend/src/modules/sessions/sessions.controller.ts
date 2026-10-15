@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import {
   PlaybackCommandAction,
   PlaybackConfirmationMode,
@@ -19,6 +20,7 @@ export class SessionsController {
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("start")
   start(
     @Body()
@@ -44,6 +46,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("stop")
   stop(@Body() body: { sessionId: string }) {
     return this.sessionsService.stopSession(body.sessionId);
@@ -56,6 +59,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("agent/next")
   agentNext(
     @Body()
@@ -128,6 +132,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("playback/device")
   registerPlaybackDevice(
     @Body()
@@ -152,6 +157,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("playback/resolve")
   resolvePlaybackIntent(
     @Body()
@@ -174,6 +180,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("playback/queue")
   queuePlaybackIntent(
     @Body() body: PlaybackCommandRequestBody,
@@ -183,6 +190,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("playback/play")
   playPlaybackIntent(
     @Body() body: PlaybackCommandRequestBody,
@@ -192,6 +200,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("playback/control")
   controlPlaybackIntent(
     @Body() body: PlaybackCommandRequestBody & { action?: unknown },
@@ -204,6 +213,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @AllowWhileSuspended()
   @Post("playback/commands/:commandId/confirm")
   confirmPlaybackCommand(
     @Param("commandId") commandId: string,
