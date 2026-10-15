@@ -246,6 +246,70 @@ describe("RemixCta rendering", () => {
     expect(html).toContain("remix-cta--remix");
   });
 
+  it("uses the caller's label for the license state (#2042)", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        initialEligibility={eligibility({
+          allowed: false,
+          requiredLicense: "remix",
+          allowedActions: [],
+          reasons: [
+            { code: "license_required", message: "A remix license is required." },
+          ],
+        })}
+        onGetLicense={() => {}}
+        licenseRequiredLabel="Upgrade to Remix license"
+      />,
+    );
+    expect(html).toContain("remix-cta--license_required");
+    expect(html).toContain("Upgrade to Remix license");
+    expect(html).not.toContain("Get remix license");
+  });
+
+  it("keeps the eligibility-decided state when a license label is set but remix is allowed", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        initialEligibility={eligibility()}
+        licenseRequiredLabel="Upgrade to Remix license"
+      />,
+    );
+    expect(html).toContain("remix-cta--remix");
+    expect(html).not.toContain("Upgrade to Remix license");
+  });
+
+  it("uses the caller's label for the allowed state (#2042)", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        stemIds={["stem-1", "stem-2"]}
+        variant="button"
+        initialEligibility={eligibility()}
+        remixLabel="Remix 2 stems together"
+      />,
+    );
+    expect(html).toContain("remix-cta--remix");
+    expect(html).toContain("Remix 2 stems together");
+  });
+
+  it("does not apply the allowed-state label to a blocked source", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        initialEligibility={eligibility({
+          allowed: false,
+          requiredLicense: null,
+          allowedActions: [],
+          reasons: [{ code: "not_remixable", message: "Not remixable." }],
+        })}
+        remixLabel="Remix 2 stems together"
+      />,
+    );
+    expect(html).toContain("Remix unavailable");
+    expect(html).not.toContain("Remix 2 stems together");
+  });
+
   it("stays interactive when the caller provides a license purchase path", () => {
     const html = renderToStaticMarkup(
       <RemixCta
