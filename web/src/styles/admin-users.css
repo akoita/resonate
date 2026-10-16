@@ -1,0 +1,216 @@
+/*
+ * Operator users directory and user detail (#2166).
+ * `src/app/admin/users/**`. Class prefix: `admin-users-`. Uses the Obsidian
+ * Frequency `--r-*` tokens; the page chrome comes from the review-queue
+ * building blocks.
+ */
+
+.admin-users-page { display: grid; gap: 20px; min-width: 0; }
+
+/* ---------- Overview tiles ---------- */
+
+.admin-users-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.admin-users-tile {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  background: linear-gradient(180deg, var(--r-surface-high), var(--r-surface-mid));
+}
+.admin-users-tile__label { margin: 0; font-size: 12px; color: var(--r-on-surface-muted); }
+.admin-users-tile__value { margin: 4px 0 0; font-family: var(--font-display); font-size: 28px; line-height: 1.1; }
+.admin-users-tile__sub { margin: 4px 0 0; font-size: 12px; color: var(--r-on-surface-muted); }
+.admin-users-note { margin: 0; font-size: 12px; color: var(--r-on-surface-muted); line-height: 1.5; }
+
+/* ---------- Filters ---------- */
+
+.admin-users-filters {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  background: var(--r-surface-low);
+}
+.admin-users-search { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.admin-users-search .admin-users-field { flex: 1 1 280px; }
+.admin-users-selects { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.admin-users-field { display: grid; gap: 4px; font-size: 12px; color: var(--r-on-surface-muted); min-width: 0; }
+.admin-users-field input,
+.admin-users-field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-lowest);
+  color: var(--r-on-surface);
+  font-size: 14px;
+}
+.admin-users-field input:focus-visible,
+.admin-users-field select:focus-visible { outline: 2px solid var(--r-primary); outline-offset: 1px; }
+.admin-users-error { margin: 0; color: var(--r-error); font-size: 12px; }
+.admin-users-filters__footer { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+
+/* ---------- Table ---------- */
+
+.admin-users-results {
+  min-width: 0;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  background: linear-gradient(180deg, var(--r-surface-high), var(--r-surface-mid));
+  overflow: hidden;
+}
+.admin-users-results[aria-busy="true"] { opacity: 0.6; }
+.admin-users-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.admin-users-table th {
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--r-on-surface-muted);
+  border-bottom: 1px solid var(--r-outline);
+  white-space: nowrap;
+}
+.admin-users-table td { padding: 12px 14px; border-bottom: 1px solid var(--r-outline-variant); vertical-align: middle; }
+.admin-users-table tbody tr:last-child td { border-bottom: 0; }
+.admin-users-table tbody tr:hover { background: var(--r-chrome-hover); }
+.admin-users-table .is-num { text-align: right; font-variant-numeric: tabular-nums; }
+.admin-users-person { display: grid; gap: 2px; min-width: 0; }
+.admin-users-person a { font-weight: 600; color: var(--r-on-surface); overflow-wrap: anywhere; }
+.admin-users-person a:hover,
+.admin-users-person a:focus-visible { text-decoration: underline; }
+.admin-users-person__sub { font-size: 12px; color: var(--r-on-surface-muted); overflow-wrap: anywhere; }
+.admin-users-muted { color: var(--r-on-surface-muted); }
+
+.admin-users-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-users-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 10px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--r-on-surface-variant);
+  background: var(--r-surface-highest);
+}
+.admin-users-chip--active { color: var(--r-success); border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.08); }
+.admin-users-chip--suspended { color: var(--r-warning); border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.1); }
+.admin-users-chip--closed { color: var(--r-error); border-color: rgba(255, 107, 107, 0.45); background: rgba(255, 107, 107, 0.1); }
+
+.admin-users-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-top: 1px solid var(--r-outline);
+  font-size: 13px;
+  color: var(--r-on-surface-muted);
+}
+.admin-users-pager__buttons { display: flex; gap: 8px; }
+
+/* ---------- Loading ---------- */
+
+.admin-users-skeleton { display: grid; gap: 10px; padding: 16px; }
+.admin-users-skeleton span {
+  display: block;
+  height: 38px;
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-highest);
+  opacity: 0.5;
+}
+
+/* ---------- Detail ---------- */
+
+.admin-users-back { font-size: 13px; color: var(--r-on-surface-variant); width: fit-content; }
+.admin-users-back:hover,
+.admin-users-back:focus-visible { text-decoration: underline; }
+.admin-users-hero { display: grid; gap: 10px; min-width: 0; }
+.admin-users-hero h1 { margin: 0; overflow-wrap: anywhere; }
+.admin-users-section {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  background: linear-gradient(180deg, var(--r-surface-high), var(--r-surface-mid));
+}
+.admin-users-section h2 { margin: 0; font-family: var(--font-display); font-size: 18px; }
+.admin-users-section h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--r-on-surface-variant); }
+.admin-users-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 20px; margin: 0; }
+.admin-users-facts dt { font-size: 12px; color: var(--r-on-surface-muted); }
+.admin-users-facts dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.admin-users-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.admin-users-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.admin-users-list li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--r-outline-variant);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-low);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.admin-users-list__meta { font-size: 12px; color: var(--r-on-surface-muted); }
+.admin-users-list a { font-weight: 600; }
+.admin-users-list a:hover,
+.admin-users-list a:focus-visible { text-decoration: underline; }
+.admin-users-readonly {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-low);
+  font-size: 13px;
+  color: var(--r-on-surface-variant);
+}
+
+/* ---------- Phone: each row becomes a card ---------- */
+
+@media (max-width: 760px) {
+  .admin-users-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .admin-users-table,
+  .admin-users-table tbody,
+  .admin-users-table tr,
+  .admin-users-table td { display: block; width: 100%; }
+  .admin-users-table tr { padding: 10px 6px; border-bottom: 1px solid var(--r-outline); }
+  .admin-users-table tbody tr:last-child { border-bottom: 0; }
+  .admin-users-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 6px 12px;
+    border: 0;
+    text-align: right;
+  }
+  .admin-users-table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: var(--r-on-surface-muted);
+    text-align: left;
+  }
+  .admin-users-table td.admin-users-cell--person { display: block; text-align: left; }
+  .admin-users-table td.admin-users-cell--person::before { display: none; }
+  .admin-users-table .is-num { text-align: right; }
+  .admin-users-chips { justify-content: flex-end; }
+  .admin-users-pager { flex-direction: column; align-items: stretch; }
+  .admin-users-pager__buttons { justify-content: space-between; }
+}

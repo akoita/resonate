@@ -12,6 +12,7 @@ import { AuditService } from "../audit/audit.service";
 import { NoticeService } from "../notifications/notice.service";
 import { AccountClosureService } from "../privacy/account_closure.service";
 import { AccountStandingService, EffectiveAccountStatus } from "./account_standing.service";
+import { AdminAuditAction, writeAdminAuditEvent } from "./admin_audit_event";
 
 export { ACCOUNT_STATUS_CACHE_TTL_MS } from "./account_standing.service";
 export type { EffectiveAccountStatus } from "./account_standing.service";
@@ -178,7 +179,7 @@ export class AccountStatusService {
     });
     this.invalidate(userId);
 
-    this.record(actor, userId, "account.suspended", reason, changedAt, {
+    await this.record(actor, userId, "account.suspended", reason, changedAt, {
       until: until?.toISOString() ?? null,
       note,
     });
@@ -217,7 +218,7 @@ export class AccountStatusService {
     });
     this.invalidate(userId);
 
-    this.record(actor, userId, "account.unsuspended", null, changedAt, { note });
+    await this.record(actor, userId, "account.unsuspended", null, changedAt, { note });
     await this.tell(userId, changedAt, {
       title: "Your account is active again",
       body: "The suspension on your account has been lifted. You can use Resonate normally again.",
@@ -261,7 +262,7 @@ export class AccountStatusService {
       ? await this.closures.request(userId, `operator closure: ${reason}`)
       : null;
 
-    this.record(actor, userId, "account.closed", reason, changedAt, {
+    await this.record(actor, userId, "account.closed", reason, changedAt, {
       note,
       scheduleErasure,
       erasureDueAt: closure?.dueAt.toISOString() ?? null,
@@ -302,10 +303,10 @@ export class AccountStatusService {
     }
   }
 
-  private record(
+  private async record(
     actor: AccountActor,
     userId: string,
-    action: string,
+    action: AdminAuditAction,
     reason: AccountStatusReason | null,
     changedAt: Date,
     extra: Record<string, unknown>,
@@ -315,6 +316,14 @@ export class AccountStatusService {
       actorId: actor.userId,
       resource: `account:${userId}`,
       metadata: { targetUserId: userId, reason, changedAt: changedAt.toISOString(), ...extra },
+    });
+    // #2166: the durable operator trail. The free-text note is never stored here.
+    const { note: _note, ...detail } = extra;
+    await writeAdminAuditEvent({
+      actorUserId: actor.userId,
+      action,
+      targetUserId: userId,
+      detail: JSON.parse(JSON.stringify({ reason, ...detail })),
     });
   }
 

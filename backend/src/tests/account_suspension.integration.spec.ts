@@ -112,6 +112,7 @@ describe("account suspension (integration)", () => {
 
   afterAll(async () => {
     const ids = [admin, otherAdmin, user, user2, walletUser];
+    await prisma.adminAuditEvent.deleteMany({ where: { actorUserId: { in: ids } } });
     await prisma.accountClosureRequest.deleteMany({ where: { userId: { in: ids } } });
     await prisma.noticeRead.deleteMany({ where: { userId: { in: ids } } });
     await prisma.notice.deleteMany({ where: { recipientUserId: { in: ids } } });
@@ -135,6 +136,7 @@ describe("account suspension (integration)", () => {
     });
     await prisma.accountClosureRequest.deleteMany({ where: { userId: { in: [user, user2] } } });
     await prisma.notice.deleteMany({ where: { recipientUserId: { in: [user, user2, walletUser] } } });
+    await prisma.adminAuditEvent.deleteMany({ where: { actorUserId: admin } });
     accounts.clearCache();
   });
 
@@ -244,6 +246,34 @@ describe("account suspension (integration)", () => {
       const row = await prisma.user.findUniqueOrThrow({ where: { id: user } });
       expect(row).toMatchObject({ accountStatus: "suspended", accountStatusReason: "abuse", accountStatusChangedBy: admin });
       expect(JSON.stringify(row)).not.toContain("SECRET");
+    });
+  });
+
+  describe("durable admin audit trail (#2166)", () => {
+    it("writes one AdminAuditEvent per status action, with the reason category and never the note", async () => {
+      await suspend(user, { reason: "abuse", note: NOTE }).expect(200);
+      await request(server()).post(`/admin/accounts/${user}/unsuspend`).set(as(admin, "admin")).send({ note: NOTE }).expect(200);
+      await request(server())
+        .post(`/admin/accounts/${user}/close`)
+        .set(as(admin, "admin"))
+        .send({ reason: "fraud", note: NOTE })
+        .expect(200);
+
+      const events = await prisma.adminAuditEvent.findMany({
+        where: { targetUserId: user },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(events.map((e) => e.action)).toEqual(["account.suspended", "account.unsuspended", "account.closed"]);
+      for (const event of events) expect(event.actorUserId).toBe(admin);
+      expect(events[0].detail).toMatchObject({ reason: "abuse", until: null });
+      expect(events[2].detail).toMatchObject({ reason: "fraud", scheduleErasure: false });
+      expect(JSON.stringify(events)).not.toContain("SECRET");
+    });
+
+    it("writes nothing for a refused action", async () => {
+      await suspend(admin).expect(403);
+      await suspend(`${TEST_PREFIX}nobody`).expect(404);
+      expect(await prisma.adminAuditEvent.count({ where: { actorUserId: admin } })).toBe(0);
     });
   });
 

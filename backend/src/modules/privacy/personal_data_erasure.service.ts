@@ -872,6 +872,9 @@ export class PersonalDataErasureService {
         email: erasedEmailFor(newUserId),
         closedAt: erasedAt,
         erasedAt,
+        // #2166: operational activity timestamps are cleared with the identity.
+        lastSignInAt: null,
+        lastActiveAt: null,
       },
     });
 

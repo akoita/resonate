@@ -4,6 +4,7 @@ import { createPublicClient, http, type Chain } from "viem";
 import { base, baseSepolia, foundry, sepolia } from "viem/chains";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
+import { UserActivityModule } from "../accounts/user_activity.module";
 import { AuditModule } from "../audit/audit.module";
 import { PrivacyModule } from "../privacy/privacy.module";
 import { SharedModule } from "../shared/shared.module";
@@ -88,6 +89,8 @@ function getChainFromConfig(config: ConfigService): { chain: Chain; transport: R
     PassportModule.register({ defaultStrategy: "jwt" }),
     AuditModule,
     SharedModule,
+    // #2166: sign-in stamps `lastSignInAt` / `lastActiveAt`.
+    UserActivityModule,
     // For `AccountClosureService`: every successful sign-in cancels a scheduled
     // erasure, and with no email channel in this backend (#1777) signing in is
     // the only way a real owner can discover and stop one a stolen token

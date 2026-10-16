@@ -244,6 +244,15 @@ export class AuthService {
     return parseEnvList(process.env[envName], { lowercase: true });
   }
 
+  /**
+   * The lowercased wallet allowlist behind a privileged role (#2166), read from
+   * the same source `resolveRole` uses so a directory's role chips can never
+   * disagree with what sign-in grants.
+   */
+  static allowlistedAddresses(role: "admin" | "operator" | "agent"): string[] {
+    return parseEnvList(process.env[AuthService.ALLOWLISTED_ROLES[role]], { lowercase: true });
+  }
+
   private resolveRole(userId: string, role: string) {
     const normalizedUserId = userId.toLowerCase();
 

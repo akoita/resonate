@@ -95,6 +95,16 @@ model User {
   managementRecoveryRequestsReviewed  ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryReviewer")
   noticesReceived             Notice[]                      @relation("NoticeRecipient")
   noticeReads                 NoticeRead[]
+  // #2166 operational activity for account administration (legitimate interest):
+  // the last sign-in and the last authenticated request, the latter written at
+  // most about once an hour per person (`UserActivityService`). Shown to
+  // operators to the day only; cleared on erasure.
+  lastSignInAt                DateTime?
+  lastActiveAt                DateTime?
+
+  @@index([lastActiveAt])
+  @@index([lastSignInAt])
+  @@index([createdAt])
 }
 
 enum AccountStatus {
@@ -3200,4 +3210,21 @@ model DemandSignal {
 
   @@unique([artistId, targetType, targetId, kind, value, windowDays], map: "DemandSignal_artist_target_category_window_key")
   @@index([artistId, computedAt])
+}
+
+/// #2166: durable record of operator access to and actions on a person's account.
+/// `actorUserId` and `targetUserId` hold user ids without a relation (they must
+/// survive either person's erasure; erasure rewrites them). `detail` never holds
+/// free-text operator notes or personal data. #2173 extends this to every admin action.
+model AdminAuditEvent {
+  id           String   @id @default(uuid())
+  actorUserId  String
+  /// user.detail_viewed | account.suspended | account.unsuspended | account.closed
+  action       String
+  targetUserId String?
+  detail       Json?
+  createdAt    DateTime @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([actorUserId, createdAt])
 }
