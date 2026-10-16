@@ -280,6 +280,16 @@ ordinary `Notification` row keyed by wallet address, which the existing export
 and erasure rules already cover; its new `crateId` column holds a crate id, not
 personal text. Nothing user-typed is stored beyond the existing crate title.
 
+Admin users directory (#2166) adds two things to this category's neighbours.
+`User.lastSignInAt` and `User.lastActiveAt` are operational activity timestamps
+kept for account administration under legitimate interest (no consent). They
+are written by `UserActivityService` (at most about once an hour per person) and
+by sign-in; operators see them to the day. **Export:** included with the `User`
+row. **Erasure:** set to null by the same update that rotates the id. They are
+not analytics, are never read by the warehouse, and have no retention beyond the
+account. `User.email` is deliberately not shown in the directory because for
+wallet accounts it is a placeholder.
+
 ## Category 2 — personal, but no relation (28 models)
 
 **No cascade reaches these.** They hold an identifier as a plain column, so
@@ -291,6 +301,15 @@ makes erasure a feature rather than a `DELETE`.
 `SignupFaucetAttempt`, `AgentTransaction`, `WebAuthnCredential`, `KeyAuditLog`,
 `ShowEscrowReconciliationAcknowledgement` (`acknowledgedByUserId`,
 `revokedByUserId`).
+
+`AdminAuditEvent` (#2166) holds two dangling account ids: `actorUserId` (the
+operator who viewed or acted on an account) and `targetUserId` (the account
+viewed or restricted). It records `user.detail_viewed` and the account
+suspension, unsuspension and closure actions with a `detail` of reason category
+and dates; **an operator's free-text note is never stored in it.** Erasure
+disposition: `retain` as audit history, with both columns rewritten to the new
+id (an erased operator and an erased subject both stop being named). Export:
+rows where `targetUserId` is the person, with `actorUserId` redacted.
 
 `ReleaseArtistCredit.identityReviewerUserId` is another dangling account id.
 The model has an `Artist` relation, but the reviewer field has no `User`

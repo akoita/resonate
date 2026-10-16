@@ -48,6 +48,9 @@ import { ManagementModule } from "./management/management.module";
 import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.module";
 import { AccountsModule } from "./accounts/accounts.module";
 import { AccountStatusInterceptor } from "./accounts/account_status.interceptor";
+import { UserActivityInterceptor } from "./accounts/user_activity.interceptor";
+import { UserActivityModule } from "./accounts/user_activity.module";
+import { AdminUsersModule } from "./admin_users/admin_users.module";
 
 @Module({
   imports: [
@@ -103,6 +106,8 @@ import { AccountStatusInterceptor } from "./accounts/account_status.interceptor"
     DiscoveryJournalModule,
     CratesModule,
     AccountsModule,
+    UserActivityModule,
+    AdminUsersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
@@ -110,6 +115,8 @@ import { AccountStatusInterceptor } from "./accounts/account_status.interceptor"
     // #2147: refuses mutating requests from suspended/closed accounts. An
     // interceptor, not a guard, so it runs after the route's AuthGuard has set req.user.
     { provide: APP_INTERCEPTOR, useClass: AccountStatusInterceptor },
+    // #2166: bounded "last active" stamp for any authenticated request.
+    { provide: APP_INTERCEPTOR, useClass: UserActivityInterceptor },
   ],
 })
 export class AppModule { }

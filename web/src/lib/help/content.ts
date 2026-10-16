@@ -283,7 +283,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open Accounts in the sidebar (admins only) and look the person up by user id or wallet address.",
+              "Open Accounts in the sidebar (admins only) and look the person up by user id or wallet address, or open their record from Users.",
               "Pick a reason category. For a suspension, optionally set an end date; leave it empty for no end date.",
               "Add an internal note if useful. It is kept in the audit record only and is never shown to the person.",
               "Choose Suspend, Lift suspension or Close account, and confirm. The person is sent a notice at once.",
@@ -302,7 +302,105 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Accounts (admins)", href: "/admin/accounts", description: "Look up an account and suspend, lift or close it." },
       { label: "Imprint & contact", href: "/imprint", description: "How to reach support to appeal." },
     ],
-    related: ["platform-notices", "download-your-data", "delete-your-account"],
+    related: ["platform-notices", "download-your-data", "delete-your-account", "admin-users"],
+  },
+  {
+    slug: "admin-users",
+    title: "Finding people and opening their record (operators)",
+    summary:
+      "For admins and operators: see how many people use Resonate, find one person, check when they last used the app and what they have done, and open their record. Admins can suspend or close an account from there.",
+    category: "account",
+    audiences: ["operator"],
+    status: "partial",
+    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record"],
+    sections: [
+      {
+        id: "who-can-use-it",
+        heading: "Who can use it",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Admins and operators can open Users in the sidebar. Admins can also suspend or close an account from a person's record; operators can read everything but cannot change an account. Anyone else sees a message that the page is for admins and operators only.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Partly available",
+            text: "This is the first version. The list and the record work, but a confirmed contact address for each person, more filters and an export are not there yet.",
+          },
+        ],
+      },
+      {
+        id: "overview",
+        heading: "The overview",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The tiles at the top show how many people there are, how many joined in the last 7 and 30 days, how many were active in the last day, 7 days and 30 days, and how many accounts are suspended or closed. People whose data has been erased are not counted.",
+          },
+          {
+            kind: "paragraph",
+            text: "Someone counts as active when they signed in or used the app. The app records this at most once an hour for each person, and shows it to the day only, so it is a good guide but not a minute-by-minute log.",
+          },
+        ],
+      },
+      {
+        id: "finding-someone",
+        heading: "Finding someone",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Type a user id, a wallet address or an artist name in the search box and choose Search. Use at least 2 characters.",
+              "Narrow the list with Status, Role and Activity. Activity can show people who were active recently or people with no activity for 30, 90 or 180 days; people who never used the app after joining count as having no activity.",
+              "Sort by when people joined, last signed in or were last active, newest or oldest first.",
+              "Use Previous and Next to move through the pages. The address in your browser keeps your search and filters, so you can share the view or come back to it.",
+              "Choose a person to open their record.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Each row shows the person's wallet or artist name, their roles, their status, when they joined, when they last signed in, the day they were last active, and how many purchases, pledges and releases they have. Email addresses are not shown. Many accounts only have a placeholder, so a confirmed contact address will be added separately.",
+          },
+        ],
+      },
+      {
+        id: "the-record",
+        heading: "A person's record",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Identity: user id, wallet address, owner address, account type, network, how many passkeys they have, and when they joined and last signed in.",
+              "Account status: whether the account is active, suspended or closed, the reason category, the end date of a suspension and when it last changed.",
+              "Activity: counts of purchases, pledges and releases, how many notices they received, and their latest few of each.",
+              "Operator activity: a list of the times someone opened this record or changed the account, newest first.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Opening a record is logged",
+            text: "Every time you open a person's record, Resonate keeps a private log entry with who opened it and when. The same goes for suspending, lifting a suspension and closing. Internal notes are never part of the log. Only open a record when you have a reason to.",
+          },
+        ],
+      },
+      {
+        id: "changing-an-account",
+        heading: "Suspending or closing an account (admins)",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "On a person's record, admins see the same controls as on the Accounts page: pick a reason category, optionally set an end date and add an internal note, then choose Suspend, Lift suspension or Close account and confirm. The person is sent a notice at once. After you confirm, the record reloads so the change shows in the list of operator activity.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Users (operators)", href: "/admin/users", description: "The overview, search and filters, and each person's record." },
+      { label: "Accounts (admins)", href: "/admin/accounts", description: "Look an account up by user id or wallet address and suspend, lift or close it." },
+    ],
+    related: ["account-suspension", "platform-notices", "settings-privacy"],
   },
   {
     slug: "smart-wallet",

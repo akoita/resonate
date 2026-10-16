@@ -83,8 +83,9 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     primaryKey: "id",
     keys: [{ kind: "userId", column: "id" }],
     note:
-      "The account row: email, signup date and, since #2147, the operator account state "
-      + "(status, reason category, end date, change date). The acting operator's id is redacted.",
+      "The account row: email, signup date, since #2147 the operator account state "
+      + "(status, reason category, end date, change date) and, since #2166, the last sign-in and last activity "
+      + "timestamps kept for account administration. The acting operator's id is redacted.",
   },
   {
     model: "AccountClosureRequest",
@@ -497,6 +498,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Added by #2146. Platform notices addressed to this person; broadcasts name nobody and are not exported.",
   },
   {
+    model: "AdminAuditEvent",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "targetUserId" }],
+    note:
+      "Added by #2166. Records of an operator viewing or acting on this person's account (what, when, reason "
+      + "category). The operator's id is redacted.",
+  },
+  {
     model: "CuratorReputation",
     primaryKey: "id",
     keys: [{ kind: "address", column: "walletAddress" }],
@@ -794,6 +803,9 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
  * redaction is not a filter applied to a row that already exists in memory.
  */
 export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  AdminAuditEvent: {
+    actorUserId: "Internal operator identity (#2166); the person can export that their account was viewed or acted on, and when, without the operator's account id.",
+  },
   User: {
     accountStatusChangedBy: "Internal operator identity (#2147); the person can export their account state, reason category and dates without the operator's account id.",
   },

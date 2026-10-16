@@ -124,6 +124,9 @@ article.
 - `/admin/accounts` (admins): lookup by user id or wallet address, reason select,
   optional end date, internal note, and `ConfirmDialog` for suspend, lift and
   close.
+- The same controls are on a person's record in the users directory
+  (`/admin/users/[id]`, admins only; operators see the status read-only). See
+  [Admin users directory and user detail](admin_users.md) (#2166).
 
 ## Privacy manifests
 

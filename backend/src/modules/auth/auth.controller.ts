@@ -17,6 +17,7 @@ import { EventBus } from "../shared/event_bus";
 import { AccountClosureService } from "../privacy/account_closure.service";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
+import { UserActivityService } from "../accounts/user_activity.service";
 
 // Sign-in must always work for a restricted account (#2147).
 @AllowWhileSuspended()
@@ -30,6 +31,7 @@ export class AuthController {
     @Inject(forwardRef(() => AccountClosureService))
     private readonly accountClosureService: AccountClosureService,
     @Optional() private readonly signupFaucetService?: SignupFaucetService,
+    @Optional() private readonly userActivity?: UserActivityService,
   ) { }
 
   @Post("login")
@@ -287,6 +289,10 @@ export class AuthController {
     // token is issued so the answer to "did my account survive?" is settled by
     // the time the caller holds a session.
     await this.cancelScheduledClosureOnSignIn(canonicalUserId);
+
+    // #2166: stamp the sign-in for account administration. Never throws; a
+    // failure must not block sign-in.
+    await this.userActivity?.recordSignIn(canonicalUserId);
 
     const result = this.authService.issueTokenForAddress(canonicalUserId, input.role ?? "listener");
     let signupFaucet:

@@ -29,6 +29,14 @@ here. Contact: {{OPERATOR_CONTACT_EMAIL}}.
 the passkey credential your device creates. We never receive your biometric
 data — your device keeps it and only tells us that it verified you.
 
+**Account activity.** The time you last signed in and the time you were last
+active, which we record at most about once an hour while you use the service.
+We keep these only to administer accounts: for example, to tell a dormant
+account from an abandoned sign-up, or to investigate abuse. Operators see your
+last activity to the day only. When an operator opens your account record, or
+suspends or closes your account, we log who did it, when, and (for a restriction)
+the reason category. That log never contains the operator's free-text notes.
+
 **Wallet.** Your smart account address and the on-chain activity associated
 with it. See "What we cannot delete" below, because this is the part that is
 permanent.
@@ -76,6 +84,7 @@ material, exact IP addresses, or user-agent strings in analytics.
 | Executing pledges, purchases, licences and payouts | Performance of the contract |
 | Keeping financial, rights and tax records | Legal obligation |
 | Security, fraud prevention, abuse and rights enforcement | Legitimate interests |
+| Account administration: last sign-in and last activity, and the log of operator access to your account record | Legitimate interests |
 | Optional product analytics and personalised recommendations | Your consent |
 | Personalised yearly summaries | Your consent, separately given |
 
@@ -128,6 +137,8 @@ the product does not have is a false statement, not an aspiration.
 | Financial, payout, royalty, dispute, settlement, rights and tax facts | 7–10 years, with personal fields minimised |
 | Aggregate views that cannot re-identify you | Kept while useful |
 | Quarantined records | 30 days (personal or sensitive), 90 days (pseudonymous) |
+| Last sign-in and last activity | While your account exists; cleared when it is erased |
+| Log of operator access to your account record | Kept as audit history; it names you only by an identifier that is replaced when your account is erased |
 | Deletion and consent records | Kept indefinitely, so we can prove a deletion happened |
 
 Account data is kept while your account exists, then deleted as described

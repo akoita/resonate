@@ -24,6 +24,7 @@ import { PrivacyController } from "../modules/privacy/privacy.controller";
 import { AuthController } from "../modules/auth/auth.controller";
 import { AuthService } from "../modules/auth/auth.service";
 import { AuthNonceService } from "../modules/auth/auth_nonce.service";
+import { UserActivityService } from "../modules/accounts/user_activity.service";
 
 const TEST_PREFIX = `closure_door_${Date.now()}_`;
 
@@ -45,6 +46,7 @@ const mockEventBus = { publish: jest.fn() };
 const nonceService = new AuthNonceService();
 const authService = new AuthService(mockJwt as any, mockAudit as any);
 const closureService = new AccountClosureService();
+const userActivity = new UserActivityService();
 
 let publicClient: PublicClient;
 let privacyController: PrivacyController;
@@ -77,6 +79,8 @@ beforeAll(async () => {
     publicClient,
     mockEventBus as any,
     closureService,
+    undefined,
+    userActivity,
   );
 
   for (const id of USER_IDS) {
@@ -218,6 +222,45 @@ describe("Account closure door (integration)", () => {
       expect(
         await prisma.accountClosureRequest.count({ where: { userId: SIGN_IN_USER } }),
       ).toBe(0);
+    });
+
+    it("stamps the sign-in time and the last-activity time (#2166)", async () => {
+      await prisma.user.update({
+        where: { id: SIGN_IN_USER },
+        data: { lastSignInAt: null, lastActiveAt: null },
+      });
+      userActivity.clearCache();
+      const before = Date.now();
+
+      const result = await signIn();
+      expect(result).toHaveProperty("accessToken");
+
+      const row = await prisma.user.findUniqueOrThrow({ where: { id: SIGN_IN_USER } });
+      expect(row.lastSignInAt).not.toBeNull();
+      expect(row.lastSignInAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+      expect(row.lastActiveAt!.getTime()).toBe(row.lastSignInAt!.getTime());
+    });
+
+    it("still signs the person in when stamping the sign-in time fails (#2166)", async () => {
+      await prisma.user.update({
+        where: { id: SIGN_IN_USER },
+        data: { lastSignInAt: null, lastActiveAt: null },
+      });
+      const update = jest
+        .spyOn(prisma.user, "updateMany")
+        .mockRejectedValueOnce(new Error("database is on fire"));
+      const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+
+      try {
+        const result = await signIn();
+        expect(result).toHaveProperty("accessToken");
+        expect(update).toHaveBeenCalled();
+      } finally {
+        update.mockRestore();
+        info.mockRestore();
+      }
+      const row = await prisma.user.findUniqueOrThrow({ where: { id: SIGN_IN_USER } });
+      expect(row.lastSignInAt).toBeNull();
     });
 
     it("still signs the person in when the cancel fails, rather than locking them out", async () => {

@@ -7611,3 +7611,117 @@ export function closeAccount(
     token,
   );
 }
+
+// ============ Admin users directory (#2166) ============
+
+export type AdminUserRole = "admin" | "operator" | "agent" | "artist";
+/** A role filter also accepts "listener": none of the roles above. */
+export type AdminUserRoleFilter = AdminUserRole | "listener";
+export type AdminUserSort = "createdAt" | "lastActiveAt" | "lastSignInAt";
+export type AdminUserOrder = "asc" | "desc";
+
+export type AdminUsersOverview = {
+  totalUsers: number;
+  newUsers: { d7: number; d30: number };
+  activeUsers: { d1: number; d7: number; d30: number };
+  suspended: number;
+  closed: number;
+  generatedAt: string;
+};
+
+export type AdminUserRow = {
+  id: string;
+  walletAddress: string | null;
+  createdAt: string;
+  lastSignInAt: string | null;
+  /** "YYYY-MM-DD" (UTC): activity is shown to the day only. */
+  lastActiveDay: string | null;
+  roles: AdminUserRole[];
+  artistName: string | null;
+  accountStatus: AccountStatusValue;
+  counts: { purchases: number; pledges: number; releases: number };
+};
+
+export type AdminUsersPage = {
+  items: AdminUserRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+export type AdminUsersQuery = {
+  q?: string;
+  status?: AccountStatusValue;
+  role?: AdminUserRoleFilter;
+  activeWithinDays?: number;
+  inactiveForDays?: number;
+  sort?: AdminUserSort;
+  order?: AdminUserOrder;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminUserDetail = AdminUserRow & {
+  wallet: { address: string; ownerAddress: string | null; accountType: string; chainId: number } | null;
+  passkeyCount: number;
+  /** `accountStatus` is the effective status: an expired suspension reads as "active". */
+  status: {
+    accountStatus: AccountStatusValue;
+    reason: string | null;
+    until: string | null;
+    changedAt: string | null;
+    /** When a scheduled erasure is due (a pending account closure), if any. */
+    scheduledErasureAt: string | null;
+  };
+  activity: {
+    /** `totalPaid` and `amountUnits` are base-unit strings; format with the asset's decimals. */
+    recentPurchases: Array<{
+      id: string;
+      purchasedAt: string;
+      totalPaid: string;
+      assetSymbol: string;
+      assetDecimals: number;
+    }>;
+    recentPledges: Array<{
+      id: string;
+      campaignId: string;
+      createdAt: string;
+      status: string;
+      amountUnits: string;
+      assetSymbol: string;
+      assetDecimals: number;
+    }>;
+    recentReleases: Array<{ id: string; title: string; createdAt: string; status: string }>;
+    noticesReceived: number;
+  };
+  adminActions: Array<{ action: string; actorUserId: string; createdAt: string; detail: unknown }>;
+};
+
+/** The query string for `GET /admin/users`; empty values are left out. */
+export function buildAdminUsersQueryString(params: AdminUsersQuery = {}): string {
+  const search = new URLSearchParams();
+  const q = params.q?.trim();
+  if (q) search.set("q", q);
+  if (params.status) search.set("status", params.status);
+  if (params.role) search.set("role", params.role);
+  if (params.activeWithinDays) search.set("activeWithinDays", String(params.activeWithinDays));
+  if (params.inactiveForDays) search.set("inactiveForDays", String(params.inactiveForDays));
+  if (params.sort) search.set("sort", params.sort);
+  if (params.order) search.set("order", params.order);
+  if (params.page) search.set("page", String(params.page));
+  if (params.pageSize) search.set("pageSize", String(params.pageSize));
+  const text = search.toString();
+  return text ? `?${text}` : "";
+}
+
+export function getAdminUsersOverview(token: string) {
+  return apiRequest<AdminUsersOverview>("/admin/users/overview", { cache: "no-store" }, token);
+}
+
+export function listAdminUsers(token: string, params: AdminUsersQuery = {}) {
+  return apiRequest<AdminUsersPage>(`/admin/users${buildAdminUsersQueryString(params)}`, { cache: "no-store" }, token);
+}
+
+export function getAdminUser(token: string, id: string) {
+  return apiRequest<AdminUserDetail>(`/admin/users/${encodeURIComponent(id)}`, { cache: "no-store" }, token);
+}

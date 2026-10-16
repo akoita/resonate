@@ -98,7 +98,13 @@ async function seed(person: Seed) {
   const own = (name: string) => id(name, person.suffix);
 
   await prisma.user.create({
-    data: { id: person.userId, email: `${person.userId}@wallet.resonate` },
+    data: {
+      id: person.userId,
+      email: `${person.userId}@wallet.resonate`,
+      // #2166: operational activity timestamps, cleared by erasure.
+      lastSignInAt: new Date("2026-10-01T08:00:00.000Z"),
+      lastActiveAt: new Date("2026-10-02T09:00:00.000Z"),
+    },
   });
 
   // #2146 / #2167: a targeted notice with personal text, read by its recipient.
@@ -433,6 +439,13 @@ async function seedShared() {
     },
   });
   await prisma.noticeRead.create({ data: { noticeId: id("notice", "broadcast"), userId: USER_B } });
+  // #2166: operator access records in both directions (A viewed by B, B viewed by A).
+  await prisma.adminAuditEvent.createMany({
+    data: [
+      { id: id("admin_audit", "a_viewed"), actorUserId: USER_B, targetUserId: USER_A, action: "user.detail_viewed" },
+      { id: id("admin_audit", "b_viewed"), actorUserId: USER_A, targetUserId: USER_B, action: "user.detail_viewed" },
+    ],
+  });
   // Simulate a transfer from B's legacy owner to A. If erasure clears the
   // explicit override, the access helper falls back to B's legacy ownership.
   await prisma.artist.update({
@@ -657,6 +670,7 @@ async function cleanup() {
     ]),
   ];
 
+  await prisma.adminAuditEvent.deleteMany({ where });
   await prisma.noticeRead.deleteMany({ where: { noticeId: { startsWith: TEST_PREFIX } } });
   await prisma.notice.deleteMany({ where });
   await prisma.generationCreditRequest.deleteMany({ where });
@@ -1135,6 +1149,24 @@ describe("PersonalDataErasureService integration", () => {
     expect(await prisma.noticeRead.count({ where: { noticeId: id("notice", "b") } })).toBe(1);
     // A read receipt on a broadcast belongs to its reader, not to the erased person.
     expect(await prisma.noticeRead.count({ where: { noticeId: id("notice", "broadcast") } })).toBe(1);
+  });
+
+  it("clears the activity timestamps and rewrites both ids on retained admin audit events (#2166)", async () => {
+    const account = await prisma.user.findUnique({ where: { id: newUserId } });
+    expect(account?.lastSignInAt).toBeNull();
+    expect(account?.lastActiveAt).toBeNull();
+
+    // The row survives as audit history but no longer names the erased person.
+    const viewedA = await prisma.adminAuditEvent.findUnique({ where: { id: id("admin_audit", "a_viewed") } });
+    expect(viewedA).toMatchObject({ actorUserId: USER_B, targetUserId: newUserId, action: "user.detail_viewed" });
+    const viewedB = await prisma.adminAuditEvent.findUnique({ where: { id: id("admin_audit", "b_viewed") } });
+    expect(viewedB).toMatchObject({ actorUserId: newUserId, targetUserId: USER_B });
+    expect(await prisma.adminAuditEvent.count({ where: { OR: [{ actorUserId: USER_A }, { targetUserId: USER_A }] } })).toBe(0);
+
+    // The other person keeps their timestamps.
+    const other = await prisma.user.findUnique({ where: { id: USER_B } });
+    expect(other?.lastSignInAt?.toISOString()).toBe("2026-10-01T08:00:00.000Z");
+    expect(other?.lastActiveAt?.toISOString()).toBe("2026-10-02T09:00:00.000Z");
   });
 
   it("does not touch the other person", async () => {

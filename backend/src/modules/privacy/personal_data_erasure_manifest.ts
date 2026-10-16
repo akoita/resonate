@@ -120,11 +120,12 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason:
       "The account row is kept so its foreign-key references and retained financial history stay valid; "
       + "`id` is rotated to a fresh UUID because for wallet accounts it is the person's wallet address.",
-    scrub: ["email"],
+    scrub: ["email", "lastSignInAt", "lastActiveAt"],
     matchOn: "id",
     note:
       "`email` is @unique, so the placeholder must be derived from the new UUID — see "
-      + "`erasedEmailFor`. `closedAt` and `erasedAt` are set by the engine, not scrubbed. The operator account "
+      + "`erasedEmailFor`. `lastSignInAt` and `lastActiveAt` (#2166, operational activity timestamps) are set to "
+      + "null by the same update that rotates the id. `closedAt` and `erasedAt` are set by the engine, not scrubbed. The operator account "
       + "state (#2147: `accountStatus`, `accountStatusReason` category, `accountStatusUntil`, `accountStatusChangedAt`) "
       + "is retained on the anonymized row as the record that the platform restricted or closed the account; it "
       + "holds no free text. `accountStatusChangedBy` names an operator and is in `DANGLING_PERSON_COLUMNS`.",
@@ -774,6 +775,18 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     disposition: "delete",
     reason: "Per-person read receipts for notices (#2146); behavioural state with no retention basis once the person is gone.",
   },
+  {
+    model: "AdminAuditEvent",
+    disposition: "retain",
+    reason:
+      "Durable record that an operator viewed or acted on an account (#2166), kept as audit history under the "
+      + "platform's interest in accountability for operator access. It holds no free text: `detail` is a "
+      + "reason category and dates, never an operator note.",
+    note:
+      "`actorUserId` (the operator) and `targetUserId` (the viewed or restricted account) have no User relation "
+      + "and are both listed in `DANGLING_PERSON_COLUMNS`, so either person's erasure rewrites their id and the "
+      + "retained row stops naming them.",
+  },
 
   // ---------------------------------------------------------------------
   // Detach — legacy artist ownership is cleared; the catalogue survives for
@@ -1044,6 +1057,22 @@ export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
     reason:
       "The operator who suspended, unsuspended or closed an account (#2147). It has no User relation, so when "
       + "that operator is erased the retained status record on other accounts must stop naming them.",
+  },
+  {
+    model: "AdminAuditEvent",
+    column: "actorUserId",
+    action: "rewrite",
+    reason:
+      "The operator who viewed or acted on an account (#2166). It has no User relation, so when that operator is "
+      + "erased the retained audit record must stop naming them.",
+  },
+  {
+    model: "AdminAuditEvent",
+    column: "targetUserId",
+    action: "rewrite",
+    reason:
+      "The account that was viewed or acted on (#2166). It has no User relation, so the id rotation never reaches "
+      + "it; the retained audit record carries the rewritten id and no longer names the person.",
   },
   {
     model: "ReleaseArtistCredit",
