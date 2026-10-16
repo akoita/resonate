@@ -202,7 +202,9 @@ export function EmailNoticesView(props: EmailNoticesViewProps) {
   const intro = (
     <p className="email-notices__promise">
       <strong>{CONTACT_EMAIL_PROMISE}</strong> Every notice also stays in the app, whether or not you add
-      an address.
+      an address. Your account doesn&apos;t need one: adding it links the address to your account, and so
+      to your wallet, in our records only. It is never shown publicly or put on-chain, and removing it
+      deletes it.
     </p>
   );
 

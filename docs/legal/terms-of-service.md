@@ -45,10 +45,12 @@ that any feature will remain available.
 You must be at least {{MINIMUM_AGE}} years old to hold an account. If you use
 paid features you confirm you have the legal capacity to enter into contracts.
 
-Accounts are created with an email address and secured with a **passkey** — a
-credential stored on your device and protected by your device's own unlock
-method. We never receive or store your biometric data; we store only the public
-credential your device gives us.
+Accounts are created and secured with a **passkey** — a credential stored on
+your device and protected by your device's own unlock method. No email address
+is needed. We never receive or store your biometric data; we store only the
+public credential your device gives us. You can optionally add an email address
+in Settings to also receive platform notices by email (see the Privacy Policy);
+it is never used to sign in or to recover your account.
 
 Your account is linked to a **smart account wallet** used for on-chain actions.
 You are responsible for keeping access to your device and passkey. Losing them

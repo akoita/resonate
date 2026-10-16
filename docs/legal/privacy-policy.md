@@ -40,9 +40,14 @@ the reason category. That log never contains the operator's free-text notes.
 **Optional email address for notices.** You can add an email address in
 Settings so that we also send you the platform notices that are shown in the
 app (for example a change to the terms, or a statement of reasons when an
-operator acts on your account). The address is separate from your account
-email, is used only for those notices and never for marketing, and receives
-nothing until you confirm it from a link we send to it. You can turn off the
+operator acts on your account). Your account does not need an email address;
+this one is optional, is used only for those notices and never for marketing,
+and receives nothing until you confirm it from a link we send to it. It is
+never used to sign in or to recover your account. Because your account is
+linked to your wallet, adding an address connects it, in our records only, to
+your account and so to your wallet's on-chain activity. We never publish it or
+put it on-chain, operators do not see it in the account directory, and removing
+it deletes it. You can turn off the
 optional categories (policy, incident, moderation and refund notices), change
 the address or remove it at any time. Terms and account notices are always
 sent to a confirmed address, and you can remove the address if you do not want
