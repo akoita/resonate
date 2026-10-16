@@ -47,10 +47,10 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest closed: [Vision Sprint 33 — Every license tier on sale](2026-10-15-vision-sprint-33-every-license-tier.md)
-and [Vision Sprint 32 — Purchased stems ready to remix](2026-10-03-vision-sprint-32-purchased-stems.md),
-both on 2026-10-15; their owner-signed staging checks carry over to #2154.
-Current: [Vision Sprint 34 — Telling people what happens to them](2026-10-15-vision-sprint-34-telling-people.md).
+Latest closed: [Vision Sprint 34 — Telling people what happens to them](2026-10-15-vision-sprint-34-telling-people.md)
+on 2026-10-16. Its signed-in operator checks carry over to #2154, along with
+those from Sprints 32 and 33.
+Current: [Vision Sprint 35 — Seeing who's here, and reaching them](2026-10-16-vision-sprint-35-who-is-here.md).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -88,4 +88,5 @@ Current: [Vision Sprint 34 — Telling people what happens to them](2026-10-15-v
 | [2026-11-19](2026-11-19-vision-sprint-31-scene-scout.md) | Vision Sprint 31 — Scene Scout v1 (qualified demand and next actions for artists) | ✅ Closed 2026-10-14 — all four items closed; the cross-artist access check and demand-retention drain carry over to resonate-iac#264; [milestone-33 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-33-vision-sprint-31-scene-scout) records the application milestone, not a deployment |
 | [2026-10-03](2026-10-03-vision-sprint-32-purchased-stems.md) | Vision Sprint 32 — Purchased stems ready to remix | ✅ Closed 2026-10-15 — #2023, #2042 and #2139 merged and deployed; the owner-signed purchase walkthrough carries over to #2154; [milestone-34 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-34-vision-sprint-32-purchased-stems) |
 | [2026-10-15](2026-10-15-vision-sprint-33-every-license-tier.md) | Vision Sprint 33 — Every license tier on sale (multi-tier listing, one-signature relist, live payout facts) | ✅ Closed 2026-10-15 — all six items closed (#1777 split into #2146–#2150); the owner-signed listing checks carry over to #2154; [milestone-35 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-35-vision-sprint-33-every-license-tier) |
-| [2026-10-15](2026-10-15-vision-sprint-34-telling-people.md) | Vision Sprint 34 — Telling people what happens to them (notices, suspension, refund reminders, payout truth) | ◐ In progress — owner-approved 2026-10-15; milestone 36 |
+| [2026-10-15](2026-10-15-vision-sprint-34-telling-people.md) | Vision Sprint 34 — Telling people what happens to them (notices, suspension, refund reminders, payout truth) | ✅ Closed 2026-10-16 — #2146, #2147, #2149, #2150 and #2167 merged and deployed, #2144 part 1 shipped (rest stays open), #2148 decided (email build is #2169); signed-in operator checks carry over to #2154; [milestone-36 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-36-vision-sprint-34-telling-people) |
+| [2026-10-16](2026-10-16-vision-sprint-35-who-is-here.md) | Vision Sprint 35 — Seeing who's here, and reaching them (admin users directory, email notices) | ◐ In progress — owner-approved 2026-10-16; milestone 37 |

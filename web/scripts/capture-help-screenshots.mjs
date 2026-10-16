@@ -258,6 +258,12 @@ const OWNER_TARGETS = [
     {
       selectors: ["section[aria-label=\"Artist analytics summary\"]"],
       text: ["Plays over time", "Track Performance"],
+      // The action cockpit and Scene Scout push the stat cards and the plays
+      // chart below a 900px fold.
+      viewportHeight: 1700,
+      prepare: async (page) => {
+        await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      },
     },
   ],
   [

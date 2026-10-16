@@ -1,7 +1,11 @@
 # Vision Sprint 34: Telling people what happens to them
 
-**Status:** Owner-approved 2026-10-15; in progress. No due date: it closes when
-its exit checks pass on staging.
+**Status:** Closed 2026-10-16. Six of seven items are closed and their work is
+merged and deployed to staging. #2144 shipped part 1 and stays open for its
+later parts. The signed-in operator checks carry over to
+[#2154](https://github.com/akoita/resonate/issues/2154).
+**Release:** [Milestone 36 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-36-vision-sprint-34-telling-people) records the closed
+application milestone, not a software version or deployment event.
 **Milestone:** [36](https://github.com/akoita/resonate/milestone/36).
 **Goal:** Before a real cohort, the platform can tell people what affects them
 (operator notices, moderation, refunds owed), the operator can enforce, backers
@@ -47,6 +51,35 @@ on #1894, which is merged and deployed.
 - The #2148 decision is recorded on the issue.
 - Help articles, the terms and the refund policy describe these capabilities as
   built.
+
+## Outcome (2026-10-16)
+
+| Issue | Status | Where |
+| --- | --- | --- |
+| #2150 | `implemented` | #2157: the pledge step, confirm summary and trust panel compute the refund-reduction wording from the campaign's locked deposit release (none at 0%). "Refunded automatically" now says that each backer claims their refund |
+| #2146 | `implemented` | #2159: operator broadcasts and targeted notices, in-app and durable, with read state and a banner for policy, terms and incident notices. Community moderation and DMCA takedowns notify the affected user. Operator page `/admin/notices` |
+| #2147 | `implemented` | #2164: admin-only, audited account suspension and closure, enforced on the server by one interceptor with an allowlist. The person gets a notice; refunds stay claimable and data stays readable |
+| #2149 | `implemented` | #2163: a reminder run checks each pledge on-chain and sends at most one in-app reminder per step (days 0, 7 and 30), stopping once claimed. Operators see unclaimed totals. Scheduling is deployment configuration, tracked privately |
+| #2167 | `implemented` | #2168: suspended accounts can keep listening, but their plays don't count. Deleted accounts keep only a minimal record of the notices they received |
+| #2144 | part 1 `implemented` | #2158: artist analytics label the figure as gross settled sales. The net share, agent and MCP download rails, and the unused helper stay open on #2144 |
+| #2148 | decided | Owner decision 2026-10-16: build email notices, with an optional, double-opt-in contact address. The build is #2169, proposed for the next sprint |
+
+Security fixes found while building notices also shipped: wallet notifications
+now require sign-in and ownership (#2161), and the DMCA routes are guarded
+(#2160).
+
+Exit criteria: everything above is merged with tests and deployed. The help
+articles, terms and refund policy describe it as built. The new routes refuse
+calls without sign-in. These signed-in operator checks carry over to #2154:
+
+- a broadcast reaching a later sign-in;
+- a suspension being refused and then lifted;
+- the disclosure on a campaign with a non-zero deposit release (the seeded
+  campaigns all use 0%);
+- the unclaimed-refunds page.
+
+The `show-campaign` and `artist-analytics` help screenshots were refreshed when
+the sprint closed.
 
 ## Not in this sprint
 
