@@ -875,6 +875,10 @@ export class PersonalDataErasureService {
         // #2166: operational activity timestamps are cleared with the identity.
         lastSignInAt: null,
         lastActiveAt: null,
+        // #2169: the confirmation-email limiter state is cleared too.
+        confirmationSendCount: 0,
+        confirmationWindowStartedAt: null,
+        lastConfirmationSentAt: null,
       },
     });
 

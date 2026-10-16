@@ -137,11 +137,134 @@ then sends one targeted `moderation` notice from the `system:dmca` actor.
 - `NoticeRead` is deleted on erasure.
 - Targeted notices are included in the person's data export.
 
+## Email delivery (backend)
+
+Status: backend implemented (#2169). The deployment half (provider, secrets,
+job schedule) is tracked outside this repository; until it is done no email
+leaves a deployment, and the API reports `available: false`.
+
+A person can add an optional **contact address** (separate from the account
+email) to also receive notices by email. It is used only for platform notices
+and is double opt-in: nothing is sent until the person confirms it from a link
+mailed to the address (single use, 24 hours, replaced whenever the address
+changes). `terms` and `account` notices are **required** and are always
+emailed to a confirmed address; `policy`, `incident`, `moderation` and `refund`
+can be turned off. Exported as `EMAIL_REQUIRED_NOTICE_CATEGORIES`.
+
+How it works:
+
+- `NoticeService` is unchanged. A scheduled job,
+  `backend/src/scripts/run_email_deliveries.ts [--limit N] [--dry-run]`, does
+  three bounded steps and logs counts only:
+  1. **Fan-out**: each notice with `emailFannedOutAt = null` becomes one
+     `EmailDelivery` row per eligible recipient (confirmed address, not erased,
+     category required or not opted out). Targeted notices go to their
+     recipient; broadcasts to `all`, `role:artist` (has an artist profile),
+     `role:admin` / `role:operator` (allowlisted by user id, wallet or owner
+     address) and `role:listener` (everyone not an allowlisted admin, operator
+     or agent, matching the in-app audience). Expired broadcasts are skipped.
+     The migration stamps every existing notice as fanned out, so history is
+     never emailed. `(noticeId, userId)` is unique, so a replay sends nothing.
+  2. **Send**: due rows are re-checked at send time (address still confirmed,
+     category still enabled, else `suppressed`) and rendered from the notice.
+     Transient failures retry after 5 minutes, 30 minutes, 2 hours and 12
+     hours, then `failed` after 5 attempts. A permanent recipient rejection is
+     treated as a hard bounce.
+  3. **Prune**: delivery rows older than 180 days are deleted.
+- **Bounces and complaints** disable the address (`disabledReason` =
+  `hard_bounce` or `complaint`) and send the person one in-app `account` notice
+  (`dedupeKey = email_disabled:<contactEmailId>:<disabledAt>`) asking them to
+  fix the address. They arrive through the permanent-rejection path above or
+  `POST /email/webhook`. Soft bounces are ignored.
+- **Unsubscribe**: every optional-category email carries a link to the
+  unsubscribe page and RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post`
+  headers. Tokens are stateless HMAC-SHA256 over `{userId, category, v:1}`
+  (`EMAIL_LINK_SIGNING_SECRET`). Required categories carry neither.
+- **Transport** is provider-neutral (`EMAIL_TRANSPORT` = `log` | `smtp`,
+  nodemailer for SMTP). See `docs/deployment/environment.md` for the variables.
+  If email is not configured it is disabled, not an error.
+
+Confirmation emails go to an address the person typed, so each account is
+limited in `ContactEmailService` (not just by the per-IP `@Throttle`, which sits
+behind the global throttle guard that runs before authentication): at least 60
+seconds between sends and at most 5 per rolling 24 hours, for both `PUT` and
+`resend`. The counters live on `User` (`confirmationSendCount`,
+`confirmationWindowStartedAt`, `lastConfirmationSentAt`), so removing and
+re-adding the address does not reset them; they are exported and cleared on
+erasure. A refused send answers 429
+`{ code: "email_rate_limited", retryAfterSeconds }`.
+
+Routes (all `@AllowWhileSuspended` where they mutate, so a suspended person
+stays reachable):
+
+| Route | Who | Purpose |
+| --- | --- | --- |
+| `GET /me/contact-email` | signed-in | State: `available`, `address`, `status`, `disabledReason`, `confirmationSentAt`, per-category `required` / `enabled` |
+| `PUT /me/contact-email` | signed-in | Set or change the address and mail the confirmation; 503 `email_unavailable`, 502 `email_send_failed`, 429 `email_rate_limited` |
+| `POST /me/contact-email/resend` | signed-in | Resend the confirmation for a pending address; 409 otherwise, 429 `email_rate_limited` |
+| `DELETE /me/contact-email` | signed-in | Remove the address (204); works even when email is unavailable |
+| `PUT /me/contact-email/preferences` | signed-in | `{ optOuts: string[] }`; required categories are rejected with 400 |
+| `POST /email/confirm` | public | `{ token }`; 400 `invalid_or_expired` |
+| `POST /email/unsubscribe` | public | `{ token }`; idempotent; 400 `invalid` |
+| `POST /email/unsubscribe/one-click?token=` | public | RFC 8058 one-click; body ignored |
+| `POST /email/webhook` | HMAC signature | Normalised bounce / complaint events; 401 bad signature, 503 secret unset |
+
+## Email notices (web)
+
+Status: `partial` — web half of
+[#2169](https://github.com/akoita/resonate/issues/2169). Real delivery is
+verified on staging separately, so the feature stays partial until then.
+
+Revenue line: vision-neutral readiness infrastructure. Nothing here touches
+fees, splits, prices or payouts, and the address is never used for marketing.
+
+**Settings → Email notices** (`/settings?section=email`,
+`components/settings/EmailNoticesPanel.tsx`) manages an optional contact
+address, separate from the account's own email. It reads and writes
+`/me/contact-email` and has five states:
+
+| State | What the person sees |
+| --- | --- |
+| Unavailable | A short note that email notices are not available on this deployment, and notices still arrive in the app. An address saved earlier can still be removed. |
+| None | The promise ("Used only for platform notices. Never for marketing."), an address field and **Send confirmation**. |
+| Pending | The address, "Check your inbox", **Resend confirmation**, **Change address** and **Remove**. |
+| Confirmed | The address, **Change address**, **Remove**, and a toggle per category. |
+| Disabled | Why sending stopped (bounce or complaint), and a form for a different address. |
+
+- **Required categories.** `terms` and `account` are always emailed to a
+  confirmed address. They show a locked, checked toggle, a "Required" label and
+  a one-line reason. Only optional categories are sent as opt-outs; the client
+  never includes a required category in the list.
+- **Remove** asks first, through the shared `ConfirmDialog`.
+- **Errors** map the server's `code` to plain sentences:
+  `email_unavailable`, `email_send_failed`, `invalid_or_expired` and `invalid`.
+  A per-account confirmation limit (`email_rate_limited`) says how many
+  minutes to wait. A failed send
+  re-reads the state, because the server keeps the address pending so Resend
+  works.
+- **`/email/confirm?token=`** confirms once on load (no sign-in needed) and
+  shows success with a link to Settings, or an expired/used message with a link
+  to Settings to ask for a new link.
+- **`/email/unsubscribe?token=`** shows a **Stop these emails** button and calls
+  the API only after the click, so mail scanners and link previews cannot
+  unsubscribe anyone. It then names the category that was turned off.
+- Both pages are `noindex` and set `referrer: no-referrer` so the token does not
+  travel in a `Referer` header. They read `searchParams` as a promise, as this
+  Next.js version requires.
+- **Client code:** helpers and types in `lib/api.ts` (`getContactEmail`,
+  `setContactEmail`, `resendContactEmailConfirmation`, `removeContactEmail`,
+  `setContactEmailPreferences`, `confirmContactEmail`, `unsubscribeEmail`);
+  wording and small rules in `lib/contactEmail.ts`.
+- **Tests:** `lib/contactEmail.test.ts`, `EmailNoticesPanel.test.tsx`,
+  `components/email/EmailLinkPages.test.tsx`, `app/settings/page.test.tsx`.
+- **User Guide:** the "Get notices by email" section of `/help/platform-notices`.
+
 ## Remaining
 
-- Email and other outbound transport (outbound-channel issue).
-- Account suspension (#2147) and refund reminders (#2149) will call
-  `sendTargeted`.
+- Email delivery is implemented in the backend (above); the provider, secrets
+  and job schedule are a deployment task, and a provider-specific webhook
+  adapter is needed if the chosen provider cannot sign the normalised contract.
+  Other outbound channels (push, chat) are not covered.
 - An appeal path for community moderation.
 - An in-app DMCA counter-notice path. The API route exists; there is no UI.
 - There is no operator UI for targeted sends yet; the route exists.

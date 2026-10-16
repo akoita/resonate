@@ -95,12 +95,20 @@ model User {
   managementRecoveryRequestsReviewed  ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryReviewer")
   noticesReceived             Notice[]                      @relation("NoticeRecipient")
   noticeReads                 NoticeRead[]
+  contactEmail                ContactEmail?
+  emailDeliveries             EmailDelivery[]
   // #2166 operational activity for account administration (legitimate interest):
   // the last sign-in and the last authenticated request, the latter written at
   // most about once an hour per person (`UserActivityService`). Shown to
   // operators to the day only; cleared on erasure.
   lastSignInAt                DateTime?
   lastActiveAt                DateTime?
+  // #2169: per-account limit on confirmation emails sent to typed-in addresses.
+  // Kept on the user, not on `ContactEmail`, so removing and re-adding the
+  // address does not reset it. Cleared on erasure.
+  confirmationSendCount       Int       @default(0)
+  confirmationWindowStartedAt DateTime?
+  lastConfirmationSentAt      DateTime?
 
   @@index([lastActiveAt])
   @@index([lastSignInAt])
@@ -2949,12 +2957,18 @@ model Notice {
   /// Who sent it: the operator's user id, or a `system:<source>` actor.
   createdBy       String
   createdAt       DateTime     @default(now())
+  /// #2169: when the email job expanded this notice into `EmailDelivery` rows.
+  /// Null = not yet fanned out. Notices that existed before email was added are
+  /// stamped by the migration so history is never emailed.
+  emailFannedOutAt DateTime?
   recipient       User?        @relation("NoticeRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
   reads           NoticeRead[]
+  emailDeliveries EmailDelivery[]
 
   @@unique([dedupeKey, recipientUserId])
   @@index([audience, createdAt])
   @@index([recipientUserId, createdAt])
+  @@index([emailFannedOutAt, createdAt])
 }
 
 /// #2146 per-user read state for notices (broadcast and targeted). Dismissing
@@ -2968,6 +2982,59 @@ model NoticeRead {
 
   @@id([noticeId, userId])
   @@index([userId])
+}
+
+/// #2169: an optional contact address used only for platform notices. Double
+/// opt-in: it receives nothing until the person confirms it. Separate from
+/// `User.email`, which is a placeholder for wallet accounts.
+model ContactEmail {
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  /// As entered (trimmed).
+  address               String
+  /// Lowercased; used to match bounce and complaint events.
+  addressNormalized     String
+  /// pending | confirmed | disabled
+  status                String
+  /// sha256 hex of the confirmation token. The raw token only ever exists in the email.
+  confirmTokenHash      String?   @unique
+  confirmTokenExpiresAt DateTime?
+  confirmationSentAt    DateTime?
+  confirmedAt           DateTime?
+  disabledAt            DateTime?
+  /// hard_bounce | complaint
+  disabledReason        String?
+  /// Notice categories the person turned OFF for email. Required categories are ignored here.
+  emailOptOuts          String[]  @default([])
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([addressNormalized])
+  @@index([status])
+}
+
+/// #2169: one email per (notice, recipient). Content is rendered from the Notice at send time.
+model EmailDelivery {
+  id                String    @id @default(uuid())
+  noticeId          String
+  userId            String
+  category          String
+  /// queued | sent | failed | suppressed
+  status            String
+  attempts          Int       @default(0)
+  nextAttemptAt     DateTime  @default(now())
+  /// Error class or code only; never addresses or message bodies.
+  lastErrorClass    String?
+  providerMessageId String?
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+  notice            Notice    @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, userId])
+  @@index([status, nextAttemptAt])
+  @@index([userId, createdAt])
 }
 
 enum PunchlineDropStatus {

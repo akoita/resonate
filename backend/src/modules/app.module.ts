@@ -36,6 +36,7 @@ import { FingerprintModule } from "./fingerprint/fingerprint.module";
 import { DmcaModule } from "./dmca/dmca.module";
 import { TrustModule } from "./trust/trust.module";
 import { NotificationModule } from "./notifications/notification.module";
+import { EmailModule } from "./email/email.module";
 import { StorefrontModule } from "./storefront/storefront.module";
 import { OpenApiModule } from "./openapi/openapi.module";
 import { McpModule } from "./mcp/mcp.module";
@@ -94,6 +95,7 @@ import { AdminUsersModule } from "./admin_users/admin_users.module";
     DmcaModule,
     TrustModule,
     NotificationModule,
+    EmailModule,
     StorefrontModule,
     OpenApiModule,
     McpModule,

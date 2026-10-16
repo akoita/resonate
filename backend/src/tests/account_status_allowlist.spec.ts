@@ -16,6 +16,7 @@ import { AgentConfigController } from "../modules/agents/agent_config.controller
 import { AnalyticsController } from "../modules/analytics/analytics.controller";
 import { AuthController } from "../modules/auth/auth.controller";
 import { MetadataController } from "../modules/contracts/metadata.controller";
+import { ContactEmailController } from "../modules/email/contact_email.controller";
 import { NoticeController } from "../modules/notifications/notice.controller";
 import { PrivacyController } from "../modules/privacy/privacy.controller";
 import { SessionsController } from "../modules/sessions/sessions.controller";
@@ -33,6 +34,7 @@ const CONTROLLERS = [
   SessionsController,
   AnalyticsController,
   AgentConfigController,
+  ContactEmailController,
 ] as unknown as Ctor[];
 
 const MUTATING = new Set([RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE]);
@@ -73,6 +75,11 @@ describe("@AllowWhileSuspended allowlist", () => {
         "NoticeController.markRead",
         "MetadataController.markNotificationRead",
         "MetadataController.markAllNotificationsRead",
+        // The optional notice-email address (#2169): a restricted person must stay reachable.
+        "ContactEmailController.set",
+        "ContactEmailController.resend",
+        "ContactEmailController.remove",
+        "ContactEmailController.setPreferences",
         // Listening (#2167): player telemetry, DJ session start/stop/next and the
         // playback-intent routes. Plays from a restricted account are not counted.
         "AnalyticsController.recordPlaybackCompleted",

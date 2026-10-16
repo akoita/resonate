@@ -227,6 +227,7 @@ async function cleanup() {
   await prisma.playlist.deleteMany({ where });
   await prisma.showCampaign.deleteMany({ where });
   await prisma.wallet.deleteMany({ where });
+  await prisma.notice.deleteMany({ where });
   await prisma.user.deleteMany({ where });
   await prisma.artist.deleteMany({ where });
 }
@@ -298,6 +299,43 @@ describe("PersonalDataExportService integration", () => {
         },
       });
     }
+    // #2169: each person has a notice address, a notice and one delivery.
+    for (const person of [SEED_A, SEED_B]) {
+      await prisma.user.update({ where: { id: person.userId }, data: { confirmationSendCount: 2 } });
+      const noticeId = `${TEST_PREFIX}email_notice_${person.suffix}`;
+      await prisma.contactEmail.create({
+        data: {
+          userId: person.userId,
+          address: `${TEST_PREFIX}${person.suffix}@mail.example`,
+          addressNormalized: `${TEST_PREFIX}${person.suffix}@mail.example`,
+          status: "pending",
+          confirmTokenHash: `${TEST_PREFIX}token_hash_${person.suffix}`,
+          confirmTokenExpiresAt: new Date("2027-01-01T00:00:00.000Z"),
+          emailOptOuts: ["policy"],
+        },
+      });
+      await prisma.notice.create({
+        data: {
+          id: noticeId,
+          category: "account",
+          title: "Email fixture",
+          body: "Email fixture",
+          audience: "user",
+          recipientUserId: person.userId,
+          createdBy: "system:test",
+        },
+      });
+      await prisma.emailDelivery.create({
+        data: {
+          noticeId,
+          userId: person.userId,
+          category: "account",
+          status: "sent",
+          attempts: 1,
+          providerMessageId: `${TEST_PREFIX}provider_message_${person.suffix}`,
+        },
+      });
+    }
     textA = await exportText(USER_A);
     documentA = JSON.parse(textA) as ExportDocument;
   }, 60000);
@@ -315,6 +353,27 @@ describe("PersonalDataExportService integration", () => {
     // revise its status code, so absence is the truncation signal.
     expect(documentA.complete).toBe(true);
     expect(textA.trimEnd().endsWith('"complete":true}')).toBe(true);
+  });
+
+  it("exports the person's notice address and delivery log with the redacted columns withheld (#2169)", () => {
+    expect(documentA.data.ContactEmail).toEqual([
+      expect.objectContaining({
+        userId: USER_A,
+        address: `${TEST_PREFIX}a@mail.example`,
+        status: "pending",
+        emailOptOuts: ["policy"],
+      }),
+    ]);
+    expect(documentA.data.ContactEmail[0]).not.toHaveProperty("confirmTokenHash");
+    expect(documentA.data.EmailDelivery).toEqual([
+      expect.objectContaining({ userId: USER_A, category: "account", status: "sent", attempts: 1 }),
+    ]);
+    expect(documentA.data.EmailDelivery[0]).not.toHaveProperty("providerMessageId");
+    expect(documentA.data.User[0]).toMatchObject({ confirmationSendCount: 2 });
+    expect(textA).not.toContain(`${TEST_PREFIX}token_hash_a`);
+    expect(textA).not.toContain(`${TEST_PREFIX}provider_message_a`);
+    // Never the other person's address.
+    expect(textA).not.toContain(`${TEST_PREFIX}b@mail.example`);
   });
 
   it("exports only the person's purpose-bound pledge demand context", () => {

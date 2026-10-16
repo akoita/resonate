@@ -124,6 +124,12 @@ When adding a new environment variable:
 | `AA_STRICT_MODE` | Backend | When `true`, disables all automatic local account funding so tests exercise production-style gas ownership. |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |
+| `PUBLIC_API_URL` | Backend / email job | Public base URL of this API, used for absolute links that must reach the API directly (the RFC 8058 one-click unsubscribe URL in notice emails). Required when `EMAIL_TRANSPORT=smtp`; the development `log` transport falls back to `http://localhost:3000` |
+| `EMAIL_TRANSPORT` | Backend / email job | `log` or `smtp`. Unset means `log` outside production and email **disabled** in production; `log` is refused in production. `log` sends nothing (it logs only that a message was accepted). The API's `available` flag and the job both follow this setting (#2169) |
+| `EMAIL_FROM` | Backend / email job | Sender address and display name for notice emails, e.g. `Name <address@domain>`. Required for `smtp` |
+| `EMAIL_SMTP_URL` | Backend / email job secret | SMTP connection URL including credentials. Required for `smtp`; never logged |
+| `EMAIL_LINK_SIGNING_SECRET` | Backend / email job secret | Key that signs unsubscribe links. Required for `smtp`; rotating it invalidates unsubscribe links already sent. In development with the `log` transport an ephemeral per-process key is generated when unset |
+| `EMAIL_WEBHOOK_SECRET` | Backend secret | Shared secret for `POST /email/webhook`: the provider-neutral bounce and complaint endpoint expects `X-Resonate-Signature: sha256=<hex HMAC-SHA256 of the raw body>` and body `{"events":[{"type":"bounce"\|"complaint","email":"…","bounceType":"hard"\|"soft"}]}`. Unset means the endpoint answers 503. Independent of `EMAIL_TRANSPORT` |
 | `CORS_ORIGIN` | Backend | Optional comma-separated browser origins allowed to call the backend. Defaults include local dev and also derives from `FRONTEND_URL` / `WEBAUTHN_ORIGIN` |
 | `CORS_ORIGINS` | Backend | Optional plural alias for `CORS_ORIGIN` |
 | `WEBAUTHN_RP_ID` | Backend | Optional relying-party ID for self-hosted passkey credentials. Usually the frontend hostname, without protocol |

@@ -51,7 +51,11 @@ async function bootstrap() {
     console.warn(`[Self-Healing] Could not check indexer state:`, e);
   }
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    // #2169: the email provider webhook signs the raw request body.
+    rawBody: true,
+  });
   app.useLogger(createAppLogger());
   applyGlobalValidation(app);
 

@@ -85,7 +85,8 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note:
       "The account row: email, signup date, since #2147 the operator account state "
       + "(status, reason category, end date, change date) and, since #2166, the last sign-in and last activity "
-      + "timestamps kept for account administration. The acting operator's id is redacted.",
+      + "timestamps kept for account administration, and since #2169 the confirmation-email limiter "
+      + "(send count and timestamps). The acting operator's id is redacted.",
   },
   {
     model: "AccountClosureRequest",
@@ -498,6 +499,22 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Added by #2146. Platform notices addressed to this person; broadcasts name nobody and are not exported.",
   },
   {
+    model: "ContactEmail",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2169. The optional address the person gave for platform notices, whether it is confirmed, "
+      + "the dates and the categories they turned off. The confirmation token hash is redacted.",
+  },
+  {
+    model: "EmailDelivery",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2169. The log of notice emails sent to this person (category, status, attempts, dates), "
+      + "kept 180 days. The provider's message id is redacted.",
+  },
+  {
     model: "AdminAuditEvent",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "targetUserId" }],
@@ -803,6 +820,13 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
  * redaction is not a filter applied to a row that already exists in memory.
  */
 export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  ContactEmail: {
+    confirmTokenHash:
+      "Hash of the emailed confirmation link (#2169); while it is unexpired it is a bearer credential for confirming the address.",
+  },
+  EmailDelivery: {
+    providerMessageId: "The mail provider's internal message id (#2169); an operational reference, not the person's data.",
+  },
   AdminAuditEvent: {
     actorUserId: "Internal operator identity (#2166); the person can export that their account was viewed or acted on, and when, without the operator's account id.",
   },
@@ -885,6 +909,9 @@ export const SENSITIVE_FIELD_NAME_PATTERNS: readonly RegExp[] = [
  * that review.
  */
 export const REVIEWED_SAFE_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  ContactEmail: {
+    confirmTokenExpiresAt: "When the confirmation link expires (#2169): a date, not a credential; the token hash itself is redacted.",
+  },
   StemNftMint: { tokenId: "ERC-1155 token id of a public mint, not a credential." },
   StemListing: {
     tokenId: "ERC-1155 token id of a public listing.",
