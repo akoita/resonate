@@ -16,6 +16,18 @@ export const NOTICE_CATEGORIES = [
 export type NoticeCategory = (typeof NOTICE_CATEGORIES)[number];
 
 /**
+ * Categories that are always emailed to a confirmed contact address (#2169):
+ * `terms` is the legal notice of a terms change and `account` carries the
+ * statement of reasons for an action on the person's account. Every other
+ * category can be turned off for email. (In-app delivery is unaffected.)
+ */
+export const EMAIL_REQUIRED_NOTICE_CATEGORIES = ["terms", "account"] as const satisfies readonly NoticeCategory[];
+
+export function isEmailRequiredCategory(category: string): boolean {
+  return (EMAIL_REQUIRED_NOTICE_CATEGORIES as readonly string[]).includes(category);
+}
+
+/**
  * Roles a broadcast can target. `artist` is resolved from the person having an
  * artist profile (JWTs carry `listener` for artists); every other role is the
  * signed-in session's role.

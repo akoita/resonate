@@ -65,6 +65,7 @@ export function authToken(userId: string, role = 'listener'): string {
 export async function createControllerTestApp(
   controllers: Type<any> | Type<any>[],
   providers: any[] = [],
+  options: { rawBody?: boolean } = {},
 ): Promise<INestApplication> {
   const ctrlArray = Array.isArray(controllers) ? controllers : [controllers];
 
@@ -89,7 +90,8 @@ export async function createControllerTestApp(
     ],
   }).compile();
 
-  const app = moduleRef.createNestApplication();
+  // `rawBody` mirrors main.ts, for routes that verify a signature over the raw request body (#2169).
+  const app = moduleRef.createNestApplication(options.rawBody ? { rawBody: true } : undefined);
   // Mirror production bootstrap (main.ts) so DTO validation is exercised.
   applyGlobalValidation(app);
   await app.init();

@@ -120,12 +120,13 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason:
       "The account row is kept so its foreign-key references and retained financial history stay valid; "
       + "`id` is rotated to a fresh UUID because for wallet accounts it is the person's wallet address.",
-    scrub: ["email", "lastSignInAt", "lastActiveAt"],
+    scrub: ["email", "lastSignInAt", "lastActiveAt", "confirmationSendCount", "confirmationWindowStartedAt", "lastConfirmationSentAt"],
     matchOn: "id",
     note:
       "`email` is @unique, so the placeholder must be derived from the new UUID — see "
       + "`erasedEmailFor`. `lastSignInAt` and `lastActiveAt` (#2166, operational activity timestamps) are set to "
-      + "null by the same update that rotates the id. `closedAt` and `erasedAt` are set by the engine, not scrubbed. The operator account "
+      + "null by the same update that rotates the id, as are the #2169 confirmation-email limiter columns "
+      + "(`confirmationSendCount` back to 0, the two timestamps to null). `closedAt` and `erasedAt` are set by the engine, not scrubbed. The operator account "
       + "state (#2147: `accountStatus`, `accountStatusReason` category, `accountStatusUntil`, `accountStatusChangedAt`) "
       + "is retained on the anonymized row as the record that the platform restricted or closed the account; it "
       + "holds no free text. `accountStatusChangedBy` names an operator and is in `DANGLING_PERSON_COLUMNS`.",
@@ -774,6 +775,20 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     model: "NoticeRead",
     disposition: "delete",
     reason: "Per-person read receipts for notices (#2146); behavioural state with no retention basis once the person is gone.",
+  },
+  {
+    model: "ContactEmail",
+    disposition: "delete",
+    reason:
+      "The optional address the person gave for platform notices (#2169), given on consent and used only for "
+      + "notices; it has no retention basis once the account is erased.",
+  },
+  {
+    model: "EmailDelivery",
+    disposition: "delete",
+    reason:
+      "The delivery log of notice emails sent to the person (#2169, kept 180 days); it records that an email "
+      + "was sent to their address and has no retention basis once the account is erased.",
   },
   {
     model: "AdminAuditEvent",

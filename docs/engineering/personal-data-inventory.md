@@ -178,6 +178,31 @@ session identifiers. It is exported to the owning artist and follows the
 catalog through account erasure; reads recompute it from currently consented
 observations and replace stale or below-threshold snapshots.
 
+## Email notices (#2169)
+
+`ContactEmail` is the optional address a person gives to also receive platform
+notices by email. It is separate from `User.email`, which is a placeholder for
+wallet accounts. It holds the address as entered and lowercased, the status
+(`pending`, `confirmed`, `disabled`), the hash of the confirmation token (the
+raw token exists only in the email), the confirmation, confirm and disable
+dates and reason (`hard_bounce` / `complaint`), and the notice categories the
+person turned off. Legal basis: consent (the address is given and confirmed by
+the person); the notices themselves are sent for the reasons they already
+exist. It is used for platform notices only, never marketing.
+
+`EmailDelivery` is the outbox and delivery log: one row per (notice, recipient)
+with category, status, attempt count, the error class of a failure (never an
+address or body), the provider message id and dates. Content is rendered from
+the notice at send time and is not stored. Rows are deleted after 180 days.
+
+Both models are keyed by `userId`. The personal-data export includes them with
+`ContactEmail.confirmTokenHash` and `EmailDelivery.providerMessageId` redacted.
+Account erasure deletes both (erasure rule `delete`; the `User` row is
+anonymized, not deleted, so the cascade does not do this on its own). Logs and
+audit lines about email carry counts and error classes only, never addresses,
+tokens or bodies. Unsubscribe links are stateless signed tokens and store
+nothing.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:

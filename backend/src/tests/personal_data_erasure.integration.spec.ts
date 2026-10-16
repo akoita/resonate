@@ -126,6 +126,30 @@ async function seed(person: Seed) {
   });
   await prisma.noticeRead.create({ data: { noticeId: own("notice"), userId: person.userId } });
 
+  // #2169: the confirmation-email limiter columns on the account.
+  await prisma.user.update({
+    where: { id: person.userId },
+    data: {
+      confirmationSendCount: 3,
+      confirmationWindowStartedAt: new Date("2026-10-01T00:00:00.000Z"),
+      lastConfirmationSentAt: new Date("2026-10-01T01:00:00.000Z"),
+    },
+  });
+  // #2169: the optional notice-email address and its delivery log.
+  await prisma.contactEmail.create({
+    data: {
+      userId: person.userId,
+      address: `${TEST_PREFIX}${person.suffix}@mail.example`,
+      addressNormalized: `${TEST_PREFIX}${person.suffix}@mail.example`,
+      status: "confirmed",
+      confirmedAt: new Date("2026-03-03T00:00:00.000Z"),
+      emailOptOuts: ["policy"],
+    },
+  });
+  await prisma.emailDelivery.create({
+    data: { noticeId: own("notice"), userId: person.userId, category: "moderation", status: "sent" },
+  });
+
   // --- the address-to-person mappings, which erasure severs ----------------
   await prisma.wallet.create({
     data: {
@@ -1129,6 +1153,22 @@ describe("PersonalDataErasureService integration", () => {
     expect(JSON.stringify(notice)).not.toContain("Private Demo");
     // Read receipts are behavioural state and are deleted.
     expect(await prisma.noticeRead.count({ where: { noticeId: id("notice", "a") } })).toBe(0);
+  });
+
+  it("deletes the erased person's contact address and email delivery log, and keeps the other person's (#2169)", async () => {
+    expect(await prisma.contactEmail.count({ where: { address: { startsWith: `${TEST_PREFIX}a@` } } })).toBe(0);
+    expect(await prisma.contactEmail.count({ where: { userId: newUserId } })).toBe(0);
+    expect(await prisma.emailDelivery.count({ where: { userId: newUserId } })).toBe(0);
+    expect(await prisma.emailDelivery.count({ where: { noticeId: id("notice", "a") } })).toBe(0);
+    expect(await prisma.contactEmail.findUnique({ where: { userId: USER_B } })).toMatchObject({ status: "confirmed" });
+    expect(await prisma.emailDelivery.count({ where: { userId: USER_B } })).toBe(1);
+    // The limiter state is cleared with the account; the other person keeps theirs.
+    expect(await prisma.user.findUnique({ where: { id: newUserId } })).toMatchObject({
+      confirmationSendCount: 0,
+      confirmationWindowStartedAt: null,
+      lastConfirmationSentAt: null,
+    });
+    expect(await prisma.user.findUnique({ where: { id: USER_B } })).toMatchObject({ confirmationSendCount: 3 });
   });
 
   it("leaves broadcasts and the other person's targeted notice untouched (#2167)", async () => {

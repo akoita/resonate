@@ -37,6 +37,20 @@ last activity to the day only. When an operator opens your account record, or
 suspends or closes your account, we log who did it, when, and (for a restriction)
 the reason category. That log never contains the operator's free-text notes.
 
+**Optional email address for notices.** You can add an email address in
+Settings so that we also send you the platform notices that are shown in the
+app (for example a change to the terms, or a statement of reasons when an
+operator acts on your account). The address is separate from your account
+email, is used only for those notices and never for marketing, and receives
+nothing until you confirm it from a link we send to it. You can turn off the
+optional categories (policy, incident, moderation and refund notices), change
+the address or remove it at any time. Terms and account notices are always
+sent to a confirmed address, and you can remove the address if you do not want
+them by email. We keep a log of the notice emails sent to you (category,
+status and dates, not the text) for 180 days to run delivery and fix
+problems. If your mail provider reports the address as bounced or as a
+complaint, we stop sending to it and tell you in the app.
+
 **Wallet.** Your smart account address and the on-chain activity associated
 with it. See "What we cannot delete" below, because this is the part that is
 permanent.
@@ -87,6 +101,7 @@ material, exact IP addresses, or user-agent strings in analytics.
 | Account administration: last sign-in and last activity, and the log of operator access to your account record | Legitimate interests |
 | Optional product analytics and personalised recommendations | Your consent |
 | Personalised yearly summaries | Your consent, separately given |
+| Sending platform notices to the optional email address you added and confirmed | Your consent (given by adding and confirming the address); the notices themselves are sent for the reasons they already exist |
 
 Where we rely on consent you can withdraw it at any time, and doing so is as
 easy as giving it. Withdrawing consent does not affect processing that already
@@ -139,6 +154,8 @@ the product does not have is a false statement, not an aspiration.
 | Quarantined records | 30 days (personal or sensitive), 90 days (pseudonymous) |
 | Last sign-in and last activity | While your account exists; cleared when it is erased |
 | Log of operator access to your account record | Kept as audit history; it names you only by an identifier that is replaced when your account is erased |
+| Optional email address for notices, and your email preferences | Until you remove the address or your account is erased |
+| Log of notice emails sent to you | 180 days |
 | Deletion and consent records | Kept indefinitely, so we can prove a deletion happened |
 
 Account data is kept while your account exists, then deleted as described

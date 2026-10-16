@@ -7541,6 +7541,83 @@ export function getSentBroadcastNotices(token: string) {
   return apiRequest<{ notices: SentBroadcastNotice[] }>("/notices/sent", { cache: "no-store" }, token);
 }
 
+// ============ Email notices (#2169) ============
+
+export type ContactEmailStatus = "none" | "pending" | "confirmed" | "disabled";
+export type ContactEmailDisabledReason = "hard_bounce" | "complaint";
+
+export type ContactEmailCategory = {
+  category: PlatformNoticeCategory;
+  /** Always emailed to a confirmed address; cannot be turned off. */
+  required: boolean;
+  /** `required` or not opted out. */
+  enabled: boolean;
+};
+
+/** The signed-in person's optional notice address (`/me/contact-email`). */
+export type ContactEmailState = {
+  /** Email is configured on this deployment. */
+  available: boolean;
+  address: string | null;
+  status: ContactEmailStatus;
+  disabledReason: ContactEmailDisabledReason | null;
+  confirmationSentAt: string | null;
+  categories: ContactEmailCategory[];
+};
+
+export function getContactEmail(token: string) {
+  return apiRequest<ContactEmailState>("/me/contact-email", { cache: "no-store" }, token);
+}
+
+/**
+ * Sets or changes the address and sends the confirmation email. Fails with
+ * code `email_unavailable` (503) or `email_send_failed` (502); in the second
+ * case the address is kept pending so Resend can be tried.
+ */
+export function setContactEmail(token: string, address: string) {
+  return apiRequest<ContactEmailState>(
+    "/me/contact-email",
+    { method: "PUT", body: JSON.stringify({ address }) },
+    token,
+  );
+}
+
+/** Sends a fresh confirmation link for a pending address (409 if not pending). */
+export function resendContactEmailConfirmation(token: string) {
+  return apiRequest<ContactEmailState | null>("/me/contact-email/resend", { method: "POST" }, token);
+}
+
+export function removeContactEmail(token: string) {
+  return apiRequest<null>("/me/contact-email", { method: "DELETE" }, token);
+}
+
+/** `optOuts` lists the categories to turn OFF; required ones are rejected (400). */
+export function setContactEmailPreferences(token: string, optOuts: PlatformNoticeCategory[]) {
+  return apiRequest<ContactEmailState>(
+    "/me/contact-email/preferences",
+    { method: "PUT", body: JSON.stringify({ optOuts }) },
+    token,
+  );
+}
+
+/** Public: the token comes from the confirmation email. 400 `invalid_or_expired` otherwise. */
+export function confirmContactEmail(token: string) {
+  return apiRequest<{ status: "confirmed" }>("/email/confirm", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+    silentErrorCodes: [400],
+  });
+}
+
+/** Public and idempotent: the token comes from an unsubscribe link. 400 `invalid` otherwise. */
+export function unsubscribeEmail(token: string) {
+  return apiRequest<{ category: PlatformNoticeCategory; status: "unsubscribed" }>("/email/unsubscribe", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+    silentErrorCodes: [400],
+  });
+}
+
 // ============ Account suspension and closure (#2147) ============
 
 export type AccountStatusValue = "active" | "suspended" | "closed";

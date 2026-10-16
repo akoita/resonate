@@ -153,11 +153,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "platform-notices",
     title: "Platform notices",
     summary:
-      "Messages from Resonate itself: policy and terms changes, incidents, and notices about your account or content. They appear in your notifications and stay until you read them.",
+      "Messages from Resonate itself: policy and terms changes, incidents, and notices about your account or content. They appear in your notifications and stay until you read them, and you can also get them by email.",
     category: "account",
     audiences: ["everyone", "operator"],
     status: "partial",
-    keywords: ["notice", "announcement", "policy change", "terms change", "incident", "outage", "moderation", "removed", "banned", "bell", "banner"],
+    keywords: ["notice", "announcement", "policy change", "terms change", "incident", "outage", "moderation", "removed", "banned", "bell", "banner", "email", "email notices", "unsubscribe", "confirm email"],
     sections: [
       {
         id: "where-notices-appear",
@@ -170,6 +170,49 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Notices are kept, so you still see one that was sent while you were away or before you signed up. Read state is yours alone and follows your account, not your device.",
+          },
+        ],
+      },
+      {
+        id: "email-notices",
+        heading: "Get notices by email",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "If you want notices to reach you when you are not in the app, add an email address. It is optional, it is used only for platform notices, and it is never used for marketing. Every notice stays in the app whether or not you add one.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Open Settings and choose Email notices.",
+              "Enter your address and choose Send confirmation.",
+              "Open the link in the email we send. It works for 24 hours; if it expires, choose Resend confirmation.",
+              "Once it is confirmed, choose which kinds of notice to receive by email.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Nothing is emailed to an address until you confirm it. Changing the address means confirming the new one, and until you do, notices reach you in the app only. Remove the address in the same place at any time.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Required notices",
+            text: "Terms and Account notices are always emailed to a confirmed address, because they are legal notices or explain why we acted on your account. They are marked Required and cannot be switched off. To stop them, remove your address. You still see them in the app.",
+          },
+          {
+            kind: "paragraph",
+            text: "Every other email has a link at the bottom to stop that kind of notice. Opening the link shows a button, and nothing changes until you choose Stop these emails. Your mail app may also offer its own unsubscribe button. You can switch the kind back on in Settings.",
+          },
+          {
+            kind: "paragraph",
+            text: "If emails to your address bounce, or the address reports one as unwanted, we stop sending to it and say so in Settings. Add a different address to start again.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Rolling out",
+            text: "Email notices are being switched on environment by environment. If the Email notices section says they are not available yet, notices still reach you in the app.",
           },
         ],
       },
@@ -210,12 +253,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "warning",
             title: "Sent notices cannot be recalled",
-            text: "A broadcast reaches everyone in its audience, including people who sign up later, and cannot be edited. Never include personal data in a broadcast.",
+            text: "A broadcast reaches everyone in its audience, including people who sign up later, and cannot be edited. It is also emailed to people in that audience who confirmed an email address and have not switched that kind of notice off. Never include personal data in a broadcast.",
           },
         ],
       },
     ],
     appLinks: [
+      { label: "Email notices", href: "/settings?section=email", description: "Add, confirm or remove your address, and choose which notices to receive." },
       { label: "Notices (operators)", href: "/admin/notices", description: "Compose a broadcast and see the ones already sent." },
       { label: "Dispute center", href: "/disputes", description: "Disputes about a track or release." },
     ],
