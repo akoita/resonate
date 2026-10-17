@@ -82,8 +82,10 @@ Trusted-source link requests are created with:
 Operators review pending release-rights requests and trusted-source link
 requests in the admin dispute queue. Trusted-source approval creates or updates
 the trusted source, links it to the artist, and lets future direct uploads use
-the trusted-source account classification. Revocation removes the active routing
-context and creates route reassessments for affected releases.
+the trusted-source account classification. An upload request cannot name its own
+source type: trusted routing comes only from that server-side link. Revocation
+removes the active routing context and creates route reassessments for affected
+releases.
 
 ## API And UI Surfaces
 

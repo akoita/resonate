@@ -330,8 +330,13 @@ export class IngestionService {
           aiDisclosureLevel: true,
           aiContributionFacets: true,
           aiDisclosureSource: true,
+          release: { select: { artistId: true } },
         },
       });
+      // Only the caller's own catalog audio can be reused.
+      if (!sourceTrack || sourceTrack.release.artistId !== resolvedArtistId) {
+        throw new ForbiddenException("Uploads can only reuse audio from your own catalog tracks");
+      }
       if (sourceTrack && sourceTrack.aiDisclosureLevel !== "UNDECLARED") {
         sourceTrackDisclosure = {
           level: sourceTrack.aiDisclosureLevel,
@@ -884,11 +889,29 @@ export class IngestionService {
     }
   }
 
-  enqueueUpload(input: {
+  async enqueueUpload(input: {
     artistId: string;
+    userId?: string;
     fileUris: string[];
     metadata?: any;
   }) {
+    // As in handleFileUpload: the caller's own artist profile owns the upload.
+    if (input.userId) {
+      const artist = await this.artistService.getProfile(input.userId);
+      if (!artist) {
+        throw new ForbiddenException("An artist profile is required to upload");
+      }
+      if (input.artistId && input.artistId !== artist.id) {
+        throw new ForbiddenException("Uploads must use the authenticated user's artist profile");
+      }
+      input = { ...input, artistId: artist.id };
+    }
+    if (!input.artistId) {
+      throw new BadRequestException("artistId is required");
+    }
+    if (!Array.isArray(input.fileUris) || !input.fileUris.every((uri) => typeof uri === "string")) {
+      throw new BadRequestException("fileUris must be an array of strings");
+    }
     const trackId = this.generateId("trk");
     const record: UploadRecord = {
       trackId,

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { WalletService } from "../identity/wallet.service";
 import { prisma } from "../../db/prisma";
@@ -101,9 +101,13 @@ export class SessionsService {
     return session;
   }
 
-  async stopSession(sessionId: string) {
+  async stopSession(userId: string, sessionId: string) {
+    if (typeof sessionId !== "string" || !sessionId) {
+      throw new BadRequestException("sessionId is required");
+    }
     const session = await prisma.session.findUnique({ where: { id: sessionId } });
-    if (!session) {
+    // Another user's session reads as missing, as in agentNext.
+    if (!session || session.userId !== userId) {
       return { sessionId, status: "not_found" };
     }
     await prisma.session.update({
@@ -127,7 +131,7 @@ export class SessionsService {
     };
   }
 
-  async playTrack(input: {
+  async playTrack(userId: string, input: {
     sessionId: string;
     trackId: string;
     priceUsd: number;
@@ -136,8 +140,18 @@ export class SessionsService {
     amount?: bigint;
     totalPriceWei?: string;
   }) {
+    if (typeof input.sessionId !== "string" || !input.sessionId) {
+      throw new BadRequestException("sessionId is required");
+    }
+    if (typeof input.trackId !== "string" || !input.trackId) {
+      throw new BadRequestException("trackId is required");
+    }
+    if (typeof input.priceUsd !== "number" || !Number.isFinite(input.priceUsd) || input.priceUsd < 0) {
+      throw new BadRequestException("priceUsd must be a non-negative number");
+    }
     const session = await prisma.session.findUnique({ where: { id: input.sessionId } });
-    if (!session || session.endedAt) {
+    // Another user's session reads as inactive: no spend against someone else's budget.
+    if (!session || session.endedAt || session.userId !== userId) {
       return { allowed: false, reason: "session_inactive" };
     }
 

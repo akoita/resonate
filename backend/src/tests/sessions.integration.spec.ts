@@ -87,6 +87,7 @@ describe('SessionsService (integration)', () => {
   afterAll(async () => {
     await prisma.demandObservation.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.analyticsConsent.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.agentTransaction.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.payment.deleteMany({ where: { session: { userId: `${TEST_PREFIX}user` } } }).catch(() => {});
     await prisma.license.deleteMany({ where: { track: { release: { artist: { userId: `${TEST_PREFIX}user` } } } } }).catch(() => {});
     await prisma.session.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
@@ -174,6 +175,43 @@ describe('SessionsService (integration)', () => {
 
     expect(await prisma.session.count({ where: { userId: `${TEST_PREFIX}user` } })).toBe(beforeSessions);
     expect(await prisma.wallet.count({ where: { userId: `${TEST_PREFIX}user` } })).toBe(beforeWallets);
+  });
+
+  it('lets only the owner charge a session, and only a non-negative price', async () => {
+    const { service } = makeService();
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+    await prisma.wallet.updateMany({ where: { userId: `${TEST_PREFIX}user` }, data: { balanceUsd: 5, spentUsd: 0 } });
+    const balance = async () =>
+      (await prisma.wallet.findFirstOrThrow({ where: { userId: `${TEST_PREFIX}user` } })).balanceUsd;
+    const play = { sessionId: session.id, trackId: `${TEST_PREFIX}track` };
+
+    // Another listener's request reads as an inactive session and spends nothing.
+    expect(await service.playTrack(`${TEST_PREFIX}other`, { ...play, priceUsd: 1 }))
+      .toEqual({ allowed: false, reason: 'session_inactive' });
+
+    // A negative, non-finite or non-numeric price never reaches the wallet.
+    for (const priceUsd of [-3, Number.NaN, Number.POSITIVE_INFINITY, '1' as unknown as number]) {
+      await expect(service.playTrack(`${TEST_PREFIX}user`, { ...play, priceUsd }))
+        .rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(await balance()).toBe(5);
+    expect(await prisma.license.count({ where: { sessionId: session.id } })).toBe(0);
+
+    const result = await service.playTrack(`${TEST_PREFIX}user`, { ...play, priceUsd: 1 });
+    expect(result.allowed).toBe(true);
+    expect(await balance()).toBe(4);
+  });
+
+  it('lets only the owner stop a session', async () => {
+    const { service } = makeService();
+    const session = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    expect(await service.stopSession(`${TEST_PREFIX}other`, session.id))
+      .toEqual({ sessionId: session.id, status: 'not_found' });
+    expect((await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).endedAt).toBeNull();
+
+    expect(await service.stopSession(`${TEST_PREFIX}user`, session.id)).toMatchObject({ status: 'stopped' });
+    expect((await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).endedAt).not.toBeNull();
   });
 
   it('does not allow another listener to request a private session pick', async () => {

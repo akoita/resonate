@@ -253,7 +253,8 @@ export class PlaybackIntentsService {
       state: input.state ?? "idle",
       lastSeenAt: now,
     };
-    this.devices.set(device.deviceId, device);
+    // Keyed per owner: a device id another user chose never replaces theirs.
+    this.devices.set(deviceKey(ownerUserId, device.deviceId), device);
     return device;
   }
 
@@ -441,9 +442,10 @@ export class PlaybackIntentsService {
     };
     this.commands.set(command.commandId, updated);
     if (input.currentTrackId && command.deviceId) {
-      const device = this.devices.get(command.deviceId);
+      const key = deviceKey(command.ownerUserId, command.deviceId);
+      const device = this.devices.get(key);
       if (device) {
-        this.devices.set(command.deviceId, {
+        this.devices.set(key, {
           ...device,
           currentTrackId: input.currentTrackId,
           state: input.outcome === "playing" ? "playing" : device.state,
@@ -782,4 +784,8 @@ function buildCandidateReasons(input: { query?: string; genres?: string[]; mood?
     ...(input.genres?.length ? [`Genre preference: ${input.genres.slice(0, 2).join(", ")}`] : []),
     ...(input.mood ? [`Mood preference: ${input.mood}`] : []),
   ].slice(0, 3);
+}
+
+function deviceKey(ownerUserId: string, deviceId: string) {
+  return `${ownerUserId}:${deviceId}`;
 }
