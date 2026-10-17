@@ -13,6 +13,7 @@ export * from "./types";
 export * from "./taxonomy";
 export * from "./search";
 export * from "./levels";
+export * from "./audience";
 export { HELP_ARTICLES } from "./content";
 
 const BY_SLUG = new Map(HELP_ARTICLES.map((a) => [a.slug, a]));
