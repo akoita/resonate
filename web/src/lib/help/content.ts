@@ -327,7 +327,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open Accounts in the sidebar (admins only) and look the person up by user id or wallet address, or open their record from Users.",
+              "Open Users in the sidebar, search for the person by user id, wallet address or artist name, and open their record. Only admins see the controls.",
               "Pick a reason category. For a suspension, optionally set an end date; leave it empty for no end date.",
               "Add an internal note if useful. It is kept in the audit record only and is never shown to the person.",
               "Choose Suspend, Lift suspension or Close account, and confirm. The person is sent a notice at once.",
@@ -343,7 +343,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Accounts (admins)", href: "/admin/accounts", description: "Look up an account and suspend, lift or close it." },
+      { label: "Users (admins)", href: "/admin/users", description: "Find a person, open their record, and suspend, lift or close their account." },
       { label: "Imprint & contact", href: "/imprint", description: "How to reach support to appeal." },
     ],
     related: ["platform-notices", "download-your-data", "delete-your-account", "admin-users"],
@@ -435,14 +435,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "On a person's record, admins see the same controls as on the Accounts page: pick a reason category, optionally set an end date and add an internal note, then choose Suspend, Lift suspension or Close account and confirm. The person is sent a notice at once. After you confirm, the record reloads so the change shows in the list of operator activity.",
+            text: "A person's record is the one place to change their account; there is no separate Accounts page. On the record, admins pick a reason category, optionally set an end date and add an internal note, then choose Suspend, Lift suspension or Close account and confirm. The person is sent a notice at once. After you confirm, the record reloads so the change shows in the list of operator activity.",
           },
         ],
       },
     ],
     appLinks: [
       { label: "Users (operators)", href: "/admin/users", description: "The overview, search and filters, and each person's record." },
-      { label: "Accounts (admins)", href: "/admin/accounts", description: "Look an account up by user id or wallet address and suspend, lift or close it." },
     ],
     related: ["account-suspension", "platform-notices", "settings-privacy"],
   },

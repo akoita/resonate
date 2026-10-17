@@ -17,7 +17,7 @@ import AccountRestrictionPanel, {
   type RestrictionAction,
   type RestrictionDraft,
   type RestrictionDraftErrors,
-} from "../../accounts/AccountRestrictionPanel";
+} from "./AccountRestrictionPanel";
 
 /**
  * #2147 controls (suspend, lift, close) on a user's record. Admins only: the
