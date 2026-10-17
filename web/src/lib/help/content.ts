@@ -179,7 +179,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "If you want notices to reach you when you are not in the app, add an email address. It is optional, it is used only for platform notices, and it is never used for marketing. Every notice stays in the app whether or not you add one.",
+            text: "If you want notices to reach you when you are not in the app, add an email address. It is optional (your account never needs one), it is used only for platform notices, and it is never used for marketing or to sign in. Adding it links the address to your account, and so to your wallet, in our records only: it is never shown publicly or put on-chain, and removing it deletes it. Every notice stays in the app whether or not you add one.",
           },
           {
             kind: "steps",
