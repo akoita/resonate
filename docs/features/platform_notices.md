@@ -174,8 +174,38 @@ How it works:
 - **Bounces and complaints** disable the address (`disabledReason` =
   `hard_bounce` or `complaint`) and send the person one in-app `account` notice
   (`dedupeKey = email_disabled:<contactEmailId>:<disabledAt>`) asking them to
-  fix the address. They arrive through the permanent-rejection path above or
-  `POST /email/webhook`. Soft bounces are ignored.
+  fix the address. They arrive through the permanent-rejection path above,
+  `POST /email/webhook`, or the SNS adapter below. Soft bounces are ignored.
+  A replay changes nothing: an address that is already disabled is not
+  disabled again, so no second notice is sent.
+- **SNS adapter** (#2177): providers that cannot sign the normalised webhook
+  contract publish events to an SNS-compatible topic, which POSTs to
+  `POST /email/webhook/sns/:token`.
+  - *Authentication* is the path token (`EMAIL_SNS_WEBHOOK_TOKEN`, at least 32
+    characters), compared in constant time. A wrong token, or a route that is
+    not configured, answers 404 so the route stays hidden. SNS message
+    signatures are not verified yet: the supported provider does not document
+    how to verify them. Treat the token as a secret. The API's own request log
+    writes the path as `/email/webhook/sns/:token`; platform access logs in
+    front of the API are a deployment concern.
+  - The envelope's `TopicArn` must equal `EMAIL_SNS_TOPIC_ARN` (403 otherwise).
+  - *Subscription confirmation*: `SubscribeURL` is never fetched as given. It
+    must be HTTPS on the default port with no credentials, its host must be
+    listed exactly in `EMAIL_SNS_CONFIRM_HOSTS`, and it must be
+    `Action=ConfirmSubscription` for the configured topic with a token. The
+    request is then rebuilt from the configured host and topic, so only the
+    subscription token comes from the message. It follows no redirects and
+    times out after 5 seconds. Anything else answers 400 without a request
+    (no SSRF).
+  - *Notifications*: `Message` is parsed by the mapper `EMAIL_SNS_EVENT_FORMAT`
+    selects. The only format today is `scaleway-tem`: `email_dropped`,
+    `email_mailbox_not_found` and a `mailbox_not_found` blocklist event are
+    hard bounces, `email_spam` is a complaint, and delivered, queued, deferred
+    and other events are counted as ignored (the provider retries deferred
+    mail and publishes a drop if it finally fails). Mapped events go through
+    the same hard-bounce and complaint path as `POST /email/webhook`.
+  - The body is read whether it arrives as `text/plain` (usual for SNS) or
+    `application/json`, and requests without an `Origin` header are accepted.
 - **Unsubscribe**: every optional-category email carries a link to the
   unsubscribe page and RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post`
   headers. Tokens are stateless HMAC-SHA256 over `{userId, category, v:1}`
@@ -243,6 +273,7 @@ stays reachable):
 | `POST /email/unsubscribe` | public | `{ token }`; idempotent; 400 `invalid` |
 | `POST /email/unsubscribe/one-click?token=` | public | RFC 8058 one-click; body ignored |
 | `POST /email/webhook` | HMAC signature | Normalised bounce / complaint events; 401 bad signature, 503 secret unset |
+| `POST /email/webhook/sns/:token` | path token | SNS-compatible bounce / complaint events (#2177); 404 off or wrong token, 403 other topic, 400 malformed or non-allowlisted confirmation URL, 502 confirmation failed |
 
 ## Email notices (web)
 
@@ -297,9 +328,11 @@ address, separate from the account's own email. It reads and writes
 ## Remaining
 
 - Email delivery is implemented in the backend (above); the provider, secrets
-  and job schedule are a deployment task, and a provider-specific webhook
-  adapter is needed if the chosen provider cannot sign the normalised contract.
-  Other outbound channels (push, chat) are not covered.
+  and job schedule are a deployment task. Providers that cannot sign the
+  normalised contract use the SNS adapter (#2177); verifying SNS message
+  signatures, as a second layer behind the path token, waits for a documented
+  scheme from the provider. Other outbound channels (push, chat) are not
+  covered.
 - An appeal path for community moderation.
 - An in-app DMCA counter-notice path. The API route exists; there is no UI.
 - There is no operator UI for targeted sends yet; the route exists.

@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { Injectable } from "@nestjs/common";
 import { writeStructuredLog } from "../shared/structured_logging";
+import { SNS_EVENT_MAPPERS } from "./email_sns";
 
 export type EmailTransportKind = "log" | "smtp";
 
@@ -31,6 +32,8 @@ export interface Mailbox {
 const MAILBOX_ADDRESS = /^[^\s@<>"(),;:\\[\]]+@((?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)$/;
 /** Longer than any plausible footer line; keeps a stray value out of every email. */
 const MAX_FOOTER_TEXT_LENGTH = 500;
+/** The SNS path token is the route's authentication: 32 random bytes encode to at least 43 characters. */
+export const MIN_SNS_WEBHOOK_TOKEN_LENGTH = 32;
 
 /**
  * Parse `address@domain` or `Display Name <address@domain>`. Returns `null`
@@ -84,6 +87,14 @@ export class EmailConfig {
   readonly replyTo: string;
   /** Optional plain-text line for the footer of every email (`EMAIL_FOOTER_TEXT`); empty when unset. */
   readonly footerText: string;
+  /** Path token of the SNS-compatible bounce route (`EMAIL_SNS_WEBHOOK_TOKEN`, #2177); empty when unset or too short. */
+  readonly snsWebhookToken: string;
+  /** The only topic the SNS route accepts (`EMAIL_SNS_TOPIC_ARN`). */
+  readonly snsTopicArn: string;
+  /** Exact hosts a subscription confirmation may go to (`EMAIL_SNS_CONFIRM_HOSTS`, comma-separated). */
+  readonly snsConfirmHosts: readonly string[];
+  /** Which provider event format the SNS messages carry (`EMAIL_SNS_EVENT_FORMAT`); empty when unset or unknown. */
+  readonly snsEventFormat: string;
   /** Why email is off, as a short code that carries no values. */
   readonly disabledReason: "not_configured" | "invalid_transport" | "log_in_production" | "missing_variables" | null;
 
@@ -131,6 +142,36 @@ export class EmailConfig {
       .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, "")
       .slice(0, MAX_FOOTER_TEXT_LENGTH);
 
+    const snsToken = read(env, "EMAIL_SNS_WEBHOOK_TOKEN");
+    if (snsToken && snsToken.length < MIN_SNS_WEBHOOK_TOKEN_LENGTH) {
+      writeStructuredLog({
+        level: "warn",
+        event: "email.sns_token_too_short",
+        message: `EMAIL_SNS_WEBHOOK_TOKEN is shorter than ${MIN_SNS_WEBHOOK_TOKEN_LENGTH} characters; the SNS bounce route stays off`,
+        variable: "EMAIL_SNS_WEBHOOK_TOKEN",
+      });
+      this.snsWebhookToken = "";
+    } else {
+      this.snsWebhookToken = snsToken;
+    }
+    this.snsTopicArn = read(env, "EMAIL_SNS_TOPIC_ARN");
+    this.snsConfirmHosts = read(env, "EMAIL_SNS_CONFIRM_HOSTS")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean);
+    const snsFormat = read(env, "EMAIL_SNS_EVENT_FORMAT").toLowerCase();
+    if (snsFormat && !Object.prototype.hasOwnProperty.call(SNS_EVENT_MAPPERS, snsFormat)) {
+      writeStructuredLog({
+        level: "warn",
+        event: "email.sns_format_unknown",
+        message: `EMAIL_SNS_EVENT_FORMAT must be one of: ${Object.keys(SNS_EVENT_MAPPERS).join(", ")}; the SNS bounce route stays off`,
+        variable: "EMAIL_SNS_EVENT_FORMAT",
+      });
+      this.snsEventFormat = "";
+    } else {
+      this.snsEventFormat = snsFormat;
+    }
+
     const missing: string[] = [];
     if (kind === "smtp") {
       const values: Record<(typeof SMTP_REQUIRED_ENV)[number], string> = {
@@ -154,6 +195,11 @@ export class EmailConfig {
 
   isAvailable(): boolean {
     return this.transportKind !== null;
+  }
+
+  /** The SNS bounce route exists only with a token, a topic and a known event format. */
+  isSnsWebhookEnabled(): boolean {
+    return Boolean(this.snsWebhookToken && this.snsTopicArn && this.snsEventFormat);
   }
 
   /** One structured line explaining why email is off. Names only, never values. */

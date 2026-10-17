@@ -23,6 +23,7 @@ import {
   EMAIL_MAX_ATTEMPTS,
   EmailDeliveryService,
 } from "../modules/email/email_delivery.service";
+import { EmailSnsService } from "../modules/email/email_sns.service";
 import { signUnsubscribeToken } from "../modules/email/email_tokens";
 import { LogEmailTransport, PermanentEmailError } from "../modules/email/email_transport";
 import { NoticeService } from "../modules/notifications/notice.service";
@@ -52,6 +53,8 @@ const U = {
   hookPending: name("hook_pending"),
   complaint: name("complaint"),
   soft: name("soft"),
+  snsDrop: name("sns_drop"),
+  snsSpam: name("sns_spam"),
   unsub: name("unsub"),
   rate: name("rate"),
 };
@@ -67,6 +70,18 @@ const transport = new LogEmailTransport();
 const notices = new NoticeService(new EventBus(), new AuditService());
 const contacts = new ContactEmailService(config, transport, notices);
 const delivery = new EmailDeliveryService(config, transport, contacts);
+const SNS_TOPIC = "arn:scw:sns:fr-par:integration:email-events";
+const sns = new EmailSnsService(
+  new EmailConfig({
+    NODE_ENV: "test",
+    EMAIL_SNS_WEBHOOK_TOKEN: "s".repeat(48),
+    EMAIL_SNS_TOPIC_ARN: SNS_TOPIC,
+    EMAIL_SNS_EVENT_FORMAT: "scaleway-tem",
+  }),
+  delivery,
+);
+const snsEvent = (type: string, emailTo: string) =>
+  ({ type: "Notification", topicArn: SNS_TOPIC, message: JSON.stringify({ type, email_to: emailTo }) }) as const;
 // The confirmation limiter reads this clock. By default every read is a day later than the last, so
 // tests that set addresses repeatedly never meet the cooldown; the rate-limit tests pin it.
 const DEFAULT_CLOCK = () => new Date((defaultClockMs += 25 * 3_600_000));
@@ -544,6 +559,24 @@ describe("email notices integration", () => {
       expect((await contacts.getState(U.hookPending)).status).toBe("disabled");
       expect((await contacts.getState(U.soft)).status).toBe("confirmed");
       expect(await prisma.notice.count({ where: { recipientUserId: U.soft } })).toBe(0);
+    });
+
+    it("SNS adapter (#2177): a dropped event disables a confirmed address and sends one notice; a replay sends none", async () => {
+      await confirmed(U.snsDrop);
+      expect(await sns.handle(snsEvent("email_dropped", addressOf("sns_drop")))).toEqual({ received: 1, disabled: 1, ignored: 0 });
+      expect(await contacts.getState(U.snsDrop)).toMatchObject({ status: "disabled", disabledReason: "hard_bounce" });
+      expect(await sns.handle(snsEvent("email_dropped", addressOf("sns_drop")))).toEqual({ received: 1, disabled: 0, ignored: 0 });
+      expect(await prisma.notice.count({ where: { recipientUserId: U.snsDrop, category: "account" } })).toBe(1);
+    });
+
+    it("SNS adapter (#2177): a spam event disables as a complaint and notifies once; delivered mail changes nothing", async () => {
+      await confirmed(U.snsSpam);
+      expect(await sns.handle(snsEvent("email_delivered", addressOf("sns_spam")))).toEqual({ received: 1, disabled: 0, ignored: 1 });
+      expect((await contacts.getState(U.snsSpam)).status).toBe("confirmed");
+      await sns.handle(snsEvent("email_spam", addressOf("sns_spam")));
+      await sns.handle(snsEvent("email_spam", addressOf("sns_spam")));
+      expect(await contacts.getState(U.snsSpam)).toMatchObject({ status: "disabled", disabledReason: "complaint" });
+      expect(await prisma.notice.count({ where: { recipientUserId: U.snsSpam, category: "account" } })).toBe(1);
     });
 
     it("lets a disabled person set a new address and start over", async () => {

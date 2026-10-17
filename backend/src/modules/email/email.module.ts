@@ -5,6 +5,7 @@ import { ContactEmailService } from "./contact_email.service";
 import { EmailConfig } from "./email_config";
 import { EmailDeliveryService } from "./email_delivery.service";
 import { EmailPublicController } from "./email_public.controller";
+import { EmailSnsService } from "./email_sns.service";
 import { EMAIL_TRANSPORT, createEmailTransport } from "./email_transport";
 
 /**
@@ -32,6 +33,7 @@ import { EMAIL_TRANSPORT, createEmailTransport } from "./email_transport";
     },
     ContactEmailService,
     EmailDeliveryService,
+    EmailSnsService,
   ],
   exports: [ContactEmailService, EmailDeliveryService, EmailConfig],
 })
