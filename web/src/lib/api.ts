@@ -7717,6 +7717,8 @@ export type AdminUserRow = {
   artistName: string | null;
   accountStatus: AccountStatusValue;
   counts: { purchases: number; pledges: number; releases: number };
+  /** Another account's id equals this one apart from letter case (a likely duplicate). */
+  possibleDuplicate: boolean;
 };
 
 export type AdminUsersPage = {

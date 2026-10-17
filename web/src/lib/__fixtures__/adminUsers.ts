@@ -20,6 +20,7 @@ export function userRow(overrides: Partial<AdminUserRow> = {}): AdminUserRow {
     artistName: null,
     accountStatus: "active",
     counts: { purchases: 4, pledges: 1, releases: 0 },
+    possibleDuplicate: false,
     ...overrides,
   };
 }

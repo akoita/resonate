@@ -404,7 +404,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Each row shows the person's wallet or artist name, their roles, their status, when they joined, when they last signed in, the day they were last active, and how many purchases, pledges and releases they have. Email addresses are not shown. Many accounts only have a placeholder, so a confirmed contact address will be added separately.",
+            text: "Each row shows the person's wallet or artist name, their roles, their status, when they joined, when they last signed in, the day they were last active, and how many purchases, pledges and releases they have. Email addresses are not shown. Many accounts only have a placeholder, so a confirmed contact address will be added separately. A \"Possible duplicate\" chip means another account exists for the same wallet address written with different capital letters; those accounts are being merged, so check both before acting on one.",
           },
         ],
       },

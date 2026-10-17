@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { normalizeUserId } from "../identity/user_id";
 import { AGENT_TASTE_HISTORY_LIMIT, AGENT_TASTE_HISTORY_WINDOW_DAYS } from "../../config/agent_learning";
 import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.service";
 import { EventBus } from "../shared/event_bus";
@@ -595,7 +596,8 @@ export class TasteMemoryService {
     });
   }
 
-  private async ensureUser(userId: string) {
+  private async ensureUser(rawUserId: string) {
+    const userId = normalizeUserId(rawUserId);
     await prisma.user.upsert({
       where: { id: userId },
       update: {},

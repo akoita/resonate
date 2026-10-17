@@ -4,6 +4,7 @@ import { Throttle } from "@nestjs/throttler";
 import type { Prisma } from "@prisma/client";
 import { IsString, MaxLength } from "class-validator";
 import { prisma } from "../../db/prisma";
+import { normalizeUserId } from "../identity/user_id";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentIdentityService } from "./agent_identity.service";
@@ -84,12 +85,13 @@ export class AgentConfigController {
         @Body() body: { name: string; vibes: string[]; monthlyCapUsd: number }
     ) {
         // Ensure User record exists (JWT userId = wallet address)
+        const ensuredUserId = normalizeUserId(req.user.userId);
         await prisma.user.upsert({
-            where: { id: req.user.userId },
+            where: { id: ensuredUserId },
             update: {},
             create: {
-                id: req.user.userId,
-                email: `${req.user.userId}@wallet.local`,
+                id: ensuredUserId,
+                email: `${ensuredUserId}@wallet.local`,
             },
         });
 

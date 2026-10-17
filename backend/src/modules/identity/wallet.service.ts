@@ -1,13 +1,22 @@
-import { ConflictException, Injectable, Logger } from "@nestjs/common";
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { Erc4337Client } from "./erc4337/erc4337_client";
 import { KernelAccountService } from "./kernel_account.service";
 import { PaymasterService } from "./paymaster.service";
+import { normalizeUserId } from "./user_id";
 import { WalletProviderRegistry } from "./wallet_provider_registry";
 
 type WalletProviderName = "local" | "erc4337";
 const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+
+export type WalletCaller = { userId: string; role?: string };
 
 @Injectable()
 export class WalletService {
@@ -21,7 +30,8 @@ export class WalletService {
     private readonly kernelAccountService: KernelAccountService,
   ) { }
 
-  async fundWallet(input: { userId: string; amountUsd: number }) {
+  async fundWallet(rawInput: { userId: string; amountUsd: number }) {
+    const input = { ...rawInput, userId: normalizeUserId(rawInput.userId) };
     const wallet = await this.getOrCreate(input.userId);
     const updated = await prisma.wallet.update({
       where: { id: wallet.id },
@@ -38,11 +48,12 @@ export class WalletService {
     return updated;
   }
 
-  async setBudget(input: {
+  async setBudget(rawInput: {
     userId: string;
     monthlyCapUsd: number;
     resetSpent?: boolean;
   }) {
+    const input = { ...rawInput, userId: normalizeUserId(rawInput.userId) };
     const wallet = await this.getOrCreate(input.userId);
     const updated = await prisma.wallet.update({
       where: { id: wallet.id },
@@ -62,10 +73,46 @@ export class WalletService {
   }
 
   async getWallet(userId: string) {
-    return this.getOrCreate(userId);
+    return this.getOrCreate(normalizeUserId(userId));
   }
 
-  async refreshWallet(input: { userId: string; provider?: WalletProviderName }) {
+  /**
+   * Wallet read for an HTTP caller. A caller reads its own wallet, addressed by
+   * its user id or by the wallet / owner address on its own wallet record; an
+   * admin may read any existing wallet. Only the caller's own record is ever
+   * created here: a read of any other id never creates a user or a wallet.
+   */
+  async getWalletForCaller(caller: WalletCaller, requestedId: string) {
+    const callerId = normalizeUserId(caller.userId);
+    const requested = normalizeUserId(requestedId);
+
+    if (requested === callerId) {
+      return this.getOrCreate(callerId);
+    }
+
+    if (caller.role === "admin") {
+      const found = await prisma.wallet.findFirst({ where: { userId: requested } });
+      if (!found) {
+        throw new NotFoundException("Wallet not found");
+      }
+      return found;
+    }
+
+    const own = await prisma.wallet.findFirst({ where: { userId: callerId } });
+    if (own && this.walletAddressesOf(own).includes(requested)) {
+      return own;
+    }
+    throw new ForbiddenException("You can only read your own wallet");
+  }
+
+  private walletAddressesOf(wallet: { address: string; ownerAddress: string | null }) {
+    return [wallet.address, wallet.ownerAddress]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .map((value) => normalizeUserId(value));
+  }
+
+  async refreshWallet(rawInput: { userId: string; provider?: WalletProviderName }) {
+    const input = { ...rawInput, userId: normalizeUserId(rawInput.userId) };
     const wallet = await this.getOrCreate(input.userId, input.provider);
     const existingProvider = (wallet as any).provider as WalletProviderName | undefined;
     if (wallet.addressVerifiedAt) {
@@ -127,7 +174,8 @@ export class WalletService {
   }
 
 
-  async spend(userId: string, amountUsd: number) {
+  async spend(rawUserId: string, amountUsd: number) {
+    const userId = normalizeUserId(rawUserId);
     const wallet = await this.getOrCreate(userId);
     if (wallet.balanceUsd < amountUsd) {
       return { allowed: false, remaining: wallet.monthlyCapUsd - wallet.spentUsd };
@@ -177,7 +225,10 @@ export class WalletService {
   // A wallet created here is never address-verified: for a non-address userId
   // the derived address is a placeholder until sign-in writes the real one
   // (AuthService.upsertWalletIdentity sets addressVerifiedAt, #2023).
-  private async getOrCreate(userId: string, provider?: WalletProviderName) {
+  private async getOrCreate(rawUserId: string, provider?: WalletProviderName) {
+    // #2180: wallet-account user ids are lowercase addresses; never create a
+    // second user for the same address under another casing.
+    const userId = normalizeUserId(rawUserId);
     const existing = await prisma.wallet.findFirst({ where: { userId } });
     if (existing) {
       return existing;
