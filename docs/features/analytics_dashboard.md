@@ -68,7 +68,9 @@ response). The dashboard labels the KPI and the track-table column **Gross
 sales**. The KPI shows the line "Settled stablecoin sales before the platform
 fee and royalty splits. Native-token sales are counted but not converted to
 USD." The fee percentage appears only after the page has read the live on-chain
-marketplace fee. A net artist-share figure remains open in #2144.
+marketplace fee. A net artist-share figure remains open in #2172. Paid stem
+downloads through the agent payment router and MCP count toward gross sales
+from #2144 on.
 
 The same `GET /analytics/artist/:id/v1?days=N` response now includes an
 `actions` array with stable artist action cards:

@@ -2,6 +2,9 @@ import { prisma } from "../db/prisma";
 import { McpStemService } from "../modules/mcp/mcp-stem.service";
 import { X402Config } from "../modules/x402/x402.config";
 import { X402PaymentService } from "../modules/x402/x402.payment.service";
+import { x402DirectPurchaseSettlementKey } from "../modules/analytics/analytics_commerce_settled";
+import type { CommerceSettledEvent } from "../events/event_types";
+import { EventBus } from "../modules/shared/event_bus";
 
 const TEST_PREFIX = `mcp_stem_${Date.now()}_`;
 
@@ -29,11 +32,12 @@ describe("McpStemService (integration)", () => {
   const stemId = `${TEST_PREFIX}stem`;
   const noFileStemId = `${TEST_PREFIX}stem_no_file`;
 
-  const createService = (config = mockConfig()) =>
+  const createService = (config = mockConfig(), eventBus?: EventBus) =>
     new McpStemService(
       config,
       paymentService as unknown as X402PaymentService,
       encryptionService as any,
+      eventBus,
     );
 
   beforeAll(async () => {
@@ -358,7 +362,12 @@ describe("McpStemService (integration)", () => {
   });
 
   it("verifies proof, embeds the purchased stem resource, and records provenance", async () => {
-    const result = await service.download(stemId, "commercial", "proof-header");
+    const eventBus = new EventBus();
+    const settled: CommerceSettledEvent[] = [];
+    eventBus.subscribe<CommerceSettledEvent>("commerce.settled", (event) => {
+      settled.push(event);
+    });
+    const result = await createService(mockConfig(), eventBus).download(stemId, "commercial", "proof-header");
 
     expect(result.ok).toBe(true);
     expect(paymentService.verifyAndSettle).toHaveBeenCalledWith(
@@ -416,5 +425,23 @@ describe("McpStemService (integration)", () => {
         currency: "USDC",
       }),
     );
+
+    // #2144: the direct purchase counts as settled commerce, once.
+    expect(settled).toHaveLength(1);
+    expect(settled[0]).toEqual(
+      expect.objectContaining({
+        settlementKey: x402DirectPurchaseSettlementKey({
+          paymentProofSha256: (event.args as { paymentProofSha256: string }).paymentProofSha256,
+          transactionHash: event.transactionHash,
+          logIndex: 0,
+        }),
+        paymentId: event.id,
+        rail: "x402",
+        paymentRail: "mcp",
+        stemId,
+        licenseType: "commercial",
+      }),
+    );
+    eventBus.destroy();
   });
 });

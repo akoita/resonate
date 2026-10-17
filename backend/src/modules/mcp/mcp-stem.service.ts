@@ -1,7 +1,9 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import path from "node:path";
 import { prisma } from "../../db/prisma";
+import { loadX402DirectPurchaseCommerceSettled, publishCommerceSettled } from "../analytics/analytics_commerce_settled";
 import { EncryptionService } from "../encryption/encryption.service";
+import { EventBus } from "../shared/event_bus";
 import { X402Config } from "../x402/x402.config";
 import {
   X402PaymentChallenge,
@@ -106,7 +108,11 @@ export class McpStemService {
     private readonly x402Config: X402Config,
     private readonly paymentService: X402PaymentService,
     private readonly encryptionService: EncryptionService,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
+
+  private readonly logger = new Logger(McpStemService.name);
 
   async quote(stemId: string, licenseType: QuoteLicenseKey): Promise<McpStemQuote> {
     this.assertX402Enabled();
@@ -194,6 +200,15 @@ export class McpStemService {
         processedAt: purchasedAt,
       },
     });
+
+    // #2144: a direct x402 payment, never through the marketplace contract, so
+    // no other rail counts it. Never fails the download.
+    await publishCommerceSettled(
+      this.eventBus,
+      () => loadX402DirectPurchaseCommerceSettled({ transactionHash, logIndex: 0 }),
+      this.logger,
+      `mcp x402 receipt=${receipt.receiptId}`,
+    );
 
     const filename = `${stem.title || stem.type || "stem"}${this.downloadExtension(
       stem.uri,

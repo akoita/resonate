@@ -1,4 +1,4 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { AgentPurchaseInput, AgentPurchaseService } from "./agent_purchase.service";
 import type { AgentLicenseType } from "./agent_runtime.types";
@@ -15,6 +15,8 @@ import {
 import { buildStemX402Receipt } from "../x402/x402.receipt";
 import { getX402ChainId, resolveX402AssetInfo } from "../x402/x402.public";
 import { PaymentsService } from "../payments/payments.service";
+import { loadX402DirectPurchaseCommerceSettled, publishCommerceSettled } from "../analytics/analytics_commerce_settled";
+import { EventBus } from "../shared/event_bus";
 
 export interface PaymentRouterInput extends Partial<AgentPurchaseInput> {
   sessionId: string;
@@ -64,7 +66,11 @@ export class PaymentRouterService {
     private readonly x402Config?: X402Config,
     @Optional()
     private readonly paymentsService?: PaymentsService,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
+
+  private readonly logger = new Logger(PaymentRouterService.name);
 
   async purchase(input: PaymentRouterInput): Promise<PaymentRouterResult> {
     const rail = input.rail ?? "erc4337_marketplace";
@@ -313,6 +319,15 @@ export class PaymentRouterService {
         processedAt: purchasedAt,
       },
     });
+
+    // #2144: a direct x402 payment, never through the marketplace contract, so
+    // no other rail counts it. Never fails the purchase.
+    await publishCommerceSettled(
+      this.eventBus,
+      () => loadX402DirectPurchaseCommerceSettled({ transactionHash, logIndex: 0 }),
+      this.logger,
+      `agent x402 receipt=${receipt.receiptId}`,
+    );
 
     return {
       success: true,
