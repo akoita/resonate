@@ -31,6 +31,11 @@ export const EMAIL_REQUIRED_REASONS: Partial<Record<PlatformNoticeCategory, stri
   account: "Required: you are entitled to know why we acted on your account.",
 };
 
+/** Categories a person cannot switch off: they are emailed to every confirmed address. */
+export function isEmailRequiredCategory(category: PlatformNoticeCategory): boolean {
+  return category in EMAIL_REQUIRED_REASONS;
+}
+
 const FALLBACK_REQUIRED_REASON = "Required: we have to send you this one.";
 
 export function requiredReason(category: PlatformNoticeCategory): string {

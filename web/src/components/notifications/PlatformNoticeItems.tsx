@@ -13,35 +13,45 @@ export default function PlatformNoticeItems({
   onSelect,
 }: {
   notices: readonly PlatformNotice[];
-  onSelect: (notice: PlatformNotice) => void;
+  /**
+   * Without it the rows are read-only: plain blocks, no action hint ("Open",
+   * "Mark as read"), e.g. an operator's preview of what people will see.
+   */
+  onSelect?: (notice: PlatformNotice) => void;
 }) {
   return (
     <>
       {notices.map((notice) => {
         const effective = formatNoticeEffectiveDate(notice.effectiveAt);
         const unread = !notice.readAt;
-        return (
-          <button
-            key={notice.id}
-            type="button"
-            data-notice-id={notice.id}
-            onClick={() => onSelect(notice)}
-            style={{
-              ...itemStyle,
-              background: unread ? "rgba(99, 102, 241, 0.06)" : "transparent",
-            }}
-          >
+        const style = {
+          ...itemStyle,
+          background: unread ? "rgba(99, 102, 241, 0.06)" : "transparent",
+        };
+        const content = (
+          <>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <span style={chipStyle}>{NOTICE_CATEGORY_LABELS[notice.category]}</span>
               <span style={{ fontWeight: 600, fontSize: "12px" }}>{notice.title}</span>
             </div>
             <div style={bodyStyle}>{notice.body}</div>
             {effective ? <div style={metaStyle}>{effective}</div> : null}
-            <div style={hintStyle}>
-              {notice.link ? "Open →" : unread ? "Mark as read" : notice.kind === "broadcast" ? "Platform notice" : "Notice for you"}
-            </div>
+            {onSelect ? (
+              <div style={hintStyle}>
+                {notice.link ? "Open →" : unread ? "Mark as read" : notice.kind === "broadcast" ? "Platform notice" : "Notice for you"}
+              </div>
+            ) : null}
             {unread ? <span aria-label="Unread" style={unreadDotStyle} /> : null}
+          </>
+        );
+        return onSelect ? (
+          <button key={notice.id} type="button" data-notice-id={notice.id} onClick={() => onSelect(notice)} style={style}>
+            {content}
           </button>
+        ) : (
+          <div key={notice.id} data-notice-id={notice.id} style={{ ...style, cursor: "default" }}>
+            {content}
+          </div>
         );
       })}
     </>
