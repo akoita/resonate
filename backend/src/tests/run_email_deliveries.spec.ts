@@ -24,6 +24,7 @@ describe("run_email_deliveries script helpers", () => {
       dryRun: false,
       enabled: true,
       fannedOutNotices: 1,
+      audienceUnresolvable: 9,
       queued: 2,
       due: 3,
       sent: 4,

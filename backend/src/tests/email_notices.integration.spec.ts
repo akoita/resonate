@@ -281,7 +281,7 @@ describe("email notices integration", () => {
       expect(await recipientsOf(id)).toEqual([U.listener]);
       const mail = transport.sent.filter((m) => m.to === addressOf("listener"));
       expect(mail).toHaveLength(1);
-      expect(mail[0].subject).toMatch(/^Targeted /);
+      expect(mail[0].subject).toMatch(/^\[Resonate\] Targeted /);
       expect(mail[0].headers?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
       const row = await prisma.emailDelivery.findFirstOrThrow({ where: { noticeId: id } });
       expect(row).toMatchObject({ status: "sent", attempts: 1, category: "refund" });
@@ -321,6 +321,33 @@ describe("email notices integration", () => {
       await delivery.run();
       expect(await recipientsOf(operatorNotice)).toEqual([U.operator, U.operatorWallet].sort());
       expect(await recipientsOf(adminNotice)).toEqual([U.admin]);
+    });
+
+    it("warns once, with counts only, when a role audience's allowlist is empty, and counts it in the summary", async () => {
+      const savedOperators = process.env.OPERATOR_ADDRESSES;
+      delete process.env.OPERATOR_ADDRESSES;
+      const info = jest.mocked(console.info);
+      info.mockClear();
+      try {
+        const id = await broadcast("role:operator", "incident");
+        const result = await delivery.run();
+        expect(result).toMatchObject({ fannedOutNotices: 1, audienceUnresolvable: 1, queued: 0 });
+        expect(await recipientsOf(id)).toEqual([]);
+        const lines = info.mock.calls
+          .map((call) => String(call[0]))
+          .filter((line) => line.includes("email.deliveries.audience_unresolvable"));
+        expect(lines).toHaveLength(1);
+        const entry = JSON.parse(lines[0]);
+        expect(entry).toMatchObject({ level: "warn", notices: 1, audiences: ["role:operator"] });
+        expect(lines[0]).not.toContain("mail.example");
+        // A resolvable audience does not warn.
+        info.mockClear();
+        await broadcast("role:admin", "incident");
+        expect(await delivery.run()).toMatchObject({ audienceUnresolvable: 0 });
+        expect(info.mock.calls.some((call) => String(call[0]).includes("audience_unresolvable"))).toBe(false);
+      } finally {
+        process.env.OPERATOR_ADDRESSES = savedOperators;
+      }
     });
 
     it("sends role:listener to accounts that are not allowlisted operators or admins", async () => {
@@ -395,7 +422,7 @@ describe("email notices integration", () => {
       expect(await recipientsOf(policy)).toContain(U.listener);
       expect(await recipientsOf(terms)).toContain(U.optout);
       expect(await recipientsOf(account)).toContain(U.optout);
-      const required = transport.sent.find((m) => m.to === addressOf("optout") && m.subject.startsWith("Broadcast"));
+      const required = transport.sent.find((m) => m.to === addressOf("optout") && m.subject.startsWith("[Resonate] Broadcast"));
       expect(required?.headers).toEqual({});
       expect(required?.text).not.toContain("/email/unsubscribe");
     });
@@ -530,7 +557,7 @@ describe("email notices integration", () => {
       await confirmed(U.unsub);
       await targeted(U.unsub, "policy");
       await delivery.run();
-      const mail = transport.sent.find((m) => m.to === addressOf("unsub") && m.subject.startsWith("Targeted"));
+      const mail = transport.sent.find((m) => m.to === addressOf("unsub") && m.subject.startsWith("[Resonate] Targeted"));
       expect(mail).toBeDefined();
       const token = lastTokenIn(mail!, "email/unsubscribe");
       await expect(contacts.unsubscribe(token)).resolves.toEqual({ category: "policy", status: "unsubscribed" });

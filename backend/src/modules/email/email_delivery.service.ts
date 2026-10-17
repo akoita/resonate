@@ -27,6 +27,11 @@ export interface EmailDeliveryRunResult {
   /** False when email is not configured on this deployment: nothing was done. */
   enabled: boolean;
   fannedOutNotices: number;
+  /**
+   * Broadcast notices whose role audience could not be resolved because the
+   * allowlist it depends on is empty on this deployment (see `email.deliveries.audience_unresolvable`).
+   */
+  audienceUnresolvable: number;
   queued: number;
   /** Rows that were due to send at the start of the send phase. */
   due: number;
@@ -93,6 +98,7 @@ export class EmailDeliveryService {
       dryRun,
       enabled: this.config.isAvailable() && this.transport !== null,
       fannedOutNotices: 0,
+      audienceUnresolvable: 0,
       queued: 0,
       due: 0,
       sent: 0,
@@ -106,6 +112,7 @@ export class EmailDeliveryService {
     const fan = await this.fanOut({ dryRun, now: options.now });
     result.fannedOutNotices = fan.notices;
     result.queued = fan.queued;
+    result.audienceUnresolvable = fan.audienceUnresolvable;
 
     // A fresh clock: rows queued by the fan-out above are due immediately.
     const sendResult = await this.sendDue({ dryRun, limit: options.limit ?? EMAIL_SEND_LIMIT, now: options.now });
@@ -131,14 +138,55 @@ export class EmailDeliveryService {
     });
 
     let queued = 0;
+    let audienceUnresolvable = 0;
+    const unresolvableAudiences = new Set<string>();
     for (const notice of notices) {
       const expired = notice.recipientUserId === null && notice.expiresAt !== null && notice.expiresAt <= now;
-      if (!expired) queued += await this.fanOutNotice(notice, options.dryRun === true);
+      if (!expired) {
+        if (this.audienceIsUnresolvable(notice)) {
+          audienceUnresolvable += 1;
+          unresolvableAudiences.add(notice.audience);
+        }
+        queued += await this.fanOutNotice(notice, options.dryRun === true);
+      }
       if (!options.dryRun) {
         await prisma.notice.update({ where: { id: notice.id }, data: { emailFannedOutAt: new Date() } });
       }
     }
-    return { notices: notices.length, queued };
+    if (audienceUnresolvable > 0) {
+      // One line per run, counts and audience names only (never an address): a
+      // job missing its role allowlists would otherwise look like "no recipients".
+      writeStructuredLog({
+        level: "warn",
+        event: "email.deliveries.audience_unresolvable",
+        message:
+          "Broadcast notices target a role audience whose allowlist is empty on this deployment, so the audience cannot be resolved",
+        notices: audienceUnresolvable,
+        audiences: [...unresolvableAudiences].sort(),
+      });
+    }
+    return { notices: notices.length, queued, audienceUnresolvable };
+  }
+
+  /**
+   * True when a broadcast's role audience depends on allowlists that are all
+   * empty here: `role:admin` / `role:operator` would match nobody, and
+   * `role:listener` (everyone who is not an allowlisted admin, operator or
+   * agent) would not exclude anyone.
+   */
+  private audienceIsUnresolvable(notice: NoticeForFanOut): boolean {
+    if (notice.recipientUserId) return false;
+    const empty = (role: "admin" | "operator" | "agent") => AuthService.allowlistedAddresses(role).length === 0;
+    switch (notice.audience) {
+      case "role:admin":
+        return empty("admin");
+      case "role:operator":
+        return empty("operator");
+      case "role:listener":
+        return empty("admin") && empty("operator") && empty("agent");
+      default:
+        return false;
+    }
   }
 
   private recipientWhere(notice: NoticeForFanOut): Prisma.ContactEmailWhereInput {
