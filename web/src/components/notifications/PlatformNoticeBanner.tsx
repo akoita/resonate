@@ -40,22 +40,31 @@ export default function PlatformNoticeBanner() {
   return <PlatformNoticeBannerView notice={notice} dismissing={dismissing} onDismiss={() => void dismiss()} />;
 }
 
-/** Presentational, so the copy and the dismiss control can be asserted without a session. */
+export const DEFAULT_BANNER_HEADING_ID = "platform-notice-banner-title";
+
+/**
+ * Presentational, so the copy and the dismiss control can be asserted without a session.
+ * Without `onDismiss` the Dismiss control is not rendered (a read-only rendering,
+ * e.g. an operator's preview). `headingId` keeps the heading id unique when a
+ * second banner is on the page.
+ */
 export function PlatformNoticeBannerView({
   notice,
-  dismissing,
+  dismissing = false,
   onDismiss,
+  headingId = DEFAULT_BANNER_HEADING_ID,
 }: {
   notice: PlatformNotice;
-  dismissing: boolean;
-  onDismiss: () => void;
+  dismissing?: boolean;
+  onDismiss?: () => void;
+  headingId?: string;
 }) {
   const effective = formatNoticeEffectiveDate(notice.effectiveAt);
   const isIncident = notice.category === "incident";
   return (
     <section
       role="region"
-      aria-labelledby="platform-notice-banner-title"
+      aria-labelledby={headingId}
       data-notice-id={notice.id}
       style={{
         display: "flex",
@@ -72,7 +81,7 @@ export function PlatformNoticeBannerView({
     >
       <div style={{ margin: 0, flex: "1 1 320px", minWidth: "220px" }}>
         <span style={categoryChipStyle}>{NOTICE_CATEGORY_LABELS[notice.category]}</span>{" "}
-        <strong id="platform-notice-banner-title">{notice.title}</strong>
+        <strong id={headingId}>{notice.title}</strong>
         {effective ? <span style={{ opacity: 0.75 }}> · {effective}</span> : null}
         <p style={{ margin: "4px 0 0", opacity: 0.85, whiteSpace: "pre-line" }}>{notice.body}</p>
       </div>
@@ -82,9 +91,11 @@ export function PlatformNoticeBannerView({
             Read more
           </Link>
         ) : null}
-        <button type="button" className="ui-btn ui-btn-ghost" onClick={onDismiss} disabled={dismissing}>
-          {dismissing ? "Dismissing..." : "Dismiss"}
-        </button>
+        {onDismiss ? (
+          <button type="button" className="ui-btn ui-btn-ghost" onClick={onDismiss} disabled={dismissing}>
+            {dismissing ? "Dismissing..." : "Dismiss"}
+          </button>
+        ) : null}
       </span>
     </section>
   );
