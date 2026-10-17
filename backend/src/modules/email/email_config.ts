@@ -21,6 +21,33 @@ function read(env: NodeJS.ProcessEnv, name: string): string {
   return (env[name] ?? "").trim();
 }
 
+export interface Mailbox {
+  /** The bare address, e.g. `notices@example.org`. */
+  address: string;
+  /** Lower-cased domain part of the address. */
+  domain: string;
+}
+
+const MAILBOX_ADDRESS = /^[^\s@<>"(),;:\\[\]]+@((?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)$/;
+/** Longer than any plausible footer line; keeps a stray value out of every email. */
+const MAX_FOOTER_TEXT_LENGTH = 500;
+
+/**
+ * Parse `address@domain` or `Display Name <address@domain>`. Returns `null`
+ * for anything else, including values with control characters (header
+ * injection) or an address with no dotted domain.
+ */
+export function parseMailbox(value: string | undefined | null): Mailbox | null {
+  const raw = (value ?? "").trim();
+  // eslint-disable-next-line no-control-regex
+  if (!raw || /[\u0000-\u001f\u007f]/.test(raw)) return null;
+  const angle = /<([^<>]*)>\s*$/.exec(raw);
+  const address = (angle ? angle[1] : raw).trim();
+  const match = MAILBOX_ADDRESS.exec(address);
+  if (!match) return null;
+  return { address, domain: match[1].toLowerCase() };
+}
+
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
@@ -53,6 +80,10 @@ export class EmailConfig {
   readonly webhookSecret: string;
   readonly frontendUrl: string;
   readonly publicApiUrl: string;
+  /** Optional `Reply-To` mailbox (`EMAIL_REPLY_TO`); empty when unset or invalid. */
+  readonly replyTo: string;
+  /** Optional plain-text line for the footer of every email (`EMAIL_FOOTER_TEXT`); empty when unset. */
+  readonly footerText: string;
   /** Why email is off, as a short code that carries no values. */
   readonly disabledReason: "not_configured" | "invalid_transport" | "log_in_production" | "missing_variables" | null;
 
@@ -82,6 +113,23 @@ export class EmailConfig {
       read(env, "EMAIL_LINK_SIGNING_SECRET") || (isLog ? randomBytes(32).toString("hex") : "");
     this.frontendUrl = stripTrailingSlash(read(env, "FRONTEND_URL") || (isLog ? LOCAL_FRONTEND_URL : ""));
     this.publicApiUrl = stripTrailingSlash(read(env, "PUBLIC_API_URL") || (isLog ? LOCAL_API_URL : ""));
+
+    const replyTo = read(env, "EMAIL_REPLY_TO");
+    if (replyTo && !parseMailbox(replyTo)) {
+      writeStructuredLog({
+        level: "warn",
+        event: "email.reply_to_invalid",
+        message: "EMAIL_REPLY_TO is not a valid email address and is ignored",
+        variable: "EMAIL_REPLY_TO",
+      });
+      this.replyTo = "";
+    } else {
+      this.replyTo = replyTo;
+    }
+    this.footerText = read(env, "EMAIL_FOOTER_TEXT")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, "")
+      .slice(0, MAX_FOOTER_TEXT_LENGTH);
 
     const missing: string[] = [];
     if (kind === "smtp") {
