@@ -1,6 +1,7 @@
+import { randomUUID } from "crypto";
 import { createTransport, type Transporter } from "nodemailer";
 import { writeStructuredLog } from "../shared/structured_logging";
-import type { EmailConfig } from "./email_config";
+import { parseMailbox, type EmailConfig } from "./email_config";
 
 export interface EmailMessage {
   to: string;
@@ -85,15 +86,28 @@ function isPermanentRecipientRejection(error: unknown): boolean {
   return false;
 }
 
-/** SMTP through nodemailer, configured only from `EMAIL_SMTP_URL`. */
+/**
+ * SMTP through nodemailer, configured only from `EMAIL_SMTP_URL`.
+ *
+ * Headers that mail filters weigh are set explicitly rather than left to
+ * nodemailer's defaults: the `Message-ID` and the EHLO hostname both use the
+ * domain of the configured sender (not the container's hostname), and an
+ * optional `Reply-To` is added when configured.
+ */
 export class SmtpEmailTransport implements EmailTransport {
   private readonly transporter: Transporter;
+  /** Domain of the sender address, or `null` when it cannot be parsed. */
+  private readonly senderDomain: string | null;
 
   constructor(
     smtpUrl: string,
     private readonly from: string,
+    private readonly replyTo: string = "",
   ) {
-    this.transporter = createTransport(smtpUrl);
+    this.senderDomain = parseMailbox(from)?.domain ?? null;
+    this.transporter = this.senderDomain
+      ? createTransport({ url: smtpUrl, name: this.senderDomain })
+      : createTransport(smtpUrl);
   }
 
   async send(message: EmailMessage): Promise<EmailSendResult> {
@@ -105,6 +119,8 @@ export class SmtpEmailTransport implements EmailTransport {
         text: message.text,
         html: message.html,
         headers: message.headers,
+        ...(this.senderDomain ? { messageId: `<${randomUUID()}@${this.senderDomain}>` } : {}),
+        ...(this.replyTo ? { replyTo: this.replyTo } : {}),
       });
       return { messageId: String(info.messageId ?? "") };
     } catch (error) {
@@ -121,6 +137,6 @@ export class SmtpEmailTransport implements EmailTransport {
 /** The transport for this deployment, or `null` when email is disabled. */
 export function createEmailTransport(config: EmailConfig): EmailTransport | null {
   if (config.transportKind === "log") return new LogEmailTransport();
-  if (config.transportKind === "smtp") return new SmtpEmailTransport(config.smtpUrl, config.from);
+  if (config.transportKind === "smtp") return new SmtpEmailTransport(config.smtpUrl, config.from, config.replyTo);
   return null;
 }

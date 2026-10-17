@@ -68,6 +68,7 @@ export function emailDeliveryLogFields(result: EmailDeliveryRunResult) {
     dryRun: result.dryRun,
     enabled: result.enabled,
     fannedOutNotices: result.fannedOutNotices,
+    audienceUnresolvable: result.audienceUnresolvable,
     queued: result.queued,
     due: result.due,
     sent: result.sent,

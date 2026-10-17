@@ -1,4 +1,4 @@
-import { EmailConfig, SMTP_REQUIRED_ENV } from "../modules/email/email_config";
+import { EmailConfig, SMTP_REQUIRED_ENV, parseMailbox } from "../modules/email/email_config";
 import { LogEmailTransport, createEmailTransport } from "../modules/email/email_transport";
 import {
   signUnsubscribeToken,
@@ -90,6 +90,89 @@ describe("EmailConfig availability", () => {
   });
 });
 
+describe("parseMailbox", () => {
+  it.each([
+    ["notices@example.org", "notices@example.org", "example.org"],
+    ["Resonate <notices@Mail.Example.org>", "notices@Mail.Example.org", "mail.example.org"],
+    ['"Resonate Notices" <notices@example.org>', "notices@example.org", "example.org"],
+    ["  Name <a@b.example>  ", "a@b.example", "b.example"],
+  ])("parses %s", (value, address, domain) => {
+    expect(parseMailbox(value)).toEqual({ address, domain });
+  });
+
+  it.each([
+    "",
+    "   ",
+    "no-at-sign",
+    "a@localhost",
+    "a@b",
+    "Name <a@b>",
+    "a b@example.org",
+    "a@exa mple.org",
+    "a@example.org\r\nBcc: x@example.org",
+    "<a@example.org> trailing",
+    "a@@example.org",
+    "a@-example.org",
+  ])("rejects %j", (value) => {
+    expect(parseMailbox(value)).toBeNull();
+  });
+
+  it("returns null for undefined", () => {
+    expect(parseMailbox(undefined)).toBeNull();
+  });
+});
+
+describe("EmailConfig optional deliverability settings", () => {
+  function captureWarnings<T>(fn: () => T): { result: T; output: string } {
+    const writes: string[] = [];
+    const spies = (["info", "warn", "error", "log"] as const).map((method) =>
+      jest.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        writes.push(args.map(String).join(" "));
+      }),
+    );
+    try {
+      return { result: fn(), output: writes.join("") };
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+  }
+
+  it("leaves both empty when unset", () => {
+    const { result: config, output } = captureWarnings(() => new EmailConfig({ NODE_ENV: "production", ...SMTP_ENV }));
+    expect(config.replyTo).toBe("");
+    expect(config.footerText).toBe("");
+    expect(output).toBe("");
+  });
+
+  it("accepts a valid EMAIL_REPLY_TO, with or without a display name", () => {
+    for (const value of ["support@example.org", "Support <support@example.org>"]) {
+      const { result: config, output } = captureWarnings(() => new EmailConfig({ ...SMTP_ENV, EMAIL_REPLY_TO: value }));
+      expect(config.replyTo).toBe(value);
+      expect(output).toBe("");
+    }
+  });
+
+  it("ignores an invalid EMAIL_REPLY_TO and warns naming the variable, never the value", () => {
+    const { result: config, output } = captureWarnings(() => new EmailConfig({ ...SMTP_ENV, EMAIL_REPLY_TO: "not an address" }));
+    expect(config.replyTo).toBe("");
+    expect(config.isAvailable()).toBe(true);
+    expect(output).toContain("EMAIL_REPLY_TO");
+    expect(output).toContain('"level":"warn"');
+    expect(output).not.toContain("not an address");
+  });
+
+  it("reads EMAIL_FOOTER_TEXT, keeping line breaks, dropping other control characters and capping its length", () => {
+    expect(new EmailConfig({ ...SMTP_ENV, EMAIL_FOOTER_TEXT: "  Example Org\r\n1 Example Street\u0007  " }).footerText).toBe(
+      "Example Org\n1 Example Street",
+    );
+    expect(new EmailConfig({ ...SMTP_ENV, EMAIL_FOOTER_TEXT: "x".repeat(2000) }).footerText).toHaveLength(500);
+  });
+
+  it("passes the reply-to to the SMTP transport factory without making email unavailable", () => {
+    expect(createEmailTransport(new EmailConfig({ ...SMTP_ENV, EMAIL_REPLY_TO: "support@example.org" }))).not.toBeNull();
+  });
+});
+
 describe("email tokens", () => {
   const secret = "unit-test-signing-secret";
 
@@ -138,7 +221,7 @@ describe("renderNoticeEmail", () => {
 
   it("gives optional categories an unsubscribe link and one-click headers", () => {
     const mail = renderNoticeEmail({ ...base, category: "policy" }, settings);
-    expect(mail.subject).toBe("Hello Bcc: x@y.example");
+    expect(mail.subject).toBe("[Resonate] Hello Bcc: x@y.example");
     expect(mail.headers?.["List-Unsubscribe"]).toMatch(/^<https:\/\/api\.example\.test\/email\/unsubscribe\/one-click\?token=/);
     expect(mail.headers?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
     expect(mail.text).toContain("https://app.example.test/email/unsubscribe?token=");

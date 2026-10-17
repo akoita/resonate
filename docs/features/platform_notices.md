@@ -184,6 +184,41 @@ How it works:
   nodemailer for SMTP). See `docs/deployment/environment.md` for the variables.
   If email is not configured it is disabled, not an error.
 
+### Deliverability
+
+Notice and confirmation emails are built to read as legitimate transactional
+mail rather than a bare sentence and a link:
+
+- **Content**: a plain, table-based HTML part and a matching plain-text part
+  (same wording, same links). Each has the product name, a heading, one or two
+  sentences saying what the email is and why the person received it, a button
+  plus the full link written out underneath, and a footer with the email
+  settings link, the privacy policy link and, for optional categories, the
+  unsubscribe link. The confirmation email also states that the link works once,
+  expires in 24 hours, and that nothing is sent if it was not requested. No
+  remote images, tracking pixels, link shorteners or scripts; every
+  operator-authored value is HTML-escaped.
+- **Subjects**: notices are `[Resonate] <title>`, cut to about 78 characters,
+  one line.
+- **Headers**: every SMTP message gets an explicit `Message-ID` on the domain of
+  `EMAIL_FROM`, and the SMTP greeting (EHLO) name is that same domain instead of
+  the container's hostname. `Reply-To` is added when `EMAIL_REPLY_TO` is set.
+  Optional categories keep the RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post`
+  headers. `EMAIL_FOOTER_TEXT` adds an operator line (name, address) to the
+  footer when set.
+- **Not code**: a new sending domain starts with no reputation, so its first
+  messages may land in spam until mailbox providers see consistent,
+  wanted mail. Authentication of the sending domain (SPF, DKIM, DMARC) and
+  the reverse DNS of the sending host are deployment configuration, not part of
+  this repository.
+- **Misconfigured audiences**: a broadcast to `role:admin`, `role:operator` or
+  `role:listener` depends on the role allowlists. When the allowlist it needs
+  is empty (for `role:listener`, when all three are empty) the job logs one
+  `email.deliveries.audience_unresolvable` warning per run (notice count and
+  audience names only) and reports `audienceUnresolvable` in its run summary,
+  so an empty-looking run can be told apart from a job missing its
+  configuration. The notice is still marked as fanned out.
+
 Confirmation emails go to an address the person typed, so each account is
 limited in `ContactEmailService` (not just by the per-IP `@Throttle`, which sits
 behind the global throttle guard that runs before authentication): at least 60
