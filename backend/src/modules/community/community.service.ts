@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { normalizeUserId } from "../identity/user_id";
 import { EventBus } from "../shared/event_bus";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import {
@@ -255,7 +256,8 @@ export class CommunityService {
     });
   }
 
-  private async ensureUser(userId: string) {
+  private async ensureUser(rawUserId: string) {
+    const userId = normalizeUserId(rawUserId);
     await prisma.user.upsert({
       where: { id: userId },
       update: {},

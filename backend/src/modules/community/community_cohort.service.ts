@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { CommunityCohort, CommunityCohortMembership } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { normalizeUserId } from "../identity/user_id";
 import { EventBus } from "../shared/event_bus";
 
 const COHORT_TYPES = ["taste", "artist_affinity", "city_scene", "collector", "campaign"] as const;
@@ -234,7 +235,8 @@ export class CommunityCohortService {
     return { cohort, membership };
   }
 
-  private async ensureUser(userId: string) {
+  private async ensureUser(rawUserId: string) {
+    const userId = normalizeUserId(rawUserId);
     await prisma.user.upsert({
       where: { id: userId },
       update: {},

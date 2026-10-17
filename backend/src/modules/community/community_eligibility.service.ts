@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, ShowCampaignStatus, ShowPledgeStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { normalizeUserId } from "../identity/user_id";
 import { EventBus } from "../shared/event_bus";
 
 export const COMMUNITY_BENEFIT_TYPES = [
@@ -584,7 +585,8 @@ export class CommunityEligibilityService {
     };
   }
 
-  private async ensureUser(userId: string) {
+  private async ensureUser(rawUserId: string) {
+    const userId = normalizeUserId(rawUserId);
     await prisma.user.upsert({
       where: { id: userId },
       update: {},

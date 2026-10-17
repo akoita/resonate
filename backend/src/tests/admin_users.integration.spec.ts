@@ -550,4 +550,47 @@ describe("AdminUsersService (integration)", () => {
       expect(await prisma.adminAuditEvent.count({ where: { actorUserId: ID.admin } })).toBe(before);
     });
   });
+  describe("possible duplicates (#2180)", () => {
+    const LOWER = `${TEST_PREFIX}dupe`;
+    const MIXED = `${TEST_PREFIX}Dupe`;
+
+    beforeAll(async () => {
+      await prisma.user.createMany({
+        data: [
+          { id: LOWER, email: `${LOWER}@test.resonate` },
+          { id: MIXED, email: `${MIXED}@test.resonate` },
+        ],
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.adminAuditEvent.deleteMany({ where: { targetUserId: { in: [LOWER, MIXED] } } });
+      await prisma.user.deleteMany({ where: { id: { in: [LOWER, MIXED] } } });
+    });
+
+    it("flags both case variants, and no other account", async () => {
+      const lower = (await service.list({ q: LOWER, pageSize: 100 } as any)).items;
+      const mixed = (await service.list({ q: MIXED, pageSize: 100 } as any)).items;
+      expect(lower.map((row) => [row.id, row.possibleDuplicate])).toEqual([[LOWER, true]]);
+      expect(mixed.map((row) => [row.id, row.possibleDuplicate])).toEqual([[MIXED, true]]);
+      const page = await scoped();
+      expect(page.items.length).toBeGreaterThan(0);
+      expect(page.items.every((row) => row.possibleDuplicate === false)).toBe(true);
+    });
+
+    it("computes the flag for the whole page in one query", async () => {
+      const spy = jest.spyOn(prisma, "$queryRaw");
+      try {
+        await scoped();
+        expect(spy).toHaveBeenCalledTimes(1);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("is on the detail record too", async () => {
+      expect((await service.detail(ID.admin, MIXED)).possibleDuplicate).toBe(true);
+      expect((await service.detail(ID.admin, ID.alice)).possibleDuplicate).toBe(false);
+    });
+  });
 });

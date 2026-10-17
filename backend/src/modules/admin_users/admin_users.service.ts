@@ -36,6 +36,8 @@ export type AdminUserRow = {
   artistName: string | null;
   accountStatus: AdminUserStatus;
   counts: { purchases: number; pledges: number; releases: number };
+  /** #2180: another user's id equals this one under lowercase (a case-variant duplicate). */
+  possibleDuplicate: boolean;
 };
 
 export type AdminUsersPage = { items: AdminUserRow[]; page: number; pageSize: number; total: number };
@@ -189,9 +191,12 @@ export class AdminUsersService {
       }),
     ]);
 
-    const counts = await this.countsFor(users);
+    const [counts, duplicates] = await Promise.all([
+      this.countsFor(users),
+      this.duplicateKeysFor(users),
+    ]);
     return {
-      items: users.map((user) => this.toRow(user, counts.get(user.id), allowlists, now)),
+      items: users.map((user) => this.toRow(user, counts.get(user.id), allowlists, now, duplicates)),
       page,
       pageSize,
       total,
@@ -224,9 +229,10 @@ export class AdminUsersService {
     const addresses = this.walletAddresses(user);
     const purchaseAddresses = purchaseAddressVariants(addresses);
 
-    const [counts, passkeyCount, recentPurchases, recentPledges, recentReleases, noticesReceived, actions, closure] =
+    const [counts, duplicates, passkeyCount, recentPurchases, recentPledges, recentReleases, noticesReceived, actions, closure] =
       await Promise.all([
         this.countsFor([user]),
+        this.duplicateKeysFor([user]),
         prisma.passkeyIdentity.count({ where: { userId: user.id } }),
         purchaseAddresses.length
           ? prisma.stemPurchase.findMany({
@@ -278,7 +284,7 @@ export class AdminUsersService {
         }),
       ]);
 
-    const row = this.toRow(user, counts.get(user.id), allowlists, now);
+    const row = this.toRow(user, counts.get(user.id), allowlists, now, duplicates);
     const status = effectiveStatus(user.accountStatus, user.accountStatusUntil, now);
     const restricted = status !== "active";
     return {
@@ -483,11 +489,29 @@ export class AdminUsersService {
     return result;
   }
 
+  /**
+   * Lowercased ids, among the given page, that more than one `User` shares
+   * (#2180). One scan of `User` for the whole page; no per-row lookups.
+   */
+  private async duplicateKeysFor(users: RowRecord[]): Promise<Set<string>> {
+    const keys = [...new Set(users.map((u) => u.id.toLowerCase()))];
+    if (keys.length === 0) return new Set();
+    const rows = await prisma.$queryRaw<Array<{ key: string }>>(Prisma.sql`
+      SELECT lower(id) AS key
+      FROM "User"
+      WHERE lower(id) = ANY(${keys}::text[])
+      GROUP BY lower(id)
+      HAVING count(*) > 1
+    `);
+    return new Set(rows.map((row) => row.key));
+  }
+
   private toRow(
     user: RowRecord,
     counts: Counts | undefined,
     allowlists: Allowlists,
     now: Date,
+    duplicates: Set<string> = new Set(),
   ): AdminUserRow {
     const addresses = new Set([user.id.toLowerCase(), ...this.walletAddresses(user)]);
     const roles: AdminUserRole[] = [];
@@ -505,6 +529,7 @@ export class AdminUsersService {
       artistName: user.artist?.displayName ?? null,
       accountStatus: effectiveStatus(user.accountStatus, user.accountStatusUntil, now),
       counts: counts ?? { purchases: 0, pledges: 0, releases: 0 },
+      possibleDuplicate: duplicates.has(user.id.toLowerCase()),
     };
   }
 }

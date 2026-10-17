@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { prisma } from "../../db/prisma";
 import { AuditService } from "../audit/audit.service";
 import { parseEnvList } from "../../config/env";
+import { normalizeUserId } from "../identity/user_id";
 
 @Injectable()
 export class AuthService {
@@ -12,7 +13,8 @@ export class AuthService {
     private readonly auditService: AuditService
   ) { }
 
-  issueToken(userId: string, role = "listener") {
+  issueToken(rawUserId: string, role = "listener") {
+    const userId = normalizeUserId(rawUserId);
     const allowedRole = this.resolveRole(userId, role);
     console.log(`[Auth] Issuing token for ${userId} with role ${allowedRole}`);
     const token = this.jwtService.sign({ sub: userId, role: allowedRole });
