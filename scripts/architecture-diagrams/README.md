@@ -1,9 +1,8 @@
 # Architecture diagrams
 
 Generators for the two architecture SVGs in `docs/architecture/`. Both use the
-Obsidian Frequency colour roles (`web/src/styles/tokens.css`), deepened for a
-light canvas, and carry their own background so they read the same in GitHub's
-light and dark themes.
+Obsidian Frequency palette (`web/src/styles/tokens.css`) and carry their own
+dark background, so they read the same in GitHub's light and dark themes.
 
 | Script | Output |
 | --- | --- |

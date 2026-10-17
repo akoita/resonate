@@ -1,7 +1,6 @@
 """Tiny SVG builder for the Resonate architecture diagrams.
 
-Accents follow the Obsidian Frequency roles in web/src/styles/tokens.css, deepened
-for a light canvas. Standard library only.
+Colours follow the Obsidian Frequency tokens in web/src/styles/tokens.css. Standard library only.
 """
 from xml.sax.saxutils import escape
 
@@ -9,27 +8,25 @@ SANS = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helv
 MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
 
 # Domain accents (Obsidian Frequency tokens + semantic tokens)
-# Light canvas; accents are deepened brand/semantic hues so text and strokes
-# keep WCAG AA contrast on white.
 ACC = {
-    "edge": "#2563EB",      # info blue
-    "platform": "#6D4AFF",  # brand violet (--r-primary, deepened)
-    "agent": "#9333EA",     # agent violet
-    "sound": "#E04A26",     # coral ember (--r-play, deepened)
-    "data": "#047857",      # success green
-    "analytics": "#B45309", # warning amber
-    "chain": "#4338CA",     # on-chain indigo
-    "pay": "#BE185D",       # settlement pink
-    "ops": "#55617A",       # slate
+    "edge": "#60A5FA",      # --r-info
+    "platform": "#9880FF",  # brand violet (light stop)
+    "agent": "#A78BFA",     # electric violet, lifted for contrast
+    "sound": "#FF8F6B",     # coral ember (mid stop)
+    "data": "#34D399",      # --r-success
+    "analytics": "#FBBF24", # --r-warning
+    "chain": "#C4B5FD",     # lavender
+    "pay": "#F472B6",       # settlement pink
+    "ops": "#94A3B8",       # slate
 }
 
-TEXT = "#17142B"
-MUTED = "#4E4868"
-FAINT = "#7A7496"
-SURF_LOW = "#FFFFFF"   # zones
-SURF = "#FFFFFF"       # cards
-SURF_HI = "#F6F4FE"    # inner panels and bars
-LINE = "#E2DEF0"
+TEXT = "#F4F2FF"
+MUTED = "#A9A3C9"
+FAINT = "#6F6A8F"
+SURF_LOW = "#11101E"
+SURF = "#161427"
+SURF_HI = "#1D1B32"
+LINE = "#2A2745"
 
 
 class Svg:
@@ -59,7 +56,7 @@ class Svg:
     def zone(self, x, y, w, h, kicker, title, acc, note=None):
         """Large grouping region with a kicker + title header."""
         self.rect(x, y, w, h, rx=22, fill=SURF_LOW, stroke=LINE, sw=1.2,
-                  extra='fill-opacity="0.78" filter="url(#zoneShadow)"')
+                  extra='fill-opacity="0.82"')
         self.rect(x + 22, y + 22, 8, 8, rx=2, fill=acc, stroke="none")
         self.text(x + 40, y + 30, kicker.upper(), size=11, color=acc, weight=700, spacing="1.6")
         self.text(x + 22, y + 56, title, size=19, weight=750)
@@ -68,7 +65,7 @@ class Svg:
 
     def box(self, x, y, w, h, title, acc, lines=(), mono=True, size=10.8, title_size=14):
         """Tinted box with a centred title on top and centred detail lines."""
-        self.rect(x, y, w, h, rx=9, fill=acc, stroke=acc, sw=1, extra='fill-opacity="0.07" stroke-opacity="0.38"')
+        self.rect(x, y, w, h, rx=9, fill=acc, stroke=acc, sw=1, extra='fill-opacity="0.11" stroke-opacity="0.5"')
         self.text(x + w / 2, y + 24, title, size=title_size, weight=700, anchor="middle")
         for i, ln in enumerate(lines):
             self.text(x + w / 2, y + 46 + i * 17, ln, size=size, color=MUTED, weight=550, anchor="middle", mono=mono)
@@ -78,7 +75,7 @@ class Svg:
         if glow:
             self.rect(x - 3, y - 3, w + 6, h + 6, rx=17, fill="none", stroke=acc, sw=1,
                       extra='stroke-opacity="0.25"')
-        self.rect(x, y, w, h, rx=14, fill=SURF, stroke=acc, sw=1, extra='stroke-opacity="0.32" filter="url(#cardShadow)"')
+        self.rect(x, y, w, h, rx=14, fill=SURF, stroke=acc, sw=1, extra='stroke-opacity="0.42"')
         self.add(f'<path d="M{x+1} {y+14} a13 13 0 0 1 13 -13 h{w*0.38} " stroke="{acc}" stroke-width="2.4" '
                  f'stroke-linecap="round" fill="none" opacity="0.9"/>')
         tx = x + 16
@@ -95,7 +92,7 @@ class Svg:
 
     def chip(self, x, y, w, label, acc, h=30, sub=None, center=True, mono=False, size=12.5):
         self.rect(x, y, w, h, rx=9, fill=acc, stroke=acc, sw=1,
-                  extra='fill-opacity="0.07" stroke-opacity="0.38"')
+                  extra='fill-opacity="0.11" stroke-opacity="0.5"')
         if sub:
             self.text(x + (w / 2 if center else 12), y + h / 2 - 2, label, size=size, weight=650,
                       anchor="middle" if center else "start", mono=mono)
@@ -117,7 +114,7 @@ class Svg:
     def label(self, x, y, s, acc, anchor="middle"):
         w = len(s) * 6.3 + 14
         rx = x - w / 2 if anchor == "middle" else (x if anchor == "start" else x - w)
-        self.rect(rx, y - 12, w, 18, rx=9, fill="#FFFFFF", stroke=acc, sw=1,
+        self.rect(rx, y - 12, w, 18, rx=9, fill="#0B0A16", stroke=acc, sw=1,
                   extra='stroke-opacity="0.55"', top=True)
         self.text(rx + w / 2, y + 1, s, size=10.5, color=acc, weight=650, anchor="middle", mono=True, top=True)
 
@@ -136,33 +133,27 @@ class Svg:
   <desc id="desc">{escape(self.desc)}</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="{w}" y2="{h}" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#F4F1FF"/><stop offset="0.55" stop-color="#FAF9FD"/><stop offset="1" stop-color="#FFF6F2"/>
+      <stop offset="0" stop-color="#0D0B1C"/><stop offset="0.55" stop-color="#08080F"/><stop offset="1" stop-color="#0C0912"/>
     </linearGradient>
     <radialGradient id="auraV" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate({w*0.18} {h*0.02}) scale({w*0.42} {h*0.42})">
-      <stop offset="0" stop-color="#7C5CFF" stop-opacity="0.12"/><stop offset="1" stop-color="#7C5CFF" stop-opacity="0"/>
+      <stop offset="0" stop-color="#7C5CFF" stop-opacity="0.30"/><stop offset="1" stop-color="#7C5CFF" stop-opacity="0"/>
     </radialGradient>
     <radialGradient id="auraC" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate({w*0.92} {h*1.0}) scale({w*0.36} {h*0.40})">
-      <stop offset="0" stop-color="#FF6B4A" stop-opacity="0.08"/><stop offset="1" stop-color="#FF6B4A" stop-opacity="0"/>
+      <stop offset="0" stop-color="#FF6B4A" stop-opacity="0.16"/><stop offset="1" stop-color="#FF6B4A" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#7C5CFF"/><stop offset="0.6" stop-color="#A085FF"/><stop offset="1" stop-color="#FF8F6B"/>
     </linearGradient>
     <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-      <circle cx="1" cy="1" r="0.9" fill="#2B2460" fill-opacity="0.07"/>
+      <circle cx="1" cy="1" r="0.9" fill="#FFFFFF" fill-opacity="0.045"/>
     </pattern>
-    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#2B2460" flood-opacity="0.07"/>
-    </filter>
-    <filter id="zoneShadow" x="-5%" y="-5%" width="110%" height="115%">
-      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#2B2460" flood-opacity="0.06"/>
-    </filter>
     {markers}
   </defs>
   <rect width="{w}" height="{h}" rx="28" fill="url(#bg)"/>
   <rect width="{w}" height="{h}" rx="28" fill="url(#grid)"/>
   <rect width="{w}" height="{h}" rx="28" fill="url(#auraV)"/>
   <rect width="{w}" height="{h}" rx="28" fill="url(#auraC)"/>
-  <rect x="0.5" y="0.5" width="{w-1}" height="{h-1}" rx="27.5" fill="none" stroke="#E2DEF0"/>
+  <rect x="0.5" y="0.5" width="{w-1}" height="{h-1}" rx="27.5" fill="none" stroke="#2A2745"/>
 '''
         return head + "\n".join("  " + s for s in self.body + self.top) + "\n</svg>\n"
 
