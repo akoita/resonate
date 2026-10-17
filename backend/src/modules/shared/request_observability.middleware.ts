@@ -32,8 +32,13 @@ export function requestObservabilityMiddleware() {
   };
 }
 
-function requestPath(req: Request): string {
-  return req.path || req.url.split("?")[0] || "/";
+/** Path segments that are credentials (#2177: the SNS bounce route's token) are never logged. */
+const SECRET_PATH_SEGMENTS: ReadonlyArray<[RegExp, string]> = [[/^(\/email\/webhook\/sns\/)[^/]+/, "$1:token"]];
+
+export function requestPath(req: Pick<Request, "path" | "url">): string {
+  let path = req.path || req.url.split("?")[0] || "/";
+  for (const [pattern, replacement] of SECRET_PATH_SEGMENTS) path = path.replace(pattern, replacement);
+  return path;
 }
 
 function resolvePaymentHeaderType(req: Request): "payment-signature" | "x-payment" | null {

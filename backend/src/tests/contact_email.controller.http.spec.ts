@@ -14,6 +14,7 @@ import { ContactEmailService } from "../modules/email/contact_email.service";
 import { EmailConfig } from "../modules/email/email_config";
 import { EmailDeliveryService } from "../modules/email/email_delivery.service";
 import { EmailPublicController } from "../modules/email/email_public.controller";
+import { EmailSnsService } from "../modules/email/email_sns.service";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
 
 const STATE = {
@@ -53,6 +54,8 @@ describe("Email notices (http)", () => {
     { provide: ContactEmailService, useValue: mockContacts },
     { provide: EmailDeliveryService, useValue: mockDelivery },
     { provide: EmailConfig, useValue: { webhookSecret } },
+    // The SNS route has its own spec (email_sns.controller.http.spec.ts).
+    { provide: EmailSnsService, useValue: {} },
     { provide: AccountStatusService, useValue: mockAccounts },
     { provide: APP_INTERCEPTOR, useClass: AccountStatusInterceptor },
   ];

@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { requestObservabilityMiddleware } from "../modules/shared/request_observability.middleware";
+import { requestObservabilityMiddleware, requestPath } from "../modules/shared/request_observability.middleware";
 import { normalizeRequestId, redactForLog, writeStructuredLog } from "../modules/shared/structured_logging";
 
 describe("request observability middleware", () => {
@@ -44,6 +44,15 @@ describe("request observability middleware", () => {
     expect(JSON.stringify(payload)).not.toContain("Bearer secret");
 
     info.mockRestore();
+  });
+
+  it("never logs the SNS bounce route's path token (#2177)", () => {
+    const token = "k".repeat(48);
+    expect(requestPath({ path: `/email/webhook/sns/${token}`, url: `/email/webhook/sns/${token}` })).toBe(
+      "/email/webhook/sns/:token",
+    );
+    expect(requestPath({ path: "", url: `/email/webhook/sns/${token}?x=1` })).toBe("/email/webhook/sns/:token");
+    expect(requestPath({ path: "/email/webhook", url: "/email/webhook" })).toBe("/email/webhook");
   });
 
   it("generates a request ID when the inbound value is missing or unusable", () => {
