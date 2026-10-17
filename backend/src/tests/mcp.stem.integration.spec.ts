@@ -430,7 +430,11 @@ describe("McpStemService (integration)", () => {
     expect(settled).toHaveLength(1);
     expect(settled[0]).toEqual(
       expect.objectContaining({
-        settlementKey: x402DirectPurchaseSettlementKey(event.transactionHash, 0),
+        settlementKey: x402DirectPurchaseSettlementKey({
+          paymentProofSha256: (event.args as { paymentProofSha256: string }).paymentProofSha256,
+          transactionHash: event.transactionHash,
+          logIndex: 0,
+        }),
         paymentId: event.id,
         rail: "x402",
         paymentRail: "mcp",

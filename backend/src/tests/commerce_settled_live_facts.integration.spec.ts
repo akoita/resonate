@@ -312,12 +312,20 @@ describe('#1894 live commerce.settled facts', () => {
           paymentAssetId: 'base-sepolia:usdc',
           paymentAssetSymbol: 'USDC',
           paymentAssetDecimals: 6,
+          paymentProofSha256: `${P}proof_${suffix}`,
           ...args,
         },
         processedAt: new Date(),
       },
     });
   }
+
+  const directKey = (row: { args: unknown; transactionHash: string }) =>
+    x402DirectPurchaseSettlementKey({
+      paymentProofSha256: (row.args as { paymentProofSha256?: string }).paymentProofSha256,
+      transactionHash: row.transactionHash,
+      logIndex: 0,
+    });
 
   it('emits one fact per direct agent or MCP x402 purchase, idempotently (#2144)', async () => {
     const agent = await seedDirectPurchase('agent', { source: 'agent_payment_router', userId: buyerUserId });
@@ -326,12 +334,12 @@ describe('#1894 live commerce.settled facts', () => {
     for (const row of [agent, mcp]) {
       const load = () => loadX402DirectPurchaseCommerceSettled({ transactionHash: row.transactionHash, logIndex: 0 });
       await publishCommerceSettled(eventBus, load, logger, 'test');
-      expect(await waitForEvent(commerceSettledEventId(x402DirectPurchaseSettlementKey(row.transactionHash, 0)))).not.toBeNull();
+      expect(await waitForEvent(commerceSettledEventId(directKey(row)))).not.toBeNull();
       await publishCommerceSettled(eventBus, load, logger, 'test');
     }
     await wait(500);
 
-    const agentFacts = await settledFactsFor(x402DirectPurchaseSettlementKey(agent.transactionHash, 0));
+    const agentFacts = await settledFactsFor(directKey(agent));
     expect(agentFacts).toHaveLength(1);
     expect(agentFacts[0].actorId).toBe(pseudonymousAnalyticsActorId(buyerUserId));
     expect(agentFacts[0].payload).toMatchObject({
@@ -349,19 +357,41 @@ describe('#1894 live commerce.settled facts', () => {
       canonicalAmountUsd: 2,
     });
 
-    const mcpFacts = await settledFactsFor(x402DirectPurchaseSettlementKey(mcp.transactionHash, 0));
+    const mcpFacts = await settledFactsFor(directKey(mcp));
     expect(mcpFacts).toHaveLength(1);
     expect(mcpFacts[0].actorId).toBeNull();
     expect(mcpFacts[0].payload).toMatchObject({ paymentRail: 'mcp', artistId, amountUsd: 2 });
 
     const payout = await payoutViewFor(
-      [agent, mcp].map((row) => commerceSettledEventId(x402DirectPurchaseSettlementKey(row.transactionHash, 0))),
+      [agent, mcp].map((row) => commerceSettledEventId(directKey(row))),
     );
     // Both sales land in the artist's daily payout row.
     expect(payout).toHaveLength(1);
     expect(payout[0].eventCount).toBe(2);
     expect(payout[0].payoutUsd).toBe(4);
     expect(logger.warn).not.toHaveBeenCalled();
+  }, 20000);
+
+  it('counts a replayed payment proof once, and not at all when the HTTP x402 rail recorded it (#2144)', async () => {
+    // Each MCP call writes its own ContractEvent; the same proof must stay one sale.
+    const first = await seedDirectPurchase('replay_1', { source: 'mcp', paymentProofSha256: `${P}proof_replayed` });
+    const second = await seedDirectPurchase('replay_2', { source: 'mcp', paymentProofSha256: `${P}proof_replayed` });
+    expect(directKey(first)).toBe(directKey(second));
+    for (const row of [first, second]) {
+      await publishCommerceSettled(
+        eventBus,
+        () => loadX402DirectPurchaseCommerceSettled({ transactionHash: row.transactionHash, logIndex: 0 }),
+        logger,
+        'test',
+      );
+    }
+    expect(await waitForEvent(commerceSettledEventId(directKey(first)))).not.toBeNull();
+    await wait(500);
+    expect(await settledFactsFor(directKey(first))).toHaveLength(1);
+
+    await seedX402Settlement('http_redeemed', { paymentProofSha256: `${P}proof_http` });
+    const sameProof = await seedDirectPurchase('http_reuse', { source: 'mcp', paymentProofSha256: `${P}proof_http` });
+    expect(await loadX402DirectPurchaseCommerceSettled({ transactionHash: sameProof.transactionHash, logIndex: 0 })).toBeNull();
   }, 20000);
 
   it('emits no direct-purchase fact for other x402.purchase rows, which their own rail counts (#2144)', async () => {

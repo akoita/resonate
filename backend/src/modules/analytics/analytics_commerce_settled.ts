@@ -38,8 +38,19 @@ export function x402CommerceSettlementKey(settlementId: string) {
   return `commerce.settled:x402:${settlementId}`;
 }
 
-export function x402DirectPurchaseSettlementKey(transactionHash: string, logIndex: number) {
-  return `commerce.settled:x402_direct:${transactionHash}:${logIndex}`;
+/**
+ * Keyed on the payment (the SHA-256 of its proof), not on the request: the
+ * direct rails write a new ContractEvent per call, so replaying one proof must
+ * still land on one fact. Rows without a proof digest fall back to the row.
+ */
+export function x402DirectPurchaseSettlementKey(input: {
+  paymentProofSha256?: string;
+  transactionHash: string;
+  logIndex: number;
+}) {
+  return input.paymentProofSha256
+    ? `commerce.settled:x402_direct:proof:${input.paymentProofSha256}`
+    : `commerce.settled:x402_direct:${input.transactionHash}:${input.logIndex}`;
 }
 
 /** `x402.purchase` ContractEvent sources that settle directly, outside the marketplace contract (#2144). */
@@ -232,6 +243,13 @@ export async function loadX402DirectPurchaseCommerceSettled(input: {
   const source = stringArg(args, "source");
   if (!source || !X402_DIRECT_PURCHASE_SOURCES.has(source)) return null;
 
+  // The same payment already recorded by the HTTP x402 rail is counted there.
+  const paymentProofSha256 = stringArg(args, "paymentProofSha256");
+  if (paymentProofSha256) {
+    const redeemed = await prisma.x402Settlement.findUnique({ where: { paymentProofSha256 }, select: { id: true } });
+    if (redeemed) return null;
+  }
+
   const stemId = stringArg(args, "stemId");
   const stem = stemId
     ? await prisma.stem.findUnique({
@@ -246,7 +264,11 @@ export async function loadX402DirectPurchaseCommerceSettled(input: {
     eventName: "commerce.settled",
     eventVersion: 1,
     occurredAt: (row.processedAt ?? row.createdAt).toISOString(),
-    settlementKey: x402DirectPurchaseSettlementKey(row.transactionHash, row.logIndex),
+    settlementKey: x402DirectPurchaseSettlementKey({
+      paymentProofSha256,
+      transactionHash: row.transactionHash,
+      logIndex: row.logIndex,
+    }),
     paymentId: row.id,
     rail: "x402",
     paymentRail: source,

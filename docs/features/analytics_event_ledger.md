@@ -367,9 +367,12 @@ The agent rail's buyer is the signed-in user; MCP callers are anonymous, so
 those facts have no actor. Each fact's eventId comes from an idempotency key
 (`commerce.settled:marketplace:<chainId>:<txHash>:<logIndex>`,
 `commerce.settled:x402:<settlementId>` or
-`commerce.settled:x402_direct:<txHash>:<logIndex>`), so a replayed Sold log or a
-repeated emission upserts the same row. Agent and MCP purchases made before
-#2144 are not backfilled. The payload carries the gross amount and asset,
+`commerce.settled:x402_direct:proof:<paymentProofSha256>`), so a replayed Sold
+log or a repeated emission upserts the same row. The direct rails write a new
+ContractEvent per call, so their key is the payment proof's digest, not the
+row: replaying one proof counts one sale, and a proof the HTTP x402 rail already
+recorded as an `X402Settlement` is not counted again. Agent and MCP purchases
+made before #2144 are not backfilled. The payload carries the gross amount and asset,
 rail, stem/moment, track, release, artist, license tier, and a pseudonymous
 buyer actor id (the owning user when the wallet is known, otherwise the hashed
 address; raw wallet addresses are never stored). `amountUsd` and

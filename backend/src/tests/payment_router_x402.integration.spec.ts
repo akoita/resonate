@@ -267,7 +267,11 @@ describe("PaymentRouterService x402 rail (integration)", () => {
     expect(settled).toHaveLength(1);
     expect(settled[0]).toEqual(
       expect.objectContaining({
-        settlementKey: x402DirectPurchaseSettlementKey(result.txHash!, 0),
+        settlementKey: x402DirectPurchaseSettlementKey({
+          paymentProofSha256: (event!.args as { paymentProofSha256: string }).paymentProofSha256,
+          transactionHash: result.txHash!,
+          logIndex: 0,
+        }),
         paymentId: event!.id,
         rail: "x402",
         paymentRail: "agent_payment_router",
