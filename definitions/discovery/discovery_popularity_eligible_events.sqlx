@@ -1,0 +1,140 @@
+config {
+  type: "view",
+  name: require("includes/discovery_popularity_config").eligibleEventsTableName(dataform.projectConfig),
+  tags: ["discovery_popularity", "internal"],
+  description: "Trusted, consent-qualified 30-day engagement events for popularity marts; actor IDs remain warehouse-only.",
+}
+
+/*
+ * Cost: clean facts are filtered by their occurredDate partition and the raw
+ * consent-basis lookup is bounded by occurredAt. Physical raw-table pruning
+ * requires the configured events_raw table to be partitioned by occurredAt;
+ * verify that partition and dry-run bytes before enabling warehouse refreshes.
+ * The serving exporter reads only the two materialized marts, never this view.
+ */
+WITH raw_basis AS (
+  SELECT
+    eventId,
+    IF(
+      COUNT(DISTINCT JSON_VALUE(envelope, '$.consentBasis')) = 1,
+      ANY_VALUE(JSON_VALUE(envelope, '$.consentBasis')),
+      NULL
+    ) AS consent_basis
+  FROM ${require("includes/discovery_popularity_config").rawTableRef(dataform.projectConfig)}
+  WHERE occurredAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND occurredAt <= CURRENT_TIMESTAMP()
+  GROUP BY eventId
+),
+candidate AS (
+  SELECT
+    c.eventId AS event_id,
+    c.eventName AS event_name,
+    TIMESTAMP(c.occurredAt) AS occurred_at,
+    CAST(c.trackId AS STRING) AS track_id,
+    CAST(c.creditedArtistId AS STRING) AS clean_credited_artist_id,
+    CAST(c.actorId AS STRING) AS actor_id,
+    COALESCE(NULLIF(TRIM(JSON_VALUE(c.payload, '$.genre')), ''), '') AS genre,
+    UPPER(JSON_VALUE(c.payload, '$.aiDisclosureLevel')) AS ai_disclosure_level,
+    SAFE_CAST(JSON_VALUE(c.payload, '$.selfEngagement') AS BOOL) AS self_engagement,
+    SAFE_CAST(JSON_VALUE(c.payload, '$.completionRatio') AS FLOAT64) AS completion_ratio,
+    JSON_VALUE(c.payload, '$.paymentId') AS payment_id,
+    COALESCE(
+      JSON_VALUE(c.payload, '$.txHash'),
+      JSON_VALUE(c.payload, '$.transactionHash')
+    ) AS transaction_hash,
+    JSON_VALUE(c.payload, '$.status') AS purchase_status,
+    JSON_VALUE_ARRAY(c.payload, '$.creditedArtistIds') AS credited_artist_ids,
+    c.payload AS payload,
+    raw_basis.consent_basis
+  FROM ${require("includes/discovery_popularity_config").cleanTableRef(dataform.projectConfig)} AS c
+  INNER JOIN raw_basis USING (eventId)
+  WHERE c.occurredDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND TIMESTAMP(c.occurredAt) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND c.eventName IN (
+      'playback.completed',
+      'library.saved',
+      'playlist.track_added',
+      'commerce.settled',
+      'payment.settled',
+      'x402.purchase',
+      'agent.purchase_completed'
+    )
+    AND c.privacyTier = 'pseudonymous'
+    AND REGEXP_CONTAINS(TRIM(CAST(c.actorId AS STRING)), r'^user_[0-9a-fA-F]{32}$')
+    AND TIMESTAMP(c.occurredAt) <= CURRENT_TIMESTAMP()
+),
+trusted AS (
+  SELECT *
+  FROM candidate
+  WHERE self_engagement IS FALSE
+    AND ai_disclosure_level IN ('NONE', 'PARTLY', 'UNDECLARED')
+    AND (
+      (event_name IN ('playback.completed', 'library.saved', 'playlist.track_added') AND consent_basis = 'consent')
+      OR (
+        event_name IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed')
+        AND consent_basis IN ('contract', 'performance_of_contract')
+      )
+    )
+    AND (
+      event_name != 'playback.completed'
+      OR completion_ratio BETWEEN 0 AND 1.5
+    )
+    AND (
+      event_name NOT IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed')
+      OR (
+        event_name != 'payment.settled'
+        OR LOWER(COALESCE(purchase_status, '')) = 'settled'
+      )
+    )
+),
+signals AS (
+  SELECT
+    *,
+    CASE
+      WHEN event_name = 'playback.completed' THEN 'play'
+      WHEN event_name IN ('library.saved', 'playlist.track_added') THEN 'save'
+      ELSE 'purchase'
+    END AS signal_kind,
+    CASE
+      WHEN event_name IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed') THEN
+        COALESCE(NULLIF(TRIM(payment_id), ''), NULLIF(TRIM(transaction_hash), ''), NULLIF(TRIM(JSON_VALUE(payload, '$.receiptId')), ''))
+      ELSE event_id
+    END AS signal_id
+  FROM trusted
+),
+deduplicated AS (
+  SELECT *
+  FROM signals
+  WHERE signal_kind != 'purchase' OR NULLIF(TRIM(signal_id), '') IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY track_id, signal_kind, signal_id
+    ORDER BY occurred_at DESC, event_id DESC
+  ) = 1
+)
+SELECT
+  event_id,
+  event_name,
+  occurred_at,
+  track_id,
+  COALESCE(
+    ARRAY(
+      SELECT DISTINCT NULLIF(TRIM(artist_id), '')
+      FROM UNNEST(IF(
+        COALESCE(ARRAY_LENGTH(credited_artist_ids), 0) > 0,
+        credited_artist_ids,
+        [clean_credited_artist_id]
+      )) AS artist_id
+      WHERE NULLIF(TRIM(artist_id), '') IS NOT NULL
+    ),
+    ARRAY<STRING>[]
+  ) AS credited_artist_ids,
+  actor_id,
+  genre,
+  signal_kind,
+  signal_id,
+  self_engagement,
+  ai_disclosure_level,
+  consent_basis,
+  IF(signal_kind = 'play', completion_ratio, NULL) AS completion_ratio
+FROM deduplicated
+WHERE NULLIF(TRIM(track_id), '') IS NOT NULL

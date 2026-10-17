@@ -1,0 +1,16 @@
+config {
+  type: "table",
+  name: require("includes/discovery_popularity_config").snapshotTableName(dataform.projectConfig),
+  tags: ["discovery_popularity", "serving"],
+  description: "Freshness and row counts for the completed discovery popularity mart build, including an empty-result sentinel.",
+}
+
+/*
+ * This action references both marts so Dataform completes their rebuilds before
+ * writing the snapshot sentinel. It provides a trustworthy timestamp even
+ * when either serving mart has no qualifying audience rows.
+ */
+SELECT
+  CURRENT_TIMESTAMP() AS computed_at,
+  (SELECT COUNT(*) FROM ${ref(require("includes/discovery_popularity_config").trackPopularityTableName(dataform.projectConfig))}) AS track_rows,
+  (SELECT COUNT(*) FROM ${ref(require("includes/discovery_popularity_config").artistEngagementTableName(dataform.projectConfig))}) AS artist_rows

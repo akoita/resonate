@@ -1,0 +1,20 @@
+config {
+  type: "assertion",
+  tags: ["agent_taste", "freshness"],
+  dependencies: [require("includes/agent_taste_config").scoresTableName(dataform.projectConfig)]
+}
+
+SELECT
+  'empty_score_table' AS reason,
+  NULL AS newest_score_at
+WHERE NOT EXISTS (
+  SELECT 1 FROM ${ref(require("includes/agent_taste_config").scoresTableName(dataform.projectConfig))}
+)
+
+UNION ALL
+
+SELECT
+  'stale_score_table' AS reason,
+  MAX(updated_at) AS newest_score_at
+FROM ${ref(require("includes/agent_taste_config").scoresTableName(dataform.projectConfig))}
+HAVING TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(updated_at), HOUR) > ${require("includes/agent_taste_config").freshnessHours(dataform.projectConfig)}
