@@ -80,6 +80,11 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    on class DTOs only (no whitelist, no transform); interface-typed bodies are not
    validated by it, so their services must validate input. Cover new DTO
    constraints with `400` cases in the matching `*.controller.http.spec.ts`.
+   New request bodies use class DTOs (#1890). The `@Body()` type must be the
+   class itself: an intersection or inline type compiles to `Object` and is
+   skipped. A route that authenticates inside the handler (an internal-key
+   header, for example) validates its body inline after that check, because a
+   DTO would answer `400` before the caller is authenticated.
 
 8. **Controller HTTP apps mirror production guards.** `createControllerTestApp`
    in `src/tests/e2e-helpers.ts` registers the global `RolesGuard` exactly as

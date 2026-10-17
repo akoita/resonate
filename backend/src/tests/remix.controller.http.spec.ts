@@ -672,4 +672,47 @@ describe('RemixController (e2e)', () => {
       .expect(200);
     expect(mockRemixService.getRemix).toHaveBeenCalledWith('rmx-1');
   });
+
+  // ----- Body validation (#1890) -----
+
+  it('rejects wrongly typed project bodies with 400 before the service runs', async () => {
+    const auth = { Authorization: `Bearer ${token}` };
+    const create = { sourceTrackId: 'trk-1', stemIds: ['stem-1'], title: 'My remix' };
+
+    for (const body of [
+      { ...create, title: 42 },
+      { ...create, stemIds: 'stem-1' },
+      { ...create, stemIds: [1] },
+      { ...create, stemIds: [] },
+      { ...create, prompt: { text: 'x' } },
+    ]) {
+      await request(app.getHttpServer()).post('/remix/projects').set(auth).send(body).expect(400);
+    }
+    for (const body of [
+      { title: 7 },
+      { prompt: ['x'] },
+      { stems: { stemId: 'stem-1' } },
+      { stems: [{ stemId: 'stem-1', muted: 'yes' }] },
+      { stems: [{ stemId: 'stem-1', role: 3 }] },
+      { addStemIds: { a: 1 } },
+    ]) {
+      await request(app.getHttpServer()).patch('/remix/projects/proj-1').set(auth).send(body).expect(400);
+    }
+    expect(mockProjectService.createProject).not.toHaveBeenCalled();
+    expect(mockProjectService.updateProject).not.toHaveBeenCalled();
+  });
+
+  it('passes the recipes the service validates through untouched', async () => {
+    const effects = { version: 'remix-fx/v3', anything: true };
+    await request(app.getHttpServer())
+      .patch('/remix/projects/proj-1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ stems: [{ stemId: 'stem-1', gainDb: -3, muted: false, arrangement: { x: 1 } }], effects })
+      .expect(200);
+    expect(mockProjectService.updateProject).toHaveBeenCalledWith(
+      'user-1',
+      'proj-1',
+      expect.objectContaining({ effects }),
+    );
+  });
 });

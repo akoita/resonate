@@ -140,4 +140,37 @@ describe('SessionsController (e2e)', () => {
 
     expect(res.body.outcome).toBe('confirmation_required');
   });
+
+  // ----- Body validation (#1890) -----
+
+  it('rejects wrongly typed session bodies with 400 before the service runs', async () => {
+    const post = (path: string, body: unknown) =>
+      request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token}`).send(body as object);
+
+    await post('/sessions/start', { budgetCapUsd: '10' }).expect(400);
+    await post('/sessions/start', { budgetCapUsd: -1 }).expect(400);
+    await post('/sessions/start', { budgetCapUsd: 10, preferences: { genres: 'jazz' } }).expect(400);
+    await post('/sessions/start', { budgetCapUsd: 10, preferences: { allowExplicit: 'yes' } }).expect(400);
+    await post('/sessions/stop', { sessionId: 42 }).expect(400);
+    await post('/sessions/play', { sessionId: 's1', trackId: 't1', priceUsd: -1 }).expect(400);
+    await post('/sessions/agent/next', { sessionId: ['s1'] }).expect(400);
+    await post('/sessions/agent/next', { sessionId: 's1', preferences: 'chill' }).expect(400);
+
+    expect(mockSessionsService.startSession).not.toHaveBeenCalled();
+    expect(mockSessionsService.stopSession).not.toHaveBeenCalled();
+    expect(mockSessionsService.playTrack).not.toHaveBeenCalled();
+    expect(mockSessionsService.agentNext).not.toHaveBeenCalled();
+  });
+
+  it('accepts well-typed session bodies, including the runtime-validated fields', async () => {
+    await request(app.getHttpServer())
+      .post('/sessions/agent/next')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        sessionId: 's1',
+        preferences: { genres: ['Jazz'], allowExplicit: false, myMix: null, request: { genres: ['jazz'] } },
+      })
+      .expect(201);
+    expect(mockSessionsService.agentNext).toHaveBeenCalledTimes(1);
+  });
 });

@@ -15,10 +15,15 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
  * `whitelist: false`) makes it return `classToPlain(entity)` instead, which
  * would reshape every validated body.
  *
- * Bodies typed as interfaces or inline object types reach the pipe as `Object`
- * and are not validated here; those handlers keep validating in their services.
- * Evaluating `whitelist: true` (stripping undeclared fields) is tracked in
- * #1890.
+ * Bodies typed as interfaces, inline object types or intersections reach the
+ * pipe as `Object` and are not validated here; those handlers keep validating
+ * in their services.
+ *
+ * Decision (#1890): `whitelist` and `transform` stay off globally. A controller
+ * that needs either opts in with a route-scoped pipe (as the credits controller
+ * does). Bodies move to class DTOs one module at a time where the service did
+ * not type-check every field; the DTOs check types only and leave value rules
+ * to the services, so they reject nothing the services already accepted.
  */
 export function createGlobalValidationPipe(): ValidationPipe {
   return new ValidationPipe({ transform: false });

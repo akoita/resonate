@@ -148,6 +148,20 @@ describe('IngestionController (e2e)', () => {
       .expect(201);
   });
 
+  it('POST /ingestion/progress rejects a non-numeric progress or a non-string revision with 400 (#1890)', async () => {
+    await request(app.getHttpServer()).post('/ingestion/progress/rel-1/trk-1').send({ progress: '50' }).expect(400);
+    await request(app.getHttpServer()).post('/ingestion/progress/rel-1/trk-1').send({}).expect(400);
+    await request(app.getHttpServer())
+      .post('/ingestion/progress/rel-1/trk-1')
+      .send({ progress: 50, audioRevision: { not: 'a string' } })
+      .expect(400);
+  });
+
+  it('POST /ingestion/progress checks the internal key before the body (#1890)', async () => {
+    process.env.INTERNAL_SERVICE_KEY = 'worker-secret';
+    await request(app.getHttpServer()).post('/ingestion/progress/rel-1/trk-1').send({ progress: 'bad' }).expect(401);
+  });
+
   it('POST /ingestion/progress/:releaseId/:trackId → 401 with missing internal key when configured', async () => {
     process.env.INTERNAL_SERVICE_KEY = 'worker-secret';
 
