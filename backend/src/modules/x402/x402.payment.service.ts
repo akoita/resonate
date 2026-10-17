@@ -258,12 +258,19 @@ export class X402PaymentService {
     }
   }
 
+  /**
+   * Settles through the facilitator and throws unless it reports success, so
+   * a payment that never settled cannot grant the resource: a non-2xx answer,
+   * a body without `success: true` (the x402 settle response), or an
+   * unreachable facilitator all fail the purchase with `settle_failed`.
+   */
   private async settlePayment(
     paymentPayload: unknown,
     paymentRequirements: unknown,
   ): Promise<void> {
+    let response: Response;
     try {
-      const response = await fetch(`${this.x402Config.facilitatorUrl}/settle`, {
+      response = await fetch(`${this.x402Config.facilitatorUrl}/settle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -272,17 +279,35 @@ export class X402PaymentService {
           paymentRequirements,
         }),
       });
-
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => "");
-        this.logger.warn(
-          `Facilitator /settle returned ${response.status}${
-            errorBody ? `: ${errorBody}` : ""
-          }`,
-        );
-      }
     } catch (error) {
-      this.logger.error(`Facilitator /settle failed: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Facilitator /settle failed: ${message}`);
+      throw new Error(`facilitator_unreachable: ${message}`);
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      this.logger.warn(
+        `Facilitator /settle returned ${response.status}${
+          errorBody ? `: ${errorBody}` : ""
+        }`,
+      );
+      throw new Error(
+        `facilitator_http_${response.status}${errorBody ? `: ${errorBody.slice(0, 200)}` : ""}`,
+      );
+    }
+
+    const result = (await response.json().catch(() => null)) as
+      | { success?: unknown; errorReason?: unknown; reason?: unknown }
+      | null;
+    if (result?.success !== true) {
+      const reason = typeof result?.errorReason === "string"
+        ? result.errorReason
+        : typeof result?.reason === "string"
+          ? result.reason
+          : "settlement_not_confirmed";
+      this.logger.warn(`Facilitator /settle did not confirm settlement: ${reason}`);
+      throw new Error(reason);
     }
   }
 }

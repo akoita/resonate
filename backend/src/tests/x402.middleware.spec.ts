@@ -589,8 +589,10 @@ describe('X402Middleware', () => {
     });
 
     it('should send x402 v2 settlement payloads to the facilitator', async () => {
+      // A facilitator confirms settlement with `success: true` (x402 settle response).
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
+        json: async () => ({ success: true, transaction: '0xabc', network: 'eip155:84532' }),
       });
 
       const config = createMockConfig({

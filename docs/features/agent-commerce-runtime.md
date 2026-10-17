@@ -374,7 +374,10 @@ chain/payment call.
 
 Today the x402 rail grants the paid download entitlement, records durable
 `X402Settlement` state, and writes `x402.purchase` provenance after facilitator
-settlement. Receipts include `settlement.status` so clients can distinguish
+settlement. Nothing is granted unless the facilitator confirms the settlement
+(`success: true` from `/settle`); a non-2xx answer, an unconfirmed settlement or
+an unreachable facilitator fails the purchase with a `settle_failed` reason, on
+the HTTP, agent-router and MCP rails alike. Receipts include `settlement.status` so clients can distinguish
 `download_only`, `contract_required_missing`, `contract_backed`, and
 `contract_failed` outcomes. Issue #841 still tracks the remaining license-NFT
 work and non-matching payment-asset cases; active marketplace ownership
