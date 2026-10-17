@@ -26,10 +26,15 @@ import { writeStructuredLog } from "../modules/shared/structured_logging";
  *
  * Needs only a database URL (`DATABASE_URL`); no application boot.
  *
+ * `--summary` additionally logs, per referencing `Table.column`, how many rows
+ * point at lowercase variants and how many at mixed-case variants (aggregated
+ * over all groups, counts only), to size a merge before running it
+ * (`merge_case_variant_users.ts`).
+ *
  * Exit codes: `0` when the report completed (including "no duplicates"), `1`
  * on an unexpected error or a missing `--details-file` value.
  *
- * Usage: `node dist/scripts/report_case_variant_users.js [--details-file <path>]`
+ * Usage: `node dist/scripts/report_case_variant_users.js [--summary] [--details-file <path>]`
  */
 
 export type CasingClass = "lowercase" | "mixed";
@@ -80,11 +85,37 @@ export function parseDetailsFile(argv: string[]): string | undefined {
   return value;
 }
 
+export function hasSummaryFlag(argv: string[]): boolean {
+  return argv.includes("--summary");
+}
+
+/** Rows referencing a lowercase variant vs a mixed-case variant, for one column. */
+export interface ReferenceCasingCount {
+  reference: string;
+  lowercase: number;
+  mixed: number;
+}
+
+/** Aggregates the per-variant reference counts by column and casing class. Counts only. */
+export function summarizeReferencesByCasing(report: CaseVariantReport): ReferenceCasingCount[] {
+  const byReference = new Map<string, ReferenceCasingCount>();
+  for (const group of report.groups) {
+    for (const variant of group.variants) {
+      for (const [reference, count] of Object.entries(variant.references)) {
+        const entry = byReference.get(reference) ?? { reference, lowercase: 0, mixed: 0 };
+        entry[variant.casing] += count;
+        byReference.set(reference, entry);
+      }
+    }
+  }
+  return [...byReference.values()].sort((a, b) => a.reference.localeCompare(b.reference));
+}
+
 export function casingClassOf(id: string): CasingClass {
   return id === id.toLowerCase() ? "lowercase" : "mixed";
 }
 
-function quoteIdentifier(name: string): string {
+export function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
@@ -229,7 +260,18 @@ export async function runCaseVariantReport(argv: string[] = process.argv.slice(2
       detailsFileWritten: Boolean(detailsFile),
       ...summary,
     });
-    return { report, summary };
+
+    const referencesByCasing = hasSummaryFlag(argv) ? summarizeReferencesByCasing(report) : [];
+    // One line per column keeps each log entry small however many columns hold rows.
+    for (const entry of referencesByCasing) {
+      writeStructuredLog({
+        level: "info",
+        event: "identity.case_variant_users.report.reference",
+        message: `References to case-variant users in ${entry.reference}`,
+        ...entry,
+      });
+    }
+    return { report, summary, referencesByCasing };
   } finally {
     await prisma.$disconnect();
   }

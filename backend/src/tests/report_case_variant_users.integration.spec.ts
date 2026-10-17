@@ -126,6 +126,30 @@ describe("report_case_variant_users (integration, #2180)", () => {
     expect(await prisma.playlist.count({ where: { userId: { in: [LOWER, MIXED] } } })).toBe(3);
   });
 
+  it("--summary logs rows per referencing column, split by lowercase vs mixed-case variants, without ids", async () => {
+    const { referencesByCasing } = await runCaseVariantReport(["--summary"]);
+    const byReference = new Map(referencesByCasing.map((entry) => [entry.reference, entry]));
+    expect(byReference.get("Playlist.userId")).toMatchObject({ lowercase: 2, mixed: 1 });
+    expect(byReference.get("Wallet.userId")).toMatchObject({ lowercase: 0, mixed: 1 });
+    expect(byReference.get("AdminAuditEvent.targetUserId")).toMatchObject({ lowercase: 0, mixed: 1 });
+
+    const lines = info.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("identity.case_variant_users.report.reference"));
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(lines.some((line) => line.includes('"reference":"Playlist.userId"'))).toBe(true);
+    const logged = info.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(logged).not.toContain(LOWER);
+    expect(logged).not.toContain(MIXED);
+    expect(logged).not.toContain(SOLO);
+  });
+
+  it("emits no per-column lines without --summary", async () => {
+    const { referencesByCasing } = await runCaseVariantReport([]);
+    expect(referencesByCasing).toEqual([]);
+    expect(info.mock.calls.some((call) => String(call[0]).includes("report.reference"))).toBe(false);
+  });
+
   it("parses --details-file and rejects a missing value", () => {
     expect(parseDetailsFile([])).toBeUndefined();
     expect(parseDetailsFile(["--details-file", "/x/y.json"])).toBe("/x/y.json");
