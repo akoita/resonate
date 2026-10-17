@@ -277,9 +277,10 @@ stays reachable):
 
 ## Email notices (web)
 
-Status: `partial` — web half of
-[#2169](https://github.com/akoita/resonate/issues/2169). Real delivery is
-verified on staging separately, so the feature stays partial until then.
+Status: `implemented` — web half of
+[#2169](https://github.com/akoita/resonate/issues/2169). Real delivery was
+verified end to end (confirmed address, then an admin notice through the
+sender), and #2169 is closed.
 
 Revenue line: vision-neutral readiness infrastructure. Nothing here touches
 fees, splits, prices or payouts, and the address is never used for marketing.
