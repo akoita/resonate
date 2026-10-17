@@ -33,11 +33,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # The pinned Dataform CLI (3.0.71) carries known-vulnerable transitive
-  # dependencies (vm2, braces) with no non-breaking fix. It only compiles
-  # first-party definitions from main, but it must never share a job with a
-  # write-capable token: build here with read-only permissions and hand the
-  # tree to the publish job as an artifact.
+  # The pinned Dataform CLI is third-party code that installs @dataform/core
+  # from the registry at compile time. It only compiles first-party
+  # definitions from main, but it must never share a job with a write-capable
+  # token: build here with read-only permissions and hand the tree to the
+  # publish job as an artifact.
   build:
     name: Build and compile tree
     runs-on: ubuntu-latest
