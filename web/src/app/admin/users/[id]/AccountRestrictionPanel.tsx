@@ -1,8 +1,8 @@
 "use client";
 
-import type { AccountStatusReason, AdminAccountStatus } from "../../../lib/api";
-import { ACCOUNT_REASON_LABELS } from "../../../lib/accountStatus";
-import { formatRestrictionDate } from "../../../lib/accountRestriction";
+import type { AccountStatusReason, AdminAccountStatus } from "../../../../lib/api";
+import { ACCOUNT_REASON_LABELS } from "../../../../lib/accountStatus";
+import { formatRestrictionDate } from "../../../../lib/accountRestriction";
 
 export const ACCOUNT_NOTE_MAX = 1000;
 

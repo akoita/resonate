@@ -121,12 +121,14 @@ article.
   (`AccountStatusBanner`); the self-service deletion banner is hidden for an
   operator-closed account.
 - The shared API error formatter maps the `403` code to a plain sentence.
-- `/admin/accounts` (admins): lookup by user id or wallet address, reason select,
-  optional end date, internal note, and `ConfirmDialog` for suspend, lift and
-  close.
-- The same controls are on a person's record in the users directory
-  (`/admin/users/[id]`, admins only; operators see the status read-only). See
+- The controls live on a person's record in the users directory
+  (`/admin/users/[id]`, admins only; operators see the status read-only):
+  reason select, optional end date, internal note, and `ConfirmDialog` for
+  suspend, lift and close. Find the person with the directory search (user id
+  or wallet address). See
   [Admin users directory and user detail](admin_users.md) (#2166).
+- The former standalone `/admin/accounts` lookup page folded into Users; the
+  URL redirects to `/admin/users`.
 
 ## Privacy manifests
 

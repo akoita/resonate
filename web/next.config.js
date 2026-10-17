@@ -115,12 +115,14 @@ const nextConfig = {
   },
   // Marketplace and Crate Digger became one destination (#2032), and the AI DJ
   // moved into Home and Settings. Old URLs keep working; they are temporary
-  // (non-permanent) redirects while the new layout settles.
+  // (non-permanent) redirects while the new layout settles. The admin Accounts
+  // page folded into Users: suspend/lift/close live on a person's record.
   async redirects() {
     return [
       { source: "/marketplace", destination: "/crates?tab=stems", permanent: false },
       { source: "/marketplace/manage", destination: "/artist/listings", permanent: false },
       { source: "/agent", destination: "/#ai-dj", permanent: false },
+      { source: "/admin/accounts", destination: "/admin/users", permanent: false },
     ];
   },
   async rewrites() {
