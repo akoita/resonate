@@ -35,6 +35,16 @@ boundary: every route is `@Roles("admin", "operator")` behind `AuthGuard("jwt")`
   titles the page "Users".
 - `/help` article `admin-users` (audience operator, status `partial`).
 
+- **Possible duplicate chip** (#2180): a small "Possible duplicate" chip on a row
+  and on the record's header when another account's id equals this one apart
+  from letter case. Wallet-account ids are lowercase addresses; before ids were
+  normalised at every creation point, a checksummed spelling of the same address
+  could create a second account. The server computes the flag for the whole page
+  in one query (`possibleDuplicate` on each row and on the record). It is
+  information only: nothing is merged or changed from this screen. Operators
+  review candidates with the read-only report script described in the
+  [case-variant user ids runbook](../operations/case_variant_user_ids_runbook.md).
+
 States: loading skeleton, empty directory, "no one matches these filters" with
 a clear action, a page past the end, an error with retry, and a `403` shown as
 "Admins and operators only". An unknown or erased user shows "User not found".

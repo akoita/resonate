@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { CommunityCohort, CommunityCohortMembership, CommunityRoom, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { normalizeUserId } from "../identity/user_id";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { EventBus } from "../shared/event_bus";
 import {
@@ -910,7 +911,8 @@ export class CommunityRoomsService {
     });
   }
 
-  private async ensureUser(userId: string) {
+  private async ensureUser(rawUserId: string) {
+    const userId = normalizeUserId(rawUserId);
     await prisma.user.upsert({
       where: { id: userId },
       update: {},

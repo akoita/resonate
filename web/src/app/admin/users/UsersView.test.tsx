@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import UsersView, { UsersFilters, UsersPager, UsersResults, type UsersViewProps } from "./UsersView";
 import { DEFAULT_ADMIN_USERS_FILTERS } from "../../../lib/adminUsers";
-import { OVERVIEW, usersPage } from "../../../lib/__fixtures__/adminUsers";
+import { OVERVIEW, userRow, usersPage } from "../../../lib/__fixtures__/adminUsers";
 
 function props(overrides: Partial<UsersViewProps> = {}): UsersViewProps {
   return {
@@ -84,6 +84,19 @@ describe("UsersView (#2166)", () => {
     expect(html).toContain(">Never<");
     // No contact email is part of this view.
     expect(html).not.toMatch(/@/);
+  });
+
+  it("flags a possible duplicate account on its row only", () => {
+    expect(render()).not.toContain("Possible duplicate");
+    const html = render({
+      list: {
+        status: "ready",
+        page: usersPage({
+          items: [userRow({ possibleDuplicate: true }), userRow({ id: "22222222-aaaa-bbbb-cccc-000000000002" })],
+        }),
+      },
+    });
+    expect(html.match(/Possible duplicate</g)).toHaveLength(1);
   });
 
   it("shows the active filter values and a clear action", () => {

@@ -22,7 +22,7 @@ import {
   toRestrictionAccount,
 } from "../../../../lib/adminUsers";
 import AccountRestrictionControls from "./AccountRestrictionControls";
-import { RoleChips, StatusChip } from "../UsersView";
+import { DuplicateChip, RoleChips, StatusChip } from "../UsersView";
 
 export type UserDetailState =
   | { status: "loading" }
@@ -325,6 +325,7 @@ export default function UserDetailView({ state, isAdmin, token, onStatusChanged,
         <div className="admin-users-chips">
           <StatusChip status={effective} />
           <RoleChips roles={detail.roles} />
+          {detail.possibleDuplicate ? <DuplicateChip /> : null}
         </div>
       </div>
       <Identity detail={detail} />

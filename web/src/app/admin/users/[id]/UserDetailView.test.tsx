@@ -36,6 +36,12 @@ describe("UserDetailView (#2166)", () => {
     expect(html).not.toMatch(/@/);
   });
 
+  it("flags a possible duplicate account next to the status", () => {
+    expect(render()).not.toContain("Possible duplicate");
+    const html = render({ state: { status: "ready", detail: userDetail({ possibleDuplicate: true }) } });
+    expect(html).toContain("Possible duplicate");
+  });
+
   it("gives admins the suspend and close controls", () => {
     const html = render({ isAdmin: true });
     expect(html).toContain("Reason category");

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { UserOperation } from "./erc4337/erc4337_client";
+import { normalizeUserId } from "./user_id";
 
 @Injectable()
 export class PaymasterService {
@@ -17,12 +18,12 @@ export class PaymasterService {
     return {
       sponsorMaxUsd: this.sponsorMaxUsd,
       paymasterAddress: this.paymasterAddress,
-      spentUsd: userId ? this.sponsorSpentUsd.get(userId) ?? 0 : undefined,
+      spentUsd: userId ? this.sponsorSpentUsd.get(normalizeUserId(userId)) ?? 0 : undefined,
     };
   }
 
   resetUser(userId: string) {
-    this.sponsorSpentUsd.delete(userId);
+    this.sponsorSpentUsd.delete(normalizeUserId(userId));
   }
 
   buildPaymasterData(userOp: UserOperation, spendUsd: number, userId?: string) {
@@ -34,11 +35,12 @@ export class PaymasterService {
       return "0x";
     }
     if (userId) {
-      const spent = this.sponsorSpentUsd.get(userId) ?? 0;
+      const key = normalizeUserId(userId);
+      const spent = this.sponsorSpentUsd.get(key) ?? 0;
       if (spent + spendUsd > this.sponsorMaxUsd) {
         return "0x";
       }
-      this.sponsorSpentUsd.set(userId, spent + spendUsd);
+      this.sponsorSpentUsd.set(key, spent + spendUsd);
     }
     return this.paymasterAddress;
   }

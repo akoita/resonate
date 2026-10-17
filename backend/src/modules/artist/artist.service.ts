@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { normalizeUserId } from "../identity/user_id";
 import { hasArtistManagementAccess } from "../management/management-access";
 import { EventBus } from "../shared/event_bus";
 
@@ -609,7 +610,8 @@ export class ArtistService {
             .slice(0, take);
     }
 
-    async createProfile(userId: string, data: { displayName: string; payoutAddress: string }) {
+    async createProfile(rawUserId: string, data: { displayName: string; payoutAddress: string }) {
+        const userId = normalizeUserId(rawUserId);
         const existing = await this.getProfile(userId);
         if (existing) {
             throw new BadRequestException("Artist profile already exists for this user");

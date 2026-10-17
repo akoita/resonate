@@ -231,6 +231,18 @@ export function RoleChips({ roles }: { roles: AdminUserRow["roles"] }) {
   );
 }
 
+/** Shown when another account's id differs from this one only by letter case. */
+export function DuplicateChip() {
+  return (
+    <span
+      className="admin-users-chip"
+      title="Another account has the same id apart from letter case"
+    >
+      Possible duplicate
+    </span>
+  );
+}
+
 export { StatusChip };
 
 export function UsersTable({ items }: { items: AdminUserRow[] }) {
@@ -263,7 +275,12 @@ export function UsersTable({ items }: { items: AdminUserRow[] }) {
               </span>
             </td>
             <td data-label="Roles"><RoleChips roles={row.roles} /></td>
-            <td data-label="Status"><StatusChip status={row.accountStatus} /></td>
+            <td data-label="Status">
+              <span className="admin-users-chips">
+                <StatusChip status={row.accountStatus} />
+                {row.possibleDuplicate ? <DuplicateChip /> : null}
+              </span>
+            </td>
             <td data-label="Joined">{formatDay(row.createdAt)}</td>
             <td data-label="Last sign-in">{formatDay(row.lastSignInAt)}</td>
             <td data-label="Last active">{formatDay(row.lastActiveDay)}</td>

@@ -1,8 +1,21 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Req, UseGuards, forwardRef } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+  forwardRef,
+} from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { SessionKeyService } from "./session_key.service";
 import { SocialRecoveryService } from "./social_recovery.service";
+import { normalizeUserId } from "./user_id";
 import { WalletService } from "./wallet.service";
 import { AgentWalletService } from "../agents/agent_wallet.service";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
@@ -19,17 +32,34 @@ export class WalletController {
     private readonly agentPurchaseService: AgentPurchaseService
   ) {}
 
+  /**
+   * Wallet writes that take a target user id act on the caller's own wallet;
+   * admins may name any user. Ids are compared in their canonical form (#2180).
+   */
+  private assertOwnWalletOrAdmin(req: any, userId: string) {
+    if (req?.user?.role === "admin") return;
+    if (
+      typeof userId !== "string" ||
+      normalizeUserId(userId) !== normalizeUserId(req?.user?.userId)
+    ) {
+      throw new ForbiddenException("You can only change your own wallet");
+    }
+  }
+
   @Post("fund")
   @UseGuards(AuthGuard("jwt"))
-  fund(@Body() body: { userId: string; amountUsd: number }) {
+  fund(@Req() req: any, @Body() body: { userId: string; amountUsd: number }) {
+    this.assertOwnWalletOrAdmin(req, body?.userId);
     return this.walletService.fundWallet(body);
   }
 
   @Post("budget")
   @UseGuards(AuthGuard("jwt"))
   setBudget(
+    @Req() req: any,
     @Body() body: { userId: string; monthlyCapUsd: number; resetSpent?: boolean },
   ) {
+    this.assertOwnWalletOrAdmin(req, body?.userId);
     return this.walletService.setBudget(body);
   }
 
@@ -86,8 +116,10 @@ export class WalletController {
 
   @Get(":userId")
   @UseGuards(AuthGuard("jwt"))
-  get(@Param("userId") userId: string) {
-    return this.walletService.getWallet(userId);
+  get(@Req() req: any, @Param("userId") userId: string) {
+    // Wallet reads return the caller's own wallet; admins may read any
+    // existing wallet. The id may be the user id or the wallet address.
+    return this.walletService.getWalletForCaller(req.user, userId);
   }
 
   @Post("session-key")
