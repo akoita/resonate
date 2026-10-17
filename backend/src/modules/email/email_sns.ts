@@ -3,8 +3,8 @@ import type { EmailWebhookEvent } from "./email_delivery.service";
 
 /**
  * Pure helpers for the SNS-compatible bounce adapter (#2177): the envelope an
- * SNS-style topic POSTs to an HTTPS subscriber, the guard on the confirmation
- * URL, and one mapper per provider event format. Nothing here does I/O.
+ * SNS-style topic POSTs to an HTTPS subscriber, the confirmation request built
+ * from it, and one mapper per provider event format. Nothing here does I/O.
  */
 
 /** Longest envelope accepted (SNS caps a message at 256 KiB). */
@@ -52,28 +52,37 @@ export function snsTokenMatches(given: unknown, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+const MAX_SUBSCRIPTION_TOKEN_LENGTH = 2048;
+
 /**
- * A confirmation URL may be fetched only when it is plain HTTPS on the default
- * port, carries no credentials, its host is one of the allowlisted suffixes
- * (on a label boundary), and it confirms the configured topic. Anything else
- * would let a caller holding the path token make the API fetch an arbitrary URL.
+ * The confirmation request to make for a `SubscribeURL`, or `null` to refuse
+ * it. The URL is never fetched as given: it must be HTTPS on the default port
+ * without credentials, on a host listed exactly in `allowedHosts`, and confirm
+ * the configured topic; the request is then rebuilt from the configured host
+ * and topic, so only the subscription token comes from the message. Anything
+ * else would let a caller holding the path token make the API fetch a URL of
+ * their choosing.
  */
-export function isAllowedSubscribeUrl(value: string, hostSuffixes: readonly string[], topicArn: string): boolean {
+export function buildConfirmSubscriptionUrl(
+  subscribeUrl: string,
+  allowedHosts: readonly string[],
+  topicArn: string,
+): string | null {
   let url: URL;
   try {
-    url = new URL(value);
+    url = new URL(subscribeUrl);
   } catch {
-    return false;
+    return null;
   }
-  if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
-  const host = url.hostname.toLowerCase();
-  const hostAllowed = hostSuffixes.some((raw) => {
-    const suffix = raw.trim().toLowerCase().replace(/^\.+/, "");
-    return suffix.includes(".") && (host === suffix || host.endsWith(`.${suffix}`));
-  });
-  if (!hostAllowed) return false;
-  const topic = url.searchParams.get("TopicArn");
-  return topic === null || topic === topicArn;
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+  const host = allowedHosts.find((allowed) => allowed === url.hostname.toLowerCase());
+  if (!host) return null;
+  if (url.searchParams.get("Action") !== "ConfirmSubscription" || url.searchParams.get("TopicArn") !== topicArn) {
+    return null;
+  }
+  const token = url.searchParams.get("Token");
+  if (!token || token.length > MAX_SUBSCRIPTION_TOKEN_LENGTH) return null;
+  return `https://${host}/?Action=ConfirmSubscription&TopicArn=${encodeURIComponent(topicArn)}&Token=${encodeURIComponent(token)}`;
 }
 
 export interface MappedSnsEvents {

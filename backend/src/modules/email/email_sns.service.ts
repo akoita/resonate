@@ -2,14 +2,15 @@ import { BadGatewayException, BadRequestException, ForbiddenException, Injectabl
 import { writeStructuredLog } from "../shared/structured_logging";
 import { EmailConfig } from "./email_config";
 import { EmailDeliveryService } from "./email_delivery.service";
-import { isAllowedSubscribeUrl, mapSnsMessage, type SnsEnvelope } from "./email_sns";
+import { buildConfirmSubscriptionUrl, mapSnsMessage, type SnsEnvelope } from "./email_sns";
 
 const CONFIRM_TIMEOUT_MS = 5_000;
 
 /**
  * Bounce and complaint events from an SNS-compatible topic (#2177). The
  * controller has already checked the path token; this checks the topic,
- * confirms the subscription through an allowlisted host only, and hands mapped
+ * confirms the subscription through an allowlisted host only (rebuilding the
+ * request from configuration, never fetching the message's URL), and hands mapped
  * events to the same hard-bounce and complaint path as `POST /email/webhook`.
  */
 @Injectable()
@@ -42,17 +43,18 @@ export class EmailSnsService {
   }
 
   private async confirm(subscribeUrl: string) {
-    if (!isAllowedSubscribeUrl(subscribeUrl, this.config.snsConfirmHostSuffixes, this.config.snsTopicArn)) {
+    const confirmUrl = buildConfirmSubscriptionUrl(subscribeUrl, this.config.snsConfirmHosts, this.config.snsTopicArn);
+    if (!confirmUrl) {
       writeStructuredLog({
         level: "warn",
         event: "email.sns_confirm_refused",
-        message: "Refused a subscription confirmation URL outside EMAIL_SNS_CONFIRM_HOST_SUFFIXES",
+        message: "Refused a subscription confirmation URL that is not a ConfirmSubscription on EMAIL_SNS_CONFIRM_HOSTS",
       });
       throw new BadRequestException({ code: "subscribe_url_not_allowed", message: "Subscription URL is not allowed" });
     }
     let status: number;
     try {
-      const response = await this.fetchFn(subscribeUrl, {
+      const response = await this.fetchFn(confirmUrl, {
         method: "GET",
         redirect: "manual",
         signal: AbortSignal.timeout(CONFIRM_TIMEOUT_MS),

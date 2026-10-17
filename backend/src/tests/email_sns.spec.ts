@@ -2,7 +2,7 @@
  * Pure helpers of the SNS-compatible bounce adapter (#2177) and its settings.
  */
 import { EmailConfig } from "../modules/email/email_config";
-import { isAllowedSubscribeUrl, mapSnsMessage, parseSnsEnvelope, snsTokenMatches } from "../modules/email/email_sns";
+import { buildConfirmSubscriptionUrl, mapSnsMessage, parseSnsEnvelope, snsTokenMatches } from "../modules/email/email_sns";
 
 const TOPIC = "arn:scw:sns:fr-par:project:email-events";
 
@@ -49,27 +49,40 @@ describe("snsTokenMatches", () => {
   });
 });
 
-describe("isAllowedSubscribeUrl", () => {
-  const suffixes = ["provider.test", ".other.test"];
-  const ok = (url: string) => isAllowedSubscribeUrl(url, suffixes, TOPIC);
+describe("buildConfirmSubscriptionUrl", () => {
+  const HOST = "sns.mnq.fr-par.provider.test";
+  const hosts = [HOST, "sns.other.test"];
+  const topic = encodeURIComponent(TOPIC);
+  const confirm = (url: string) => buildConfirmSubscriptionUrl(url, hosts, TOPIC);
+  const expected = (token: string, host = HOST) =>
+    `https://${host}/?Action=ConfirmSubscription&TopicArn=${topic}&Token=${encodeURIComponent(token)}`;
 
-  it("allows HTTPS on an allowlisted host or subdomain for the configured topic", () => {
-    expect(ok("https://provider.test/")).toBe(true);
-    expect(ok(`https://sns.mnq.fr-par.provider.test/?Action=ConfirmSubscription&TopicArn=${encodeURIComponent(TOPIC)}`)).toBe(true);
-    expect(ok("https://a.other.test/x")).toBe(true);
+  it("rebuilds the request from the configured host and topic, keeping only the token", () => {
+    expect(confirm(`https://${HOST}/?Action=ConfirmSubscription&TopicArn=${topic}&Token=abc123`)).toBe(expected("abc123"));
+    expect(confirm(`https://SNS.OTHER.TEST/ignored/path?Token=a%2Fb&TopicArn=${topic}&Action=ConfirmSubscription&x=1`)).toBe(
+      expected("a/b", "sns.other.test"),
+    );
   });
 
-  it("refuses other hosts, schemes, ports, credentials and topics", () => {
-    expect(ok("https://evilprovider.test/")).toBe(false);
-    expect(ok("https://provider.test.evil.test/")).toBe(false);
-    expect(ok("http://provider.test/")).toBe(false);
-    expect(ok("https://provider.test:444/")).toBe(false);
-    expect(ok("https://u:p@provider.test/")).toBe(false);
-    expect(ok("https://provider.test/?TopicArn=arn:other")).toBe(false);
-    expect(ok("not a url")).toBe(false);
-    expect(isAllowedSubscribeUrl("https://provider.test/", [], TOPIC)).toBe(false);
-    // A bare top-level suffix would allow everything under it.
-    expect(isAllowedSubscribeUrl("https://provider.test/", ["test"], TOPIC)).toBe(false);
+  it("refuses other hosts, schemes, ports, credentials, actions, topics and missing tokens", () => {
+    const q = `?Action=ConfirmSubscription&TopicArn=${topic}&Token=t`;
+    for (const url of [
+      `https://provider.test/${q}`,
+      `https://evil.${HOST}/${q}`,
+      `https://${HOST}.evil.test/${q}`,
+      `http://${HOST}/${q}`,
+      `https://${HOST}:444/${q}`,
+      `https://u:p@${HOST}/${q}`,
+      `https://${HOST}/?Action=Unsubscribe&TopicArn=${topic}&Token=t`,
+      `https://${HOST}/?Action=ConfirmSubscription&TopicArn=arn:other&Token=t`,
+      `https://${HOST}/?Action=ConfirmSubscription&Token=t`,
+      `https://${HOST}/?Action=ConfirmSubscription&TopicArn=${topic}`,
+      `https://${HOST}/?Action=ConfirmSubscription&TopicArn=${topic}&Token=${"t".repeat(2049)}`,
+      "not a url",
+    ]) {
+      expect(confirm(url)).toBeNull();
+    }
+    expect(buildConfirmSubscriptionUrl(`https://${HOST}/${q}`, [], TOPIC)).toBeNull();
   });
 });
 
@@ -122,14 +135,14 @@ describe("EmailConfig SNS settings", () => {
     NODE_ENV: "test",
     EMAIL_SNS_WEBHOOK_TOKEN: "k".repeat(43),
     EMAIL_SNS_TOPIC_ARN: TOPIC,
-    EMAIL_SNS_CONFIRM_HOST_SUFFIXES: " Provider.test , ,other.test",
+    EMAIL_SNS_CONFIRM_HOSTS: " SNS.Provider.test , ,sns.other.test",
     EMAIL_SNS_EVENT_FORMAT: "Scaleway-TEM",
   };
 
   it("enables the route with a token, a topic and a known format", () => {
     const config = new EmailConfig(full);
     expect(config.isSnsWebhookEnabled()).toBe(true);
-    expect(config.snsConfirmHostSuffixes).toEqual(["provider.test", "other.test"]);
+    expect(config.snsConfirmHosts).toEqual(["sns.provider.test", "sns.other.test"]);
     expect(config.snsEventFormat).toBe("scaleway-tem");
   });
 

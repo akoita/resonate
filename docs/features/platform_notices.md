@@ -189,11 +189,14 @@ How it works:
     writes the path as `/email/webhook/sns/:token`; platform access logs in
     front of the API are a deployment concern.
   - The envelope's `TopicArn` must equal `EMAIL_SNS_TOPIC_ARN` (403 otherwise).
-  - *Subscription confirmation*: `SubscribeURL` is fetched only when it is
-    HTTPS on the default port, has no credentials, its host ends with one of
-    `EMAIL_SNS_CONFIRM_HOST_SUFFIXES` on a label boundary, and any `TopicArn`
-    in it is the configured topic. The fetch follows no redirects and times
-    out after 5 seconds. Anything else answers 400 without a request (no SSRF).
+  - *Subscription confirmation*: `SubscribeURL` is never fetched as given. It
+    must be HTTPS on the default port with no credentials, its host must be
+    listed exactly in `EMAIL_SNS_CONFIRM_HOSTS`, and it must be
+    `Action=ConfirmSubscription` for the configured topic with a token. The
+    request is then rebuilt from the configured host and topic, so only the
+    subscription token comes from the message. It follows no redirects and
+    times out after 5 seconds. Anything else answers 400 without a request
+    (no SSRF).
   - *Notifications*: `Message` is parsed by the mapper `EMAIL_SNS_EVENT_FORMAT`
     selects. The only format today is `scaleway-tem`: `email_dropped`,
     `email_mailbox_not_found` and a `mailbox_not_found` blocklist event are

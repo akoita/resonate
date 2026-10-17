@@ -20,7 +20,7 @@ const SNS_ENV = {
   NODE_ENV: "test",
   EMAIL_SNS_WEBHOOK_TOKEN: TOKEN,
   EMAIL_SNS_TOPIC_ARN: TOPIC,
-  EMAIL_SNS_CONFIRM_HOST_SUFFIXES: "example-provider.test",
+  EMAIL_SNS_CONFIRM_HOSTS: CONFIRM_HOST,
   EMAIL_SNS_EVENT_FORMAT: "scaleway-tem",
 };
 
@@ -141,25 +141,28 @@ describe("Email SNS bounce route (http)", () => {
   });
 
   it("confirms a subscription through an allowlisted host, without following redirects", async () => {
-    const res = await post(confirmation(goodConfirmUrl)).expect(200);
+    const res = await post(confirmation(`${goodConfirmUrl}&Extra=ignored`)).expect(200);
     expect(res.body).toEqual({ status: "confirmed" });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url, init] = fetchFn.mock.calls[0];
+    // Rebuilt from configuration: only the token comes from the message.
     expect(url).toBe(goodConfirmUrl);
     expect(init).toMatchObject({ method: "GET", redirect: "manual" });
     expect(init.signal).toBeDefined();
   });
 
   it("refuses a confirmation URL outside the allowlist and never fetches it", async () => {
+    const q = `?Action=ConfirmSubscription&TopicArn=${encodeURIComponent(TOPIC)}&Token=abc`;
     for (const url of [
-      "https://169.254.169.254/latest/meta-data/",
-      "https://evil.test/?Action=ConfirmSubscription",
-      `https://${CONFIRM_HOST}.evil.test/`,
-      "https://notexample-provider.test/",
-      `http://${CONFIRM_HOST}/`,
-      `https://user:pass@${CONFIRM_HOST}/`,
-      `https://${CONFIRM_HOST}:8443/`,
-      `https://${CONFIRM_HOST}/?TopicArn=${encodeURIComponent("arn:scw:sns:fr-par:other:topic")}`,
+      `https://169.254.169.254/latest/meta-data/${q}`,
+      `https://evil.test/${q}`,
+      `https://${CONFIRM_HOST}.evil.test/${q}`,
+      `https://other.example-provider.test/${q}`,
+      `http://${CONFIRM_HOST}/${q}`,
+      `https://user:pass@${CONFIRM_HOST}/${q}`,
+      `https://${CONFIRM_HOST}:8443/${q}`,
+      `https://${CONFIRM_HOST}/?Action=ConfirmSubscription&TopicArn=${encodeURIComponent("arn:scw:sns:fr-par:other:topic")}&Token=abc`,
+      `https://${CONFIRM_HOST}/latest/meta-data/`,
     ]) {
       await post(confirmation(url)).expect(400);
     }

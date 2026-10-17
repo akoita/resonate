@@ -91,8 +91,8 @@ export class EmailConfig {
   readonly snsWebhookToken: string;
   /** The only topic the SNS route accepts (`EMAIL_SNS_TOPIC_ARN`). */
   readonly snsTopicArn: string;
-  /** Hosts a subscription confirmation URL may point to (`EMAIL_SNS_CONFIRM_HOST_SUFFIXES`, comma-separated). */
-  readonly snsConfirmHostSuffixes: readonly string[];
+  /** Exact hosts a subscription confirmation may go to (`EMAIL_SNS_CONFIRM_HOSTS`, comma-separated). */
+  readonly snsConfirmHosts: readonly string[];
   /** Which provider event format the SNS messages carry (`EMAIL_SNS_EVENT_FORMAT`); empty when unset or unknown. */
   readonly snsEventFormat: string;
   /** Why email is off, as a short code that carries no values. */
@@ -155,9 +155,9 @@ export class EmailConfig {
       this.snsWebhookToken = snsToken;
     }
     this.snsTopicArn = read(env, "EMAIL_SNS_TOPIC_ARN");
-    this.snsConfirmHostSuffixes = read(env, "EMAIL_SNS_CONFIRM_HOST_SUFFIXES")
+    this.snsConfirmHosts = read(env, "EMAIL_SNS_CONFIRM_HOSTS")
       .split(",")
-      .map((suffix) => suffix.trim().toLowerCase())
+      .map((host) => host.trim().toLowerCase())
       .filter(Boolean);
     const snsFormat = read(env, "EMAIL_SNS_EVENT_FORMAT").toLowerCase();
     if (snsFormat && !Object.prototype.hasOwnProperty.call(SNS_EVENT_MAPPERS, snsFormat)) {
