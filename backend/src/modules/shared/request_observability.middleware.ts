@@ -33,7 +33,7 @@ export function requestObservabilityMiddleware() {
 }
 
 /** Path segments that are credentials (#2177: the SNS bounce route's token) are never logged. */
-const SECRET_PATH_SEGMENTS: ReadonlyArray<[RegExp, string]> = [[/^(\/email\/webhook\/sns\/)[^/]+/, "$1:token"]];
+const SECRET_PATH_SEGMENTS: ReadonlyArray<[RegExp, string]> = [[/^(\/email\/webhook\/sns\/)[^/]+/i, "$1:token"]];
 
 export function requestPath(req: Pick<Request, "path" | "url">): string {
   let path = req.path || req.url.split("?")[0] || "/";

@@ -52,6 +52,7 @@ describe("request observability middleware", () => {
       "/email/webhook/sns/:token",
     );
     expect(requestPath({ path: "", url: `/email/webhook/sns/${token}?x=1` })).toBe("/email/webhook/sns/:token");
+    expect(requestPath({ path: `/Email/Webhook/SNS/${token}`, url: "" })).toBe("/Email/Webhook/SNS/:token");
     expect(requestPath({ path: "/email/webhook", url: "/email/webhook" })).toBe("/email/webhook");
   });
 
