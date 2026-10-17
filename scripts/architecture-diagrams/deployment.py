@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from svglib import Svg, ACC, MUTED, FAINT, TEXT
+from svglib import Svg, ACC, MUTED, FAINT, TEXT, SURF_HI
 
 A = ACC
 W, H = 1600, 1330
@@ -20,7 +20,7 @@ s.header("Resonate deployment architecture",
 
 
 def panel(x, y, w, h, label, acc, note=None, note_right=None):
-    s.rect(x, y, w, h, rx=16, fill="#131226", stroke=acc, sw=1, extra='stroke-opacity="0.35"')
+    s.rect(x, y, w, h, rx=16, fill=SURF_HI, stroke=acc, sw=1, extra='stroke-opacity="0.22"')
     s.text(x + 18, y + 24, label, size=10.5, color=acc, weight=700, spacing="1.4")
     if note:
         s.text(note_right or x + w - 16, y + 24, note, size=10.5, color=FAINT, weight=600, anchor="end", mono=True)

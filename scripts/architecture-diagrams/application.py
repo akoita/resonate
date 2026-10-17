@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from svglib import Svg, ACC, MUTED, FAINT, TEXT
+from svglib import Svg, ACC, MUTED, FAINT, TEXT, SURF_HI, SURF_LOW, LINE
 
 A = ACC
 s = Svg(1600, 1130, "Resonate application architecture",
@@ -57,7 +57,7 @@ for i, (t, c, ls, tag) in enumerate(ctx):
     s.card(382 + col * (cw + 14), 252 + row * (ch + 12), cw, ch, t, c, ls, tag=tag)
 
 # cross-cutting bar
-s.rect(382, 626, 760, 72, rx=14, fill="#1D1B32", stroke=A["platform"], sw=1, extra='stroke-opacity="0.35"')
+s.rect(382, 626, 760, 72, rx=14, fill=SURF_HI, stroke=A["platform"], sw=1, extra='stroke-opacity="0.25"')
 s.text(400, 650, "CROSS-CUTTING", size=10.5, color=A["platform"], weight=700, spacing="1.4")
 s.text(400, 674, "Shared EventBus  ·  Socket.IO gateway  ·  Prisma read models  ·  BullMQ queues  ·  policy & quote guards", size=12.5, color=TEXT, weight=550)
 s.text(400, 690, "Domain modules deploy together; ownership stays explicit through NestJS modules and typed events.", size=11, color=MUTED, weight=500)
@@ -126,7 +126,7 @@ for i, l in enumerate(loc):
     s.text(62, 840 + i * 24, "›  " + l, size=12.5, color=MUTED, weight=550, mono=True)
 
 # ---------------- External ----------------
-s.rect(40, 1012, 1520, 50, rx=14, fill="#11101E", stroke="#2A2745", sw=1)
+s.rect(40, 1012, 1520, 50, rx=14, fill=SURF_LOW, stroke=LINE, sw=1, extra='filter="url(#cardShadow)"')
 s.text(62, 1042, "EXTERNAL", size=10.5, color=A["ops"], weight=700, spacing="1.4")
 ext = [("World ID · Gitcoin Passport", "human verification"), ("MusicBrainz", "artist enrichment"),
        ("SMTP", "email + bounces"), ("Langfuse", "agent traces"), ("EVM RPC", "Base Sepolia")]
