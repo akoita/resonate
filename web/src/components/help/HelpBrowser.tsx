@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useId, useMemo, useState } from "react";
 
+import { audiencesForReader, entriesForReader } from "../../lib/help/audience";
 import { helpArticleHref, matchedHelpLevel } from "../../lib/help/levels";
 import { searchArticles } from "../../lib/help/search";
 import { STATUS_LABELS, type AudienceMeta, type CategoryMeta } from "../../lib/help/taxonomy";
 import type { HelpAudience, HelpIndexEntry } from "../../lib/help/types";
+import { useOperatorReader } from "./HelpReaderViews";
 
 type AudienceFilter = HelpAudience | "all";
 
@@ -19,10 +21,16 @@ interface Props {
 /**
  * Search + persona filter over the guide. Server-renders the full grouped
  * list (so it works with JS disabled), then enhances with live filtering.
+ * Guides and the filter for operators and admins show only to them.
  */
-export function HelpBrowser({ entries, categories, audiences }: Props) {
+export function HelpBrowser({ entries: allEntries, categories, audiences: allAudiences }: Props) {
+  const operator = useOperatorReader();
+  const entries = useMemo(() => entriesForReader(allEntries, operator), [allEntries, operator]);
+  const audiences = useMemo(() => audiencesForReader(allAudiences, operator), [allAudiences, operator]);
   const [query, setQuery] = useState("");
-  const [audience, setAudience] = useState<AudienceFilter>("all");
+  const [chosenAudience, setAudience] = useState<AudienceFilter>("all");
+  // A filter this reader no longer sees (after signing out) falls back to All.
+  const audience = audiences.some((a) => a.id === chosenAudience) ? chosenAudience : "all";
   const searchId = useId();
 
   const audienceFiltered = useMemo(
