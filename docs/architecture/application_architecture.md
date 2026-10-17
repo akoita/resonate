@@ -12,7 +12,7 @@ composed.
 
 ## System Context
 
-[![Resonate application architecture](./resonate-application-architecture.svg)](./resonate-application-architecture.svg?raw=true)
+[![Resonate application architecture](./resonate-application-architecture.svg)](https://raw.githubusercontent.com/akoita/resonate/main/docs/architecture/resonate-application-architecture.svg)
 
 Human, desktop and agent surfaces share one NestJS backend. Its bounded
 contexts (below) delegate heavy media work to the Demucs and Stable Audio

@@ -81,11 +81,11 @@ See the [feature catalog](docs/features/README.md) for the full index of impleme
 
 ## 🏗️ Architecture
 
-[![Resonate application architecture](docs/architecture/resonate-application-architecture.svg)](docs/architecture/resonate-application-architecture.svg?raw=true)
+[![Resonate application architecture](docs/architecture/resonate-application-architecture.svg)](https://raw.githubusercontent.com/akoita/resonate/main/docs/architecture/resonate-application-architecture.svg)
 
 Resonate deploys as a full-stack music and agent-commerce system: Cloud Run services, Pub/Sub pipelines, Cloud SQL, Redis, GCS, ERC-4337 smart accounts, and a Terraform-managed GCP edge. Ordinary CI validates source; an explicit exact-SHA Release Deployment publishes immutable images and can hand their digest manifest to [`resonate-iac`](https://github.com/akoita/resonate-iac) for infrastructure reconciliation.
 
-[![Resonate deployment architecture](docs/architecture/resonate-deployment-architecture.svg)](docs/architecture/resonate-deployment-architecture.svg?raw=true)
+[![Resonate deployment architecture](docs/architecture/resonate-deployment-architecture.svg)](https://raw.githubusercontent.com/akoita/resonate/main/docs/architecture/resonate-deployment-architecture.svg)
 
 → [Application architecture](docs/architecture/application_architecture.md) · [Deployment architecture](docs/architecture/deployment_architecture.md) · Click a diagram to open it full size.
 
