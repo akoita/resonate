@@ -95,6 +95,12 @@ export interface HelpSection {
    * Omitted = shown on every level.
    */
   level?: HelpLevel;
+  /**
+   * `"operator"`: only shown to signed-in operators and admins. Omitted =
+   * shown to every reader. This only tidies the guide; the features it
+   * describes are protected by the server, not by hiding the text.
+   */
+  audience?: "operator";
 }
 
 /** A deep link from an article into the live app. */
@@ -103,6 +109,8 @@ export interface HelpAppLink {
   /** In-app route, e.g. "/marketplace". */
   href: string;
   description: string;
+  /** `"operator"`: only shown to operators and admins (see `HelpSection`). */
+  audience?: "operator";
 }
 
 export interface HelpArticle {

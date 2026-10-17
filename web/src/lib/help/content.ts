@@ -239,6 +239,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         id: "sending-notices",
         heading: "Sending a notice (operators)",
+        audience: "operator",
         blocks: [
           {
             kind: "steps",
@@ -260,7 +261,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Email notices", href: "/settings?section=email", description: "Add, confirm or remove your address, and choose which notices to receive." },
-      { label: "Notices (operators)", href: "/admin/notices", description: "Compose a broadcast and see the ones already sent." },
+      { label: "Notices (operators)", href: "/admin/notices", description: "Compose a broadcast and see the ones already sent.", audience: "operator" },
       { label: "Dispute center", href: "/disputes", description: "Disputes about a track or release." },
     ],
     related: ["legal-privacy-refunds", "getting-started"],
@@ -323,6 +324,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         id: "closing-accounts",
         heading: "Suspending or closing an account (admins)",
+        audience: "operator",
         blocks: [
           {
             kind: "steps",
@@ -343,7 +345,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Users (admins)", href: "/admin/users", description: "Find a person, open their record, and suspend, lift or close their account." },
+      { label: "Users (admins)", href: "/admin/users", description: "Find a person, open their record, and suspend, lift or close their account.", audience: "operator" },
       { label: "Imprint & contact", href: "/imprint", description: "How to reach support to appeal." },
     ],
     related: ["platform-notices", "download-your-data", "delete-your-account", "admin-users"],
@@ -432,6 +434,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         id: "changing-an-account",
         heading: "Suspending or closing an account (admins)",
+        audience: "operator",
         blocks: [
           {
             kind: "paragraph",
@@ -2585,6 +2588,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         id: "review-artist-claims",
         heading: "Reviewing an artist profile claim",
+        audience: "operator",
         blocks: [
           {
             kind: "paragraph",
@@ -2595,6 +2599,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         id: "review-management-recovery",
         heading: "Reviewing a transfer recovery request",
+        audience: "operator",
         blocks: [
           {
             kind: "paragraph",
@@ -2606,8 +2611,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Your catalog", href: "/artist/catalog", description: "Open your releases; your artist page is linked from your name." },
       { label: "Artist management", href: "/artist/management", description: "Review invitations, delegate access, or transfer management." },
-      { label: "Artist claim reviews", href: "/admin/artist-claims", description: "Review pending public-profile claims (operators and administrators)." },
-      { label: "Recovery reviews", href: "/admin/management-recovery", description: "Review accepted transfer recovery requests (operators and administrators)." },
+      { label: "Artist claim reviews", href: "/admin/artist-claims", description: "Review pending public-profile claims (operators and administrators).", audience: "operator" },
+      { label: "Recovery reviews", href: "/admin/management-recovery", description: "Review accepted transfer recovery requests (operators and administrators).", audience: "operator" },
     ],
     related: ["upload-music", "artist-analytics", "getting-started"],
   },

@@ -25,7 +25,13 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
   Resonate").
 - On the landing page, **search** (e.g. `passkey`, `remix`, `refund`) or
   **filter by who you are** (Listeners, Artists, Producers & remixers,
-  Curators & reporters, Operators & admins).
+  Curators & reporters, and Operators & admins for signed-in operators and
+  admins).
+- Operator and admin material (guides for admin tools, sections such as
+  "Sending a notice (operators)", and links into `/admin`) shows only to
+  signed-in operators and admins. Anyone else opening an operator-only guide
+  sees a short note instead, and those guides are not indexed by search
+  engines.
 - Each article has an "On this page" outline, illustrative screenshots, and
   **Open in the app** deep links straight to the relevant screen, plus related
   guides.
@@ -58,6 +64,16 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
   keys, Home/End, `?level=` deep links, a `#section` anchor opens its level,
   and the URL wins over the stored choice). Remix Studio slices (epic #1896)
   update the matching level's section in the same PR.
+- **Operator material.** An article whose `audiences` is only `["operator"]`
+  is operator-only. In a mixed article, tag a section or an app link with
+  `audience: "operator"` to show it only to operators and admins (role
+  `admin` or `operator`); every `/admin` app link in a mixed article must be
+  tagged (the tests enforce it). The rules live in
+  `web/src/lib/help/audience.ts`; the role-aware parts of an article are in
+  `web/src/components/help/HelpReaderViews.tsx`. The server render has no
+  role, so it shows the reader view and an operator's extra material appears
+  once the session is known. This tidies the guide only: admin routes are
+  protected by the server whether or not their guide is visible.
 
 ## Accessibility & ergonomics
 

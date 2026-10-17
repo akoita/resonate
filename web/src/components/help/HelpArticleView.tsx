@@ -1,21 +1,38 @@
 import Link from "next/link";
 
-import { articleStatus, isLevelledArticle, relatedArticles } from "../../lib/help";
-import { STATUS_LABELS, audienceLabel, categoryMeta } from "../../lib/help/taxonomy";
+import { articleStatus, isLevelledArticle, isOperatorOnly, relatedArticles } from "../../lib/help";
+import { STATUS_LABELS, categoryMeta } from "../../lib/help/taxonomy";
 import type { HelpArticle } from "../../lib/help/types";
-import { HelpLevelledBody } from "./HelpLevelledBody";
-import { HelpSectionView, HelpToc } from "./HelpSectionView";
+import {
+  HelpAppLinks,
+  HelpArticleBody,
+  HelpAudienceChips,
+  HelpOperatorOnly,
+  HelpRelatedList,
+} from "./HelpReaderViews";
 
 /**
  * Renders a full guide article. Server component — fully readable without
  * JavaScript. Heading order is h1 (title) → h2 (each section) so screen
- * readers and the "On this page" nav stay consistent.
+ * readers and the "On this page" nav stay consistent. Operator and admin
+ * material shows only to operators and admins (`HelpReaderViews`).
  */
 export function HelpArticleView({ article }: { article: HelpArticle }) {
   const category = categoryMeta(article.category);
   const status = articleStatus(article);
-  const related = relatedArticles(article);
+  const related = relatedArticles(article).map((r) => ({
+    slug: r.slug,
+    title: r.title,
+    summary: r.summary,
+    ...(isOperatorOnly(r.audiences) ? { audience: "operator" as const } : {}),
+  }));
   const levelled = isLevelledArticle(article);
+  const body = (
+    <>
+      <HelpArticleBody sections={article.sections} levelled={levelled} intros={article.levelIntros ?? {}} />
+      <HelpAppLinks links={article.appLinks ?? []} />
+    </>
+  );
 
   return (
     <article className="help-article">
@@ -30,11 +47,7 @@ export function HelpArticleView({ article }: { article: HelpArticle }) {
         <h1 className="help-article__title">{article.title}</h1>
         <p className="help-article__summary">{article.summary}</p>
         <div className="help-chips" aria-label="Who this guide is for">
-          {article.audiences.map((a) => (
-            <span className="help-chip" key={a}>
-              {audienceLabel(a)}
-            </span>
-          ))}
+          <HelpAudienceChips audiences={article.audiences} />
           {status !== "available" ? (
             <span className={`help-chip help-chip--status help-chip--${status}`}>
               {STATUS_LABELS[status]}
@@ -43,57 +56,9 @@ export function HelpArticleView({ article }: { article: HelpArticle }) {
         </div>
       </header>
 
-      {levelled ? (
-        // Beginner / Intermediate / Professional switch (#1905); the outline
-        // lives inside it and follows the selected level.
-        <HelpLevelledBody sections={article.sections} intros={article.levelIntros ?? {}} />
-      ) : (
-        <>
-          <HelpToc sections={article.sections} />
-          <div className="help-article__body">
-            {article.sections.map((section) => (
-              <HelpSectionView key={section.id} section={section} />
-            ))}
-          </div>
-        </>
-      )}
+      {isOperatorOnly(article.audiences) ? <HelpOperatorOnly>{body}</HelpOperatorOnly> : body}
 
-      {article.appLinks && article.appLinks.length > 0 ? (
-        <section className="help-applinks" aria-labelledby="help-applinks-h">
-          <h2 id="help-applinks-h" className="help-section__heading">
-            Open in the app
-          </h2>
-          <ul className="help-applinks__list">
-            {article.appLinks.map((link) => (
-              <li key={`${link.href}-${link.label}`}>
-                <Link href={link.href} className="help-applink">
-                  <span className="help-applink__label">{link.label}</span>
-                  <span className="help-applink__desc">{link.description}</span>
-                  <span className="help-applink__arrow" aria-hidden="true">→</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {related.length > 0 ? (
-        <section className="help-related" aria-labelledby="help-related-h">
-          <h2 id="help-related-h" className="help-section__heading">
-            Related guides
-          </h2>
-          <ul className="help-related__list">
-            {related.map((r) => (
-              <li key={r.slug}>
-                <Link href={`/help/${r.slug}`} className="help-related__link">
-                  <span className="help-related__title">{r.title}</span>
-                  <span className="help-related__summary">{r.summary}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <HelpRelatedList items={related} />
 
       <footer className="help-article__footer">
         <Link href="/help" className="help-textbtn">

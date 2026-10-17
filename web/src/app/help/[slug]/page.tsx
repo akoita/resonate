@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { HelpArticleView } from "../../../components/help/HelpArticleView";
-import { articleSlugs, getArticle } from "../../../lib/help";
+import { articleSlugs, getArticle, isOperatorOnly } from "../../../lib/help";
 import {
   canonicalPath,
   decodePathSegment,
+  privateMetadata,
   publicMetadata,
 } from "../../../lib/seo";
 
@@ -27,6 +28,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: "Browse the Resonate User Guide.",
       path: canonicalPath("help", decodedSlug),
     });
+  }
+  if (isOperatorOnly(article.audiences)) {
+    // Only operators and admins see this guide's body, so keep it out of search engines.
+    return privateMetadata({ title: article.title, description: article.summary });
   }
   return publicMetadata({
     title: article.title,
