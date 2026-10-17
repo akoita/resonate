@@ -29,8 +29,11 @@ boundary: every route is `@Roles("admin", "operator")` behind `AuthGuard("jwt")`
 - **Restriction controls** (suspend, lift, close) appear on the record **only
   for admins**. They are the existing #2147 controls
   (`AccountRestrictionPanel`) calling the existing admin-only
-  `/admin/accounts/*` routes; operators see the status read-only. Those routes
-  are not widened to operators.
+  `/admin/accounts/*` API routes; operators see the status read-only. Those
+  routes are not widened to operators. The record is the only place for these
+  controls: the separate `/admin/accounts` lookup page folded into Users (its
+  user id / wallet address lookup is the directory search) and its URL now
+  redirects to `/admin/users`.
 - The sidebar shows a **Users** link to admins and operators; the top bar
   titles the page "Users".
 - `/help` article `admin-users` (audience operator, status `partial`).

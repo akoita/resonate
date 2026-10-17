@@ -7,7 +7,7 @@ import AccountRestrictionPanel, {
   toRestrictionInput,
   validateRestrictionDraft,
 } from "./AccountRestrictionPanel";
-import type { AdminAccountStatus } from "../../../lib/api";
+import type { AdminAccountStatus } from "../../../../lib/api";
 
 const account: AdminAccountStatus = {
   userId: "user-1",
