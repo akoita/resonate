@@ -48,14 +48,22 @@ export class SessionsController {
   @UseGuards(AuthGuard("jwt"))
   @AllowWhileSuspended()
   @Post("stop")
-  stop(@Body() body: { sessionId: string }) {
-    return this.sessionsService.stopSession(body.sessionId);
+  stop(@Body() body: { sessionId: string }, @Request() req: AuthenticatedPlaybackRequest) {
+    return this.sessionsService.stopSession(authenticatedUserId(req), body?.sessionId);
   }
 
   @UseGuards(AuthGuard("jwt"))
   @Post("play")
-  play(@Body() body: { sessionId: string; trackId: string; priceUsd: number }) {
-    return this.sessionsService.playTrack(body);
+  play(
+    @Body() body: { sessionId: string; trackId: string; priceUsd: number },
+    @Request() req: AuthenticatedPlaybackRequest,
+  ) {
+    // Only these fields: the on-chain purchase inputs are never taken from the body.
+    return this.sessionsService.playTrack(authenticatedUserId(req), {
+      sessionId: body?.sessionId,
+      trackId: body?.trackId,
+      priceUsd: body?.priceUsd,
+    });
   }
 
   @UseGuards(AuthGuard("jwt"))

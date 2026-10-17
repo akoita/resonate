@@ -42,8 +42,7 @@ export class IngestionController {
     @Body()
     body: {
       artistId?: string;
-      trackId?: string; // For AI-generated tracks — fetch audio from catalog
-      source?: string;
+      trackId?: string; // Reuse audio of one of the caller's own catalog tracks
       metadata?: any; // Can be string (from FormData) or object (from JSON body)
     },
     @Request() req: any,
@@ -64,7 +63,8 @@ export class IngestionController {
         artwork: files?.artwork?.[0],
         metadata,
         catalogTrackId: body.trackId,
-        sourceType: body.source,
+        // The upload source is never taken from the client: trusted routing
+        // comes only from the server-side trusted-source link.
       });
     } finally {
       await cleanupIngestionMultipartRequest(req);
@@ -145,7 +145,8 @@ export class IngestionController {
   @Post("enqueue")
   enqueue(
     @Body() body: { artistId: string; fileUris: string[]; metadata?: any },
+    @Request() req: any,
   ) {
-    return this.ingestionService.enqueueUpload(body);
+    return this.ingestionService.enqueueUpload({ ...body, userId: req.user?.userId });
   }
 }

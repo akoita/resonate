@@ -65,6 +65,15 @@ describe('IngestionController', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('never passes a client-supplied upload source to the service', () => {
+      const ctrl = makeController();
+
+      ctrl.upload(files, { metadata: '{}', source: 'trusted_distributor' } as any, req);
+
+      const input = mockIngestionService.handleFileUpload.mock.calls[0][0];
+      expect(input).not.toHaveProperty('sourceType');
+    });
+
     it('extracts userId from req.user', () => {
       const ctrl = makeController();
 
@@ -92,5 +101,13 @@ describe('IngestionController', () => {
 
       expect(mockIngestionService.retryRelease).toHaveBeenCalledWith('rel-1', 'user-42');
     });
+  });
+
+  it('passes the caller to enqueue so the service binds the artist', async () => {
+    const ctrl = makeController();
+    await ctrl.enqueue({ artistId: 'someone-else', fileUris: ['gs://b/a.wav'] }, { user: { userId: 'u1' } });
+    expect(mockIngestionService.enqueueUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1', artistId: 'someone-else' }),
+    );
   });
 });

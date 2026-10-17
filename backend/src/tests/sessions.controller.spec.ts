@@ -35,6 +35,24 @@ function makeController() {
 beforeEach(() => jest.clearAllMocks());
 
 describe('SessionsController', () => {
+  it('binds stop and play to the caller and never forwards purchase fields from the body', () => {
+    const ctrl = makeController();
+    const req = { user: { userId: 'owner-1' } } as any;
+
+    ctrl.stop({ sessionId: 'session-1' }, req);
+    ctrl.play(
+      { sessionId: 'session-1', trackId: 'track-1', priceUsd: 0.5, listingId: '1', totalPriceWei: '9' } as any,
+      req,
+    );
+
+    expect(mockSessionsService.stopSession).toHaveBeenCalledWith('owner-1', 'session-1');
+    expect(mockSessionsService.playTrack).toHaveBeenCalledWith('owner-1', {
+      sessionId: 'session-1',
+      trackId: 'track-1',
+      priceUsd: 0.5,
+    });
+  });
+
   it('forwards session intent preferences when starting a session', () => {
     const ctrl = makeController();
 

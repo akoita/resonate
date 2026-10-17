@@ -68,6 +68,18 @@ describe("PlaybackIntentsService", () => {
     expect(command.reason).toBe("no_active_device");
   });
 
+  it("keeps each user's devices apart even when they share a device id", () => {
+    const { service } = makeService();
+    service.registerDevice("user-1", { deviceId: "web-1", label: "Mine" });
+    service.registerDevice("user-2", { deviceId: "web-1", label: "Theirs" });
+
+    const mine = service.requestQueue("user-1", { trackIds: ["track-1"], deviceId: "web-1" });
+    const theirs = service.requestQueue("user-2", { trackIds: ["track-2"], deviceId: "web-1" });
+
+    expect(mine.outcome).toBe("queued");
+    expect(theirs.outcome).toBe("queued");
+  });
+
   it("queues a command when an active device can accept queue updates", () => {
     const { service } = makeService();
     service.registerDevice("user-1", { deviceId: "web-1" });

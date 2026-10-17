@@ -19,7 +19,7 @@ describe("IngestionService metadata", () => {
     mockHasReleaseManagementAccess.mockResolvedValue(true);
   });
 
-  it("publishes metadata on stems.uploaded", () => {
+  it("publishes metadata on stems.uploaded", async () => {
     const eventBus = new EventBus();
     const mockCatalogService = {} as any;
     const service = new IngestionService(
@@ -48,7 +48,7 @@ describe("IngestionService metadata", () => {
       explicit: true,
     };
 
-    service.enqueueUpload({
+    await service.enqueueUpload({
       artistId: "artist_1",
       fileUris: ["gs://bucket/audio.wav"],
       metadata,
@@ -77,7 +77,7 @@ describe("IngestionService metadata", () => {
       });
     });
 
-    const result = service.enqueueUpload({
+    const result = await service.enqueueUpload({
       artistId: "artist_1",
       fileUris: ["gs://bucket/vocals.wav", "gs://bucket/drums.wav"],
     });

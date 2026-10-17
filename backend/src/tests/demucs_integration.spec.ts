@@ -245,7 +245,7 @@ describe("Demucs Integration", () => {
     });
 
     // enqueueUpload uses mock processing in test mode
-    const result = ingestionService.enqueueUpload({
+    const result = await ingestionService.enqueueUpload({
       artistId: "artist_test",
       fileUris: ["test://vocals.wav", "test://drums.wav"],
       metadata: {
