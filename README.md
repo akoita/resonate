@@ -81,24 +81,7 @@ See the [feature catalog](docs/features/README.md) for the full index of impleme
 
 ## 🏗️ Architecture
 
-```mermaid
-flowchart LR
-  Studio["Human Studio<br>Next.js"] --> API["NestJS API<br>modular backend"]
-  Desktop["Desktop shell<br>Electron"] --> API
-  Agents["Agents<br>OpenAPI + MCP + x402"] --> API
-  API --> Catalog["Catalog, pricing,<br>rights, library"]
-  API --> Commerce["Marketplace, Shows +<br>x402 stablecoin settlement"]
-  API --> Runtime["AI DJ + agent runtime"]
-  API --> Ingestion["Upload + stem processing"]
-  API --> Remix["Remix Studio +<br>AI generation"]
-  API --> Analytics["Analytics pipeline<br>Dataflow → BigQuery"]
-  Commerce --> Chain["Smart accounts +<br>Resonate contracts"]
-  Ingestion --> Worker["Demucs worker"]
-  Remix --> SAW["Stable Audio worker<br>GPU, scale-to-zero"]
-  Catalog --> Data["Postgres, Redis,<br>GCS, Pub/Sub"]
-  Runtime --> Data
-  Worker --> Data
-```
+![Resonate application architecture](docs/architecture/resonate-application-architecture.svg)
 
 Resonate deploys as a full-stack music and agent-commerce system: Cloud Run services, Pub/Sub pipelines, Cloud SQL, Redis, GCS, ERC-4337 smart accounts, and a Terraform-managed GCP edge. Ordinary CI validates source; an explicit exact-SHA Release Deployment publishes immutable images and can hand their digest manifest to [`resonate-iac`](https://github.com/akoita/resonate-iac) for infrastructure reconciliation.
 

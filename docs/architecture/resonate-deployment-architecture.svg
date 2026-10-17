@@ -1,190 +1,324 @@
-<svg width="1600" height="1120" viewBox="0 0 1600 1120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1330" viewBox="0 0 1600 1330" role="img" aria-labelledby="title desc">
   <title id="title">Resonate deployment architecture</title>
-  <desc id="desc">A deployment architecture diagram for Resonate showing clients, a global HTTPS edge with managed TLS and Cloud Armor, Cloud Run services, private data services, Pub/Sub Demucs processing, a GPU Stable Audio remix service, selectable analytics streaming or batch execution, BigQuery warehouse layers, x402 settlement, ERC-4337 smart accounts, protocol contracts including the show campaign escrow, and GitHub/Terraform delivery.</desc>
+  <desc id="desc">Deployment view of Resonate on Google Cloud: clients reach an optional global HTTPS edge with managed TLS, Cloud Armor, a host-based URL map and serverless NEGs in front of Cloud Run frontend and backend services; the backend reaches Cloud SQL, Redis, Cloud Storage, Secret Manager and Pub/Sub over a private VPC, starts Demucs jobs, calls the GPU Stable Audio service, runs scheduled jobs, and feeds a streaming (Dataflow) or batch (BigQuery subscription) analytics pipeline into BigQuery and Dataform marts. Vertex AI, ERC-4337 smart accounts, Resonate contracts and x402 USDC settlement sit outside the cloud boundary. Delivery runs from exact-SHA signed images in the app repository to digest-verified Terraform reconciliation in resonate-iac.</desc>
   <defs>
-    <linearGradient id="bg" x1="60" y1="20" x2="1540" y2="1090" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F8FBFF"/>
-      <stop offset="0.5" stop-color="#F7FFF8"/>
-      <stop offset="1" stop-color="#FFF9F1"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="1330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0D0B1C"/><stop offset="0.55" stop-color="#08080F"/><stop offset="1" stop-color="#0C0912"/>
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="12" stdDeviation="13" flood-color="#101828" flood-opacity="0.12"/>
-    </filter>
-    <marker id="blueArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-      <path d="M1 1L11 6L1 11Z" fill="#2563EB"/>
-    </marker>
-    <marker id="greenArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-      <path d="M1 1L11 6L1 11Z" fill="#0F766E"/>
-    </marker>
-    <marker id="orangeArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-      <path d="M1 1L11 6L1 11Z" fill="#C2410C"/>
-    </marker>
-    <marker id="purpleArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
-      <path d="M1 1L8 4.5L1 8Z" fill="#7C3AED"/>
-    </marker>
-    <style>
-      .page { fill: url(#bg); }
-      .zone { fill: #FFFFFF; stroke: #CBD5E1; stroke-width: 2; rx: 24; }
-      .panel { fill: #FFFFFF; stroke: #D8E0EA; stroke-width: 1.5; rx: 14; filter: url(#shadow); }
-      .sub { fill: #F8FAFC; stroke: #D8E0EA; stroke-width: 1.3; rx: 12; }
-      .edge { fill: #DBEAFE; stroke: #93C5FD; stroke-width: 1.5; rx: 12; }
-      .secure { fill: #DCFCE7; stroke: #86EFAC; stroke-width: 1.5; rx: 12; }
-      .data { fill: #CCFBF1; stroke: #5EEAD4; stroke-width: 1.5; rx: 12; }
-      .chain { fill: #FFEDD5; stroke: #FDBA74; stroke-width: 1.5; rx: 12; }
-      .payment { fill: #EDE9FE; stroke: #C4B5FD; stroke-width: 1.5; rx: 12; }
-      .analytics { fill: #F5F3FF; stroke: #C4B5FD; stroke-width: 1.5; rx: 12; }
-      .warehouse { fill: #F0FDFA; stroke: #99F6E4; stroke-width: 1.5; rx: 12; }
-      .ops { fill: #F1F5F9; stroke: #CBD5E1; stroke-width: 1.5; rx: 12; }
-      .title { fill: #101828; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 42px; font-weight: 800; letter-spacing: 0; }
-      .subtitle { fill: #475467; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 18px; font-weight: 500; letter-spacing: 0; }
-      .h { fill: #101828; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: 0; }
-      .label { fill: #111827; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 16px; font-weight: 750; letter-spacing: 0; }
-      .small { fill: #475467; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 13px; font-weight: 520; letter-spacing: 0; }
-      .tiny { fill: #667085; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 11px; font-weight: 650; letter-spacing: 0; }
-      .blueLine { stroke: #2563EB; stroke-width: 2.5; marker-end: url(#blueArrow); opacity: 0.86; }
-      .greenLine { stroke: #0F766E; stroke-width: 2.5; marker-end: url(#greenArrow); opacity: 0.86; }
-      .orangeLine { stroke: #C2410C; stroke-width: 2.5; marker-end: url(#orangeArrow); opacity: 0.86; }
-      .purpleLine { stroke: #7C3AED; stroke-width: 2; marker-end: url(#purpleArrow); opacity: 0.72; }
-      .dash { stroke-dasharray: 7 7; }
-    </style>
+    <radialGradient id="auraV" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(288.0 26.6) scale(672.0 558.6)">
+      <stop offset="0" stop-color="#7C5CFF" stop-opacity="0.30"/><stop offset="1" stop-color="#7C5CFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auraC" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1472.0 1330.0) scale(576.0 532.0)">
+      <stop offset="0" stop-color="#FF6B4A" stop-opacity="0.16"/><stop offset="1" stop-color="#FF6B4A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7C5CFF"/><stop offset="0.6" stop-color="#A085FF"/><stop offset="1" stop-color="#FF8F6B"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.9" fill="#FFFFFF" fill-opacity="0.045"/>
+    </pattern>
+    <marker id="m0" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#34D399"/></marker><marker id="m1" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#60A5FA"/></marker><marker id="m2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#94A3B8"/></marker><marker id="m3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#9880FF"/></marker><marker id="m4" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#A78BFA"/></marker><marker id="m5" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#A9A3C9"/></marker><marker id="m6" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#C4B5FD"/></marker><marker id="m7" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#F472B6"/></marker><marker id="m8" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#FBBF24"/></marker><marker id="m9" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.2 L9 5 L1 8.8 Z" fill="#FF8F6B"/></marker>
   </defs>
-
-  <rect class="page" x="0" y="0" width="1600" height="1120"/>
-  <text x="70" y="74" class="title">Resonate deployment architecture</text>
-  <text x="72" y="108" class="subtitle">Music marketplace, agent-native commerce, smart accounts, AI stem processing, GPU remix generation, analytics intelligence, and Terraform-managed GCP delivery.</text>
-
-  <rect x="55" y="150" width="210" height="850" class="zone"/>
-  <text x="82" y="188" class="h">Clients</text>
-  <rect x="82" y="220" width="156" height="136" class="panel"/>
-  <text x="106" y="256" class="label">Human studio</text>
-  <text x="106" y="284" class="small">Artists, listeners,</text>
-  <text x="106" y="304" class="small">curators, admins</text>
-  <text x="106" y="332" class="tiny">Browser + passkey wallet</text>
-  <rect x="82" y="396" width="156" height="150" class="panel"/>
-  <text x="106" y="432" class="label">AI agents</text>
-  <text x="106" y="460" class="small">MCP clients, scripts,</text>
-  <text x="106" y="480" class="small">automation buyers</text>
-  <text x="106" y="508" class="tiny">OpenAPI + x402 receipts</text>
-  <rect x="82" y="586" width="156" height="132" class="panel"/>
-  <text x="106" y="622" class="label">Operators</text>
-  <text x="106" y="650" class="small">GitHub approvals,</text>
-  <text x="106" y="670" class="small">environment deploys</text>
-  <rect x="82" y="760" width="156" height="110" class="panel"/>
-  <text x="106" y="796" class="label">Dashboards</text>
-  <text x="106" y="824" class="small">Artist reports,</text>
-  <text x="106" y="844" class="small">pipeline health</text>
-
-  <rect x="300" y="150" width="790" height="850" class="zone"/>
-  <text x="328" y="188" class="h">Google Cloud runtime</text>
-
-  <rect x="330" y="220" width="720" height="128" class="panel"/>
-  <text x="354" y="254" class="label">Global HTTPS edge</text>
-  <rect x="355" y="282" width="118" height="38" class="edge"/>
-  <text x="378" y="306" class="small">DNS</text>
-  <rect x="493" y="282" width="160" height="38" class="edge"/>
-  <text x="513" y="306" class="small">Managed TLS</text>
-  <rect x="673" y="282" width="168" height="38" class="edge"/>
-  <text x="692" y="306" class="small">HTTPS LB</text>
-  <rect x="861" y="282" width="150" height="38" class="secure"/>
-  <text x="884" y="306" class="small">Cloud Armor</text>
-
-  <rect x="330" y="390" width="345" height="270" class="panel"/>
-  <text x="354" y="424" class="label">Application containers</text>
-  <rect x="358" y="448" width="278" height="40" class="sub"/>
-  <text x="382" y="474" class="small">Cloud Run frontend - Next.js</text>
-  <rect x="358" y="500" width="278" height="40" class="sub"/>
-  <text x="382" y="526" class="small">Cloud Run backend - NestJS API</text>
-  <rect x="358" y="552" width="278" height="40" class="sub"/>
-  <text x="382" y="578" class="small">Cloud Run Demucs Job - on demand</text>
-  <rect x="358" y="604" width="278" height="40" class="sub"/>
-  <text x="382" y="630" class="small">Cloud Run stable-audio - GPU remix</text>
-
-  <rect x="705" y="390" width="345" height="270" class="panel"/>
-  <text x="729" y="424" class="label">Private data and media</text>
-  <rect x="733" y="454" width="125" height="42" class="data"/>
-  <text x="757" y="481" class="small">Cloud SQL</text>
-  <rect x="878" y="454" width="125" height="42" class="data"/>
-  <text x="915" y="481" class="small">Redis</text>
-  <rect x="733" y="516" width="125" height="42" class="data"/>
-  <text x="765" y="543" class="small">GCS</text>
-  <rect x="878" y="516" width="125" height="42" class="data"/>
-  <text x="900" y="543" class="small">Secrets</text>
-  <rect x="733" y="578" width="270" height="42" class="data"/>
-  <text x="775" y="605" class="small">Pub/Sub jobs, results, DLQ</text>
-
-  <rect x="330" y="690" width="720" height="142" class="panel"/>
-  <text x="354" y="724" class="label">Analytics event pipeline</text>
-  <rect x="358" y="752" width="132" height="42" class="analytics"/>
-  <text x="382" y="778" class="small">Event ledger</text>
-  <rect x="512" y="752" width="132" height="42" class="analytics"/>
-  <text x="532" y="778" class="small">Pub/Sub + DLQ</text>
-  <rect x="666" y="752" width="150" height="42" class="analytics"/>
-  <text x="684" y="778" class="small">Stream / batch</text>
-  <rect x="838" y="752" width="175" height="42" class="warehouse"/>
-  <text x="858" y="778" class="small">BigQuery warehouse</text>
-  <text x="358" y="812" class="tiny">Dataflow streaming or batch landing/materialization</text>
-  <text x="358" y="826" class="tiny">artist dashboard reports and agent taste scores</text>
-
-  <rect x="330" y="862" width="720" height="132" class="panel"/>
-  <text x="354" y="896" class="label">Delivery and operations</text>
-  <rect x="358" y="924" width="155" height="40" class="ops"/>
-  <text x="381" y="949" class="small">GitHub Actions</text>
-  <rect x="535" y="924" width="170" height="40" class="ops"/>
-  <text x="557" y="949" class="small">Artifact Registry</text>
-  <rect x="727" y="924" width="136" height="40" class="ops"/>
-  <text x="758" y="949" class="small">Terraform</text>
-  <rect x="885" y="924" width="128" height="40" class="ops"/>
-  <text x="916" y="949" class="small">Monitoring</text>
-
-  <rect x="1130" y="150" width="415" height="850" class="zone"/>
-  <text x="1158" y="188" class="h">Protocol and payments</text>
-  <rect x="1160" y="220" width="350" height="178" class="panel"/>
-  <text x="1184" y="254" class="label">Smart account layer</text>
-  <rect x="1188" y="284" width="135" height="42" class="chain"/>
-  <text x="1214" y="311" class="small">Bundler</text>
-  <rect x="1343" y="284" width="135" height="42" class="chain"/>
-  <text x="1366" y="311" class="small">EntryPoint</text>
-  <rect x="1188" y="342" width="290" height="42" class="chain"/>
-  <text x="1230" y="369" class="small">Kernel smart accounts + sessions</text>
-
-  <rect x="1160" y="438" width="350" height="196" class="panel"/>
-  <text x="1184" y="472" class="label">Resonate contracts</text>
-  <text x="1188" y="506" class="small">StemNFT, marketplace, content protection,</text>
-  <text x="1188" y="526" class="small">curation rewards, dispute resolution,</text>
-  <text x="1188" y="546" class="small">show campaign escrow, revenue escrow,</text>
-  <text x="1188" y="566" class="small">transfer validation</text>
-  <rect x="1188" y="586" width="290" height="30" class="chain"/>
-  <text x="1258" y="606" class="tiny">Base Sepolia / EVM deployments</text>
-
-  <rect x="1160" y="654" width="350" height="140" class="panel"/>
-  <text x="1184" y="688" class="label">x402 commerce</text>
-  <rect x="1188" y="716" width="136" height="40" class="payment"/>
-  <text x="1212" y="741" class="small">Challenge</text>
-  <rect x="1342" y="716" width="136" height="40" class="payment"/>
-  <text x="1364" y="741" class="small">Settle USDC</text>
-  <text x="1188" y="776" class="tiny">Machine-readable payments and receipts</text>
-
-  <path d="M238 270 C275 270 285 300 330 300" class="blueLine"/>
-  <path d="M238 472 C275 472 285 300 330 300" class="greenLine"/>
-  <path d="M1011 301 C1040 301 1052 301 1080 301" class="blueLine"/>
-  <path d="M1080 301 C1100 360 1088 475 1050 475" class="blueLine"/>
-  <path d="M1080 301 C1100 430 1088 537 1050 537" class="blueLine"/>
-  <path d="M636 520 C662 520 682 528 705 537" class="greenLine"/>
-  <path d="M636 572 C662 572 682 590 705 599" class="greenLine"/>
-  <path d="M675 520 C705 482 720 475 733 475" class="greenLine"/>
-  <path d="M675 520 C705 528 718 537 733 537" class="greenLine"/>
-  <path d="M675 520 C704 560 720 599 733 599" class="greenLine"/>
-  <path d="M636 520 H690 V668 H424 V752" class="purpleLine"/>
-  <path d="M492 773 H504" class="purpleLine"/>
-  <path d="M646 773 H658" class="purpleLine"/>
-  <path d="M818 773 H830" class="purpleLine"/>
-  <path d="M636 520 H685 V360 H1088 C1116 360 1130 320 1160 305" class="orangeLine"/>
-  <path d="M636 520 H685 V682 H1088 C1118 682 1128 726 1160 736" class="orangeLine"/>
-  <path d="M236 652 C280 800 310 944 358 944" class="blueLine dash"/>
-  <path d="M513 944 C520 944 528 944 535 944" class="blueLine"/>
-  <path d="M705 944 C712 944 720 944 727 944" class="blueLine"/>
-  <path d="M863 944 C870 944 878 944 885 944" class="blueLine"/>
-
-  <rect x="70" y="1030" width="1460" height="54" class="sub"/>
-  <text x="96" y="1062" class="small">Public traffic terminates at the edge; Cloud Run stays behind serverless NEGs. CI validates source; explicit exact-SHA releases publish images/templates, while resonate-iac owns Terraform state, IAM, routing, alerts, and reconciliation.</text>
+  <rect width="1600" height="1330" rx="28" fill="url(#bg)"/>
+  <rect width="1600" height="1330" rx="28" fill="url(#grid)"/>
+  <rect width="1600" height="1330" rx="28" fill="url(#auraV)"/>
+  <rect width="1600" height="1330" rx="28" fill="url(#auraC)"/>
+  <rect x="0.5" y="0.5" width="1599" height="1329" rx="27.5" fill="none" stroke="#2A2745"/>
+  <rect x="56" y="59.0" width="3.6" height="6" rx="1.8" fill="url(#brand)" stroke="none" stroke-width="1" />
+  <rect x="63" y="55.0" width="3.6" height="14" rx="1.8" fill="url(#brand)" stroke="none" stroke-width="1" />
+  <rect x="70" y="50.0" width="3.6" height="24" rx="1.8" fill="url(#brand)" stroke="none" stroke-width="1" />
+  <rect x="77" y="55.0" width="3.6" height="14" rx="1.8" fill="url(#brand)" stroke="none" stroke-width="1" />
+  <rect x="84" y="47.0" width="3.6" height="30" rx="1.8" fill="url(#brand)" stroke="none" stroke-width="1" />
+  <rect x="91" y="53.0" width="3.6" height="18" rx="1.8" fill="url(#brand)" stroke="none" stroke-width="1" />
+  <rect x="98" y="58.0" width="3.6" height="8" rx="1.8" fill="url(#brand)" stroke="none" stroke-width="1" />
+  <text x="118" y="52" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="750" fill="#9880FF" text-anchor="start" letter-spacing="2.4">RESONATE</text>
+  <text x="118" y="80" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="30" font-weight="800" fill="#F4F2FF" text-anchor="start" letter-spacing="-0.4">Resonate deployment architecture</text>
+  <text x="118" y="106" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500" fill="#A9A3C9" text-anchor="start">Google Cloud runtime, smart-account protocol layer, x402 settlement and the exact-SHA delivery path into resonate-iac.</text>
+  <rect x="40" y="140" width="250" height="860" rx="22" fill="#11101E" stroke="#2A2745" stroke-width="1.2" fill-opacity="0.82"/>
+  <rect x="62" y="162" width="8" height="8" rx="2" fill="#60A5FA" stroke="none" stroke-width="1" />
+  <text x="80" y="170" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#60A5FA" text-anchor="start" letter-spacing="1.6">CLIENTS</text>
+  <text x="62" y="196" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="750" fill="#F4F2FF" text-anchor="start">Who connects</text>
+  <rect x="58" y="214" width="214" height="118" rx="14" fill="#161427" stroke="#60A5FA" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M59 228 a13 13 0 0 1 13 -13 h81.32000000000001 " stroke="#60A5FA" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(74 231)" stroke="#60A5FA" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="3.4"/><path d="M2.5 17c.8-3.6 3.4-5.4 6.5-5.4s5.7 1.8 6.5 5.4"/></g>
+  <text x="102" y="244" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Human studio</text>
+  <text x="74" y="265" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">Artists, listeners,</text>
+  <text x="74" y="283" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">curators, admins</text>
+  <text x="74" y="318" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#60A5FA" text-anchor="start" opacity="0.92">browser · passkey wallet</text>
+  <rect x="58" y="348" width="214" height="104" rx="14" fill="#161427" stroke="#60A5FA" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M59 362 a13 13 0 0 1 13 -13 h81.32000000000001 " stroke="#60A5FA" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(74 365)" stroke="#60A5FA" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="15" height="10" rx="2"/><path d="M6 16h6M9 12.5V16"/></g>
+  <text x="102" y="378" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Desktop app</text>
+  <text x="74" y="399" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">Electron shell over</text>
+  <text x="74" y="417" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">the web origin</text>
+  <text x="74" y="438" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#60A5FA" text-anchor="start" opacity="0.92">desktop/</text>
+  <rect x="58" y="468" width="214" height="118" rx="14" fill="#161427" stroke="#A78BFA" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M59 482 a13 13 0 0 1 13 -13 h81.32000000000001 " stroke="#A78BFA" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(74 485)" stroke="#A78BFA" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="13" height="10" rx="3"/><path d="M9 1.5V5"/><circle cx="6.5" cy="10" r="1"/><circle cx="11.5" cy="10" r="1"/></g>
+  <text x="102" y="498" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">AI agents</text>
+  <text x="74" y="519" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">MCP clients, scripts,</text>
+  <text x="74" y="537" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">automation buyers</text>
+  <text x="74" y="572" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#A78BFA" text-anchor="start" opacity="0.92">OpenAPI · /mcp · x402</text>
+  <rect x="58" y="602" width="214" height="118" rx="14" fill="#161427" stroke="#94A3B8" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M59 616 a13 13 0 0 1 13 -13 h81.32000000000001 " stroke="#94A3B8" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(74 619)" stroke="#94A3B8" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="2.6"/><path d="M9 1.5v2.2M9 14.3v2.2M1.5 9h2.2M14.3 9h2.2M3.7 3.7l1.6 1.6M12.7 12.7l1.6 1.6M3.7 14.3l1.6-1.6M12.7 5.3l1.6-1.6"/></g>
+  <text x="102" y="632" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Operators</text>
+  <text x="74" y="653" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">GitHub approvals,</text>
+  <text x="74" y="671" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">release + deploy runs</text>
+  <text x="74" y="706" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#94A3B8" text-anchor="start" opacity="0.92">workflow_dispatch</text>
+  <rect x="320" y="140" width="900" height="860" rx="22" fill="#11101E" stroke="#2A2745" stroke-width="1.2" fill-opacity="0.82"/>
+  <rect x="342" y="162" width="8" height="8" rx="2" fill="#9880FF" stroke="none" stroke-width="1" />
+  <text x="360" y="170" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#9880FF" text-anchor="start" letter-spacing="1.6">GOOGLE CLOUD · ONE PROJECT PER ENVIRONMENT</text>
+  <text x="342" y="196" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="750" fill="#F4F2FF" text-anchor="start">Runtime platform</text>
+  <text x="1198" y="170" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="600" fill="#6F6A8F" text-anchor="end">Terraform-managed</text>
+  <rect x="340" y="214" width="860" height="104" rx="16" fill="#131226" stroke="#60A5FA" stroke-width="1" stroke-opacity="0.35"/>
+  <text x="358" y="238" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#60A5FA" text-anchor="start" letter-spacing="1.4">GLOBAL HTTPS EDGE</text>
+  <text x="1184" y="238" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#6F6A8F" text-anchor="end">optional per environment</text>
+  <rect x="358" y="254" width="152" height="50" rx="9" fill="#60A5FA" stroke="#60A5FA" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="434.0" y="277.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">DNS</text>
+  <text x="434.0" y="292.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">external provider</text>
+  <rect x="528" y="254" width="152" height="50" rx="9" fill="#60A5FA" stroke="#60A5FA" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="604.0" y="277.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">HTTPS load balancer</text>
+  <text x="604.0" y="292.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">global IP · managed TLS</text>
+  <rect x="698" y="254" width="152" height="50" rx="9" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="774.0" y="277.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Cloud Armor</text>
+  <text x="774.0" y="292.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">WAF · rate limits</text>
+  <rect x="868" y="254" width="152" height="50" rx="9" fill="#60A5FA" stroke="#60A5FA" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="944.0" y="277.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">URL map</text>
+  <text x="944.0" y="292.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">web host · API host</text>
+  <rect x="1038" y="254" width="152" height="50" rx="9" fill="#60A5FA" stroke="#60A5FA" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1114.0" y="277.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Serverless NEGs</text>
+  <text x="1114.0" y="292.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">frontend · backend</text>
+  <rect x="340" y="340" width="860" height="264" rx="16" fill="#131226" stroke="#9880FF" stroke-width="1" stroke-opacity="0.35"/>
+  <text x="358" y="364" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#9880FF" text-anchor="start" letter-spacing="1.4">CLOUD RUN</text>
+  <text x="1110" y="364" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#6F6A8F" text-anchor="end">shared runtime SA · VPC connector egress</text>
+  <rect x="358" y="378" width="276" height="100" rx="14" fill="#161427" stroke="#9880FF" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M359 392 a13 13 0 0 1 13 -13 h104.88 " stroke="#9880FF" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(374 395)" stroke="#9880FF" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="7.2"/><path d="M1.8 9h14.4M9 1.8c2.2 2 3.2 4.4 3.2 7.2s-1 5.2-3.2 7.2c-2.2-2-3.2-4.4-3.2-7.2S6.8 3.8 9 1.8z"/></g>
+  <text x="402" y="408" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Frontend</text>
+  <text x="374" y="429" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">Next.js app; server-side calls</text>
+  <text x="374" y="447" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">reach the backend directly</text>
+  <text x="374" y="464" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#9880FF" text-anchor="start" opacity="0.92">service</text>
+  <rect x="649" y="375" width="536" height="106" rx="17" fill="none" stroke="#9880FF" stroke-width="1" stroke-opacity="0.25"/>
+  <rect x="652" y="378" width="530" height="100" rx="14" fill="#161427" stroke="#9880FF" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M653 392 a13 13 0 0 1 13 -13 h201.4 " stroke="#9880FF" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(668 395)" stroke="#9880FF" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5l7 3.8v7.4L9 16.5 2 12.7V5.3z"/><path d="M2 5.3l7 3.8 7-3.8M9 9.1v7.4"/></g>
+  <text x="696" y="408" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Backend · NestJS API</text>
+  <text x="668" y="429" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">REST + OpenAPI, /mcp, x402, Socket.IO; contract and Shows-escrow indexers</text>
+  <text x="668" y="447" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">run in-process under a lease; agent runtime in-process or as a worker URL</text>
+  <text x="668" y="464" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#9880FF" text-anchor="start" opacity="0.92">service · /health probes · Secret Manager env</text>
+  <rect x="358" y="492" width="276" height="100" rx="14" fill="#161427" stroke="#FF8F6B" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M359 506 a13 13 0 0 1 13 -13 h104.88 " stroke="#FF8F6B" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(374 509)" stroke="#FF8F6B" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 9h2l1.6-4.5 2.4 9 2.4-11 2.4 9 1.6-2.5h2.6"/></g>
+  <text x="402" y="522" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Demucs stem job</text>
+  <text x="374" y="543" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">Started per queued track;</text>
+  <text x="374" y="561" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">CPU or GPU, scales to zero</text>
+  <text x="374" y="578" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#FF8F6B" text-anchor="start" opacity="0.92">Cloud Run Job · worker image</text>
+  <rect x="652" y="492" width="262" height="100" rx="14" fill="#161427" stroke="#FF8F6B" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M653 506 a13 13 0 0 1 13 -13 h99.56 " stroke="#FF8F6B" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(668 509)" stroke="#FF8F6B" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 9h2l1.6-4.5 2.4 9 2.4-11 2.4 9 1.6-2.5h2.6"/></g>
+  <text x="696" y="522" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Stable Audio remix</text>
+  <text x="668" y="543" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">GPU service, scale-to-zero,</text>
+  <text x="668" y="561" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">minutes-long cold start</text>
+  <text x="668" y="578" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#FF8F6B" text-anchor="start" opacity="0.92">service · ID-token invoke</text>
+  <rect x="932" y="492" width="250" height="100" rx="14" fill="#161427" stroke="#94A3B8" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M933 506 a13 13 0 0 1 13 -13 h95.0 " stroke="#94A3B8" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <g transform="translate(948 509)" stroke="#94A3B8" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="2.6"/><path d="M9 1.5v2.2M9 14.3v2.2M1.5 9h2.2M14.3 9h2.2M3.7 3.7l1.6 1.6M12.7 12.7l1.6 1.6M3.7 14.3l1.6-1.6M12.7 5.3l1.6-1.6"/></g>
+  <text x="976" y="522" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#F4F2FF" text-anchor="start">Scheduled jobs</text>
+  <text x="948" y="543" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">Analytics load, retention,</text>
+  <text x="948" y="561" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#A9A3C9" text-anchor="start">data rights, notices</text>
+  <text x="948" y="578" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#94A3B8" text-anchor="start" opacity="0.92">backend image · Scheduler</text>
+  <rect x="340" y="624" width="560" height="176" rx="16" fill="#131226" stroke="#34D399" stroke-width="1" stroke-opacity="0.35"/>
+  <text x="358" y="648" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#34D399" text-anchor="start" letter-spacing="1.4">PRIVATE DATA &amp; MESSAGING</text>
+  <rect x="358" y="662" width="168" height="52" rx="9" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="442.0" y="686.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Cloud SQL</text>
+  <text x="442.0" y="701.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">Postgres 16 · private IP</text>
+  <rect x="536" y="662" width="168" height="52" rx="9" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="620.0" y="686.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Memorystore Redis</text>
+  <text x="620.0" y="701.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">BullMQ · Socket.IO</text>
+  <rect x="714" y="662" width="168" height="52" rx="9" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="798.0" y="686.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Cloud Storage</text>
+  <text x="798.0" y="701.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">media + stems</text>
+  <rect x="358" y="726" width="168" height="52" rx="9" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="442.0" y="750.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Secret Manager</text>
+  <text x="442.0" y="765.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">runtime secrets</text>
+  <rect x="536" y="726" width="168" height="52" rx="9" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="620.0" y="750.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Pub/Sub · stems</text>
+  <text x="620.0" y="765.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">separate · results · DLQ</text>
+  <rect x="714" y="726" width="168" height="52" rx="9" fill="#FBBF24" stroke="#FBBF24" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="798.0" y="750.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Pub/Sub · analytics</text>
+  <text x="798.0" y="765.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">events · DLQ</text>
+  <rect x="916" y="624" width="284" height="176" rx="16" fill="#131226" stroke="#94A3B8" stroke-width="1" stroke-opacity="0.35"/>
+  <text x="934" y="648" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#94A3B8" text-anchor="start" letter-spacing="1.4">PRIVATE NETWORK</text>
+  <text x="934" y="674" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="550" fill="#F4F2FF" text-anchor="start">Custom VPC + subnet</text>
+  <text x="934" y="694" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="550" fill="#A9A3C9" text-anchor="start">Private Google Access</text>
+  <text x="934" y="714" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="550" fill="#F4F2FF" text-anchor="start">Serverless VPC Access</text>
+  <text x="934" y="734" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="550" fill="#A9A3C9" text-anchor="start">connector, private ranges only</text>
+  <text x="934" y="754" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="550" fill="#A9A3C9" text-anchor="start">Cloud SQL via private</text>
+  <text x="934" y="774" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="550" fill="#A9A3C9" text-anchor="start">service access peering</text>
+  <rect x="340" y="820" width="860" height="164" rx="16" fill="#131226" stroke="#FBBF24" stroke-width="1" stroke-opacity="0.35"/>
+  <text x="358" y="844" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#FBBF24" text-anchor="start" letter-spacing="1.4">ANALYTICS &amp; INTELLIGENCE</text>
+  <text x="1184" y="844" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600" fill="#6F6A8F" text-anchor="end">execution mode: streaming | batch</text>
+  <rect x="358" y="858" width="214" height="48" rx="9" fill="#FBBF24" stroke="#FBBF24" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="465.0" y="880.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Streaming</text>
+  <text x="465.0" y="895.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">Dataflow Flex Template</text>
+  <rect x="358" y="914" width="214" height="56" rx="9" fill="#FBBF24" stroke="#FBBF24" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="465.0" y="940.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Batch</text>
+  <text x="465.0" y="955.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">BigQuery subscription + loader</text>
+  <rect x="604" y="858" width="268" height="112" rx="9" fill="#FBBF24" stroke="#FBBF24" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="738.0" y="882" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F4F2FF" text-anchor="middle">BigQuery warehouse</text>
+  <text x="738.0" y="904" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.8" font-weight="550" fill="#A9A3C9" text-anchor="middle">events_raw · events_clean</text>
+  <text x="738.0" y="921" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.8" font-weight="550" fill="#A9A3C9" text-anchor="middle">analytics_facts · _views</text>
+  <text x="738.0" y="938" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.8" font-weight="550" fill="#A9A3C9" text-anchor="middle">analytics_quarantine</text>
+  <text x="738.0" y="955" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.8" font-weight="550" fill="#A9A3C9" text-anchor="middle">events_landing (batch)</text>
+  <rect x="904" y="858" width="278" height="112" rx="9" fill="#FBBF24" stroke="#FBBF24" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1043.0" y="882" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F4F2FF" text-anchor="middle">Dataform marts</text>
+  <text x="1043.0" y="904" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="550" fill="#A9A3C9" text-anchor="middle">agent taste scores</text>
+  <text x="1043.0" y="921" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="550" fill="#A9A3C9" text-anchor="middle">discovery popularity</text>
+  <text x="1043.0" y="938" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="550" fill="#A9A3C9" text-anchor="middle">built from events_clean</text>
+  <text x="1043.0" y="955" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="550" fill="#A9A3C9" text-anchor="middle">read back by backend APIs</text>
+  <rect x="1250" y="140" width="310" height="300" rx="22" fill="#11101E" stroke="#2A2745" stroke-width="1.2" fill-opacity="0.82"/>
+  <rect x="1272" y="162" width="8" height="8" rx="2" fill="#A78BFA" stroke="none" stroke-width="1" />
+  <text x="1290" y="170" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#A78BFA" text-anchor="start" letter-spacing="1.6">GOOGLE &amp; THIRD-PARTY APIS</text>
+  <text x="1272" y="196" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="750" fill="#F4F2FF" text-anchor="start">Outside the VPC</text>
+  <rect x="1268" y="204" width="274" height="48" rx="9" fill="#A78BFA" stroke="#A78BFA" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1405.0" y="226.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Vertex AI</text>
+  <text x="1405.0" y="241.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">Gemini · Lyria · embeddings</text>
+  <rect x="1268" y="260" width="274" height="48" rx="9" fill="#FF8F6B" stroke="#FF8F6B" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1405.0" y="282.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Hugging Face</text>
+  <text x="1405.0" y="297.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">Stable Audio model weights</text>
+  <rect x="1268" y="316" width="274" height="48" rx="9" fill="#94A3B8" stroke="#94A3B8" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1405.0" y="338.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">SMTP provider</text>
+  <text x="1405.0" y="353.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">notices + bounce webhook</text>
+  <rect x="1268" y="372" width="274" height="48" rx="9" fill="#94A3B8" stroke="#94A3B8" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1405.0" y="394.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Human verification</text>
+  <text x="1405.0" y="409.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">World ID · Gitcoin Passport</text>
+  <rect x="1250" y="460" width="310" height="340" rx="22" fill="#11101E" stroke="#2A2745" stroke-width="1.2" fill-opacity="0.82"/>
+  <rect x="1272" y="482" width="8" height="8" rx="2" fill="#C4B5FD" stroke="none" stroke-width="1" />
+  <text x="1290" y="490" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#C4B5FD" text-anchor="start" letter-spacing="1.6">PROTOCOL &amp; PAYMENTS</text>
+  <text x="1272" y="516" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="750" fill="#F4F2FF" text-anchor="start">On-chain commerce</text>
+  <rect x="1268" y="524" width="274" height="44" rx="9" fill="#C4B5FD" stroke="#C4B5FD" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1405.0" y="544.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">ERC-4337 bundler</text>
+  <text x="1405.0" y="559.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">UserOps from passkeys + session keys</text>
+  <rect x="1268" y="580" width="132" height="44" rx="9" fill="#C4B5FD" stroke="#C4B5FD" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1334.0" y="600.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">EntryPoint</text>
+  <text x="1334.0" y="615.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">v0.7</text>
+  <rect x="1410" y="580" width="132" height="44" rx="9" fill="#C4B5FD" stroke="#C4B5FD" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1476.0" y="600.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">Kernel</text>
+  <text x="1476.0" y="615.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">smart accounts</text>
+  <text x="1268" y="646" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="650" fill="#F4F2FF" text-anchor="start">Resonate contracts · Base Sepolia / EVM</text>
+  <text x="1268" y="666" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="550" fill="#A9A3C9" text-anchor="start">StemNFT · StemMarketplaceV2</text>
+  <text x="1268" y="683" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="550" fill="#A9A3C9" text-anchor="start">ShowCampaignEscrow · RevenueEscrow</text>
+  <text x="1268" y="700" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="550" fill="#A9A3C9" text-anchor="start">ContentProtection · CurationRewards</text>
+  <text x="1268" y="717" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="550" fill="#A9A3C9" text-anchor="start">DisputeResolution · TransferValidator</text>
+  <rect x="1268" y="738" width="274" height="44" rx="9" fill="#F472B6" stroke="#F472B6" stroke-width="1" fill-opacity="0.11" stroke-opacity="0.5"/>
+  <text x="1405.0" y="758.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="650" fill="#F4F2FF" text-anchor="middle">x402 facilitator → USDC</text>
+  <text x="1405.0" y="773.0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#A9A3C9" text-anchor="middle">verify / settle · receipts</text>
+  <rect x="1250" y="820" width="310" height="180" rx="22" fill="#11101E" stroke="#2A2745" stroke-width="1.2" fill-opacity="0.82"/>
+  <rect x="1272" y="842" width="8" height="8" rx="2" fill="#94A3B8" stroke="none" stroke-width="1" />
+  <text x="1290" y="850" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#94A3B8" text-anchor="start" letter-spacing="1.6">OBSERVABILITY</text>
+  <text x="1272" y="876" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="750" fill="#F4F2FF" text-anchor="start">Cloud Monitoring</text>
+  <text x="1268" y="898" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">Uptime checks: API, worker, indexer</text>
+  <text x="1268" y="917" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">Alerts: 5xx, latency, DB, Redis,</text>
+  <text x="1268" y="936" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">queue + DLQ backlog, analytics lag</text>
+  <text x="1268" y="955" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">JSON logs · degraded.fallback</text>
+  <text x="1268" y="974" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">Dashboards · billing budget</text>
+  <rect x="40" y="1028" width="1520" height="236" rx="22" fill="#11101E" stroke="#2A2745" stroke-width="1.2" fill-opacity="0.82"/>
+  <rect x="62" y="1050" width="8" height="8" rx="2" fill="#94A3B8" stroke="none" stroke-width="1" />
+  <text x="80" y="1058" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#94A3B8" text-anchor="start" letter-spacing="1.6">DELIVERY</text>
+  <text x="62" y="1084" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="750" fill="#F4F2FF" text-anchor="start">Exact-SHA releases</text>
+  <rect x="60" y="1142" width="170" height="66" rx="12" fill="#94A3B8" stroke="#94A3B8" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="74" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">CI</text>
+  <text x="74" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">PR · queue · main · develop</text>
+  <text x="74" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">validate only</text>
+  <rect x="248" y="1142" width="170" height="66" rx="12" fill="#94A3B8" stroke="#94A3B8" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="262" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">Release Deployment</text>
+  <text x="262" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">manual · exact SHA</text>
+  <text x="262" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">reusable CI gate</text>
+  <rect x="436" y="1142" width="170" height="66" rx="12" fill="#9880FF" stroke="#9880FF" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="450" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">Publish images</text>
+  <text x="450" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">Cloud Build · SHA tag</text>
+  <text x="450" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">cosign · SBOM · in-toto</text>
+  <rect x="624" y="1142" width="170" height="66" rx="12" fill="#9880FF" stroke="#9880FF" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="638" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">Artifact Registry</text>
+  <text x="638" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">per-environment repo</text>
+  <text x="638" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">immutable digests</text>
+  <rect x="812" y="1142" width="170" height="66" rx="12" fill="#9880FF" stroke="#9880FF" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="826" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">Deploy manifest v2</text>
+  <text x="826" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">digest-bound handoff</text>
+  <text x="826" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">stable release → staging</text>
+  <rect x="1000" y="1142" width="170" height="66" rx="12" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="1014" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">Verify</text>
+  <text x="1014" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">digest · signer · source SHA</text>
+  <text x="1014" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">branch → environment</text>
+  <rect x="1188" y="1142" width="170" height="66" rx="12" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="1202" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">Terraform apply</text>
+  <text x="1202" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">targeted image refs</text>
+  <text x="1202" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">GCS state · WIF</text>
+  <rect x="1376" y="1142" width="170" height="66" rx="12" fill="#34D399" stroke="#34D399" stroke-width="1" fill-opacity="0.10" stroke-opacity="0.5"/>
+  <text x="1390" y="1164" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#F4F2FF" text-anchor="start">Reconcile</text>
+  <text x="1390" y="1182" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#A9A3C9" text-anchor="start">live revision digest</text>
+  <text x="1390" y="1198" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.8" font-weight="520" fill="#6F6A8F" text-anchor="start">jobs re-pinned · evidence</text>
+  <path d="M60 1128 V1122 H982 V1128" stroke="#9880FF" stroke-width="1.2" fill="none" opacity="0.6"/>
+  <text x="60" y="1113" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="700" fill="#9880FF" text-anchor="start">akoita/resonate</text>
+  <text x="176.5" y="1113" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="550" fill="#6F6A8F" text-anchor="start">public · build + sign</text>
+  <path d="M1000 1128 V1122 H1546 V1128" stroke="#34D399" stroke-width="1.2" fill="none" opacity="0.6"/>
+  <text x="1000" y="1113" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="700" fill="#34D399" text-anchor="start">resonate-iac</text>
+  <text x="1095.2" y="1113" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="550" fill="#6F6A8F" text-anchor="start">private · state, IAM, rollout</text>
+  <text x="60" y="1234" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="550" fill="#6F6A8F" text-anchor="start">develop → dev · main → staging · production is a manual IaC operation. Images are never rebuilt during deploy; app and IaC versions stay independent.</text>
+  <text x="60" y="1251" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="550" fill="#6F6A8F" text-anchor="start">Full-infrastructure applies (edge, network, data, analytics, monitoring) use the same rendered environment config.</text>
+  <path d="M62 1298 h28" stroke="#9880FF" stroke-width="1.8" stroke-linecap="round" marker-end="url(#m3)"/>
+  <text x="102" y="1302.5" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">request / call</text>
+  <path d="M222.39999999999998 1298 h28" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="5 5" marker-end="url(#m8)"/>
+  <text x="262.4" y="1302.5" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">async · queued · read-back</text>
+  <path d="M462.0 1298 h28" stroke="#C4B5FD" stroke-width="1.8" stroke-linecap="round" marker-end="url(#m6)"/>
+  <text x="502.0" y="1302.5" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">on-chain path</text>
+  <path d="M615.8 1298 h28" stroke="#34D399" stroke-width="1.8" stroke-linecap="round" marker-end="url(#m0)"/>
+  <text x="655.8" y="1302.5" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="550" fill="#A9A3C9" text-anchor="start">delivery</text>
+  <text x="1538" y="1302" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="550" fill="#6F6A8F" text-anchor="end">Narrative + mermaid: docs/architecture/deployment_architecture.md</text>
+  <path d="M512 279 H525" stroke="#60A5FA" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <path d="M682 279 H695" stroke="#60A5FA" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <path d="M852 279 H865" stroke="#60A5FA" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <path d="M1022 279 H1035" stroke="#60A5FA" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <path d="M272 272 C308 272 318 279 356 279" stroke="#60A5FA" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <path d="M272 400 C308 400 318 279 356 279" stroke="#60A5FA" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <path d="M272 526 C308 526 318 279 356 279" stroke="#A78BFA" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m4)"/>
+  <path d="M634 428 H650" stroke="#9880FF" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m3)"/>
+  <path d="M700 478 V485 H500 V490" stroke="#FF8F6B" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" stroke-dasharray="5 5" marker-end="url(#m9)"/>
+  <path d="M800 478 V490" stroke="#FF8F6B" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m9)"/>
+  <path d="M1094 304 V329 H496 V376" stroke="#60A5FA" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <path d="M1140 304 V376" stroke="#60A5FA" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m1)"/>
+  <rect x="687.8" y="317" width="64.4" height="18" rx="9" fill="#0B0A16" stroke="#60A5FA" stroke-width="1" stroke-opacity="0.55"/>
+  <text x="720.0" y="330" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="650" fill="#60A5FA" text-anchor="middle">web host</text>
+  <rect x="1107.8" y="324" width="64.4" height="18" rx="9" fill="#0B0A16" stroke="#60A5FA" stroke-width="1" stroke-opacity="0.55"/>
+  <text x="1140.0" y="337" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="650" fill="#60A5FA" text-anchor="middle">API host</text>
+  <path d="M560 592 V658" stroke="#34D399" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m0)"/>
+  <path d="M760 592 V658" stroke="#34D399" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m0)"/>
+  <rect x="621.5" y="602" width="77.0" height="18" rx="9" fill="#0B0A16" stroke="#34D399" stroke-width="1" stroke-opacity="0.55"/>
+  <text x="660.0" y="615" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="650" fill="#34D399" text-anchor="middle">private IP</text>
+  <path d="M1056 592 V622" stroke="#94A3B8" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" stroke-dasharray="5 5" marker-end="url(#m2)"/>
+  <path d="M574 882 C590 882 588 900 602 900" stroke="#FBBF24" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m8)"/>
+  <path d="M574 942 C590 942 588 928 602 928" stroke="#FBBF24" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m8)"/>
+  <path d="M874 914 H902" stroke="#FBBF24" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m8)"/>
+  <path d="M797 776 V810 H560 V856" stroke="#FBBF24" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" stroke-dasharray="5 5" marker-end="url(#m8)"/>
+  <path d="M1184 914 H1208 V440 H1186" stroke="#FBBF24" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" stroke-dasharray="5 5" marker-end="url(#m8)"/>
+  <path d="M1334 568 V578" stroke="#C4B5FD" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m6)"/>
+  <path d="M1400 602 H1408" stroke="#C4B5FD" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m6)"/>
+  <path d="M1182 396 C1226 396 1222 306 1266 306" stroke="#A78BFA" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m4)"/>
+  <path d="M1182 460 C1230 460 1224 546 1266 546" stroke="#C4B5FD" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m6)"/>
+  <rect x="1212.4" y="472" width="39.2" height="18" rx="9" fill="#0B0A16" stroke="#C4B5FD" stroke-width="1" stroke-opacity="0.55"/>
+  <text x="1232.0" y="485" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="650" fill="#C4B5FD" text-anchor="middle">viem</text>
+  <path d="M232 1175 H245" stroke="#94A3B8" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m2)"/>
+  <path d="M420 1175 H433" stroke="#9880FF" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m3)"/>
+  <path d="M608 1175 H621" stroke="#9880FF" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m3)"/>
+  <path d="M796 1175 H809" stroke="#9880FF" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m3)"/>
+  <path d="M984 1175 H997" stroke="#34D399" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" stroke-dasharray="5 5" marker-end="url(#m0)"/>
+  <path d="M1172 1175 H1185" stroke="#34D399" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m0)"/>
+  <path d="M1360 1175 H1373" stroke="#34D399" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" marker-end="url(#m0)"/>
+  <path d="M165 720 V1012 H390 V1140" stroke="#94A3B8" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" stroke-dasharray="5 5" marker-end="url(#m2)"/>
+  <rect x="101.30000000000001" y="748" width="127.39999999999999" height="18" rx="9" fill="#0B0A16" stroke="#94A3B8" stroke-width="1" stroke-opacity="0.55"/>
+  <text x="165.0" y="761" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="650" fill="#94A3B8" text-anchor="middle">approve + dispatch</text>
+  <path d="M1460 1140 V1100 H1236 V700 H1223" stroke="#34D399" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" stroke-dasharray="5 5" marker-end="url(#m0)"/>
+  <rect x="1266.3" y="1088" width="127.39999999999999" height="18" rx="9" fill="#0B0A16" stroke="#34D399" stroke-width="1" stroke-opacity="0.55"/>
+  <text x="1330.0" y="1101" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="650" fill="#34D399" text-anchor="middle">reconciles runtime</text>
 </svg>
