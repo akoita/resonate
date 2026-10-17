@@ -349,7 +349,7 @@ fixture covers all six control events in both transforms.
 `commerce.settled` feeds `payoutUsd` (warehouse and BigQuery daily views), the
 artist dashboard gross sales totals (labelled as gross sales; responses carry
 `payoutBasis: "gross_settled"`, #2144), `artistSettledCommerceCount` and the "purchase"
-agent-quality outcome. Two settlement rails emit it, through the shared
+agent-quality outcome. Three settlement rails emit it, through the shared
 `EventBus` and the analytics domain bridge (`analytics_commerce_settled.ts`):
 the marketplace rail emits when the `contract.stem_sold` handler creates a new
 `StemPurchase`. That covers batched purchases and contract-backed x402 `buyFor`
@@ -357,10 +357,19 @@ sales. The x402 rail emits when an `X402Settlement` reaches a final state
 (`download_granted` for stems, `collected` for Punchline moments) without going
 through the marketplace contract. Contract-backed x402 rows are left to the
 marketplace rail so a sale is never counted twice, and failed or `refund_due`
-rows are not counted. Each fact's eventId comes from an idempotency key
-(`commerce.settled:marketplace:<chainId>:<txHash>:<logIndex>` or
-`commerce.settled:x402:<settlementId>`), so a replayed Sold log or a repeated
-emission upserts the same row. The payload carries the gross amount and asset,
+rows are not counted. Direct x402 purchases by the agent payment router and MCP
+`stem.download` (#2144) emit right after their `x402.purchase` ContractEvent is
+recorded (`paymentRail` `agent_payment_router` or `mcp`, `paymentId` the
+ContractEvent id). They pay the payout address through the facilitator and
+create no `X402Settlement` or `StemPurchase`, so no other rail counts them;
+`x402.purchase` rows from other rails carry no such `source` and are ignored.
+The agent rail's buyer is the signed-in user; MCP callers are anonymous, so
+those facts have no actor. Each fact's eventId comes from an idempotency key
+(`commerce.settled:marketplace:<chainId>:<txHash>:<logIndex>`,
+`commerce.settled:x402:<settlementId>` or
+`commerce.settled:x402_direct:<txHash>:<logIndex>`), so a replayed Sold log or a
+repeated emission upserts the same row. Agent and MCP purchases made before
+#2144 are not backfilled. The payload carries the gross amount and asset,
 rail, stem/moment, track, release, artist, license tier, and a pseudonymous
 buyer actor id (the owning user when the wallet is known, otherwise the hashed
 address; raw wallet addresses are never stored). `amountUsd` and

@@ -1,5 +1,6 @@
 /**
- * #1894: live `commerce.settled` facts from the real settlement rails.
+ * #1894: live `commerce.settled` facts from the real settlement rails, and
+ * #2144's direct agent and MCP x402 purchases.
  *
  * NO MOCKS. Real EventBus + real ContractsService (Sold-log indexing) + real
  * analytics bridge/ingest + real Postgres. Asserts one fact per settlement,
@@ -20,9 +21,11 @@ import { pseudonymousAnalyticsActorId } from '../modules/analytics/analytics_ide
 import {
   commerceSettledEventId,
   loadX402CommerceSettled,
+  loadX402DirectPurchaseCommerceSettled,
   marketplaceCommerceSettlementKey,
   publishCommerceSettled,
   x402CommerceSettlementKey,
+  x402DirectPurchaseSettlementKey,
 } from '../modules/analytics/analytics_commerce_settled';
 import type { ContractStemSoldEvent } from '../events/event_types';
 
@@ -131,6 +134,7 @@ describe('#1894 live commerce.settled facts', () => {
       .deleteMany({ where: { eventName: 'commerce.settled', payload: { path: ['artistId'], equals: artistId } } })
       .catch(() => {});
     await prisma.x402Settlement.deleteMany({ where: { receiptId: { startsWith: P } } }).catch(() => {});
+    await prisma.contractEvent.deleteMany({ where: { transactionHash: { startsWith: `x402:${P}` } } }).catch(() => {});
     await prisma.stemPurchase.deleteMany({ where: { transactionHash: { startsWith: `0x${P}` } } }).catch(() => {});
     await prisma.stemListing.deleteMany({ where: { transactionHash: { startsWith: `0x${P}` } } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId } }).catch(() => {});
@@ -285,4 +289,89 @@ describe('#1894 live commerce.settled facts', () => {
     expect(await settledFactsFor(x402CommerceSettlementKey(contractBacked.id))).toHaveLength(0);
     expect(await settledFactsFor(x402CommerceSettlementKey(refundDue.id))).toHaveLength(0);
   }, 20000);
+  // #2144: the agent payment router and MCP `stem.download` settle directly and
+  // record only an `x402.purchase` ContractEvent, written exactly like this.
+  async function seedDirectPurchase(suffix: string, args: Record<string, unknown>) {
+    return prisma.contractEvent.create({
+      data: {
+        eventName: 'x402.purchase',
+        chainId: 84532,
+        contractAddress: '0x' + 'f'.repeat(40),
+        transactionHash: `x402:${P}${suffix}`,
+        logIndex: 0,
+        blockNumber: 0n,
+        blockHash: '',
+        args: {
+          stemId,
+          receiptId: `${P}receipt_${suffix}`,
+          licenseKey: 'remix',
+          amountUsd: '2',
+          settlementAmount: '2',
+          settlementAmountUnits: '2000000',
+          paymentToken: usdcToken,
+          paymentAssetId: 'base-sepolia:usdc',
+          paymentAssetSymbol: 'USDC',
+          paymentAssetDecimals: 6,
+          ...args,
+        },
+        processedAt: new Date(),
+      },
+    });
+  }
+
+  it('emits one fact per direct agent or MCP x402 purchase, idempotently (#2144)', async () => {
+    const agent = await seedDirectPurchase('agent', { source: 'agent_payment_router', userId: buyerUserId });
+    const mcp = await seedDirectPurchase('mcp', { source: 'mcp', tool: 'stem.download' });
+
+    for (const row of [agent, mcp]) {
+      const load = () => loadX402DirectPurchaseCommerceSettled({ transactionHash: row.transactionHash, logIndex: 0 });
+      await publishCommerceSettled(eventBus, load, logger, 'test');
+      expect(await waitForEvent(commerceSettledEventId(x402DirectPurchaseSettlementKey(row.transactionHash, 0)))).not.toBeNull();
+      await publishCommerceSettled(eventBus, load, logger, 'test');
+    }
+    await wait(500);
+
+    const agentFacts = await settledFactsFor(x402DirectPurchaseSettlementKey(agent.transactionHash, 0));
+    expect(agentFacts).toHaveLength(1);
+    expect(agentFacts[0].actorId).toBe(pseudonymousAnalyticsActorId(buyerUserId));
+    expect(agentFacts[0].payload).toMatchObject({
+      paymentId: agent.id,
+      rail: 'x402',
+      paymentRail: 'agent_payment_router',
+      resourceKind: 'stem',
+      stemId,
+      trackId,
+      releaseId,
+      artistId,
+      licenseType: 'remix',
+      receiptId: `${P}receipt_agent`,
+      amountUsd: 2,
+      canonicalAmountUsd: 2,
+    });
+
+    const mcpFacts = await settledFactsFor(x402DirectPurchaseSettlementKey(mcp.transactionHash, 0));
+    expect(mcpFacts).toHaveLength(1);
+    expect(mcpFacts[0].actorId).toBeNull();
+    expect(mcpFacts[0].payload).toMatchObject({ paymentRail: 'mcp', artistId, amountUsd: 2 });
+
+    const payout = await payoutViewFor(
+      [agent, mcp].map((row) => commerceSettledEventId(x402DirectPurchaseSettlementKey(row.transactionHash, 0))),
+    );
+    // Both sales land in the artist's daily payout row.
+    expect(payout).toHaveLength(1);
+    expect(payout[0].eventCount).toBe(2);
+    expect(payout[0].payoutUsd).toBe(4);
+    expect(logger.warn).not.toHaveBeenCalled();
+  }, 20000);
+
+  it('emits no direct-purchase fact for other x402.purchase rows, which their own rail counts (#2144)', async () => {
+    // The stem x402 rail mirrors its purchase into a ContractEvent without a
+    // `source`; it is counted through its X402Settlement instead.
+    const mirrored = await seedDirectPurchase('mirror', {});
+    const unknown = await seedDirectPurchase('unknown', { source: 'someone_else' });
+    for (const row of [mirrored, unknown]) {
+      expect(await loadX402DirectPurchaseCommerceSettled({ transactionHash: row.transactionHash, logIndex: 0 })).toBeNull();
+    }
+    expect(await loadX402DirectPurchaseCommerceSettled({ transactionHash: `x402:${P}missing`, logIndex: 0 })).toBeNull();
+  });
 });

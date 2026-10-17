@@ -1,4 +1,5 @@
 import { prisma } from "../db/prisma";
+import { commerceSettledAnalyticsEvent } from "../modules/analytics/analytics_commerce_settled";
 import { AnalyticsInstrumentationService } from "../modules/analytics/analytics_instrumentation.service";
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
 import { PrismaAnalyticsEventStore } from "../modules/analytics/analytics_event_store";
@@ -38,15 +39,21 @@ describe("Analytics instrumentation integration", () => {
       releaseId: `${TEST_PREFIX}release`,
       source: "release_page",
     });
-    await instrumentation.recordCommerceSettled({
-      paymentId: `${TEST_PREFIX}payment`,
-      artistId: `${TEST_PREFIX}artist`,
-      trackId: `${TEST_PREFIX}track`,
-      sessionId: `${TEST_PREFIX}session`,
-      canonicalAmountUsd: 3.5,
-      settlementAsset: "base-sepolia:usdc",
-      txHash: `${TEST_PREFIX}tx`,
-    });
+    // Settled commerce comes from the live emitter (#1894), not the instrumentation service.
+    await ingest.ingest(
+      commerceSettledAnalyticsEvent({
+        eventName: "commerce.settled",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        settlementKey: `${TEST_PREFIX}settlement`,
+        paymentId: `${TEST_PREFIX}payment`,
+        rail: "x402",
+        resourceKind: "stem",
+        artistId: `${TEST_PREFIX}artist`,
+        trackId: `${TEST_PREFIX}track`,
+        amountUsd: 3.5,
+      }),
+    );
     await instrumentation.recordRightsRouteDecided({
       releaseId: `${TEST_PREFIX}release`,
       artistId: `${TEST_PREFIX}artist`,

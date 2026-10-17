@@ -17,7 +17,11 @@ import { pseudonymousAnalyticsActorId } from "./analytics_identity";
  *   contract-backed x402 `buyFor` sales, whose Sold log lands here);
  * - x402 rail: an X402Settlement in its final settled state that did NOT go
  *   through the marketplace contract (contract-backed rows are counted by the
- *   marketplace rail, so counting them here would double count).
+ *   marketplace rail, so counting them here would double count);
+ * - direct x402 purchases by the agent payment router and MCP `stem.download`
+ *   (#2144): they pay the payout address through the facilitator, never the
+ *   marketplace contract, and record only an `x402.purchase` ContractEvent (no
+ *   X402Settlement, no StemPurchase), so no other rail counts them.
  *
  * The idempotency key becomes a deterministic analytics eventId, so a replay
  * of the same settlement upserts onto the same AnalyticsEvent row.
@@ -33,6 +37,13 @@ export function marketplaceCommerceSettlementKey(chainId: number, transactionHas
 export function x402CommerceSettlementKey(settlementId: string) {
   return `commerce.settled:x402:${settlementId}`;
 }
+
+export function x402DirectPurchaseSettlementKey(transactionHash: string, logIndex: number) {
+  return `commerce.settled:x402_direct:${transactionHash}:${logIndex}`;
+}
+
+/** `x402.purchase` ContractEvent sources that settle directly, outside the marketplace contract (#2144). */
+export const X402_DIRECT_PURCHASE_SOURCES: ReadonlySet<string> = new Set(["agent_payment_router", "mcp"]);
 
 export function commerceSettledEventId(settlementKey: string) {
   return `evt_cs_${createHash("sha256").update(settlementKey).digest("hex").slice(0, 32)}`;
@@ -197,6 +208,69 @@ export async function loadX402CommerceSettled(
     paymentAssetDecimals: settlement.paymentAssetDecimals,
     settlementAmount: settlement.settlementAmount,
     settlementAmountUnits: settlement.settlementAmountUnits,
+  };
+}
+
+function stringArg(args: Record<string, unknown>, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === "string" && value ? value : undefined;
+}
+
+/**
+ * Builds the fact for a direct agent or MCP x402 purchase, identified by its
+ * `x402.purchase` ContractEvent, or null when that row is not one (#2144).
+ */
+export async function loadX402DirectPurchaseCommerceSettled(input: {
+  transactionHash: string;
+  logIndex: number;
+}): Promise<CommerceSettledEvent | null> {
+  const row = await prisma.contractEvent.findUnique({
+    where: { transactionHash_logIndex: { transactionHash: input.transactionHash, logIndex: input.logIndex } },
+  });
+  if (!row || row.eventName !== "x402.purchase") return null;
+  const args = (row.args ?? {}) as Record<string, unknown>;
+  const source = stringArg(args, "source");
+  if (!source || !X402_DIRECT_PURCHASE_SOURCES.has(source)) return null;
+
+  const stemId = stringArg(args, "stemId");
+  const stem = stemId
+    ? await prisma.stem.findUnique({
+        where: { id: stemId },
+        select: { id: true, trackId: true, track: { select: { releaseId: true, release: { select: { artistId: true } } } } },
+      })
+    : null;
+  const decimals = typeof args.paymentAssetDecimals === "number" ? args.paymentAssetDecimals : undefined;
+  const settlementAmountUnits = stringArg(args, "settlementAmountUnits");
+  const userId = stringArg(args, "userId");
+  return {
+    eventName: "commerce.settled",
+    eventVersion: 1,
+    occurredAt: (row.processedAt ?? row.createdAt).toISOString(),
+    settlementKey: x402DirectPurchaseSettlementKey(row.transactionHash, row.logIndex),
+    paymentId: row.id,
+    rail: "x402",
+    paymentRail: source,
+    resourceKind: "stem",
+    stemId: stem?.id ?? stemId,
+    trackId: stem?.trackId,
+    releaseId: stem?.track?.releaseId,
+    artistId: stem?.track?.release?.artistId,
+    licenseType: stringArg(args, "licenseKey"),
+    receiptId: stringArg(args, "receiptId"),
+    chainId: row.chainId,
+    // The agent rail knows the signed-in user; MCP callers are anonymous.
+    buyerActorId: userId ? pseudonymousAnalyticsActorId(userId) : undefined,
+    amountUsd: exactStablecoinUsd({
+      symbol: stringArg(args, "paymentAssetSymbol"),
+      amountUnits: settlementAmountUnits,
+      decimals,
+    }),
+    paymentToken: stringArg(args, "paymentToken"),
+    paymentAssetId: stringArg(args, "paymentAssetId"),
+    paymentAssetSymbol: stringArg(args, "paymentAssetSymbol"),
+    paymentAssetDecimals: decimals,
+    settlementAmount: stringArg(args, "settlementAmount"),
+    settlementAmountUnits,
   };
 }
 

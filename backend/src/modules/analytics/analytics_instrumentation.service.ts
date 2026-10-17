@@ -100,16 +100,6 @@ export interface LibrarySavedAnalyticsInput {
   source?: string;
 }
 
-export interface CommerceSettledAnalyticsInput {
-  paymentId: string;
-  artistId?: string;
-  trackId?: string;
-  sessionId?: string;
-  canonicalAmountUsd: number;
-  settlementAsset?: string;
-  txHash?: string;
-}
-
 export interface RightsRouteDecidedAnalyticsInput {
   releaseId: string;
   artistId: string;
@@ -706,29 +696,6 @@ export class AnalyticsInstrumentationService {
         source: input.source,
       },
       sourceRefs: { userCohortId: input.userCohortId, trackId: input.trackId },
-    });
-  }
-
-  async recordCommerceSettled(input: CommerceSettledAnalyticsInput) {
-    return this.emit({
-      eventName: "commerce.settled",
-      producer: "payments-service",
-      privacyTier: "pseudonymous",
-      subjectType: input.trackId ? "track" : undefined,
-      subjectId: input.trackId,
-      sessionId: input.sessionId,
-      payload: {
-        paymentId: input.paymentId,
-        artistId: input.artistId,
-        trackId: input.trackId,
-        canonicalAmountUsd: input.canonicalAmountUsd,
-        settlementAsset: input.settlementAsset,
-        txHash: input.txHash,
-      },
-      sourceRefs: {
-        paymentId: input.paymentId,
-        ...(input.txHash ? { txHash: input.txHash } : {}),
-      },
     });
   }
 

@@ -8,6 +8,9 @@
 import { prisma } from "../db/prisma";
 import { PaymentRouterService } from "../modules/agents/payment_router.service";
 import { PolicyGuardService } from "../modules/agents/policy_guard.service";
+import { x402DirectPurchaseSettlementKey } from "../modules/analytics/analytics_commerce_settled";
+import type { CommerceSettledEvent } from "../events/event_types";
+import { EventBus } from "../modules/shared/event_bus";
 
 const TEST_PREFIX = `router_x402_${Date.now()}_`;
 
@@ -99,7 +102,10 @@ describe("PaymentRouterService x402 rail (integration)", () => {
     await prisma.user.deleteMany({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
   });
 
-  function makeService(verifyResult: { ok: true } | { ok: false; reason: string } = { ok: true }) {
+  function makeService(
+    verifyResult: { ok: true } | { ok: false; reason: string } = { ok: true },
+    eventBus?: EventBus,
+  ) {
     const x402Rail = {
       resolveLicenseAmountUsd: jest.fn((pricing, licenseType) => {
         if (licenseType === "commercial") return pricing.commercialLicenseUsd;
@@ -121,6 +127,7 @@ describe("PaymentRouterService x402 rail (integration)", () => {
         x402Rail as any,
         x402Config as any,
         paymentsService as any,
+        eventBus,
       ),
     };
   }
@@ -203,7 +210,12 @@ describe("PaymentRouterService x402 rail (integration)", () => {
   });
 
   it("settles x402 payments and records normalized receipt provenance", async () => {
-    const { service, x402Rail } = makeService();
+    const eventBus = new EventBus();
+    const settled: CommerceSettledEvent[] = [];
+    eventBus.subscribe<CommerceSettledEvent>("commerce.settled", (event) => {
+      settled.push(event);
+    });
+    const { service, x402Rail } = makeService({ ok: true }, eventBus);
 
     const result = await service.purchase({
       sessionId: `${TEST_PREFIX}session`,
@@ -250,5 +262,20 @@ describe("PaymentRouterService x402 rail (integration)", () => {
         amountUsd: "5",
       }),
     );
+
+    // #2144: the direct purchase counts as settled commerce, once.
+    expect(settled).toHaveLength(1);
+    expect(settled[0]).toEqual(
+      expect.objectContaining({
+        settlementKey: x402DirectPurchaseSettlementKey(result.txHash!, 0),
+        paymentId: event!.id,
+        rail: "x402",
+        paymentRail: "agent_payment_router",
+        stemId,
+        licenseType: "remix",
+        receiptId: result.receiptId,
+      }),
+    );
+    eventBus.destroy();
   });
 });

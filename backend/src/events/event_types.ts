@@ -1368,7 +1368,10 @@ export interface AgentPurchaseCompletedEvent extends BaseEvent {
 export interface CommerceSettledEvent extends BaseEvent {
   eventName: "commerce.settled";
   settlementKey: string;
-  /** StemPurchase.id or X402Settlement.id of the recorded settlement. */
+  /**
+   * StemPurchase.id or X402Settlement.id of the recorded settlement, or the
+   * ContractEvent.id of a direct agent or MCP x402 purchase (#2144).
+   */
   paymentId: string;
   rail: "marketplace" | "x402";
   paymentRail?: string;

@@ -11,9 +11,9 @@ describe("AnalyticsInstrumentationService", () => {
     try {
       const ingest = new AnalyticsIngestService();
       const instrumentation = new AnalyticsInstrumentationService(ingest);
-      await instrumentation.recordCommerceSettled({
-        paymentId: "environment-test-payment",
-        canonicalAmountUsd: 1,
+      await instrumentation.recordLibrarySaved({
+        userCohortId: "environment-test-cohort",
+        trackId: "environment-test-track",
       });
       expect(await ingest.listEvents()).toEqual([
         expect.objectContaining({ environment: "staging" }),
@@ -101,14 +101,20 @@ describe("AnalyticsInstrumentationService", () => {
       consentBasis: "consent",
     });
     // Server-emitted domain record: not consent-gated, so no consent basis.
-    await instrumentation.recordCommerceSettled({ paymentId: "payment-1", canonicalAmountUsd: 1 });
+    await instrumentation.recordRightsRouteDecided({
+      releaseId: "release-1",
+      artistId: "artist-1",
+      route: "trusted_creator",
+      evidenceTypes: ["wallet_attestation"],
+      decisionReason: "test",
+    });
 
     const events = await ingest.listEvents();
     expect(events.map((event) => [event.eventName, event.consentBasis])).toEqual([
       ["search.submitted", "consent"],
       ["playback.completed", "consent"],
       ["playback.started", "consent"],
-      ["commerce.settled", undefined],
+      ["rights.route_decided", undefined],
     ]);
   });
 
