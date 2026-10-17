@@ -31,6 +31,7 @@ import {
   type RemixGenerationErrorCode,
 } from "./remix-generation.provider";
 import { GeneratePartsDto } from "./remix-parts.dto";
+import { CreateRemixProjectDto, UpdateRemixProjectDto } from "./remix-project.dto";
 
 const GENERATION_ERROR_STATUS: Record<RemixGenerationErrorCode, number> = {
   provider_disabled: 503,
@@ -76,14 +77,7 @@ export class RemixController {
   @Post("projects")
   createProject(
     @Req() req: any,
-    @Body()
-    body: {
-      sourceTrackId: string;
-      stemIds: string[];
-      title: string;
-      mode?: string;
-      prompt?: string | null;
-    },
+    @Body() body: CreateRemixProjectDto,
   ) {
     return this.projectService.createProject({
       userId: req.user.userId,
@@ -146,29 +140,7 @@ export class RemixController {
   updateProject(
     @Req() req: any,
     @Param("id") id: string,
-    @Body()
-    body: {
-      title?: string;
-      prompt?: string | null;
-      status?: string;
-      mode?: string;
-      stems?: RemixProjectStemUpdate[];
-      /** Eligibility-checked stem additions to the session (#1312). */
-      addStemIds?: string[];
-      /** Persisted variation AI target (#1882); validated in the service. */
-      aiTarget?: { kind: string; stemId?: string | null } | null;
-      /**
-       * Shared effects recipe remix-fx/v3 (#1897, #1903); validated in the
-       * service (Pro fields need the `remix.pro` entitlement).
-       */
-      effects?: unknown;
-      /** Structure blocks remix-structure/v1 (#1899); validated in the service. */
-      structure?: unknown;
-      /** Beat maker remix-beat/v1 (#1902); validated in the service. */
-      beat?: unknown;
-      /** AI part lanes remix-parts/v1 (#1901); validated in the service. */
-      parts?: unknown;
-    },
+    @Body() body: UpdateRemixProjectDto,
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);
   }

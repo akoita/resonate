@@ -8,8 +8,7 @@ import {
   PlaybackIntentOutcome,
   PlaybackSource,
 } from "./playback_intents.service";
-import type { AgentSessionRequest } from "../agents/agent_session_request";
-import type { MyMixPreferences } from "../agents/agent_my_mix";
+import { AgentNextDto, PlayTrackDto, StartSessionDto, StopSessionDto } from "./sessions.dto";
 import { SessionsService } from "./sessions.service";
 
 @Controller("sessions")
@@ -23,23 +22,7 @@ export class SessionsController {
   @AllowWhileSuspended()
   @Post("start")
   start(
-    @Body()
-    body: {
-      userId?: string;
-      budgetCapUsd: number;
-      preferences?: {
-        mood?: string;
-        energy?: "low" | "medium" | "high";
-        genres?: string[];
-        allowExplicit?: boolean;
-        licenseType?: "personal" | "remix" | "commercial";
-        sessionIntent?: string;
-        sessionIntentName?: string;
-        queueStyle?: string;
-        source?: string;
-        myMix?: MyMixPreferences | null;
-      };
-    },
+    @Body() body: StartSessionDto,
     @Request() req: AuthenticatedPlaybackRequest,
   ) {
     return this.sessionsService.startSession({ ...body, userId: authenticatedUserId(req) });
@@ -48,14 +31,14 @@ export class SessionsController {
   @UseGuards(AuthGuard("jwt"))
   @AllowWhileSuspended()
   @Post("stop")
-  stop(@Body() body: { sessionId: string }, @Request() req: AuthenticatedPlaybackRequest) {
+  stop(@Body() body: StopSessionDto, @Request() req: AuthenticatedPlaybackRequest) {
     return this.sessionsService.stopSession(authenticatedUserId(req), body?.sessionId);
   }
 
   @UseGuards(AuthGuard("jwt"))
   @Post("play")
   play(
-    @Body() body: { sessionId: string; trackId: string; priceUsd: number },
+    @Body() body: PlayTrackDto,
     @Request() req: AuthenticatedPlaybackRequest,
   ) {
     // Only these fields: the on-chain purchase inputs are never taken from the body.
@@ -70,24 +53,7 @@ export class SessionsController {
   @AllowWhileSuspended()
   @Post("agent/next")
   agentNext(
-    @Body()
-    body: {
-      sessionId: string;
-      preferences?: {
-        mood?: string;
-        energy?: "low" | "medium" | "high";
-        genres?: string[];
-        allowExplicit?: boolean;
-        licenseType?: "personal" | "remix" | "commercial";
-        sessionIntent?: string;
-        sessionIntentName?: string;
-        queueStyle?: string;
-        source?: string;
-        /** Listening filters parsed from the listener's own words (#2037). Sanitized by the service. */
-        request?: AgentSessionRequest;
-        myMix?: MyMixPreferences | null;
-      };
-    },
+    @Body() body: AgentNextDto,
     @Request() req: AuthenticatedPlaybackRequest,
   ) {
     return this.sessionsService.agentNext({ ...body, userId: authenticatedUserId(req) });

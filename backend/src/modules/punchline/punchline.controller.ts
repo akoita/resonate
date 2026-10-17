@@ -16,6 +16,7 @@ import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
 import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
 import { PunchlineX402Service } from "./punchline-x402.service";
+import { CreateDropDto, SmartAccountCollectDto } from "./punchline.dto";
 import { PunchlineMetricsService } from "./punchline-metrics.service";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import {
@@ -59,8 +60,7 @@ export class PunchlineController {
   @Post("drops")
   createDraft(
     @Req() req: any,
-    @Body()
-    body: { trackId?: string; title?: string | null; description?: string | null },
+    @Body() body: CreateDropDto,
   ) {
     return this.dropService.createDraft(req.user.userId, {
       trackId: body?.trackId as string,
@@ -260,7 +260,7 @@ export class PunchlineController {
   collectMomentWithSmartAccount(
     @Req() req: any,
     @Param("momentId") momentId: string,
-    @Body() body: { txHash?: string; payer?: string; collectorWallet?: string | null },
+    @Body() body: SmartAccountCollectDto,
   ) {
     return this.x402Service.collectWithSmartAccount(req.user.userId, momentId, body ?? {});
   }

@@ -116,6 +116,13 @@ export class IngestionController {
       throw new InternalServerErrorException("INTERNAL_SERVICE_KEY must be set in production");
     }
 
+    // Checked here rather than by a DTO so the key check above still runs first (#1890).
+    if (typeof body?.progress !== "number" || !Number.isFinite(body.progress)) {
+      throw new BadRequestException("progress must be a number");
+    }
+    if (body.audioRevision !== undefined && typeof body.audioRevision !== "string") {
+      throw new BadRequestException("audioRevision must be a string");
+    }
     return this.ingestionService.handleProgress(releaseId, trackId, body.progress, body.audioRevision);
   }
 

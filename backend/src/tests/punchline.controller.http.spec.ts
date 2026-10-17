@@ -14,7 +14,7 @@ import { PunchlineX402Service } from '../modules/punchline/punchline-x402.servic
 import { PunchlineEligibilityService } from '../modules/punchline/punchline-eligibility.service';
 import { PunchlineMetricsService } from '../modules/punchline/punchline-metrics.service';
 import { PunchlineUnlockService } from '../modules/punchline/punchline-unlock.service';
-import { createControllerTestApp } from './e2e-helpers';
+import { authToken, createControllerTestApp } from './e2e-helpers';
 
 const mockDropService = {
   listDrops: jest.fn().mockResolvedValue({
@@ -35,6 +35,10 @@ const mockDropService = {
   }),
   listPublishedDropsForTrack: jest.fn().mockResolvedValue({ items: [], meta: { count: 0, limit: 24 } }),
   getDropDetail: jest.fn().mockResolvedValue({ id: 'drop-1' }),
+  createDraft: jest.fn().mockResolvedValue({ id: 'drop-2' }),
+};
+const mockX402Service = {
+  collectWithSmartAccount: jest.fn().mockResolvedValue({ status: 'collected' }),
 };
 
 describe('PunchlineController featured (e2e)', () => {
@@ -44,7 +48,7 @@ describe('PunchlineController featured (e2e)', () => {
     app = await createControllerTestApp(PunchlineController, [
       { provide: PunchlineDropService, useValue: mockDropService },
       { provide: PunchlineCollectService, useValue: {} },
-      { provide: PunchlineX402Service, useValue: {} },
+      { provide: PunchlineX402Service, useValue: mockX402Service },
       { provide: PunchlineEligibilityService, useValue: {} },
       { provide: PunchlineMetricsService, useValue: {} },
       { provide: PunchlineUnlockService, useValue: {} },
@@ -143,5 +147,23 @@ describe('PunchlineController featured (e2e)', () => {
 
     await request(app.getHttpServer()).post('/punchline/drops').send({}).expect(401);
     expect(mockDropService.listDrops).not.toHaveBeenCalled();
+  });
+
+  // ----- Body validation (#1890) -----
+
+  it('rejects non-string drop and smart-account fields with 400', async () => {
+    const auth = { Authorization: `Bearer ${authToken('user-1')}` };
+    await request(app.getHttpServer()).post('/punchline/drops').set(auth).send({ trackId: 12 }).expect(400);
+    await request(app.getHttpServer()).post('/punchline/drops').set(auth).send({ trackId: 't1', title: ['x'] }).expect(400);
+    await request(app.getHttpServer())
+      .post('/punchline/moments/m1/collect/smart-account')
+      .set(auth)
+      .send({ txHash: ['0xabc'] })
+      .expect(400);
+    expect(mockDropService.createDraft).not.toHaveBeenCalled();
+    expect(mockX402Service.collectWithSmartAccount).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer()).post('/punchline/drops').set(auth).send({ trackId: 't1', title: null }).expect(201);
+    expect(mockDropService.createDraft).toHaveBeenCalledTimes(1);
   });
 });
