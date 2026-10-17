@@ -26,6 +26,7 @@
     "fixtures:shows:prod": "node dist/scripts/create_sample_show_campaigns.js",
     "identity:resolve": "ts-node --transpile-only src/scripts/resolve_identity.ts",
     "identity:report-case-variants": "ts-node --transpile-only src/scripts/report_case_variant_users.ts",
+    "identity:merge-case-variants": "ts-node --transpile-only src/scripts/merge_case_variant_users.ts",
     "verify:migration": "ts-node --transpile-only src/scripts/verify_migration.ts",
     "credits:grant": "ts-node --transpile-only src/scripts/grant_credits.ts",
     "credits:reconcile-generation-refunds": "ts-node --transpile-only src/scripts/reconcile_generation_refunds.ts",
