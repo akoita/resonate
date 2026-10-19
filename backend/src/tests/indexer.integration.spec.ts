@@ -8,6 +8,15 @@
  * Run: npm run test:integration
  */
 
+// IndexerService reads contract addresses from the environment at import time,
+// so configure them before the service module is loaded (runIndexCycle skips
+// chains whose StemNFT address is unset).
+process.env.STEM_NFT_ADDRESS = `0x${'1'.repeat(40)}`;
+process.env.MARKETPLACE_ADDRESS = `0x${'2'.repeat(40)}`;
+process.env.CONTENT_PROTECTION_ADDRESS = `0x${'3'.repeat(40)}`;
+process.env.DISPUTE_RESOLUTION_ADDRESS = `0x${'4'.repeat(40)}`;
+process.env.CURATION_REWARDS_ADDRESS = `0x${'5'.repeat(40)}`;
+
 import { prisma } from '../db/prisma';
 import { IndexerService } from '../modules/contracts/indexer.service';
 import { EventBus } from '../modules/shared/event_bus';
@@ -325,5 +334,50 @@ describe('IndexerService (integration)', () => {
     expect(await prisma.contentAttestation.count({ where: { chainId: 31337 } })).toBe(0);
     expect(await prisma.contractEvent.count({ where: { chainId: 31337 } })).toBe(0);
     expect((await prisma.stem.findUnique({ where: { id: stemId } }))?.ipnftId).toBeNull();
+  });
+
+  it('catches up contiguously when the RPC provider caps the getLogs block range (#2218)', async () => {
+    await prisma.indexerState.deleteMany({ where: { chainId: 31337 } });
+    await prisma.indexerState.create({ data: { chainId: 31337, lastBlockNumber: 999n } });
+
+    const capped = new IndexerService(new EventBus());
+    const calls: Array<{ address: string; fromBlock: bigint; toBlock: bigint }> = [];
+    const accepted: Array<{ address: string; fromBlock: bigint; toBlock: bigint }> = [];
+    const getLogs = jest.fn(async (args: { address: string; fromBlock: bigint; toBlock: bigint }) => {
+      calls.push(args);
+      if (args.toBlock - args.fromBlock + 1n > 200n) {
+        throw new Error('eth_getLogs is limited to a 200 range');
+      }
+      accepted.push(args);
+      return [];
+    });
+    (capped as any).clientCache.set(31337, {
+      getBlockNumber: jest.fn().mockResolvedValue(3000n),
+      getLogs,
+    });
+
+    await (capped as any).runIndexCycle();
+
+    // Every successful batch asked all five contracts for the SAME range.
+    const batches = new Map<string, Set<string>>();
+    for (const call of accepted) {
+      const key = `${call.fromBlock}-${call.toBlock}`;
+      batches.set(key, (batches.get(key) ?? new Set()).add(call.address));
+    }
+    for (const addresses of batches.values()) {
+      expect(addresses.size).toBe(5);
+    }
+    const ranges = [...batches.keys()].map((key) => key.split('-').map(BigInt) as [bigint, bigint]);
+    expect(ranges[0][0]).toBe(1000n);
+    for (let i = 0; i < ranges.length; i++) {
+      expect(ranges[i][1] - ranges[i][0] + 1n).toBeLessThanOrEqual(200n);
+      if (i > 0) expect(ranges[i][0]).toBe(ranges[i - 1][1] + 1n);
+    }
+    expect(ranges[ranges.length - 1][1]).toBe(3000n);
+    // The only rejected request retried the same fromBlock the first batch used.
+    const rejected = calls.filter((call) => !accepted.includes(call));
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].fromBlock).toBe(1000n);
+    expect((await prisma.indexerState.findUniqueOrThrow({ where: { chainId: 31337 } })).lastBlockNumber).toBe(3000n);
   });
 });

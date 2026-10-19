@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
+import { AdaptiveBlockWindow, fetchWithAdaptiveWindow } from "../shared/adaptive_block_window";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, parseAbiItem, decodeEventLog, type Log, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
@@ -229,6 +230,12 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   private isIndexing = false;
   private readonly pollIntervalMs = parsePositiveIntegerEnv("INDEXER_POLL_INTERVAL_MS", 5000);
   private readonly blocksPerBatch = parsePositiveIntegerEnv("INDEXER_BLOCKS_PER_BATCH", 1000);
+  // Shrinks when the RPC provider rejects a getLogs range as too large (#2218).
+  private readonly logWindow = new AdaptiveBlockWindow({
+    configured: this.blocksPerBatch,
+    label: "Contract indexer",
+    logger: this.logger,
+  });
   private readonly maxBatchesPerCycle = parsePositiveIntegerEnv("INDEXER_MAX_BATCHES_PER_CYCLE", 20);
   private readonly progressLogLevel = parseIndexerProgressLogLevel();
   private clientCache = new Map<number, any>();
@@ -255,7 +262,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log(
-      `Starting contract indexer (poll=${this.pollIntervalMs}ms, blocksPerBatch=${this.blocksPerBatch}, maxBatchesPerCycle=${this.maxBatchesPerCycle}, progressLogLevel=${this.progressLogLevel})`,
+      `Starting contract indexer (poll=${this.pollIntervalMs}ms, blocksPerBatch=${this.blocksPerBatch} (upper bound), maxBatchesPerCycle=${this.maxBatchesPerCycle}, progressLogLevel=${this.progressLogLevel})`,
     );
     await this.startIndexing();
   }
@@ -418,54 +425,61 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       let totalEvents = 0;
 
       while (fromBlock <= currentBlock && batchCount < this.maxBatchesPerCycle) {
-        const toBlock = fromBlock + BigInt(this.blocksPerBatch) - 1n;
-        const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
+        // Fetch every contract's logs for one range. The range-limit retry lives
+        // here so all contracts in a batch share the same fromBlock/toBlock and the
+        // cursor only advances over fully fetched blocks (#2218).
+        const {
+          result: { stemNftLogs, marketplaceLogs, contentProtectionLogs, disputeResolutionLogs, curationRewardsLogs },
+          toBlock: effectiveToBlock,
+        } = await fetchWithAdaptiveWindow(this.logWindow, fromBlock, currentBlock, async (from, to) => {
+          // Fetch logs for StemNFT contract
+          const stemNftLogs = await client.getLogs({
+            address: addresses.stemNFT,
+            fromBlock: from,
+            toBlock: to,
+          });
+
+          // Fetch logs for Marketplace contract
+          const marketplaceLogs = await client.getLogs({
+            address: addresses.marketplace,
+            fromBlock: from,
+            toBlock: to,
+          });
+
+          // Fetch logs for ContentProtection contract
+          let contentProtectionLogs: any[] = [];
+          if (addresses.contentProtection && addresses.contentProtection !== "0x0000000000000000000000000000000000000000") {
+            contentProtectionLogs = await client.getLogs({
+              address: addresses.contentProtection,
+              fromBlock: from,
+              toBlock: to,
+            });
+          }
+
+          // Fetch logs for DisputeResolution contract
+          let disputeResolutionLogs: any[] = [];
+          if (addresses.disputeResolution && addresses.disputeResolution !== "0x0000000000000000000000000000000000000000") {
+            disputeResolutionLogs = await client.getLogs({
+              address: addresses.disputeResolution,
+              fromBlock: from,
+              toBlock: to,
+            });
+          }
+
+          // Fetch logs for CurationRewards contract
+          let curationRewardsLogs: any[] = [];
+          if (addresses.curationRewards && addresses.curationRewards !== "0x0000000000000000000000000000000000000000") {
+            curationRewardsLogs = await client.getLogs({
+              address: addresses.curationRewards,
+              fromBlock: from,
+              toBlock: to,
+            });
+          }
+
+          return { stemNftLogs, marketplaceLogs, contentProtectionLogs, disputeResolutionLogs, curationRewardsLogs };
+        });
 
         this.logIndexProgress(`Indexing blocks ${fromBlock} to ${effectiveToBlock} on chain ${chainId} (batch ${batchCount + 1})`);
-
-        // Fetch logs for StemNFT contract
-        const stemNftLogs = await client.getLogs({
-          address: addresses.stemNFT,
-          fromBlock,
-          toBlock: effectiveToBlock,
-        });
-
-        // Fetch logs for Marketplace contract
-        const marketplaceLogs = await client.getLogs({
-          address: addresses.marketplace,
-          fromBlock,
-          toBlock: effectiveToBlock,
-        });
-
-        // Fetch logs for ContentProtection contract
-        let contentProtectionLogs: any[] = [];
-        if (addresses.contentProtection && addresses.contentProtection !== "0x0000000000000000000000000000000000000000") {
-          contentProtectionLogs = await client.getLogs({
-            address: addresses.contentProtection,
-            fromBlock,
-            toBlock: effectiveToBlock,
-          });
-        }
-
-        // Fetch logs for DisputeResolution contract
-        let disputeResolutionLogs: any[] = [];
-        if (addresses.disputeResolution && addresses.disputeResolution !== "0x0000000000000000000000000000000000000000") {
-          disputeResolutionLogs = await client.getLogs({
-            address: addresses.disputeResolution,
-            fromBlock,
-            toBlock: effectiveToBlock,
-          });
-        }
-
-        // Fetch logs for CurationRewards contract
-        let curationRewardsLogs: any[] = [];
-        if (addresses.curationRewards && addresses.curationRewards !== "0x0000000000000000000000000000000000000000") {
-          curationRewardsLogs = await client.getLogs({
-            address: addresses.curationRewards,
-            fromBlock,
-            toBlock: effectiveToBlock,
-          });
-        }
 
         // Process all logs
         for (const log of [...stemNftLogs, ...marketplaceLogs, ...contentProtectionLogs, ...disputeResolutionLogs, ...curationRewardsLogs]) {
