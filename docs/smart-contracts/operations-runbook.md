@@ -453,6 +453,21 @@ If ownership is unstable, set the backend maximum instance count to one through
 before restoring autoscaling. A graceful shutdown releases only leases still owned
 by that process; correctness after a hard crash relies on expiry and epoch fencing.
 
+### Provider `eth_getLogs` range limits
+
+Many RPC providers cap one `eth_getLogs` call by block range or by result
+count. Both indexers treat `INDEXER_BLOCKS_PER_BATCH` and
+`SHOWS_ESCROW_BLOCKS_PER_BATCH` as upper bounds (#2218): when a provider rejects
+a range as too large, the indexer retries the same starting block with a
+smaller window (the limit stated in the error, else half) and logs one warning
+such as `RPC rejected the eth_getLogs block range; window reduced from 1000 to
+200 blocks`. A block-range cap is kept for the life of the process; a
+result-count limit grows back after 100 consecutive successful batches. The
+cursor only advances over fetched blocks. Setting the configured window to the
+provider's limit avoids the first rejected call after each restart. An indexer
+that keeps failing at a one-block window is failing for another reason: read
+the logged RPC error.
+
 The same structured-app-event + log-based-metric + email-alert path also covers
 `x402.refund_due_stale` (#1506) — a paid Punchline collect that could not be
 fulfilled and owes an out-of-band refund; respond via the x402 refund runbook.

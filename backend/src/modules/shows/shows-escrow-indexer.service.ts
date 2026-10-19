@@ -18,6 +18,10 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../../db/prisma";
 import type { ShowCampaignSettledEvent } from "../../events/event_types";
 import { EventBus } from "../shared/event_bus";
+import {
+  AdaptiveBlockWindow,
+  fetchWithAdaptiveWindow,
+} from "../shared/adaptive_block_window";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { resolveIndexerChainId } from "../contracts/indexer.service";
 import { configuredShowCampaignEscrowAddress } from "./shows.service";
@@ -312,6 +316,12 @@ export class ShowsEscrowIndexerService
     "SHOWS_ESCROW_BLOCKS_PER_BATCH",
     1000,
   );
+  // One window for all targets: they share the RPC provider and its limits.
+  private readonly logWindow = new AdaptiveBlockWindow({
+    configured: this.blocksPerBatch,
+    label: "Shows escrow indexer",
+    logger: this.logger,
+  });
   private readonly maxBatchesPerCycle = parsePositiveIntegerEnv(
     "SHOWS_ESCROW_MAX_BATCHES_PER_CYCLE",
     20,
@@ -360,7 +370,7 @@ export class ShowsEscrowIndexerService
       return;
     }
     this.logger.log(
-      `Starting Shows escrow indexer (poll=${this.pollIntervalMs}ms, blocksPerBatch=${this.blocksPerBatch})`,
+      `Starting Shows escrow indexer (poll=${this.pollIntervalMs}ms, blocksPerBatch=${this.blocksPerBatch} (upper bound))`,
     );
     await this.runIndexCycle();
     this.interval = setInterval(() => {
@@ -615,13 +625,20 @@ export class ShowsEscrowIndexerService
     let batches = 0;
     while (fromBlock <= currentBlock && batches < this.maxBatchesPerCycle) {
       await this.fenceCursor(lease, fromBlock - 1n);
-      const toBlock = fromBlock + BigInt(this.blocksPerBatch) - 1n;
-      const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
-      const logs = await client.getLogs({
-        address: escrowAddress as Address,
-        fromBlock,
-        toBlock: effectiveToBlock,
-      });
+      // Retries the same fromBlock with a smaller window when the provider
+      // rejects the range, so the cursor only advances over fetched blocks.
+      const { result: logs, toBlock: effectiveToBlock } =
+        await fetchWithAdaptiveWindow<Log[]>(
+          this.logWindow,
+          fromBlock,
+          currentBlock,
+          (from, to) =>
+            client.getLogs({
+              address: escrowAddress as Address,
+              fromBlock: from,
+              toBlock: to,
+            }),
+        );
       // Deterministic order so status transitions apply chronologically.
       logs.sort((a: Log, b: Log) =>
         a.blockNumber === b.blockNumber

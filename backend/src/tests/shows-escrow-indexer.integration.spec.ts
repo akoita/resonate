@@ -30,6 +30,7 @@ const INDEX_NEW = "0x2222222222222222222222222222222222222222";
 const INDEX_FAIL = "0x3333333333333333333333333333333333333333";
 const LEASE_ONE = "0x4444444444444444444444444444444444444444";
 const LEASE_TWO = "0x5555555555555555555555555555555555555555";
+const RANGE_CAP = "0x6666666666666666666666666666666666666666";
 
 const EVENT_ABIS = {
   CampaignCreated: parseAbiItem(
@@ -124,7 +125,15 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
       where: {
         chainId: CHAIN_ID,
         contractAddress: {
-          in: [ESCROW, INDEX_OLD, INDEX_NEW, INDEX_FAIL, LEASE_ONE, LEASE_TWO],
+          in: [
+            ESCROW,
+            INDEX_OLD,
+            INDEX_NEW,
+            INDEX_FAIL,
+            LEASE_ONE,
+            LEASE_TWO,
+            RANGE_CAP,
+          ],
         },
       },
     });
@@ -139,7 +148,14 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     await prisma.showEscrowIndexerState.deleteMany({
       where: {
         contractAddress: {
-          in: [INDEX_OLD, INDEX_NEW, INDEX_FAIL, LEASE_ONE, LEASE_TWO],
+          in: [
+            INDEX_OLD,
+            INDEX_NEW,
+            INDEX_FAIL,
+            LEASE_ONE,
+            LEASE_TWO,
+            RANGE_CAP,
+          ],
         },
       },
     });
@@ -300,6 +316,148 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
         })
       ).lastBlockNumber,
     ).toBe(1001n);
+    await Promise.all([
+      oldHolder.onModuleDestroy(),
+      successor.onModuleDestroy(),
+    ]);
+  });
+
+  it("catches up contiguously when the RPC provider caps the getLogs block range (#2218)", async () => {
+    await prisma.showEscrowIndexerState.deleteMany({
+      where: { chainId: CHAIN_ID, contractAddress: RANGE_CAP },
+    });
+    await prisma.showEscrowIndexerState.create({
+      data: {
+        chainId: CHAIN_ID,
+        contractAddress: RANGE_CAP,
+        lastBlockNumber: 999n,
+      },
+    });
+    const capped = new ShowsEscrowIndexerService(new EventBus());
+    const accepted: Array<[bigint, bigint]> = [];
+    const rejected: Array<[bigint, bigint]> = [];
+    const getLogs = jest.fn(
+      async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        if (toBlock - fromBlock + 1n > 200n) {
+          rejected.push([fromBlock, toBlock]);
+          throw new Error("eth_getLogs is limited to a 200 range");
+        }
+        accepted.push([fromBlock, toBlock]);
+        return [];
+      },
+    );
+
+    await (capped as any).indexTarget(
+      { getLogs },
+      CHAIN_ID,
+      { address: RANGE_CAP, deploymentBlock: 100n },
+      3000n,
+    );
+
+    expect(accepted[0][0]).toBe(1000n);
+    for (let i = 1; i < accepted.length; i++) {
+      expect(accepted[i][0]).toBe(accepted[i - 1][1] + 1n);
+    }
+    expect(accepted[accepted.length - 1][1]).toBe(3000n);
+    for (const [from, to] of accepted) {
+      expect(to - from + 1n).toBeLessThanOrEqual(200n);
+    }
+    // The provider cap is learned once; later batches no longer trip it.
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0][0]).toBe(1000n);
+    expect(accepted[0][0]).toBe(rejected[0][0]);
+    const state = await prisma.showEscrowIndexerState.findUniqueOrThrow({
+      where: {
+        chainId_contractAddress: {
+          chainId: CHAIN_ID,
+          contractAddress: RANGE_CAP,
+        },
+      },
+    });
+    expect(state.lastBlockNumber).toBe(3000n);
+    await capped.onModuleDestroy();
+  });
+
+  it("keeps lease fencing when a range-limit retry outlives the lease (#2218)", async () => {
+    await prisma.showEscrowIndexerState.deleteMany({
+      where: { chainId: CHAIN_ID, contractAddress: LEASE_ONE },
+    });
+    const state = await prisma.showEscrowIndexerState.create({
+      data: {
+        chainId: CHAIN_ID,
+        contractAddress: LEASE_ONE,
+        lastBlockNumber: 999n,
+      },
+    });
+    const oldHolder = new ShowsEscrowIndexerService(new EventBus());
+    const successor = new ShowsEscrowIndexerService(new EventBus());
+    const staleLog = buildLog("CampaignActivated", { campaignId: 777002n });
+    const calls: Array<[bigint, bigint]> = [];
+    const getLogs = jest.fn(
+      async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        calls.push([fromBlock, toBlock]);
+        if (calls.length === 1) {
+          throw new Error("eth_getLogs is limited to a 200 range");
+        }
+        // The retry is slow enough for the lease to expire and be taken over.
+        await prisma.showEscrowIndexerState.update({
+          where: { id: state.id },
+          data: { leaseExpiresAt: new Date(0) },
+        });
+        await (successor as any).acquireLease(state.id, CHAIN_ID, LEASE_ONE);
+        return [staleLog];
+      },
+    );
+
+    await expect(
+      (oldHolder as any).indexTarget(
+        { getLogs },
+        CHAIN_ID,
+        { address: LEASE_ONE, deploymentBlock: 100n },
+        1500n,
+      ),
+    ).rejects.toThrow("lease lost");
+
+    // Same fromBlock retried with the smaller window.
+    expect(calls).toEqual([
+      [1000n, 1500n],
+      [1000n, 1199n],
+    ]);
+    expect(
+      await prisma.showCampaignEscrowEvent.findUnique({
+        where: {
+          transactionHash_logIndex: {
+            transactionHash: staleLog.transactionHash!,
+            logIndex: staleLog.logIndex!,
+          },
+        },
+      }),
+    ).toBeNull();
+    const after = await prisma.showEscrowIndexerState.findUniqueOrThrow({
+      where: { id: state.id },
+    });
+    expect(after.lastBlockNumber).toBe(999n);
+    expect(after.leaseEpoch).toBe(2n);
+
+    const successorLogs = jest.fn().mockResolvedValue([]);
+    await (successor as any).indexTarget(
+      { getLogs: successorLogs },
+      CHAIN_ID,
+      { address: LEASE_ONE, deploymentBlock: 100n },
+      1500n,
+    );
+    expect(successorLogs).toHaveBeenCalledWith({
+      address: LEASE_ONE,
+      fromBlock: 1000n,
+      toBlock: 1500n,
+    });
+    expect(
+      (
+        await prisma.showEscrowIndexerState.findUniqueOrThrow({
+          where: { id: state.id },
+        })
+      ).lastBlockNumber,
+    ).toBe(1500n);
     await Promise.all([
       oldHolder.onModuleDestroy(),
       successor.onModuleDestroy(),

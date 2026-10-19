@@ -13,6 +13,8 @@ the codebase.
 The Resonate Shows escrow indexer now includes fenced, per-target distributed
 ownership (#1567), allowing lease-aware backend revisions to autoscale while
 preserving reconciliation and cursor safety. See [Resonate Shows](resonate_shows.md).
+Both on-chain indexers also adapt their `eth_getLogs` window to an RPC
+provider's range limit instead of retrying an oversized range (#2218).
 
 Each durable product or platform capability should have one short feature page
 that answers:
