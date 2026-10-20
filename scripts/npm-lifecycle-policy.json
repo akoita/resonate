@@ -15,6 +15,10 @@
     "backend": {
       "lockfile": "backend/package-lock.json",
       "packageLifecycles": {
+        "node_modules/@google/adk/node_modules/@google/genai@2.30.0": {
+          "disposition": "deny",
+          "rationale": "The @google/genai preinstall only echoes a no-op message, and its prepare script targets repository sources absent from the published tarball; neither is required at runtime."
+        },
         "node_modules/@prisma/client@5.22.0": {
           "disposition": "execute",
           "executionOrder": 30,
