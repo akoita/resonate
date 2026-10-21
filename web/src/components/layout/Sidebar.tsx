@@ -512,9 +512,12 @@ export default function Sidebar() {
       <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
       {showUserChip ? (
         <div className="sidebar-footer">
-          <div
+          <Link
+            href="/wallet"
+            prefetch={false}
             className="user-profile"
-            aria-label={`Connected account ${hasDisplayName ? `${displayName} (${truncatedAddress})` : truncatedAddress}`}
+            aria-label={`Connected account ${hasDisplayName ? `${displayName} (${truncatedAddress})` : truncatedAddress}. Open wallet.`}
+            aria-current={pathname === "/wallet" ? "page" : undefined}
           >
             <div className="user-avatar">{userInitial}</div>
             <div className="user-info">
@@ -527,7 +530,7 @@ export default function Sidebar() {
                 {userStatusLabel}
               </div>
             </div>
-          </div>
+          </Link>
         </div>
       ) : null}
       </aside>
