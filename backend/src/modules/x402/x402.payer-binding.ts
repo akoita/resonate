@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { Address, Hex, PublicClient } from 'viem';
+import { LOCAL_CHAIN_ID, LOCAL_UNIVERSAL_SIG_VALIDATOR } from '../shared/local_signature_validator';
 
 /**
  * Binding a smart-account x402 payment to the signed-in buyer.
@@ -40,8 +41,24 @@ export const PAYMENT_BINDING_TYPES = {
 /** Accepted signature size: a passkey (WebAuthn) Kernel signature, possibly ERC-6492-wrapped (≤ 8 KiB). */
 export const PAYMENT_BINDING_SIGNATURE_PATTERN = /^0x[0-9a-fA-F]{2,16384}$/;
 
-const LOCAL_CHAIN_ID = 31337;
-const LOCAL_UNIVERSAL_SIG_VALIDATOR = '0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0';
+/**
+ * Every smart-account payment proof starts with this. Its parts (payer and
+ * transaction hash) are public on-chain, so such a proof is never a credential
+ * on its own: it is redeemed only through the buyer-bound smart-account routes.
+ */
+export const SMART_ACCOUNT_PROOF_PREFIX = 'smart-account:';
+
+export function isSmartAccountPaymentProof(proof: string | null | undefined): boolean {
+  return typeof proof === 'string' && proof.trim().toLowerCase().startsWith(SMART_ACCOUNT_PROOF_PREFIX);
+}
+
+/** The refusal for a smart-account proof or settlement presented on the x402 header route. */
+export const SMART_ACCOUNT_PROOF_REFUSAL = {
+  error: 'Smart-account payment',
+  code: 'smart_account_proof_not_accepted',
+  message:
+    'Smart-account payments are redeemed by the signed-in buyer at POST /api/stems/:stemId/x402/smart-account.',
+} as const;
 
 export type PaymentBindingResource = { kind: 'stem' | 'moment'; id: string };
 

@@ -18,6 +18,7 @@ import { AccountClosureService } from "../privacy/account_closure.service";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { UserActivityService } from "../accounts/user_activity.service";
+import { LOCAL_CHAIN_ID, LOCAL_UNIVERSAL_SIG_VALIDATOR } from "../shared/local_signature_validator";
 
 // Sign-in must always work for a restricted account (#2147).
 @AllowWhileSuspended()
@@ -112,8 +113,8 @@ export class AuthController {
 
       // In local development, we must point to our deployed UniversalSigValidator
       // since the canonical ones don't exist on Anvil.
-      if (chainId === 31337) {
-        verifyOptions.universalSignatureValidatorAddress = "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0";
+      if (chainId === LOCAL_CHAIN_ID) {
+        verifyOptions.universalSignatureValidatorAddress = LOCAL_UNIVERSAL_SIG_VALIDATOR;
       }
 
       // Check if this is a counterfactual (undeployed) smart account

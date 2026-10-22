@@ -10,6 +10,13 @@ const account = {
   signTypedData: vi.fn(async () => SIGNATURE as `0x${string}`),
 };
 
+const verifyTypedData = vi.fn(async () => true);
+
+vi.mock("viem", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("viem")>();
+  return { ...actual, createPublicClient: vi.fn(() => ({ verifyTypedData })) };
+});
+
 vi.mock("./x402KernelAccount", () => ({
   getX402KernelAccount: vi.fn(async () => account),
 }));
@@ -59,6 +66,8 @@ describe("payWithX402SmartAccount buyer binding", () => {
   beforeEach(() => {
     account.address = BUYER as `0x${string}`;
     account.signTypedData.mockClear();
+    verifyTypedData.mockClear();
+    verifyTypedData.mockResolvedValue(true);
     fetchMock = vi.fn(async () => new Response("audio", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -94,6 +103,27 @@ describe("payWithX402SmartAccount buyer binding", () => {
       }),
     ).rejects.toThrow("cancelled");
 
+    expect(createClient).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("checks the binding on-chain before paying, and charges nothing when it does not verify", async () => {
+    account.address = PARALLEL_ACCOUNT as `0x${string}`;
+    verifyTypedData.mockResolvedValueOnce(false);
+    const sdk = await import("@zerodev/sdk");
+    const createClient = vi.mocked(sdk.createKernelAccountClient);
+    createClient.mockClear();
+
+    await expect(
+      payWithX402SmartAccount({
+        ...baseInput,
+        binding: { buyerId: BUYER, buyerAddresses: [BUYER], resource: { kind: "stem", id: "stem_1" } },
+      }),
+    ).rejects.toThrow("nothing was charged");
+
+    expect(verifyTypedData).toHaveBeenCalledWith(
+      expect.objectContaining({ address: PARALLEL_ACCOUNT, signature: SIGNATURE, primaryType: "PaymentBinding" }),
+    );
     expect(createClient).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });

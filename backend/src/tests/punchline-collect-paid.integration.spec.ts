@@ -55,6 +55,7 @@ const PRIOR_OWNER = `${TEST_PREFIX}prior`;
 
 const PAYOUT = getAddress("0x22222222222222222222222222222222222222aa");
 const PAYER = getAddress("0x11111111111111111111111111111111111111bb");
+const OTHER_PAYER = getAddress("0x33333333333333333333333333333333333333cc");
 // Default Base Sepolia USDC (see x402.public.ts DEFAULT_USDC_ASSETS).
 const USDC = getAddress("0x036CbD53842c5426634e7929541eC2318f3dCF7e");
 
@@ -172,12 +173,15 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
         data: { id: fan, email: `${fan}@test.resonate` },
       });
     }
-    // FAN_A and FAN_B pay from PAYER, their own smart account; PRIOR_OWNER does not own it.
+    // FAN_A and FAN_B pay from PAYER, their own smart account; PRIOR_OWNER owns OTHER_PAYER only.
     for (const fan of [FAN_A, FAN_B]) {
       await prisma.wallet.create({
         data: { userId: fan, address: PAYER.toLowerCase(), chainId: 84532 },
       });
     }
+    await prisma.wallet.create({
+      data: { userId: PRIOR_OWNER, address: OTHER_PAYER.toLowerCase(), chainId: 84532 },
+    });
     await prisma.release.create({
       data: { id: RELEASE_ID, artistId: ARTIST_ID, title: "Paid Release", status: "ready" },
     });
@@ -431,6 +435,16 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
         payer: PAYER,
       }),
     ).rejects.toMatchObject({ response: { code: "payer_not_linked" } });
+  });
+
+  // (e4) Someone else's settled transaction under one's own address ------
+  it("(e4) refuses a settled transaction hash claimed with a different payer", async () => {
+    await expect(
+      x402.collectWithSmartAccount(PRIOR_OWNER, MOMENT_PAID, {
+        txHash: TX_A,
+        payer: OTHER_PAYER,
+      }),
+    ).rejects.toMatchObject({ response: { code: "payment_redeemed_elsewhere" } });
   });
 
   // (f) Price band ---------------------------------------------------------

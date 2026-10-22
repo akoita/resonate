@@ -20,6 +20,7 @@ import { PaymentsService } from "../payments/payments.service";
 import { resolveX402AssetInfo, type X402AssetInfo } from "../x402/x402.public";
 import { formatUsdcAmount, toUsdBreakdown, toX402TokenAmount } from "../x402/x402.quote";
 import {
+  X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
   X402_TX_HASH_PATTERN,
   createX402PublicClient,
   findVerifiedUsdcTransfer,
@@ -204,7 +205,11 @@ export class PunchlineX402Service {
     if (existing) {
       if (
         existing.resourceKind !== PAID_RESOURCE_KIND ||
-        existing.momentId !== moment.id
+        existing.momentId !== moment.id ||
+        // Matched on the public transaction hash alone: another account
+        // naming its own address is not the payer of this settlement.
+        (existing.payerAddress !== null &&
+          existing.payerAddress.toLowerCase() !== payer.toLowerCase())
       ) {
         throw new ConflictException({
           code: "payment_redeemed_elsewhere",
@@ -345,7 +350,7 @@ export class PunchlineX402Service {
 
     const receipt = await this.getPublicClient().waitForTransactionReceipt({
       hash: input.txHash,
-      timeout: 60_000,
+      timeout: X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
     });
     if (receipt.status !== "success") {
       throw new Error("The smart-account payment transaction reverted.");

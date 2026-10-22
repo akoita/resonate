@@ -112,18 +112,30 @@ export async function payWithX402SmartAccount(
   // the server does not know as the buyer's signs before any money moves, so a
   // cancelled prompt costs nothing.
   const binding = input.binding;
+  const bindingTypedData = () =>
+    paymentBindingTypedData({
+      chainId: input.chainId,
+      resource: binding!.resource,
+      buyer: binding!.buyerId,
+    });
   const signBinding = () =>
-    account.signTypedData(
-      paymentBindingTypedData({
-        chainId: input.chainId,
-        resource: binding!.resource,
-        buyer: binding!.buyerId,
-      }) as Parameters<typeof account.signTypedData>[0],
-    );
+    account.signTypedData(bindingTypedData() as Parameters<typeof account.signTypedData>[0]);
   let payerSignature =
     binding !== undefined && !payerIsKnownBuyerAddress(account.address, binding.buyerAddresses)
       ? await signBinding()
       : undefined;
+  // Check the signature the way the server will, still before the transfer:
+  // a wallet whose signature cannot be verified must not pay for nothing.
+  if (payerSignature) {
+    const verified = await publicClient
+      .verifyTypedData({ address: account.address, ...bindingTypedData(), signature: payerSignature })
+      .catch(() => false);
+    if (!verified) {
+      throw new Error(
+        "We could not confirm that your payment wallet belongs to your account, so nothing was charged. Sign in again and retry, or use direct wallet checkout.",
+      );
+    }
+  }
 
   const transferData = encodeFunctionData({
     abi: ERC20_TRANSFER_ABI,
@@ -174,7 +186,7 @@ async function isPayerNotLinked(response: Response): Promise<boolean> {
 export async function payStemWithX402SmartAccount(
   input: PayStemWithX402SmartAccountInput,
 ): Promise<X402PaymentResult> {
-  const { response } = await payWithX402SmartAccount({
+  const { response, txHash } = await payWithX402SmartAccount({
     submitUrl: `${API_BASE}/api/stems/${encodeURIComponent(input.stemId)}/x402/smart-account`,
     webAuthnKey: input.webAuthnKey,
     chainId: input.chainId,
@@ -199,10 +211,11 @@ export async function payStemWithX402SmartAccount(
     } catch {
       // The endpoint returns audio on success; failed responses may not be JSON.
     }
+    // The transfer already happened: say so, so the buyer does not pay twice.
     throw new Error(
-      reason
-        ? `x402 smart-account payment failed (HTTP ${response.status}): ${reason}`
-        : `x402 smart-account payment failed: HTTP ${response.status}`,
+      `Your payment was sent (transaction ${txHash}) but the download could not be completed` +
+        (reason ? ` (HTTP ${response.status}: ${reason})` : ` (HTTP ${response.status})`) +
+        ". Do not pay again; contact support with this transaction.",
     );
   }
 

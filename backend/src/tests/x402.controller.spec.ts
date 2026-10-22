@@ -746,6 +746,53 @@ describe('X402Controller', () => {
     fetchSpy.mockRestore();
   });
 
+  it('refuses a smart-account proof on the x402 header download route', async () => {
+    const controller = new X402Controller(createMockConfig(), encryptionService as any);
+    const req: any = {
+      headers: {
+        'x-payment': `smart-account:0x1111111111111111111111111111111111111111:0x${'a'.repeat(64)}`,
+      },
+    };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_smart', req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual(expect.objectContaining({ code: 'smart_account_proof_not_accepted' }));
+    expect(prisma.stem.findUnique).not.toHaveBeenCalled();
+    expect(encryptionService.loadSourceBuffer).not.toHaveBeenCalled();
+  });
+
+  it('never serves a smart-account settlement from the x402 header download route', async () => {
+    prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
+      id: 'stem_smart',
+      type: 'vocals',
+      title: 'Passkey Stem',
+      uri: 'https://example.com/passkey.mp3',
+      mimeType: 'audio/mpeg',
+      encryptionMetadata: null,
+      nftMint: null,
+      track: { id: 'track_1', title: 'Passkey Track', release: { id: 'release_1', title: 'R', primaryArtist: 'Koita' } },
+    });
+    prisma.x402Settlement.findFirst.mockResolvedValue({
+      id: 'settlement_1',
+      stemId: 'stem_smart',
+      paymentRail: 'smart_account',
+      status: 'download_granted',
+      receipt: {},
+    });
+    const controller = new X402Controller(createMockConfig(), encryptionService as any);
+    const req: any = { headers: { 'x-payment': 'opaque-proof' } };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_smart', req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(encryptionService.loadSourceBuffer).not.toHaveBeenCalled();
+    expect(res.body).toEqual(expect.objectContaining({ code: 'smart_account_proof_not_accepted' }));
+  });
+
   it("refuses to redeem another account's smart-account payment before any chain lookup", async () => {
     const authService = {
       isAddressForUser: jest.fn(async (userId: string, address: string) =>

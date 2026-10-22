@@ -47,8 +47,11 @@ import { AuthService } from '../auth/auth.service';
 import { minutes } from '../shared/rate_limits';
 import {
   PAYMENT_BINDING_SIGNATURE_PATTERN,
+  SMART_ACCOUNT_PROOF_REFUSAL,
   assertPaymentBoundToBuyer,
+  isSmartAccountPaymentProof,
 } from './x402.payer-binding';
+import { X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS } from './x402.smart-account';
 
 /**
  * Body of `POST /api/stems/:stemId/x402/smart-account`. Only shapes are checked
@@ -75,13 +78,6 @@ type SmartAccountPaymentBody = Partial<SmartAccountPaymentDto>;
 
 /** A paid download: generous for a person retrying, tight for a script. */
 const SMART_ACCOUNT_DOWNLOAD_RATE_LIMIT = { limit: 10, ttl: minutes(1) } as const;
-
-/**
- * The browser posts only after the user operation's receipt, so the
- * transaction is already mined; a long wait only helps an attacker hold
- * requests open on hashes that will never confirm.
- */
-const SMART_ACCOUNT_RECEIPT_TIMEOUT_MS = 15_000;
 
 type VerifiedSmartAccountPayment = {
   txHash: `0x${string}`;
@@ -218,6 +214,12 @@ export class X402Controller {
     const paymentHeader = Array.isArray(paymentHeaderValue)
       ? paymentHeaderValue[0]
       : paymentHeaderValue;
+    // Defense in depth behind the middleware: a smart-account proof is public
+    // on-chain data, redeemable only through the buyer-bound POST route.
+    if (isSmartAccountPaymentProof(paymentHeader)) {
+      res.status(HttpStatus.FORBIDDEN).json(SMART_ACCOUNT_PROOF_REFUSAL);
+      return;
+    }
 
     return this.servePaidStemDownload({
       stemId,
@@ -230,6 +232,7 @@ export class X402Controller {
       logIndex: 0,
       blockNumber: BigInt(0),
       blockHash: '',
+      allowSmartAccountSettlement: false,
     });
   }
 
@@ -278,6 +281,8 @@ export class X402Controller {
         blockNumber: verified.blockNumber,
         blockHash: verified.blockHash,
         payer: verified.payer,
+        // The caller was bound to this payer and the transfer verified above.
+        allowSmartAccountSettlement: true,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -311,6 +316,8 @@ export class X402Controller {
     blockNumber: bigint;
     blockHash: string;
     payer?: string;
+    /** Only the buyer-bound smart-account route may serve a smart-account settlement. */
+    allowSmartAccountSettlement: boolean;
   }) {
     try {
       const { stemId, req, res } = input;
@@ -355,6 +362,10 @@ export class X402Controller {
           : null,
       });
       if (existingSettlement) {
+        if (existingSettlement.paymentRail === 'smart_account' && !input.allowSmartAccountSettlement) {
+          res.status(HttpStatus.FORBIDDEN).json(SMART_ACCOUNT_PROOF_REFUSAL);
+          return;
+        }
         if (existingSettlement.stemId !== stem.id) {
           res.status(HttpStatus.CONFLICT).json({
             error: 'Payment already redeemed',
@@ -797,7 +808,7 @@ export class X402Controller {
 
     const receipt = await this.getX402PublicClient().waitForTransactionReceipt({
       hash: txHash,
-      timeout: SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
+      timeout: X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
     });
     if (receipt.status !== 'success') {
       throw new Error('The smart-account payment transaction reverted.');

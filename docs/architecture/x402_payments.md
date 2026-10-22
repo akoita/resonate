@@ -184,7 +184,12 @@ Current behavior:
   a cancelled prompt moves no money. Any other caller gets
   `403 payer_not_linked` before any chain or storage work
   (`backend/src/modules/x402/x402.payer-binding.ts`; the frontend twin is
-  `web/src/lib/x402PaymentBinding.ts`).
+  `web/src/lib/x402PaymentBinding.ts`). The browser verifies its binding
+  signature on-chain before paying, so a signature the server could not verify
+  charges nothing. A smart-account proof (`smart-account:<payer>:<txHash>`) is
+  never accepted on the `GET /api/stems/:stemId/x402` header route, and a
+  smart-account settlement is never replayed there
+  (`403 smart_account_proof_not_accepted`).
 - The browser smart-account rail parses the public quote fail-closed, checks one
   personal option against the configured stablecoin and payout address, and
   transfers only the exact server-authored total. Fee metadata never enters the
