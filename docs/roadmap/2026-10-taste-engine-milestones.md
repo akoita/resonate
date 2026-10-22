@@ -209,9 +209,10 @@ change (ADR-BM-4).
 These stay open issues so nothing is silently dropped; each gets a milestone
 only when its gate is met.
 
-A proposed, not yet approved follow-up for AI DJ retrieval quality, context
-signals and the session page is in the
-[AI DJ quality and experience plan](2026-10-ai-dj-quality-and-experience.md).
+An approved follow-up (2026-10-22, no milestone yet) for AI DJ retrieval
+quality, context signals and the session page is in the
+[AI DJ quality and experience plan](2026-10-ai-dj-quality-and-experience.md)
+(#2235–#2248).
 
 | Item | Gate | Issue |
 | --- | --- | --- |

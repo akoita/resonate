@@ -1,8 +1,11 @@
-# Roadmap — AI DJ: meaning-aware retrieval, context, and a clearer session page (proposed, 2026-10-22)
+# Roadmap — AI DJ: meaning-aware retrieval, context, and a clearer session page (approved, 2026-10-22)
 
-**Status:** proposed plan, not approved. No issue, milestone or sprint has been
-created for it. Each work item below is written as a draft issue so it can be
-filed once the owner approves the scope.
+**Status:** scope approved by the owner on 2026-10-22. Work items are filed as
+sub-issues of [#1952](https://github.com/akoita/resonate/issues/1952)
+(#2235–#2248). The deployment half is
+[resonate-iac#302](https://github.com/akoita/resonate-iac/issues/302). No
+milestone is assigned yet: the split into one or two Vision Sprints is still
+open (§8).
 **Owner:** [@akoita](https://github.com/akoita)
 **Parents:** [#1952](https://github.com/akoita/resonate/issues/1952) (taste
 engine) and [#1447](https://github.com/akoita/resonate/issues/1447) (discovery
@@ -45,7 +48,7 @@ Listeners and the owner report three problems:
 | [#1452](https://github.com/akoita/resonate/issues/1452) content embeddings, [#1959](https://github.com/akoita/resonate/issues/1959)/[#1960](https://github.com/akoita/resonate/issues/1960) measured tempo, key and energy, [#1455](https://github.com/akoita/resonate/issues/1455) measurement | Closed | Foundations this plan builds on |
 | [#1971](https://github.com/akoita/resonate/issues/1971) Session DJ (mixing, energy arc) | Open, gated on Listener Pro WAU | No. It covers mixing and the paid tier, not retrieval or page clarity |
 | [#1453](https://github.com/akoita/resonate/issues/1453) collaborative filtering | Open, gated on real traffic | No. It covers habits from other listeners, later |
-| [#251](https://github.com/akoita/resonate/issues/251) listening analytics and habit tracking | Open, P3 backlog, pre-dates the taste engine | Superseded in practice by My Mix lanes; to be closed with a pointer when §5 is filed |
+| [#251](https://github.com/akoita/resonate/issues/251) listening analytics and habit tracking | Closed 2026-10-22 as superseded, with a pointer to #2236, #2245 and #2247 | Superseded by My Mix lanes and this plan |
 
 **Conclusion:** no open issue or roadmap entry covers retrieval quality beyond
 #2088, context-aware session starts, or the session page UX. This plan fills
@@ -210,7 +213,7 @@ cross-linked `resonate-iac` issue, as `CLAUDE.md` requires.
 This simplifies the page into: **prompt (start or update) → Now & Up next →
 session history and Sonic Radar**.
 
-## 5. Work items (draft issues)
+## 5. Work items
 
 Sizes: S ≤ 2 days, M ≤ 1 week, L > 1 week, solo with AI assistance.
 Every item carries `vision:core`, the revenue-line statement above, focused
@@ -220,35 +223,35 @@ tests, and feature-page and User Guide updates in the same PR.
 
 | ID | Draft issue | Priority | Size | Notes |
 | --- | --- | --- | --- | --- |
-| A1 | **AI DJ retrieval golden set**: add golden cases to `agent_golden_eval` and the offline eval. Cases: World → releases labelled African, Mandingue, a country name, or with no genre; Rap → explicit rap when allowed; "cooking", "focus" and "run" sentences; an artist name; a calm request against a measured low-energy track with no mood tag. Report recall@k per case. | P0 | S | Gate for every A item. Also the #2088 follow-up "golden cases World → African" |
-| A2 | **One genre matcher**: My Mix lanes and the lane request match use `genre_families` like the ordinary path. Lanes are built from family ids, not only the canonical vocabulary. Investigate and fix why a listener with dozens of sessions is not offered My Mix. | P0 | S | Bug (R3) |
-| C1 | **Session page: one Start action**: remove the status-card Start and merge the status card into the command bar; Stop only while live; delete the unused `AgentDashboard.tsx`. | P0 | S | R5 |
-| C3 | **Remove the Live Feed card**: request coverage moves under the chips; the event stream moves to an operator view; drop the `agent.negotiated` icon mapping. | P1 | S | R5 |
-| C4 | **Make the DJ's starting taste visible and editable in place**: a labelled "starts from" line with an inline Edit link to Settings → AI DJ. A mood-only session no longer narrows to the saved vibes; it searches all genres and ranks by learned taste. Settings → AI DJ and the User Guide explain how saved vibes, Taste memory and My Mix differ, in one short table. | P1 | S | R5. Decide whether saved vibes should eventually merge into the declared layer of Taste memory (taste engine RFC, five layers) |
+| A1 · [#2235](https://github.com/akoita/resonate/issues/2235) | **AI DJ retrieval golden set**: add golden cases to `agent_golden_eval` and the offline eval. Cases: World → releases labelled African, Mandingue, a country name, or with no genre; Rap → explicit rap when allowed; "cooking", "focus" and "run" sentences; an artist name; a calm request against a measured low-energy track with no mood tag. Report recall@k per case. | P0 | S | Gate for every A item. Also the #2088 follow-up "golden cases World → African" |
+| A2 · [#2236](https://github.com/akoita/resonate/issues/2236) | **One genre matcher**: My Mix lanes and the lane request match use `genre_families` like the ordinary path. Lanes are built from family ids, not only the canonical vocabulary. Investigate and fix why a listener with dozens of sessions is not offered My Mix. | P0 | S | Bug (R3) |
+| C1 · [#2237](https://github.com/akoita/resonate/issues/2237) | **Session page: one Start action**: remove the status-card Start and merge the status card into the command bar; Stop only while live; delete the unused `AgentDashboard.tsx`. | P0 | S | R5 |
+| C3 · [#2238](https://github.com/akoita/resonate/issues/2238) | **Remove the Live Feed card**: request coverage moves under the chips; the event stream moves to an operator view; drop the `agent.negotiated` icon mapping. | P1 | S | R5 |
+| C4 · [#2239](https://github.com/akoita/resonate/issues/2239) | **Make the DJ's starting taste visible and editable in place**: a labelled "starts from" line with an inline Edit link to Settings → AI DJ. A mood-only session no longer narrows to the saved vibes; it searches all genres and ranks by learned taste. Settings → AI DJ and the User Guide explain how saved vibes, Taste memory and My Mix differ, in one short table. | P1 | S | R5. Decide whether saved vibes should eventually merge into the declared layer of Taste memory (taste engine RFC, five layers) |
 
 ### Phase 2 — Meaning-aware retrieval and the Up next card (one to two sprints)
 
 | ID | Draft issue | Priority | Size | Notes |
 | --- | --- | --- | --- | --- |
-| A3 | **Enriched track descriptors**: a stored, versioned descriptor per track. It holds the normalized genre families and sub-genres from a model reading of the free-text genre, title, release description and artist profile (country or region when the artist declared it), plus measured tempo and energy bands and vocal or instrumental. The tags are generated once per track, re-validated against the family list, and visible and correctable by the artist. Re-embed tracks from the descriptor. | P0 | M | Removes the "genre must contain the word" failure at the source. Pay once per track (§3.2) |
-| A4 | **Read the listener's sentence for meaning**: the raw sentence (bounded, never stored or logged, as today) joins the semantic query for that session. A model-assisted parser behind `AGENT_SESSION_PARSER_STRATEGY` (default deterministic) reads what the rules left unread: activity, era, instrument, language, artist names. Artist names resolve to catalog artists and become seed neighbours. Unread parts stay visible as "Didn't catch". | P0 | M | R2. One model call per session start at most |
-| A5 | **Hybrid retrieval with budgets**: merge the keyword, semantic, audio-feature range (energy and tempo retrieve, not only re-rank), My Mix lane and seed sources with reciprocal-rank fusion. Each source has a candidate budget. Replace the fixed similarity floor with top-k plus a calibrated floor tuned on A1. Ship behind a ranker variant and promote on a measured win. | P0 | M | R1. No new external cost |
-| C2 | **"Now & Up next" card** replaces Next AI Pick (see §4), with Skip, Not this and More like this. "Not this" writes the existing skip or downrank signal and refills; "More like this" seeds neighbours of the current track. | P0 | M | R5 + R4 |
-| B3 | **Seeded sessions**: start a session from a track ("More like this"), an artist, or one of the listener's playlists (centroid of its track vectors plus its family mix). | P1 | M | R4 |
+| A3 · [#2240](https://github.com/akoita/resonate/issues/2240) | **Enriched track descriptors**: a stored, versioned descriptor per track. It holds the normalized genre families and sub-genres from a model reading of the free-text genre, title, release description and artist profile (country or region when the artist declared it), plus measured tempo and energy bands and vocal or instrumental. The tags are generated once per track, re-validated against the family list, and visible and correctable by the artist. Re-embed tracks from the descriptor. | P0 | M | Removes the "genre must contain the word" failure at the source. Pay once per track (§3.2) |
+| A4 · [#2241](https://github.com/akoita/resonate/issues/2241) | **Read the listener's sentence for meaning**: the raw sentence (bounded, never stored or logged, as today) joins the semantic query for that session. A model-assisted parser behind `AGENT_SESSION_PARSER_STRATEGY` (default deterministic) reads what the rules left unread: activity, era, instrument, language, artist names. Artist names resolve to catalog artists and become seed neighbours. Unread parts stay visible as "Didn't catch". | P0 | M | R2. One model call per session start at most |
+| A5 · [#2242](https://github.com/akoita/resonate/issues/2242) | **Hybrid retrieval with budgets**: merge the keyword, semantic, audio-feature range (energy and tempo retrieve, not only re-rank), My Mix lane and seed sources with reciprocal-rank fusion. Each source has a candidate budget. Replace the fixed similarity floor with top-k plus a calibrated floor tuned on A1. Ship behind a ranker variant and promote on a measured win. | P0 | M | R1. No new external cost |
+| C2 · [#2243](https://github.com/akoita/resonate/issues/2243) | **"Now & Up next" card** replaces Next AI Pick (see §4), with Skip, Not this and More like this. "Not this" writes the existing skip or downrank signal and refills; "More like this" seeds neighbours of the current track. | P0 | M | R5 + R4 |
+| B3 · [#2244](https://github.com/akoita/resonate/issues/2244) | **Seeded sessions**: start a session from a track ("More like this"), an artist, or one of the listener's playlists (centroid of its track vectors plus its family mix). | P1 | M | R4 |
 
 ### Phase 3 — Context and trends (one sprint)
 
 | ID | Draft issue | Priority | Size | Notes |
 | --- | --- | --- | --- | --- |
-| B1 | **Right-now start**: when the listener gives no filters, the DJ uses the current time of day and weekday to weight their habit lanes (the My Mix context logic) instead of the flat saved vibes. A "Right now" quick start, with a visible reason such as "your usual weekday-evening mix". | P1 | S | R4. No new data |
-| B2 | **Trends as a bounded source**: "trending in your families" from the popularity serving tables, capped at a share of candidates. It never outranks the session request, never counts listener money, and passes the minimum-audience threshold. | P2 | S | R4. ADR-TE-2 and ADR-BM-4 hold |
-| B4 | **In-session steering**: skips and saves in the current session shift the remaining picks within the session (short-term vector), not only the long-term profile. | P2 | M | R4 |
+| B1 · [#2245](https://github.com/akoita/resonate/issues/2245) | **Right-now start**: when the listener gives no filters, the DJ uses the current time of day and weekday to weight their habit lanes (the My Mix context logic) instead of the flat saved vibes. A "Right now" quick start, with a visible reason such as "your usual weekday-evening mix". | P1 | S | R4. No new data |
+| B2 · [#2246](https://github.com/akoita/resonate/issues/2246) | **Trends as a bounded source**: "trending in your families" from the popularity serving tables, capped at a share of candidates. It never outranks the session request, never counts listener money, and passes the minimum-audience threshold. | P2 | S | R4. ADR-TE-2 and ADR-BM-4 hold |
+| B4 · [#2247](https://github.com/akoita/resonate/issues/2247) | **In-session steering**: skips and saves in the current session shift the remaining picks within the session (short-term vector), not only the long-term profile. | P2 | M | R4 |
 
 ### Phase 4 — Audio understanding (spike, eval-gated)
 
 | ID | Draft issue | Priority | Size | Notes |
 | --- | --- | --- | --- | --- |
-| A6 | **Spike: audio embeddings in a joint text-audio space** (CLAP-style model on the existing worker, once per track). Text queries ("kora and soft vocals") then reach tracks by sound even with no useful metadata. Promote only if it beats A3 + A5 on the A1 set at an acceptable worker cost; otherwise record the result and close. | P2 | M (spike) | Licence of the model weights must allow commercial use; check before adoption |
+| A6 · [#2248](https://github.com/akoita/resonate/issues/2248) | **Spike: audio embeddings in a joint text-audio space** (CLAP-style model on the existing worker, once per track). Text queries ("kora and soft vocals") then reach tracks by sound even with no useful metadata. Promote only if it beats A3 + A5 on the A1 set at an acceptable worker cost; otherwise record the result and close. | P2 | M (spike) | Licence of the model weights must allow commercial use; check before adoption |
 
 Out of scope here and unchanged: mixing and the energy arc (#1971),
 collaborative filtering (#1453), pay-per-play (#1972), and the taste passport
