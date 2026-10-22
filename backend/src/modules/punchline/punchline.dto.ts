@@ -1,4 +1,5 @@
-import { IsOptional, IsString } from "class-validator";
+import { IsOptional, IsString, Matches } from "class-validator";
+import { PAYMENT_BINDING_SIGNATURE_PATTERN } from "../x402/x402.payer-binding";
 
 /**
  * Punchline bodies whose services did not type-check every field (#1890).
@@ -29,6 +30,12 @@ export class SmartAccountCollectDto {
   @IsOptional()
   @IsString()
   payer?: string;
+
+  /** Proves a payer that is not one of the buyer's own addresses (`x402.payer-binding`). */
+  @IsOptional()
+  @IsString()
+  @Matches(PAYMENT_BINDING_SIGNATURE_PATTERN)
+  payerSignature?: string;
 
   collectorWallet?: string | null;
 }

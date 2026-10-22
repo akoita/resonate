@@ -593,9 +593,18 @@ describe('X402Controller', () => {
       basePlayPriceUsd: 0.05,
     });
 
+    const authService = {
+      isAddressForUser: jest.fn(async (userId: string, address: string) =>
+        userId.toLowerCase() === address.toLowerCase(),
+      ),
+    };
     const controller = new X402Controller(
       createMockConfig(),
       encryptionService as any,
+      undefined,
+      undefined,
+      undefined,
+      authService as any,
     );
     jest.spyOn(controller as any, 'verifySmartAccountPayment').mockResolvedValue({
       txHash: `0x${'a'.repeat(64)}`,
@@ -607,7 +616,10 @@ describe('X402Controller', () => {
       blockHash: `0x${'b'.repeat(64)}`,
     });
 
-    const req: any = { headers: {} };
+    const req: any = {
+      headers: {},
+      user: { userId: '0x1111111111111111111111111111111111111111' },
+    };
     const res = createMockRes();
 
     await controller.downloadWithSmartAccountPayment(
@@ -734,6 +746,65 @@ describe('X402Controller', () => {
     fetchSpy.mockRestore();
   });
 
+  it("refuses to redeem another account's smart-account payment before any chain lookup", async () => {
+    const authService = {
+      isAddressForUser: jest.fn(async (userId: string, address: string) =>
+        userId.toLowerCase() === address.toLowerCase(),
+      ),
+    };
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+      undefined,
+      undefined,
+      undefined,
+      authService as any,
+    );
+    const verify = jest.spyOn(controller as any, 'verifySmartAccountPayment');
+    const req: any = {
+      headers: {},
+      user: { userId: '0x2222222222222222222222222222222222222222' },
+    };
+    const res = createMockRes();
+
+    await expect(
+      controller.downloadWithSmartAccountPayment(
+        'stem_smart',
+        {
+          txHash: `0x${'a'.repeat(64)}`,
+          payer: '0x1111111111111111111111111111111111111111',
+        },
+        req,
+        res,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'payer_not_linked' } });
+    expect(verify).not.toHaveBeenCalled();
+    expect(prisma.x402Settlement.create).not.toHaveBeenCalled();
+    expect(res.body).toBeNull();
+  });
+
+  it('refuses a smart-account redemption when no buyer ownership check is available', async () => {
+    const controller = new X402Controller(createMockConfig(), encryptionService as any);
+    const verify = jest.spyOn(controller as any, 'verifySmartAccountPayment');
+    const req: any = {
+      headers: {},
+      user: { userId: '0x1111111111111111111111111111111111111111' },
+    };
+
+    await expect(
+      controller.downloadWithSmartAccountPayment(
+        'stem_smart',
+        {
+          txHash: `0x${'a'.repeat(64)}`,
+          payer: '0x1111111111111111111111111111111111111111',
+        },
+        req,
+        createMockRes(),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'payer_not_linked' } });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
   it('verifies smart-account x402 payments from token Transfer logs', async () => {
     const payer = '0x1111111111111111111111111111111111111111';
     const payTo = '0x2222222222222222222222222222222222222222';
@@ -844,7 +915,7 @@ describe('X402Controller', () => {
     expect(verified.amountUnits).toBe('2000000');
     expect(waitForTransactionReceipt).toHaveBeenCalledWith({
       hash: txHash,
-      timeout: 60_000,
+      timeout: 15_000,
     });
   });
 

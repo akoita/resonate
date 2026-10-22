@@ -45,7 +45,7 @@ Agent                     Resonate Backend              x402 Facilitator
 | `GET /api/storefront/stems/:id`    | None         | Public storefront detail for a specific stem            |
 | `GET /api/stems/:stemId/x402`      | x402 payment | Download stem after USDC payment                        |
 | `GET /api/stems/:stemId/x402/info` | None         | Free discovery — returns storefront-grade metadata, pricing, rights, and x402 config |
-| `POST /api/stems/:stemId/x402/smart-account` | Smart-account USDC transfer proof | Human checkout path: verifies an in-app Kernel account USDC transfer before download |
+| `POST /api/stems/:stemId/x402/smart-account` | JWT + smart-account USDC transfer proof bound to the buyer | Human checkout path: verifies an in-app Kernel account USDC transfer before download |
 | `POST /mcp`                        | Tool-level x402 for paid downloads | MCP tools for catalog search, stem quotes, and paid stem downloads |
 
 The MCP server reuses the same x402 challenge and proof-verification path for
@@ -174,6 +174,17 @@ Current behavior:
 - x402 redemptions are idempotent by payment proof hash or smart-account
   payment transaction hash. Retrying the same payment for the same stem returns
   the same receipt; trying to redeem it for a different stem is rejected.
+- A smart-account payment (stem download or Punchline moment collect) is
+  redeemable only by the signed-in buyer it belongs to: a transaction hash and
+  its sender are public on-chain, so the hash alone proves a payment, not who
+  may redeem it. The payer must be one of the buyer's own addresses (sign-in
+  smart account or its owner), or, when x402 settles on another chain than
+  sign-in and the browser pays from a parallel Kernel account, that account
+  signs the EIP-712 `PaymentBinding` (resource, buyer) before the transfer, so
+  a cancelled prompt moves no money. Any other caller gets
+  `403 payer_not_linked` before any chain or storage work
+  (`backend/src/modules/x402/x402.payer-binding.ts`; the frontend twin is
+  `web/src/lib/x402PaymentBinding.ts`).
 - The browser smart-account rail parses the public quote fail-closed, checks one
   personal option against the configured stablecoin and payout address, and
   transfers only the exact server-authored total. Fee metadata never enters the
