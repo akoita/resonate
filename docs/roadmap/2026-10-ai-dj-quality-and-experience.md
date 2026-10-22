@@ -2,7 +2,7 @@
 
 **Status:** scope approved by the owner on 2026-10-22. Work items are filed as
 sub-issues of [#1952](https://github.com/akoita/resonate/issues/1952)
-(#2235–#2248). The deployment half is
+(#2235–#2249). The deployment half is
 [resonate-iac#302](https://github.com/akoita/resonate-iac/issues/302). No
 milestone is assigned yet: the split into one or two Vision Sprints is still
 open (§8).
@@ -228,6 +228,7 @@ tests, and feature-page and User Guide updates in the same PR.
 | C1 · [#2237](https://github.com/akoita/resonate/issues/2237) | **Session page: one Start action**: remove the status-card Start and merge the status card into the command bar; Stop only while live; delete the unused `AgentDashboard.tsx`. | P0 | S | R5 |
 | C3 · [#2238](https://github.com/akoita/resonate/issues/2238) | **Remove the Live Feed card**: request coverage moves under the chips; the event stream moves to an operator view; drop the `agent.negotiated` icon mapping. | P1 | S | R5 |
 | C4 · [#2239](https://github.com/akoita/resonate/issues/2239) | **Make the DJ's starting taste visible and editable in place**: a labelled "starts from" line with an inline Edit link to Settings → AI DJ. A mood-only session no longer narrows to the saved vibes; it searches all genres and ranks by learned taste. Settings → AI DJ and the User Guide explain how saved vibes, Taste memory and My Mix differ, in one short table. | P1 | S | R5. Decide whether saved vibes should eventually merge into the declared layer of Taste memory (taste engine RFC, five layers) |
+| C5 · [#2249](https://github.com/akoita/resonate/issues/2249) | **Quick starts that show what the DJ can do**: plain-language starters in three rows (For you, Moments, Sounds) that write their sentence into the prompt; mood starters set mood, energy and tempo but no hidden genres; Sounds come from catalog families with enough playable tracks; composable optional filters (energy, tempo, Familiar ↔ New discovery, explicit). Delivered in slices: copy and composition first, catalog-aware Sounds next, For you once #2244/#2245 land. | P1 | M | R5. Replaces the jargon mood presets (Neural Flow, Pulse Raid…) |
 
 ### Phase 2 — Meaning-aware retrieval and the Up next card (one to two sprints)
 
@@ -261,7 +262,7 @@ collaborative filtering (#1453), pay-per-play (#1972), and the taste passport
 
 ```mermaid
 flowchart LR
-  P1["Phase 1<br/>A1 eval · A2 matcher · C1 one Start · C3 no Live Feed · C4 starting taste"] --> P2["Phase 2<br/>A3 descriptors · A4 sentence · A5 hybrid · C2 Up next · B3 seeds"]
+  P1["Phase 1<br/>A1 eval · A2 matcher · C1 one Start · C3 no Live Feed · C4 starting taste · C5 quick starts (slice 1)"] --> P2["Phase 2<br/>A3 descriptors · A4 sentence · A5 hybrid · C2 Up next · B3 seeds"]
   P2 --> P3["Phase 3<br/>B1 right now · B2 trends · B4 in-session steering"]
   P2 -.-> P4["Phase 4 (spike)<br/>A6 audio embeddings"]
 ```
