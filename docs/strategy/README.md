@@ -36,6 +36,7 @@ docs, roadmap issues, and implementation milestones into a product direction.
 - [Agent Platform Refactor RFC](../rfc/agent-platform-refactor.md)
 - [Taste Engine RFC](../rfc/taste-engine.md)
 - [Taste Engine milestone plan](../roadmap/2026-10-taste-engine-milestones.md)
+- [AI DJ quality and experience plan (proposed)](../roadmap/2026-10-ai-dj-quality-and-experience.md)
 - [External Agent Application Contract](../architecture/external_agent_application_contract.md)
 - [Listener Community Network](../features/listener_community_network.md)
 - [Listener Community Network Execution Plan](../features/listener_community_network_execution_plan.md)
