@@ -19,7 +19,7 @@ import type {
 export const SESSION_REQUEST_MAX_TEXT_LENGTH = 500;
 export const SESSION_ENERGY_BANDS: readonly AgentSessionEnergy[] = ["low", "medium", "high"];
 
-export type RequestChipKind = "genre" | "mood" | "energy" | "bpm" | "artist";
+export type RequestChipKind = "genre" | "mood" | "energy" | "bpm" | "artist" | "seed";
 
 export type RequestChip = {
   /** Stable key passed to {@link removeChip}. */
@@ -71,6 +71,14 @@ export function chipsFromRequest(request: AgentSessionRequest | null | undefined
 /** The "Like: <Artist>" chips for the catalog artists the sentence named (#2241). */
 export function artistChips(artists: readonly string[] | null | undefined): RequestChip[] {
   return (artists ?? []).map((artist) => ({ key: `artist:${artist}`, kind: "artist", label: `Like: ${artist}` }));
+}
+
+/** The key of the seed chip (#2244); removing it drops the seed. */
+export const SEED_CHIP_KEY = "seed";
+
+/** The "From: <label>" chip for a session seed (#2244). */
+export function seedChips(seed: { label: string } | null | undefined): RequestChip[] {
+  return seed ? [{ key: SEED_CHIP_KEY, kind: "seed", label: `From: ${seed.label}` }] : [];
 }
 
 /** The artists left after removing an artist chip; other keys leave them unchanged. */

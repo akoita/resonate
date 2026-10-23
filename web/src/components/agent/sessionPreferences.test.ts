@@ -48,6 +48,8 @@ describe("buildPickPreferences", () => {
       genres: SAVED_VIBES,
       requestText: "",
       artists: [],
+      // No seed: cleared explicitly, because the server keeps a session's earlier seed otherwise (#2244).
+      seed: null,
     });
   });
 
@@ -57,6 +59,8 @@ describe("buildPickPreferences", () => {
       request: request(),
       requestText: "",
       artists: [],
+      // No seed: cleared explicitly, because the server keeps a session's earlier seed otherwise (#2244).
+      seed: null,
     });
   });
 
@@ -119,5 +123,30 @@ describe("the typed sentence and its artists (#2241)", () => {
     expect(
       buildPickPreferences({ activePreset: null, request: request({ moods: ["calm"] }), savedVibes: SAVED_VIBES }),
     ).toMatchObject({ requestText: "", artists: [] });
+  });
+
+  describe("session seed (#2244)", () => {
+    const seed = { kind: "playlist", id: "pl-1", label: "Late night" } as const;
+
+    it("rides along with a preset, with typed filters, and with nothing else", () => {
+      const preset = SESSION_PRESETS[0];
+      expect(buildSessionPreferences({ activePreset: preset, request: null, seed })).toMatchObject({ seed });
+      expect(
+        buildSessionPreferences({ activePreset: null, request: request({ genres: ["Soul"] }), seed }),
+      ).toMatchObject({ seed, genres: ["Soul"] });
+      expect(buildSessionPreferences({ activePreset: null, request: null, seed })).toEqual({
+        seed,
+        source: "agent_session_prompt",
+      });
+      expect(buildSessionPreferences({ activePreset: null, request: null })).toBeUndefined();
+    });
+
+    it("is sent on every pick while set, and cleared with null once removed", () => {
+      expect(
+        buildPickPreferences({ activePreset: null, request: request({ moods: ["calm"] }), savedVibes: SAVED_VIBES, seed }),
+      ).toMatchObject({ seed });
+      expect(buildPickPreferences({ activePreset: null, request: null, savedVibes: SAVED_VIBES, seed })).toMatchObject({ seed });
+      expect(buildPickPreferences({ activePreset: null, request: null, savedVibes: SAVED_VIBES })).toMatchObject({ seed: null });
+    });
   });
 });

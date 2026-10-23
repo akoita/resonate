@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentSessionRequest } from "./api";
 import {
   artistChips,
+  seedChips,
   chipsFromRequest,
   coverageLine,
   emptyRequest,
@@ -236,5 +237,13 @@ describe("artist chips (#2241)", () => {
     expect(removeArtistChip(["Nadia Okoro", "Hana Mori"], "artist:Hana Mori")).toEqual(["Nadia Okoro"]);
     expect(removeArtistChip(["Nadia Okoro"], "genre:Jazz")).toEqual(["Nadia Okoro"]);
     expect(artistChips(undefined)).toEqual([]);
+  });
+});
+
+describe("seedChips (#2244)", () => {
+  it("shows one From chip for a seed and nothing without one", () => {
+    expect(seedChips({ label: "Late night" })).toEqual([{ key: "seed", kind: "seed", label: "From: Late night" }]);
+    expect(seedChips(null)).toEqual([]);
+    expect(seedChips(undefined)).toEqual([]);
   });
 });

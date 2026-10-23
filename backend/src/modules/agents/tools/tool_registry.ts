@@ -17,6 +17,8 @@ import { MEASURED_TEMPO_MIN_CONFIDENCE } from "../measured_track_features";
 import {
   expandGenreSearchTerms,
   genreFamiliesFor,
+  genreFamilyById,
+  releaseGenreFamilies,
 } from "../../recommendations/genre_families";
 
 /** Upper bound on candidates lazily embedded / ranked per tool call. */
@@ -27,6 +29,24 @@ const ARTIST_SEED_OWN_TRACKS = 8;
 const ARTIST_SEED_CENTROID_TRACKS = 8;
 const ARTIST_SEED_CACHE_TTL_MS = 5 * 60_000;
 const ARTIST_SEED_CACHE_MAX = 100;
+
+/**
+ * Playlist seeds (#2244). A seeded session is not a replay of the playlist:
+ *  - at most `PLAYLIST_SEED_OWN_TRACKS` of the playlist's own tracks (the ones
+ *    nearest its centroid) are candidates in any one retrieval, and the
+ *    selector drops every other playlist track from the pool (so a batch holds
+ *    at most that many, whichever source found them);
+ *  - the profile is read from the most recent `PLAYLIST_SEED_SAMPLE_TRACKS`
+ *    tracks, so a huge playlist costs the same as a small one;
+ *  - the genre-family mix adds tracks of the playlist's `PLAYLIST_SEED_TOP_FAMILIES`
+ *    most common families, at most `PLAYLIST_SEED_FAMILY_CANDIDATES` of them.
+ */
+export const PLAYLIST_SEED_OWN_TRACKS = 3;
+const PLAYLIST_SEED_SAMPLE_TRACKS = 40;
+const PLAYLIST_SEED_TOP_FAMILIES = 2;
+const PLAYLIST_SEED_FAMILY_CANDIDATES = 30;
+/** Most ids sent to a SQL NOT IN; the rest are dropped after the query. */
+const PLAYLIST_SEED_SQL_EXCLUDE_MAX = 500;
 
 /**
  * The catalog.search match for one query. Genre labels are free text, so a
@@ -258,6 +278,191 @@ export class ToolRegistry {
         }
         // Own tracks come first, so the cap never drops an artist's own catalog for neighbours.
         return { items: items.slice(0, limit), status: "ok" };
+      },
+    });
+
+    // Playlist seeds (#2244): the neighbours of the centroid of a playlist's
+    // stored track vectors, plus tracks of the playlist's genre-family mix, plus
+    // at most PLAYLIST_SEED_OWN_TRACKS of the playlist's own tracks. Access is
+    // checked HERE, on every call, for the caller in `userId`: only the owner's
+    // playlists and public ones seed anything; any other playlist answers
+    // `status: "forbidden"` with no items. Reads stored vectors and descriptors
+    // only (no embedding call); it returns `playlistTrackIds` so the selector can
+    // keep the playlist's other tracks out of the session's pool.
+    this.register({
+      name: "catalog.playlist_seed",
+      run: async (input) => {
+        const playlistId = typeof input.playlistId === "string" ? input.playlistId.trim() : "";
+        const userId = typeof input.userId === "string" ? input.userId.trim() : "";
+        const limit = Math.min(Math.max(Math.floor(Number(input.limit ?? 20)) || 20, 1), 50);
+        const explicitAllowed = Boolean(input.allowExplicit ?? false);
+        const excludeTrackIds = Array.isArray(input.excludeTrackIds)
+          ? (input.excludeTrackIds as unknown[]).filter((id): id is string => typeof id === "string")
+          : [];
+        if (!playlistId) return { items: [], status: "ok" };
+
+        const playlist = await prisma.playlist.findFirst({
+          where: {
+            id: playlistId,
+            OR: [...(userId ? [{ userId }] : []), { visibility: "public" }],
+          },
+          select: { trackIds: true },
+        });
+        if (!playlist) return { items: [], status: "forbidden" };
+
+        const playlistTrackIds = [...new Set(playlist.trackIds)];
+        if (playlistTrackIds.length === 0) return { items: [], status: "ok", playlistTrackIds };
+        const inPlaylist = new Set(playlistTrackIds);
+        const sample = playlistTrackIds.slice(-PLAYLIST_SEED_SAMPLE_TRACKS);
+
+        // The genre-family mix of the sample: stored descriptor families, else the release genre's.
+        const sampleRows = await prisma.track.findMany({
+          where: { id: { in: sample } },
+          select: {
+            id: true,
+            release: { select: { genre: true } },
+            descriptor: { select: { families: true } },
+          },
+        });
+        const familyCounts = new Map<string, number>();
+        for (const row of sampleRows) {
+          const stored = row.descriptor?.families ?? [];
+          const families = new Set(
+            stored.length > 0
+              ? stored
+              : releaseGenreFamilies(row.release?.genre ?? "").map((family) => family.id),
+          );
+          for (const id of families) familyCounts.set(id, (familyCounts.get(id) ?? 0) + 1);
+        }
+        const topFamilyIds = [...familyCounts.entries()]
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .slice(0, PLAYLIST_SEED_TOP_FAMILIES)
+          .map(([id]) => id);
+
+        // The centroid of the stored vectors (none: the family mix alone seeds).
+        const model = this.embeddingService.modelId;
+        const centroid = model
+          ? unitCentroid(await this.embeddingStore.getMany(sample, model))
+          : null;
+
+        const excluded = new Set<string>([...excludeTrackIds, ...playlistTrackIds]);
+        const sqlExclude = [...excluded].slice(0, PLAYLIST_SEED_SQL_EXCLUDE_MAX);
+        const scores = new Map<string, number>();
+        const origin = new Map<string, "neighbour" | "family">();
+
+        if (centroid) {
+          const neighbours = await trackEmbeddingService.neighboursOfVector(centroid, {
+            limit,
+            allowExplicit: explicitAllowed,
+            excludeTrackIds: sqlExclude,
+          });
+          const floor = input.calibratedFloor === true
+            ? calibratedSemanticFloor(Math.max(0, ...neighbours.map((neighbour) => neighbour.score)))
+            : getAgentSemanticMinSimilarity();
+          for (const neighbour of neighbours) {
+            if (neighbour.score < floor || excluded.has(neighbour.trackId)) continue;
+            scores.set(neighbour.trackId, neighbour.score);
+            origin.set(neighbour.trackId, "neighbour");
+          }
+        }
+
+        if (topFamilyIds.length > 0) {
+          const genreTerms = topFamilyIds.flatMap((id) => {
+            const family = genreFamilyById(id);
+            return family ? expandGenreSearchTerms(family.label) : [];
+          });
+          const familyRows = await this.loadCandidateTracks({
+            explicitAllowed,
+            take: PLAYLIST_SEED_FAMILY_CANDIDATES,
+            extraWhere: {
+              AND: [
+                TRACK_EMBEDDABLE_WHERE,
+                { id: { notIn: sqlExclude } },
+                {
+                  OR: [
+                    { descriptor: { is: { families: { hasSome: topFamilyIds } } } },
+                    ...genreTerms.map((term) => ({
+                      release: { genre: { contains: term, mode: "insensitive" as const } },
+                    })),
+                  ],
+                },
+              ],
+            },
+          });
+          const fresh = familyRows.filter((row) => !excluded.has(row.id) && !origin.has(row.id));
+          const familyScores = centroid && model
+            ? await this.embeddingStore.similarity(centroid, fresh.map((row) => row.id), model)
+            : [];
+          for (const entry of familyScores) scores.set(entry.trackId, entry.score);
+          for (const row of fresh) origin.set(row.id, "family");
+        }
+
+        const items: Array<Record<string, unknown>> = [];
+        const wanted = [...origin.keys()];
+        if (wanted.length > 0) {
+          const rows = await this.loadCandidateTracks({
+            explicitAllowed,
+            take: wanted.length,
+            extraWhere: { AND: [TRACK_EMBEDDABLE_WHERE, { id: { in: wanted } }] },
+          });
+          const byId = new Map(rows.map((row) => [row.id, row]));
+          // Scored candidates first (best first); a family track without a vector keeps its place after them.
+          const ordered = wanted
+            .map((id, index) => ({ id, index, score: scores.get(id) }))
+            .sort((a, b) =>
+              (b.score ?? -1) !== (a.score ?? -1) ? (b.score ?? -1) - (a.score ?? -1) : a.index - b.index);
+          for (const entry of ordered) {
+            const row = byId.get(entry.id);
+            if (!row) continue;
+            items.push({
+              ...row,
+              playlistSeed: origin.get(entry.id),
+              ...(entry.score !== undefined ? { semanticScore: entry.score } : {}),
+            });
+          }
+        }
+
+        // The playlist's own tracks: the PLAYLIST_SEED_OWN_TRACKS nearest its centroid
+        // (playlist order without a centroid), not already in the session.
+        const alreadyInSession = new Set(excludeTrackIds);
+        const ownPool = playlistTrackIds.filter((id) => !alreadyInSession.has(id));
+        let ownOrder = ownPool;
+        const ownScores = new Map<string, number>();
+        if (centroid && model && ownPool.length > 0) {
+          const ranked = await this.embeddingStore.similarity(centroid, ownPool.slice(0, 100), model);
+          for (const entry of ranked) ownScores.set(entry.trackId, entry.score);
+          const rankedIds = ranked.map((entry) => entry.trackId);
+          ownOrder = [...rankedIds, ...ownPool.filter((id) => !ownScores.has(id))];
+        }
+        const ownWanted = ownOrder.slice(0, PLAYLIST_SEED_OWN_TRACKS * 4);
+        if (ownWanted.length > 0) {
+          const rows = await this.loadCandidateTracks({
+            explicitAllowed,
+            take: ownWanted.length,
+            extraWhere: { AND: [TRACK_EMBEDDABLE_WHERE, { id: { in: ownWanted } }] },
+          });
+          const byId = new Map(rows.map((row) => [row.id, row]));
+          let taken = 0;
+          for (const id of ownWanted) {
+            const row = byId.get(id);
+            if (!row || taken >= PLAYLIST_SEED_OWN_TRACKS) continue;
+            taken += 1;
+            const score = ownScores.get(id);
+            items.push({
+              ...row,
+              playlistSeed: "own",
+              ...(score !== undefined ? { semanticScore: score } : {}),
+            });
+          }
+        }
+
+        const ownItems = items.filter((item) => item.playlistSeed === "own");
+        const otherItems = items.filter((item) => item.playlistSeed !== "own");
+        return {
+          items: [...otherItems.slice(0, Math.max(0, limit - ownItems.length)), ...ownItems],
+          status: "ok",
+          playlistTrackIds: [...inPlaylist],
+        };
       },
     });
 

@@ -10,6 +10,7 @@ import { myMixSearchTerms } from "./agent_my_mix";
 import type { ResolvedMyMixPlan } from "./agent_my_mix";
 import { relatedGenreLabels } from "../recommendations/genre_families";
 import { SESSION_REQUEST_TEXT_MAX_LENGTH } from "./agent_session_request";
+import { selectorSeedsFor } from "./agent_session_seed";
 
 export function buildAgentRecommendationQueries(
   preferences: AgentRecommendationInput["preferences"],
@@ -136,6 +137,8 @@ export function deterministicSelectorInput(
     semanticQuery: buildSemanticSessionQuery(input.preferences),
     ...(input.preferences.seedTrackId ? { seedTrackId: input.preferences.seedTrackId } : {}),
     ...(input.preferences.artists?.length ? { seedArtists: input.preferences.artists } : {}),
+    // The session's seed (#2244): a track, an artist or a playlist, kept for the live session.
+    ...(selectorSeedsFor(input.preferences.seed) ? { seeds: selectorSeedsFor(input.preferences.seed) } : {}),
     myMixPlan: input.myMixPlan,
   };
 }

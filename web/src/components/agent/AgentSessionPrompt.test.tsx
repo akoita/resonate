@@ -313,6 +313,17 @@ describe("AgentSessionPrompt", () => {
     expect(render({ request })).not.toContain("Like:");
   });
 
+  it("shows the session seed as a removable From chip ahead of the other chips (#2244)", () => {
+    const html = render({ request, seed: { label: "Late night" } });
+    expect(html).toContain("From: Late night");
+    expect(html).toContain('aria-label="Remove filter From: Late night"');
+    expect(html).toContain("aid-prompt-chip--seed");
+    expect(html.indexOf("From: Late night")).toBeLessThan(html.indexOf("Deep house"));
+    expect(render({ request })).not.toContain("From:");
+    // A seed alone is a visible choice too, not the "starts from your saved vibes" line.
+    expect(render({ seed: { label: "Late night" }, savedVibes: ["Chill"] })).not.toContain("With no filters");
+  });
+
   it("keeps an unknown name under Didn't catch", () => {
     expect(render({ unparsed: ["Zed Nonexistent"] })).toContain("Zed Nonexistent");
   });

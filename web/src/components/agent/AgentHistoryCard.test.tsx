@@ -162,6 +162,17 @@ describe("AgentHistoryCard", () => {
       expect(withExplicit).toContain("Explicit on");
     });
 
+    it("shows what the session was seeded from, as stored (#2244)", () => {
+      const html = render({
+        genres: [],
+        moods: [],
+        explicit: false,
+        seed: { kind: "playlist", label: "Late night" },
+      });
+      expect(html).toContain("From playlist: Late night");
+      expect(html).not.toContain("Saved taste");
+    });
+
     it("renders nothing for older sessions without filters", () => {
       expect(render(null)).not.toContain("aid-history-filters");
       expect(render(undefined)).not.toContain("aid-history-filters");

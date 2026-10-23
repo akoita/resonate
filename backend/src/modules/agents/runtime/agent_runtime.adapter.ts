@@ -1,5 +1,6 @@
 import type { AgentRequestCoverage, AgentSessionRequest, AgentSessionTempoRange } from "../agent_session_request";
 import type { MyMixPreferences } from "../agent_my_mix";
+import type { SessionSeed } from "../agent_session_seed";
 
 export interface AgentRuntimeInput {
   sessionId: string;
@@ -49,6 +50,12 @@ export interface AgentRuntimeInput {
      * Set by the sessions service after it checked the track belongs to the session.
      */
     seedTrackId?: string;
+    /**
+     * The session's seed (#2244): a track, an artist or a playlist the session
+     * started from, kept for the whole live session. Resolved and access-checked
+     * by the server before it gets here; never published.
+     */
+    seed?: SessionSeed;
   };
 }
 

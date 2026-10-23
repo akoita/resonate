@@ -1,5 +1,6 @@
 import { hasFilters } from "../../lib/agentSessionRequest";
 import type { AgentNextPreferences, AgentSessionRequest } from "../../lib/api";
+import type { DjSeed } from "../../lib/djSeed";
 import type { SessionPreset } from "./sessionPresetData";
 
 export function toIntentPreferences(preset: SessionPreset): AgentNextPreferences {
@@ -28,6 +29,7 @@ export function buildSessionPreferences({
     request,
     sentence,
     artists = [],
+    seed = null,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
@@ -35,17 +37,21 @@ export function buildSessionPreferences({
     sentence?: string | null;
     /** Catalog artists named in that sentence and not removed (#2241). */
     artists?: readonly string[];
+    /** What the session starts from (#2244); it rides along with any filters and stays for the session. */
+    seed?: DjSeed | null;
 }): AgentNextPreferences | undefined {
+    const seedField = seed ? { seed: { kind: seed.kind, id: seed.id, label: seed.label } } : {};
     if (activePreset) {
-        if (!request) return toIntentPreferences(activePreset);
+        if (!request) return { ...toIntentPreferences(activePreset), ...seedField };
         // The Adjust row can change the starter's energy (or clear it): the request wins, so the
         // session never carries two different energies.
-        return { ...toIntentPreferences(activePreset), request, energy: request.energy ?? undefined };
+        return { ...toIntentPreferences(activePreset), request, energy: request.energy ?? undefined, ...seedField };
     }
     const text = sentence?.trim();
     const sentenceFields = {
         ...(text ? { requestText: text } : {}),
         ...(artists.length > 0 ? { artists: [...artists] } : {}),
+        ...seedField,
     };
     if (!request || !hasFilters(request)) {
         // A sentence the chips did not capture ("something for cooking", "like <Artist>") still steers.
@@ -82,17 +88,20 @@ export function buildPickPreferences({
     savedVibes,
     sentence,
     artists,
+    seed = null,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
     savedVibes?: string[];
     sentence?: string | null;
     artists?: readonly string[];
+    seed?: DjSeed | null;
 }): AgentNextPreferences {
-    const built = buildSessionPreferences({ activePreset, request, sentence, artists });
+    const built = buildSessionPreferences({ activePreset, request, sentence, artists, seed });
     // The server remembers a live session's earlier preferences when a key is omitted, so a sentence
     // or artists the listener has since dropped are cleared explicitly (empty values).
-    const sentenceReset = { requestText: "", artists: [] as string[] };
+    // A seed the listener removed is cleared the same way (`null`), because omitting it keeps it.
+    const sentenceReset = { requestText: "", artists: [] as string[], seed: null as AgentNextPreferences["seed"] };
     if (built && (built.request || built.sessionIntent)) return { ...sentenceReset, ...built };
     // No chips: the saved vibes are where the session starts, plus any sentence.
     return {

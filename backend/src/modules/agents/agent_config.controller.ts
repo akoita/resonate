@@ -18,6 +18,7 @@ import { mergeSessionGenres } from "./agent_session_genres";
 import { AgentSoundsService } from "./agent_sounds.service";
 import { resolveAllowExplicit } from "./agent_explicit_preference";
 import { sessionFilterSummary } from "./agent_session_filters";
+import { resolveSessionSeed } from "./agent_session_seed_resolver";
 import {
   AGENT_SESSION_REQUEST_PARSER,
   describeCoverageGaps,
@@ -335,6 +336,11 @@ export class AgentConfigController {
                 requestText?: unknown;
                 /** Catalog artists the sentence named (#2241); seed neighbours for retrieval. */
                 artists?: unknown;
+                /**
+                 * What the session starts from (#2244): `{ kind: "track" | "artist" | "playlist", id, label }`.
+                 * Resolved here: a playlist the caller neither owns nor may see is refused (403).
+                 */
+                seed?: unknown;
                 myMix?: MyMixPreferences | null;
             };
         }
@@ -352,6 +358,10 @@ export class AgentConfigController {
                 getAgentTrackLimit(),
             );
         }
+        // The seed (#2244) is resolved, and a playlist access-checked, before anything is written.
+        const seed = body?.preferences?.seed != null
+            ? await resolveSessionSeed(req.user.userId, body.preferences.seed)
+            : undefined;
         // The described session (#2037): invalid fields are dropped, and with
         // no request every derived value below is exactly what it was before.
         const requested = requestRankingPreferences({
@@ -381,6 +391,8 @@ export class AgentConfigController {
             queueStyle: body?.preferences?.queueStyle,
             source: body?.preferences?.source,
             myMix: body?.preferences?.myMix,
+            // Published as its kind only: the id may name a private playlist.
+            ...(seed ? { seedKind: seed.kind } : {}),
         };
 
         // Create a persistent Session record
@@ -398,6 +410,7 @@ export class AgentConfigController {
                     energy: requested.energy,
                     tempoBpm: requested.tempoBpm,
                     myMix: body?.preferences?.myMix,
+                    seed,
                     allowExplicit,
                 }) as unknown as Prisma.InputJsonValue,
             },
@@ -475,6 +488,8 @@ export class AgentConfigController {
                     // run only, read by the semantic query and the artist seeds.
                     ...(requested.requestText ? { requestText: requested.requestText } : {}),
                     ...(requested.artists.length > 0 ? { artists: requested.artists } : {}),
+                    // What the session started from (#2244), resolved above; in memory for this run only.
+                    ...(seed ? { seed } : {}),
                     // The described session (#2037); absent without a request.
                     ...(requested.request
                         ? {

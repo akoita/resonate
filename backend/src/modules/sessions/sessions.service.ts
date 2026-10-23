@@ -16,6 +16,8 @@ import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
 import { resolveAllowExplicit } from "../agents/agent_explicit_preference";
 import { sanitizeArtistNames } from "../agents/agent_session_artists";
+import { rememberedSessionSeed, type SessionSeed } from "../agents/agent_session_seed";
+import { resolveSessionSeed } from "../agents/agent_session_seed_resolver";
 import { sameSessionFilters, sessionFilterSummary } from "../agents/agent_session_filters";
 import {
   requestRankingPreferences,
@@ -52,6 +54,12 @@ export interface AgentPreferences {
   myMix?: MyMixPreferences | null;
   /** "More like this" (#2243): one request's seed track; never remembered or published. */
   seedTrackId?: string;
+  /**
+   * What the session started from (#2244): a track, an artist or a playlist.
+   * Resolved and access-checked by the service, then remembered for the live
+   * session; explicit null clears it. Its id is never published.
+   */
+  seed?: { kind: SessionSeed["kind"]; id: string; label?: string } | null;
 }
 
 @Injectable()
@@ -83,6 +91,8 @@ export class SessionsService {
         getAgentTrackLimit(),
       );
     }
+    // The seed is resolved (and a playlist access-checked) before anything is written.
+    input = { ...input, preferences: await this.withResolvedSeed(input.userId, input.preferences) };
     await this.walletService.setBudget({
       userId: input.userId,
       monthlyCapUsd: input.budgetCapUsd,
@@ -300,10 +310,18 @@ export class SessionsService {
       );
     }
 
+    // A seed sent again that the session already holds is not looked up again; a new one is
+    // resolved (and a playlist access-checked) before it is remembered, like myMix above.
+    const incoming = await this.withResolvedSeed(
+      session.userId,
+      input.preferences,
+      rememberedSessionSeed(this.agentPreferences.get(input.sessionId)?.seed),
+    );
     const preferences = this.mergeAgentPreferences(
       input.sessionId,
-      sanitizeIncomingRequest(withoutSeed(input.preferences)),
+      sanitizeIncomingRequest(withoutSeed(incoming)),
     );
+    const seed = rememberedSessionSeed(preferences.seed);
     // The described session (#2037); without a request nothing below changes.
     const requested = requestRankingPreferences(preferences);
     const sessionGenres = requested.request
@@ -322,6 +340,7 @@ export class SessionsService {
         energy: requested.energy,
         tempoBpm: requested.tempoBpm,
         myMix: preferences.myMix,
+        seed,
         allowExplicit,
       });
     }
@@ -342,7 +361,9 @@ export class SessionsService {
       recentTrackIds,
       budgetRemainingUsd,
       preferences: {
-        ...preferences,
+        ...withoutSessionSeed(preferences),
+        // The session's seed (#2244) stays in force for every pick of the live session.
+        ...(seed ? { seed } : {}),
         allowExplicit,
         genres: await this.withLearnedGenres(session.userId, sessionGenres),
         // What this session asked for itself, so it outranks learned taste (#2059).
@@ -399,6 +420,26 @@ export class SessionsService {
     });
     this.playlistCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };
+  }
+
+  /**
+   * The preferences with `seed` resolved for `userId` (#2244): a new seed is
+   * looked up and a playlist the caller may not use is refused (403); a seed
+   * equal to the `remembered` one is kept as it was; `null` clears the seed;
+   * an absent key leaves the session's seed alone.
+   */
+  private async withResolvedSeed(
+    userId: string,
+    preferences: AgentPreferences | undefined,
+    remembered?: SessionSeed,
+  ): Promise<AgentPreferences | undefined> {
+    if (!preferences || !("seed" in preferences) || preferences.seed === undefined) return preferences;
+    if (preferences.seed === null) return preferences;
+    const sent = rememberedSessionSeed(preferences.seed);
+    if (sent && remembered && sent.kind === remembered.kind && sent.id === remembered.id) {
+      return { ...preferences, seed: remembered };
+    }
+    return { ...preferences, seed: await resolveSessionSeed(userId, preferences.seed) };
   }
 
   private mergeAgentPreferences(
@@ -549,6 +590,7 @@ export class SessionsService {
         energy: requested.energy,
         tempoBpm: requested.tempoBpm,
         myMix: preferences?.myMix,
+        seed: preferences?.seed,
         allowExplicit: await this.resolveAllowExplicit(userId, preferences?.allowExplicit),
       }) as unknown as Prisma.InputJsonValue;
     } catch {
@@ -730,14 +772,17 @@ function cohortInfluenceFromSignals(signals?: Array<{ label: string; reason: str
 
 function publicSessionPreferences(preferences: AgentPreferences): Record<string, unknown> {
   // The sentence and the artists it named never leave the session (#2241); nor does a one-request seed (#2243).
+  // A session seed (#2244) is published as its kind only: its id may name a private playlist.
   const {
     myMix: _myMix,
     seedTrackId: _seedTrackId,
     requestText: _requestText,
     artists: _artists,
+    seed,
     ...publicPreferences
   } = preferences;
-  return publicPreferences;
+  const seedKind = rememberedSessionSeed(seed)?.kind;
+  return seedKind ? { ...publicPreferences, seedKind } : publicPreferences;
 }
 
 /** The preferences a session remembers: a seed track belongs to one request only (#2243). */
@@ -745,4 +790,10 @@ function withoutSeed(preferences?: AgentPreferences): AgentPreferences | undefin
   if (!preferences || !("seedTrackId" in preferences)) return preferences;
   const { seedTrackId: _seedTrackId, ...remembered } = preferences;
   return remembered;
+}
+
+/** The preferences without the `seed` key, which the caller re-adds only when it holds a valid one. */
+function withoutSessionSeed(preferences: AgentPreferences): Omit<AgentPreferences, "seed"> {
+  const { seed: _seed, ...rest } = preferences;
+  return rest;
 }

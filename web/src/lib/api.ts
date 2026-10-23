@@ -5772,6 +5772,8 @@ export interface AgentSessionFilters {
   energy?: "low" | "medium" | "high";
   tempoBpm?: { min: number | null; max: number | null };
   myMix?: true;
+  /** #2244: what the session was seeded from; its kind and catalog label, never an id. */
+  seed?: { kind: "track" | "artist" | "playlist"; label: string };
   explicit: boolean;
 }
 
@@ -5890,6 +5892,13 @@ export type AgentNextPreferences = {
    * is never part of the remembered set preferences.
    */
   seedTrackId?: string;
+  /**
+   * #2244: what the session started from (a track, an artist or one of the
+   * listener's own or a public playlist). Unlike `seedTrackId` it stays in
+   * force for the whole live session; `null` removes it. The server checks it
+   * and uses the catalog's own label.
+   */
+  seed?: { kind: "track" | "artist" | "playlist"; id: string; label: string } | null;
 };
 
 /** #2075: why the AI curator could not pick; categorical, never an error message. */

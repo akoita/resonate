@@ -35,6 +35,7 @@ import { RemixCta } from "../../../components/remix/RemixCta";
 import { useBreakpoint } from "../../../hooks/useBreakpoint";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
+import { START_DJ_FROM_SEED_LABEL, useStartDjFromSeed } from "../../../components/agent/StartDjFromSeedButton";
 import { MixerConsole } from "../../../components/player/MixerConsole";
 import { QueueActionsButton } from "../../../components/player/QueueActionsButton";
 import { ArtistCampaignLink } from "../../../components/shows/ArtistCampaignLink";
@@ -394,6 +395,7 @@ const getRightsTone = (route?: string | null) => {
 function ReleaseDetailsContent() {
   const { id } = useParams();
   const router = useRouter();
+  const startDjFromSeed = useStartDjFromSeed();
   const searchParams = useSearchParams();
   const {
     playQueue,
@@ -2803,6 +2805,12 @@ function ReleaseDetailsContent() {
                               onClick: async () => {
                                 setTracksToAddToPlaylist([await mapToPlayableLocalTrack(track)]);
                               },
+                            },
+                            // Seeded AI DJ session (#2244): the DJ starts from this track.
+                            {
+                              label: START_DJ_FROM_SEED_LABEL,
+                              icon: "🎧",
+                              onClick: () => startDjFromSeed({ kind: "track", id: track.id, label: track.title }),
                             },
                             // Listener path to the stem token pages: every
                             // minted stem of this track gets a menu entry.

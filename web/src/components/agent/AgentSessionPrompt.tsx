@@ -16,6 +16,7 @@ import {
     SESSION_REQUEST_MAX_TEXT_LENGTH,
     artistChips,
     chipsFromRequest,
+    seedChips,
     coverageLine,
     ignoredKeyLabels,
 } from "../../lib/agentSessionRequest";
@@ -69,6 +70,8 @@ type Props = {
     request: AgentSessionRequest | null;
     /** Catalog artists the sentence named (#2241), shown as removable "Like: <Artist>" chips. */
     artists?: readonly string[];
+    /** What the session starts from (#2244), shown as a removable "From: <label>" chip. */
+    seed?: { label: string } | null;
     onRemoveChip: (chipKey: string) => void;
     /** Sets the Energy filter; null clears it back to "the DJ decides". */
     onEnergyChange: (band: AgentSessionEnergy | null) => void;
@@ -123,6 +126,7 @@ export default function AgentSessionPrompt({
     onSelectPreset,
     request,
     artists = [],
+    seed = null,
     onRemoveChip,
     onEnergyChange,
     unparsed = [],
@@ -156,7 +160,7 @@ export default function AgentSessionPrompt({
     }, [boxIsEmpty]);
     const presetDescriptionId = (preset: SessionPreset) =>
         `${id}-preset-${preset.intent.replace(/[^a-zA-Z0-9_-]/g, "")}`;
-    const chips = [...artistChips(artists), ...chipsFromRequest(request)];
+    const chips = [...seedChips(seed), ...artistChips(artists), ...chipsFromRequest(request)];
     const ignoredLabels = ignoredKeyLabels(ignored);
     const coverageSummary = coverageLine(coverage, request);
     const myMixHasInputs = myMix?.preferences

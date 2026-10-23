@@ -51,6 +51,8 @@ export function describeSessionFilters(
     const tempo = filters.tempoBpm ? describeTempo(filters.tempoBpm) : null;
     if (tempo) rest.push(tempo);
     if (filters.myMix) rest.push("My Mix");
+    // What the session was seeded from (#2244): kind and label as stored.
+    if (filters.seed?.label) rest.unshift(`From ${filters.seed.kind}: ${filters.seed.label}`);
     if (!preset && rest.length === 0) rest.push("Saved taste");
     if (filters.explicit) rest.push("Explicit on");
     const text = [...(preset ? [preset] : []), ...rest].join(" \u00B7 ");

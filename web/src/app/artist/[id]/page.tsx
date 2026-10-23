@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getArtistPublic, getArtistManagementAccess, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ResourceManagementAccess } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
+import StartDjFromSeedButton from "../../../components/agent/StartDjFromSeedButton";
 import { Tabs } from "../../../components/ui/Tabs";
 import { ArtistCommunityTab } from "../../../components/community/ArtistCommunityTab";
 import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLinksRow";
@@ -262,6 +263,11 @@ export default function ArtistPage() {
                                     Open in My Library
                                 </Button>
                                 ) : null}
+                            </div>
+                        ) : null}
+                        {artist && trackCount > 0 ? (
+                            <div className="library-artist-actions">
+                                <StartDjFromSeedButton seed={{ kind: "artist", id: artist.id, label: artist.displayName }} />
                             </div>
                         ) : null}
                         {artist ? (
