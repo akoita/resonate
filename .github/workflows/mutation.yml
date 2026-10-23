@@ -34,15 +34,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Interleaved shards keep the two largest campaigns below the job timeout
-          # while still scoring every generated mutant each week.
-          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow, shard: 0, shards: 2, shard_name: shard 1/2 }
-          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow, shard: 1, shards: 2, shard_name: shard 2/2 }
+          # Interleaved shards keep every campaign well below the 120-minute job
+          # timeout while still scoring every generated mutant each week. Target
+          # about an hour per leg: on 2026-10-19 StemMarketplaceV2 (one leg) and
+          # ContentProtection (two legs) outgrew the timeout and were cancelled
+          # (#2216). Re-split a campaign when its legs pass ~80 minutes.
+          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow, shard: 0, shards: 3, shard_name: shard 1/3 }
+          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow, shard: 1, shards: 3, shard_name: shard 2/3 }
+          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow, shard: 2, shards: 3, shard_name: shard 3/3 }
           - { contract: StemNFT, config: gambit.json, match: StemNFT, shard: 0, shards: 1, shard_name: full }
-          - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace, shard: 0, shards: 1, shard_name: full }
-          - { contract: RevenueEscrow, config: gambit-revenue-escrow.json, match: RevenueEscrow, shard: 0, shards: 1, shard_name: full }
-          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 0, shards: 2, shard_name: shard 1/2 }
-          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 1, shards: 2, shard_name: shard 2/2 }
+          - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace, shard: 0, shards: 3, shard_name: shard 1/3 }
+          - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace, shard: 1, shards: 3, shard_name: shard 2/3 }
+          - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace, shard: 2, shards: 3, shard_name: shard 3/3 }
+          - { contract: RevenueEscrow, config: gambit-revenue-escrow.json, match: RevenueEscrow, shard: 0, shards: 2, shard_name: shard 1/2 }
+          - { contract: RevenueEscrow, config: gambit-revenue-escrow.json, match: RevenueEscrow, shard: 1, shards: 2, shard_name: shard 2/2 }
+          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 0, shards: 4, shard_name: shard 1/4 }
+          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 1, shards: 4, shard_name: shard 2/4 }
+          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 2, shards: 4, shard_name: shard 3/4 }
+          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 3, shards: 4, shard_name: shard 4/4 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
