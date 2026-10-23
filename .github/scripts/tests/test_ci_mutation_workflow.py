@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -20,11 +21,25 @@ class MutationWorkflowTests(unittest.TestCase):
     def test_large_campaigns_are_split_without_sharding_smaller_targets(self):
         text = WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertEqual(text.count("contract: ShowCampaignEscrow,"), 2)
-        self.assertEqual(text.count("contract: ContentProtection,"), 2)
-        self.assertEqual(text.count("contract: StemNFT,"), 1)
-        self.assertEqual(text.count("contract: StemMarketplaceV2,"), 1)
-        self.assertEqual(text.count("contract: RevenueEscrow,"), 1)
+        # Legs per campaign, sized to stay well inside the 120-minute job timeout (#2216).
+        expected_legs = {
+            "ShowCampaignEscrow": 3,
+            "ContentProtection": 4,
+            "StemNFT": 1,
+            "StemMarketplaceV2": 3,
+            "RevenueEscrow": 2,
+        }
+        for contract, legs in expected_legs.items():
+            with self.subTest(contract=contract):
+                entries = re.findall(
+                    rf"contract: {contract}, .*?shard: (\d+), shards: (\d+),", text
+                )
+                self.assertEqual(len(entries), legs)
+                # Every leg agrees on the shard count and the indexes cover 0..n-1
+                # exactly once, so each generated mutant is scored once.
+                self.assertEqual({int(count) for _, count in entries}, {legs})
+                self.assertEqual(sorted(int(index) for index, _ in entries), list(range(legs)))
+        self.assertIn("timeout-minutes: 120", text)
         self.assertIn("MUTANT_SHARD_INDEX: ${{ matrix.shard }}", text)
         self.assertIn("MUTANT_SHARD_COUNT: ${{ matrix.shards }}", text)
 
