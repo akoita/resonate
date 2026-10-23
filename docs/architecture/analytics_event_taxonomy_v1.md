@@ -323,6 +323,8 @@ when they follow the privacy and versioning rules above.
 | `notification.created` | `notification-service` | `notification` | wallet address | `notificationId`, `walletAddress`, `type` | `disputeId`, `releaseId` |
 | `settings.updated` | `web-app` | none | auth user | `setting`, `source` | `surface`, `clientEventId` |
 
+`agent.decision_made` carries at most one track: its subject is the `trackId`, and the envelope caps `subjectId` at 200 characters. A session start whose runtime picks several tracks (12 by default) emits one event per pick (#2317), each with a single `trackId`; it must never join the ids into one subject, which the bridge rejects. A batch-level decision (rules curation, an empty catalog) has no `trackId` and no subject. A mart that counts decisions per session or per track reads per-pick events; count distinct sessions for per-session metrics.
+
 ## Examples
 
 ### Listener Playback Heartbeat
