@@ -4,6 +4,17 @@ import { AgentGoldenEvalService } from "../modules/agents/agent_golden_eval.serv
 import { AgentPolicyService } from "../modules/agents/agent_policy.service";
 import { AgentRunnerService } from "../modules/agents/agent_runner.service";
 import { EventBus } from "../modules/shared/event_bus";
+import { GOLDEN_CASES, GOLDEN_CATALOG } from "./dj_retrieval_golden/fixtures";
+import {
+  buildGoldenReport,
+  buildGoldenSelector,
+  expectGoldenBaselines,
+  FixtureAudioFeatureService,
+  goldenReportMarkdown,
+  InMemoryGoldenTools,
+  runGoldenCases,
+  writeGoldenReport,
+} from "./dj_retrieval_golden/harness";
 
 describe("agent golden evals", () => {
   const artifactPath = resolve(process.cwd(), "eval-results/agent-golden-results.json");
@@ -108,6 +119,56 @@ describe("agent golden evals", () => {
         "reason expected budget_exceeded, got policy_ok",
         "licenseType expected commercial, got personal",
       ])
+    );
+  });
+});
+
+/**
+ * AI DJ retrieval golden set (#2235): recall@10 / recall@20 per request for the
+ * current ranker, over a fixed hand-labelled catalog. Docker-free twin of
+ * agent_dj_retrieval_golden.integration.spec.ts (same cases, same baselines;
+ * that spec runs the real catalog search against Postgres). Cases the current
+ * ranker misses are kept as known gaps with a baseline of what it achieves
+ * today, so later retrieval work can only raise them.
+ */
+describe("AI DJ retrieval golden set", () => {
+  it("meets the recorded recall baseline for every case and writes the per-case report", async () => {
+    const tools = new InMemoryGoldenTools();
+    const selector = buildGoldenSelector(tools, new FixtureAudioFeatureService(tools.tracksById));
+
+    const results = await runGoldenCases(selector, "");
+    const report = buildGoldenReport("in-memory catalog twin (npm run eval:golden)", results);
+    const { jsonPath, markdownPath } = writeGoldenReport(report, "dj-retrieval-golden-results-in-memory");
+    // eslint-disable-next-line no-console
+    console.log(goldenReportMarkdown(report));
+
+    expect(report.cases.map((item) => item.id)).toEqual(GOLDEN_CASES.map((item) => item.id));
+    expect(GOLDEN_CATALOG.length).toBeGreaterThan(40);
+    expect(existsSync(jsonPath)).toBe(true);
+    expect(existsSync(markdownPath)).toBe(true);
+    expect(report.summary.regressed).toBe(0);
+    expectGoldenBaselines(results);
+  });
+
+  it("covers every case the issue names", () => {
+    const ids = new Set(GOLDEN_CASES.map((item) => item.id));
+    expect([...ids]).toEqual(
+      expect.arrayContaining([
+        "world-african",
+        "world-mandingue",
+        "world-country",
+        "world-no-genre",
+        "rap-explicit-allowed",
+        "rap-french-rap",
+        "rap-trap",
+        "rap-drill",
+        "sentence-warm-deep-house-cooking",
+        "sentence-something-to-focus",
+        "sentence-40-minute-run",
+        "artist-like-nadia-okoro",
+        "calm-measured-low-energy-no-tag",
+        "unmet-gregorian-chant",
+      ]),
     );
   });
 });

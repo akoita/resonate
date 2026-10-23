@@ -579,14 +579,64 @@ retrieval itself now understands meaning.
   the next pick. The curator's tools no longer expose `allowExplicit` to the
   model: the server forces the session's value onto every catalog call.
 - **Follow-ups.** "More like this" expansion from the session's own picks
-  (seed-track neighbours), golden-eval cases for World → African and
-  Rap → explicit rap, and tuning the similarity floor against real embeddings.
+  (seed-track neighbours) and tuning the similarity floor against real
+  embeddings. The golden-eval cases for World → African and Rap → explicit rap
+  are in the retrieval golden set below (#2235).
 - Tests: `genre_families.spec.ts`, `agent_semantic_selector.spec.ts`,
   `agent_curator_session_controls.spec.ts`, `agent_explicit_preference.spec.ts`,
   `agent_semantic_retrieval.integration.spec.ts`,
   `agent_config_allow_explicit.integration.spec.ts`,
   `sessions.integration.spec.ts`, `discovery_ranking_session_request.spec.ts`,
   `agent_session_request.spec.ts`.
+
+## AI DJ retrieval golden set (#2235)
+
+A fixed, hand-labelled catalog (about 65 tracks) and 19 requests measure how
+many of the tracks a listener expects the AI DJ actually ranks first. Each case
+runs the real session path (request parser, session preferences,
+`AgentSelectorService`, `DiscoveryRankingService`) and reports **recall@10** and
+**recall@20** read off the ranked candidate list, plus the share retrieved at
+all, so a retrieval miss can be told from a ranking miss. The numbers are the
+baseline for any later retrieval or genre-matching change: a case may rise, not
+fall. Cases the current ranker misses are kept as known gaps with the value it
+achieves today, never a higher one. An unmatched request must stay an honest
+unmet request (ADR-TE-4).
+
+Only the deterministic path is measured. Embedding-backed semantic retrieval is
+off in the eval because it needs a real embedding model.
+
+| Case | Recall@10 | Recall@20 | Known gap |
+| --- | ---: | ---: | --- |
+| World → African, Mandingue, region (West Africa) | 100% | 100% | none |
+| World → country name (Senegal) | 0% | 0% | no family lists country names |
+| World → release with no genre | 0% | 0% | catalog search reads only genre and track title |
+| World → every World-family track (14) | 71% | 86% | the two above; equal scores keep catalog order |
+| Hip-Hop, explicit allowed → explicit rap | 100% | 100% | none |
+| Hip-Hop, explicit off → clean rap, no explicit track | 100% | 100% | none |
+| Rap → French Rap, Trap, Drill | 100% | 100% | none |
+| Hip-Hop → every hip-hop-family track (13) | 77% | 100% | equal scores keep catalog order |
+| "warm deep house for cooking" | 100% | 100% | none |
+| "something to focus" | 100% | 100% | none |
+| "40-minute run" | 0% | 0% | the parser reads nothing, so no genre is asked for |
+| "like <catalog artist>" | 0% | 0% | artist names are not parsed or searched |
+| Calm and low energy → track titled calm | 100% | 100% | none |
+| Calm and low energy → measured low energy, no mood tag | 0% | 0% | mood words match only genre and title |
+| Nothing matches (Gregorian Chant) | n/a | n/a | stays unmet (`no_matching_taste_candidates`) |
+
+Mean over the 18 scored cases: recall@10 69%, recall@20 71% (the two
+aggregate rows weigh the same as a single-track case).
+
+- **Runners.** `backend/src/tests/agent_golden_eval.spec.ts` (`npm run
+  eval:golden`, no Docker) runs the cases over an in-memory twin of
+  `catalog.search`. `backend/src/tests/agent_dj_retrieval_golden.integration.spec.ts`
+  (`npm run test:integration`) seeds Postgres under a unique prefix and runs the
+  real search; its last test checks both report the same numbers.
+- **Report.** Both write a per-case table and JSON to
+  `backend/eval-results/dj-retrieval-golden-results-*.{md,json}` and print the
+  table to the console. The cases and baselines live in
+  `backend/src/tests/dj_retrieval_golden/fixtures.ts`.
+- **Ratcheting.** When a change improves a case, raise its `baseline` in the
+  same PR. Never lower one to make a run pass.
 
 ## Diversity cap counts the credited artist (#2092)
 
