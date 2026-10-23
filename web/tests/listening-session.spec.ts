@@ -68,6 +68,14 @@ async function seedPlayer(page: Page, source = false, local = false) {
   await page.goto('/player');
   await expect(page.getByText('Queue Manifest', { exact: true })).toBeVisible();
   await injectQueueStorage(page);
+  // The page is server-rendered inline (#2290), so "Queue Manifest" is visible
+  // before the player has hydrated. The player writes its (empty) state once it
+  // has hydrated; seeding before that write lets it overwrite the seeded queue.
+  // Wait for that first write so the seed below is the last one.
+  await expect.poll(() => page.evaluate(async () => {
+    const storage = (window as unknown as { localforage: { createInstance(options: object): { getItem(key: string): Promise<unknown> } } }).localforage.createInstance({ name: 'resonate', storeName: 'player' });
+    return (await storage.getItem('current_state')) !== null;
+  }), { timeout: HYDRATION_TIMEOUT }).toBe(true);
   await page.evaluate(async options => {
     const queue = ['a', 'b', 'c'].map(id => ({ id, catalogTrackId: id, title: `Test ${id}`, artist: 'Test Artist', album: null, albumArtist: null, genre: null, year: null, duration: 30, createdAt: '', source: 'remote', remoteUrl: `${location.origin}/test-${id}.wav` }));
     if (options.local) Object.assign(queue[2], { catalogTrackId: null, source: 'local', blobKey: 'local-file' });
