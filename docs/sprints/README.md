@@ -49,7 +49,8 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 Latest closed: [Vision Sprint 36 — A DJ you can understand, a catalog you can trust](2026-10-22-vision-sprint-36-dj-and-catalog-trust.md)
 on 2026-10-23. #2249 slices 2–3 carry over; the catalog attestation run on
-staging is resonate-iac#316. The next sprint is not yet selected.
+staging is resonate-iac#316.
+Current: [Vision Sprint 37 — A DJ that understands what you mean](2026-10-23-vision-sprint-37-dj-understands-meaning.md).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -90,3 +91,4 @@ staging is resonate-iac#316. The next sprint is not yet selected.
 | [2026-10-15](2026-10-15-vision-sprint-34-telling-people.md) | Vision Sprint 34 — Telling people what happens to them (notices, suspension, refund reminders, payout truth) | ✅ Closed 2026-10-16 — #2146, #2147, #2149, #2150 and #2167 merged and deployed, #2144 part 1 shipped (rest stays open), #2148 decided (email build is #2169); signed-in operator checks carry over to #2154; [milestone-36 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-36-vision-sprint-34-telling-people) |
 | [2026-10-16](2026-10-16-vision-sprint-35-who-is-here.md) | Vision Sprint 35 — Seeing who's here, and reaching them (admin users directory, email notices) | ✅ Closed 2026-10-23 — all six issues closed (#2166, #2169, #2144 parts 2–3, #1890, #2180, #2177); real staging email delivery waits on resonate-iac#284; [milestone-37 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-37-vision-sprint-35-who-is-here) |
 | [2026-10-22](2026-10-22-vision-sprint-36-dj-and-catalog-trust.md) | Vision Sprint 36 — A DJ you can understand, a catalog you can trust (AI DJ Phase 1, human-made attestation) | ✅ Closed 2026-10-23 — 10 of 11 issues closed; #2249 shipped slice 1 of 3; verified on staging at `13a88eea`; attestation run is resonate-iac#316; [milestone-38 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-38-vision-sprint-36-dj-and-catalog-trust) |
+| [2026-10-23](2026-10-23-vision-sprint-37-dj-understands-meaning.md) | Vision Sprint 37 — A DJ that understands what you mean (AI DJ Phase 2: descriptors, sentence meaning, hybrid retrieval, Up next) | ◐ In progress — owner-approved 2026-10-23; milestone 39 |
