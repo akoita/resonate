@@ -77,8 +77,52 @@ export default function AnalyticsConsentSettingsPanel({ token, addToast }: Props
     }
   };
 
+  return (
+    <AnalyticsConsentSettingsView
+      consent={consent}
+      loading={loading}
+      saving={saving}
+      canAct={Boolean(token)}
+      onRefresh={() => token && void loadAnalyticsConsent(token, { force: true })}
+      onDecide={(productAnalytics) => void decide(productAnalytics)}
+    />
+  );
+}
+
+export type AnalyticsConsentSettingsViewProps = {
+  consent: AnalyticsConsentState;
+  loading: boolean;
+  saving: "granted" | "refused" | null;
+  canAct: boolean;
+  onRefresh: () => void;
+  onDecide: (productAnalytics: boolean) => void;
+};
+
+/** Which answer is recorded, or null when there is none (unknown or not chosen yet). */
+export function selectedConsentChoice(consent: AnalyticsConsentState): "granted" | "refused" | null {
+  if (!consent.known || !consent.decided) return null;
+  return consent.productAnalytics ? "granted" : "refused";
+}
+
+/**
+ * Presentational half of the panel, so every state can be rendered in the
+ * node-only unit suite. #2231: the recorded answer is marked on its button
+ * (`aria-pressed`, styled in globals.css as a ring plus a check) without
+ * promoting it — both buttons keep one class list, size, and colour.
+ */
+export function AnalyticsConsentSettingsView({
+  consent,
+  loading,
+  saving,
+  canAct,
+  onRefresh,
+  onDecide,
+}: AnalyticsConsentSettingsViewProps) {
+  const selected = selectedConsentChoice(consent);
   const currentLabel = !consent.known
-    ? "Checking..."
+    ? consent.checkFailed
+      ? "Could not be checked"
+      : "Checking..."
     : !consent.decided
       ? "Not chosen yet — nothing is being recorded"
       : consent.productAnalytics
@@ -102,11 +146,7 @@ export default function AnalyticsConsentSettingsPanel({ token, addToast }: Props
             28 days and is removed when you turn measurement off.
           </p>
         </div>
-        <Button
-          variant="ghost"
-          onClick={() => token && void loadAnalyticsConsent(token, { force: true })}
-          disabled={loading || !token}
-        >
+        <Button variant="ghost" onClick={onRefresh} disabled={loading || !canAct}>
           {loading ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
@@ -115,22 +155,28 @@ export default function AnalyticsConsentSettingsPanel({ token, addToast }: Props
         <p className="analytics-consent-settings__state">
           <strong>Current choice:</strong> <span>{currentLabel}</span>
         </p>
+        {!consent.known && consent.checkFailed ? (
+          <p className="settings-copy analytics-consent-settings__note" role="status">
+            We couldn&apos;t check your choice; nothing is being recorded right now. We keep trying
+            in the background.
+          </p>
+        ) : null}
         <div className="analytics-consent-actions analytics-consent-actions--inline">
           <button
             type="button"
             className="ui-btn ui-btn-primary analytics-consent-action"
-            onClick={() => void decide(false)}
-            disabled={!token || saving !== null}
-            aria-pressed={consent.known && consent.decided && !consent.productAnalytics}
+            onClick={() => onDecide(false)}
+            disabled={!canAct || saving !== null}
+            aria-pressed={selected === "refused"}
           >
             {saving === "refused" ? "Saving..." : "Do not measure"}
           </button>
           <button
             type="button"
             className="ui-btn ui-btn-primary analytics-consent-action"
-            onClick={() => void decide(true)}
-            disabled={!token || saving !== null}
-            aria-pressed={consent.known && consent.decided && consent.productAnalytics}
+            onClick={() => onDecide(true)}
+            disabled={!canAct || saving !== null}
+            aria-pressed={selected === "granted"}
           >
             {saving === "granted" ? "Saving..." : "Measure my use"}
           </button>
