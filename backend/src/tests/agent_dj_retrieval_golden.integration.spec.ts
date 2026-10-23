@@ -21,6 +21,7 @@
  */
 import { prisma } from "../db/prisma";
 import { AgentAudioFeatureService } from "../modules/agents/agent_audio_feature.service";
+import { AgentSessionArtistResolver } from "../modules/agents/agent_session_artist_resolver";
 import { ToolRegistry } from "../modules/agents/tools/tool_registry";
 import { EmbeddingService } from "../modules/embeddings/embedding.service";
 import { EmbeddingStore } from "../modules/embeddings/embedding.store";
@@ -119,7 +120,8 @@ describe("AI DJ retrieval golden set (integration)", () => {
       scopeToIdPrefix(tools, TEST_PREFIX),
       new AgentAudioFeatureService(),
     );
-    results = await runGoldenCases(selector, TEST_PREFIX);
+    // The real artist lookup too: credited names come from Postgres here.
+    results = await runGoldenCases(selector, TEST_PREFIX, GOLDEN_CASES, new AgentSessionArtistResolver());
 
     const report = buildGoldenReport("real catalog.search over Postgres (integration)", results);
     const { jsonPath } = writeGoldenReport(report, "dj-retrieval-golden-results-postgres");

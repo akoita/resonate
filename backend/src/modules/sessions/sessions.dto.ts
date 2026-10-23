@@ -71,6 +71,18 @@ export class SessionPreferencesDto {
   /** Listening filters from the listener's own words (#2037); sanitized by the service. */
   request?: AgentSessionRequest;
 
+  /** The listener's sentence (#2241): joins this session's semantic query only; never stored or logged. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  requestText?: string;
+
+  /** Catalog artists the sentence named (#2241); the service bounds the list. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  artists?: string[];
+
   /** Session-only taste lanes (#2065); validated by the service. `null` clears them. */
   myMix?: MyMixPreferences | null;
 }

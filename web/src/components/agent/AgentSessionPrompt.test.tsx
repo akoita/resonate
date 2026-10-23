@@ -304,4 +304,16 @@ describe("AgentSessionPrompt", () => {
     expect(render({ isLive: true, isBusy: true })).toContain("Updating…");
     expect(render({ isBusy: true })).toContain("Starting…");
   });
+
+  it("shows a named artist as a removable Like chip beside the filter chips (#2241)", () => {
+    const html = render({ request, artists: ["Nadia Okoro"] });
+    expect(html).toContain("Like: Nadia Okoro");
+    expect(html).toContain('aria-label="Remove filter Like: Nadia Okoro"');
+    expect(html.indexOf("Like: Nadia Okoro")).toBeLessThan(html.indexOf("Deep house"));
+    expect(render({ request })).not.toContain("Like:");
+  });
+
+  it("keeps an unknown name under Didn't catch", () => {
+    expect(render({ unparsed: ["Zed Nonexistent"] })).toContain("Zed Nonexistent");
+  });
 });

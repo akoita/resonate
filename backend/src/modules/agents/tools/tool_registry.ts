@@ -4,7 +4,9 @@ import { prisma } from "../../../db/prisma";
 import { calculatePrice, PricingInput } from "../../../pricing/pricing";
 import { EmbeddingService } from "../../embeddings/embedding.service";
 import { EmbeddingStore } from "../../embeddings/embedding.store";
-import { TrackEmbeddingService } from "../../embeddings/track_embedding.service";
+import { TrackEmbeddingService, TRACK_EMBEDDABLE_WHERE } from "../../embeddings/track_embedding.service";
+import { unitCentroid } from "../../embeddings/vector_centroid";
+import { sanitizeArtistNames, normalizeArtistName } from "../agent_session_artists";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
@@ -18,6 +20,12 @@ import {
 
 /** Upper bound on candidates lazily embedded / ranked per tool call. */
 const EMBEDDINGS_SIMILARITY_MAX_CANDIDATES = 100;
+
+/** Artist seeds (#2241): own tracks read per artist, tracks whose vectors form the centroid, cache. */
+const ARTIST_SEED_OWN_TRACKS = 8;
+const ARTIST_SEED_CENTROID_TRACKS = 8;
+const ARTIST_SEED_CACHE_TTL_MS = 5 * 60_000;
+const ARTIST_SEED_CACHE_MAX = 100;
 
 export interface ToolInput {
   [key: string]: unknown;
@@ -135,6 +143,112 @@ export class ToolRegistry {
           return row ? [{ ...row, semanticScore: neighbour.score }] : [];
         });
         return { items, status: "ok" };
+      },
+    });
+
+    // Artist seeds (#2241): the named artists' own tracks, plus the catalog
+    // neighbours of the centroid of their stored track vectors. Names are
+    // matched exactly (case-insensitive) against CREDITED names, so only a real
+    // catalog artist can ever seed anything. Bounded by `limit`; the centroid
+    // needs stored vectors only (no embedding call), so it is skipped quietly
+    // when embeddings are off.
+    const artistCentroids = new Map<string, { vector: number[]; at: number }>();
+    this.register({
+      name: "catalog.artist_seed",
+      run: async (input) => {
+        const names = sanitizeArtistNames(input.artists);
+        const limit = Math.min(Math.max(Math.floor(Number(input.limit ?? 20)) || 20, 1), 50);
+        const explicitAllowed = Boolean(input.allowExplicit ?? false);
+        const excludeTrackIds = Array.isArray(input.excludeTrackIds)
+          ? (input.excludeTrackIds as unknown[]).filter((id): id is string => typeof id === "string")
+          : [];
+        if (names.length === 0) return { items: [], status: "ok" };
+
+        const items: Array<Record<string, unknown>> = [];
+        const seen = new Set<string>(excludeTrackIds);
+        const centroidModel = this.embeddingService.modelId;
+        const neighbourScores = new Map<string, { score: number; artist: string }>();
+
+        for (const name of names) {
+          const own = await this.loadCandidateTracks({
+            explicitAllowed,
+            take: ARTIST_SEED_OWN_TRACKS,
+            extraWhere: {
+              AND: [
+                TRACK_EMBEDDABLE_WHERE,
+                { id: { notIn: excludeTrackIds } },
+                {
+                  OR: [
+                    { artist: { equals: name, mode: "insensitive" } },
+                    { release: { primaryArtist: { equals: name, mode: "insensitive" } } },
+                    {
+                      release: {
+                        AND: [
+                          { OR: [{ primaryArtist: null }, { primaryArtist: "" }] },
+                          { artist: { displayName: { equals: name, mode: "insensitive" } } },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+          for (const row of own) {
+            if (seen.has(row.id)) continue;
+            seen.add(row.id);
+            items.push({ ...row, artistSeed: "own", seedArtist: name });
+          }
+
+          if (!centroidModel) continue;
+          const cacheKey = `${centroidModel}\0${normalizeArtistName(name)}`;
+          let centroid = artistCentroids.get(cacheKey);
+          if (!centroid || Date.now() - centroid.at > ARTIST_SEED_CACHE_TTL_MS) {
+            const vectors = await this.embeddingStore.getMany(
+              own.slice(0, ARTIST_SEED_CENTROID_TRACKS).map((row) => row.id),
+              centroidModel,
+            );
+            const vector = unitCentroid(vectors);
+            centroid = vector ? { vector, at: Date.now() } : undefined;
+            if (centroid) {
+              artistCentroids.delete(cacheKey);
+              artistCentroids.set(cacheKey, centroid);
+              if (artistCentroids.size > ARTIST_SEED_CACHE_MAX) {
+                artistCentroids.delete(artistCentroids.keys().next().value as string);
+              }
+            }
+          }
+          if (!centroid) continue;
+          const neighbours = await trackEmbeddingService.neighboursOfVector(centroid.vector, {
+            limit: Math.ceil(limit / names.length),
+            allowExplicit: explicitAllowed,
+            excludeTrackIds: [...excludeTrackIds, ...own.map((row) => row.id)],
+          });
+          const floor = getAgentSemanticMinSimilarity();
+          for (const neighbour of neighbours) {
+            if (neighbour.score < floor || seen.has(neighbour.trackId)) continue;
+            const previous = neighbourScores.get(neighbour.trackId);
+            if (!previous || neighbour.score > previous.score) {
+              neighbourScores.set(neighbour.trackId, { score: neighbour.score, artist: name });
+            }
+          }
+        }
+
+        if (neighbourScores.size > 0) {
+          const rows = await this.loadCandidateTracks({
+            explicitAllowed,
+            take: neighbourScores.size,
+            extraWhere: { id: { in: [...neighbourScores.keys()] } },
+          });
+          const byId = new Map(rows.map((row) => [row.id, row]));
+          const ordered = [...neighbourScores.entries()].sort((a, b) => b[1].score - a[1].score);
+          for (const [trackId, { score, artist }] of ordered) {
+            const row = byId.get(trackId);
+            if (row) items.push({ ...row, artistSeed: "neighbour", seedArtist: artist, semanticScore: score });
+          }
+        }
+        // Own tracks come first, so the cap never drops an artist's own catalog for neighbours.
+        return { items: items.slice(0, limit), status: "ok" };
       },
     });
 

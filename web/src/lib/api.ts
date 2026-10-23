@@ -5834,14 +5834,23 @@ export type AgentMyMixPreferences = {
 
 export type AgentSessionRequestParse = {
   request: AgentSessionRequest;
+  /** #2241: catalog artists the sentence named, as the catalog spells them. */
+  artists?: string[];
   unparsed: string[];
   ignored: AgentSessionRequestIgnoredKey[];
   strategy: "deterministic" | "model-assisted";
 };
 
 export type AgentNextPreferences = {
-  /** #2037: the editable filters behind this session (never the typed sentence). */
+  /** #2037: the editable filters behind this session. */
   request?: AgentSessionRequest;
+  /**
+   * #2241: the typed sentence, only for a typed (not starter) session. It joins
+   * the DJ's search for this session; the server never stores or logs it.
+   */
+  requestText?: string;
+  /** #2241: catalog artists the sentence named; the "Like: <Artist>" chips still on. */
+  artists?: string[];
   mood?: string;
   energy?: "low" | "medium" | "high";
   genres?: string[];

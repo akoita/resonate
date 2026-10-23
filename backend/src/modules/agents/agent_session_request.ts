@@ -1,18 +1,22 @@
 import type { CrateFilters, CrateParseResult } from "../crates/crate.types";
-import { genreOrDescriptorMatchesRequest } from "../recommendations/genre_families";
+import { genreMatchesRequest, genreOrDescriptorMatchesRequest } from "../recommendations/genre_families";
+import { sanitizeArtistNames } from "./agent_session_artists";
 
 /**
  * A listener describes an AI DJ session in their own words (#2037). The text is
  * parsed by the Crate Digger request parser into {@link CrateFilters}; only the
  * LISTENING subset survives here (genres, moods, energy, tempo). The sentence
- * itself never appears in any of these types, and this module is pure: no
- * database, no network, no logging, no clock.
+ * itself appears in only one place, {@link AgentSessionRankingPreferences}'s
+ * bounded `requestText` (#2241), which joins that session's semantic query and
+ * is never stored or logged. This module is pure: no database, no network, no
+ * logging, no clock.
  */
 
 /**
- * Nest injection token for the Crate Digger request parser the session prompt
- * uses (#2037). AgentsModule provides it with `createCrateRequestParser()`; it
- * cannot import CratesModule (which imports AgentsModule).
+ * Nest injection token for the request parser the session prompt uses (#2037).
+ * AgentsModule provides it with `createAgentSessionRequestParser()` (Crate
+ * Digger rules plus catalog artist names, #2241); it cannot import CratesModule
+ * (which imports AgentsModule).
  */
 export const AGENT_SESSION_REQUEST_PARSER = Symbol("AGENT_SESSION_REQUEST_PARSER");
 
@@ -49,11 +53,18 @@ export type AgentRequestCoverage = {
 
 export type AgentSessionParseResponse = {
   request: AgentSessionRequest;
+  /**
+   * Catalog artists the sentence named (#2241), as the catalog spells them. They
+   * seed the session's retrieval and show as removable "Like: <Artist>" chips.
+   */
+  artists: string[];
   unparsed: string[];
   ignored: AgentSessionRequestIgnoredKey[];
   strategy: CrateParseResult["strategy"];
 };
 
+/** Longest sentence that joins a session's semantic query (the parse route's own limit). */
+export const SESSION_REQUEST_TEXT_MAX_LENGTH = 500;
 export const SESSION_REQUEST_MAX_TERMS = 8;
 export const SESSION_REQUEST_MAX_TERM_LENGTH = 64;
 export const SESSION_REQUEST_BPM_MIN = 40;
@@ -82,6 +93,7 @@ export function listeningRequestFromCrateParse(result: CrateParseResult): AgentS
   };
   return {
     request,
+    artists: sanitizeArtistNames(result.artists),
     unparsed: [...(result.unparsed ?? [])],
     ignored: ignoredKeysOf(filters),
     strategy: result.strategy,
@@ -196,6 +208,14 @@ function cleanBpm(value: unknown): AgentSessionTempoRange | null {
  */
 export type AgentSessionRankingPreferences = {
   request?: AgentSessionRequest;
+  /**
+   * The listener's sentence, bounded (#2241). It joins this session's semantic
+   * query and nothing else: never stored, logged, published or sent to a model
+   * by the pick path.
+   */
+  requestText?: string;
+  /** Catalog artists the sentence named; seed neighbours for retrieval. */
+  artists: string[];
   /** Request genres: they count as session genres. */
   sessionGenres: string[];
   /** The mood as sent, else the request's first mood. */
@@ -206,14 +226,29 @@ export type AgentSessionRankingPreferences = {
   tempoBpm?: AgentSessionTempoRange;
 };
 
+/** A bounded, trimmed sentence, or undefined when there is none. Never throws. */
+export function sanitizeRequestText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim().slice(0, SESSION_REQUEST_TEXT_MAX_LENGTH).trim();
+  return text || undefined;
+}
+
 export function requestRankingPreferences(preferences: {
   mood?: string;
   energy?: AgentSessionEnergy;
   request?: unknown;
+  requestText?: unknown;
+  artists?: unknown;
 }): AgentSessionRankingPreferences {
   const request = sanitizeSessionRequest(preferences.request);
+  const requestText = sanitizeRequestText(preferences.requestText);
+  const sentence = {
+    ...(requestText ? { requestText } : {}),
+    artists: sanitizeArtistNames(preferences.artists),
+  };
   if (!request) {
     return {
+      ...sentence,
       sessionGenres: [],
       mood: preferences.mood,
       moods: [],
@@ -221,6 +256,7 @@ export function requestRankingPreferences(preferences: {
     };
   }
   return {
+    ...sentence,
     request,
     sessionGenres: request.genres,
     mood: preferences.mood ?? request.moods[0],

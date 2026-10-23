@@ -18,7 +18,10 @@
  * Ranker under test: AgentSelectorService + DiscoveryRankingService through
  * `deterministicSelectorInput`, the same request a listening session builds.
  * Embedding-backed semantic retrieval is OFF here (it needs a real embedding
- * model), so these numbers are the deterministic path only.
+ * model), so these numbers are the deterministic path only. That includes the
+ * artist cases (#2241): a named artist is resolved from the catalog and its own
+ * tracks seed retrieval without embeddings; the sentence's semantic query and
+ * the artist centroid neighbours are covered by unit tests instead.
  */
 
 export interface MeasuredStemFeatures {
@@ -365,9 +368,23 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     description: "\"like Nadia Okoro\": the named catalog artist's tracks.",
     request: { kind: "text", text: "like Nadia Okoro" },
     relevant: ["ok_1", "ok_2", "ok_3"],
-    knownGap:
-      "The parser leaves the artist name unparsed and catalog search matches only genre and title, never the artist.",
-    baseline: NONE,
+    baseline: ONE,
+  },
+  {
+    id: "artist-more-hana-mori-lowercase",
+    group: "artist",
+    description: "\"more hana mori\": the cue and the lower-case name still reach the artist's tracks.",
+    request: { kind: "text", text: "more hana mori" },
+    relevant: ["f_ambient", "f_lofi", "calm_tagged"],
+    baseline: ONE,
+  },
+  {
+    id: "artist-near-miss-spelling",
+    group: "artist",
+    description: "\"like Nadia Okro\": a one-letter slip still finds the catalog artist.",
+    request: { kind: "text", text: "like Nadia Okro" },
+    relevant: ["ok_1", "ok_2", "ok_3"],
+    baseline: ONE,
   },
 
   // ------------------------------------------------------------------- Calm

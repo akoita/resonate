@@ -23,8 +23,9 @@ import { RecommendationsModule } from "../recommendations/recommendations.module
 import { FirstListenerModule } from "../recommendations/first_listener.module";
 import { CommunityModule } from "../community/community.module";
 import { EmbeddingsModule } from "../embeddings/embeddings.module";
-import { createCrateRequestParser } from "../crates/model_crate_request_parser";
 import { AGENT_SESSION_REQUEST_PARSER } from "./agent_session_request";
+import { AgentSessionArtistResolver } from "./agent_session_artist_resolver";
+import { createAgentSessionRequestParser } from "./agent_session_parser";
 import { SceneScoutModule } from "../scene_scout/scene_scout.module";
 
 @Module({
@@ -54,9 +55,15 @@ import { SceneScoutModule } from "../scene_scout/scene_scout.module";
     AgentStemQualityService,
     AgentWalletService,
     AgentPurchaseService,
-    // The Crate Digger request parser, built here because CratesModule imports
-    // this module. Same CRATE_REQUEST_PARSER_STRATEGY switch as crate requests.
-    { provide: AGENT_SESSION_REQUEST_PARSER, useFactory: () => createCrateRequestParser() },
+    // The session sentence parser (#2037, #2241): Crate Digger rules plus catalog
+    // artist names, model-assisted only under AGENT_SESSION_PARSER_STRATEGY
+    // (default deterministic). Crate requests keep CRATE_REQUEST_PARSER_STRATEGY.
+    AgentSessionArtistResolver,
+    {
+      provide: AGENT_SESSION_REQUEST_PARSER,
+      useFactory: (artists: AgentSessionArtistResolver) => createAgentSessionRequestParser(artists),
+      inject: [AgentSessionArtistResolver],
+    },
   ],
   exports: [
     AgentRuntimeService,

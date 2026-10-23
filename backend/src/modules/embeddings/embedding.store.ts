@@ -83,6 +83,18 @@ export class EmbeddingStore {
     return row ? this.parseVector(row.vector) : null;
   }
 
+  /** The stored vectors of these tracks made by `model` (tracks without one are skipped). */
+  async getMany(trackIds: string[], model: string): Promise<number[][]> {
+    if (trackIds.length === 0) return [];
+    const rows = await prisma.$queryRaw<EmbeddingRow[]>`
+      SELECT "trackId", "vector"::text AS "vector"
+      FROM "TrackEmbedding"
+      WHERE "trackId" IN (${Prisma.join(trackIds)})
+        AND "model" = ${model}
+    `;
+    return rows.map((row) => this.parseVector(row.vector));
+  }
+
   /** Model + content hash of the stored vectors for the given tracks. */
   async getContentStates(
     trackIds: string[],

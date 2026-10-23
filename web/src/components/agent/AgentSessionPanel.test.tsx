@@ -617,15 +617,6 @@ describe("AgentSessionPanel", () => {
       strategy: "deterministic",
     };
 
-    function everythingSent(): string {
-      return JSON.stringify({
-        start: startSession.mock.calls,
-        analytics: recordProductAnalytics.mock.calls,
-        djSet: setDjSet.mock.calls,
-        next: getAgentNextPick.mock.calls,
-      });
-    }
-
     it("reads the sentence after a pause and shows the filters", async () => {
       hookState.config = config({ isActive: false });
       parseAgentSessionRequest.mockResolvedValueOnce(parsed);
@@ -646,7 +637,7 @@ describe("AgentSessionPanel", () => {
       expect(captured.prompt?.activePresetIntent).toBeNull();
     });
 
-    it("starts from the filters and never sends or records the sentence", async () => {
+    it("starts from the filters plus the sentence, and never records the sentence anywhere else", async () => {
       hookState.config = config({ isActive: false });
       parseAgentSessionRequest.mockResolvedValueOnce(parsed);
       render();
@@ -663,6 +654,8 @@ describe("AgentSessionPanel", () => {
 
       expect(startSession).toHaveBeenCalledWith({
         preferences: {
+          // The sentence joins the DJ's search for this session (#2241); nothing else keeps it.
+          requestText: SENTENCE,
           request: parsed.request,
           genres: ["deep house"],
           mood: "warm",
@@ -692,8 +685,11 @@ describe("AgentSessionPanel", () => {
       expect(setDjSet).toHaveBeenCalledTimes(1);
       expect(setDjSet.mock.calls[0][0].preferences.request).toEqual(parsed.request);
 
+      // Only the start request carries the sentence: not analytics (setDjSet drops it before
+      // the sessionStorage mirror; see agentDjSet.test.ts).
+      const elsewhere = JSON.stringify({ analytics: recordProductAnalytics.mock.calls });
       for (const fragment of ["cooking", "122", "A minor", "$5", SENTENCE]) {
-        expect(everythingSent()).not.toContain(fragment);
+        expect(elsewhere).not.toContain(fragment);
       }
     });
 

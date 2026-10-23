@@ -5,7 +5,8 @@
  * into an `AgentSessionRequest` (the listening filters). These helpers turn a
  * request into editable chips, apply chip edits, derive a request from a
  * preset, and explain how well the DJ's picks matched. The typed sentence is
- * never part of a request and never leaves the parse call.
+ * never part of a request; it travels separately, only with a session that was
+ * typed, and the server never stores or logs it (#2241).
  */
 
 import type {
@@ -18,7 +19,7 @@ import type {
 export const SESSION_REQUEST_MAX_TEXT_LENGTH = 500;
 export const SESSION_ENERGY_BANDS: readonly AgentSessionEnergy[] = ["low", "medium", "high"];
 
-export type RequestChipKind = "genre" | "mood" | "energy" | "bpm";
+export type RequestChipKind = "genre" | "mood" | "energy" | "bpm" | "artist";
 
 export type RequestChip = {
   /** Stable key passed to {@link removeChip}. */
@@ -65,6 +66,18 @@ export function chipsFromRequest(request: AgentSessionRequest | null | undefined
     if (label) chips.push({ key: "bpm", kind: "bpm", label });
   }
   return chips;
+}
+
+/** The "Like: <Artist>" chips for the catalog artists the sentence named (#2241). */
+export function artistChips(artists: readonly string[] | null | undefined): RequestChip[] {
+  return (artists ?? []).map((artist) => ({ key: `artist:${artist}`, kind: "artist", label: `Like: ${artist}` }));
+}
+
+/** The artists left after removing an artist chip; other keys leave them unchanged. */
+export function removeArtistChip(artists: readonly string[], chipKey: string): string[] {
+  if (!chipKey.startsWith("artist:")) return [...artists];
+  const artist = chipKey.slice("artist:".length);
+  return artists.filter((candidate) => candidate !== artist);
 }
 
 /** The request with one chip removed. Unknown keys return the request unchanged. */

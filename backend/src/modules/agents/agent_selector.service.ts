@@ -92,7 +92,17 @@ export interface AgentSelectorInput {
    * caller checks that the track belongs to the listener's session.
    */
   seedTrackId?: string;
+  /**
+   * Catalog artists the listener's sentence named (#2241), as the catalog spells
+   * them. Their own tracks and the neighbours of the centroid of their stored
+   * vectors join the candidates as one more bounded source (at most
+   * SEED_ARTIST_CANDIDATES), ranked above unrelated newest tracks.
+   */
+  seedArtists?: string[];
 }
+
+/** Candidates the artist-seed source may add per pass. */
+const SEED_ARTIST_CANDIDATES = 20;
 
 /**
  * One selection pass. `strict` is the normal pass; `relaxed` drops the "two
@@ -295,6 +305,45 @@ export class AgentSelectorService {
         if (!byId.has(item.id)) {
           // No matchedQueries: no keyword query found this track.
           byId.set(item.id, { ...item, matchedQueries: [] });
+        }
+      }
+    }
+
+    // Named artists as seed neighbours (#2241). Fails open like the semantic source.
+    const seedArtists = (input.seedArtists ?? []).filter(Boolean);
+    if (seedArtists.length > 0) {
+      const seeded = await this.tools
+        .get("catalog.artist_seed")
+        .run({
+          artists: seedArtists,
+          limit: SEED_ARTIST_CANDIDATES,
+          allowExplicit: input.allowExplicit ?? false,
+          excludeTrackIds: input.recentTrackIds,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Artist seeding failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return { items: [] as unknown[] };
+        });
+      for (const item of (seeded.items as any[]) ?? []) {
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
+        // An artist's own track scores as a perfect semantic match; a neighbour
+        // keeps its centroid cosine. Either never lowers a score already set.
+        const score = item.artistSeed === "own" ? 1 : item.semanticScore;
+        if (typeof score === "number") {
+          semanticScores.set(item.id, Math.max(score, semanticScores.get(item.id) ?? 0));
+        }
+        const matched = item.artistSeed === "own" && typeof item.seedArtist === "string" ? [item.seedArtist] : [];
+        const existing = byId.get(item.id);
+        if (existing) {
+          for (const query of matched) {
+            if (!existing.matchedQueries.includes(query)) existing.matchedQueries.push(query);
+          }
+        } else {
+          byId.set(item.id, { ...item, matchedQueries: matched });
         }
       }
     }

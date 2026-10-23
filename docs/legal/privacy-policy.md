@@ -236,6 +236,15 @@ Recommendations, discovery ranking and AI DJ selections are automated. They
 decide what you are offered, not anything with a legal or similarly significant
 effect on you.
 
+When you describe an AI DJ session in your own words, the sentence is used only
+for that session. It is not stored or logged. To find matching music it is turned
+into a numeric search vector by the embedding provider the operator has
+configured, if one is enabled. If the operator has also enabled the optional AI
+reading of sentences, a sentence the simple reader could not fully understand is
+sent, without your name or account identifier, to the configured AI model
+provider to be read into filters. That option is off unless the operator turns
+it on.
+
 Taste memory controls — resetting it, hiding individual signals — are partly
 available today, and social taste matching stays off unless you turn it on.
 Turning off product analytics stops future optional analytics collection; it

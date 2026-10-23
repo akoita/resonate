@@ -104,11 +104,14 @@ describe('AgentConfigController session parse (e2e)', () => {
       .expect(200);
     expect(res.body).toEqual({
       request: { genres: ['Deep House'], moods: [], energy: null, bpm: { min: 120, max: 125 } },
+      artists: [],
       unparsed: [],
       ignored: [],
       strategy: 'deterministic',
     });
     expect(eventBus.publish).not.toHaveBeenCalled();
+    // The signed-in listener keys the model-assisted parser's per-user budget (#2241).
+    expect(parser.parse).toHaveBeenCalledWith('deep house, 120-125 bpm', { userId: 'user-1' });
   });
 
   it('→ 400 when text is missing', async () => {

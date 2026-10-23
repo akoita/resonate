@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSessionRequest } from "./api";
 import {
+  artistChips,
   chipsFromRequest,
   coverageLine,
   emptyRequest,
   hasFilters,
   ignoredKeyLabels,
+  removeArtistChip,
   removeChip,
   requestFilterKeys,
   requestFromPreset,
@@ -203,5 +205,17 @@ describe("upcomingDjIndices", () => {
 
   it("collects both ids of the entries it would remove", () => {
     expect(Array.from(trackIdsAt(queue, [1, 2]))).toEqual(["local-b", "b", "c"]);
+  });
+});
+
+describe("artist chips (#2241)", () => {
+  it("labels each artist and removes only the chosen one", () => {
+    expect(artistChips(["Nadia Okoro", "Hana Mori"])).toEqual([
+      { key: "artist:Nadia Okoro", kind: "artist", label: "Like: Nadia Okoro" },
+      { key: "artist:Hana Mori", kind: "artist", label: "Like: Hana Mori" },
+    ]);
+    expect(removeArtistChip(["Nadia Okoro", "Hana Mori"], "artist:Hana Mori")).toEqual(["Nadia Okoro"]);
+    expect(removeArtistChip(["Nadia Okoro"], "genre:Jazz")).toEqual(["Nadia Okoro"]);
+    expect(artistChips(undefined)).toEqual([]);
   });
 });

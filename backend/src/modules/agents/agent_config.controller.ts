@@ -30,7 +30,8 @@ import { EventBus } from "../shared/event_bus";
 import { minutes } from "../shared/rate_limits";
 import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../crates/crate.types";
 import type { CrateRequestParser } from "../crates/crate_request_parser";
-import { createCrateRequestParser } from "../crates/model_crate_request_parser";
+import { AgentSessionArtistResolver } from "./agent_session_artist_resolver";
+import { createAgentSessionRequestParser } from "./agent_session_parser";
 import { getAgentSessionHistoryLimit, getAgentTrackLimit } from "./agent_runtime.config";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../recommendations/taste_edit_vocabulary";
@@ -259,13 +260,18 @@ export class AgentConfigController {
     @HttpCode(200)
     @UseGuards(AuthGuard("jwt"))
     @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
-    async parseSession(@Body() body: ParseSessionRequestDto): Promise<AgentSessionParseResponse> {
+    async parseSession(@Body() body: ParseSessionRequestDto, @Req() req?: any): Promise<AgentSessionParseResponse> {
         const text = typeof body?.text === "string" ? body.text.trim() : "";
         if (!text) {
             throw new BadRequestException({ reason: "text_required" });
         }
-        this.requestParser ??= createCrateRequestParser();
-        return listeningRequestFromCrateParse(await this.requestParser.parse(text));
+        this.requestParser ??= createAgentSessionRequestParser(new AgentSessionArtistResolver());
+        // The user id only keys the model-assisted parser's per-user budget; the
+        // throttle above sees the IP, because global guards run before the JWT one.
+        const userId = typeof req?.user?.userId === "string" ? req.user.userId : undefined;
+        return listeningRequestFromCrateParse(
+            await this.requestParser.parse(text, userId ? { userId } : undefined),
+        );
     }
 
     @AllowWhileSuspended()
@@ -286,6 +292,13 @@ export class AgentConfigController {
                 source?: string;
                 /** Listening filters parsed from the listener's own words (#2037). Sanitized here. */
                 request?: unknown;
+                /**
+                 * The listener's sentence (#2241): joins this session's semantic query only.
+                 * Bounded here; never stored, logged or published.
+                 */
+                requestText?: unknown;
+                /** Catalog artists the sentence named (#2241); seed neighbours for retrieval. */
+                artists?: unknown;
                 myMix?: MyMixPreferences | null;
             };
         }
@@ -309,6 +322,8 @@ export class AgentConfigController {
             mood: body?.preferences?.mood,
             energy: body?.preferences?.energy,
             request: body?.preferences?.request,
+            requestText: body?.preferences?.requestText,
+            artists: body?.preferences?.artists,
         });
         // Request genres count as session genres, after the ones sent.
         const sessionGenres = requested.request
@@ -420,6 +435,10 @@ export class AgentConfigController {
                     queueStyle: sessionPreferences.queueStyle,
                     source: sessionPreferences.source,
                     myMix: sessionPreferences.myMix,
+                    // The sentence and the artists it named (#2241): in memory for this
+                    // run only, read by the semantic query and the artist seeds.
+                    ...(requested.requestText ? { requestText: requested.requestText } : {}),
+                    ...(requested.artists.length > 0 ? { artists: requested.artists } : {}),
                     // The described session (#2037); absent without a request.
                     ...(requested.request
                         ? {
@@ -767,6 +786,7 @@ export class AgentConfigController {
 }
 
 function publicSessionPreferences(preferences: Record<string, unknown>): Record<string, unknown> {
-    const { myMix: _myMix, ...safePreferences } = preferences;
+    // The sentence and the artists it named stay inside the request (#2241).
+    const { myMix: _myMix, requestText: _requestText, artists: _artists, ...safePreferences } = preferences;
     return safePreferences;
 }

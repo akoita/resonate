@@ -58,6 +58,42 @@ function makeController(
 }
 
 describe("AgentConfigController", () => {
+  describe("the sentence and its artists on session start (#2241)", () => {
+    const req = { user: { userId: "user_1" } };
+
+    it("hands the bounded sentence and artists to the runtime, never to the session.started event or the session row", async () => {
+      const ctrl = makeController();
+      const sentence = "warm music for cooking, like Nadia Okoro";
+
+      await ctrl.startSession(req, {
+        preferences: { requestText: `  ${sentence}  `, artists: ["Nadia Okoro", 7, "", "Nadia Okoro"] },
+      });
+      await jest.advanceTimersByTimeAsync(500);
+
+      const runInput = (ctrl as any).runtimeService.run.mock.calls[0][0];
+      expect(runInput.preferences.requestText).toBe(sentence);
+      expect(runInput.preferences.artists).toEqual(["Nadia Okoro"]);
+      const published = (ctrl as any).eventBus.publish.mock.calls.find(
+        ([event]: [{ eventName: string }]) => event.eventName === "session.started",
+      )[0];
+      expect(JSON.stringify(published)).not.toContain("cooking");
+      expect(JSON.stringify(published)).not.toContain("Nadia Okoro");
+      expect(JSON.stringify(createSession.mock.calls)).not.toContain("cooking");
+      expect(JSON.stringify(createSession.mock.calls)).not.toContain("Nadia");
+    });
+
+    it("cuts an over-long sentence at 500 characters and drops a non-string one", async () => {
+      const ctrl = makeController();
+      await ctrl.startSession(req, { preferences: { requestText: "x".repeat(900) } });
+      await ctrl.startSession(req, { preferences: { requestText: { not: "text" } } });
+      await jest.advanceTimersByTimeAsync(500);
+      const runs = (ctrl as any).runtimeService.run.mock.calls;
+      expect(runs[0][0].preferences.requestText).toHaveLength(500);
+      expect(runs[1][0].preferences).not.toHaveProperty("requestText");
+      expect(runs[1][0].preferences).not.toHaveProperty("artists");
+    });
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
@@ -177,15 +213,30 @@ describe("AgentConfigController", () => {
       const parser = parserReturning();
       const ctrl = makeController({ parser });
 
-      const result = await ctrl.parseSession({ text: `  ${SENTENCE}  ` });
+      const result = await ctrl.parseSession({ text: `  ${SENTENCE}  ` }, req);
 
-      expect(parser.parse).toHaveBeenCalledWith(SENTENCE);
+      // The caller's id keys the model-assisted parser's per-user budget (#2241).
+      expect(parser.parse).toHaveBeenCalledWith(SENTENCE, { userId: "user_1" });
       expect(result).toEqual({
         request: { genres: ["Deep House"], moods: ["Dark"], energy: null, bpm: { min: 120, max: 125 } },
+        artists: [],
         unparsed: ["late drive"],
         ignored: ["maxTotalUsd"],
         strategy: "deterministic",
       });
+    });
+
+    it("returns the catalog artists the parser resolved, bounded and de-duplicated (#2241)", async () => {
+      const parser = {
+        parse: jest.fn().mockResolvedValue({
+          filters: defaultCrateFilters(),
+          unparsed: [],
+          strategy: "deterministic",
+          artists: ["Nadia Okoro", "nadia okoro", "A", "B", "C"],
+        }),
+      };
+      const result = await makeController({ parser }).parseSession({ text: "like Nadia Okoro" }, req);
+      expect(result.artists).toEqual(["Nadia Okoro", "A", "B"]);
     });
 
     it("rejects text that is only whitespace with 400", async () => {

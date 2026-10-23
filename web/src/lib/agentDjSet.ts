@@ -121,10 +121,21 @@ export function setDjSet(set: DjSet | null): void {
     const trackIds = Array.from(new Set(set.trackIds));
     commit({
         sessionId: set.sessionId,
-        preferences: set.preferences,
+        preferences: withoutSentence(set.preferences),
         trackIds,
         ...notesField(cleanNotes(set.picks, trackIds)),
     });
+}
+
+/**
+ * The set is mirrored to sessionStorage, so the typed sentence (#2241) is left out of it. The
+ * server keeps the sentence in memory for the live session, so a continuation that omits it
+ * still searches by it; an edit in the prompt sends it again.
+ */
+function withoutSentence(preferences: AgentNextPreferences): AgentNextPreferences {
+    const rest = { ...preferences };
+    delete rest.requestText;
+    return rest;
 }
 
 /** Record more track ids (and what to say about them) on the current set. No-op when there is no set or nothing new. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSessionRequest } from "../../lib/api";
 import { SESSION_PRESETS } from "./AgentSessionPresets";
+import { requestFromPreset } from "../../lib/agentSessionRequest";
 import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
 
 const SAVED_VIBES = ["Chill", "Deep House"];
@@ -45,6 +46,8 @@ describe("buildPickPreferences", () => {
   it("starts a request with no filters at all from the saved vibes", () => {
     expect(buildPickPreferences({ activePreset: null, request: null, savedVibes: SAVED_VIBES })).toEqual({
       genres: SAVED_VIBES,
+      requestText: "",
+      artists: [],
     });
   });
 
@@ -52,6 +55,8 @@ describe("buildPickPreferences", () => {
     expect(buildPickPreferences({ activePreset: null, request: request(), savedVibes: SAVED_VIBES })).toEqual({
       genres: SAVED_VIBES,
       request: request(),
+      requestText: "",
+      artists: [],
     });
   });
 
@@ -69,5 +74,50 @@ describe("buildPickPreferences", () => {
     expect(
       buildPickPreferences({ activePreset: null, request: request({ genres: ["Jazz"] }), savedVibes: SAVED_VIBES }).genres,
     ).toEqual(["Jazz"]);
+  });
+});
+
+describe("the typed sentence and its artists (#2241)", () => {
+  it("travels with a typed session, beside the chips", () => {
+    expect(
+      buildSessionPreferences({
+        activePreset: null,
+        request: request({ genres: ["Neo Soul"] }),
+        sentence: "  neo soul like Nadia Okoro ",
+        artists: ["Nadia Okoro"],
+      }),
+    ).toMatchObject({
+      requestText: "neo soul like Nadia Okoro",
+      artists: ["Nadia Okoro"],
+      request: request({ genres: ["Neo Soul"] }),
+      genres: ["Neo Soul"],
+    });
+  });
+
+  it("still steers when the chips captured nothing", () => {
+    expect(
+      buildSessionPreferences({ activePreset: null, request: request(), sentence: "something for cooking" }),
+    ).toEqual({ requestText: "something for cooking", source: "agent_session_prompt" });
+    expect(
+      buildSessionPreferences({ activePreset: null, request: request(), sentence: "like X", artists: ["X Y"] }),
+    ).toMatchObject({ artists: ["X Y"] });
+  });
+
+  it("is never sent for a starter", () => {
+    const preset = SESSION_PRESETS[0];
+    const preferences = buildSessionPreferences({
+      activePreset: preset,
+      request: requestFromPreset(preset),
+      sentence: preset.sentence,
+      artists: ["X"],
+    });
+    expect(JSON.stringify(preferences)).not.toContain("requestText");
+    expect(preferences).not.toHaveProperty("artists");
+  });
+
+  it("clears a dropped sentence on the next pick, because the server remembers earlier preferences", () => {
+    expect(
+      buildPickPreferences({ activePreset: null, request: request({ moods: ["calm"] }), savedVibes: SAVED_VIBES }),
+    ).toMatchObject({ requestText: "", artists: [] });
   });
 });

@@ -591,7 +591,7 @@ retrieval itself now understands meaning.
 
 ## AI DJ retrieval golden set (#2235)
 
-A fixed, hand-labelled catalog (about 65 tracks) and 19 requests measure how
+A fixed, hand-labelled catalog (about 65 tracks) and 21 requests measure how
 many of the tracks a listener expects the AI DJ actually ranks first. Each case
 runs the real session path (request parser, session preferences,
 `AgentSelectorService`, `DiscoveryRankingService`) and reports **recall@10** and
@@ -603,7 +603,11 @@ achieves today, never a higher one. An unmatched request must stay an honest
 unmet request (ADR-TE-4).
 
 Only the deterministic path is measured. Embedding-backed semantic retrieval is
-off in the eval because it needs a real embedding model. Every fixture track
+off in the eval because it needs a real embedding model, so the sentence's
+semantic query (#2241) and the artist centroid neighbours are covered by unit and
+integration tests instead (`agent_session_sentence.spec.ts`,
+`agent_dj_sentence_meaning.integration.spec.ts`). Artist-name seeding is
+measured here, because a resolved artist's own tracks need no embeddings. Every fixture track
 carries the descriptor the deterministic backfill produces for it (#2240).
 
 | Case | Recall@10 | Recall@20 | Known gap |
@@ -619,14 +623,16 @@ carries the descriptor the deterministic backfill produces for it (#2240).
 | "warm deep house for cooking" | 100% | 100% | none |
 | "something to focus" | 100% | 100% | none |
 | "40-minute run" | 0% | 0% | the parser reads nothing, so no genre is asked for |
-| "like <catalog artist>" | 0% | 0% | artist names are not parsed or searched |
+| "like <catalog artist>" (also lower case, and a one-letter typo) | 100% | 100% | none (was 0% before #2241; the lower-case and typo cases were added with it) |
 | Calm and low energy → track titled calm | 100% | 100% | none |
 | Calm and low energy → measured low energy, no mood tag | 0% | 0% | mood words match only genre and title |
 | Nothing matches (Gregorian Chant) | n/a | n/a | stays unmet (`no_matching_taste_candidates`) |
 
-Mean over the 18 scored cases: recall@10 75%, recall@20 83% (was 69% / 71% before
-track descriptors; the two
-aggregate rows weigh the same as a single-track case).
+Mean over the 20 scored cases: recall@10 82%, recall@20 90% (was 69% / 71%
+before track descriptors (#2240) and the sentence and artist-name work (#2241);
+the two aggregate rows weigh the same as a single-track case). "40-minute run"
+stays at 0%: its gain would come from the sentence's semantic query, which this
+eval cannot measure.
 
 - **Runners.** `backend/src/tests/agent_golden_eval.spec.ts` (`npm run
   eval:golden`, no Docker) runs the cases over an in-memory twin of
@@ -706,6 +712,60 @@ same confidence gates and thresholds as the AI DJ audio features) and a
   apply, hash change, limit, fake-provider model path with fallback, budget and
   cooldown, protected columns, ingest hook, embedding, retrieval), the golden
   set above, and `TrackDescriptorTags.test.tsx`.
+
+## Reading the listener's sentence for meaning (#2241)
+
+Status: shipped as one slice. The model-assisted reading is **off by default in
+every environment**; enabling it is a per-environment flag (deployment half:
+resonate-iac#318) to be turned on only after it passes the golden set.
+
+- **Semantic query.** The raw sentence (500 characters at most) joins the
+  session's semantic query for that session only, as `Listener request: ...`. It
+  travels as `preferences.requestText`, is held in memory for the live session
+  (like the request filters), and is never stored, logged, published on the event
+  bus, or written to the session row or the browser's storage. Because the query
+  text is identical on every pick, `EmbeddingService.embedQuery` keeps one vector
+  per (model, text hash) in memory for 30 minutes: a session start embeds the
+  query once and every pick after it embeds nothing. (Before this, each pick
+  re-embedded the query.)
+- **Artist names.** Cued names (`like X`, `more X`, `more from X`, `similar to X`,
+  `by X`, `X-style`, `X vibes`) resolve to a credited catalog artist: a release's
+  `primaryArtist`, or the artist account name when none is credited. Matching is
+  case-, accent- and punctuation-insensitive; a near miss resolves only when it is
+  conservative (name of 7+ letters, one edit, or two from 13, same first letter,
+  and only one catalog name that close). A genre or mood word never reads as an
+  artist, and an uncued name is not read. An unknown name stays under "Didn't
+  catch". The web shows a resolved artist as a removable "Like: <Artist>" chip.
+- **Seeds.** Resolved artists become seed neighbours in the existing semantic
+  step (no fusion framework; that is #2242): `catalog.artist_seed` adds the
+  artist's own tracks (up to 8) and the neighbours of the centroid of their stored
+  track vectors (needs stored vectors only, no embedding call), at most 20
+  candidates per pass, explicit and AI-promotion filters applied, failing open.
+  Own tracks score as a perfect semantic match, neighbours keep their cosine.
+- **Model-assisted parser.** `AGENT_SESSION_PARSER_STRATEGY=model-assisted`
+  reuses the Crate Digger model parser (`model_crate_request_parser.ts`) in
+  "session mode", separate from `CRATE_REQUEST_PARSER_STRATEGY`. The rules always
+  run first; the model runs only when they left part of the sentence unread, so a
+  fully read sentence makes no call. At most one call per parse; none on the pick
+  path. Output is schema-bound JSON with no tools, re-validated against the
+  allowed genre and mood lists, tempo numbers kept only when their digits are in
+  the sentence, artist names kept only when the words are in the sentence AND the
+  catalog resolves them (never model-supplied ids). The call is cancelled by an
+  `AbortSignal` at the timeout; a missing key, timeout, provider error or
+  malformed output falls back to the rules, logging a fixed reason code only.
+  Results are cached by (model, normalized text hash); each listener has a daily
+  and per-minute model budget and there is a global daily circuit breaker; over
+  budget the rules-only parse is used silently. Counters are per server
+  instance.
+- **Call counts.** `agent_session_parser.spec.ts` (parse calls, cache, budget,
+  injection fixtures) and `agent_dj_sentence_meaning.integration.spec.ts` (a
+  session start makes at most one parse call and one query embedding; four later
+  picks make none of either).
+- **Not done / follow-ups.** The model sees a sentence on each debounced
+  parse-as-you-type, bounded by the cache and the per-listener budget rather than
+  strictly once per Start; the 40-minute-run and "cooking" gains need a
+  measurement with real embeddings (#2242 hybrid retrieval). Artist chips are not
+  yet shown in Session History.
 
 ## One genre matcher for sessions and My Mix lanes (#2236)
 

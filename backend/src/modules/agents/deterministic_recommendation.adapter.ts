@@ -9,6 +9,7 @@ import type { AgentSelectorInput } from "./agent_selector.service";
 import { myMixSearchTerms } from "./agent_my_mix";
 import type { ResolvedMyMixPlan } from "./agent_my_mix";
 import { relatedGenreLabels } from "../recommendations/genre_families";
+import { SESSION_REQUEST_TEXT_MAX_LENGTH } from "./agent_session_request";
 
 export function buildAgentRecommendationQueries(
   preferences: AgentRecommendationInput["preferences"],
@@ -58,7 +59,12 @@ const SEMANTIC_RELATED_STYLE_LIMIT = 8;
 /**
  * The session the listener asked for, described in words for catalog-wide
  * semantic retrieval (#2088). Undefined unless the session asked for something
- * itself (genres, mood(s) or an intent); learned taste alone never triggers it.
+ * itself (genres, mood(s), an intent or a sentence); learned taste alone never
+ * triggers it.
+ *
+ * The listener's own sentence (#2241) joins the query for this session only:
+ * bounded, in memory, never stored or logged. The query text is identical on
+ * every pick, which is what lets the embedding service reuse one vector.
  */
 export function buildSemanticSessionQuery(
   preferences: AgentRecommendationInput["preferences"],
@@ -75,7 +81,10 @@ export function buildSemanticSessionQuery(
   const intent = clean([preferences.sessionIntentName ?? preferences.sessionIntent])[0];
   const genres = dedupe(clean(preferences.sessionGenres ?? []));
   const moods = dedupe(clean([preferences.mood, ...(preferences.moods ?? [])]));
-  if (!intent && genres.length === 0 && moods.length === 0) return undefined;
+  const sentence = clean([preferences.requestText])[0]
+    ?.slice(0, SESSION_REQUEST_TEXT_MAX_LENGTH)
+    .replace(/[\s.!?]+$/u, "");
+  if (!intent && !sentence && genres.length === 0 && moods.length === 0) return undefined;
 
   const asked = new Set(genres.map((genre) => genre.toLowerCase()));
   const related = dedupe(
@@ -86,6 +95,7 @@ export function buildSemanticSessionQuery(
 
   const sentences: string[] = [];
   if (intent) sentences.push(intent);
+  if (sentence) sentences.push(`Listener request: ${sentence}`);
   if (genres.length > 0) {
     sentences.push(
       `Genres: ${genres.join(", ")}${related.length > 0 ? `, plus related styles: ${related.join(", ")}` : ""}`,
@@ -124,6 +134,7 @@ export function deterministicSelectorInput(
     ...requestedTermsFor(input.preferences),
     semanticQuery: buildSemanticSessionQuery(input.preferences),
     ...(input.preferences.seedTrackId ? { seedTrackId: input.preferences.seedTrackId } : {}),
+    ...(input.preferences.artists?.length ? { seedArtists: input.preferences.artists } : {}),
     myMixPlan: input.myMixPlan,
   };
 }
