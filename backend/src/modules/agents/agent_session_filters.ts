@@ -2,11 +2,14 @@
  * The session's OWN filters, summarised for the Session History card (#2096).
  *
  * Only structured, bounded values are kept: the preset name, genres, moods,
- * an energy band, a tempo range, whether it was a My Mix session, and whether
- * explicit tracks were allowed. The listener's typed sentence is never an
+ * an energy band, a tempo range, whether it was a My Mix session, the kind and
+ * label of the seed it started from (#2244), and whether explicit tracks were
+ * allowed. The listener's typed sentence is never an
  * input here (it is "read once and not saved"), and My Mix lane ids or labels
  * are reduced to a flag. This module is pure: no database, network, or clock.
  */
+
+import { sessionSeedFilter, type SessionSeedFilter } from "./agent_session_seed";
 
 export interface AgentSessionFilters {
   presetName?: string;
@@ -15,6 +18,8 @@ export interface AgentSessionFilters {
   energy?: "low" | "medium" | "high";
   tempoBpm?: { min: number | null; max: number | null };
   myMix?: true;
+  /** What the session was seeded from (#2244): its kind and label only, never an id. */
+  seed?: SessionSeedFilter;
   explicit: boolean;
 }
 
@@ -30,6 +35,8 @@ export function sessionFilterSummary(input: {
   energy?: string;
   tempoBpm?: { min: number | null; max: number | null };
   myMix?: unknown;
+  /** A resolved session seed (#2244); only its kind and label are kept. */
+  seed?: { kind?: unknown; label?: unknown } | null;
   allowExplicit: boolean;
 }): AgentSessionFilters {
   const summary: AgentSessionFilters = {
@@ -52,6 +59,8 @@ export function sessionFilterSummary(input: {
   if (tempo) summary.tempoBpm = tempo;
 
   if (input.myMix != null) summary.myMix = true;
+  const seed = sessionSeedFilter(input.seed);
+  if (seed) summary.seed = seed;
   return summary;
 }
 

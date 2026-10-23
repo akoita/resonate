@@ -162,6 +162,35 @@ describe('SessionsController (e2e)', () => {
     expect(mockSessionsService.agentNext).not.toHaveBeenCalled();
   });
 
+  it('validates the session seed (#2244) before the service runs', async () => {
+    const post = (path: string, body: unknown) =>
+      request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token}`).send(body as object);
+    const seed = (value: unknown) => ({ budgetCapUsd: 10, preferences: { seed: value } });
+
+    await post('/sessions/start', seed({ kind: 'album', id: 'x', label: 'X' })).expect(400);
+    await post('/sessions/start', seed({ kind: 'playlist' })).expect(400);
+    await post('/sessions/start', seed({ kind: 'playlist', id: '' })).expect(400);
+    await post('/sessions/start', seed({ kind: 'playlist', id: 'p'.repeat(101) })).expect(400);
+    await post('/sessions/start', seed({ kind: 'track', id: 42 })).expect(400);
+    await post('/sessions/start', seed({ kind: 'track', id: 't1', label: 'l'.repeat(121) })).expect(400);
+    await post('/sessions/start', seed('playlist:p1')).expect(400);
+    await post('/sessions/agent/next', { sessionId: 's1', preferences: { seed: { kind: 'nope', id: 'x' } } }).expect(400);
+    expect(mockSessionsService.startSession).not.toHaveBeenCalled();
+    expect(mockSessionsService.agentNext).not.toHaveBeenCalled();
+
+    // A well-formed seed, a removed seed (null) and an absent one all reach the service.
+    await post('/sessions/start', seed({ kind: 'playlist', id: 'p1', label: 'Late night' })).expect(201);
+    await post('/sessions/agent/next', { sessionId: 's1', preferences: { seed: null } }).expect(201);
+    expect(mockSessionsService.startSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferences: expect.objectContaining({ seed: expect.objectContaining({ kind: 'playlist', id: 'p1' }) }),
+      }),
+    );
+    expect(mockSessionsService.agentNext).toHaveBeenCalledWith(
+      expect.objectContaining({ preferences: expect.objectContaining({ seed: null }) }),
+    );
+  });
+
   it('accepts well-typed session bodies, including the runtime-validated fields', async () => {
     await request(app.getHttpServer())
       .post('/sessions/agent/next')

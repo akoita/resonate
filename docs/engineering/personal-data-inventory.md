@@ -268,7 +268,12 @@ AI DJ Session History (#2096) adds `Session.filters`, a bounded summary of a
 listening session's own filters (preset name, requested genres and moods,
 energy, tempo, a My Mix flag and the explicit choice). It never holds the typed
 sentence or My Mix lane details. It lives on the listener's `Session` row, so
-export and erasure already cover it.
+export and erasure already cover it. A seeded session (#2244) adds `seed: { kind,
+label }` to that summary (the catalog's own name for the seed track, artist or
+playlist, never the seed id); the seed itself (kind, id, label) is kept only in
+the server's in-memory session preferences for the live session, is left out of
+the `session.started` event (which carries `seedKind` only) and out of analytics
+beyond `seedKind`. Only the listener's own or public playlists can seed.
 
 The AI DJ sentence (#2241) is never persisted. The listener's typed sentence
 (500 characters at most) is processed in memory in three places and nowhere is

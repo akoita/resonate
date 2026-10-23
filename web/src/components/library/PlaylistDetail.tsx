@@ -19,6 +19,7 @@ import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { PlaylistShareControl } from "./PlaylistShareControl";
+import StartDjFromSeedButton from "../agent/StartDjFromSeedButton";
 import type { PlaylistVisibility } from "../../lib/playlistStore";
 import { useWebSockets } from "../../hooks/useWebSockets";
 import {
@@ -296,6 +297,10 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                             nextLabel="Play playlist next"
                             disabled={playableTracks.length === 0}
                         />
+                        {/* Seeded AI DJ session (#2244): server playlists only, the server cannot read a local one. */}
+                        {!playlist.id.startsWith("playlist_") && (
+                            <StartDjFromSeedButton seed={{ kind: "playlist", id: playlist.id, label: playlist.name }} />
+                        )}
                         <PlaylistShareControl
                             playlistId={playlist.id}
                             visibility={playlist.visibility}

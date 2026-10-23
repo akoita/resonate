@@ -300,7 +300,7 @@ when they follow the privacy and versioning rules above.
 | `agent.track_selected` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `trackId`, `strategy` | `artistId`, `releaseId`, `source`, aggregate `cohortInfluence` |
 | `agent.intent_viewed` | `web-app` | `agent_session` when known | auth user | `source` | `presetCount`, `intents`, `clientEventId` |
 | `agent.intent_selected` | `web-app` | `agent_session` when known | auth user | `intent`, `intentName`, `source` | `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
-| `agent.session_started` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
+| `agent.session_started` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `seedKind` (`track`, `artist`, `playlist`; seeded sessions only, #2244: never the seed id or label), `clientEventId` |
 | `agent.session_stopped` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `sessionDurationMs`, `clientEventId` |
 | `agent.next_pick_requested` | `web-app` | `agent_session` | auth user | `status`, `source` | `intent`, `intentName`, `trackId`, `runtimeStatus`, `score`, `rankerVariant`, `experimentKey`, `clientEventId` |
 | `agent.up_next_action` | `web-app` | `agent_session` | auth user | `source`, `action` (`skip`, `not_this`, `more_like_this`), `trackId` | `surface`, `intent`, `added`, `clientEventId` |

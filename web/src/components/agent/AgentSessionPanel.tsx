@@ -39,11 +39,13 @@ import {
     removeArtistChip,
     removeChip,
     requestFilterKeys,
+    SEED_CHIP_KEY,
     requestFromPreset,
     setEnergy,
     trackIdsAt,
     upcomingDjIndices,
 } from "../../lib/agentSessionRequest";
+import { DJ_SEED_EVENT, takeDjSeed, type DjSeed } from "../../lib/djSeed";
 import { saveTracksMetadata } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
@@ -119,6 +121,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     // dropped as soon as the listener edits the chips by hand or picks a starter.
     const [parsedSentence, setParsedSentence] = useState<string | null>(null);
     const [artists, setArtists] = useState<string[]>([]);
+    // What the session starts from (#2244): a track, an artist or a playlist, queued by a
+    // "Start a DJ session from this" button. It stays for the whole session until removed.
+    const [seed, setSeed] = useState<DjSeed | null>(null);
     const [request, setRequest] = useState<AgentSessionRequest | null>(null);
     const [unparsed, setUnparsed] = useState<string[]>([]);
     const [ignored, setIgnored] = useState<AgentSessionRequestIgnoredKey[]>([]);
@@ -254,11 +259,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             savedVibes: config?.vibes,
             sentence: parsedSentence,
             artists,
+            seed,
         });
         return myMixWasSelectedRef.current
             ? { ...regularPreferences, myMix: null }
             : regularPreferences;
-    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists]);
+    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed]);
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
@@ -429,6 +435,28 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         }
     };
 
+    // A "Start a DJ session from this" button queued a seed (#2244): take it on arrival and
+    // whenever another one is queued while Home is already open. A live set follows it too.
+    useEffect(() => {
+        const adopt = () => {
+            const queued = takeDjSeed();
+            if (!queued) return;
+            setSeed(queued);
+            // A seeded session replaces My Mix, as typing a sentence does.
+            if (myMixPreferencesRef.current) {
+                setMyMixPreferences(null);
+                myMixWasSelectedRef.current = true;
+                invalidateMyMixCoverage();
+                setMyMixSaveMessage(null);
+            }
+            scheduleReplan();
+        };
+        adopt();
+        if (typeof window === "undefined") return;
+        window.addEventListener(DJ_SEED_EVENT, adopt);
+        return () => window.removeEventListener(DJ_SEED_EVENT, adopt);
+    }, [config?.id]);
+
     // Timers fire after later renders: keep the newest closure and player reachable.
     useEffect(() => {
         latestRef.current = { replan: replanUpcoming, player };
@@ -542,6 +570,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     };
 
     const handleRemoveChip = (chipKey: string) => {
+        if (chipKey === SEED_CHIP_KEY) {
+            // Removing the chip drops the seed; the filters and the sentence stay as they are.
+            setSeed(null);
+            scheduleReplan();
+            return;
+        }
         if (chipKey === "energy") energyAdjustedRef.current = false;
         if (chipKey.startsWith("artist:")) {
             // Only this artist goes; the rest of the sentence still steers the session.
@@ -783,7 +817,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             // session preferences and never overwrites the vibes saved in Settings.
             const preferences = myMixPreferences
                 ? { myMix: { ...myMixPreferences, context: getMyMixLocalContext() } }
-                : buildSessionPreferences({ activePreset: preset, request, sentence: parsedSentence, artists });
+                : buildSessionPreferences({ activePreset: preset, request, sentence: parsedSentence, artists, seed });
             try {
                 setIsStarting(true);
                 const result = await startSession(preferences ? { preferences } : undefined);
@@ -807,6 +841,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     payload: {
                         surface: ANALYTICS_SURFACE,
                         startedFrom,
+                        // Seeded sessions (#2244): the kind only, never the id or the label.
+                        seedKind: !myMixPreferences ? seed?.kind : undefined,
                         intent: preset?.intent,
                         intentName: preset?.name,
                         energy: preset?.preferences.energy,
@@ -929,6 +965,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         onSelectPreset={handleSelectPreset}
                         request={request}
                         artists={artists}
+                        seed={seed}
                         onRemoveChip={handleRemoveChip}
                         onEnergyChange={handleEnergyChange}
                         unparsed={unparsed}

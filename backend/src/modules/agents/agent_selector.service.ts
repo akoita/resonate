@@ -137,18 +137,49 @@ export interface HeldBack {
   explicit: number;
 }
 
-/** Seeds by kind (#2242): artist names (#2241) and seed tracks (#2243). */
+/** Seeds by kind (#2242): artist names (#2241), seed tracks (#2243) and a playlist (#2244). */
 export interface AgentSeeds {
   artists?: string[];
   /** Seed tracks, e.g. "More like this" (#2243); neighbours of their stored vectors. */
   trackIds?: string[];
+  /**
+   * A playlist the caller (`userId`) owns or that is public (#2244): the
+   * neighbours of the centroid of its tracks' stored vectors plus its
+   * genre-family mix. The playlist source checks access on every retrieval, so
+   * a playlist that went private mid-session seeds nothing.
+   */
+  playlistId?: string;
 }
 
-function resolveSeeds(input: AgentSelectorInput): { artists: string[]; trackIds: string[] } {
+function resolveSeeds(input: AgentSelectorInput): { artists: string[]; trackIds: string[]; playlistId?: string } {
   const artists = [...(input.seeds?.artists ?? []), ...(input.seedArtists ?? [])].filter(Boolean);
+  const playlistId = input.seeds?.playlistId?.trim();
   return {
     artists: [...new Set(artists)],
     trackIds: [...new Set([...(input.seeds?.trackIds ?? []), input.seedTrackId?.trim() ?? ""].filter(Boolean))],
+    ...(playlistId ? { playlistId } : {}),
+  };
+}
+
+/**
+ * Keeps a playlist-seeded session from replaying the playlist (#2244): the
+ * playlist's tracks, except the few the playlist source chose to offer
+ * (`PLAYLIST_SEED_OWN_TRACKS`), are dropped from the candidate pool, whichever
+ * source found them.
+ */
+interface PlaylistGuard {
+  memberIds: ReadonlySet<string>;
+  keepIds: ReadonlySet<string>;
+}
+
+function playlistGuardFrom(result: { items?: unknown; playlistTrackIds?: unknown }): PlaylistGuard | undefined {
+  if (!Array.isArray(result.playlistTrackIds)) return undefined;
+  const items = Array.isArray(result.items) ? (result.items as Array<{ id?: unknown; playlistSeed?: unknown }>) : [];
+  return {
+    memberIds: new Set(result.playlistTrackIds.filter((id): id is string => typeof id === "string")),
+    keepIds: new Set(
+      items.flatMap((item) => (item.playlistSeed === "own" && typeof item.id === "string" ? [item.id] : [])),
+    ),
   };
 }
 
@@ -349,6 +380,13 @@ export class AgentSelectorService {
             break;
           }
         }
+      }
+    }
+
+    // A playlist-seeded session is not a replay of the playlist (#2244).
+    if (gathered.playlistGuard) {
+      for (const id of [...byId.keys()]) {
+        if (gathered.playlistGuard.memberIds.has(id) && !gathered.playlistGuard.keepIds.has(id)) byId.delete(id);
       }
     }
 
@@ -696,6 +734,7 @@ export class AgentSelectorService {
     semanticScores: Map<string, number>;
     retrievedBy?: undefined;
     retrieval?: undefined;
+    playlistGuard?: PlaylistGuard;
   }> {
     // Gather candidates from all vibes/queries
     const byId = new Map<string, AgentCandidateTrack & { matchedQueries: string[] }>();
@@ -813,7 +852,40 @@ export class AgentSelectorService {
       }
     }
 
-    return { byId, semanticScores };
+    // A playlist as a seed (#2244): centroid neighbours, genre-family mix and a
+    // few of its own tracks. Fails open like the other seeds.
+    let playlistGuard: PlaylistGuard | undefined;
+    const seedPlaylistId = resolveSeeds(input).playlistId;
+    if (seedPlaylistId) {
+      const seeded = await this.tools
+        .get("catalog.playlist_seed")
+        .run({
+          playlistId: seedPlaylistId,
+          userId: input.userId,
+          limit: SEED_ARTIST_CANDIDATES,
+          allowExplicit: input.allowExplicit ?? false,
+          excludeTrackIds: input.recentTrackIds,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Playlist seeding failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return { items: [] as unknown[], status: "error" };
+        });
+      if (seeded.status === "forbidden") this.logger.warn("Playlist seed skipped: playlist_not_accessible");
+      playlistGuard = playlistGuardFrom(seeded);
+      for (const item of (seeded.items as any[]) ?? []) {
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
+        if (typeof item.semanticScore === "number") {
+          semanticScores.set(item.id, Math.max(item.semanticScore, semanticScores.get(item.id) ?? 0));
+        }
+        if (!byId.has(item.id)) byId.set(item.id, { ...item, matchedQueries: [] });
+      }
+    }
+
+    return { byId, semanticScores, ...(playlistGuard ? { playlistGuard } : {}) };
   }
 
   /**
@@ -826,8 +898,8 @@ export class AgentSelectorService {
    *    only when the request names energy or tempo and no genre (a genre
    *    request is never widened to unrelated tracks of that energy);
    *  - lane: My Mix lane terms beyond the ones keyword already searched;
-   *  - seed: the listener's seeds (artist names now; `trackIds` slot in as
-   *    another seed kind, see `AgentSeeds`).
+   *  - seed: the listener's seeds (artist names, seed tracks and a playlist;
+   *    see `AgentSeeds`).
    * A source that errors or is cut off at the deadline removes only its own
    * candidates (logged as a reason code). The per-source rankings are fused with
    * reciprocal-rank fusion and handed to the ranking core in fused order; the
@@ -846,6 +918,7 @@ export class AgentSelectorService {
     semanticScores: Map<string, number>;
     retrievedBy: Map<string, RetrievalSource[]>;
     retrieval: RetrievalReport;
+    playlistGuard?: PlaylistGuard;
   }> {
     const config = hybridRetrievalConfig();
     const allowExplicit = input.allowExplicit ?? false;
@@ -943,6 +1016,7 @@ export class AgentSelectorService {
       return toYield(groups, config.budgets.lane);
     };
 
+    let playlistGuard: PlaylistGuard | undefined;
     const seed = async (): Promise<SourceYield> => {
       const seeds = resolveSeeds(input);
       const groups: Array<{
@@ -950,7 +1024,7 @@ export class AgentSelectorService {
         matched: (item: any) => string[];
         score: (item: any) => number | undefined;
       }> = [];
-      // One runner per seed kind (artists, then seed tracks); a new kind adds a
+      // One runner per seed kind (artists, seed tracks, a playlist); a new kind adds a
       // runner here and a field on `AgentSeeds`; fusion and budgets need no change.
       if (seeds.artists.length > 0) {
         const seeded = await this.tools.get("catalog.artist_seed").run({
@@ -979,6 +1053,23 @@ export class AgentSelectorService {
           items: (neighbours.items as any[]) ?? [],
           matched: () => [],
           score: (item) => item.semanticScore,
+        });
+      }
+      if (seeds.playlistId) {
+        const seeded = await this.tools.get("catalog.playlist_seed").run({
+          playlistId: seeds.playlistId,
+          userId: input.userId,
+          limit: config.budgets.seed,
+          allowExplicit,
+          excludeTrackIds: input.recentTrackIds,
+          calibratedFloor: true,
+        });
+        if (seeded.status === "forbidden") this.logger.warn("Playlist seed skipped: playlist_not_accessible");
+        playlistGuard = playlistGuardFrom(seeded);
+        groups.push({
+          items: (seeded.items as any[]) ?? [],
+          matched: () => [],
+          score: (item) => (typeof item.semanticScore === "number" ? item.semanticScore : undefined),
         });
       }
       return groups.length === 0 ? "skipped" : toYield(groups, config.budgets.seed);
@@ -1045,6 +1136,7 @@ export class AgentSelectorService {
       byId,
       semanticScores,
       retrievedBy,
+      ...(playlistGuard ? { playlistGuard } : {}),
       retrieval: {
         variant: HYBRID_RETRIEVAL_VARIANT,
         sources: report,

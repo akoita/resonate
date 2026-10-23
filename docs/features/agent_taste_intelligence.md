@@ -2318,3 +2318,79 @@ Vision-neutral quality (ADR-BM-6): no money, payout or fee change. Phase 2
   or a More like this, so ranker-variant metrics (#2005, #2242) stay comparable.
 - The User Guide AI DJ article describes the card; its screenshot is not
   refreshed in this slice.
+
+## Seeded sessions: start from a track, an artist or a playlist (#2244)
+
+Vision-neutral quality (ADR-BM-6): no money, payout or fee change; stored
+vectors only, no model call and no external cost. Phase 2 (B3) of
+`docs/roadmap/2026-10-ai-dj-quality-and-experience.md`. Builds on hybrid
+retrieval (#2242) and the "More like this" seed (#2243).
+
+- **Entry points.** "Start a DJ session from this" on a track (the release
+  page track menu), on an artist page and on the listener's own playlist page
+  (server playlists only; a local-only playlist has nothing the server can
+  read). Each queues the seed in the tab (`web/src/lib/djSeed.ts`, sessionStorage,
+  one use) and opens Home's `#ai-dj`; the prompt shows a removable
+  **From: <label>** chip. The listener still presses Start session (no
+  autoplay surprise). Removing the chip drops the seed; with a live session the
+  upcoming picks follow, like any chip edit. A seed replaces My Mix.
+- **Session-level seed.** `preferences.seed = { kind: "track" | "artist" |
+  "playlist", id, label }` (class-validator DTO `SessionSeedDto`; the
+  `/agents/config/session` start route validates inline). Unlike `seedTrackId`
+  it is **remembered for the live session** in memory with the other session
+  preferences, so every pick keeps it; the web also resends it with each pick,
+  and an explicit `seed: null` removes it. The server resolves it first
+  (`agent_session_seed_resolver.ts`): the subject must exist (400
+  `seed_not_found`), a malformed seed is 400 `seed_invalid`, and the **label is
+  replaced by the catalog's own** (track title, artist display name, playlist
+  name), never trusted from the client. A seed equal to the one the session
+  already holds is not looked up again.
+- **Privacy.** A playlist seeds only when the caller **owns it or it is
+  public**. Otherwise (someone else's private playlist, or no such playlist,
+  answered identically so ids cannot be probed) the request is refused with 403
+  `seed_playlist_forbidden`, before anything is written or remembered. The
+  playlist source (`catalog.playlist_seed`) checks access again on **every
+  retrieval** for the session's user, so a playlist that goes private mid-session
+  stops seeding (it fails open: the session carries on unseeded, logged with the
+  reason code `playlist_not_accessible`). The seed's id is never published: the
+  `session.started` event carries `seedKind` only.
+- **How each kind retrieves** (all through the existing `seed` source and its
+  budget, `AGENT_RETRIEVAL_BUDGETS` `seed=`; the default path adds the same
+  candidates to its union). Every kind keeps the explicit preference, the
+  AI-promotion filter (ADR-BM-5), the session exclusions, the six ranking rules
+  and the taste policy.
+  - *Track:* the neighbours of its stored vector (`catalog.semantic_search`
+    with `seedTrackId`); the seed itself is excluded.
+  - *Artist:* `catalog.artist_seed` with the artist's display name: their own
+    tracks, then the neighbours of the centroid of their stored vectors.
+  - *Playlist:* the neighbours of the centroid of the playlist's stored vectors
+    (`unitCentroid`, over its most recent 40 tracks), **plus its genre-family
+    mix** (tracks of its two most common families from stored descriptors, else
+    release-genre families; ranked by similarity to the centroid when vectors
+    exist), **plus at most 3 of the playlist's own tracks** (the nearest its
+    centroid). A playlist with no stored vectors seeds from the family mix alone.
+- **Not a replay.** `PLAYLIST_SEED_OWN_TRACKS = 3` (`tool_registry.ts`): the
+  source offers at most three of the playlist's own tracks, and the selector
+  removes every other track of the playlist from the candidate pool, whichever
+  source found it, so a batch holds at most three of them. The other
+  candidates are neighbours and family-mix tracks the playlist does not hold.
+- **Session History.** The stored filters snapshot gains `seed: { kind, label }`
+  (never an id); the card reads "From playlist: <label>". Kept in step on a
+  mid-session change or removal.
+- **Analytics.** `agent.session_started` gains `seedKind` (`track`, `artist`,
+  `playlist`; no id, no label).
+- **Evidence.** `agent_dj_seeded_sessions.integration.spec.ts` (Postgres/pgvector,
+  hash embedder over a purpose-built fixture catalog): neighbours, the family
+  mix, the cap on own tracks, exclusions, explicit and AI filters, the
+  access rule (own, public, private of another listener, missing, anonymous),
+  each seed kind through the selector on both retrieval paths, and the session
+  plumbing (remembered, cleared with `null`, history, published event, refused
+  seed writes nothing). `agent_session_seed.spec.ts` covers the pure parts and
+  the pool cap with stubbed tools. The golden runners keep embeddings off by
+  design, so the seeded cases live in that integration spec rather than in the
+  recall@k table; the table is unchanged.
+- **Not in this slice.** The LLM curator prompts do not receive the seed
+  (the rule-based top-up that completes every LLM batch does, so a seeded
+  session is still seeded); entry points on a public playlist page and on the
+  player's action panel; a real-embedding measurement of how close the
+  neighbours are.

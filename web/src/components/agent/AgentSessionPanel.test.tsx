@@ -198,6 +198,18 @@ vi.mock("./AgentSessionPrompt", () => ({
     return null;
   },
 }));
+const queuedSeed: { current: unknown } = { current: null };
+vi.mock("../../lib/djSeed", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/djSeed")>();
+  return {
+    ...actual,
+    takeDjSeed: () => {
+      const seed = queuedSeed.current;
+      queuedSeed.current = null;
+      return seed;
+    },
+  };
+});
 vi.mock("./AgentHistoryCard", () => ({ default: () => null }));
 vi.mock("./AgentEventsDebug", () => ({ default: () => null }));
 vi.mock("./AgentSetupWizard", () => ({ default: () => null }));
@@ -280,6 +292,54 @@ describe("AgentSessionPanel", () => {
     render();
     effects.forEach((run) => run());
   }
+
+  describe("seeded sessions (#2244)", () => {
+    const playlistSeed = { kind: "playlist", id: "pl-1", label: "Late night" } as const;
+
+    function adoptSeed(seed: typeof playlistSeed | null) {
+      queuedSeed.current = seed;
+      render();
+      effects.forEach((run) => run());
+      render();
+    }
+
+    it("shows the queued seed as a chip and starts the session with it, recording its kind only", async () => {
+      hookState.config = config({ isActive: false });
+      adoptSeed(playlistSeed);
+      expect(captured.prompt?.seed).toEqual(playlistSeed);
+
+      await captured.prompt?.onSubmit();
+      expect(startSession).toHaveBeenCalledWith({
+        preferences: expect.objectContaining({ seed: playlistSeed }),
+      });
+      const started = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      const payload = (started?.[2] as { payload: Record<string, unknown> }).payload;
+      expect(payload.seedKind).toBe("playlist");
+      expect(JSON.stringify(started)).not.toContain("pl-1");
+      expect(JSON.stringify(started)).not.toContain("Late night");
+    });
+
+    it("keeps the seed on every pick of the session, and removing the chip clears it explicitly", async () => {
+      hookState.config = config({ isActive: true });
+      adoptSeed(playlistSeed);
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ seed: playlistSeed });
+
+      captured.prompt?.onRemoveChip("seed");
+      render();
+      expect(captured.prompt?.seed).toBeNull();
+      // Omitting the key would keep the server's remembered seed, so it travels as null.
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ seed: null });
+    });
+
+    it("starts without a seed when none was queued", async () => {
+      hookState.config = config({ isActive: false });
+      adoptSeed(null);
+      expect(captured.prompt?.seed).toBeNull();
+      await captured.prompt?.onSubmit();
+      const started = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      expect((started?.[2] as { payload: Record<string, unknown> }).payload.seedKind).toBeUndefined();
+    });
+  });
 
   it("with no config shows the empty state and a Set up your DJ action", () => {
     const html = render();

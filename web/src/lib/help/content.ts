@@ -818,7 +818,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "now and up next", "up next", "skip", "not this", "more like this", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "starters", "moments", "sounds", "track counts", "missing sound", "adjust", "energy filter", "club", "late night", "warm", "calm", "focus", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "now and up next", "up next", "skip", "not this", "more like this", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "starters", "moments", "sounds", "track counts", "missing sound", "adjust", "energy filter", "club", "late night", "warm", "calm", "focus", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks", "start from a track", "start from an artist", "start from a playlist", "seed", "from chip", "start a dj session from this"],
     sections: [
       {
         id: "sessions",
@@ -842,6 +842,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "You can also just start a session without typing or choosing anything; the DJ then starts from your saved vibes and ranks its picks with your taste. The Your AI DJ section shows which vibes it will start from, with an Edit link to change them.",
+          },
+          {
+            kind: "paragraph",
+            text: "You can also start from something you already like. Choose Start a DJ session from this in a track's menu on its release page, on an artist's page, or on one of your own playlists (a playlist saved on this device only is not offered). You land on the Your AI DJ section with a From chip, for example From: Late night, in the box's filters. Press Start session and the DJ plays music close in sound to that track, that artist (their own tracks first) or that playlist (tracks like it from the same styles, with at most three of the playlist's own tracks in a batch so the session is not a replay). The seed stays for the whole session; remove the chip to drop it, and the upcoming picks follow. Your explicit-tracks choice, your hidden taste and the usual variety limits still apply. Only your own playlists, or public ones, can be used, and Session History shows what a session started from by its kind and name.",
           },
           {
             kind: "paragraph",

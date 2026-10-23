@@ -7,6 +7,7 @@ import { AgentRecommendationService } from "./agent_recommendation.service";
 import type { MixCoverage, MyMixPreferences, ResolvedMyMixPlan } from "./agent_my_mix";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import type { AgentRuntimeFallback } from "./agent_runtime.types";
+import type { SessionSeed } from "./agent_session_seed";
 import {
   requestCoverageFor,
   type AgentRequestCoverage,
@@ -46,6 +47,8 @@ export interface AgentOrchestratorInput {
     /** The listener's sentence and the artists it named (#2241); see AgentRuntimeInput. */
     requestText?: string;
     artists?: string[];
+    /** The session's seed (#2244); see AgentRuntimeInput. */
+    seed?: SessionSeed;
     myMix?: MyMixPreferences | null;
   };
   /** Trusted server-resolved lane plan. */
