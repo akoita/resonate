@@ -1,5 +1,7 @@
 import {
   AI_DISCLOSURE_VERSION,
+  CATALOG_ATTESTATION_SOURCE,
+  normalizeAiDisclosureSource,
   deriveReleaseAiDisclosureSummary,
   deriveRemixAiDisclosure,
   isPromotionEligible,
@@ -105,5 +107,57 @@ describe("AI disclosure policy", () => {
     ["prompt_only", { level: "ALL", facets: [] }],
   ])("derives %s remix disclosure", (grounding, expected) => {
     expect(deriveRemixAiDisclosure(grounding)).toEqual(expected);
+  });
+  describe("catalog attestation source (#2252)", () => {
+    const attestedTrack = {
+      aiDisclosureLevel: "NONE" as const,
+      aiContributionFacets: [] as string[],
+      aiDisclosureSource: "catalog_attestation",
+      aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+      aiDeclaredAt: new Date("2026-10-25T09:00:00.000Z"),
+    };
+
+    it("keeps catalog_attestation instead of folding it back to migration", () => {
+      expect(CATALOG_ATTESTATION_SOURCE).toBe("catalog_attestation");
+      expect(normalizeAiDisclosureSource("catalog_attestation")).toBe("catalog_attestation");
+      expect(normalizeAiDisclosureSource("something_else")).toBe("migration");
+    });
+
+    it("exposes an attested track as none / None / catalog_attestation", () => {
+      expect(toAiDisclosureRecord(attestedTrack)).toEqual({
+        level: "none",
+        containsAI: "None",
+        facets: [],
+        source: "catalog_attestation",
+        schemaVersion: AI_DISCLOSURE_VERSION,
+        declaredAt: "2026-10-25T09:00:00.000Z",
+        label: "No AI involvement declared",
+      });
+    });
+
+    it("derives none for a fully attested release", () => {
+      expect(
+        deriveReleaseAiDisclosureSummary([
+          attestedTrack,
+          { ...attestedTrack, aiDeclaredAt: new Date("2026-10-25T09:00:01.000Z") },
+        ]),
+      ).toMatchObject({
+        level: "none",
+        containsAI: "None",
+        facets: [],
+        source: "catalog_attestation",
+        schemaVersion: AI_DISCLOSURE_VERSION,
+        label: "No AI involvement declared",
+      });
+    });
+
+    it("keeps a partly attested release honest as undeclared", () => {
+      expect(
+        deriveReleaseAiDisclosureSummary([
+          attestedTrack,
+          { aiDisclosureLevel: "UNDECLARED", aiContributionFacets: [] },
+        ]),
+      ).toMatchObject({ level: "undeclared", containsAI: null });
+    });
   });
 });

@@ -37,4 +37,54 @@ describe("AiDisclosureBadge", () => {
       ),
     ).toContain("Human-made");
   });
+  describe("catalog attestation (#2252)", () => {
+    const attested = {
+      level: "none" as const,
+      containsAI: "None" as const,
+      facets: [],
+      source: "catalog_attestation" as const,
+    };
+    const unattested = {
+      level: "undeclared" as const,
+      containsAI: null,
+      facets: [],
+      source: "migration" as const,
+    };
+
+    it("no longer shows the unavailable pill for an attested track", () => {
+      const html = renderToStaticMarkup(<AiDisclosureBadge disclosure={attested} />);
+
+      expect(html).toBe("");
+      expect(html).not.toContain("AI disclosure unavailable");
+    });
+
+    it("still shows the unavailable pill for an unattested legacy track", () => {
+      expect(
+        renderToStaticMarkup(<AiDisclosureBadge disclosure={unattested} />),
+      ).toContain("AI disclosure unavailable");
+    });
+
+    it("words the human-made tooltip as a Resonate attestation, not an uploader declaration", () => {
+      const html = renderToStaticMarkup(
+        <AiDisclosureBadge disclosure={attested} showHumanMade />,
+      );
+
+      expect(html).toContain("Human-made");
+      expect(html).toContain(
+        "Resonate identified this recording as a published human-made work.",
+      );
+      expect(html).not.toContain("The uploader declared");
+    });
+
+    it("keeps the uploader wording for an artist human-made declaration", () => {
+      const html = renderToStaticMarkup(
+        <AiDisclosureBadge
+          disclosure={{ level: "none", facets: [], source: "artist" }}
+          showHumanMade
+        />,
+      );
+
+      expect(html).toContain("The uploader declared that this music contains no AI contribution.");
+    });
+  });
 });

@@ -947,7 +947,8 @@ export class CatalogService implements OnModuleInit {
                     aiContributionFacets: disclosure.facets,
                     aiDisclosureSource:
                       t.aiDisclosure?.source === "resonate_native" ||
-                      t.aiDisclosure?.source === "remix_derived"
+                      t.aiDisclosure?.source === "remix_derived" ||
+                      t.aiDisclosure?.source === "catalog_attestation"
                         ? t.aiDisclosure.source
                         : "artist",
                     aiDisclosureVersion: AI_DISCLOSURE_VERSION,

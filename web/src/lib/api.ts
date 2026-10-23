@@ -398,6 +398,7 @@ export type AiDisclosureSource =
   | "artist"
   | "resonate_native"
   | "remix_derived"
+  | "catalog_attestation"
   | "migration";
 
 /**
