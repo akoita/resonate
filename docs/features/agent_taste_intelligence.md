@@ -95,11 +95,11 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > fill remaining slots, and coverage notes report misses. Home and sessions
 > without a request retain their existing ranking.
 >
-> Mood presets use the shared upload vocabulary: Pulse Raid (Trap, Drum &
-> Bass, EDM), Liquid Sky (Soul, Jazz, Trip-Hop; Chill mood), Static Calm
-> (Ambient, New Age, Classical), and Neural Flow (Lo-Fi). The upload options
-> live in `web/src/lib/catalogVocabulary.ts`; preset tests check that every
-> genre and mood belongs to that vocabulary.
+> Starters use the shared upload vocabulary. (Superseded by #2249: the mood
+> starters no longer carry genre lists and the brand names were dropped; see
+> "AI DJ quick starts" below.) The upload options live in
+> `web/src/lib/catalogVocabulary.ts`; starter tests check that every genre and
+> mood belongs to that vocabulary.
 
 > **Next AI Pick keeps going on a small catalog (#2056).** Vision-neutral
 > quality: no money, payout or fee changes. A listening session used to
@@ -854,6 +854,70 @@ backend events, and a leftover 💰 icon for the retired buy mode (ADR-TE-1).
 - `agent.negotiated` no longer has an icon mapping in `useAgentEvents`.
 - Tests: `agentSessionRequest.test.ts` and `AgentSessionPrompt.test.tsx` (full,
   partial, none), `AgentEventsDebug.test.tsx`, `useAgentEvents.test.ts`.
+- Screenshots in the User Guide are not refreshed in this slice.
+
+## AI DJ quick starts: plain starters and composable filters (#2249, slice 1 of 3)
+
+Status: **partial** (slice 1 of 3 shipped). Vision-neutral quality (ADR-BM-6):
+no fee, split, price, payout or purchase change.
+
+Shipped in slice 1 (frontend and copy only):
+
+- **Plain names.** The starters are Focus, High energy, Chill, Dark, Calm, Club,
+  Late night and Warm (Moments) and the genre families Hip-Hop & Rap, R&B &
+  Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton
+  and World Music (Sounds). Neural Flow, Pulse Raid, Liquid Sky, Abyss Shift and
+  Static Calm are gone from the UI (owner decision 1). The internal `intent`
+  ids Focus, Hype, Chill, Dark and Zen are unchanged, so `agent.intent_selected`
+  and `agent.session_started` stay continuous; the new moods use their parser
+  names as ids (`Club`, `Late Night`, `Warm`), which the free-string
+  `intent`/`intentName` analytics fields accept without a contract change.
+  `sessionIntentName` is now the plain label for new sessions. Session History
+  maps old brand names and old intent ids to today's plain label
+  (`plainPresetLabel`), so past sessions read consistently.
+- **Starters write their sentence.** Tapping a starter fills the prompt with
+  its sentence ("Focus, low energy") and shows the filters it reads as, without
+  waiting for the parser; the listener can edit the sentence or the chips.
+- **No hidden genres in Moments.** Moments set mood, energy and tempo only and
+  search every genre, ranked by taste. Sounds set genres only; the old built-in
+  energy on genre starters is gone, since Energy is now the Adjust filter.
+- **Rows.** "Moments" and "Sounds" are labelled groups with pressed state; a
+  "For you" row appears only when My Mix has lanes to blend (nothing broken is
+  shown for absent items). The selected starter's description and "You'll hear"
+  line are always visible, so touch does not depend on hover.
+- **Adjust row.** Energy (Any, Low, Medium, High) and the explicit-tracks
+  checkbox (moved here) combine with any starter or sentence into one request:
+  a starter plus Energy keeps the starter selected and the request's energy wins
+  in the session preferences. Removing a chip removes only that filter.
+  Energy is hidden while My Mix is chosen, since My Mix follows listening lanes.
+- **Rotating placeholder** of real example sentences the parser fully reads.
+- **Analytics** extend the existing events, no new event and no free text:
+  `agent.intent_selected` adds `starterRow` and `starterId`;
+  `agent.session_started` adds `starterRow` (`moments`, `sounds`, `for_you`),
+  `starterId` (the intent id, `my_mix` for My Mix), `starterEdited` (the
+  sentence or chips were changed after the tap) and `optionalFilters`
+  (`energy` when set from Adjust, `explicit` when included). Consent rules are
+  unchanged (`recordProductAnalytics`).
+- **Tests.** `sessionPresetData.test.ts` runs every starter sentence and every
+  placeholder example through the backend's own deterministic parser
+  (`parseCrateRequestText` and `listeningRequestFromCrateParse`, both pure, the
+  same functions behind the parse endpoint) and asserts no "Didn't catch" text,
+  that each starter's chips equal what the parser returns, and that no Moments
+  starter carries a genre. `AgentSessionPanel.test.tsx` covers sending no genre
+  from any Moments starter, starter plus Energy in either order, chip removal
+  removing only that filter, and the analytics payload. `AgentHistoryCard.test.tsx`
+  checks that every old intent id and brand name renders its plain label.
+
+Remaining (explicitly tracked on #2249, which stays open):
+
+- **Slice 2, catalog-aware Sounds:** one cached aggregate of playable tracks per
+  genre family, ordering by the listener's taste, light counts, and hiding or
+  dimming families below a minimum so a starter never dead-ends (the "no Sounds
+  starter below the threshold" acceptance test belongs here).
+- **Slice 3, For you and Discovery:** "Right now" (#2245), "More like..." (#2244),
+  "New artists in..." and the Familiar, Mixed, New segmented control on the
+  exploration share (default Mixed; owner decision 2), plus the optional Tempo
+  filter in Adjust and the dismissible "you can combine" tip.
 - Screenshots in the User Guide are not refreshed in this slice.
 
 ## Played-through milestone for Sonic Radar (#2097)

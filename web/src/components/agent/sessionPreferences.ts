@@ -1,6 +1,6 @@
 import { hasFilters } from "../../lib/agentSessionRequest";
 import type { AgentNextPreferences, AgentSessionRequest } from "../../lib/api";
-import type { SessionPreset } from "./AgentSessionPresets";
+import type { SessionPreset } from "./sessionPresetData";
 
 export function toIntentPreferences(preset: SessionPreset): AgentNextPreferences {
     return {
@@ -29,9 +29,10 @@ export function buildSessionPreferences({
     request: AgentSessionRequest | null;
 }): AgentNextPreferences | undefined {
     if (activePreset) {
-        return request
-            ? { ...toIntentPreferences(activePreset), request }
-            : toIntentPreferences(activePreset);
+        if (!request) return toIntentPreferences(activePreset);
+        // The Adjust row can change the starter's energy (or clear it): the request wins, so the
+        // session never carries two different energies.
+        return { ...toIntentPreferences(activePreset), request, energy: request.energy ?? undefined };
     }
     if (!request || !hasFilters(request)) return undefined;
     return {

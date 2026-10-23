@@ -51,7 +51,7 @@ import AgentHistoryCard from "./AgentHistoryCard";
 import AgentNextPickCard from "./AgentNextPickCard";
 import { humanPickReason } from "../../lib/agentPickReason";
 import AgentSessionPrompt from "./AgentSessionPrompt";
-import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
+import { SESSION_PRESETS, type SessionPreset } from "./sessionPresetData";
 import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
 import AgentSetupWizard from "./AgentSetupWizard";
 import AgentCommandBar from "./AgentCommandBar";
@@ -139,6 +139,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const myMixEditVersionRef = useRef(0);
     const myMixWasSelectedRef = useRef(false);
     const initialMixCoverageVersionRef = useRef<number | null>(null);
+    // Where this session's filters began (#2249), for analytics: a starter's row and id,
+    // and whether the listener then edited its sentence or chips. Never the text itself.
+    const starterRef = useRef<{ row: StarterRow; id: string; edited: boolean } | null>(null);
+    // The Energy filter was set from the Adjust row (not read from a sentence or a starter).
+    const energyAdjustedRef = useRef(false);
     // The newest render's values, for timers that fire after later renders.
     const latestRef = useRef<{ replan: () => Promise<void>; player: typeof player } | null>(null);
     // A session started from this panel whose first picks should autoplay once
@@ -408,6 +413,10 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const handleTextChange = (value: string) => {
         setText(value);
         setActivePreset(null);
+        // A new sentence replaces the Adjust energy; a starter whose sentence is edited is marked so.
+        energyAdjustedRef.current = false;
+        if (!value.trim()) starterRef.current = null;
+        else if (starterRef.current) starterRef.current.edited = true;
         if (myMixPreferences) {
             setMyMixPreferences(null);
             myMixWasSelectedRef.current = true;
@@ -439,6 +448,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         cancelParse();
         setRequest(next);
         setActivePreset(null);
+        if (starterRef.current) starterRef.current.edited = true;
         if (myMixPreferences) {
             setMyMixPreferences(null);
             myMixWasSelectedRef.current = true;
@@ -450,15 +460,27 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     };
 
     const handleRemoveChip = (chipKey: string) => {
+        if (chipKey === "energy") energyAdjustedRef.current = false;
         if (request) applyRequestEdit(removeChip(request, chipKey));
     };
 
-    const handleEnergyChange = (band: AgentSessionEnergy) => {
-        if (request) applyRequestEdit(setEnergy(request, band));
+    /**
+     * The Adjust row's Energy filter. It combines with whatever is already chosen:
+     * a starter stays selected and a sentence keeps its other filters; only the
+     * energy band changes. Null returns the choice to the DJ.
+     */
+    const handleEnergyChange = (band: AgentSessionEnergy | null) => {
+        cancelParse();
+        energyAdjustedRef.current = band !== null;
+        setRequest(setEnergy(request ?? emptyRequest(), band));
+        setParseError(null);
+        scheduleReplan();
     };
 
     const handleSelectMyMix = () => {
         cancelParse();
+        energyAdjustedRef.current = false;
+        starterRef.current = { row: "for_you", id: "my_mix", edited: false };
         setText("");
         setRequest(null);
         setUnparsed([]);
@@ -655,6 +677,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             // The sentence is still being read: starting now would ignore it.
             if (isParsing) return;
             const preset = activePreset;
+            const starter = myMixPreferences ? { row: "for_you", id: "my_mix", edited: false } : starterRef.current;
+            // Optional filters in use: Energy set from the Adjust row, and the explicit choice.
+            const optionalFilters = [
+                ...(energyAdjustedRef.current && !myMixPreferences && request?.energy ? ["energy"] : []),
+                ...((explicitPending ?? config?.allowExplicit ?? false) ? ["explicit"] : []),
+            ];
             const startedFrom: SessionStartedFrom = myMixPreferences
                 ? "my_mix"
                 : preset ? "preset" : hasFilters(request) ? "prompt" : "plain";
@@ -694,6 +722,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         requestFilterKeys: requestFilterKeys(request),
                         unparsedCount: unparsed.length,
                         ignoredKeys: ignored,
+                        // Where the filters began (#2249); ids and flags only, never the sentence.
+                        starterRow: starter?.row,
+                        starterId: starter?.id,
+                        starterEdited: starter?.edited,
+                        optionalFilters,
                     },
                 });
                 addToast({
@@ -715,14 +748,19 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     };
 
     const handleSelectPreset = (preset: SessionPreset) => {
-        // A preset stands for known filters: show them as chips without reading any text.
+        // A starter writes its sentence into the prompt and shows the filters that sentence
+        // reads as, without waiting for the parser. The listener can edit either.
         cancelParse();
-        setText(`${preset.name}: ${preset.input}`);
-        setRequest(requestFromPreset(preset));
+        setText(preset.sentence);
+        // An Energy chosen in the Adjust row combines with the starter instead of being lost.
+        const adjustedEnergy = energyAdjustedRef.current ? (request?.energy ?? null) : null;
+        const starterRequest = requestFromPreset(preset);
+        setRequest(adjustedEnergy ? { ...starterRequest, energy: adjustedEnergy } : starterRequest);
         setUnparsed([]);
         setIgnored([]);
         setParseError(null);
         setActivePreset(preset);
+        starterRef.current = { row: starterRowOf(preset), id: preset.intent, edited: false };
         if (myMixPreferences) {
             setMyMixPreferences(null);
             myMixWasSelectedRef.current = true;
@@ -738,6 +776,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 surface: ANALYTICS_SURFACE,
                 intent: preset.intent,
                 intentName: preset.name,
+                starterRow: starterRowOf(preset),
+                starterId: preset.intent,
                 energy: preset.preferences.energy,
                 mood: preset.preferences.mood,
                 queueStyle: preset.queueStyle,
@@ -969,6 +1009,13 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             )}
         </div>
     );
+}
+
+export type StarterRow = "moments" | "sounds" | "for_you";
+
+/** The analytics name of the row a starter sits in. */
+function starterRowOf(preset: SessionPreset): StarterRow {
+    return preset.group === "mood" ? "moments" : "sounds";
 }
 
 export type SessionStartedFrom = "preset" | "prompt" | "plain" | "my_mix";
