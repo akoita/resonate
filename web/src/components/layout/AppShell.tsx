@@ -1,6 +1,5 @@
 "use client";
 
-import { Suspense } from "react";
 import PlayerBar from "./PlayerBar";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
@@ -54,9 +53,10 @@ export default function AppShell({
           <AccountStatusBanner />
           <main id="main-content" className="app-content" tabIndex={-1}>
             <div className="app-page">
-              <Suspense fallback={null}>
-                {children}
-              </Suspense>
+              {/* No Suspense here: a boundary around every page defers prerendered
+                * HTML into a hidden segment (late paint, briefly duplicated DOM,
+                * #2290). Pages that read useSearchParams() add their own. */}
+              {children}
             </div>
             <div className="app-footer-slot">
               <LegalFooter />

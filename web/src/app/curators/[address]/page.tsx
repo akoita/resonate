@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { Suspense, useCallback, useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import HumanVerificationCard from "../../../components/disputes/HumanVerificationCard";
 import { getCuratorProfile, type CuratorProfile } from "../../../lib/api";
 
-export default function CuratorProfilePage() {
+function CuratorProfilePageContent() {
   const params = useParams<{ address: string }>();
   const searchParams = useSearchParams();
   const { address: connectedAddress } = useAuth();
@@ -195,3 +195,14 @@ const linkStyle: CSSProperties = {
   color: "#93c5fd",
   textDecoration: "none",
 };
+
+// useSearchParams() bails this page out of static prerendering up to the nearest
+// Suspense boundary, so the boundary lives here rather than around the whole app
+// shell (#2290). The fallback is empty on purpose: the shell chrome stays inline.
+export default function CuratorProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <CuratorProfilePageContent />
+    </Suspense>
+  );
+}

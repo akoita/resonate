@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
@@ -93,7 +93,7 @@ function getRelativeTime(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString();
 }
 
-export default function LibraryPage() {
+function LibraryPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { playQueue, queue, removeFromQueue, currentTrack } = usePlayer();
@@ -1533,4 +1533,15 @@ export default function LibraryPage() {
             </main>
         </AuthGate>
     );
+}
+
+// useSearchParams() bails this page out of static prerendering up to the nearest
+// Suspense boundary, so the boundary lives here rather than around the whole app
+// shell (#2290). The fallback is empty on purpose: the shell chrome stays inline.
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={null}>
+      <LibraryPageContent />
+    </Suspense>
+  );
 }

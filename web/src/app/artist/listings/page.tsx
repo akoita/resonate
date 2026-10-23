@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, type Address } from "viem";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -150,7 +150,7 @@ function ListingManagerArtwork({
   );
 }
 
-export default function MarketplaceListingManagerPage() {
+function MarketplaceListingManagerPageContent() {
   const searchParams = useSearchParams();
   const initialStatus = (searchParams.get("status") as ListingLifecycleStatus | null) ?? "all";
   const highlightedListingId = searchParams.get("listing");
@@ -835,5 +835,16 @@ export default function MarketplaceListingManagerPage() {
         </div>
       )}
     </main>
+  );
+}
+
+// useSearchParams() bails this page out of static prerendering up to the nearest
+// Suspense boundary, so the boundary lives here rather than around the whole app
+// shell (#2290). The fallback is empty on purpose: the shell chrome stays inline.
+export default function MarketplaceListingManagerPage() {
+  return (
+    <Suspense fallback={null}>
+      <MarketplaceListingManagerPageContent />
+    </Suspense>
   );
 }

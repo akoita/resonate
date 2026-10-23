@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import DisputeDashboard from "@/components/disputes/DisputeDashboard";
 
 export const metadata = {
@@ -6,5 +7,11 @@ export const metadata = {
 };
 
 export default function DisputesPage() {
-  return <DisputeDashboard />;
+  // DisputeDashboard reads useSearchParams(); keep its Suspense boundary local so
+  // the rest of the shell is not deferred behind it (#2290).
+  return (
+    <Suspense fallback={null}>
+      <DisputeDashboard />
+    </Suspense>
+  );
 }

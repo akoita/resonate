@@ -104,6 +104,31 @@ The frontend is product-surface oriented: routes own workflow composition, domai
 components own feature interaction, hooks own API/wallet integration, and shared
 UI primitives keep repeated controls predictable.
 
+### Suspense boundaries
+
+`AppShell` does not wrap `{children}` in a `<Suspense>` boundary (#2290). A
+boundary around every page makes each statically prerendered page ship its body
+in a hidden streaming segment (`<div hidden id="S:0">`) that React reveals only
+after its reveal throttle. That delays first paint, and when hydration wins the
+race, React client-renders the page while the hidden server copy lingers for
+about 100 ms, so every server-rendered `id` exists twice.
+
+Put a `<Suspense>` boundary at the smallest subtree that needs one, so the rest
+of the page stays in the initial HTML:
+
+- A component that calls `useSearchParams()` opts its page out of static
+  prerendering up to the nearest boundary. Rename the page body to
+  `FooContent` and export a thin default wrapper,
+  `<Suspense fallback={null}><FooContent /></Suspense>` (see `app/library/page.tsx`
+  and `app/disputes/page.tsx`). A new page that reads search params must do this
+  or `next build --webpack` fails with a prerender error.
+- Lazy parts use `next/dynamic` with a `loading` fallback; that is already a
+  boundary of its own.
+- E2E specs must not assume that content visible in the server HTML has been
+  hydrated. Wait for a hydration-dependent signal before seeding client state
+  (for example `listening-session.spec.ts` waits for the player's first
+  IndexedDB write).
+
 ## Core Flows
 
 ### Upload To Playable Stems
