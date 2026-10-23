@@ -157,12 +157,14 @@ vi.mock("../../hooks/useDiscoveryJournal", () => ({
   }),
 }));
 
+type UpNextPreferences = { myMix?: unknown; request: { genres: string[] } };
+
 // Capture the command bar's Stop handler; Start is the prompt's onSubmit (#2237).
 const captured: {
   onStop?: () => void;
   commandBar?: { name: string; isLive: boolean };
-  onPick?: () => Promise<void>;
-  pick?: AgentNextPickResponse | null;
+  upNext?: { buildPreferences: () => UpNextPreferences; sessionId: string | null };
+  card?: { sessionLive: boolean };
   prompt?: PromptProps;
 } = {};
 vi.mock("./AgentCommandBar", () => ({
@@ -172,10 +174,16 @@ vi.mock("./AgentCommandBar", () => ({
     return null;
   },
 }));
-vi.mock("./AgentNextPickCard", () => ({
-  default: (props: { onPick: () => Promise<void>; pick: AgentNextPickResponse | null }) => {
-    captured.onPick = props.onPick;
-    captured.pick = props.pick;
+// The Now & Up next hook and card have their own tests; the panel only wires them (#2243).
+vi.mock("./useDjUpNext", () => ({
+  useDjUpNext: (options: { buildPreferences: () => UpNextPreferences; sessionId: string | null }) => {
+    captured.upNext = options;
+    return { view: { now: null, upNext: [] }, busy: null, notice: null, skip: vi.fn(), notThis: vi.fn(), moreLikeThis: vi.fn() };
+  },
+}));
+vi.mock("./AgentUpNextCard", () => ({
+  default: (props: { sessionLive: boolean }) => {
+    captured.card = props;
     return null;
   },
 }));
@@ -242,8 +250,8 @@ describe("AgentSessionPanel", () => {
     hookState.historyLoading = false;
     captured.onStop = undefined;
     captured.commandBar = undefined;
-    captured.onPick = undefined;
-    captured.pick = null;
+    captured.upNext = undefined;
+    captured.card = undefined;
     captured.prompt = undefined;
     hookState.events = [];
     hookState.queue = [];
@@ -830,6 +838,8 @@ describe("AgentSessionPanel", () => {
         sessionId: "s-open",
         preferences: body.preferences,
         trackIds: ["a", "n1", "n2"],
+        // What the Now & Up next card says about the new picks; no reason without an explanation.
+        picks: { n1: { source: "rules" }, n2: { source: "rules" } },
       });
       expect(playQueue).not.toHaveBeenCalled();
       // Session History shows the re-planned picks, not the previous request's (#2094).
@@ -911,50 +921,6 @@ describe("AgentSessionPanel", () => {
       expect(setDjSet).not.toHaveBeenCalled();
     });
 
-    it("ignores in-flight manual picks after a My Mix edit or session change", async () => {
-      hookState.config = config({ isActive: true });
-      hookState.sessions = [session("s-open", [])];
-      await loadMyMixCatalog();
-      captured.prompt?.myMix?.onSelect();
-      render();
-      effects.forEach((run) => run());
-
-      let resolvePick: (value: AgentNextPickResponse) => void = () => undefined;
-      getAgentNextPick.mockImplementationOnce(() => new Promise((resolve) => { resolvePick = resolve; }));
-      const pendingPick = captured.onPick?.();
-      expect(getAgentNextPick).toHaveBeenCalledTimes(1);
-
-      captured.prompt?.myMix?.onChange({ context: "evening:weekday", lanes: [] });
-      render();
-      effects.forEach((run) => run());
-      resolvePick(pickResponse(["stale-manual-pick"]));
-      await pendingPick;
-      render();
-
-      expect(captured.pick).toBeNull();
-      expect(playQueue).not.toHaveBeenCalled();
-      expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ title: "AI Pick Ready" }));
-      expect(recordProductAnalytics).not.toHaveBeenCalledWith(
-        "tok",
-        "agent.next_pick_requested",
-        expect.anything(),
-      );
-
-      let resolveSessionPick: (value: AgentNextPickResponse) => void = () => undefined;
-      getAgentNextPick.mockImplementationOnce(() => new Promise((resolve) => { resolveSessionPick = resolve; }));
-      const pendingSessionPick = captured.onPick?.();
-      hookState.sessions = [session("s-new", [])];
-      render();
-      effects.forEach((run) => run());
-      resolveSessionPick(pickResponse(["stale-session-pick"]));
-      await pendingSessionPick;
-      render();
-
-      expect(getAgentNextPick).toHaveBeenCalledTimes(2);
-      expect(captured.pick).toBeNull();
-      expect(playQueue).not.toHaveBeenCalled();
-    });
-
     it("clears remembered My Mix preferences when the listener switches to a regular preset", async () => {
       hookState.config = config({ isActive: true });
       hookState.sessions = [session("s-open", [])];
@@ -965,11 +931,8 @@ describe("AgentSessionPanel", () => {
       captured.prompt?.onSelectPreset(preset);
       render();
 
-      getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
-      await captured.onPick?.();
-
-      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { myMix?: unknown } }];
-      expect(body.preferences).toHaveProperty("myMix", null);
+      // The Up next actions ask the DJ with these preferences.
+      expect(captured.upNext?.buildPreferences()).toHaveProperty("myMix", null);
     });
 
     it("only updates local state when no DJ set is live yet", async () => {
@@ -984,11 +947,8 @@ describe("AgentSessionPanel", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(getAgentNextPick).not.toHaveBeenCalled();
 
-      // The next pick follows the edited filters.
-      getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
-      await captured.onPick?.();
-      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { request: { genres: string[] } } }];
-      expect(body.preferences.request.genres).toEqual(["Hip-Hop", "Rap"]);
+      // The next picks follow the edited filters.
+      expect(captured.upNext?.buildPreferences().request.genres).toEqual(["Hip-Hop", "Rap"]);
     });
 
     it("the Update session action re-plans immediately", async () => {
@@ -999,6 +959,59 @@ describe("AgentSessionPanel", () => {
       await captured.prompt?.onSubmit();
       expect(getAgentNextPick).toHaveBeenCalledTimes(1);
       expect(setDjSet).toHaveBeenCalled();
+    });
+
+    it("Update session with nothing playing asks the DJ with the edited filters and starts the picks", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      render();
+      effects.forEach((run) => run());
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hip-Hop")!;
+      await editAndRender(() => captured.prompt?.onSelectPreset(preset));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Trap"));
+      await vi.advanceTimersByTimeAsync(800);
+      expect(getAgentNextPick).not.toHaveBeenCalled();
+
+      getAgentNextPick.mockResolvedValueOnce(
+        pickResponse(["p1", "p2"], { explanation: ["Fits this session intent"], curatedBy: "llm" }),
+      );
+      await captured.prompt?.onSubmit();
+
+      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { sessionId: string; preferences: { request: { genres: string[] } } }];
+      expect(body.sessionId).toBe("s-open");
+      expect(body.preferences.request.genres).toEqual(["Hip-Hop", "Rap"]);
+      expect(playQueue).toHaveBeenCalledTimes(1);
+      const [queue] = playQueue.mock.calls[0] as unknown as [LocalTrack[]];
+      expect(queue.map((entry) => entry.id)).toEqual(["p1", "p2"]);
+      expect(setDjSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "s-open",
+          trackIds: ["p1", "p2"],
+          picks: { p1: { reason: "Fits this session intent", source: "ai" }, p2: { source: "ai" } },
+        }),
+      );
+    });
+
+    it("Update session with nothing playing and nothing found says why and keeps My Mix coverage", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      await loadMyMixCatalog();
+      captured.prompt?.myMix?.onSelect();
+      render();
+      effects.forEach((run) => run());
+      getAgentNextPick.mockResolvedValueOnce({
+        status: "no_tracks",
+        reason: "all_candidates_recently_played",
+        mixCoverage: { lanes: [{ id: myMixLane.id, label: "Soul · Warm", requested: 3, matched: 0 }] },
+      });
+      await captured.prompt?.onSubmit();
+      render();
+
+      expect(playQueue).not.toHaveBeenCalled();
+      expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "No new picks for those filters" }));
+      expect(captured.prompt?.myMix?.coverage).toEqual({
+        lanes: [{ id: myMixLane.id, label: "Soul · Warm", requested: 3, matched: 0 }],
+      });
     });
 
     it("stopping the session cancels a pending re-plan", async () => {
@@ -1208,97 +1221,82 @@ describe("AgentSessionPanel", () => {
     });
   });
 
+  describe("Now & Up next wiring (#2243)", () => {
+    it("shows the card live only while a session is open, and asks the DJ with the live filters", () => {
+      hookState.config = config({ isActive: false });
+      render();
+      expect(captured.card?.sessionLive).toBe(false);
+      expect(captured.upNext?.sessionId).toBeNull();
+
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      render();
+      expect(captured.card?.sessionLive).toBe(true);
+      expect(captured.upNext?.sessionId).toBe("s-open");
+    });
+  });
+
   describe("DJ playback", () => {
-    it("plays the picked track first when Next AI Pick succeeds", async () => {
-      hookState.config = config({ isActive: true });
-      hookState.sessions = [session("s-open", [])];
-      getAgentNextPick.mockResolvedValueOnce({
-        status: "ok",
-        track: { id: "t-main", title: "Main", artistId: "a-1" },
-        tracks: [
-          { trackId: "t-main", licenseType: "personal", priceUsd: 0 },
-          { trackId: "t-extra", licenseType: "personal", priceUsd: 0 },
-        ],
-      });
+    async function autoplayStartedSession(ids: string[]) {
+      hookState.config = config({ isActive: false });
       render();
-
-      await captured.onPick?.();
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(resolveDjQueue).toHaveBeenCalledWith(["t-main", "t-main", "t-extra"], "tok");
-      expect(playQueue).toHaveBeenCalledTimes(1);
-      const [queue, startIndex] = playQueue.mock.calls[0] as unknown as [LocalTrack[], number];
-      expect(queue[0].id).toBe("t-main");
-      expect(startIndex).toBe(0);
-      expect(saveTracksMetadata).toHaveBeenCalledWith(queue, "remote");
-      expect(addToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "AI Pick Ready", message: "Playing Main" }),
-      );
-    });
-
-    it("does not call a rule-based fallback pick an AI pick (#2075)", async () => {
-      hookState.config = config({ isActive: true });
-      hookState.sessions = [session("s-open", [])];
-      getAgentNextPick.mockResolvedValueOnce({
-        status: "ok",
-        track: { id: "t-main", title: "Main", artistId: "a-1" },
-        tracks: [],
-        curatedBy: "rules",
-        runtimeFallback: { from: "adk", reason: "error" },
-      });
+      await captured.prompt?.onSubmit();
+      hookState.sessions = [session("s-1", ids)];
       render();
-
-      await captured.onPick?.();
+      effects.forEach((run) => run());
       await vi.advanceTimersByTimeAsync(0);
-
-      expect(addToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Pick Ready",
-          message: "Playing Main · rule-based pick, the AI curator is unavailable",
-        }),
-      );
-      expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ title: "AI Pick Ready" }));
-    });
+    }
 
     it("records the DJ set before playback starts so starts carry session provenance", async () => {
-      hookState.config = config({ isActive: true });
-      hookState.sessions = [session("s-open", [])];
-      getAgentNextPick.mockResolvedValueOnce({
-        status: "ok",
-        track: { id: "t-main", title: "Main", artistId: "a-1" },
-        tracks: [{ trackId: "t-extra", licenseType: "personal", priceUsd: 0 }],
-      });
-      render();
+      await autoplayStartedSession(["t-main", "t-extra"]);
 
-      await captured.onPick?.();
-      await vi.advanceTimersByTimeAsync(0);
-
-      // Next AI Pick and the continuation use the same preferences.
-      const requested = (getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: unknown }])[1];
+      expect(resolveDjQueue).toHaveBeenCalledWith(["t-main", "t-extra"], "tok");
       expect(setDjSet).toHaveBeenCalledTimes(1);
       expect(setDjSet).toHaveBeenCalledWith({
-        sessionId: "s-open",
-        preferences: requested.preferences,
+        sessionId: "s-1",
+        preferences: captured.upNext?.buildPreferences(),
         trackIds: ["t-main", "t-extra"],
       });
       expect(setDjSet.mock.invocationCallOrder[0]).toBeLessThan(playQueue.mock.invocationCallOrder[0]);
+      const [queue, startIndex] = playQueue.mock.calls[0] as unknown as [LocalTrack[], number];
+      expect(queue.map((entry) => entry.id)).toEqual(["t-main", "t-extra"]);
+      expect(startIndex).toBe(0);
+      expect(saveTracksMetadata).toHaveBeenCalledWith(queue, "remote");
+    });
+
+    it("gives the first picks their reasons from Session History", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      await captured.prompt?.onSubmit();
+      const withReasons = session("s-1", ["t-main", "t-extra"]);
+      withReasons.licenses[0].recommendation = {
+        recommendation: { explanation: ["Catalog candidate", "Fits this session intent"] },
+        curatedBy: "llm",
+      };
+      withReasons.licenses[1].recommendation = { curatedBy: "rules" };
+      hookState.sessions = [withReasons];
+      render();
+      effects.forEach((run) => run());
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(setDjSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trackIds: ["t-main", "t-extra"],
+          picks: {
+            "t-main": { reason: "Fits this session intent", source: "ai" },
+            "t-extra": { source: "rules" },
+          },
+        }),
+      );
     });
 
     it("restores the previous DJ set when playback fails", async () => {
-      hookState.config = config({ isActive: true });
-      hookState.sessions = [session("s-open", [])];
-      getAgentNextPick.mockResolvedValueOnce({
-        status: "ok",
-        track: { id: "t-main", title: "Main", artistId: "a-1" },
-      });
       const previous = { sessionId: "previous-session", preferences: {}, trackIds: ["old-track"] };
       hookState.djSet = previous;
       setDjSet.mockImplementationOnce((set) => { hookState.djSet = set; });
       playQueue.mockRejectedValueOnce(new Error("audio blocked"));
-      render();
 
-      await captured.onPick?.();
-      await vi.advanceTimersByTimeAsync(0);
+      await autoplayStartedSession(["t-main"]);
 
       expect(setDjSet).toHaveBeenCalledTimes(2);
       expect(setDjSet).toHaveBeenLastCalledWith(previous);
@@ -1324,34 +1322,10 @@ describe("AgentSessionPanel", () => {
       expect(setDjSet).toHaveBeenLastCalledWith(null);
     });
 
-    it("does not touch the player when Next AI Pick returns nothing", async () => {
-      hookState.config = config({ isActive: true });
-      hookState.sessions = [session("s-open", [])];
-      render();
-
-      await captured.onPick?.();
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(playQueue).not.toHaveBeenCalled();
-      // Plain words, never the raw status code (#2056).
-      expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
-        title: "No new pick",
-        message: "You've heard everything that fits this session. Try other filters or another quick start.",
-      }));
-    });
-
     it("toasts when the DJ's picks cannot be played", async () => {
-      hookState.config = config({ isActive: true });
-      hookState.sessions = [session("s-open", [])];
-      getAgentNextPick.mockResolvedValueOnce({
-        status: "ok",
-        track: { id: "t-main", title: "Main", artistId: "a-1" },
-      });
       playQueue.mockRejectedValueOnce(new Error("audio blocked"));
-      render();
 
-      await captured.onPick?.();
-      await vi.advanceTimersByTimeAsync(0);
+      await autoplayStartedSession(["t-main"]);
 
       expect(addToast).toHaveBeenCalledWith(
         expect.objectContaining({ type: "error", title: "Couldn't play the DJ's picks", message: "audio blocked" }),

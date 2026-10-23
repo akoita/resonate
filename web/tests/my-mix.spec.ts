@@ -37,7 +37,7 @@ function tasteMemory() {
   };
 }
 
-test("My Mix starts a session, carries live edits into the next pick, shows coverage, and saves only on request", async ({ authenticatedPage: page }) => {
+test("My Mix starts a session, carries live edits into the DJ's next picks, shows coverage, and saves only on request", async ({ authenticatedPage: page }) => {
   const sessionPreferences: Array<Record<string, unknown>> = [];
   const nextPreferences: Array<Record<string, unknown>> = [];
   const savedEdits: Array<Record<string, unknown>>[] = [];
@@ -111,9 +111,10 @@ test("My Mix starts a session, carries live edits into the next pick, shows cove
   // Add another catalog filter while the session is live; it remains session-only.
   await panel.getByLabel("Add a genre or mood").selectOption("mood:Zen");
   await panel.getByRole("button", { name: "Add filter" }).click();
-  await panel.getByRole("button", { name: "Next Pick" }).click();
+  // Nothing of this session is playing, so "Update session" asks the DJ for picks that follow the edited mix.
+  await panel.getByTestId("agent-session-prompt").getByRole("button", { name: "Update session", exact: true }).click();
   await expect(
-    panel.locator(".aid-card--next-pick").getByRole("status", { name: "My Mix availability" })
+    panel.locator(".aid-card--up-next").getByRole("status", { name: "My Mix availability" })
       .getByText("Not enough new tracks for Soul · Warm yet."),
   ).toBeVisible();
   expect(nextPreferences[0]?.myMix).toMatchObject({

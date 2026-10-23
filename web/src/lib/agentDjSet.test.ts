@@ -3,6 +3,7 @@ import {
     DJ_SET_STORAGE_KEY,
     addDjSetTracks,
     getDjSet,
+    replaceDjSetTracks,
     resetDjSetForTests,
     setDjSet,
     subscribeDjSet,
@@ -120,5 +121,47 @@ describe("agentDjSet", () => {
         vi.stubGlobal("sessionStorage", undefined);
         setDjSet(SET);
         expect(getDjSet()).toEqual(SET);
+    });
+
+    describe("pick notes (#2243)", () => {
+        it("keeps notes only for tracks in the set, trimmed and bounded", () => {
+            setDjSet({
+                ...SET,
+                picks: {
+                    "t-1": { reason: `  ${"x".repeat(300)} `, source: "ai" },
+                    "t-2": { source: "rules" },
+                    gone: { reason: "not in the set", source: "ai" },
+                    bad: { reason: 4 as unknown as string },
+                },
+            });
+            const picks = getDjSet()?.picks;
+            expect(Object.keys(picks ?? {}).sort()).toEqual(["t-1", "t-2"]);
+            expect(picks?.["t-1"].reason).toHaveLength(120);
+            expect(picks?.["t-2"]).toEqual({ source: "rules" });
+        });
+
+        it("adds notes with new tracks and survives a reload through storage", () => {
+            const storage = memoryStorage();
+            vi.stubGlobal("sessionStorage", storage);
+            setDjSet(SET);
+            addDjSetTracks(["t-3"], { "t-3": { reason: "Nearby vibe match", source: "ai" }, other: { reason: "ignored" } });
+            expect(getDjSet()?.picks).toEqual({ "t-3": { reason: "Nearby vibe match", source: "ai" } });
+            resetDjSetForTests();
+            expect(getDjSet()?.picks).toEqual({ "t-3": { reason: "Nearby vibe match", source: "ai" } });
+        });
+
+        it("replaces tracks and drops the notes of the ones removed", () => {
+            setDjSet({ ...SET, picks: { "t-1": { reason: "A", source: "ai" }, "t-2": { reason: "B", source: "ai" } } });
+            replaceDjSetTracks(["t-2"], ["t-9", "t-1"], { "t-9": { reason: "C", source: "rules" } });
+            const set = getDjSet();
+            expect(set?.trackIds).toEqual(["t-1", "t-9"]);
+            expect(set?.picks).toEqual({ "t-1": { reason: "A", source: "ai" }, "t-9": { reason: "C", source: "rules" } });
+            expect(set?.preferences).toEqual(SET.preferences);
+        });
+
+        it("ignores replacements when no set is live", () => {
+            expect(() => replaceDjSetTracks(["a"], ["b"])).not.toThrow();
+            expect(getDjSet()).toBeNull();
+        });
     });
 });

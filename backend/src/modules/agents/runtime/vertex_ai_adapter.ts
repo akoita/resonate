@@ -89,6 +89,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
             // Forced server-side; the model cannot change explicit filtering.
             allowExplicit: input.preferences.allowExplicit ?? false,
             recentTrackIds: input.recentTrackIds,
+            seedTrackId: input.preferences.seedTrackId,
           }
         );
         functionResponses.push({

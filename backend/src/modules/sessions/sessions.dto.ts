@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   ValidateNested,
 } from "class-validator";
@@ -56,6 +57,16 @@ export class SessionPreferencesDto {
   @IsOptional()
   @IsString()
   source?: string;
+
+  /**
+   * "More like this" (#2243): a track already picked in this session whose
+   * stored-embedding neighbours steer this one pick. Used by `agent/next`
+   * only, never remembered, checked by the service.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  seedTrackId?: string;
 
   /** Listening filters from the listener's own words (#2037); sanitized by the service. */
   request?: AgentSessionRequest;

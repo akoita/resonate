@@ -85,6 +85,13 @@ export interface AgentSelectorInput {
    * joined keyword queries.
    */
   semanticQuery?: string;
+  /**
+   * "More like this" (#2243): a track the listener liked. Its stored embedding
+   * is one more semantic query source (nearest neighbours, no model call), so a
+   * pick can be steered by a track instead of words. One request only; the
+   * caller checks that the track belongs to the listener's session.
+   */
+  seedTrackId?: string;
 }
 
 /**
@@ -251,14 +258,20 @@ export class AgentSelectorService {
     // `select()` (ADR-TE-4: unmet demand stays visible) keeps holding even
     // though semantic candidates count toward `candidates.length`.
     const semanticQuery = input.semanticQuery?.trim();
+    const seedTrackId = input.seedTrackId?.trim();
     const semanticScores = new Map<string, number>();
-    if (semanticQuery) {
+    // The words and the seed track are separate query sources (#2243).
+    const semanticSources: Array<Record<string, unknown>> = [
+      ...(semanticQuery ? [{ query: semanticQuery }] : []),
+      ...(seedTrackId ? [{ seedTrackId }] : []),
+    ];
+    for (const source of semanticSources) {
       // Fails open: semantic retrieval only adds candidates, so a tool error
       // leaves the keyword candidates as they were.
       const result = await this.tools
         .get("catalog.semantic_search")
         .run({
-          query: semanticQuery,
+          ...source,
           limit: 20,
           allowExplicit: input.allowExplicit ?? false,
           excludeTrackIds: input.recentTrackIds,
@@ -274,7 +287,10 @@ export class AgentSelectorService {
           continue;
         }
         if (typeof item.semanticScore === "number") {
-          semanticScores.set(item.id, item.semanticScore);
+          semanticScores.set(
+            item.id,
+            Math.max(semanticScores.get(item.id) ?? 0, item.semanticScore),
+          );
         }
         if (!byId.has(item.id)) {
           // No matchedQueries: no keyword query found this track.

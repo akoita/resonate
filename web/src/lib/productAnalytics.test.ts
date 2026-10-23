@@ -151,6 +151,7 @@ describe("product analytics helpers", () => {
         "agent.session_started",
         "agent.session_stopped",
         "agent.next_pick_requested",
+        "agent.up_next_action",
         "player.action_impression",
         "player.action_selected",
         "community.artist_tab_viewed",

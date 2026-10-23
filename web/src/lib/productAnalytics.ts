@@ -53,6 +53,7 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "agent.session_started",
   "agent.session_stopped",
   "agent.next_pick_requested",
+  "agent.up_next_action",
   "settings.updated",
   "taste_memory.settings_updated",
   "taste_memory.signal_hidden",

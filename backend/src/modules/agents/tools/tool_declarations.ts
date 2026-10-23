@@ -156,7 +156,13 @@ function toRegistryName(geminiName: string): string | undefined {
 export async function executeTool(
   registry: ToolRegistry,
   functionCall: { name: string; args: Record<string, unknown> },
-  context: { userId: string; allowExplicit?: boolean; recentTrackIds?: string[] }
+  context: {
+    userId: string;
+    allowExplicit?: boolean;
+    recentTrackIds?: string[];
+    /** "More like this" (#2243): session-owned, added to semantic search only. */
+    seedTrackId?: string;
+  }
 ): Promise<Record<string, unknown>> {
   const registryName = toRegistryName(functionCall.name);
   if (!registryName) {
@@ -170,6 +176,7 @@ export async function executeTool(
   }
   if (registryName === "catalog.semantic_search") {
     sessionOwned.excludeTrackIds = context.recentTrackIds ?? [];
+    if (context.seedTrackId) sessionOwned.seedTrackId = context.seedTrackId;
   }
   const result = await tool.run({ ...args, ...sessionOwned, userId: context.userId });
   return result;
