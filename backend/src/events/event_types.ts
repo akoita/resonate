@@ -897,8 +897,16 @@ export interface AgentTrackSelectedEvent extends BaseEvent {
 export interface AgentDecisionMadeEvent extends BaseEvent {
   eventName: "agent.decision_made";
   sessionId: string;
+  /** One track per event: the analytics envelope subject is capped at 200 characters (#2317). */
   trackId?: string;
   trackCount?: number;
+  /**
+   * Set when one session start emits one event per pick (#2317): this event's
+   * position and the batch size. Batch-level fields (reasoning, latencyMs,
+   * coverage) ride on pickIndex 0 only; the live feed shows one line per batch.
+   */
+  pickIndex?: number;
+  pickCount?: number;
   licenseType?: "personal" | "remix" | "commercial";
   priceUsd?: number;
   reason: string;

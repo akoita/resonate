@@ -193,6 +193,11 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
         }));
 
         this.subscriptions.push(this.eventBus.subscribe('agent.decision_made', (event: AgentDecisionMadeEvent) => {
+            // #2317: a session start emits one event per pick for analytics;
+            // the live feed shows the batch once, from the first event.
+            if (event.pickIndex != null && event.pickIndex > 0) {
+                return;
+            }
             let msg: string;
             if (event.reason === 'no_tracks') {
                 msg = 'No matching tracks found in catalog';
@@ -206,7 +211,9 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
             ) {
                 const latency = event.latencyMs != null ? ` (${(event.latencyMs / 1000).toFixed(1)}s)` : '';
                 msg = event.trackId
-                    ? `AI selected track${latency}`
+                    ? (event.pickCount ?? 1) > 1
+                        ? `AI selected ${event.pickCount} tracks${latency}`
+                        : `AI selected track${latency}`
                     : `AI could not find a suitable track${latency}`;
                 if (event.reasoning) {
                     msg += `: ${event.reasoning}`;

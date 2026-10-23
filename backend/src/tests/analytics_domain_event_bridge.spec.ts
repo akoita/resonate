@@ -204,6 +204,79 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
   });
 
+  // #2317: the envelope caps subjectId at 200 characters, so an event whose
+  // subject key carries a comma-joined list of a 12-track batch is rejected and
+  // the bridge only logs a warning. Every agent.* event must therefore be
+  // published once per track (or per session), never with a joined list.
+  describe("agent events of a 12-pick batch (#2317)", () => {
+    const trackIds = Array.from({ length: 12 }, (_, i) => `cm${String(i).padStart(2, "0")}${"x".repeat(23)}`);
+    const occurredAt = "2026-10-24T12:00:00.000Z";
+    const base = { eventVersion: 1, occurredAt, sessionId: "session-12" };
+    // A representative payload of every agent.* event that names a track, one per pick.
+    const perTrackEvents: Array<(trackId: string, index: number) => Record<string, unknown>> = [
+      (trackId, i) => ({ ...base, eventName: "agent.decision_made", trackId, licenseType: "personal", reason: "llm", curatedBy: "llm", pickIndex: i, pickCount: 12 }),
+      (trackId) => ({ ...base, eventName: "agent.track_selected", trackId, strategy: "llm", preferences: {} }),
+      (trackId) => ({ ...base, eventName: "agent.selection", trackId, candidates: trackIds, count: 12, strategy: "recent-first" }),
+      (trackId) => ({ ...base, eventName: "agent.evaluated", trackId, licenseType: "personal", priceUsd: 0, reason: "ok" }),
+      (trackId) => ({ ...base, eventName: "agent.mix_planned", trackId, trackTitle: "Title", transition: "crossfade" }),
+      (trackId) => ({ ...base, eventName: "agent.negotiated", trackId, trackTitle: "Title", licenseType: "personal", priceUsd: 0, reason: "ok" }),
+    ];
+
+    it.each(perTrackEvents.map((make, index) => [make(trackIds[0], 0).eventName, index] as const))(
+      "bridges %s for each of 12 picks with a single-track subject",
+      async (eventName, makerIndex) => {
+        const ingest = new AnalyticsIngestService();
+        eventBus = new EventBus();
+        bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+        bridge.onModuleInit();
+        const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+
+        trackIds.forEach((trackId, i) => eventBus.publish(perTrackEvents[makerIndex](trackId, i) as any));
+
+        await waitForExpect(async () =>
+          expect((await ingest.listEvents()).filter((event) => event.eventName === eventName)).toHaveLength(12),
+        );
+        const bridged = (await ingest.listEvents()).filter((event) => event.eventName === eventName);
+        expect(bridged.map((event) => event.subjectId)).toEqual(trackIds);
+        expect(bridged.every((event) => (event.subjectId ?? "").length <= 200)).toBe(true);
+        expect(warn.mock.calls.filter(([message]) => String(message).includes("Failed to bridge"))).toEqual([]);
+      },
+    );
+
+    it("rejects a comma-joined track list as a subject, which is why emitters publish one event per track", async () => {
+      const ingest = new AnalyticsIngestService();
+      eventBus = new EventBus();
+      bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+      bridge.onModuleInit();
+      const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+
+      eventBus.publish({
+        ...base,
+        eventName: "agent.decision_made",
+        trackId: trackIds.join(","),
+        reason: "llm",
+      } as any);
+
+      await waitForExpect(() =>
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining("Failed to bridge agent.decision_made")),
+      );
+      expect(await ingest.listEvents()).toHaveLength(0);
+    });
+
+    it("bridges the batch-level decision without a track and the empty-pick decision", async () => {
+      const ingest = new AnalyticsIngestService();
+      eventBus = new EventBus();
+      bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+      bridge.onModuleInit();
+
+      eventBus.publish({ ...base, eventName: "agent.decision_made", trackCount: 12, reason: "approved", curatedBy: "rules" } as any);
+      eventBus.publish({ ...base, occurredAt: "2026-10-24T12:00:01.000Z", eventName: "agent.decision_made", trackId: "", reason: "no_tracks" } as any);
+
+      await waitForExpect(async () => expect(await ingest.listEvents()).toHaveLength(2));
+      expect((await ingest.listEvents()).every((event) => event.subjectId === undefined)).toBe(true);
+    });
+  });
+
   it("bridges high-value domain events with compact analytics payloads", async () => {
     const ingest = new AnalyticsIngestService();
     eventBus = new EventBus();

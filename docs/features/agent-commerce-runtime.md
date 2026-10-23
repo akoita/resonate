@@ -91,6 +91,7 @@ Lyria tools were removed ([ADR-TE-4](../strategy/taste-engine-decisions.md)).
 
 - When the catalog cannot fill the requested track count (`AGENT_TRACK_LIMIT`, default 5), the runtime returns fewer tracks and an explicit `shortfall` (requested minus returned). It never pads the selection with generated tracks.
 - The unmet intent is recorded on the `agent.decision_made` event: `shortfall` plus `unmetIntent` (`genres`, `mood`, `energy`), both set only when `shortfall > 0`. This is the demand signal for future catalog sourcing.
+- An LLM-curated session start publishes one `agent.decision_made` per pick (single `trackId`, `pickIndex`, `pickCount`; reasoning, latency and coverage on the first event only), so a 12-track batch no longer exceeds the 200-character analytics subject cap and is recorded in analytics (#2317). The live feed shows the batch as one line.
 - `AgentMixerService` only plans metadata transitions (`plan()`); it has no generation dependency. The runtime tool registry exposes `catalog.search`, `pricing.quote`, `analytics.signal`, and `embeddings.similarity` only, and the ADK agent is instructed to return fewer tracks rather than generate.
 - `AGENT_GENERATION_BUDGET` and the `generationBudgetUsd` runtime input no longer exist. `generationsUsed` and `generationSpendUsd` were removed from runtime results, `POST /sessions/agent/next`, and `agent.decision_made`.
 - The `agent.generation_triggered` analytics event is **retired**: nothing emits it, and the analytics bridge keeps its mapping only so historical events still normalize.
