@@ -26,10 +26,12 @@ import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
 import { AgentLearningService } from "./agent_learning.service";
 import { discoveryVariantForUser } from "../recommendations/discovery_experiment";
+import { writeStructuredLog } from "../shared/structured_logging";
 import {
   HYBRID_RETRIEVAL_VARIANT,
   hasAudioRangeRequest,
   hybridRetrievalConfig,
+  HybridRetrievalUnavailableError,
   RankedList,
   reciprocalRankFusion,
   RetrievalReport,
@@ -329,7 +331,7 @@ export class AgentSelectorService {
     const semanticQuery = input.semanticQuery?.trim();
     const retrievalVariant = input.retrievalVariant ?? discoveryVariantForUser(input.userId).rankerVariant;
     const gathered = retrievalVariant === HYBRID_RETRIEVAL_VARIANT
-      ? await this.gatherHybrid(input, pass, queries, semanticQuery)
+      ? await this.gatherHybridOrDefault(input, pass, queries, semanticQuery)
       : await this.gatherLegacy(input, pass, queries, semanticQuery);
     const { byId, semanticScores } = gathered;
     const retrievedBy = gathered.retrievedBy;
@@ -889,6 +891,36 @@ export class AgentSelectorService {
   }
 
   /**
+   * Hybrid retrieval with the default retrieval as its safety net (#2242). When
+   * every hybrid source fails (each overran the deadline on a slow database, or
+   * errored), this pick uses the established path instead of returning nothing,
+   * and the fallback is logged with what each source did. A hybrid pass that ran
+   * but found nothing is an honest empty result and is not retried.
+   */
+  private async gatherHybridOrDefault(
+    input: AgentSelectorInput,
+    pass: SelectionPass,
+    queries: string[],
+    semanticQuery: string | undefined,
+  ) {
+    try {
+      return await this.gatherHybrid(input, pass, queries, semanticQuery);
+    } catch (error) {
+      writeStructuredLog({
+        level: "warn",
+        event: "agent.retrieval.hybrid_fallback",
+        message: "Hybrid retrieval failed; this pick uses the default retrieval",
+        pass,
+        // A reason code, never the error text (it can carry query or connection details).
+        ...(error instanceof HybridRetrievalUnavailableError
+          ? { reason: "every_source_failed", sources: error.sources }
+          : { reason: "error" }),
+      });
+      return this.gatherLegacy(input, pass, queries, semanticQuery);
+    }
+  }
+
+  /**
    * Hybrid retrieval (`hybrid_rrf_v1`, #2242). Every source runs in parallel
    * with its own candidate budget, under one latency budget for the step:
    *  - keyword: `catalog.search` per query (also matches descriptor families);
@@ -1106,12 +1138,19 @@ export class AgentSelectorService {
         durationMs: outcome.durationMs,
       });
     }
-    // Every source that ran failed: surface it like the default path does,
-    // instead of reporting the failure as an unmet request.
+    // Every source that ran failed: hand it to the fallback (the default
+    // retrieval), instead of reporting the failure as an unmet request.
     const ran = report.filter((entry) => entry.status !== "skipped");
     if (ran.length > 0 && ran.every((entry) => entry.status === "error" || entry.status === "timeout")) {
-      throw new Error("Hybrid retrieval unavailable: every source failed");
+      throw new HybridRetrievalUnavailableError(report);
     }
+    writeStructuredLog({
+      level: "info",
+      event: "agent.retrieval.sources",
+      message: "Hybrid retrieval sources",
+      pass,
+      sources: report,
+    });
 
     const fused = reciprocalRankFusion(lists);
     const kept = fused.slice(0, config.maxCandidates);

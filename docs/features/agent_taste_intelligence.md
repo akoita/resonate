@@ -790,12 +790,18 @@ default 20 each, 1..50):
 | `seed` | The listener's seeds by kind. Artist names today (`catalog.artist_seed`: own tracks plus vector neighbours) | `AgentSelectorInput.seeds = { artists?, trackIds? }` (`seedArtists` still works and merges). A new kind (`trackIds`: a current track or playlist, #2243) is one more field and one more runner in the seed source; fusion and budgets are unchanged. |
 
 **Fail open and latency.** Every source runs under one deadline
-(`AGENT_RETRIEVAL_TIMEOUT_MS`, default 1500). An error or a source still running
-at the deadline removes only that source's candidates; the reason code
-(`tool_error`, `deadline_exceeded`) is logged, never the error text, and the
-selection reports `retrieval.sources[]` (status, reason, candidates, duration).
-If every source that ran failed, the pick throws like the default path instead
-of reporting a failure as an unmet request.
+(`AGENT_RETRIEVAL_TIMEOUT_MS`, default 5000; it was 1500, which keyword and
+semantic retrieval both overran on every pick on a small staging database). An
+error or a source still running at the deadline removes only that source's
+candidates; the reason code (`tool_error`, `deadline_exceeded`) is logged, never
+the error text, and the selection reports `retrieval.sources[]` (status, reason,
+candidates, duration). Each hybrid retrieval logs `agent.retrieval.sources` with
+every source's status and duration, so the budget can be tuned from real
+numbers. If every source that ran failed, that pick falls back to the default
+retrieval instead of returning nothing, logged as
+`agent.retrieval.hybrid_fallback` with what each source did; only if the default
+path fails too does the pick fail. A hybrid pass that ran but found nothing is
+an honest empty result and is not retried.
 
 **Fusion.** Reciprocal-rank fusion over every source ranking: a track's score is
 the sum of `1 / (60 + rank)` over the lists that contain it (k = 60, the
@@ -876,7 +882,7 @@ issue's "World, rap and calm" criterion to move; the @10 gaps on `world-all` and
 is a one-point score tie that fusion does not change. `sentence-40-minute-run`
 needs the parser to read tempo/energy from the sentence, which is out of scope.
 Latency: the sources run in parallel, so the step costs the slowest source, and
-is bounded by the 1500 ms deadline; a before/after p95 needs production traffic
+is bounded by the retrieval deadline (5000 ms by default); a before/after p95 needs production traffic
 and is not recorded here.
 
 **Promotion recommendation (not a decision).** Offline there is no regression
@@ -2215,7 +2221,7 @@ Useful next warehouse jobs:
 | `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Optional BigQuery API base URL override for tests or private endpoints. |
 | `DISCOVERY_RANKER_EXPERIMENT` | Optional ranker variant / holdout experiment, `<key>:<variant>=<pct>,...` (#1455). Unset means everyone is `baseline`. `hybrid_rrf_v1` enables hybrid retrieval for its bucket (#2242). |
 | `AGENT_RETRIEVAL_BUDGETS` | Hybrid retrieval candidate budgets, `keyword=20,semantic=20,audio_range=20,lane=20,seed=20` (#2242). |
-| `AGENT_RETRIEVAL_TIMEOUT_MS` | Latency budget of the hybrid retrieval step; default `1500` (#2242). |
+| `AGENT_RETRIEVAL_TIMEOUT_MS` | Latency budget of the hybrid retrieval step; default `5000` (#2242). When every source overruns it or errors, the pick falls back to the default retrieval. |
 | `AGENT_RETRIEVAL_MAX_CANDIDATES` | Cap on the fused candidate list; default `150` (#2242). |
 
 ## Verification

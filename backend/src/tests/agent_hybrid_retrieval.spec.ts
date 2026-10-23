@@ -289,12 +289,49 @@ describe("AgentSelectorService hybrid retrieval (hybrid_rrf_v1)", () => {
     });
   });
 
-  it("throws when every source that ran failed, instead of reporting an unmet request", async () => {
+  it("falls back to the default retrieval when every hybrid source fails, and logs what each did", async () => {
+    process.env.AGENT_RETRIEVAL_TIMEOUT_MS = "100";
     jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    // The first (hybrid) catalog search overruns the deadline; the default path's search answers.
+    let calls = 0;
+    const { selector } = build({
+      keyword: () => (calls++ === 0 ? new Promise(() => undefined) : Promise.resolve({ items: [item("k1")] })),
+    });
+    const result = await selector.select({ queries: ["House"], recentTrackIds: [], ...hybrid });
+    expect(result.candidates).toEqual(["k1"]);
+    // The default path carries no hybrid report.
+    expect(result.retrieval).toBeUndefined();
+    const fallback = info.mock.calls
+      .map((call) => JSON.parse(String(call[0])))
+      .find((entry) => entry.event === "agent.retrieval.hybrid_fallback");
+    expect(fallback).toMatchObject({ level: "warn", pass: "strict", reason: "every_source_failed" });
+    expect(fallback.sources).toEqual(
+      expect.arrayContaining([expect.objectContaining({ source: "keyword", status: "timeout", reason: "deadline_exceeded" })]),
+    );
+    expect(fallback.sources[0]).toHaveProperty("durationMs");
+  });
+
+  it("still surfaces the error when the default retrieval fails too", async () => {
+    jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    jest.spyOn(console, "info").mockImplementation(() => undefined);
     const { selector } = build({ keyword: async () => { throw new Error("db down"); } });
     await expect(
       selector.select({ queries: ["House"], recentTrackIds: [], ...hybrid }),
-    ).rejects.toThrow(/every source failed/);
+    ).rejects.toThrow(/db down/);
+  });
+
+  it("logs each source's status and duration on a successful hybrid retrieval", async () => {
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    const { selector } = build({ keyword: [item("k1")] });
+    await selector.select({ queries: ["House"], recentTrackIds: [], ...hybrid });
+    const logged = info.mock.calls
+      .map((call) => JSON.parse(String(call[0])))
+      .find((entry) => entry.event === "agent.retrieval.sources");
+    expect(logged?.sources).toEqual(
+      expect.arrayContaining([expect.objectContaining({ source: "keyword", status: "ok", candidates: 1 })]),
+    );
+    expect(typeof logged.sources[0].durationMs).toBe("number");
   });
 
   it("retrieves by measured audio features when the request names energy or tempo and no genre", async () => {
