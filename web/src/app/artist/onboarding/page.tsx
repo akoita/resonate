@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import {
@@ -17,7 +17,7 @@ import HumanVerificationCard from "../../../components/disputes/HumanVerificatio
 import { PayoutEligibilityNotice } from "../../../components/payments/PayoutEligibilityNotice";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
 
-export default function ArtistOnboardingPage() {
+function ArtistOnboardingPageContent() {
   const { token, address } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -731,5 +731,16 @@ export default function ArtistOnboardingPage() {
         }
       `}</style>
     </AuthGate>
+  );
+}
+
+// useSearchParams() bails this page out of static prerendering up to the nearest
+// Suspense boundary, so the boundary lives here rather than around the whole app
+// shell (#2290). The fallback is empty on purpose: the shell chrome stays inline.
+export default function ArtistOnboardingPage() {
+  return (
+    <Suspense fallback={null}>
+      <ArtistOnboardingPageContent />
+    </Suspense>
   );
 }
