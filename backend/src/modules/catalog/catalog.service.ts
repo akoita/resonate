@@ -1075,7 +1075,6 @@ export class CatalogService implements OnModuleInit {
           }
 
           // Validate every existing reference in batches before the first write.
-          // Missing IDs remain eligible for the existing create/upsert path.
           const existingTracks = await tx.track.findMany({
             where: { id: { in: trackIds } },
             select: {
@@ -1098,6 +1097,17 @@ export class CatalogService implements OnModuleInit {
             }
           }
 
+          // #2257: stems.processed carries no AI disclosure, so it must never
+          // create a track (it would fall back to UNDECLARED / migration).
+          // Reject the whole event atomically; the release stays unchanged.
+          const existingTrackIds = new Set(existingTracks.map((track) => track.id));
+          const missingTrackIds = trackIds.filter((id) => !existingTrackIds.has(id));
+          if (missingTrackIds.length > 0) {
+            throw new Error(
+              `Rejecting stems.processed for release ${event.releaseId}: track ${missingTrackIds.join(", ")} was not created with an AI disclosure by stems.uploaded`,
+            );
+          }
+
           const existingStems = await tx.stem.findMany({
             where: { id: { in: Array.from(expectedStemTrackIds.keys()) } },
             select: { id: true, trackId: true },
@@ -1115,24 +1125,12 @@ export class CatalogService implements OnModuleInit {
           const upsertedStemIds: Array<{ trackId: string; stemId: string }> = [];
           if (tracks.length) {
             for (const trackData of tracks) {
-              // Ensure track exists (it should from stems.uploaded)
-              await tx.track.upsert({
+              // The track row must already exist: stems.uploaded (or createRelease)
+              // creates it together with its explicit AI disclosure. Updating
+              // never writes disclosure fields, so a declaration is never lost.
+              await tx.track.update({
                 where: { id: trackData.id, releaseId: event.releaseId },
-                create: {
-                  id: trackData.id,
-                  releaseId: event.releaseId,
-                  title: trackData.title,
-                  artist: trackData.artist,
-                  position: trackData.position,
-                  processingStatus: "complete", // Mark as complete when processed
-                  processingError: null,
-                  rightsRoute: currentRelease.rightsRoute,
-                  rightsFlags: (currentRelease.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
-                  rightsReason: currentRelease.rightsReason,
-                  rightsPolicyVersion: currentRelease.rightsPolicyVersion,
-                  rightsEvaluatedAt: currentRelease.rightsEvaluatedAt,
-                },
-                update: {
+                data: {
                   artist: trackData.artist,
                   position: trackData.position,
                   processingStatus: "complete", // Mark as complete when processed

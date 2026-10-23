@@ -16,6 +16,10 @@ import { ERASED_EMAIL_DOMAIN } from "../modules/privacy/personal_data_erasure_ma
 import { writeStructuredLog } from "../modules/shared/structured_logging";
 import { prisma } from "../db/prisma";
 import {
+  AI_DISCLOSURE_VERSION,
+  normalizeAiDisclosureInput,
+} from "../modules/catalog/ai-disclosure.policy";
+import {
   AUDIT_EVENT_NAMES,
   CONSENT_WITHDRAWN_ACTION,
   Expectation,
@@ -765,8 +769,20 @@ async function seedPerson(
       status: "published",
     },
   });
+  // #2257: the fixture track declares human-made (NONE) explicitly rather than
+  // falling back to UNDECLARED / migration.
+  const disclosure = normalizeAiDisclosureInput({ level: "none", facets: [] });
   await prisma.track.create({
-    data: { id: own("track"), releaseId: own("release"), title: own("track_title") },
+    data: {
+      id: own("track"),
+      releaseId: own("release"),
+      title: own("track_title"),
+      aiDisclosureLevel: disclosure.level,
+      aiContributionFacets: disclosure.facets,
+      aiDisclosureSource: "artist",
+      aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+      aiDeclaredAt: now,
+    },
   });
   await prisma.stem.create({
     data: { id: own("stem"), trackId: own("track"), type: "vocals", uri: `ipfs://${own("stem")}` },
