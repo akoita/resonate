@@ -339,14 +339,25 @@ jobs:
       # Punchline Drops clip extraction (#481) and the publish path (#482) shell
       # out to ffmpeg; without it those integration specs skip their render
       # cases. Install it so the media path is actually exercised in CI.
-      # A stalled apt mirror once held this step (and the merge queue) for
-      # over 25 minutes; bound it and let apt retry a slow mirror instead.
-      - name: Install ffmpeg
-        timeout-minutes: 10
+      # ffmpeg only enables the Punchline/remix render cases, which skip
+      # themselves when it is missing. The Ubuntu mirror has stalled or crawled
+      # for 10+ minutes on several runs (2026-10-23), so the install is
+      # best-effort: bounded, retried, and a visible warning when it fails,
+      # rather than failing a required check on a mirror outage.
+      - name: Install ffmpeg (best effort)
+        id: ffmpeg
+        timeout-minutes: 6
+        continue-on-error: true
         run: |
           apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_opts[@]}" update
           sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends ffmpeg
+
+      - name: Warn when ffmpeg is unavailable
+        if: steps.ffmpeg.outcome != 'success'
+        run: |
+          echo "::warning title=ffmpeg unavailable::The apt mirror failed or timed out; ffmpeg render cases in the integration specs are skipped on this run."
+          echo "### ⚠️ ffmpeg unavailable — render cases skipped" >> "$GITHUB_STEP_SUMMARY"
 
       # No 'prisma db push' needed — Testcontainers globalSetup handles schema sync
       - name: Run selected backend integration tests
