@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
+import { useHydrated } from "../hooks/useHydrated";
 import {
   createAgentConfig,
   fetchHomeFeed,
@@ -380,6 +381,11 @@ function scrollToAiDj() {
 
 export default function Home() {
   const router = useRouter();
+  // The AI DJ anchor id is applied on the client only. While the statically
+  // prerendered Home is streamed in, the server copy (hidden `S:n` segment) and
+  // the client-rendered copy can coexist briefly; keeping the id off the server
+  // markup guarantees exactly one `#ai-dj` in the document at any time.
+  const hydrated = useHydrated();
   const [releases, setReleases] = useState<Release[]>([]);
   const [publicPlaylists, setPublicPlaylists] = useState<PublicPlaylistSummary[]>([]);
   const [myReleases, setMyReleases] = useState<Release[]>([]);
@@ -1215,7 +1221,7 @@ export default function Home() {
         {/* 10. AI DJ — session control (signed in) / presets (signed out) ———— */}
         {/* scroll-margin keeps the heading below the sticky topbar when anchored. */}
         <section
-          id={AI_DJ_SECTION_ID}
+          id={hydrated ? AI_DJ_SECTION_ID : undefined}
           className="ng-section ng-section--presets"
           aria-labelledby="ai-dj-title"
           style={{ scrollMarginTop: 96 }}
