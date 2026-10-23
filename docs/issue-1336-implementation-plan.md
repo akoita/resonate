@@ -58,6 +58,10 @@ records. It is never exported as a DDEX assertion and is never displayed as
 3. **Required for new uploads, honest for legacy data.** Human, AI-assisted,
    and fully-AI choices map to DDEX `None`, `Partly`, and `All`. Existing
    records without reliable provenance backfill to `Undeclared`, not `None`.
+   Amended by [#2252](https://github.com/akoita/resonate/issues/2252) only for
+   releases whose human origin is publicly established: an operator-reviewed
+   batch can attest them as `None` with source `catalog_attestation`. See
+   [Catalog attestation](features/ai_music_integrity.md#catalog-attestation-2252).
 4. **Facets are declarations, not detection verdicts.** Contribution facets
    cover vocals, instruments, composition/lyrics, production, and
    post-production. Detection confidence/model output remains owned by #347
@@ -79,7 +83,7 @@ records. It is never exported as a DDEX assertion and is never displayed as
   - Add an enum equivalent to `UNDECLARED | NONE | PARTLY | ALL`.
   - Add track fields for disclosure level, declared contribution facets,
     declaration source (`artist`, `resonate_native`, `remix_derived`, or
-    `migration`), disclosure schema/version, and declaration timestamp.
+    `migration`; `catalog_attestation` was added later by #2252), disclosure schema/version, and declaration timestamp.
   - Index the disclosure level used by discovery filters.
 - `backend/prisma/migrations/<timestamp>_add_ai_disclosure/`
   - Backfill Resonate-native `Release.type = "ai_generated"` tracks to `ALL`.
