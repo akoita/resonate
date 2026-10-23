@@ -575,7 +575,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "These charts are honest: if not enough different people have listened yet (overall or in a genre you selected), the rail says \"not enough listening yet\" instead of showing a made-up ranking. Charts fill in as the community listens more.",
+            text: "These charts are honest: if not enough different people have listened yet (overall or in a genre you selected), the rail says \"not enough listening yet\" instead of showing a made-up ranking. Charts fill in as the community listens more. If the charts cannot load, the page says \"Charts are unavailable right now\" rather than showing an empty chart.",
           },
           {
             kind: "paragraph",

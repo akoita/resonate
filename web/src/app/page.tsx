@@ -45,6 +45,7 @@ import { CatalogStemTrackRow } from "../components/catalog/CatalogStemTrackRow";
 import { AiDisclosureBadge } from "../components/content/AiDisclosureBadge";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
 import type { ArtistCoverFallback } from "../components/home/PopularityRails";
+import { RAIL_ERROR, RAIL_LOADING, type RailState } from "../components/home/railState";
 import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
 import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
 import { HomeTuner } from "../components/home/HomeTuner";
@@ -507,23 +508,33 @@ export default function Home() {
   // falling back to recency.
   const popularityGenre =
     activeFilterConfig.kind === "genre" ? activeFilterConfig.value : undefined;
-  const [trendingTracks, setTrendingTracks] = useState<TrendingTrackItem[] | null>(null);
-  const [rankedTopArtists, setRankedTopArtists] = useState<TopArtistItem[] | null>(null);
+  const [trendingRail, setTrendingRail] = useState<RailState<TrendingTrackItem>>(RAIL_LOADING);
+  const [rankedTopArtists, setRankedTopArtists] =
+    useState<RailState<TopArtistItem>>(RAIL_LOADING);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      fetchTrendingTracks({ window: "7d", genre: popularityGenre, limit: 8 }),
-      fetchTopArtists({ window: "7d", genre: popularityGenre, limit: 8 }),
-    ])
-      .then(([trending, artists]) => {
+    // #2228: the two requests settle independently — a failure of one rail
+    // must not blank the other, and a failed request must never look like the
+    // honest "not enough listening yet" state (an empty `items` array).
+    fetchTrendingTracks({ window: "7d", genre: popularityGenre, limit: 8 })
+      .then((trending) => {
         if (cancelled) return;
-        setTrendingTracks(trending.items ?? []);
-        setRankedTopArtists(artists.items ?? []);
+        setTrendingRail({ status: "ready", items: trending.items ?? [] });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return;
-        setTrendingTracks([]);
-        setRankedTopArtists([]);
+        console.warn("Failed to load trending tracks:", error);
+        setTrendingRail(RAIL_ERROR);
+      });
+    fetchTopArtists({ window: "7d", genre: popularityGenre, limit: 8 })
+      .then((artists) => {
+        if (cancelled) return;
+        setRankedTopArtists({ status: "ready", items: artists.items ?? [] });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.warn("Failed to load top artists:", error);
+        setRankedTopArtists(RAIL_ERROR);
       });
     return () => {
       cancelled = true;
@@ -741,8 +752,9 @@ export default function Home() {
   };
 
   // #1451 WS-4: Top Artists come from the engagement serving table only —
-  // no recency fallback. `null` = still loading (hide the rail), `[]` = the
-  // catalog is below the minimum-audience threshold (honest empty state).
+  // no recency fallback. `loading` hides the rail, `ready` with `[]` = the
+  // catalog is below the minimum-audience threshold (honest empty state),
+  // `error` = the request failed (unavailable notice, #2228).
   const topArtists = rankedTopArtists;
   // Most artists have no portrait yet; their newest credited release cover
   // stands in so the Top Artists shelf shows real art instead of initials.
@@ -987,18 +999,18 @@ export default function Home() {
         />
 
         {/* 4. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
-        {/* The rail itself renders null while `items === null`, so gating the
+        {/* The rail itself renders null while `loading`, so gating the
             lazy mount on resolved data is behaviour-identical — it just keeps
             the loading skeleton from reserving a box the rail would not fill
             yet (#1491). */}
-        {trendingTracks !== null && (
-          <TrendingNowRail items={trendingTracks} genreLabel={popularityGenre} />
+        {trendingRail.status !== "loading" && (
+          <TrendingNowRail state={trendingRail} genreLabel={popularityGenre} />
         )}
 
         {/* 5. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
-        {topArtists !== null && (
+        {topArtists.status !== "loading" && (
           <TopArtistsRail
-            items={topArtists}
+            state={topArtists}
             genreLabel={popularityGenre}
             coverFallbacks={artistCoverFallbacks}
           />
