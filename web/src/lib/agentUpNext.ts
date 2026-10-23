@@ -29,13 +29,17 @@ export function pickNotesFromResponse(result: AgentNextPickResponse): Record<str
     const source: DjPickNote["source"] =
         result.curatedBy === "llm" && !result.runtimeFallback ? "ai" : "rules";
     const notes: Record<string, DjPickNote> = {};
-    const add = (id: string | undefined, explanation?: readonly string[]) => {
+    const add = (id: string | undefined, explanation?: readonly string[], requestMatch?: boolean) => {
         if (!id) return;
         const reason = reasonSentence(explanation);
-        notes[id] = { ...(reason ? { reason } : {}), source };
+        notes[id] = {
+            ...(reason ? { reason } : {}),
+            source,
+            ...(typeof requestMatch === "boolean" ? { matched: requestMatch } : {}),
+        };
     };
     add(result.track?.id, result.explanation);
-    for (const pick of result.tracks ?? []) add(pick.trackId, pick.explanation);
+    for (const pick of result.tracks ?? []) add(pick.trackId, pick.explanation, pick.requestMatch);
     return notes;
 }
 
@@ -52,8 +56,13 @@ export function pickNotesFromLicenses(
         const reason = reasonSentence(summary?.recommendation?.explanation);
         const source: DjPickNote["source"] =
             summary?.curatedBy === "llm" ? "ai" : summary?.curatedBy === "rules" ? "rules" : undefined;
-        if (!reason && !source) continue;
-        notes[license.trackId] = { ...(reason ? { reason } : {}), ...(source ? { source } : {}) };
+        const matched = typeof summary?.requestMatch === "boolean" ? summary.requestMatch : undefined;
+        if (!reason && !source && matched === undefined) continue;
+        notes[license.trackId] = {
+            ...(reason ? { reason } : {}),
+            ...(source ? { source } : {}),
+            ...(matched !== undefined ? { matched } : {}),
+        };
     }
     return notes;
 }

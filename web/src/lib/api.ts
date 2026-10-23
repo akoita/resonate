@@ -5755,6 +5755,8 @@ export type AgentRecommendationSummary = {
   } | null;
   /** #2243: who chose the pick; "llm" only when the AI curator did and did not fall back. */
   curatedBy?: "llm" | "rules";
+  /** #2312: whether the pick satisfied every filter of the session; absent without filters or on older rows. */
+  requestMatch?: boolean;
   reason?: string;
   reasoning?: string;
   source?: string;
@@ -5941,6 +5943,12 @@ export type AgentNextPickResponse = {
     explanation?: string[];
     reasonCode?: string;
     signals?: AgentRecommendationSignal[];
+    /**
+     * #2312: true when the pick satisfies every filter of the described
+     * session, false when the DJ added it to fill the set. Absent when the
+     * session has no filters.
+     */
+    requestMatch?: boolean;
   }>;
   /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */
   shortfall?: number;

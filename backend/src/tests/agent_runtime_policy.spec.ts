@@ -913,6 +913,26 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
     });
   });
 
+  it("flags each final pick with requestMatch when the request has filters (#2312)", async () => {
+    const { service } = serviceFor([track("house", { genre: "House" }), track("soul", { genre: "Soul" })]);
+    const result = await service.apply(
+      baseInput({ preferences: { genres: ["House"], sessionGenres: ["Soul"], request: soulRequest } }),
+      { status: "approved", picks: [pick("house"), pick("soul")] },
+    );
+
+    expect(result.picks?.map((entry) => [entry.trackId, entry.requestMatch])).toEqual([
+      ["house", false],
+      ["soul", true],
+    ]);
+  });
+
+  it("leaves requestMatch off the picks without a request (#2312)", async () => {
+    const { service } = serviceFor([track("house", { genre: "House" })]);
+    const result = await service.apply(baseInput(), { status: "approved", picks: [pick("house")] });
+
+    for (const entry of result.picks ?? []) expect(entry).not.toHaveProperty("requestMatch");
+  });
+
   it("reads energy and measured tempo coverage from the audio features", async () => {
     const { service } = serviceFor([track("a"), track("b")], {
       audioFeatures: {

@@ -24,6 +24,9 @@ import { useQueueActions } from "../../lib/useQueueActions";
 import { useIdleReveal } from "../../lib/useIdleReveal";
 
 import { SaveQueuePlaylist } from "../../components/player/SaveQueuePlaylist";
+import { PlayerDjQueueHeader, isDjSetTrack } from "../../components/player/PlayerDjQueueHeader";
+import { PlayerQueueDjMark } from "../../components/player/PlayerQueueDjMark";
+import { useDjSet } from "../../lib/agentDjSet";
 import { launchRemixStudio } from "../../components/remix/remixStudioLauncher";
 
 function PlayerContent() {
@@ -35,6 +38,8 @@ function PlayerContent() {
   // In immersive mode the console steps aside once the listener settles.
   const immersiveIdle = useIdleReveal(immersive.active);
   const queueActions = useQueueActions();
+  // The live AI DJ set, so queue rows it picked can say so (#2312).
+  const djSet = useDjSet();
   const trackId = searchParams.get("trackId");
 
   const {
@@ -624,6 +629,7 @@ function PlayerContent() {
 
         <div className="queue-section" style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
+          <PlayerDjQueueHeader queue={queue} />
           <SaveQueuePlaylist />
           <ListeningControls key={currentTrack?.id} />
           <div
@@ -643,6 +649,9 @@ function PlayerContent() {
                   <div className="queue-item-left">
                     <div className="queue-item-name">{track.title}</div>
                     <div className="queue-item-artist">{track.artist || "Unknown Artist"}</div>
+                    {isDjSetTrack(djSet, track) ? (
+                      <PlayerQueueDjMark note={djSet?.picks?.[track.catalogTrackId || track.id]} />
+                    ) : null}
                   </div>
                   <div className="queue-item-right">
                     <span className="queue-item-duration">{formatDuration(track.duration)}</span>

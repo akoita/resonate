@@ -25,6 +25,12 @@ export type DjPickNote = {
     reason?: string;
     /** "ai" only when the AI curator chose it; a rule-based or fallback pick is "rules" (#2075). */
     source?: "ai" | "rules";
+    /**
+     * #2312: false when the pick does not match the session's filters (the DJ
+     * added it to fill the set); true when it does. Absent when the session has
+     * no filters or the client has no flag.
+     */
+    matched?: boolean;
 };
 
 const MAX_REASON_LENGTH = 120;
@@ -35,11 +41,12 @@ function cleanNotes(value: unknown, trackIds: readonly string[]): Record<string,
     const notes: Record<string, DjPickNote> = {};
     for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
         if (!allowed.has(id) || !raw || typeof raw !== "object") continue;
-        const { reason, source } = raw as Partial<DjPickNote>;
+        const { reason, source, matched } = raw as Partial<DjPickNote>;
         const note: DjPickNote = {};
         if (typeof reason === "string" && reason.trim()) note.reason = reason.trim().slice(0, MAX_REASON_LENGTH);
         if (source === "ai" || source === "rules") note.source = source;
-        if (note.reason || note.source) notes[id] = note;
+        if (typeof matched === "boolean") note.matched = matched;
+        if (note.reason || note.source || note.matched !== undefined) notes[id] = note;
     }
     return Object.keys(notes).length > 0 ? notes : undefined;
 }

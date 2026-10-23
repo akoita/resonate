@@ -52,6 +52,8 @@ export interface AgentRuntimeCommerceTrack {
   /** Primary categorical reason from the shared discovery vocabulary. */
   reasonCode?: string;
   signals?: Array<{ label: string; weight: number; reason: string }>;
+  /** Whether the pick satisfies every filter of the described session (#2312); absent without filters. */
+  requestMatch?: boolean;
   audioFeatures?: unknown;
   mixPlan?: unknown;
   /** The orchestrator's pick record; never a priced negotiation (ADR-TE-1). */
@@ -98,6 +100,7 @@ export function normalizeAgentRuntimeResult(
         | {
             licenseType?: unknown;
             reason?: string;
+            requestMatch?: boolean;
             recommendation?: {
               score?: number;
               explanation?: string[];
@@ -116,6 +119,7 @@ export function normalizeAgentRuntimeResult(
         explanation: pick?.recommendation?.explanation,
         reasonCode: pick?.recommendation?.reasonCode,
         signals: pick?.recommendation?.signals,
+        ...(typeof pick?.requestMatch === "boolean" ? { requestMatch: pick.requestMatch } : {}),
         audioFeatures: pick?.recommendation?.audioFeatures,
         mixPlan: track.mixPlan,
         pick: track.pick,
@@ -160,6 +164,7 @@ export function normalizeAgentRuntimeResult(
     ...(pick.explanation ? { explanation: pick.explanation } : {}),
     ...(pick.reasonCode ? { reasonCode: pick.reasonCode } : {}),
     ...(pick.signals ? { signals: pick.signals } : {}),
+    ...(typeof pick.requestMatch === "boolean" ? { requestMatch: pick.requestMatch } : {}),
   }));
 
   return {

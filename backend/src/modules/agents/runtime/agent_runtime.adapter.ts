@@ -72,6 +72,11 @@ export interface LlmTrackPick {
   /** Primary categorical reason from the shared discovery vocabulary. */
   reasonCode?: string;
   signals?: Array<{ label: string; weight: number; reason: string }>;
+  /**
+   * Set by the runtime policy step (#2312): whether the pick satisfies every
+   * filter of the listener's described session. Absent without filters.
+   */
+  requestMatch?: boolean;
 }
 
 export interface AgentRuntimeResult {

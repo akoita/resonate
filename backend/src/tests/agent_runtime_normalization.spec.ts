@@ -91,6 +91,28 @@ describe("normalizeAgentRuntimeResult", () => {
     expect(result.requestCoverage).toEqual(requestCoverage);
   });
 
+  it("carries requestMatch on both paths only when it is a boolean (#2312)", () => {
+    const orchestrated = normalizeAgentRuntimeResult({
+      status: "approved",
+      tracks: [
+        { trackId: "a", mixPlan: {}, pick: { licenseType: "personal", priceUsd: 0, reason: "selected" as const, requestMatch: false } },
+        { trackId: "b", mixPlan: {}, pick: { licenseType: "personal", priceUsd: 0, reason: "selected" as const } },
+      ],
+    });
+    expect(orchestrated.tracks[0].requestMatch).toBe(false);
+    expect(orchestrated.tracks[1]).not.toHaveProperty("requestMatch");
+
+    const adapter = normalizeAgentRuntimeResult({
+      status: "approved",
+      picks: [
+        { trackId: "a", licenseType: "personal", priceUsd: 0, requestMatch: true },
+        { trackId: "b", licenseType: "personal", priceUsd: 0 },
+      ],
+    });
+    expect(adapter.tracks[0].requestMatch).toBe(true);
+    expect(adapter.tracks[1]).not.toHaveProperty("requestMatch");
+  });
+
   it("has no request coverage without one, and for adapter picks", () => {
     const orchestrated = normalizeAgentRuntimeResult({
       status: "approved",

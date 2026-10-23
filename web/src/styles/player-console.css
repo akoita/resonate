@@ -755,3 +755,127 @@
     animation-duration: 2.4s;
   }
 }
+
+/* ---- AI DJ queue identity (#2312) -----------------------------------
+ * A header strip above the queue while it holds the live DJ set, plus a
+ * small glyph (and, for padding, a muted note) on each row the DJ picked.
+ * Tokens only; the rows keep their layout down to a ~480px column. */
+
+.queue-dj-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: var(--space-2);
+  padding: 8px 10px;
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-chrome-glass);
+}
+
+.queue-dj-orb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, var(--r-secondary-soft), var(--r-secondary) 60%, var(--r-primary));
+  box-shadow: 0 0 12px var(--r-secondary-glow);
+}
+
+.queue-dj-live {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--r-success);
+  border: 1.5px solid var(--r-canvas);
+  animation: queue-dj-live-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes queue-dj-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.queue-dj-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.queue-dj-header-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--r-secondary);
+}
+
+.queue-dj-header-summary {
+  font-size: 12px;
+  color: var(--r-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-dj-steer {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--r-on-surface-variant);
+  text-decoration: none;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.queue-dj-steer:hover,
+.queue-dj-steer:focus-visible {
+  color: var(--r-on-surface);
+  border-color: var(--r-secondary);
+  background: var(--r-secondary-glow);
+}
+
+.queue-dj-steer:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 1px;
+}
+
+.queue-dj-glyph {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--r-secondary);
+  cursor: help;
+  border-radius: var(--r-radius-full);
+}
+
+.queue-dj-glyph:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+.queue-dj-outside {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--r-on-surface-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-dj-live {
+    animation: none;
+  }
+}
