@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import AgentHistoryCard from "./AgentHistoryCard";
 import type { AgentSession, AgentSessionFilters } from "../../lib/api";
+import { LEGACY_PRESET_NAMES } from "./sessionPresetData";
 
 function session(): AgentSession {
   return {
@@ -107,6 +108,33 @@ describe("AgentHistoryCard", () => {
       expect(html).toContain('title="Night Drive \u00B7 Trap \u00B7 Soul \u00B7 dark \u00B7 Energy high \u00B7 90\u2013110 BPM"');
       expect(html.indexOf("aid-history-date")).toBeLessThan(html.indexOf("aid-history-filters"));
       expect(html).not.toContain("Explicit on");
+    });
+
+    it("shows the plain label for every session recorded under an old starter name or intent id (#2249)", () => {
+      const expected: Record<string, string> = {
+        "Neural Flow": "Focus",
+        "Pulse Raid": "High energy",
+        "Liquid Sky": "Chill",
+        "Abyss Shift": "Dark",
+        "Static Calm": "Calm",
+        Focus: "Focus",
+        Hype: "High energy",
+        Chill: "Chill",
+        Dark: "Dark",
+        Zen: "Calm",
+      };
+      expect(LEGACY_PRESET_NAMES.map(([stored]) => stored).sort()).toEqual(Object.keys(expected).sort());
+      for (const [stored, label] of Object.entries(expected)) {
+        const html = render({ presetName: stored, genres: [], moods: [], explicit: false });
+        expect([stored, html.includes(`>${label}</strong>`)]).toEqual([stored, true]);
+        if (stored !== label) expect([stored, html.includes(stored)]).toEqual([stored, false]);
+      }
+    });
+
+    it("leaves names that never changed as recorded", () => {
+      expect(render({ presetName: "Afrobeats & Amapiano", genres: [], moods: [], explicit: false })).toContain(
+        "Afrobeats &amp; Amapiano",
+      );
     });
 
     it("describes open-ended tempo ranges", () => {

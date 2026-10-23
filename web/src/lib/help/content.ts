@@ -814,7 +814,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "starters", "moments", "sounds", "adjust", "energy filter", "club", "late night", "warm", "calm", "focus", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks"],
     sections: [
       {
         id: "sessions",
@@ -829,7 +829,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Go to Home and find the Your AI DJ section. Sign in if you haven't already; signed out, you can still see the session intents.",
               "The first time, set up your DJ from there or in Settings → AI DJ, where you give it a name and choose your vibes. You can change them later in the same place.",
-              "Under What's this session for?, type a sentence about the session, or choose one of the quick starts, then start the session. Starting a session from the Home tuner or a feed prompt begins it in place. What you type or choose only steers that session: the vibes you saved in Settings → AI DJ are kept as they are. The Start session button under the box is the only way to start; once a session is live it becomes Update session, and a Stop Session button appears next to your DJ's name at the top.",
+              "Under What's this session for?, type a sentence about the session, or tap a starter (it writes a sentence into the box that you can edit), then start the session. Starting a session from the Home tuner or a feed prompt begins it in place. What you type or choose only steers that session: the vibes you saved in Settings → AI DJ are kept as they are. The Start session button under the box is the only way to start; once a session is live it becomes Update session, and a Stop Session button appears next to your DJ's name at the top.",
               "When you start a session from the Your AI DJ section, the DJ takes a few seconds to choose its first picks and then plays them in the player. If it finds nothing to play, you'll see a message; try Next AI Pick or another intent.",
               "Watch the live status at the top, the pick card, which explains why the next track fits, and Session History in the same section; History also shows how many sessions and tracks your DJ has picked in total. Use Next AI Pick to get a new pick, which starts playing right away, and your feedback shapes future picks. On a small catalog the DJ keeps going after it has played everything that fits your filters: it first allows more tracks by the same artists, then picks new tracks from the rest of the catalog. It never repeats a track in the same session. If nothing in the catalog matches your filters at all, it says so instead of playing something unrelated. If the AI curator is unavailable for a moment, the DJ still picks from your taste and filters with its built-in rules, and the pick says it is a rule-based pick. When the AI curator returns fewer tracks than a full set, the DJ fills the rest with its built-in picks for the same filters, so a session never comes up short while matching tracks remain.",
               "Keep listening wherever you are in the app. As the queue runs low, the DJ adds more picks, for as long as the session is live. Stop the session whenever you like; stopping it means no new picks are added (what is already in your queue stays).",
@@ -841,11 +841,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "By default the AI DJ leaves out tracks marked explicit. Turn on Include explicit tracks under What's this session for? to let them in; the setting is saved to your DJ and applies from the next pick, including in a session that is already running.",
+            text: "By default the AI DJ leaves out tracks marked explicit. Turn on Include explicit tracks in the Adjust row under What's this session for? to let them in; the setting is saved to your DJ and applies from the next pick, including in a session that is already running.",
           },
           {
             kind: "paragraph",
-            text: "Session History in the Your AI DJ section lists your most recent sessions. Under each date you see what the session asked for: the preset, genres, moods, energy, tempo, My Mix, and Explicit on when you allowed explicit tracks, or Saved taste when you picked no filters. After Update session it shows the latest filters. The sentence you typed is never shown or saved. Open a session to see the tracks it picked and why. The session and track counts include every session you have had, not only the ones in the list.",
+            text: "Session History in the Your AI DJ section lists your most recent sessions. Under each date you see what the session asked for: the starter, genres, moods, energy, tempo, My Mix, and Explicit on when you allowed explicit tracks, or Saved taste when you picked no filters. After Update session it shows the latest filters. Sessions started before the starters were renamed show today's plain name. The sentence you typed is never shown or saved. Open a session to see the tracks it picked and why. The session and track counts include every session you have had, not only the ones in the list.",
           },
           {
             kind: "callout",
@@ -878,7 +878,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Once repeated listening has revealed different sides of your taste, My Mix appears first among the AI DJ quick starts. It blends your visible listening lanes, giving more room to stronger habits and the ones that fit the broad time of day. If it is not there yet, keep listening or choose any of the other quick starts.",
+            text: "Once repeated listening has revealed different sides of your taste, My Mix appears in a For you row above the other starters. It blends your visible listening lanes, giving more room to stronger habits and the ones that fit the broad time of day. If it is not there yet, keep listening or choose any of the other starters.",
           },
           {
             kind: "list",
@@ -901,12 +901,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Type what the session is for, for example \"Warm deep house around 122 BPM for cooking\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. Not sure what to type? The quick starts fill in the same kind of chips for you. Under Genres are everyday choices: Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton and World Music. Under Moods are Neural Flow (focus), Pulse Raid (high energy), Liquid Sky (chill), Abyss Shift (dark) and Static Calm (calm). Choose or point at one to see what it's for and what you'll hear before you start. The genres and moods you choose for this session receive priority over your usual listening taste, while your hidden and downranked preferences still apply. Your usual favourites can fill gaps when the catalog has few matching tracks. The DJ does not understand artist names yet, so \"like Beyoncé\" shows up under Didn't catch; name a genre instead.",
+            text: "Type what the session is for, for example \"Warm deep house around 122 BPM\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. The box suggests real examples while it is empty. Not sure what to type? Tap a starter: it writes its sentence into the box and shows the chips, so you learn how to ask, and you can edit either. Starters come in two rows. Moments describe a feel and search every genre: Focus, High energy, Chill, Dark, Calm, Club (around 124 BPM), Late night and Warm. Sounds are everyday genre families: Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton and World Music. When it is available, a For you row above them holds My Mix. Once you tap a starter, a line under the rows says what it is for and what you'll hear, so you do not need to hover. The genres and moods you choose for this session receive priority over your usual listening taste, while your hidden and downranked preferences still apply. Your usual favourites can fill gaps when the catalog has few matching tracks. The DJ does not understand artist names yet, so \"like Beyoncé\" shows up under Didn't catch; name a genre instead.",
           },
           {
             kind: "list",
             items: [
-              "Remove a chip with its × to drop that filter, or change the energy chip between low, medium and high. Any change you make is yours: the chips no longer count as a quick start.",
+              "Remove a chip with its × to drop only that filter. Typing in the box or removing a chip makes the filters yours, so they no longer count as a starter.",
+              "Adjust, under the chips, holds optional filters that combine with any starter or sentence. Energy lets you choose low, medium or high, or leave it to the DJ (Any); for example tap Afrobeats & Amapiano, then set Energy to Low. Include explicit tracks sits there too.",
               "While a session is live, editing a chip re-plans the upcoming picks. The tracks you've already heard, the one playing now, and anything you queued yourself stay as they are; the DJ's not-yet-played picks are replaced with ones that follow your filters. Rapid edits re-plan once. Use Update session to apply what you typed straight away.",
               "Didn't catch lists parts of your sentence the DJ couldn't turn into a filter. Rephrase them or add a filter by typing again.",
               "Not used for listening lists things you mentioned, such as a key, stems, a license, a price, or verified human artists only, that don't apply to a listening session. They are shown so you know they were left out; they have no effect on the DJ's picks.",
@@ -942,7 +943,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               },
               {
                 term: "My Mix",
-                description: "Sessions built from your listening habits, grouped into lanes. It only applies when you choose My Mix as the quick start.",
+                description: "Sessions built from your listening habits, grouped into lanes. It only applies when you choose My Mix as a starter.",
               },
             ],
           },

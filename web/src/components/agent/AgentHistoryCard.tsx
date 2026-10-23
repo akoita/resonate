@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { AgentSession, AgentSessionFilters } from "../../lib/api";
+import { plainPresetLabel } from "./sessionPresetData";
 
 type Props = {
     /** Most recent sessions, capped by the backend history limit. */
@@ -40,7 +41,9 @@ export function describeSessionFilters(
     filters: AgentSessionFilters | null | undefined,
 ): { preset: string | null; rest: string[]; text: string } | null {
     if (!filters) return null;
-    const preset = filters.presetName?.trim() || null;
+    // Sessions recorded under an earlier brand name show today's plain label (#2249).
+    const storedPreset = filters.presetName?.trim() || null;
+    const preset = storedPreset ? plainPresetLabel(storedPreset) : null;
     const rest: string[] = [];
     if (filters.genres?.length) rest.push(filters.genres.join(" \u00B7 "));
     if (filters.moods?.length) rest.push(filters.moods.join(" \u00B7 "));

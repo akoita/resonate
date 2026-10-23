@@ -902,3 +902,8 @@
   }
   .aid-prompt-preset { flex: 0 0 auto; }
 }
+
+/* #2249: the "Adjust" row of optional filters (Energy, Explicit) under the chips. */
+.aid-prompt-adjust-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 24px; min-width: 0; }
+.aid-prompt-adjust-energy { display: inline-flex; align-items: center; gap: 8px; }
+.aid-prompt-adjust-energy .aid-prompt-chip-select { min-height: 32px; padding: 4px 8px; border: 1px solid rgba(255,255,255,0.14); }

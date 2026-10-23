@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type {
     AgentMixCoverage,
     AgentMixVocabulary,
@@ -13,13 +13,12 @@ import type {
     ListeningLane,
 } from "../../lib/api";
 import {
-    SESSION_ENERGY_BANDS,
     SESSION_REQUEST_MAX_TEXT_LENGTH,
     chipsFromRequest,
     coverageLine,
     ignoredKeyLabels,
 } from "../../lib/agentSessionRequest";
-import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
+import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, type SessionPreset } from "./sessionPresetData";
 import AgentMyMixEditor from "./AgentMyMixEditor";
 import { selectedMyMixLanes } from "../../lib/agentMyMix";
 
@@ -33,13 +32,21 @@ export function startingTasteSummary(vibes: readonly string[]): string {
     return vibes.length > STARTING_TASTE_VISIBLE_VIBES ? `${shown}…` : shown;
 }
 
-export const SESSION_PROMPT_PLACEHOLDER = "Warm deep house around 122 BPM for cooking";
+/** The first real example; the placeholder then cycles through all of them (#2249). */
+export const SESSION_PROMPT_PLACEHOLDER = SESSION_PROMPT_EXAMPLES[0];
+const PLACEHOLDER_ROTATE_MS = 5000;
 
-/** Everyday genres first, then the mood presets (#2052). */
-const PRESET_GROUPS: Array<{ key: SessionPreset["group"]; label: string }> = [
-    { key: "genre", label: "Genres" },
-    { key: "mood", label: "Moods" },
+/**
+ * The starter rows (#2249): Moments set a feel (mood, energy, tempo) across all
+ * genres; Sounds set everyday genre families. A "For you" row sits above them
+ * and shows only what works today: My Mix.
+ */
+const PRESET_ROWS: Array<{ key: SessionPreset["group"]; label: string }> = [
+    { key: "mood", label: "Moments" },
+    { key: "genre", label: "Sounds" },
 ];
+
+const ENERGY_OPTIONS: AgentSessionEnergy[] = ["low", "medium", "high"];
 
 /** Plain-words summary of a preset, for screen readers and the visible note. */
 function presetSummary(preset: SessionPreset): string {
@@ -55,7 +62,8 @@ type Props = {
     onSelectPreset: (preset: SessionPreset) => void;
     request: AgentSessionRequest | null;
     onRemoveChip: (chipKey: string) => void;
-    onEnergyChange: (band: AgentSessionEnergy) => void;
+    /** Sets the Energy filter; null clears it back to "the DJ decides". */
+    onEnergyChange: (band: AgentSessionEnergy | null) => void;
     /** Phrases the DJ could not turn into a filter. */
     unparsed?: string[];
     /** Filters the sentence set that a listening session does not use. */
@@ -122,12 +130,20 @@ export default function AgentSessionPrompt({
     const id = useId();
     const textId = `${id}-text`;
     const explicitId = `${id}-explicit`;
-    // The preset under the pointer or keyboard focus, else the selected one.
-    const [previewIntent, setPreviewIntent] = useState<string | null>(null);
-    const describedPreset =
-        presets.find((preset) => preset.intent === previewIntent) ??
-        presets.find((preset) => preset.intent === activePresetIntent) ??
-        null;
+    const energyId = `${id}-energy`;
+    // The selected starter's description is always visible: nothing relies on hover (touch).
+    const describedPreset = presets.find((preset) => preset.intent === activePresetIntent) ?? null;
+    // The placeholder cycles through real examples while the box is empty.
+    const [exampleIndex, setExampleIndex] = useState(0);
+    const boxIsEmpty = text.length === 0;
+    useEffect(() => {
+        if (!boxIsEmpty) return;
+        const timer = setInterval(
+            () => setExampleIndex((index) => (index + 1) % SESSION_PROMPT_EXAMPLES.length),
+            PLACEHOLDER_ROTATE_MS,
+        );
+        return () => clearInterval(timer);
+    }, [boxIsEmpty]);
     const presetDescriptionId = (preset: SessionPreset) =>
         `${id}-preset-${preset.intent.replace(/[^a-zA-Z0-9_-]/g, "")}`;
     const chips = chipsFromRequest(request);
@@ -154,51 +170,57 @@ export default function AgentSessionPrompt({
                 value={text}
                 rows={2}
                 maxLength={SESSION_REQUEST_MAX_TEXT_LENGTH}
-                placeholder={SESSION_PROMPT_PLACEHOLDER}
+                placeholder={SESSION_PROMPT_EXAMPLES[exampleIndex]}
                 onChange={(event) => onTextChange(event.target.value)}
             />
             <p className="aid-prompt-hint">
                 Your sentence is read once to set the filters below and is not saved.
             </p>
 
-            {myMix && myMix.lanes.some((lane) => !lane.hidden) ? (
-                <div className="aid-my-mix-choice">
-                    <button
-                        type="button"
-                        className={`aid-prompt-preset ${myMix.preferences ? "active" : ""}`}
-                        aria-pressed={Boolean(myMix.preferences)}
-                        onClick={myMix.onSelect}
-                    >
-                        My Mix
-                    </button>
-                    {myMix.preferences ? (
-                        <AgentMyMixEditor
-                            lanes={myMix.lanes}
-                            vocabulary={myMix.vocabulary}
-                            preferences={myMix.preferences}
-                            coverage={myMix.coverage}
-                            isSaving={myMix.isSaving}
-                            saveMessage={myMix.saveMessage}
-                            canSave={myMix.canSave}
-                            onChange={myMix.onChange}
-                            onSave={myMix.onSave}
-                        />
-                    ) : null}
-                </div>
-            ) : null}
+            <div className="aid-prompt-preset-groups">
+                {/* For you: only what works today (My Mix, once there are lanes to blend). */}
+                {myMix && myMix.lanes.some((lane) => !lane.hidden) ? (
+                    <div className="aid-prompt-preset-group aid-my-mix-choice">
+                        <span id={`${id}-presets-for-you`} className="aid-prompt-preset-group-label">
+                            For you
+                        </span>
+                        <div className="aid-prompt-presets" role="group" aria-labelledby={`${id}-presets-for-you`}>
+                            <button
+                                type="button"
+                                className={`aid-prompt-preset ${myMix.preferences ? "active" : ""}`}
+                                aria-pressed={Boolean(myMix.preferences)}
+                                onClick={myMix.onSelect}
+                            >
+                                My Mix
+                            </button>
+                        </div>
+                        {myMix.preferences ? (
+                            <AgentMyMixEditor
+                                lanes={myMix.lanes}
+                                vocabulary={myMix.vocabulary}
+                                preferences={myMix.preferences}
+                                coverage={myMix.coverage}
+                                isSaving={myMix.isSaving}
+                                saveMessage={myMix.saveMessage}
+                                canSave={myMix.canSave}
+                                onChange={myMix.onChange}
+                                onSave={myMix.onSave}
+                            />
+                        ) : null}
+                    </div>
+                ) : null}
 
-            <div className="aid-prompt-preset-groups" onMouseLeave={() => setPreviewIntent(null)}>
-                {PRESET_GROUPS.map((group) => {
-                    const groupPresets = presets.filter((preset) => preset.group === group.key);
-                    if (groupPresets.length === 0) return null;
-                    const groupLabelId = `${id}-presets-${group.key}`;
+                {PRESET_ROWS.map((row) => {
+                    const rowPresets = presets.filter((preset) => preset.group === row.key);
+                    if (rowPresets.length === 0) return null;
+                    const rowLabelId = `${id}-presets-${row.key}`;
                     return (
-                        <div key={group.key} className="aid-prompt-preset-group">
-                            <span id={groupLabelId} className="aid-prompt-preset-group-label">
-                                {group.label}
+                        <div key={row.key} className="aid-prompt-preset-group">
+                            <span id={rowLabelId} className="aid-prompt-preset-group-label">
+                                {row.label}
                             </span>
-                            <div className="aid-prompt-presets" role="group" aria-labelledby={groupLabelId}>
-                                {groupPresets.map((preset) => (
+                            <div className="aid-prompt-presets" role="group" aria-labelledby={rowLabelId}>
+                                {rowPresets.map((preset) => (
                                     <button
                                         key={preset.name}
                                         type="button"
@@ -206,9 +228,6 @@ export default function AgentSessionPrompt({
                                         aria-pressed={activePresetIntent === preset.intent}
                                         aria-describedby={presetDescriptionId(preset)}
                                         onClick={() => onSelectPreset(preset)}
-                                        onMouseEnter={() => setPreviewIntent(preset.intent)}
-                                        onFocus={() => setPreviewIntent(preset.intent)}
-                                        onBlur={() => setPreviewIntent(null)}
                                     >
                                         {preset.name}
                                     </button>
@@ -216,7 +235,7 @@ export default function AgentSessionPrompt({
                             </div>
                             {/* Descriptions live outside the buttons so they never join the button's name. */}
                             <div className="visually-hidden">
-                                {groupPresets.map((preset) => (
+                                {rowPresets.map((preset) => (
                                     <span key={preset.name} id={presetDescriptionId(preset)}>
                                         {presetSummary(preset)}
                                     </span>
@@ -238,7 +257,7 @@ export default function AgentSessionPrompt({
                         : "No lanes selected; the DJ will use your usual taste."}
                 </p>
             ) : (
-                <p className="aid-prompt-hint">Pick a quick start to see what it sounds like, or describe the session above.</p>
+                <p className="aid-prompt-hint">Pick a starter to see what it sounds like. It writes a sentence above that you can edit.</p>
             )}
 
             <div className="aid-prompt-filters" aria-live="polite">
@@ -246,27 +265,7 @@ export default function AgentSessionPrompt({
                     <ul className="aid-prompt-chips" aria-label="Session filters">
                         {chips.map((chip) => (
                             <li key={chip.key} className={`aid-prompt-chip aid-prompt-chip--${chip.kind}`}>
-                                {chip.kind === "energy" && request?.energy ? (
-                                    <>
-                                        <label className="aid-prompt-chip-label" htmlFor={`${id}-energy`}>
-                                            Energy
-                                        </label>
-                                        <select
-                                            id={`${id}-energy`}
-                                            className="aid-prompt-chip-select"
-                                            value={request.energy}
-                                            onChange={(event) => onEnergyChange(event.target.value as AgentSessionEnergy)}
-                                        >
-                                            {SESSION_ENERGY_BANDS.map((band) => (
-                                                <option key={band} value={band}>
-                                                    {band}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </>
-                                ) : (
-                                    <span>{chip.label}</span>
-                                )}
+                                <span>{chip.label}</span>
                                 <button
                                     type="button"
                                     className="aid-prompt-chip-remove"
@@ -318,29 +317,59 @@ export default function AgentSessionPrompt({
                 ) : null}
             </div>
 
-            {explicit ? (
-                <div className="aid-prompt-explicit">
-                    <label className="aid-prompt-explicit-label" htmlFor={explicitId}>
-                        <input
-                            id={explicitId}
-                            type="checkbox"
-                            checked={explicit.enabled}
-                            disabled={explicit.isSaving}
-                            aria-describedby={`${explicitId}-hint`}
-                            onChange={(event) => explicit.onChange(event.target.checked)}
-                        />
-                        <span>Include explicit tracks</span>
-                    </label>
-                    <p id={`${explicitId}-hint`} className="aid-prompt-hint">
-                        Applies from the next pick.
-                    </p>
-                    {explicit.error ? (
-                        <p className="aid-prompt-note aid-prompt-note--error" role="status">
-                            {explicit.error}
-                        </p>
+            {/* Adjust: optional filters that combine with any starter or sentence. */}
+            <div className="aid-prompt-preset-group" data-testid="agent-session-adjust">
+                <span id={`${id}-adjust`} className="aid-prompt-preset-group-label">
+                    Adjust
+                </span>
+                <div className="aid-prompt-adjust-row" role="group" aria-labelledby={`${id}-adjust`}>
+                    {myMix?.preferences ? null : (
+                        <div className="aid-prompt-adjust-energy">
+                            <label className="aid-prompt-chip-label" htmlFor={energyId}>
+                                Energy
+                            </label>
+                            <select
+                                id={energyId}
+                                className="aid-prompt-chip-select"
+                                value={request?.energy ?? ""}
+                                onChange={(event) =>
+                                    onEnergyChange(event.target.value === "" ? null : (event.target.value as AgentSessionEnergy))
+                                }
+                            >
+                                <option value="">Any (the DJ decides)</option>
+                                {ENERGY_OPTIONS.map((band) => (
+                                    <option key={band} value={band}>
+                                        {band[0].toUpperCase() + band.slice(1)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                    {explicit ? (
+                        <div className="aid-prompt-explicit">
+                            <label className="aid-prompt-explicit-label" htmlFor={explicitId}>
+                                <input
+                                    id={explicitId}
+                                    type="checkbox"
+                                    checked={explicit.enabled}
+                                    disabled={explicit.isSaving}
+                                    aria-describedby={`${explicitId}-hint`}
+                                    onChange={(event) => explicit.onChange(event.target.checked)}
+                                />
+                                <span>Include explicit tracks</span>
+                            </label>
+                            <p id={`${explicitId}-hint`} className="aid-prompt-hint">
+                                Applies from the next pick.
+                            </p>
+                            {explicit.error ? (
+                                <p className="aid-prompt-note aid-prompt-note--error" role="status">
+                                    {explicit.error}
+                                </p>
+                            ) : null}
+                        </div>
                     ) : null}
                 </div>
-            ) : null}
+            </div>
 
             <div className="aid-prompt-actions">
                 <button type="button" className="aid-prompt-submit" disabled={submitDisabled} onClick={onSubmit}>

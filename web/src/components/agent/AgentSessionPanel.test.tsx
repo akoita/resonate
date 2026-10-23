@@ -63,7 +63,7 @@ const createConfig = vi.fn(async () => undefined);
 const refetchConfig = vi.fn(async () => undefined);
 const refetchHistory = vi.fn(async () => undefined);
 const addToast = vi.fn();
-const recordProductAnalytics = vi.fn(async () => undefined);
+const recordProductAnalytics = vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined);
 const myMixLane: ListeningLane = {
   id: "lane_0123456789abcdef0123456789abcdef",
   label: "Soul · Warm",
@@ -319,6 +319,8 @@ describe("AgentSessionPanel", () => {
     render();
     expect(captured.prompt?.activePresetIntent).toBe("Hype");
     expect(captured.prompt?.request).toEqual(requestFromPreset(preset!));
+    // The starter's sentence is written into the prompt for the listener to edit.
+    expect(captured.prompt?.text).toBe(preset!.sentence);
     // A preset stands for known filters: nothing is parsed.
     await vi.advanceTimersByTimeAsync(2000);
     expect(parseAgentSessionRequest).not.toHaveBeenCalled();
@@ -331,17 +333,22 @@ describe("AgentSessionPanel", () => {
     expect(input.preferences).toEqual({ ...toIntentPreferences(preset!), request: requestFromPreset(preset!) });
     expect(input.preferences).toEqual(
       expect.objectContaining({
-        genres: preset!.searchVibes,
         mood: "Hype",
         energy: "high",
         sessionIntent: "Hype",
+        sessionIntentName: "High energy",
       }),
     );
+    // A Moments starter never names a genre (#2249).
+    expect(input.preferences.genres).toEqual([]);
+    expect((input.preferences.request as { genres: string[] }).genres).toEqual([]);
     expect(input.preferences).not.toHaveProperty("licenseType");
     expect(recordProductAnalytics).toHaveBeenCalledWith(
       "tok",
       "agent.intent_selected",
-      expect.objectContaining({ payload: expect.objectContaining({ intent: "Hype" }) }),
+      expect.objectContaining({
+        payload: expect.objectContaining({ intent: "Hype", starterRow: "moments", starterId: "Hype" }),
+      }),
     );
     expect(recordProductAnalytics).toHaveBeenCalledWith(
       "tok",
@@ -350,12 +357,147 @@ describe("AgentSessionPanel", () => {
         payload: expect.objectContaining({
           startedFrom: "preset",
           intent: "Hype",
-          requestFilterKeys: ["genres", "moods", "energy"],
+          starterRow: "moments",
+          starterId: "Hype",
+          starterEdited: false,
+          optionalFilters: [],
+          requestFilterKeys: ["moods", "energy"],
           unparsedCount: 0,
           ignoredKeys: [],
         }),
       }),
     );
+  });
+
+  describe("starters and optional filters (#2249)", () => {
+    const starter = (intent: string) => SESSION_PRESETS.find((candidate) => candidate.intent === intent)!;
+
+    it("writes a starter's sentence into the prompt and shows its chips", () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onSelectPreset(starter("Club"));
+      render();
+      expect(captured.prompt?.text).toBe("Club, high energy, around 124 BPM");
+      expect(captured.prompt?.request).toEqual({
+        genres: [],
+        moods: ["Club"],
+        energy: "high",
+        bpm: { min: 121, max: 127 },
+      });
+      expect(parseAgentSessionRequest).not.toHaveBeenCalled();
+    });
+
+    it("sends no genre from any Moments starter", async () => {
+      for (const preset of SESSION_PRESETS.filter((candidate) => candidate.group === "mood")) {
+        vi.clearAllMocks();
+        hookState.config = config({ isActive: false, vibes: ["Jazz"] });
+        render();
+        captured.prompt?.onSelectPreset(preset);
+        render();
+        await captured.prompt?.onSubmit();
+        const [input] = startSession.mock.calls[0] as unknown as [{ preferences: { genres?: string[]; request: { genres: string[] } } }];
+        expect([preset.name, input.preferences.genres ?? []]).toEqual([preset.name, []]);
+        expect([preset.name, input.preferences.request.genres]).toEqual([preset.name, []]);
+      }
+    });
+
+    it("combines a starter with the Energy filter into one request, in either order", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onSelectPreset(starter("Afrobeats"));
+      render();
+      captured.prompt?.onEnergyChange("low");
+      render();
+      expect(captured.prompt?.activePresetIntent).toBe("Afrobeats");
+      expect(captured.prompt?.request).toEqual({
+        genres: ["Afrobeat", "Afro-Pop", "Amapiano"],
+        moods: [],
+        energy: "low",
+        bpm: null,
+      });
+      await captured.prompt?.onSubmit();
+      const [input] = startSession.mock.calls[0] as unknown as [{ preferences: Record<string, unknown> }];
+      expect(input.preferences).toMatchObject({
+        genres: ["Afrobeat", "Afro-Pop", "Amapiano"],
+        energy: "low",
+        sessionIntent: "Afrobeats",
+        request: { energy: "low" },
+      });
+
+      // Energy first, then the starter: the chosen energy survives the starter.
+      vi.clearAllMocks();
+      slots.length = 0;
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onEnergyChange("high");
+      render();
+      captured.prompt?.onSelectPreset(starter("Zen"));
+      render();
+      expect(captured.prompt?.request).toMatchObject({ moods: ["Zen"], energy: "high" });
+    });
+
+    it("clears only the Energy filter when it is set back to Any, keeping the starter's genres", () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onSelectPreset(starter("Reggae"));
+      render();
+      captured.prompt?.onEnergyChange("high");
+      render();
+      captured.prompt?.onEnergyChange(null);
+      render();
+      expect(captured.prompt?.request).toEqual({
+        genres: ["Reggae", "Dancehall", "Dub"],
+        moods: [],
+        energy: null,
+        bpm: null,
+      });
+    });
+
+    it("removing a chip removes only that filter", () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onSelectPreset(starter("Club"));
+      render();
+      captured.prompt?.onRemoveChip("bpm");
+      render();
+      expect(captured.prompt?.request).toEqual({ genres: [], moods: ["Club"], energy: "high", bpm: null });
+      captured.prompt?.onRemoveChip("energy");
+      render();
+      expect(captured.prompt?.request).toEqual({ genres: [], moods: ["Club"], energy: null, bpm: null });
+    });
+
+    it("records the starter, whether it was edited, and the optional filters used, with no text", async () => {
+      hookState.config = config({ isActive: false, allowExplicit: true });
+      render();
+      captured.prompt?.onSelectPreset(starter("Latin"));
+      render();
+      captured.prompt?.onEnergyChange("medium");
+      render();
+      captured.prompt?.onTextChange("Latin, reggaeton, dembow");
+      render();
+      await vi.advanceTimersByTimeAsync(600);
+      render();
+      await captured.prompt?.onSubmit();
+      const started = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      expect(started?.[2]).toMatchObject({
+        payload: { starterRow: "sounds", starterId: "Latin", starterEdited: true, optionalFilters: ["explicit"] },
+      });
+      expect(JSON.stringify(recordProductAnalytics.mock.calls)).not.toContain("dembow");
+    });
+
+    it("counts the Energy filter as used when it was set from the Adjust row", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onSelectPreset(starter("Reggae"));
+      render();
+      captured.prompt?.onEnergyChange("high");
+      render();
+      await captured.prompt?.onSubmit();
+      const started = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      expect(started?.[2]).toMatchObject({
+        payload: { starterRow: "sounds", starterId: "Reggae", starterEdited: false, optionalFilters: ["energy"] },
+      });
+    });
   });
 
   it("shows the saved explicit-tracks choice, off by default (#2088)", () => {
@@ -660,9 +802,9 @@ describe("AgentSessionPanel", () => {
       setUpLiveSet();
       render();
       effects.forEach((run) => run());
-      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hip-Hop")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:EDM"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Trap"));
 
       getAgentNextPick.mockResolvedValueOnce(
         pickResponse(["n1", "n2"], { requestCoverage: { picks: 2, gaps: [{ filter: "energy", matched: 1 }] } }),
@@ -677,7 +819,7 @@ describe("AgentSessionPanel", () => {
         { sessionId: string; preferences: { request: { genres: string[] }; source: string } },
       ];
       expect(body.sessionId).toBe("s-open");
-      expect(body.preferences.request.genres).toEqual(["Trap", "Drum & Bass"]);
+      expect(body.preferences.request.genres).toEqual(["Hip-Hop", "Rap"]);
       expect(body.preferences.source).toBe("agent_session_prompt");
 
       // Upcoming DJ picks (indices 1 and 2) go, highest first; the listener's own track and the current one stay.
@@ -701,12 +843,12 @@ describe("AgentSessionPanel", () => {
       setUpLiveSet();
       render();
       effects.forEach((run) => run());
-      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hip-Hop")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
       await vi.advanceTimersByTimeAsync(300);
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:EDM"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Trap"));
       await vi.advanceTimersByTimeAsync(300);
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Drum & Bass"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Rap"));
       await vi.advanceTimersByTimeAsync(300);
       expect(getAgentNextPick).not.toHaveBeenCalled();
 
@@ -715,7 +857,7 @@ describe("AgentSessionPanel", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(getAgentNextPick).toHaveBeenCalledTimes(1);
       const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { request: { genres: string[] } } }];
-      expect(body.preferences.request.genres).toEqual(["Trap"]);
+      expect(body.preferences.request.genres).toEqual(["Hip-Hop"]);
     });
 
     it("keeps the upcoming queue when the DJ finds nothing for the new filters", async () => {
@@ -835,9 +977,9 @@ describe("AgentSessionPanel", () => {
       hookState.sessions = [session("s-open", [])];
       render();
       effects.forEach((run) => run());
-      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hip-Hop")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
-      await editAndRender(() => captured.prompt?.onRemoveChip("genre:EDM"));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Trap"));
       await vi.advanceTimersByTimeAsync(800);
       await vi.advanceTimersByTimeAsync(0);
       expect(getAgentNextPick).not.toHaveBeenCalled();
@@ -846,7 +988,7 @@ describe("AgentSessionPanel", () => {
       getAgentNextPick.mockResolvedValueOnce({ status: "no_tracks" });
       await captured.onPick?.();
       const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: { request: { genres: string[] } } }];
-      expect(body.preferences.request.genres).toEqual(["Trap", "Drum & Bass"]);
+      expect(body.preferences.request.genres).toEqual(["Hip-Hop", "Rap"]);
     });
 
     it("the Update session action re-plans immediately", async () => {

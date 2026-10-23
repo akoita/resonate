@@ -76,6 +76,15 @@ describe("requestFromPreset", () => {
     ).toEqual({ genres: ["Bass", "Club", "Trap"], moods: ["Hype"], energy: "high", bpm: null });
   });
 
+  it("uses the starter's own request when it has one, as a copy", () => {
+    const own = { genres: [], moods: ["Club"], energy: "high" as const, bpm: { min: 121, max: 127 } };
+    const result = requestFromPreset({ searchVibes: [], preferences: { mood: "Club" }, request: own });
+    expect(result).toEqual(own);
+    result.moods.push("Warm");
+    result.bpm!.min = 100;
+    expect(own).toEqual({ genres: [], moods: ["Club"], energy: "high", bpm: { min: 121, max: 127 } });
+  });
+
   it("omits a mood and energy the preset does not set", () => {
     expect(requestFromPreset({ searchVibes: ["Jazz"], preferences: {} })).toEqual({
       genres: ["Jazz"],

@@ -31,6 +31,8 @@ export type RequestChip = {
 type PresetLike = {
   searchVibes: string[];
   preferences: { mood?: string; energy?: AgentSessionEnergy };
+  /** The filters the starter's sentence reads as; wins over the fields above. */
+  request?: AgentSessionRequest;
 };
 
 function titleCase(value: string): string {
@@ -95,6 +97,14 @@ export function emptyRequest(): AgentSessionRequest {
 
 /** The request a preset stands for, so a preset chip shows (and edits) real filters. */
 export function requestFromPreset(preset: PresetLike): AgentSessionRequest {
+  if (preset.request) {
+    return {
+      genres: [...preset.request.genres],
+      moods: [...preset.request.moods],
+      energy: preset.request.energy,
+      bpm: preset.request.bpm ? { ...preset.request.bpm } : null,
+    };
+  }
   const mood = preset.preferences.mood;
   return {
     genres: [...preset.searchVibes],

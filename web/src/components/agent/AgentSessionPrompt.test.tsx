@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentMixVocabulary, AgentSessionRequest, ListeningLane } from "../../lib/api";
 import AgentSessionPrompt from "./AgentSessionPrompt";
-import { SESSION_PRESETS } from "./AgentSessionPresets";
+import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES } from "./sessionPresetData";
 
 const request: AgentSessionRequest = {
   genres: ["deep house"],
@@ -44,7 +44,8 @@ describe("AgentSessionPrompt", () => {
     expect(html).toContain("What&#x27;s this session for?");
     expect(html).toContain("<textarea");
     expect(html).toContain('maxLength="500"');
-    expect(html).toContain("Warm deep house around 122 BPM for cooking");
+    // The placeholder is a real example the parser fully reads.
+    expect(html).toContain(`placeholder="${SESSION_PROMPT_EXAMPLES[0]}"`);
     expect(html).toContain("not saved");
     expect(html).toContain("Start session");
     // No saved vibes are known yet, so no starting-taste line.
@@ -95,23 +96,38 @@ describe("AgentSessionPrompt", () => {
     expect(html).toContain("Couldn&#x27;t save this setting.");
   });
 
-  it("shows every preset as a quick-start chip and marks the active one", () => {
+  it("shows every starter as a button and announces which one is pressed", () => {
     const html = render({ activePresetIntent: "Hype" });
     const escape = (value: string) => value.replace(/&/g, "&amp;");
     for (const preset of SESSION_PRESETS) expect(html).toContain(escape(preset.name));
     expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
     expect(html.match(/aria-pressed="false"/g)).toHaveLength(SESSION_PRESETS.length - 1);
-    expect(html).toMatch(/aria-pressed="true"[^>]*>Pulse Raid</);
+    expect(html).toMatch(/aria-pressed="true"[^>]*>High energy</);
+    // No brand names are left in the UI.
+    for (const brand of ["Neural Flow", "Pulse Raid", "Liquid Sky", "Abyss Shift", "Static Calm"]) {
+      expect(html).not.toContain(brand);
+    }
   });
 
-  it("offers everyday genre presets before the mood presets (#2052)", () => {
+  it("lays the starters out as labelled Moments and Sounds rows, Moments first (#2249)", () => {
     const html = render();
-    const genres = SESSION_PRESETS.filter((preset) => preset.group === "genre");
-    expect(genres.length).toBeGreaterThanOrEqual(6);
-    expect(html).toContain(">Genres<");
-    expect(html).toContain(">Moods<");
-    expect(html.indexOf(">Genres<")).toBeLessThan(html.indexOf(">Moods<"));
-    expect(html.indexOf("Hip-Hop &amp; Rap")).toBeLessThan(html.indexOf("Neural Flow"));
+    expect(html).toContain(">Moments<");
+    expect(html).toContain(">Sounds<");
+    expect(html).not.toContain(">Genres<");
+    expect(html).not.toContain(">Moods<");
+    expect(html.indexOf(">Moments<")).toBeLessThan(html.indexOf(">Sounds<"));
+    expect(html.indexOf(">Late night<")).toBeLessThan(html.indexOf(">Sounds<"));
+    expect(html.indexOf(">Sounds<")).toBeLessThan(html.indexOf("Hip-Hop &amp; Rap"));
+    // Each row is a group named by its visible label.
+    for (const label of ["Moments", "Sounds"]) {
+      const labelId = html.match(new RegExp(`<span id="([^"]+)"[^>]*>${label}</span>`))?.[1];
+      expect(labelId).toBeTruthy();
+      expect(html).toContain(`role="group" aria-labelledby="${labelId}"`);
+    }
+    // The Moments row offers the new moods too.
+    for (const name of ["Focus", "High energy", "Chill", "Dark", "Calm", "Club", "Late night", "Warm"]) {
+      expect(html).toContain(`>${name}</button>`);
+    }
   });
 
   it("puts My Mix before ordinary presets only when a visible lane is available", () => {
@@ -124,13 +140,17 @@ describe("AgentSessionPrompt", () => {
       onSave: vi.fn(),
     };
     const html = render({ myMix });
-    expect(html.indexOf(">My Mix</button>")).toBeLessThan(html.indexOf(">Genres<"));
+    expect(html).toContain(">For you<");
+    expect(html.indexOf(">My Mix</button>")).toBeLessThan(html.indexOf(">Moments<"));
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain("Add a genre or mood");
     expect(html).not.toContain(myMixLane.id);
 
     const hidden = render({ myMix: { ...myMix, lanes: [{ ...myMixLane, hidden: true }] } });
     expect(hidden).not.toContain(">My Mix</button>");
+    // Absent items are omitted, not shown broken: no "For you" row without lanes.
+    expect(hidden).not.toContain(">For you<");
+    expect(render()).not.toContain(">For you<");
   });
 
   it("describes the selected preset and what it sounds like, visibly (#2052)", () => {
@@ -144,7 +164,7 @@ describe("AgentSessionPrompt", () => {
   it("invites a choice when no preset is selected", () => {
     const html = render();
     expect(html).not.toContain('data-testid="agent-session-preset-about"');
-    expect(html).toContain("Pick a quick start to see what it sounds like");
+    expect(html).toContain("Pick a starter to see what it sounds like");
   });
 
   it("gives every chip a screen-reader description outside its accessible name", () => {
@@ -154,10 +174,10 @@ describe("AgentSessionPrompt", () => {
     expect(new Set(describedBy).size).toBe(SESSION_PRESETS.length);
     for (const id of describedBy) expect(html).toContain(`id="${id}"`);
     // The chip's own text stays just the preset name.
-    expect(html).toMatch(/aria-describedby="[^"]+">Neural Flow<\/button>/);
+    expect(html).toMatch(/aria-describedby="[^"]+">High energy<\/button>/);
   });
 
-  it("renders each parsed filter as a removable chip and energy as a select", () => {
+  it("renders each parsed filter as a removable chip", () => {
     const html = render({ request });
     expect(html).toContain("Deep house");
     expect(html).toContain("Warm mood");
@@ -166,11 +186,54 @@ describe("AgentSessionPrompt", () => {
     expect(html).toContain('aria-label="Remove filter Warm mood"');
     expect(html).toContain('aria-label="Remove filter Medium energy"');
     expect(html).toContain('aria-label="Remove filter 120–125 BPM"');
-    expect(html).toContain("<select");
-    expect(html).toMatch(/<option value="medium" selected="">medium<\/option>/);
-    expect(html).toContain('<option value="low">low</option>');
-    expect(html).toContain('<option value="high">high</option>');
     expect(html).not.toContain("your DJ starts from");
+  });
+
+  describe("Adjust row of optional filters (#2249)", () => {
+    it("is a labelled group with Energy and the explicit choice together", () => {
+      const html = render({ request, explicit: { enabled: false, onChange: vi.fn() } });
+      const adjust = html.slice(html.indexOf('data-testid="agent-session-adjust"'));
+      expect(adjust).toContain(">Adjust<");
+      expect(adjust).toMatch(/role="group" aria-labelledby="[^"]*-adjust"/);
+      expect(adjust).toMatch(/<label[^>]*for="[^"]*-energy"[^>]*>Energy<\/label>/);
+      expect(adjust).toContain("Include explicit tracks");
+      // The explicit checkbox moved into the Adjust row: nothing renders it above it.
+      expect(html.indexOf("Include explicit tracks")).toBeGreaterThan(html.indexOf('data-testid="agent-session-adjust"'));
+      expect(html.match(/Include explicit tracks/g)).toHaveLength(1);
+    });
+
+    it("announces the current energy and offers Any, Low, Medium and High", () => {
+      const withEnergy = render({ request });
+      expect(withEnergy).toMatch(/<option value="medium" selected="">Medium<\/option>/);
+      expect(withEnergy).toContain('<option value="">Any (the DJ decides)</option>');
+      expect(withEnergy).toContain('<option value="low">Low</option>');
+      expect(withEnergy).toContain('<option value="high">High</option>');
+
+      const none = render({ request: { ...request, energy: null } });
+      expect(none).toMatch(/<option value="" selected="">Any \(the DJ decides\)<\/option>/);
+      expect(render()).toMatch(/<option value="" selected="">Any/);
+    });
+
+    it("hides Energy while My Mix is chosen, since My Mix follows listening lanes", () => {
+      const html = render({
+        myMix: {
+          lanes: [myMixLane],
+          vocabulary,
+          preferences: { context: "evening:weekday" as const },
+          onSelect: vi.fn(),
+          onChange: vi.fn(),
+          onSave: vi.fn(),
+        },
+      });
+      expect(html).toContain(">Adjust<");
+      expect(html).not.toMatch(/<label[^>]*for="[^"]*-energy"/);
+    });
+  });
+
+  it("rotates the placeholder through examples only while the box is empty", () => {
+    expect(SESSION_PROMPT_EXAMPLES.length).toBeGreaterThan(1);
+    expect(render()).toContain(`placeholder="${SESSION_PROMPT_EXAMPLES[0]}"`);
+    expect(render({ text: "Club" })).not.toContain('placeholder="Club"');
   });
 
   it("lists phrases it did not catch and filters not used for listening", () => {
