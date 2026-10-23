@@ -34,6 +34,13 @@ before they qualify.
 
 Both paths enforce `DISCOVERY_MIN_AUDIENCE` before snapshot storage and again
 on reads. An empty qualifying audience keeps the existing low-data UI.
+
+On Home, Trending Now and Top Artists track their own load state
+(`loading` / `ready` / `error`, `web/src/components/home/railState.ts`): a failed request shows
+"Charts are unavailable right now." and is logged with `console.warn`, never the
+low-data copy and never a recency fallback, and one rail failing does not blank
+the other (#2228).
+
 Dataform assertions cover identifiers, windows, nonnegative bounded scores,
 audience floors and freshness. Rebuilds read bounded recent events; the
 exporter reads only precomputed marts.

@@ -5,8 +5,31 @@
 import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { TopArtistsRail, TrendingNowRail } from "./PopularityRails";
+import {
+  TopArtistsRail as RankedTopArtistsRail,
+  TrendingNowRail as RankedTrendingNowRail,
+} from "./PopularityRails";
+import type { RailState } from "./railState";
 import type { TopArtistItem, TrendingTrackItem } from "../../lib/api";
+
+// Thin adapters: `items === null` is the loading state, an array is `ready`.
+function toState<T>(items: T[] | null): RailState<T> {
+  return items === null ? { status: "loading" } : { status: "ready", items };
+}
+
+function TrendingNowRail({ items, genreLabel }: { items: TrendingTrackItem[] | null; genreLabel?: string }) {
+  return <RankedTrendingNowRail state={toState(items)} genreLabel={genreLabel} />;
+}
+
+function TopArtistsRail({
+  items,
+  genreLabel,
+}: {
+  items: TopArtistItem[] | null;
+  genreLabel?: string;
+}) {
+  return <RankedTopArtistsRail state={toState(items)} genreLabel={genreLabel} />;
+}
 
 function trendingItem(overrides: Partial<TrendingTrackItem> = {}): TrendingTrackItem {
   return {
@@ -72,6 +95,16 @@ describe("TrendingNowRail", () => {
     const html = renderToStaticMarkup(<TrendingNowRail items={[]} genreLabel="Jazz" />);
     expect(html).toContain("Not enough listening yet in Jazz");
     expect(html).toContain("Trending Now");
+    expect(html).not.toContain("ng-tile");
+  });
+
+  it("shows an unavailable notice, not the low-data copy, when the request failed", () => {
+    const html = renderToStaticMarkup(
+      <RankedTrendingNowRail state={{ status: "error" }} genreLabel="Jazz" />,
+    );
+    expect(html).toContain("Trending Now");
+    expect(html).toContain("Charts are unavailable right now.");
+    expect(html).not.toContain("Not enough listening yet");
     expect(html).not.toContain("ng-tile");
   });
 
@@ -187,6 +220,16 @@ describe("TopArtistsRail", () => {
   it("shows the honest low-data state for a quiet genre", () => {
     const html = renderToStaticMarkup(<TopArtistsRail items={[]} genreLabel="Jazz" />);
     expect(html).toContain("Not enough listening yet in Jazz");
+    expect(html).not.toContain("ng-tile__portrait");
+  });
+
+  it("shows an unavailable notice, not the low-data copy, when the request failed", () => {
+    const html = renderToStaticMarkup(
+      <RankedTopArtistsRail state={{ status: "error" }} genreLabel="Jazz" />,
+    );
+    expect(html).toContain("Top Artists");
+    expect(html).toContain("Charts are unavailable right now.");
+    expect(html).not.toContain("Not enough listening yet");
     expect(html).not.toContain("ng-tile__portrait");
   });
 });

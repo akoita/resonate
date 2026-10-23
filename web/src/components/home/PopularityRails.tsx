@@ -6,14 +6,21 @@ import { artistProfileHref, catalogArtistHref, publicReleaseHref } from "../../l
 import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
 import { HomeShelf, type ShelfTone } from "./HomeShelf";
 import { HomeTile } from "./HomeTile";
+import type { RailState } from "./railState";
+
+export type { RailState } from "./railState";
 
 /*
  * Home popularity rails (#1451 WS-4) — engagement-ranked Trending Now and
  * Top Artists, fed by /catalog/trending and /catalog/top-artists.
  *
- * Honesty contract: `items === null` means still loading (render nothing);
- * an empty array means the catalog is below the minimum-audience threshold,
- * and the rail says so explicitly — it never falls back to upload recency.
+ * Honesty contract (#2228): a rail is in exactly one of three states.
+ *   - `loading`: still fetching (render nothing);
+ *   - `ready`:   the served ranking; an empty `items` array means the catalog
+ *                is below the minimum-audience threshold, and the rail says so;
+ *   - `error`:   the request failed — say the charts are unavailable, which is
+ *                different from "not enough listening yet".
+ * No state ever falls back to upload recency.
  */
 
 function listenersLabel(count: number) {
@@ -25,6 +32,14 @@ function LowDataNotice({ subject, genreLabel }: { subject: string; genreLabel?: 
     <p className="ng-play-card__artist ng-popularity-empty" style={{ opacity: 0.75 }}>
       Not enough listening yet{genreLabel ? ` in ${genreLabel}` : ""} to rank {subject}{" "}
       honestly — charts appear once more people press play.
+    </p>
+  );
+}
+
+function UnavailableNotice() {
+  return (
+    <p className="ng-play-card__artist ng-popularity-empty" style={{ opacity: 0.75 }} role="status">
+      Charts are unavailable right now.
     </p>
   );
 }
@@ -62,14 +77,22 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 export function TrendingNowRail({
-  items,
+  state,
   genreLabel,
 }: {
-  items: TrendingTrackItem[] | null;
+  state: RailState<TrendingTrackItem>;
   genreLabel?: string;
 }) {
-  if (items === null) return null;
+  if (state.status === "loading") return null;
   const meta = <span className="ng-shelf__meta">Last 7 days</span>;
+  if (state.status === "error") {
+    return (
+      <LowDataSection kicker="What listeners play" kickerTone="tertiary" title="Trending Now" meta={meta}>
+        <UnavailableNotice />
+      </LowDataSection>
+    );
+  }
+  const { items } = state;
   if (items.length === 0) {
     return (
       <LowDataSection kicker="What listeners play" kickerTone="tertiary" title="Trending Now" meta={meta}>
@@ -126,16 +149,24 @@ export type ArtistCoverFallback = {
 };
 
 export function TopArtistsRail({
-  items,
+  state,
   genreLabel,
   coverFallbacks,
 }: {
-  items: TopArtistItem[] | null;
+  state: RailState<TopArtistItem>;
   genreLabel?: string;
   /** Newest release cover per artist id, used when `imageUrl` is missing. */
   coverFallbacks?: Record<string, ArtistCoverFallback>;
 }) {
-  if (items === null) return null;
+  if (state.status === "loading") return null;
+  if (state.status === "error") {
+    return (
+      <LowDataSection kicker="Most listened, last 7 days" kickerTone="violet" title="Top Artists">
+        <UnavailableNotice />
+      </LowDataSection>
+    );
+  }
+  const { items } = state;
   if (items.length === 0) {
     return (
       <LowDataSection kicker="Most listened, last 7 days" kickerTone="violet" title="Top Artists">
