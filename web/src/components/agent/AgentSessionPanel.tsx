@@ -47,6 +47,7 @@ import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { sonicRadarBanner } from "../../lib/sonicRadarSummary";
 import { useToast } from "../ui/Toast";
 import AgentHistoryCard from "./AgentHistoryCard";
+import { humanPickReason } from "../../lib/agentPickReason";
 import AgentUpNextCard from "./AgentUpNextCard";
 import { useDjUpNext } from "./useDjUpNext";
 import { pickNotesFromLicenses, pickNotesFromResponse } from "../../lib/agentUpNext";
@@ -296,12 +297,17 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
      * Re-plan the DJ's upcoming picks after the filters changed: ask for picks that
      * follow them, then swap them in for the not-yet-played DJ picks in the player.
      * Tracks already played, the one playing, and tracks the listener queued stay.
+     *
+     * With no DJ set in the player (nothing from this session is playing), an edit
+     * does nothing by itself; the explicit "Update session" (`playIfIdle`) asks the
+     * DJ for picks that follow the filters and starts playing them, which is also
+     * the way back when the first picks could not play.
      */
-    const replanUpcoming = async () => {
+    const replanUpcoming = async ({ playIfIdle = false }: { playIfIdle?: boolean } = {}) => {
         if (!token || !openSessionId || !config?.isActive) return;
         const set = getDjSet();
-        // No DJ set in the player yet: the next pick and the continuation read the new filters.
-        if (!set || set.sessionId !== openSessionId) return;
+        const idle = !set || set.sessionId !== openSessionId;
+        if (idle && !playIfIdle) return;
         const preferences = buildNextPickPreferences();
         const sequence = ++replanSeqRef.current;
         const isCurrent = () => sequence === replanSeqRef.current;
@@ -319,13 +325,22 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 addToast({
                     type: "info",
                     title: "No new picks for those filters",
-                    message: result.reason ?? "The DJ kept your upcoming tracks.",
+                    message: idle
+                        ? humanPickReason(result.status, result.reason, myMixPreferences ? result.mixCoverage ?? null : null)
+                        : result.reason ?? "The DJ kept your upcoming tracks.",
                 });
                 return;
             }
             const ids = Array.from(
                 new Set([result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]),
             );
+            if (idle) {
+                // Nothing of this session is playing: these picks start the set.
+                clearAwaitingAutoplay();
+                await playDjTracks(openSessionId, ids, pickNotesFromResponse(result));
+                void refetchHistory();
+                return;
+            }
             const resolved = await resolveDjQueue(ids, token);
             if (!isCurrent()) return;
             if (resolved.length === 0) {
@@ -812,16 +827,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         if (isParsing) return;
         if (replanTimerRef.current) clearTimeout(replanTimerRef.current);
         replanTimerRef.current = null;
-        const set = getDjSet();
-        if (set && set.sessionId === openSessionId) {
-            await replanUpcoming();
-        } else {
-            addToast({
-                type: "info",
-                title: "Filters updated",
-                message: "The DJ's next picks will follow them.",
-            });
-        }
+        await replanUpcoming({ playIfIdle: true });
     };
 
 

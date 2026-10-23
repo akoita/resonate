@@ -961,6 +961,59 @@ describe("AgentSessionPanel", () => {
       expect(setDjSet).toHaveBeenCalled();
     });
 
+    it("Update session with nothing playing asks the DJ with the edited filters and starts the picks", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      render();
+      effects.forEach((run) => run());
+      const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hip-Hop")!;
+      await editAndRender(() => captured.prompt?.onSelectPreset(preset));
+      await editAndRender(() => captured.prompt?.onRemoveChip("genre:Trap"));
+      await vi.advanceTimersByTimeAsync(800);
+      expect(getAgentNextPick).not.toHaveBeenCalled();
+
+      getAgentNextPick.mockResolvedValueOnce(
+        pickResponse(["p1", "p2"], { explanation: ["Fits this session intent"], curatedBy: "llm" }),
+      );
+      await captured.prompt?.onSubmit();
+
+      const [, body] = getAgentNextPick.mock.calls[0] as unknown as [string, { sessionId: string; preferences: { request: { genres: string[] } } }];
+      expect(body.sessionId).toBe("s-open");
+      expect(body.preferences.request.genres).toEqual(["Hip-Hop", "Rap"]);
+      expect(playQueue).toHaveBeenCalledTimes(1);
+      const [queue] = playQueue.mock.calls[0] as unknown as [LocalTrack[]];
+      expect(queue.map((entry) => entry.id)).toEqual(["p1", "p2"]);
+      expect(setDjSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "s-open",
+          trackIds: ["p1", "p2"],
+          picks: { p1: { reason: "Fits this session intent", source: "ai" }, p2: { source: "ai" } },
+        }),
+      );
+    });
+
+    it("Update session with nothing playing and nothing found says why and keeps My Mix coverage", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      await loadMyMixCatalog();
+      captured.prompt?.myMix?.onSelect();
+      render();
+      effects.forEach((run) => run());
+      getAgentNextPick.mockResolvedValueOnce({
+        status: "no_tracks",
+        reason: "all_candidates_recently_played",
+        mixCoverage: { lanes: [{ id: myMixLane.id, label: "Soul · Warm", requested: 3, matched: 0 }] },
+      });
+      await captured.prompt?.onSubmit();
+      render();
+
+      expect(playQueue).not.toHaveBeenCalled();
+      expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "No new picks for those filters" }));
+      expect(captured.prompt?.myMix?.coverage).toEqual({
+        lanes: [{ id: myMixLane.id, label: "Soul · Warm", requested: 3, matched: 0 }],
+      });
+    });
+
     it("stopping the session cancels a pending re-plan", async () => {
       setUpLiveSet();
       render();

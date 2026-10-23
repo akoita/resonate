@@ -1985,6 +1985,13 @@ Vision-neutral quality (ADR-BM-6): no money, payout or fee change. Phase 2
   seed excluded; no embedding-model call). The curator runtimes force the seed
   onto their semantic searches. The web swaps the not-yet-played DJ picks for
   the neighbours and keeps the seed queued. #2244 generalizes seeds later.
+- **Update session with nothing playing.** The Next Pick button was also the way
+  to start picks when a live session had none in the player (for example the
+  first picks could not play). The prompt's explicit **Update session** now
+  does that: with no DJ set for the open session it asks the DJ with the edited
+  filters (My Mix included), starts playing the picks, or, when nothing fits,
+  says why and shows the "My Mix availability" status on the Now & Up next
+  card. Filter edits alone still do nothing until then.
 - **Limits.** `POST /sessions/agent/next` is throttled to 30 per minute per
   user. The buttons are disabled while one action is in flight; a 429 shows a
   calm note and the queue keeps playing.
