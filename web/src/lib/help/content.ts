@@ -814,7 +814,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks"],
     sections: [
       {
         id: "sessions",
@@ -837,7 +837,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "You can also just start a session without typing or choosing anything; the DJ then draws on your saved vibes and taste.",
+            text: "You can also just start a session without typing or choosing anything; the DJ then starts from your saved vibes and ranks its picks with your taste. The Your AI DJ section shows which vibes it will start from, with an Edit link to change them.",
           },
           {
             kind: "paragraph",
@@ -922,6 +922,37 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "starting-taste",
+        heading: "Where your DJ starts: saved vibes, Taste memory and My Mix",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Three things shape what the DJ plays, and they do different jobs. Saved vibes are the only one that stands in when you give no filters.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "Saved vibes",
+                description: "The vibes you choose under Settings → AI DJ. They are your DJ's starting point when you give it no filters.",
+              },
+              {
+                term: "Taste memory",
+                description: "What Resonate learned from your listening and what you told it, kept under Settings → Taste memory. It helps rank the picks of every session.",
+              },
+              {
+                term: "My Mix",
+                description: "Sessions built from your listening habits, grouped into lanes. It only applies when you choose My Mix as the quick start.",
+              },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "When you name a mood or an energy but no genre, for example \"calm\", your saved vibes do not narrow the session. The DJ looks across all genres and favors what fits the mood and your learned taste.",
+          },
+        ],
+      },
+      {
         id: "sonic-radar",
         heading: "Sonic Radar",
         blocks: [
@@ -982,7 +1013,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Your AI DJ", href: "/#ai-dj", description: "Start an AI-guided listening session from Home." },
-      { label: "AI DJ settings", href: "/settings?section=dj", description: "Your DJ name and vibes." },
+      { label: "AI DJ settings", href: "/settings?section=dj", description: "Your DJ name and the vibes it starts from." },
       { label: "Sonic Radar", href: "/sonic-radar", description: "Your resonant discoveries." },
     ],
     related: ["discover-music", "playing-music", "marketplace-buy", "settings-privacy", "how-recommendations-work"],

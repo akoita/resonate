@@ -187,7 +187,7 @@ vi.mock("./AgentSessionPrompt", () => ({
 vi.mock("./AgentHistoryCard", () => ({ default: () => null }));
 vi.mock("./AgentSetupWizard", () => ({ default: () => null }));
 
-import AgentSessionPanel, { buildSessionPreferences, toIntentPreferences } from "./AgentSessionPanel";
+import AgentSessionPanel, { toIntentPreferences } from "./AgentSessionPanel";
 import { SESSION_PRESETS } from "./AgentSessionPresets";
 import { requestFromPreset } from "../../lib/agentSessionRequest";
 import type AgentSessionPrompt from "./AgentSessionPrompt";
@@ -886,24 +886,6 @@ describe("AgentSessionPanel", () => {
       ];
       render();
       expect(captured.prompt?.coverage).toBeNull();
-    });
-  });
-
-  describe("buildSessionPreferences", () => {
-    it("returns nothing to steer without filters or a preset", () => {
-      expect(buildSessionPreferences({ activePreset: null, request: null })).toBeUndefined();
-      expect(
-        buildSessionPreferences({
-          activePreset: null,
-          request: { genres: [], moods: [], energy: null, bpm: null },
-        }),
-      ).toBeUndefined();
-    });
-
-    it("uses the saved vibes only for pick requests whose filters name no genre", () => {
-      const request = { genres: [], moods: [], energy: "high" as const, bpm: null };
-      expect(buildSessionPreferences({ activePreset: null, request })?.genres).toEqual([]);
-      expect(buildSessionPreferences({ activePreset: null, request, fallbackGenres: ["Jazz"] })?.genres).toEqual(["Jazz"]);
     });
   });
 

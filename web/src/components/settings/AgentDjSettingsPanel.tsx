@@ -11,6 +11,54 @@ import type { AgentConfig } from "../../lib/api";
 
 const MAX_NAME_LENGTH = 40;
 
+/** The three taste inputs a listener can mistake for each other (#2239). */
+export const DJ_TASTE_GUIDE: ReadonlyArray<{ name: string; what: string; whenItApplies: string }> = [
+    {
+        name: "Saved vibes",
+        what: "The vibes you pick below.",
+        whenItApplies: "Your DJ's starting point when you give it no filters.",
+    },
+    {
+        name: "Taste memory",
+        what: "What Resonate learned from your listening and what you told it.",
+        whenItApplies: "Ranks every session's picks, whatever filters you set.",
+    },
+    {
+        name: "My Mix",
+        what: "Your listening habits, grouped into lanes.",
+        whenItApplies: "Only when you choose My Mix for a session.",
+    },
+];
+
+const GUIDE_CELL_STYLE = { whiteSpace: "normal", verticalAlign: "top" } as const;
+
+/** One short table: how saved vibes, Taste memory and My Mix differ. */
+export function DjTasteGuide() {
+    return (
+        <div className="usage-history-scroll" data-testid="dj-taste-guide" style={{ marginTop: 16 }}>
+            <table className="usage-history-table">
+                <caption className="visually-hidden">How saved vibes, Taste memory and My Mix differ</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Setting</th>
+                        <th scope="col">What it is</th>
+                        <th scope="col">What it does</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {DJ_TASTE_GUIDE.map((row) => (
+                        <tr key={row.name}>
+                            <th scope="row" style={GUIDE_CELL_STYLE}>{row.name}</th>
+                            <td style={GUIDE_CELL_STYLE}>{row.what}</td>
+                            <td style={GUIDE_CELL_STYLE}>{row.whenItApplies}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
 /** True when the draft differs from the stored DJ and is valid to save. */
@@ -134,6 +182,8 @@ export default function AgentDjSettingsPanel() {
                     </p>
                 </div>
             </div>
+
+            <DjTasteGuide />
 
             {isLoading && !config ? (
                 <p className="settings-copy">Loading your DJ…</p>

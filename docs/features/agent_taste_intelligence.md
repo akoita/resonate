@@ -763,6 +763,44 @@ Session History used to list only a session's date, duration and tracks, so a
   taste", and sessions from before #2096 show nothing new.
 - Tests: `agent_session_filters.spec.ts`,
   `agent_session_filters.integration.spec.ts`, `AgentHistoryCard.test.tsx`.
+## The DJ's starting taste is visible and explained (#2239)
+
+Vision-neutral quality (ADR-BM-6): no money, payout or fee path is touched.
+The DJ's saved vibes used to be visible only as chips on the status card, with
+no label and no link, and a request that named a mood but no genre silently
+took them as its genres on pick requests.
+
+- The prompt's empty state (`AgentSessionPrompt`) carries one labelled line,
+  "With no filters, your DJ starts from: Chill, Deep House, Lo-fi… · Edit",
+  linking to `/settings?section=dj`. It shows the first three saved vibes and an
+  ellipsis when there are more. A DJ with no saved vibes sees "No saved vibes ·
+  Set them" with the same link, so the empty state never dead-ends. The line is
+  hidden while the sentence is being read and once any filter or My Mix exists.
+- A request that names a mood or energy but no genre no longer takes the saved
+  vibes as its genres. `buildSessionPreferences` carries only the request's own
+  genres, so a mood-only session searches all genres, ranked by learned taste
+  and the mood. The saved vibes still start a session with no filters at all
+  (`buildPickPreferences`, in `web/src/components/agent/sessionPreferences.ts`,
+  and the plain session start). The backend needs no change: it already treats
+  an empty requested-genre list as "no genre asked for" and merges learned
+  favorites and saved vibes only as additional search queries, never as the
+  session's own requested terms (`mergeSessionGenres`,
+  `buildAgentRecommendationQueries`, `requestedTermsFor`).
+- Settings → AI DJ and the User Guide AI DJ article explain in one short table
+  how the three taste inputs differ: **saved vibes** are the DJ's starting
+  point when you give no filters, **Taste memory** is what Resonate learned from
+  your listening and what you told it, and **My Mix** builds sessions from your
+  listening habits (lanes).
+- Tests: `sessionPreferences.test.ts` (mood-only carries no fallback genres, a
+  no-filter pick still uses the saved vibes, requested genres win),
+  `AgentSessionPrompt.test.tsx`, `AgentDjSettingsPanel.test.tsx`.
+- Screenshots in the User Guide are not refreshed in this slice.
+- **Open follow-up (owner decision, not implemented here):** should the saved
+  vibes eventually merge into the declared layer of Taste memory (taste engine
+  RFC, five layers), so one place controls the starting taste? The UI above does
+  not depend on the answer. The status-card chips are removed by a separate
+  slice (#2237).
+
 ## Played-through milestone for Sonic Radar (#2097)
 
 Sonic Radar's resonance rule needs a `complete` `AgentSignal` with
