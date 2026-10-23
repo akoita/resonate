@@ -32,7 +32,7 @@ import {
     getMyMixLocalContext,
 } from "../../lib/agentMyMix";
 import { resolveDjQueue } from "../../lib/agentDjPlayback";
-import { getDjSet, setDjSet, type DjPickNote } from "../../lib/agentDjSet";
+import { getDjSet, setDjSet, useDjSet, type DjPickNote } from "../../lib/agentDjSet";
 import {
     emptyRequest,
     hasFilters,
@@ -49,7 +49,7 @@ import { DJ_SEED_EVENT, takeDjSeed, type DjSeed } from "../../lib/djSeed";
 import { saveTracksMetadata } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
-import { sonicRadarBanner } from "../../lib/sonicRadarSummary";
+import { sonicRadarSessionLine } from "../../lib/sonicRadarSummary";
 import { useToast } from "../ui/Toast";
 import AgentHistoryCard from "./AgentHistoryCard";
 import { humanPickReason } from "../../lib/agentPickReason";
@@ -107,7 +107,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         trackCount: sessions.reduce((sum, s) => sum + s.licenses.length, 0),
     };
     const { journal, isLoading: journalLoading } = useDiscoveryJournal();
-    const radarBanner = sonicRadarBanner(journal);
+    const liveDjSet = useDjSet();
+    const radarLine = sonicRadarSessionLine(journal, liveDjSet?.trackIds);
     const { addToast } = useToast();
     const player = usePlayer();
     const { playQueue } = player;
@@ -1012,39 +1013,25 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
                     <AgentEventsDebug events={events} />
 
-                    {/* Discovery banner: numbers come from the Sonic Radar journal itself. */}
-                    {!journalLoading && journal && (
+                    {/* Session Sonic Radar line (#2313): only this session's tracks; nothing when empty. */}
+                    {!journalLoading && radarLine.kind !== "none" && (
                         <div className="aid-discovery-banner">
-                            {radarBanner.kind === "resonant" ? (
+                            {radarLine.kind === "session" ? (
                                 <>
                                     <span>
-                                        <strong>{radarBanner.count}</strong> {radarBanner.count === 1 ? "track" : "tracks"} resonated with you in the last {radarBanner.windowDays} days
-                                        {radarBanner.newArtistsThisWeek > 0 && (
-                                            <>
-                                                {" · "}
-                                                <strong>{radarBanner.newArtistsThisWeek}</strong> new {radarBanner.newArtistsThisWeek === 1 ? "artist" : "artists"} this week
-                                            </>
-                                        )}
-                                        {radarBanner.newTracks > 0 && (
-                                            <>
-                                                {" · "}
-                                                <strong>{radarBanner.newTracks}</strong> new {radarBanner.newTracks === 1 ? "track" : "tracks"} from artists you discovered
-                                            </>
-                                        )}
+                                        From this session:{" "}
+                                        {radarLine.saved > 0 && <><strong>{radarLine.saved}</strong> saved</>}
+                                        {radarLine.saved > 0 && radarLine.replayed > 0 && ", "}
+                                        {radarLine.replayed > 0 && <><strong>{radarLine.replayed}</strong> replayed</>}
                                     </span>
-                                    <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
-                                </>
-                            ) : radarBanner.kind === "pending" ? (
-                                <>
-                                    <span>
-                                        <strong>{radarBanner.count}</strong> {radarBanner.count === 1 ? "track" : "tracks"} you played through this week {radarBanner.count === 1 ? "is" : "are"} one save away from your Sonic Radar
-                                    </span>
-                                    <Link href="/sonic-radar" className="aid-ghost-btn">Review them →</Link>
+                                    <Link href="/sonic-radar" className="aid-ghost-btn">Sonic Radar →</Link>
                                 </>
                             ) : (
                                 <>
-                                    <span>Play a track all the way through, then save or replay it, and it lands in your Sonic Radar.</span>
-                                    <Link href="/sonic-radar" className="aid-ghost-btn">Open Sonic Radar →</Link>
+                                    <span>
+                                        <strong>{radarLine.count}</strong> {radarLine.count === 1 ? "track" : "tracks"} you played through this week {radarLine.count === 1 ? "is" : "are"} one save away from your Sonic Radar
+                                    </span>
+                                    <Link href="/sonic-radar" className="aid-ghost-btn">Review them →</Link>
                                 </>
                             )}
                         </div>

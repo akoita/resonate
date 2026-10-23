@@ -131,6 +131,7 @@ const setDjSet = vi.fn();
 vi.mock("../../lib/agentDjSet", () => ({
   setDjSet: (...args: unknown[]) => setDjSet(...args),
   getDjSet: () => hookState.djSet,
+  useDjSet: () => hookState.djSet,
 }));
 vi.mock("../../lib/agentDjPlayback", () => ({
   resolveDjQueue: (...args: unknown[]) => resolveDjQueue(...(args as [string[], string])),
@@ -1200,7 +1201,7 @@ describe("AgentSessionPanel", () => {
     expect(render()).toContain('href="/settings?section=dj"');
   });
 
-  describe("Sonic Radar banner", () => {
+  describe("Sonic Radar session line (#2313)", () => {
     const pendingItem = (id: string) => ({
       trackId: id,
       title: `Title ${id}`,
@@ -1215,10 +1216,10 @@ describe("AgentSessionPanel", () => {
       followUpBy: "2026-10-09T10:00:00.000Z",
       discovery: false,
     });
-    const resonantItem = (id: string) => ({
+    const resonantItem = (id: string, followUp: "saved" | "replayed" = "saved") => ({
       ...pendingItem(id),
       resonatedAt: "2026-10-02T10:00:00.000Z",
-      followUp: "saved" as const,
+      followUp,
       reason: { code: "listening_pattern", text: "Fit" },
       nextAction: null,
     });
@@ -1248,62 +1249,77 @@ describe("AgentSessionPanel", () => {
         : { newFromDiscovered: Array.from({ length: newTracks }, (_, i) => newRelease(`n${i}`)) }),
     });
 
+    const liveSetOf = (...trackIds: string[]): DjSet => ({ sessionId: "s-open", preferences: {}, trackIds });
+
     beforeEach(() => {
       hookState.config = config();
     });
 
-    it("counts resonant tracks and new artists from the journal", () => {
-      hookState.journal = journal(3, 2, 2);
+    it("splits this session's saved and replayed tracks and links to Sonic Radar", () => {
+      const data = journal(3, 0);
+      data.groups[0].items = [resonantItem("t0"), resonantItem("t1", "replayed"), resonantItem("t2"), resonantItem("other")];
+      hookState.journal = data;
+      hookState.djSet = liveSetOf("t0", "t1", "t2");
       const html = render();
       expect(html).toContain("aid-discovery-banner");
-      expect(html).toMatch(/<strong>3<\/strong> tracks resonated with you in the last 28 days/);
-      expect(html).toMatch(/<strong>2<\/strong> new artists this week/);
-      expect(html).toMatch(/<a[^>]*href="\/sonic-radar"[^>]*>View on Sonic Radar →<\/a>/);
-      expect(html).not.toContain("tracks discovered");
+      expect(html).toMatch(/From this session:[^<]*<strong>2<\/strong> saved, <strong>1<\/strong> replayed/);
+      expect(html).toMatch(/<a[^>]*href="\/sonic-radar"[^>]*>Sonic Radar →<\/a>/);
     });
 
-    it("mentions new tracks from artists you discovered when there are some", () => {
-      hookState.journal = journal(3, 0, 2, 4);
-      expect(render()).toMatch(/<strong>4<\/strong> new tracks from artists you discovered/);
-      hookState.journal = journal(3, 0, 0, 1);
-      expect(render()).toMatch(/<strong>1<\/strong> new track from artists you discovered/);
+    it("omits the half that is zero", () => {
+      const data = journal(1, 0);
+      hookState.journal = data;
+      hookState.djSet = liveSetOf("t0");
+      let html = render();
+      expect(html).toMatch(/<strong>1<\/strong> saved/);
+      expect(html).not.toContain("replayed");
+      data.groups[0].items = [resonantItem("t0", "replayed")];
+      html = render();
+      expect(html).toMatch(/<strong>1<\/strong> replayed/);
+      expect(html).not.toContain("saved");
     });
 
-    it("omits the new-tracks mention when there are none or the backend predates it", () => {
-      hookState.journal = journal(3, 0, 2, 0);
-      expect(render()).not.toContain("from artists you discovered");
-      hookState.journal = journal(3, 0, 2);
-      expect(render()).not.toContain("from artists you discovered");
-    });
-
-    it("uses singular copy and omits new artists when there are none", () => {
-      hookState.journal = journal(1, 0, 0);
+    it("shows no 28-day aggregate or new-artist counts", () => {
+      hookState.journal = journal(3, 2, 2, 4);
+      hookState.djSet = liveSetOf("t0", "t1", "t2");
       const html = render();
-      expect(html).toMatch(/<strong>1<\/strong> track resonated with you/);
+      expect(html).not.toContain("28 days");
+      expect(html).not.toContain("resonated with you");
       expect(html).not.toContain("new artist");
+      expect(html).not.toContain("from artists you discovered");
     });
 
-    it("points at the pending tracks when nothing has resonated yet", () => {
-      hookState.journal = journal(0, 4);
+    it("shows nothing without a live set, even when the journal has items", () => {
+      hookState.journal = journal(3, 2, 1, 2);
+      hookState.djSet = null;
       const html = render();
-      expect(html).toMatch(/<strong>4<\/strong> tracks you played through this week are one save away from your Sonic Radar/);
+      expect(html).not.toContain("aid-discovery-banner");
+      expect(html).not.toContain("Play a track all the way through");
+    });
+
+    it("shows nothing when none of the journal's tracks are in the live set", () => {
+      hookState.journal = journal(3, 2);
+      hookState.djSet = liveSetOf("unrelated");
+      expect(render()).not.toContain("aid-discovery-banner");
+    });
+
+    it("keeps the one-save-away nudge, counting only this session's tracks", () => {
+      hookState.journal = journal(0, 4);
+      hookState.djSet = liveSetOf("p0", "p2", "other");
+      const html = render();
+      expect(html).toMatch(/<strong>2<\/strong> tracks you played through this week are one save away from your Sonic Radar/);
       expect(html).toMatch(/<a[^>]*href="\/sonic-radar"[^>]*>Review them →<\/a>/);
     });
 
-    it("uses singular verb for a single pending track", () => {
-      hookState.journal = journal(0, 1);
+    it("uses singular verb for a single pending track from the session", () => {
+      hookState.journal = journal(0, 4);
+      hookState.djSet = liveSetOf("p1");
       expect(render()).toMatch(/<strong>1<\/strong> track you played through this week is one save away/);
-    });
-
-    it("explains how tracks land in Sonic Radar when the journal is empty", () => {
-      hookState.journal = journal(0, 0);
-      const html = render();
-      expect(html).toContain("Play a track all the way through, then save or replay it, and it lands in your Sonic Radar.");
-      expect(html).toMatch(/<a[^>]*href="\/sonic-radar"[^>]*>Open Sonic Radar →<\/a>/);
     });
 
     it("shows no banner while the journal loads or is unavailable", () => {
       hookState.journal = journal(3, 0);
+      hookState.djSet = liveSetOf("t0");
       hookState.journalLoading = true;
       expect(render()).not.toContain("aid-discovery-banner");
       hookState.journalLoading = false;
@@ -1316,7 +1332,7 @@ describe("AgentSessionPanel", () => {
       hookState.journal = journal(0, 0);
       const html = render();
       expect(html).not.toContain("tracks discovered");
-      expect(html).toContain("Open Sonic Radar →");
+      expect(html).not.toContain("aid-discovery-banner");
     });
   });
 
