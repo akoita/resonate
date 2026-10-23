@@ -25,6 +25,17 @@ import { logDegradedFallback } from "../shared/degraded_fallback";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
 import { AgentLearningService } from "./agent_learning.service";
+import { discoveryVariantForUser } from "../recommendations/discovery_experiment";
+import {
+  HYBRID_RETRIEVAL_VARIANT,
+  hasAudioRangeRequest,
+  hybridRetrievalConfig,
+  RankedList,
+  reciprocalRankFusion,
+  RetrievalReport,
+  RetrievalSource,
+  runSource,
+} from "./agent_hybrid_retrieval";
 import {
   buildMixCoverage,
   matchingMyMixLaneIds,
@@ -99,7 +110,50 @@ export interface AgentSelectorInput {
    * SEED_ARTIST_CANDIDATES), ranked above unrelated newest tracks.
    */
   seedArtists?: string[];
+  /**
+   * Seeds for the seed retrieval source, by kind. `artists` is what
+   * `seedArtists` carries (either may be set; they merge). A new kind
+   * (`trackIds`: a current track, a playlist; #2243) is one more field here
+   * and one more runner in the hybrid seed source.
+   */
+  seeds?: AgentSeeds;
+  /**
+   * The genres the session itself asked for (not learned taste, not moods).
+   * Hybrid retrieval does not retrieve by audio features when a genre was
+   * requested, so a genre request is never answered with unrelated tracks.
+   */
+  requestedGenres?: string[];
+  /**
+   * Overrides the retrieval variant that otherwise comes from the listener's
+   * ranker-variant assignment (#2005). Used by offline evaluation; production
+   * callers leave it unset so the assignment decides.
+   */
+  retrievalVariant?: string;
 }
+
+/** Matches held back from a batch, by reason; surfaced in the request coverage. */
+export interface HeldBack {
+  variety: number;
+  explicit: number;
+}
+
+/** Seeds by kind (#2242): artist names (#2241) and seed tracks (#2243). */
+export interface AgentSeeds {
+  artists?: string[];
+  /** Seed tracks, e.g. "More like this" (#2243); neighbours of their stored vectors. */
+  trackIds?: string[];
+}
+
+function resolveSeeds(input: AgentSelectorInput): { artists: string[]; trackIds: string[] } {
+  const artists = [...(input.seeds?.artists ?? []), ...(input.seedArtists ?? [])].filter(Boolean);
+  return {
+    artists: [...new Set(artists)],
+    trackIds: [...new Set([...(input.seeds?.trackIds ?? []), input.seedTrackId?.trim() ?? ""].filter(Boolean))],
+  };
+}
+
+/** Extra lane terms (beyond the plan's search terms) the lane source searches per lane. */
+const LANE_EXTRA_TERMS = 4;
 
 /** Candidates the artist-seed source may add per pass. */
 const SEED_ARTIST_CANDIDATES = 20;
@@ -144,6 +198,8 @@ export interface AgentCandidateTrack {
     reasonCode?: DiscoveryReasonCode;
     audioFeatures?: AgentAudioFeatures;
     trace?: Record<string, unknown>;
+    /** Hybrid retrieval only: the sources that returned this track. */
+    retrievedBy?: RetrievalSource[];
   };
 }
 
@@ -154,6 +210,14 @@ export interface AgentSelectionResult {
   reason: string;
   fallback?: "relaxed_artist_window" | "widened";
   mixCoverage?: MixCoverage;
+  /** Hybrid retrieval only (`hybrid_rrf_v1`): what each source did, and what each added alone. */
+  retrieval?: RetrievalReport;
+  /**
+   * Strong matches for what the session asked for that this batch left out, by
+   * reason: `variety` (the per-artist cap, ADR-TE-2) and `explicit` (the
+   * listener's explicit preference). Absent when nothing was held back.
+   */
+  heldBack?: HeldBack;
   policy?: {
     dropped: { hidden: number; aiGenerated: number; diversity: number };
     exploration: { reserved: number; served: number };
@@ -227,126 +291,18 @@ export class AgentSelectorService {
     const queries = expandAgentTasteQueries(uniqueCaseInsensitive([...originalQueries, ...cohortQueries]));
     const limit = input.limit ?? 5;
 
-    // Gather candidates from all vibes/queries
-    const byId = new Map<string, AgentCandidateTrack & { matchedQueries: string[] }>();
-
-    // A widened pass also searches the whole catalog ("" = newest tracks).
-    const searchQueries = queries.length === 0 || pass === "widened" ? [...queries, ""] : queries;
-    for (const query of searchQueries) {
-      const tool = this.tools.get("catalog.search");
-      const result = await tool.run({
-        query,
-        limit: query === "" && pass === "widened" ? CATALOG_WIDE_CANDIDATES : 20,
-        allowExplicit: input.allowExplicit ?? false,
-      });
-      const items = (result.items as any[]) ?? [];
-      for (const item of items) {
-        // Defense in depth for alternate/mock catalog tools: ADR-BM-5 keeps
-        // fully generated music out of AI DJ promotion even when a candidate
-        // source forgets to apply the database filter.
-        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
-          continue;
-        }
-        const existing = byId.get(item.id);
-        if (existing) {
-          if (query && !existing.matchedQueries.includes(query)) {
-            existing.matchedQueries.push(query);
-          }
-        } else {
-          byId.set(item.id, {
-            ...item,
-            matchedQueries: query ? [query] : [],
-          });
-        }
-      }
-    }
-
-    // Catalog-wide semantic retrieval (#2088). The tool applies the explicit
-    // and AI-promotion filters and a similarity floor (AGENT_SEMANTIC_MIN_SIMILARITY).
-    // Because of that floor, a request nothing in the catalog resembles still
-    // yields no candidates, so the "nothing matched => never widen" rule in
-    // `select()` (ADR-TE-4: unmet demand stays visible) keeps holding even
-    // though semantic candidates count toward `candidates.length`.
+    // Candidate retrieval. The default path is the established union of keyword,
+    // semantic and artist-seed candidates; the `hybrid_rrf_v1` ranker variant
+    // (#2242) fuses budgeted sources with reciprocal-rank fusion instead. Both
+    // end in the same shared ranking core and policy stage.
     const semanticQuery = input.semanticQuery?.trim();
-    const seedTrackId = input.seedTrackId?.trim();
-    const semanticScores = new Map<string, number>();
-    // The words and the seed track are separate query sources (#2243).
-    const semanticSources: Array<Record<string, unknown>> = [
-      ...(semanticQuery ? [{ query: semanticQuery }] : []),
-      ...(seedTrackId ? [{ seedTrackId }] : []),
-    ];
-    for (const source of semanticSources) {
-      // Fails open: semantic retrieval only adds candidates, so a tool error
-      // leaves the keyword candidates as they were.
-      const result = await this.tools
-        .get("catalog.semantic_search")
-        .run({
-          ...source,
-          limit: 20,
-          allowExplicit: input.allowExplicit ?? false,
-          excludeTrackIds: input.recentTrackIds,
-        })
-        .catch((error: unknown) => {
-          this.logger.warn(
-            `Semantic retrieval failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          return { items: [] as unknown[] };
-        });
-      for (const item of (result.items as any[]) ?? []) {
-        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
-          continue;
-        }
-        if (typeof item.semanticScore === "number") {
-          semanticScores.set(
-            item.id,
-            Math.max(semanticScores.get(item.id) ?? 0, item.semanticScore),
-          );
-        }
-        if (!byId.has(item.id)) {
-          // No matchedQueries: no keyword query found this track.
-          byId.set(item.id, { ...item, matchedQueries: [] });
-        }
-      }
-    }
-
-    // Named artists as seed neighbours (#2241). Fails open like the semantic source.
-    const seedArtists = (input.seedArtists ?? []).filter(Boolean);
-    if (seedArtists.length > 0) {
-      const seeded = await this.tools
-        .get("catalog.artist_seed")
-        .run({
-          artists: seedArtists,
-          limit: SEED_ARTIST_CANDIDATES,
-          allowExplicit: input.allowExplicit ?? false,
-          excludeTrackIds: input.recentTrackIds,
-        })
-        .catch((error: unknown) => {
-          this.logger.warn(
-            `Artist seeding failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          return { items: [] as unknown[] };
-        });
-      for (const item of (seeded.items as any[]) ?? []) {
-        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
-          continue;
-        }
-        // An artist's own track scores as a perfect semantic match; a neighbour
-        // keeps its centroid cosine. Either never lowers a score already set.
-        const score = item.artistSeed === "own" ? 1 : item.semanticScore;
-        if (typeof score === "number") {
-          semanticScores.set(item.id, Math.max(score, semanticScores.get(item.id) ?? 0));
-        }
-        const matched = item.artistSeed === "own" && typeof item.seedArtist === "string" ? [item.seedArtist] : [];
-        const existing = byId.get(item.id);
-        if (existing) {
-          for (const query of matched) {
-            if (!existing.matchedQueries.includes(query)) existing.matchedQueries.push(query);
-          }
-        } else {
-          byId.set(item.id, { ...item, matchedQueries: matched });
-        }
-      }
-    }
+    const retrievalVariant = input.retrievalVariant ?? discoveryVariantForUser(input.userId).rankerVariant;
+    const gathered = retrievalVariant === HYBRID_RETRIEVAL_VARIANT
+      ? await this.gatherHybrid(input, pass, queries, semanticQuery)
+      : await this.gatherLegacy(input, pass, queries, semanticQuery);
+    const { byId, semanticScores } = gathered;
+    const retrievedBy = gathered.retrievedBy;
+    const retrieval = gathered.retrieval;
 
     const firstListenerCandidates = input.userId && this.firstListenerDiscovery
       ? await this.firstListenerDiscovery
@@ -422,6 +378,7 @@ export class AgentSelectorService {
         selected: [],
         rejected: [],
         reason: queries.length ? "no_matching_taste_candidates" : "empty_catalog",
+        ...(retrieval ? { retrieval } : {}),
         ...(input.myMixPlan ? { mixCoverage: buildMixCoverage(input.myMixPlan, new Map()) } : {}),
       };
     }
@@ -596,6 +553,7 @@ export class AgentSelectorService {
     const sessionTrackIds = new Set(input.recentTrackIds);
     const toAgentTrack = (entry: (typeof ranked)[number]) => {
       const track = byId2.get(entry.id)!;
+      const sources = retrievedBy?.get(track.id);
       const mixLaneId = policyResult.laneAssignments?.get(track.id);
       const lane = mixLaneId
         ? input.myMixPlan?.lanes.find((candidate) => candidate.id === mixLaneId)
@@ -610,12 +568,19 @@ export class AgentSelectorService {
           score: entry.score,
           matchedQueries: track.matchedQueries,
           signals: entry.signals,
-          explanation: lane
-            ? [`Selected for your ${lane.label} mix.`, ...entry.explanation]
-            : entry.explanation,
+          explanation: [
+            ...(lane ? [`Selected for your ${lane.label} mix.`] : []),
+            ...entry.explanation,
+            // A track only the audio-range source found is named as such, so
+            // retrieval by measured sound is never silent.
+            ...(sources?.length === 1 && sources[0] === "audio_range"
+              ? ["Found by its measured energy or tempo, not by a tag."]
+              : []),
+          ],
           reasonCode: entry.reasonCode,
           ...(entry.audioFeatures ? { audioFeatures: entry.audioFeatures } : {}),
           ...(entry.trace ? { trace: entry.trace } : {}),
+          ...(sources ? { retrievedBy: sources } : {}),
         },
       };
     };
@@ -688,6 +653,7 @@ export class AgentSelectorService {
     }
     const selected = policyResult.items.map(toAgentTrack);
     const scored = ranked.map(toAgentTrack);
+    const heldBack = await this.heldBackFor(input, fresh, policyResult.heldBackForVariety);
     const mixCoverage = input.myMixPlan
       ? buildMixCoverage(
           input.myMixPlan,
@@ -710,11 +676,417 @@ export class AgentSelectorService {
             ? "no_policy_eligible_candidates"
             : "all_candidates_recently_played",
       ...(mixCoverage ? { mixCoverage } : {}),
+      ...(retrieval ? { retrieval } : {}),
+      ...(heldBack ? { heldBack } : {}),
       policy: {
         dropped: policyResult.dropped,
         exploration: policyResult.exploration,
       },
     };
+  }
+
+  /** The established retrieval: keyword per query, then semantic neighbours, then artist seeds, unioned in that order. */
+  private async gatherLegacy(
+    input: AgentSelectorInput,
+    pass: SelectionPass,
+    queries: string[],
+    semanticQuery: string | undefined,
+  ): Promise<{
+    byId: Map<string, AgentCandidateTrack & { matchedQueries: string[] }>;
+    semanticScores: Map<string, number>;
+    retrievedBy?: undefined;
+    retrieval?: undefined;
+  }> {
+    // Gather candidates from all vibes/queries
+    const byId = new Map<string, AgentCandidateTrack & { matchedQueries: string[] }>();
+
+    // A widened pass also searches the whole catalog ("" = newest tracks).
+    const searchQueries = queries.length === 0 || pass === "widened" ? [...queries, ""] : queries;
+    for (const query of searchQueries) {
+      const tool = this.tools.get("catalog.search");
+      const result = await tool.run({
+        query,
+        limit: query === "" && pass === "widened" ? CATALOG_WIDE_CANDIDATES : 20,
+        allowExplicit: input.allowExplicit ?? false,
+      });
+      const items = (result.items as any[]) ?? [];
+      for (const item of items) {
+        // Defense in depth for alternate/mock catalog tools: ADR-BM-5 keeps
+        // fully generated music out of AI DJ promotion even when a candidate
+        // source forgets to apply the database filter.
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
+        const existing = byId.get(item.id);
+        if (existing) {
+          if (query && !existing.matchedQueries.includes(query)) {
+            existing.matchedQueries.push(query);
+          }
+        } else {
+          byId.set(item.id, {
+            ...item,
+            matchedQueries: query ? [query] : [],
+          });
+        }
+      }
+    }
+
+    // Catalog-wide semantic retrieval (#2088). The tool applies the explicit
+    // and AI-promotion filters and a similarity floor (AGENT_SEMANTIC_MIN_SIMILARITY).
+    // Because of that floor, a request nothing in the catalog resembles still
+    // yields no candidates, so the "nothing matched => never widen" rule in
+    // `select()` (ADR-TE-4: unmet demand stays visible) keeps holding even
+    // though semantic candidates count toward `candidates.length`.
+    const semanticScores = new Map<string, number>();
+    // The words and each seed track are separate query sources (#2243).
+    const semanticSources: Array<Record<string, unknown>> = [
+      ...(semanticQuery ? [{ query: semanticQuery }] : []),
+      ...resolveSeeds(input).trackIds.map((seedTrackId) => ({ seedTrackId })),
+    ];
+    for (const source of semanticSources) {
+      // Fails open: semantic retrieval only adds candidates, so a tool error
+      // leaves the keyword candidates as they were.
+      const result = await this.tools
+        .get("catalog.semantic_search")
+        .run({
+          ...source,
+          limit: 20,
+          allowExplicit: input.allowExplicit ?? false,
+          excludeTrackIds: input.recentTrackIds,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Semantic retrieval failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return { items: [] as unknown[] };
+        });
+      for (const item of (result.items as any[]) ?? []) {
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
+        if (typeof item.semanticScore === "number") {
+          semanticScores.set(item.id, Math.max(semanticScores.get(item.id) ?? 0, item.semanticScore));
+        }
+        if (!byId.has(item.id)) {
+          // No matchedQueries: no keyword query found this track.
+          byId.set(item.id, { ...item, matchedQueries: [] });
+        }
+      }
+    }
+
+    // Named artists as seed neighbours (#2241). Fails open like the semantic source.
+    const seedArtists = resolveSeeds(input).artists;
+    if (seedArtists.length > 0) {
+      const seeded = await this.tools
+        .get("catalog.artist_seed")
+        .run({
+          artists: seedArtists,
+          limit: SEED_ARTIST_CANDIDATES,
+          allowExplicit: input.allowExplicit ?? false,
+          excludeTrackIds: input.recentTrackIds,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Artist seeding failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return { items: [] as unknown[] };
+        });
+      for (const item of (seeded.items as any[]) ?? []) {
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
+        // An artist's own track scores as a perfect semantic match; a neighbour
+        // keeps its centroid cosine. Either never lowers a score already set.
+        const score = item.artistSeed === "own" ? 1 : item.semanticScore;
+        if (typeof score === "number") {
+          semanticScores.set(item.id, Math.max(score, semanticScores.get(item.id) ?? 0));
+        }
+        const matched = item.artistSeed === "own" && typeof item.seedArtist === "string" ? [item.seedArtist] : [];
+        const existing = byId.get(item.id);
+        if (existing) {
+          for (const query of matched) {
+            if (!existing.matchedQueries.includes(query)) existing.matchedQueries.push(query);
+          }
+        } else {
+          byId.set(item.id, { ...item, matchedQueries: matched });
+        }
+      }
+    }
+
+    return { byId, semanticScores };
+  }
+
+  /**
+   * Hybrid retrieval (`hybrid_rrf_v1`, #2242). Every source runs in parallel
+   * with its own candidate budget, under one latency budget for the step:
+   *  - keyword: `catalog.search` per query (also matches descriptor families);
+   *  - semantic: the session sentence's query vector, top-k plus a calibrated
+   *    similarity floor;
+   *  - audio_range: tracks whose MEASURED energy band / tempo fit the request,
+   *    only when the request names energy or tempo and no genre (a genre
+   *    request is never widened to unrelated tracks of that energy);
+   *  - lane: My Mix lane terms beyond the ones keyword already searched;
+   *  - seed: the listener's seeds (artist names now; `trackIds` slot in as
+   *    another seed kind, see `AgentSeeds`).
+   * A source that errors or is cut off at the deadline removes only its own
+   * candidates (logged as a reason code). The per-source rankings are fused with
+   * reciprocal-rank fusion and handed to the ranking core in fused order; the
+   * six rules, taste policy, explicit preference and AI-promotion filter run
+   * after, unchanged. Retrieval never widens a request: a source with nothing
+   * to add contributes nothing, and `retrieval.onlyFrom` shows what a source
+   * added on its own.
+   */
+  private async gatherHybrid(
+    input: AgentSelectorInput,
+    pass: SelectionPass,
+    queries: string[],
+    semanticQuery: string | undefined,
+  ): Promise<{
+    byId: Map<string, AgentCandidateTrack & { matchedQueries: string[] }>;
+    semanticScores: Map<string, number>;
+    retrievedBy: Map<string, RetrievalSource[]>;
+    retrieval: RetrievalReport;
+  }> {
+    const config = hybridRetrievalConfig();
+    const allowExplicit = input.allowExplicit ?? false;
+    const deadlineAt = Date.now() + config.timeoutMs;
+
+    type Hit = { item: any; matched: string[]; semanticScore?: number };
+    type SourceYield = { lists: string[][]; hits: Hit[] } | "skipped";
+
+    const toYield = (groups: Array<{ items: any[]; matched?: (item: any) => string[]; score?: (item: any) => number | undefined }>, budget: number): SourceYield => {
+      const lists: string[][] = [];
+      const hits: Hit[] = [];
+      for (const group of groups) {
+        const ids: string[] = [];
+        for (const item of group.items.slice(0, budget)) {
+          // ADR-BM-5 defense in depth, as on the default path.
+          if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) continue;
+          ids.push(item.id);
+          hits.push({ item, matched: group.matched?.(item) ?? [], semanticScore: group.score?.(item) });
+        }
+        lists.push(ids);
+      }
+      return { lists, hits };
+    };
+    const search = (query: string, limit: number) =>
+      this.tools.get("catalog.search").run({ query, limit, allowExplicit });
+
+    const keyword = async (): Promise<SourceYield> => {
+      const searchQueries = queries.length === 0 || pass === "widened" ? [...queries, ""] : queries;
+      const groups = await Promise.all(
+        searchQueries.map(async (query) => {
+          // The widened pass's catalog-wide newest tracks keep their own, larger bound.
+          const budget = query === "" && pass === "widened" ? CATALOG_WIDE_CANDIDATES : config.budgets.keyword;
+          const result = await search(query, budget);
+          return { items: ((result.items as any[]) ?? []).slice(0, budget), matched: () => (query ? [query] : []) };
+        }),
+      );
+      return toYield(groups, CATALOG_WIDE_CANDIDATES);
+    };
+
+    const semantic = async (): Promise<SourceYield> => {
+      if (!semanticQuery) return "skipped";
+      const result = await this.tools.get("catalog.semantic_search").run({
+        query: semanticQuery,
+        limit: config.budgets.semantic,
+        allowExplicit,
+        excludeTrackIds: input.recentTrackIds,
+        calibratedFloor: true,
+      });
+      if (result.status === "unavailable") return "skipped";
+      return toYield(
+        [{
+          items: (result.items as any[]) ?? [],
+          score: (item) => (typeof item.semanticScore === "number" ? item.semanticScore : undefined),
+        }],
+        config.budgets.semantic,
+      );
+    };
+
+    const audioRange = async (): Promise<SourceYield> => {
+      // Only a request with no genre of its own is retrieved by audio: a genre
+      // request must not be answered with unrelated tracks of that energy.
+      const genreRequested = (input.requestedGenres ?? []).length > 0;
+      const audioRequest = { energy: input.energy, tempoBpm: input.tempoBpm };
+      if (genreRequested || !hasAudioRangeRequest(audioRequest)) return "skipped";
+      const result = await this.tools.get("catalog.audio_range").run({
+        ...audioRequest,
+        limit: config.budgets.audio_range,
+        allowExplicit,
+        excludeTrackIds: input.recentTrackIds,
+      });
+      return toYield([{ items: (result.items as any[]) ?? [] }], config.budgets.audio_range);
+    };
+
+    const lane = async (): Promise<SourceYield> => {
+      if (!input.myMixPlan) return "skipped";
+      // Lane terms keyword did not already search: the plan's search terms only
+      // carry each lane's top two genres and top mood.
+      const searched = new Set(queries.map(normalizeQuery));
+      const groups: Array<{ items: any[]; matched: () => string[] }> = [];
+      for (const planLane of input.myMixPlan.lanes) {
+        const terms = [
+          ...Object.entries(planLane.genreWeights),
+          ...Object.entries(planLane.moodWeights),
+        ]
+          .sort((a, b) => b[1] - a[1])
+          .map(([term]) => term)
+          .filter((term) => !searched.has(normalizeQuery(term)))
+          .slice(0, LANE_EXTRA_TERMS);
+        for (const term of terms) {
+          searched.add(normalizeQuery(term));
+          const result = await search(term, config.budgets.lane);
+          groups.push({ items: (result.items as any[]) ?? [], matched: () => [term] });
+        }
+      }
+      return toYield(groups, config.budgets.lane);
+    };
+
+    const seed = async (): Promise<SourceYield> => {
+      const seeds = resolveSeeds(input);
+      const groups: Array<{
+        items: any[];
+        matched: (item: any) => string[];
+        score: (item: any) => number | undefined;
+      }> = [];
+      // One runner per seed kind (artists, then seed tracks); a new kind adds a
+      // runner here and a field on `AgentSeeds`; fusion and budgets need no change.
+      if (seeds.artists.length > 0) {
+        const seeded = await this.tools.get("catalog.artist_seed").run({
+          artists: seeds.artists,
+          limit: config.budgets.seed,
+          allowExplicit,
+          excludeTrackIds: input.recentTrackIds,
+          calibratedFloor: true,
+        });
+        groups.push({
+          items: (seeded.items as any[]) ?? [],
+          matched: (item) => (item.artistSeed === "own" && typeof item.seedArtist === "string" ? [item.seedArtist] : []),
+          // An artist's own track scores as a perfect semantic match; a neighbour keeps its centroid cosine.
+          score: (item) => (item.artistSeed === "own" ? 1 : item.semanticScore),
+        });
+      }
+      for (const seedTrackId of seeds.trackIds) {
+        const neighbours = await this.tools.get("catalog.semantic_search").run({
+          seedTrackId,
+          limit: config.budgets.seed,
+          allowExplicit,
+          excludeTrackIds: input.recentTrackIds,
+          calibratedFloor: true,
+        });
+        groups.push({
+          items: (neighbours.items as any[]) ?? [],
+          matched: () => [],
+          score: (item) => item.semanticScore,
+        });
+      }
+      return groups.length === 0 ? "skipped" : toYield(groups, config.budgets.seed);
+    };
+
+    const outcomes = await Promise.all([
+      runSource("keyword", keyword, deadlineAt),
+      runSource("semantic", semantic, deadlineAt),
+      runSource("audio_range", audioRange, deadlineAt),
+      runSource("lane", lane, deadlineAt),
+      runSource("seed", seed, deadlineAt),
+    ]);
+
+    const lists: RankedList[] = [];
+    const hitsById = new Map<string, Hit[]>();
+    const report: RetrievalReport["sources"] = [];
+    for (const outcome of outcomes) {
+      const skipped = outcome.status === "ok" && outcome.value === "skipped";
+      const yielded = outcome.status === "ok" && !skipped ? (outcome.value as Exclude<SourceYield, "skipped">) : undefined;
+      if (outcome.status !== "ok") {
+        this.logger.warn(`Retrieval source ${outcome.source} ${outcome.status}: ${outcome.reason}`);
+      }
+      for (const ids of yielded?.lists ?? []) lists.push({ source: outcome.source, ids });
+      for (const hit of yielded?.hits ?? []) {
+        const group = hitsById.get(hit.item.id) ?? [];
+        group.push(hit);
+        hitsById.set(hit.item.id, group);
+      }
+      report.push({
+        source: outcome.source,
+        status: skipped ? "skipped" : outcome.status,
+        ...(skipped ? { reason: "not_requested" as const } : outcome.reason ? { reason: outcome.reason } : {}),
+        candidates: new Set((yielded?.lists ?? []).flat()).size,
+        durationMs: outcome.durationMs,
+      });
+    }
+    // Every source that ran failed: surface it like the default path does,
+    // instead of reporting the failure as an unmet request.
+    const ran = report.filter((entry) => entry.status !== "skipped");
+    if (ran.length > 0 && ran.every((entry) => entry.status === "error" || entry.status === "timeout")) {
+      throw new Error("Hybrid retrieval unavailable: every source failed");
+    }
+
+    const fused = reciprocalRankFusion(lists);
+    const kept = fused.slice(0, config.maxCandidates);
+    const byId = new Map<string, AgentCandidateTrack & { matchedQueries: string[] }>();
+    const semanticScores = new Map<string, number>();
+    const retrievedBy = new Map<string, RetrievalSource[]>();
+    const onlyFrom: Partial<Record<RetrievalSource, number>> = {};
+    for (const entry of kept) {
+      const hits = hitsById.get(entry.id) ?? [];
+      const matchedQueries: string[] = [];
+      for (const hit of hits) {
+        for (const query of hit.matched) if (!matchedQueries.includes(query)) matchedQueries.push(query);
+        if (typeof hit.semanticScore === "number") {
+          semanticScores.set(entry.id, Math.max(hit.semanticScore, semanticScores.get(entry.id) ?? 0));
+        }
+      }
+      byId.set(entry.id, { ...hits[0].item, matchedQueries });
+      retrievedBy.set(entry.id, entry.sources);
+      if (entry.sources.length === 1) onlyFrom[entry.sources[0]] = (onlyFrom[entry.sources[0]] ?? 0) + 1;
+    }
+    return {
+      byId,
+      semanticScores,
+      retrievedBy,
+      retrieval: {
+        variant: HYBRID_RETRIEVAL_VARIANT,
+        sources: report,
+        onlyFrom,
+        fused: kept.length,
+        truncated: fused.length - kept.length,
+      },
+    };
+  }
+
+  /**
+   * What the batch left out of the session's own request, and why (never a
+   * widening: the cap and the explicit preference are unchanged):
+   *  - variety: matches of the request left out only by the per-artist cap;
+   *  - explicit: explicit matches the listener's preference excluded (a count
+   *    only, taken with one cheap query; fails open to 0).
+   * Only a session that asked for something has a request to hold back from.
+   */
+  private async heldBackFor(
+    input: AgentSelectorInput,
+    fresh: Array<{ id: string; signals?: Array<{ label: string }> }>,
+    capped: readonly string[] | undefined,
+  ): Promise<HeldBack | undefined> {
+    const terms = (input.requestedTerms ?? []).filter(Boolean);
+    if (terms.length === 0) return undefined;
+    const cappedIds = new Set(capped ?? []);
+    const variety = fresh.filter(
+      (entry) => cappedIds.has(entry.id) && (entry.signals ?? []).some((signal) => signal.label === "session_request"),
+    ).length;
+    let explicit = 0;
+    if (!input.allowExplicit) {
+      try {
+        const result = await this.tools.get("catalog.explicit_matches").run({
+          terms,
+          excludeTrackIds: input.recentTrackIds,
+        });
+        explicit = typeof result.count === "number" && result.count > 0 ? Math.floor(result.count) : 0;
+      } catch (error) {
+        this.logger.warn(`Explicit match count unavailable: ${error instanceof Error ? error.name : "error"}`);
+      }
+    }
+    return variety > 0 || explicit > 0 ? { variety, explicit } : undefined;
   }
 
   /**

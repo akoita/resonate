@@ -38,6 +38,7 @@ describe("deterministicSelectorInput (#2094)", () => {
       queueStyle: "Slow burn",
       tempoBpm: { min: 90, max: 110 },
       fallback: true,
+      requestedGenres: ["Soul"],
       requestedTerms: ["Soul", "Calm", "Dreamy"],
       semanticQuery: expect.stringContaining("Genres: Soul"),
       myMixPlan: undefined,

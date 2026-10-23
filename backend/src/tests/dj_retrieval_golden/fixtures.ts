@@ -403,7 +403,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     request: { kind: "structured", moods: ["Calm"], energy: "low" },
     relevant: ["calm_measured"],
     knownGap:
-      "Catalog search matches the mood word only against genre and title; measured energy is a ranking signal, never a retrieval source.",
+      "Catalog search matches the mood word only against genre and title; on the default path measured energy is a ranking signal, never a retrieval source. The hybrid_rrf_v1 variant (#2242) retrieves it by its measured energy band (100% / 100%).",
     baseline: NONE,
   },
 
@@ -418,3 +418,36 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     baseline: ONE,
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Held-back scenario (#2242, staging feedback)
+// ---------------------------------------------------------------------------
+
+/**
+ * A small hip-hop catalog of its own (so the cases above keep their numbers):
+ * nine eligible hip-hop-family tracks, two artists with three tracks each (one
+ * of those tracks explicit) and three singles. With explicit off and the
+ * per-artist cap (2) in force, eight are playable and seven fit the first
+ * batch, which is more than the old target of five: the session must hear all
+ * seven, and its coverage must say what was held back: one for variety (the
+ * first artist's third track) and one explicit.
+ */
+export const HELD_BACK_CATALOG: readonly GoldenTrack[] = [
+  { key: "hb_a1", title: "Block Report", artist: "Marlo Vance", genre: "Hip-Hop" },
+  { key: "hb_a2", title: "Late Rent", artist: "Marlo Vance", genre: "Hip-Hop" },
+  { key: "hb_a3", title: "Corner Light", artist: "Marlo Vance", genre: "Hip-Hop" },
+  { key: "hb_b1", title: "Open Mic Tuesday", artist: "Kito Raines", genre: "Rap" },
+  { key: "hb_b2", title: "Paper Trail", artist: "Kito Raines", genre: "Rap" },
+  { key: "hb_b3_explicit", title: "No Brakes", artist: "Kito Raines", genre: "Rap", explicit: true },
+  { key: "hb_c1", title: "Single Cut", artist: "Dre Calloway", genre: "Hip Hop" },
+  { key: "hb_d1", title: "Back Alley Radio", artist: "Nina Okafor-Reyes", genre: "Hip-Hop" },
+  { key: "hb_e1", title: "Tape Hiss", artist: "Sol Berenger", genre: "Trap" },
+];
+
+export const HELD_BACK_REQUEST: GoldenRequest = {
+  kind: "structured",
+  genres: ["Hip-Hop"],
+  allowExplicit: false,
+};
+/** The tracks the first batch must hold: every playable match the per-artist cap allows. */
+export const HELD_BACK_EXPECTED_FIRST_BATCH = ["hb_a1", "hb_a2", "hb_b1", "hb_b2", "hb_c1", "hb_d1", "hb_e1"] as const;

@@ -139,7 +139,7 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > (the listener's learned favorite genres plus the session's own) and excludes
 > every track the session already picked, including the picks session start
 > recorded as licenses. The set is continuous: one DJ run picks
-> `AGENT_TRACK_LIMIT` tracks (default 5), and when the player reaches the last
+> `AGENT_TRACK_LIMIT` tracks (default 12, was 5; #2242), and when the player reaches the last
 > two tracks of the DJ's queue on any page (`AgentDjContinuation`, mounted in
 > `AppShell`) the web asks for the next picks and appends them while the
 > session is live. Every next-pick track is recorded on the session like the
@@ -767,6 +767,143 @@ resonate-iac#318) to be turned on only after it passes the golden set.
   measurement with real embeddings (#2242 hybrid retrieval). Artist chips are not
   yet shown in Session History.
 
+## Hybrid retrieval with budgets (#2242, variant `hybrid_rrf_v1`)
+
+Status: shipped behind a ranker variant, **not promoted**. The default path is
+unchanged for everyone until the variant is assigned (see Variant).
+
+Before this, the DJ unioned keyword candidates (20 per query), semantic
+candidates above one fixed similarity floor and artist-seed candidates, and
+measured tempo/energy only re-ranked tracks that were already retrieved. Under
+`hybrid_rrf_v1` the selector (`AgentSelectorService`, before the shared ranking
+core) gathers candidates from five sources in parallel and fuses them.
+
+**Sources, each with its own candidate budget** (`AGENT_RETRIEVAL_BUDGETS`,
+default 20 each, 1..50):
+
+| Source | Retrieves | Notes |
+| --- | --- | --- |
+| `keyword` | `catalog.search` per query (genre families, descriptor families, title) | Budget is per query. The widened pass keeps its catalog-wide 50. |
+| `semantic` | `catalog.semantic_search` from the session sentence's cached query vector | Top-k plus the calibrated floor below. Skipped when embeddings are off. |
+| `audio_range` | `catalog.audio_range`: tracks whose **measured** energy band (stored descriptor) or measured BPM window fits the request | Reads stored values only; tempo needs the extractor's confidence gate; inferred values never retrieve. Runs only when the request names energy or tempo **and no genre**, so a genre request is never answered with unrelated tracks of that energy. |
+| `lane` | My Mix lane terms (genres and moods) the keyword source did not already search, per lane | Only when lanes are active; the existing lane filter and quotas still decide membership. |
+| `seed` | The listener's seeds by kind. Artist names today (`catalog.artist_seed`: own tracks plus vector neighbours) | `AgentSelectorInput.seeds = { artists?, trackIds? }` (`seedArtists` still works and merges). A new kind (`trackIds`: a current track or playlist, #2243) is one more field and one more runner in the seed source; fusion and budgets are unchanged. |
+
+**Fail open and latency.** Every source runs under one deadline
+(`AGENT_RETRIEVAL_TIMEOUT_MS`, default 1500). An error or a source still running
+at the deadline removes only that source's candidates; the reason code
+(`tool_error`, `deadline_exceeded`) is logged, never the error text, and the
+selection reports `retrieval.sources[]` (status, reason, candidates, duration).
+If every source that ran failed, the pick throws like the default path instead
+of reporting a failure as an unmet request.
+
+**Fusion.** Reciprocal-rank fusion over every source ranking: a track's score is
+the sum of `1 / (60 + rank)` over the lists that contain it (k = 60, the
+constant from the original RRF paper, not tuned). The fused list, capped at
+`AGENT_RETRIEVAL_MAX_CANDIDATES` (default 150), is handed to the shared ranking
+core in fused order. Fusion only orders and bounds candidates; it adds no score.
+The six rules (ADR-TE-2), hidden and downranked taste, the explicit preference
+and the AI-promotion filter run after it, unchanged.
+
+**No hidden widening (ADR-TE-4).** An unmet request stays unmet: a source with
+nothing to add contributes nothing, and the audio-range source is off for genre
+requests. What a source added alone is visible: `retrieval.onlyFrom`, each
+pick's `agentRecommendation.retrievedBy`, and, for a track only the audio-range
+source found, the explanation "Found by its measured energy or tempo, not by a
+tag."
+
+**Similarity floor.** Under the variant the fixed `AGENT_SEMANTIC_MIN_SIMILARITY`
+gate is replaced by top-k plus a calibrated floor: of the `limit` nearest
+neighbours keep those at or above `max(0.50, best score - 0.15)`
+(`CALIBRATED_SEMANTIC_ABSOLUTE_FLOOR`, `CALIBRATED_SEMANTIC_RELATIVE_MARGIN` in
+`agent_runtime.config.ts`). The absolute floor is lower than the fixed 0.55, so a
+relevant track just under it is reachable; the relative margin trims the tail
+behind a strong match; when even the best neighbour is under the absolute floor
+nothing is kept. `AGENT_SEMANTIC_MIN_SIMILARITY` still overrides the absolute
+floor when set. **Calibration caveat:** the golden set can only be run with the
+offline `hash` embedder here (no real-model scores were available, and no
+embedding call is made by this work). On it, every absolute floor from 0.3 to
+0.7 gives identical recall and an unmet request stays unmet at every one
+(`agent_hybrid_semantic_calibration.integration.spec.ts`), so the golden set
+cannot discriminate between values. 0.50 / 0.15 are therefore structural
+defaults chosen to be lower than the old floor with a bounded tail, and must be
+re-checked against production embeddings before promotion.
+
+**Variant.** `hybrid_rrf_v1` uses the existing ranker-variant mechanism (#2005):
+set `DISCOVERY_RANKER_EXPERIMENT=<key>:hybrid_rrf_v1=<percent>`. The selector
+reads the listener's deterministic assignment (`discoveryVariantForUser`), and
+the DJ's `recommendation.generated` events already record `rankerVariant` (and
+`experimentKey`), so skip rate and resonant discoveries are attributable per
+variant. The experiment env is shared with the other arms (one key at a time).
+Home impressions of a listener in the bucket carry the label too but Home
+ranking is unchanged. Offline evaluation pins the variant with
+`AgentSelectorInput.retrievalVariant`.
+
+**Cost.** Postgres/pgvector queries and the one already-cached query embedding;
+no new external call and no model call on the pick path. The audio-range tempo
+filter reads the stem JSON column unindexed and is bounded by its budget and
+the deadline; add an index only if the recorded source durations call for it.
+
+### Offline evidence (golden set, both runners, per case)
+
+`agent_golden_eval.spec.ts` (Docker-free) and
+`agent_dj_retrieval_golden.integration.spec.ts` (real Postgres) now run every
+case twice and assert the hybrid variant never does worse than the current path
+on any case; the two runners report identical numbers. Semantic retrieval is off
+in the golden runners (needs a real embedding model), so this measures keyword,
+audio-range and seed sources.
+
+| Case | Recall@10 current -> hybrid | Recall@20 current -> hybrid |
+| --- | --- | --- |
+| world-african, world-mandingue, world-region, world-country | 100% -> 100% | 100% -> 100% |
+| world-no-genre | 0% -> 0% | 100% -> 100% |
+| world-all | 71% -> 71% | 100% -> 100% |
+| rap-explicit-allowed, rap-explicit-blocked, rap-french-rap, rap-trap, rap-drill | 100% -> 100% | 100% -> 100% |
+| hip-hop-all | 77% -> 77% | 100% -> 100% |
+| sentence-warm-deep-house-cooking, sentence-something-to-focus | 100% -> 100% | 100% -> 100% |
+| sentence-40-minute-run | 0% -> 0% | 0% -> 0% |
+| artist-like-nadia-okoro, artist-more-hana-mori-lowercase, artist-near-miss-spelling | 100% -> 100% | 100% -> 100% |
+| calm-mood-tagged | 100% -> 100% | 100% -> 100% |
+| **calm-measured-low-energy-no-tag** | **0% -> 100%** | **0% -> 100%** |
+| unmet-gregorian-chant | honest unmet -> honest unmet | |
+| **Mean** | **82% -> 87%** | **90% -> 95%** |
+
+Reading it honestly: the only gain is the calm case (measured low energy now
+retrieves the untagged track). The World and rap cases were already at 100% at
+@20 through the track descriptors (#2240), so there is no @20 headroom for the
+issue's "World, rap and calm" criterion to move; the @10 gaps on `world-all` and
+`hip-hop-all` are the rank-10 cap (10 of 14 and 10 of 13), and `world-no-genre`
+is a one-point score tie that fusion does not change. `sentence-40-minute-run`
+needs the parser to read tempo/energy from the sentence, which is out of scope.
+Latency: the sources run in parallel, so the step costs the slowest source, and
+is bounded by the 1500 ms deadline; a before/after p95 needs production traffic
+and is not recorded here.
+
+**Promotion recommendation (not a decision).** Offline there is no regression
+and one gain, but the semantic source and the calibrated floor are unmeasured
+with a real model. Run `hybrid_rrf_v1` as a small percentage experiment on
+staging, check recall with real embeddings, source durations and timeouts in the
+logs, and the skip rate and resonant discoveries per variant before promoting.
+
+## Default selection target and held-back matches (#2242)
+
+Staging feedback: a "Hip-hop, rap, trap" session showed five picks and missed
+two matches. The default selection target (`AGENT_TRACK_LIMIT`) is now **12**
+(was 5; the env override and the cap of 50 are unchanged). The LLM curator prompt
+and the deterministic top-up read the same value, and a continuation asks for the
+same target, not more. The per-artist cap (two per artist per pick, ADR-TE-2) and
+the explicit preference are unchanged.
+
+The request coverage now reports what the batch held back: `heldBack` =
+`{ variety, explicit }` counts of strong matches (tracks that fit the session's
+own request) left out by the per-artist cap and by the explicit preference
+(`catalog.explicit_matches`, one count query, fails open). The web coverage line
+appends it to the same single line, for example "All picks matched your request
+· 2 more held back: 1 for variety, 1 explicit". A held-back-only golden case
+(nine hip-hop-family tracks: two artists with three tracks each, one explicit,
+three singles) asserts that all seven playable matches are in the first batch and
+that coverage reports 1 for variety and 1 explicit.
+
 ## One genre matcher for sessions and My Mix lanes (#2236)
 
 There used to be two genre matchers. Ordinary sessions used the genre-family
@@ -850,7 +987,7 @@ from one profile kept only two picks, and Next Pick then found nothing.
 
 With the LLM curator (ADK / Vertex), the model alone used to decide how many
 tracks a request returned. The prompt asks for up to `AGENT_TRACK_LIMIT`
-(default 5), but the same R&B & Soul request returned 2 tracks, then 5 twenty
+(default 12 since #2242; it was 5), but the same R&B & Soul request returned 2 tracks, then 5 twenty
 seconds later, and an empty or fully policy-dropped reply left the session
 with nothing.
 
@@ -2076,7 +2213,10 @@ Useful next warehouse jobs:
 | `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Query timeout. Defaults to `5000`. |
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Maximum score rows returned per selector call. Defaults to `100`. |
 | `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Optional BigQuery API base URL override for tests or private endpoints. |
-| `DISCOVERY_RANKER_EXPERIMENT` | Optional ranker variant / holdout experiment, `<key>:<variant>=<pct>,...` (#1455). Unset means everyone is `baseline`. |
+| `DISCOVERY_RANKER_EXPERIMENT` | Optional ranker variant / holdout experiment, `<key>:<variant>=<pct>,...` (#1455). Unset means everyone is `baseline`. `hybrid_rrf_v1` enables hybrid retrieval for its bucket (#2242). |
+| `AGENT_RETRIEVAL_BUDGETS` | Hybrid retrieval candidate budgets, `keyword=20,semantic=20,audio_range=20,lane=20,seed=20` (#2242). |
+| `AGENT_RETRIEVAL_TIMEOUT_MS` | Latency budget of the hybrid retrieval step; default `1500` (#2242). |
+| `AGENT_RETRIEVAL_MAX_CANDIDATES` | Cap on the fused candidate list; default `150` (#2242). |
 
 ## Verification
 

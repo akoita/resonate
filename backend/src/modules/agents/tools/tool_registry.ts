@@ -12,7 +12,8 @@ import {
   toAiDisclosureRecord,
 } from "../../catalog/ai-disclosure.policy";
 import { AgentObservabilityService } from "../agent_observability.service";
-import { getAgentSemanticMinSimilarity } from "../agent_runtime.config";
+import { calibratedSemanticFloor, getAgentSemanticMinSimilarity } from "../agent_runtime.config";
+import { MEASURED_TEMPO_MIN_CONFIDENCE } from "../measured_track_features";
 import {
   expandGenreSearchTerms,
   genreFamiliesFor,
@@ -26,6 +27,29 @@ const ARTIST_SEED_OWN_TRACKS = 8;
 const ARTIST_SEED_CENTROID_TRACKS = 8;
 const ARTIST_SEED_CACHE_TTL_MS = 5 * 60_000;
 const ARTIST_SEED_CACHE_MAX = 100;
+
+/**
+ * The catalog.search match for one query. Genre labels are free text, so a
+ * genre query also searches the labels of its genre family ("World" reaches
+ * "African", #2088). The title match stays literal. It also matches the stored
+ * track descriptor's families (#2240), so "World" reaches a track whose genre
+ * says "Bambara" but whose descriptor says world/african. This only READS the
+ * stored descriptor: no model call on this path.
+ */
+function searchTermWhere(query: string): Prisma.TrackWhereInput {
+  const descriptorFamilyIds = genreFamiliesFor(query).map((family) => family.id);
+  return {
+    OR: [
+      ...expandGenreSearchTerms(query).map((term) => ({
+        release: { genre: { contains: term, mode: "insensitive" as const } },
+      })),
+      ...(descriptorFamilyIds.length > 0
+        ? [{ descriptor: { is: { families: { hasSome: descriptorFamilyIds } } } }]
+        : []),
+      { title: { contains: query, mode: "insensitive" as const } },
+    ],
+  };
+}
 
 export interface ToolInput {
   [key: string]: unknown;
@@ -63,31 +87,10 @@ export class ToolRegistry {
         const explicitAllowed = Boolean(input.allowExplicit ?? false);
         const take = Math.min(Math.max(limit, 1), 50);
 
-        // Genre labels are free text, so a genre query also searches the
-        // labels of its genre family ("World" reaches "African", #2088). The
-        // title match stays literal. It also matches the stored track
-        // descriptor's families (#2240), so "World" reaches a track whose
-        // genre says "Bambara" but whose descriptor says world/african. This
-        // only READS the stored descriptor: no model call on this path.
-        const descriptorFamilyIds = query
-          ? genreFamiliesFor(query).map((family) => family.id)
-          : [];
         const items = await this.loadCandidateTracks({
           explicitAllowed,
           take,
-          extraWhere: query
-            ? {
-              OR: [
-                ...expandGenreSearchTerms(query).map((term) => ({
-                  release: { genre: { contains: term, mode: "insensitive" as const } },
-                })),
-                ...(descriptorFamilyIds.length > 0
-                  ? [{ descriptor: { is: { families: { hasSome: descriptorFamilyIds } } } }]
-                  : []),
-                { title: { contains: query, mode: "insensitive" as const } },
-              ],
-            }
-            : {},
+          extraWhere: query ? searchTermWhere(query) : {},
         });
 
         return { items };
@@ -127,7 +130,11 @@ export class ToolRegistry {
             ? [...(excludeTrackIds ?? []), seedTrackId]
             : excludeTrackIds,
         });
-        const floor = getAgentSemanticMinSimilarity();
+        // Hybrid retrieval asks for top-k plus a calibrated floor; every other
+        // caller keeps the fixed floor.
+        const floor = input.calibratedFloor === true
+          ? calibratedSemanticFloor(Math.max(0, ...neighbours.map((neighbour) => neighbour.score)))
+          : getAgentSemanticMinSimilarity();
         const kept = neighbours.filter((neighbour) => neighbour.score >= floor);
         if (kept.length === 0) {
           return { items: [], status: "ok" };
@@ -224,7 +231,9 @@ export class ToolRegistry {
             allowExplicit: explicitAllowed,
             excludeTrackIds: [...excludeTrackIds, ...own.map((row) => row.id)],
           });
-          const floor = getAgentSemanticMinSimilarity();
+          const floor = input.calibratedFloor === true
+            ? calibratedSemanticFloor(Math.max(0, ...neighbours.map((neighbour) => neighbour.score)))
+            : getAgentSemanticMinSimilarity();
           for (const neighbour of neighbours) {
             if (neighbour.score < floor || seen.has(neighbour.trackId)) continue;
             const previous = neighbourScores.get(neighbour.trackId);
@@ -249,6 +258,84 @@ export class ToolRegistry {
         }
         // Own tracks come first, so the cap never drops an artist's own catalog for neighbours.
         return { items: items.slice(0, limit), status: "ok" };
+      },
+    });
+
+    // Audio-feature range retrieval (#2242): tracks whose MEASURED full-mix
+    // features fit the request, so "calm" or "122 BPM" can retrieve a track no
+    // tag mentions. Energy matches the stored descriptor's energy band and tempo
+    // the original stem's measured BPM (confidence-gated, the same gate the
+    // ranker uses); inferred values never retrieve. Reads stored values only.
+    this.register({
+      name: "catalog.audio_range",
+      run: async (input) => {
+        const limit = Math.min(Math.max(Math.floor(Number(input.limit ?? 20)) || 20, 1), 50);
+        const explicitAllowed = Boolean(input.allowExplicit ?? false);
+        const excludeTrackIds = Array.isArray(input.excludeTrackIds)
+          ? (input.excludeTrackIds as unknown[]).filter((id): id is string => typeof id === "string")
+          : [];
+        const energy = input.energy === "low" || input.energy === "medium" || input.energy === "high"
+          ? input.energy
+          : undefined;
+        const tempo = input.tempoBpm as { min?: number | null; max?: number | null } | undefined;
+        const minBpm = typeof tempo?.min === "number" && Number.isFinite(tempo.min) ? tempo.min : undefined;
+        const maxBpm = typeof tempo?.max === "number" && Number.isFinite(tempo.max) ? tempo.max : undefined;
+        if (!energy && minBpm === undefined && maxBpm === undefined) return { items: [], status: "ok" };
+
+        const and: Prisma.TrackWhereInput[] = [];
+        if (excludeTrackIds.length > 0) and.push({ id: { notIn: excludeTrackIds } });
+        if (energy) and.push({ descriptor: { is: { energyBand: energy } } });
+        if (minBpm !== undefined || maxBpm !== undefined) {
+          and.push({
+            stems: {
+              some: {
+                type: "original",
+                isCurrent: true,
+                AND: [
+                  { audioFeatures: { path: ["tempoConfidence"], gte: MEASURED_TEMPO_MIN_CONFIDENCE } },
+                  ...(minBpm !== undefined ? [{ audioFeatures: { path: ["tempoBpm"], gte: minBpm } }] : []),
+                  ...(maxBpm !== undefined ? [{ audioFeatures: { path: ["tempoBpm"], lte: maxBpm } }] : []),
+                ],
+              },
+            },
+          });
+        }
+        const items = await this.loadCandidateTracks({
+          explicitAllowed,
+          take: limit,
+          extraWhere: { AND: and },
+        });
+        return { items, status: "ok" };
+      },
+    });
+
+    // How many EXPLICIT tracks match the session's requested terms (and are
+    // promotion-eligible): the "explicit" part of "held back" in the request
+    // coverage. A count only; no track is returned, so the explicit preference
+    // is never bypassed.
+    this.register({
+      name: "catalog.explicit_matches",
+      run: async (input) => {
+        const terms = Array.isArray(input.terms)
+          ? (input.terms as unknown[])
+              .filter((term): term is string => typeof term === "string")
+              .map((term) => term.trim())
+              .filter(Boolean)
+              .slice(0, 8)
+          : [];
+        if (terms.length === 0) return { count: 0 };
+        const excludeTrackIds = Array.isArray(input.excludeTrackIds)
+          ? (input.excludeTrackIds as unknown[]).filter((id): id is string => typeof id === "string")
+          : [];
+        const count = await prisma.track.count({
+          where: {
+            explicit: true,
+            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+            ...(excludeTrackIds.length > 0 ? { id: { notIn: excludeTrackIds } } : {}),
+            OR: terms.flatMap((term) => searchTermWhere(term).OR ?? []),
+          },
+        });
+        return { count };
       },
     });
 

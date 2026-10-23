@@ -4,15 +4,25 @@ import { AgentGoldenEvalService } from "../modules/agents/agent_golden_eval.serv
 import { AgentPolicyService } from "../modules/agents/agent_policy.service";
 import { AgentRunnerService } from "../modules/agents/agent_runner.service";
 import { EventBus } from "../modules/shared/event_bus";
-import { GOLDEN_CASES, GOLDEN_CATALOG } from "./dj_retrieval_golden/fixtures";
+import { HYBRID_RETRIEVAL_VARIANT } from "../modules/agents/agent_hybrid_retrieval";
+import {
+  GOLDEN_CASES,
+  GOLDEN_CATALOG,
+  HELD_BACK_CATALOG,
+  HELD_BACK_EXPECTED_FIRST_BATCH,
+  HELD_BACK_REQUEST,
+} from "./dj_retrieval_golden/fixtures";
 import {
   buildGoldenReport,
   buildGoldenSelector,
   expectGoldenBaselines,
   FixtureAudioFeatureService,
+  goldenComparisonMarkdown,
+  expectNoHybridRegression,
   goldenReportMarkdown,
   InMemoryGoldenTools,
   runGoldenCases,
+  runHeldBackScenario,
   writeGoldenReport,
 } from "./dj_retrieval_golden/harness";
 
@@ -149,6 +159,42 @@ describe("AI DJ retrieval golden set", () => {
     expect(report.summary.regressed).toBe(0);
     expectGoldenBaselines(results);
   });
+
+  it("runs the hybrid_rrf_v1 variant over the same cases without regressing any of them (#2242)", async () => {
+    const tools = new InMemoryGoldenTools();
+    const selector = buildGoldenSelector(tools, new FixtureAudioFeatureService(tools.tracksById));
+
+    const current = await runGoldenCases(selector, "");
+    const hybrid = await runGoldenCases(selector, "", undefined, undefined, HYBRID_RETRIEVAL_VARIANT);
+    const report = buildGoldenReport(
+      `in-memory catalog twin, variant ${HYBRID_RETRIEVAL_VARIANT}`,
+      hybrid,
+    );
+    writeGoldenReport(report, "dj-retrieval-golden-results-in-memory-hybrid");
+    // eslint-disable-next-line no-console
+    console.log(`${goldenReportMarkdown(report)}\n${goldenComparisonMarkdown(current, hybrid)}`);
+
+    expect(report.summary.regressed).toBe(0);
+    expectGoldenBaselines(hybrid);
+    expectNoHybridRegression(current, hybrid);
+  });
+
+  it.each([[undefined], [HYBRID_RETRIEVAL_VARIANT]])(
+    "hears every playable hip-hop match in the first batch and reports what was held back (variant %s)",
+    async (variant) => {
+      const tools = new InMemoryGoldenTools(HELD_BACK_CATALOG);
+      const selector = buildGoldenSelector(tools, new FixtureAudioFeatureService(tools.tracksById));
+
+      const { firstBatch, heldBack } = await runHeldBackScenario(selector, "", HELD_BACK_REQUEST, variant);
+
+      // Nine eligible tracks; one is explicit (preference) and one is the first
+      // artist's third (per-artist cap of 2): seven (more than the old target of
+      // five) are heard, the rest is reported.
+      expect([...firstBatch].sort()).toEqual([...HELD_BACK_EXPECTED_FIRST_BATCH].sort());
+      expect(firstBatch).not.toContain("hb_b3_explicit");
+      expect(heldBack).toEqual({ variety: 1, explicit: 1 });
+    },
+  );
 
   it("covers every case the issue names", () => {
     const ids = new Set(GOLDEN_CASES.map((item) => item.id));

@@ -195,35 +195,53 @@ export type CoverageLine = { kind: "full" | "partial" | "none"; text: string };
  * - none: no pick matched any filter. The DJ still plays the closest picks and
  *   says so instead of implying a match (ADR-TE-4: never fill with fakes).
  *
- * Gaps for filters the listener has since removed are dropped.
+ * Gaps for filters the listener has since removed are dropped. When strong
+ * matches were left out (per-artist variety cap, explicit preference) the same
+ * line ends with "2 more held back: 1 for variety, 1 explicit"; the cap and the
+ * preference themselves are never overridden.
  */
 export function coverageLine(
   coverage: AgentRequestCoverage | null | undefined,
   request: AgentSessionRequest | null | undefined,
 ): CoverageLine | null {
   if (!coverage || coverage.picks <= 0 || !hasFilters(request)) return null;
+  const heldBack = heldBackText(coverage.heldBack);
+  const withHeldBack = (text: string) => (heldBack ? `${text} \u00B7 ${heldBack}` : text);
   const gaps = coverage.gaps.flatMap((gap) => {
     if (gap.matched >= coverage.picks) return [];
     const subject = coverageSubject(gap.filter, request);
     return subject ? [{ matched: gap.matched, subject }] : [];
   });
-  if (gaps.length === 0) return { kind: "full", text: "All picks matched your request" };
+  if (gaps.length === 0) return { kind: "full", text: withHeldBack("All picks matched your request") };
   if (gaps.length >= requestFilterKeys(request).length && gaps.every((gap) => gap.matched <= 0)) {
     return {
       kind: "none",
-      text: `Nothing in the catalog matched ${gaps.map((gap) => gap.subject).join(" and ")} yet \u2014 playing the closest picks`,
+      text: withHeldBack(
+        `Nothing in the catalog matched ${gaps.map((gap) => gap.subject).join(" and ")} yet \u2014 playing the closest picks`,
+      ),
     };
   }
   return {
     kind: "partial",
-    text: gaps
-      .map((gap) =>
-        gap.matched <= 0
-          ? `None of the ${coverage.picks} picks matched ${gap.subject}`
-          : `Only ${gap.matched} of ${coverage.picks} picks matched ${gap.subject}`,
-      )
-      .join(" \u00B7 "),
+    text: withHeldBack(
+      gaps
+        .map((gap) =>
+          gap.matched <= 0
+            ? `None of the ${coverage.picks} picks matched ${gap.subject}`
+            : `Only ${gap.matched} of ${coverage.picks} picks matched ${gap.subject}`,
+        )
+        .join(" \u00B7 "),
+    ),
   };
+}
+
+/** `2 more held back: 1 for variety, 1 explicit`; undefined when nothing was held back. */
+function heldBackText(heldBack: AgentRequestCoverage["heldBack"]): string | undefined {
+  const variety = Math.max(0, Math.floor(heldBack?.variety ?? 0));
+  const explicit = Math.max(0, Math.floor(heldBack?.explicit ?? 0));
+  if (variety + explicit <= 0) return undefined;
+  const reasons = [variety > 0 ? `${variety} for variety` : null, explicit > 0 ? `${explicit} explicit` : null];
+  return `${variety + explicit} more held back: ${reasons.filter(Boolean).join(", ")}`;
 }
 
 type QueuedTrackLike = { id: string; catalogTrackId?: string | null };

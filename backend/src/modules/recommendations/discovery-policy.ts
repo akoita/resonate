@@ -107,6 +107,12 @@ export interface DiscoveryPolicyResult<T extends RankedDiscoveryCandidate> {
   exploration: { reserved: number; served: number };
   /** Candidate ID to private lane ID; callers must keep this out of broadcast events. */
   laneAssignments?: Map<string, string>;
+  /**
+   * Eligible candidates left out only because their artist already holds
+   * `maxPerArtist` places (the diversity cap, ADR-TE-2). The cap is unchanged;
+   * this only reports what it held back so a surface can say so.
+   */
+  heldBackForVariety?: string[];
 }
 
 /**
@@ -317,11 +323,16 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
         : withGuaranteedReason(candidate),
     );
 
+  const heldBackForVariety = eligible
+    .filter((candidate) => !chosen.has(candidate) && !withinCap(candidate))
+    .map((candidate) => candidate.id);
+
   return {
     items,
     dropped,
     exploration: { reserved, served: explorationPicks.size },
     ...(laneQuotas.length ? { laneAssignments } : {}),
+    ...(heldBackForVariety.length > 0 ? { heldBackForVariety } : {}),
   };
 }
 

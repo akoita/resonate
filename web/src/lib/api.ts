@@ -5814,6 +5814,8 @@ export type AgentRequestCoverageFilter = "genres" | "moods" | "energy" | "bpm";
 export type AgentRequestCoverage = {
   picks: number;
   gaps: Array<{ filter: AgentRequestCoverageFilter; matched: number }>;
+  /** Strong matches left out of these picks: `variety` = the per-artist cap, `explicit` = the explicit preference. */
+  heldBack?: { variety: number; explicit: number };
 };
 
 export type AgentMixCoverageLane = {

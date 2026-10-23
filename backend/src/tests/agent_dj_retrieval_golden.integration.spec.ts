@@ -19,88 +19,48 @@
  *
  * Run: npm run test:integration -- agent_dj_retrieval_golden
  */
-import { prisma } from "../db/prisma";
 import { AgentAudioFeatureService } from "../modules/agents/agent_audio_feature.service";
 import { AgentSessionArtistResolver } from "../modules/agents/agent_session_artist_resolver";
 import { ToolRegistry } from "../modules/agents/tools/tool_registry";
 import { EmbeddingService } from "../modules/embeddings/embedding.service";
 import { EmbeddingStore } from "../modules/embeddings/embedding.store";
 import { TrackDescriptorTagger } from "../modules/descriptors/track_descriptor_tagger";
-import { GOLDEN_CASES, GOLDEN_CATALOG } from "./dj_retrieval_golden/fixtures";
+import { HYBRID_RETRIEVAL_VARIANT } from "../modules/agents/agent_hybrid_retrieval";
+import {
+  GOLDEN_CASES,
+  GOLDEN_CATALOG,
+  HELD_BACK_CATALOG,
+  HELD_BACK_EXPECTED_FIRST_BATCH,
+  HELD_BACK_REQUEST,
+} from "./dj_retrieval_golden/fixtures";
+import { cleanGoldenCatalog, seedGoldenCatalog } from "./dj_retrieval_golden/seed";
 import {
   buildGoldenReport,
   buildGoldenSelector,
   expectGoldenBaselines,
   FixtureAudioFeatureService,
+  expectNoHybridRegression,
+  goldenComparisonMarkdown,
   goldenReportMarkdown,
   GoldenCaseResult,
   InMemoryGoldenTools,
   runGoldenCases,
+  runHeldBackScenario,
   scopeToIdPrefix,
-  stemFeaturesPayload,
   writeGoldenReport,
 } from "./dj_retrieval_golden/harness";
 
 const TEST_PREFIX = `djgold_${Date.now()}_`;
-const USER_ID = `${TEST_PREFIX}user`;
-const ARTIST_ID = `${TEST_PREFIX}uploader`;
 
 describe("AI DJ retrieval golden set (integration)", () => {
   const originalProvider = process.env.TRACK_EMBEDDING_PROVIDER;
   let results: GoldenCaseResult[] = [];
+  let hybridResults: GoldenCaseResult[] = [];
 
   beforeAll(async () => {
     process.env.TRACK_EMBEDDING_PROVIDER = "disabled";
 
-    await prisma.user.create({ data: { id: USER_ID, email: `${TEST_PREFIX}@test.resonate` } });
-    await prisma.artist.create({
-      data: {
-        id: ARTIST_ID,
-        userId: USER_ID,
-        displayName: "Fixture uploader",
-        payoutAddress: `0x${"d".repeat(40)}`,
-      },
-    });
-
-    // Newest first, and newer than anything another suite left behind, so the
-    // catalog's newest-first order is the fixture's order.
-    const newest = Date.now() + 60_000;
-    const createdAt = (index: number) => new Date(newest - index * 1000);
-
-    await prisma.release.createMany({
-      data: GOLDEN_CATALOG.map((track, index) => ({
-        id: `${TEST_PREFIX}rel_${track.key}`,
-        artistId: ARTIST_ID,
-        title: track.releaseTitle ?? track.title,
-        primaryArtist: track.artist,
-        genre: track.genre,
-        moods: track.moods ?? [],
-        status: "published",
-        createdAt: createdAt(index),
-      })),
-    });
-    await prisma.track.createMany({
-      data: GOLDEN_CATALOG.map((track, index) => ({
-        id: `${TEST_PREFIX}${track.key}`,
-        releaseId: `${TEST_PREFIX}rel_${track.key}`,
-        title: track.title,
-        artist: track.artist,
-        explicit: Boolean(track.explicit),
-        position: 1,
-        createdAt: createdAt(index),
-      })),
-    });
-    await prisma.stem.createMany({
-      data: GOLDEN_CATALOG.map((track) => ({
-        id: `${TEST_PREFIX}stem_${track.key}`,
-        trackId: `${TEST_PREFIX}${track.key}`,
-        type: "original",
-        uri: `local://${TEST_PREFIX}${track.key}.wav`,
-        isCurrent: true,
-        durationSeconds: 200,
-        ...(track.measured ? { audioFeatures: stemFeaturesPayload(track.measured) } : {}),
-      })),
-    });
+    await seedGoldenCatalog(TEST_PREFIX);
 
     // #2240: the descriptors exactly as the backfill (deterministic strategy,
     // the default) writes them: the real tagger over the seeded rows.
@@ -123,6 +83,22 @@ describe("AI DJ retrieval golden set (integration)", () => {
     // The real artist lookup too: credited names come from Postgres here.
     results = await runGoldenCases(selector, TEST_PREFIX, GOLDEN_CASES, new AgentSessionArtistResolver());
 
+    // The hybrid_rrf_v1 variant (#2242) over the same real catalog and tools.
+    hybridResults = await runGoldenCases(
+      selector,
+      TEST_PREFIX,
+      GOLDEN_CASES,
+      new AgentSessionArtistResolver(),
+      HYBRID_RETRIEVAL_VARIANT,
+    );
+    const hybridReport = buildGoldenReport(
+      `real catalog.search over Postgres (integration), variant ${HYBRID_RETRIEVAL_VARIANT}`,
+      hybridResults,
+    );
+    writeGoldenReport(hybridReport, "dj-retrieval-golden-results-postgres-hybrid");
+    // eslint-disable-next-line no-console
+    console.log(goldenComparisonMarkdown(results, hybridResults));
+
     const report = buildGoldenReport("real catalog.search over Postgres (integration)", results);
     const { jsonPath } = writeGoldenReport(report, "dj-retrieval-golden-results-postgres");
     // eslint-disable-next-line no-console
@@ -132,11 +108,7 @@ describe("AI DJ retrieval golden set (integration)", () => {
   afterAll(async () => {
     if (originalProvider === undefined) delete process.env.TRACK_EMBEDDING_PROVIDER;
     else process.env.TRACK_EMBEDDING_PROVIDER = originalProvider;
-    await prisma.stem.deleteMany({ where: { trackId: { startsWith: TEST_PREFIX } } }).catch(() => {});
-    await prisma.track.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } }).catch(() => {});
-    await prisma.release.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } }).catch(() => {});
-    await prisma.artist.deleteMany({ where: { id: ARTIST_ID } }).catch(() => {});
-    await prisma.user.deleteMany({ where: { id: USER_ID } }).catch(() => {});
+    await cleanGoldenCatalog(TEST_PREFIX);
   });
 
   it("runs every golden case", () => {
@@ -146,6 +118,15 @@ describe("AI DJ retrieval golden set (integration)", () => {
   it("meets the recorded recall@10 / recall@20 baseline for every case", () => {
     expect(results.filter((item) => item.status === "regressed")).toEqual([]);
     expectGoldenBaselines(results);
+  });
+
+  it("hybrid_rrf_v1 meets every baseline and regresses no case against the current path (#2242)", () => {
+    expect(hybridResults.filter((item) => item.status === "regressed")).toEqual([]);
+    expectGoldenBaselines(hybridResults);
+    expectNoHybridRegression(results, hybridResults);
+    // Measured low energy retrieves the untagged calm track (was a known gap).
+    const calm = hybridResults.find((item) => item.id === "calm-measured-low-energy-no-tag");
+    expect(calm?.recallAt20).toBe(1);
   });
 
   it("keeps explicit tracks out when explicit is off, and an unmatched request honest", () => {
@@ -173,5 +154,42 @@ describe("AI DJ retrieval golden set (integration)", () => {
         candidateCount,
       }));
     expect(summary(twin)).toEqual(summary(results));
+
+    const hybridTwin = await runGoldenCases(twinSelector, "", undefined, undefined, HYBRID_RETRIEVAL_VARIANT);
+    expect(summary(hybridTwin)).toEqual(summary(hybridResults));
   });
+});
+
+describe("AI DJ held-back scenario (integration, real SQL)", () => {
+  const prefix = `djheld_${Date.now()}_`;
+  const originalProvider = process.env.TRACK_EMBEDDING_PROVIDER;
+
+  beforeAll(async () => {
+    process.env.TRACK_EMBEDDING_PROVIDER = "disabled";
+    await seedGoldenCatalog(prefix, HELD_BACK_CATALOG);
+    await new TrackDescriptorTagger({ env: {} }).tagTracks(
+      HELD_BACK_CATALOG.map((track) => `${prefix}${track.key}`),
+      { apply: true },
+    );
+  });
+
+  afterAll(async () => {
+    if (originalProvider === undefined) delete process.env.TRACK_EMBEDDING_PROVIDER;
+    else process.env.TRACK_EMBEDDING_PROVIDER = originalProvider;
+    await cleanGoldenCatalog(prefix);
+  });
+
+  it.each([[undefined], [HYBRID_RETRIEVAL_VARIANT]])(
+    "hears every playable hip-hop match in the first batch and counts what was held back (variant %s)",
+    async (variant) => {
+      const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+      const selector = buildGoldenSelector(scopeToIdPrefix(tools, prefix), new AgentAudioFeatureService());
+
+      const { firstBatch, heldBack } = await runHeldBackScenario(selector, prefix, HELD_BACK_REQUEST, variant);
+
+      expect([...firstBatch].sort()).toEqual([...HELD_BACK_EXPECTED_FIRST_BATCH].sort());
+      expect(firstBatch).not.toContain("hb_b3_explicit");
+      expect(heldBack).toEqual({ variety: 1, explicit: 1 });
+    },
+  );
 });

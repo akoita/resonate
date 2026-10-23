@@ -10,6 +10,7 @@ import type { AgentRuntimeFallback } from "./agent_runtime.types";
 import {
   requestCoverageFor,
   type AgentRequestCoverage,
+  type AgentRequestHeldBack,
   type AgentSessionRequest,
   type AgentSessionTempoRange,
 } from "./agent_session_request";
@@ -216,7 +217,7 @@ export class AgentOrchestratorService {
     // explicit shortfall; audio is never generated to fill it.
     const shortfall = Math.max(0, requestedLimit - tracks.length);
     const status = tracks.length > 0 ? "approved" : "all_rejected";
-    const coverage = buildRequestCoverage(input.preferences.request, selection.selected ?? []);
+    const coverage = buildRequestCoverage(input.preferences.request, selection.selected ?? [], selection.heldBack);
     this.eventBus.publish({
       eventName: "agent.decision_made",
       eventVersion: 1,
@@ -260,6 +261,7 @@ function buildRequestCoverage(
     release?: { genre?: string | null; moods?: string[] | null };
     agentRecommendation?: { audioFeatures?: AgentAudioFeatures };
   }>,
+  heldBack?: AgentRequestHeldBack,
 ): { coverage: AgentRequestCoverage; summary: string } | undefined {
   return requestCoverageFor(
     rawRequest,
@@ -273,6 +275,7 @@ function buildRequestCoverage(
         tempoMeasured: features?.featureSources?.tempo === "measured",
       };
     }),
+    heldBack,
   );
 }
 

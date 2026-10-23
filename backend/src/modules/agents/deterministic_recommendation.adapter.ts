@@ -132,6 +132,7 @@ export function deterministicSelectorInput(
     // Listening sessions never dead-end while an unplayed track fits (#2056).
     fallback: true,
     ...requestedTermsFor(input.preferences),
+    ...(input.preferences.sessionGenres?.length ? { requestedGenres: input.preferences.sessionGenres } : {}),
     semanticQuery: buildSemanticSessionQuery(input.preferences),
     ...(input.preferences.seedTrackId ? { seedTrackId: input.preferences.seedTrackId } : {}),
     ...(input.preferences.artists?.length ? { seedArtists: input.preferences.artists } : {}),
@@ -155,6 +156,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       rejected: selection.rejected,
       reason: selection.reason,
       ...(selection.mixCoverage ? { mixCoverage: selection.mixCoverage } : {}),
+      ...(selection.heldBack ? { heldBack: selection.heldBack } : {}),
     };
   }
 }
