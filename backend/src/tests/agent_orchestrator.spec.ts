@@ -287,6 +287,25 @@ describe("AgentOrchestratorService (listening picks)", () => {
       expect(decision).not.toHaveProperty("coverageSummary");
     });
 
+    it("carries what the selector held back (variety cap, explicit preference) in the coverage", async () => {
+      const { orchestrator, events, recommendations } = build([
+        track(1, { genre: "Deep House", moods: ["Dark"] }, measured(122)),
+      ] as any);
+      const selection = await recommendations.recommend({} as never);
+      recommendations.recommend.mockResolvedValue({ ...selection, heldBack: { variety: 2, explicit: 1 } });
+
+      const result = await orchestrator.orchestrate({
+        sessionId: "s1",
+        userId: "u1",
+        recentTrackIds: [],
+        preferences: { request },
+      });
+
+      expect(result.requestCoverage).toEqual({ picks: 1, gaps: [], heldBack: { variety: 2, explicit: 1 } });
+      const decision = events.find((event) => event.eventName === "agent.decision_made");
+      expect(decision.coverage).toEqual(result.requestCoverage);
+    });
+
     it("adds nothing without a request, or with a request that has no filters", async () => {
       for (const preferences of [{}, { request: { genres: [], moods: [], energy: null, bpm: null } }]) {
         const { orchestrator, events } = build(makeTracks(2));

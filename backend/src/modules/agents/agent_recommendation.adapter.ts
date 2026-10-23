@@ -1,5 +1,5 @@
 import type { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
-import type { AgentCandidateTrack } from "./agent_selector.service";
+import type { AgentCandidateTrack, HeldBack } from "./agent_selector.service";
 import type { ResolvedMyMixPlan } from "./agent_my_mix";
 import type { MixCoverage } from "./agent_my_mix";
 
@@ -28,6 +28,8 @@ export interface AgentRecommendationResult {
   reason: string;
   /** Private My Mix coverage; kept inside the owner-bound session response path. */
   mixCoverage?: MixCoverage;
+  /** Strong matches this batch left out (per-artist cap, explicit preference); feeds the request coverage. */
+  heldBack?: HeldBack;
   trace?: {
     strategy: AgentRecommendationStrategy;
     fallbackReason?: string;

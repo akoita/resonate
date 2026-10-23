@@ -49,7 +49,15 @@ export type AgentRequestCoverage = {
   picks: number;
   /** Only filters with matched < picks; largest gap first. */
   gaps: Array<{ filter: AgentRequestCoverageFilter; matched: number }>;
+  /**
+   * Strong matches the batch left out, by reason (absent when none): `variety`
+   * is the per-artist cap (ADR-TE-2), `explicit` the listener's explicit
+   * preference. Reported, never overridden.
+   */
+  heldBack?: AgentRequestHeldBack;
 };
+
+export type AgentRequestHeldBack = { variety: number; explicit: number };
 
 export type AgentSessionParseResponse = {
   request: AgentSessionRequest;
@@ -292,6 +300,7 @@ const COVERAGE_FILTER_ORDER: AgentRequestCoverageFilter[] = ["genres", "moods", 
 export function computeRequestCoverage(
   request: AgentSessionRequest,
   picks: readonly AgentRequestCoveragePick[],
+  heldBack?: AgentRequestHeldBack,
 ): AgentRequestCoverage | undefined {
   if (picks.length === 0 || !hasRequestFilters(request)) return undefined;
 
@@ -334,7 +343,11 @@ export function computeRequestCoverage(
     // the fewest matches. Sort is stable: ties keep the genres, moods, energy,
     // bpm order above.
     .sort((a, b) => a.matched - b.matched);
-  return { picks: picks.length, gaps };
+  return {
+    picks: picks.length,
+    gaps,
+    ...(heldBack && heldBack.variety + heldBack.explicit > 0 ? { heldBack } : {}),
+  };
 }
 
 function normalizeTerm(term: string): string {
@@ -349,10 +362,11 @@ function normalizeTerm(term: string): string {
 export function requestCoverageFor(
   rawRequest: unknown,
   picks: readonly AgentRequestCoveragePick[],
+  heldBack?: AgentRequestHeldBack,
 ): { coverage: AgentRequestCoverage; summary: string } | undefined {
   const request = sanitizeSessionRequest(rawRequest);
   if (!request || !hasRequestFilters(request)) return undefined;
-  const coverage = computeRequestCoverage(request, picks);
+  const coverage = computeRequestCoverage(request, picks, heldBack);
   if (!coverage) return undefined;
   return { coverage, summary: describeCoverageGaps(request, coverage) };
 }

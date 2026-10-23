@@ -974,7 +974,8 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
 describe("AgentRuntimePolicyService top-up to the selection target (#2094)", () => {
   const previousLimit = process.env.AGENT_TRACK_LIMIT;
   beforeEach(() => {
-    delete process.env.AGENT_TRACK_LIMIT;
+    // These cases are about the top-up arithmetic, not the default target (12).
+    process.env.AGENT_TRACK_LIMIT = "5";
   });
   afterEach(() => {
     if (previousLimit === undefined) delete process.env.AGENT_TRACK_LIMIT;

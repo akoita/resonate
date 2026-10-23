@@ -166,6 +166,25 @@ describe("coverageLine", () => {
     });
   });
 
+  it("adds what was held back, by reason, to the same single line", () => {
+    expect(coverageLine({ picks: 7, gaps: [], heldBack: { variety: 1, explicit: 1 } }, request)).toEqual({
+      kind: "full",
+      text: "All picks matched your request \u00B7 2 more held back: 1 for variety, 1 explicit",
+    });
+    expect(coverageLine({ picks: 5, gaps: [{ filter: "bpm", matched: 1 }], heldBack: { variety: 0, explicit: 3 } }, request)).toEqual({
+      kind: "partial",
+      text: "Only 1 of 5 picks matched 120–125 BPM \u00B7 3 more held back: 3 explicit",
+    });
+    const genreOnly: AgentSessionRequest = { genres: ["World"], moods: [], energy: null, bpm: null };
+    expect(
+      coverageLine({ picks: 5, gaps: [{ filter: "genres", matched: 0 }], heldBack: { variety: 2, explicit: 0 } }, genreOnly)?.text,
+    ).toBe("Nothing in the catalog matched World yet \u2014 playing the closest picks \u00B7 2 more held back: 2 for variety");
+    expect(coverageLine({ picks: 5, gaps: [], heldBack: { variety: 0, explicit: 0 } }, request)?.text).toBe(
+      "All picks matched your request",
+    );
+    expect(coverageLine({ picks: 5, gaps: [], heldBack: { variety: 1, explicit: 0 } }, request)?.text).not.toContain("\n");
+  });
+
   it("drops gaps for filters that were removed and handles no coverage", () => {
     const withoutBpm = removeChip(request, "bpm");
     expect(coverageLine({ picks: 5, gaps: [{ filter: "bpm", matched: 2 }] }, withoutBpm)).toEqual({

@@ -50,9 +50,11 @@ import {
   genreFamiliesFor,
 } from "../../modules/recommendations/genre_families";
 import { DiscoveryRankingService } from "../../modules/recommendations/discovery-ranking.service";
+import { getAgentTrackLimit } from "../../modules/agents/agent_runtime.config";
 import {
   GOLDEN_CASES,
   GOLDEN_CATALOG,
+  HELD_BACK_CATALOG,
   GoldenCase,
   GoldenRequest,
   GoldenTrack,
@@ -222,6 +224,10 @@ export class InMemoryGoldenTools {
         return { run: async (input: Record<string, unknown>) => this.search(input) };
       case "catalog.semantic_search":
         return { run: async () => ({ items: [], status: "unavailable" }) };
+      case "catalog.audio_range":
+        return { run: async (input: Record<string, unknown>) => this.audioRange(input) };
+      case "catalog.explicit_matches":
+        return { run: async (input: Record<string, unknown>) => this.explicitMatches(input) };
       case "catalog.artist_seed":
         return { run: async (input: Record<string, unknown>) => this.artistSeed(input) };
       case "embeddings.similarity":
@@ -246,6 +252,53 @@ export class InMemoryGoldenTools {
         .map((track) => ({ ...this.toItem(track), artistSeed: "own", seedArtist: track.artist })),
     );
     return { items: items.slice(0, limit), status: "ok" };
+  }
+
+  /**
+   * `catalog.audio_range` over the fixture: the descriptor's measured energy
+   * band, and a measured BPM window (the fixture's tempo confidence is 0.8,
+   * above the gate), newest first. Inferred values never retrieve.
+   */
+  private audioRange(input: Record<string, unknown>) {
+    const energy = input.energy as string | undefined;
+    const tempo = input.tempoBpm as { min?: number | null; max?: number | null } | undefined;
+    const excluded = new Set((input.excludeTrackIds as string[]) ?? []);
+    const explicitAllowed = Boolean(input.allowExplicit ?? false);
+    const limit = Math.min(Math.max(Number(input.limit ?? 20), 1), 50);
+    const items = this.catalog
+      .filter((track) => explicitAllowed || !track.explicit)
+      .filter((track) => !excluded.has(`${this.idPrefix}${track.key}`))
+      .filter((track) => !energy || goldenDescriptor(track).energyBand === energy)
+      .filter((track) => {
+        if (tempo?.min == null && tempo?.max == null) return true;
+        const bpm = track.measured?.tempoBpm;
+        return bpm !== undefined && (tempo?.min == null || bpm >= tempo.min) && (tempo?.max == null || bpm <= tempo.max);
+      })
+      .slice(0, limit)
+      .map((track) => this.toItem(track));
+    return { items, status: "ok" };
+  }
+
+  /** `catalog.explicit_matches`: how many explicit tracks match the requested terms (a count only). */
+  private explicitMatches(input: Record<string, unknown>) {
+    const terms = (input.terms as string[]) ?? [];
+    const excluded = new Set((input.excludeTrackIds as string[]) ?? []);
+    const matches = (track: GoldenTrack, query: string) => {
+      const genre = track.genre?.toLowerCase() ?? "";
+      const familyIds = genreFamiliesFor(query).map((family) => family.id);
+      return (
+        expandGenreSearchTerms(query).some((term) => genre.includes(term.toLowerCase())) ||
+        goldenDescriptor(track).families.some((id) => familyIds.includes(id)) ||
+        track.title.toLowerCase().includes(query.toLowerCase())
+      );
+    };
+    const count = this.catalog.filter(
+      (track) =>
+        track.explicit &&
+        !excluded.has(`${this.idPrefix}${track.key}`) &&
+        terms.some((term) => matches(track, term)),
+    ).length;
+    return { count };
   }
 
   private toItem(track: GoldenTrack) {
@@ -377,16 +430,19 @@ export async function runGoldenCase(
   goldenCase: GoldenCase,
   idPrefix: string,
   artists?: SessionArtistResolver,
+  retrievalVariant?: string,
 ): Promise<GoldenCaseResult> {
   const preferences = await preferencesFor(goldenCase.request, artists);
-  const result = await selector.select(
-    deterministicSelectorInput({
+  const result = await selector.select({
+    ...deterministicSelectorInput({
       userId: `${idPrefix}user`,
       recentTrackIds: [],
       preferences,
       limit: GOLDEN_SELECTION_LIMIT,
     }),
-  );
+    // Offline evaluation pins the variant; production reads the assignment.
+    ...(retrievalVariant ? { retrievalVariant } : {}),
+  });
   const toKey = (id: string) => (id.startsWith(idPrefix) ? id.slice(idPrefix.length) : id);
   const rankedKeys = result.candidates.map(toKey);
   const offered = new Set([...rankedKeys, ...result.selected.map((track) => toKey(track.id))]);
@@ -438,10 +494,11 @@ export async function runGoldenCases(
   idPrefix: string,
   cases: readonly GoldenCase[] = GOLDEN_CASES,
   artists?: SessionArtistResolver,
+  retrievalVariant?: string,
 ): Promise<GoldenCaseResult[]> {
   const results: GoldenCaseResult[] = [];
   for (const goldenCase of cases) {
-    results.push(await runGoldenCase(selector, goldenCase, idPrefix, artists));
+    results.push(await runGoldenCase(selector, goldenCase, idPrefix, artists, retrievalVariant));
   }
   return results;
 }
@@ -553,4 +610,79 @@ export function expectGoldenBaselines(results: readonly GoldenCaseResult[]): voi
     expect(item.recallAt10 as number).toBeGreaterThanOrEqual(item.baseline.recallAt10 - EPSILON);
     expect(item.recallAt20 as number).toBeGreaterThanOrEqual(item.baseline.recallAt20 - EPSILON);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Variant comparison (#2242): the current path against `hybrid_rrf_v1`
+// ---------------------------------------------------------------------------
+
+/** Per-case recall of the current path next to the hybrid variant, with the means. */
+export function goldenComparisonMarkdown(
+  current: readonly GoldenCaseResult[],
+  hybrid: readonly GoldenCaseResult[],
+): string {
+  const byId = new Map(hybrid.map((item) => [item.id, item]));
+  const rows = current.map((item) => {
+    const other = byId.get(item.id) as GoldenCaseResult;
+    return `| ${item.id} | ${pct(item.recallAt10)} -> ${pct(other.recallAt10)} | ${pct(item.recallAt20)} -> ${pct(other.recallAt20)} | ${item.candidateCount} -> ${other.candidateCount} |`;
+  });
+  const scored = (items: readonly GoldenCaseResult[]) => items.filter((item) => item.recallAt10 !== null);
+  const meanOf = (items: readonly GoldenCaseResult[], pick: (item: GoldenCaseResult) => number | null) =>
+    mean(scored(items).map((item) => pick(item) as number));
+  return [
+    "| Case | Recall@10 (current -> hybrid) | Recall@20 (current -> hybrid) | Candidates |",
+    "| --- | --- | --- | --- |",
+    ...rows,
+    `| **Mean** | ${pct(meanOf(current, (i) => i.recallAt10))} -> ${pct(meanOf(hybrid, (i) => i.recallAt10))} | ${pct(meanOf(current, (i) => i.recallAt20))} -> ${pct(meanOf(hybrid, (i) => i.recallAt20))} | |`,
+  ].join("\n");
+}
+
+/** No case may do worse under the hybrid variant than under the current path. */
+export function expectNoHybridRegression(
+  current: readonly GoldenCaseResult[],
+  hybrid: readonly GoldenCaseResult[],
+): void {
+  expect(hybrid.map((item) => item.id)).toEqual(current.map((item) => item.id));
+  current.forEach((item, index) => {
+    const other = hybrid[index];
+    if (item.unmet) {
+      expect({ case: item.id, ...other.unmet }).toMatchObject({ case: item.id, honest: true });
+      return;
+    }
+    expect({ case: item.id, recallAt10: (other.recallAt10 as number) >= (item.recallAt10 as number) - EPSILON })
+      .toEqual({ case: item.id, recallAt10: true });
+    expect({ case: item.id, recallAt20: (other.recallAt20 as number) >= (item.recallAt20 as number) - EPSILON })
+      .toEqual({ case: item.id, recallAt20: true });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Held-back scenario (#2242): what the first batch leaves out, and why
+// ---------------------------------------------------------------------------
+
+/**
+ * Runs one request at the DJ's default selection target (`getAgentTrackLimit()`,
+ * 12) over its own catalog and returns the first batch (track keys, best first)
+ * and what the selector held back.
+ */
+export async function runHeldBackScenario(
+  selector: AgentSelectorService,
+  idPrefix: string,
+  request: GoldenRequest,
+  retrievalVariant?: string,
+) {
+  const result = await selector.select({
+    ...deterministicSelectorInput({
+      userId: `${idPrefix}user`,
+      recentTrackIds: [],
+      preferences: await preferencesFor(request, fixtureArtistResolver(HELD_BACK_CATALOG)),
+      limit: getAgentTrackLimit(),
+    }),
+    ...(retrievalVariant ? { retrievalVariant } : {}),
+  });
+  const toKey = (id: string) => (id.startsWith(idPrefix) ? id.slice(idPrefix.length) : id);
+  return {
+    firstBatch: result.selected.map((track) => toKey(track.id)),
+    heldBack: result.heldBack,
+  };
 }

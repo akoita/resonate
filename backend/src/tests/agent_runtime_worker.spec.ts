@@ -117,7 +117,7 @@ describe("AgentRuntimeService worker delegation", () => {
       runWithMyMix: jest.fn().mockResolvedValue({
         status: "approved",
         tracks: [],
-        mixCoverage: { lanes: [{ id: "lane_soul", label: "Soul · Warm", requested: 5, matched: 0 }] },
+        mixCoverage: { lanes: [{ id: "lane_soul", label: "Soul · Warm", requested: 12, matched: 0 }] },
       }),
     };
     const remote = {
@@ -141,10 +141,10 @@ describe("AgentRuntimeService worker delegation", () => {
     expect(executor.run).not.toHaveBeenCalled();
     expect(executor.runWithMyMix).toHaveBeenCalledWith(
       baseInput,
-      expect.objectContaining({ lanes: [expect.objectContaining({ id: "lane_soul", requested: 5 })] }),
+      expect.objectContaining({ lanes: [expect.objectContaining({ id: "lane_soul", requested: 12 })] }),
     );
     expect(service.takeMyMixDemandObservations("user-1", "session-1")).toEqual([
-      expect.objectContaining({ laneId: "lane_soul", genres: ["Soul"], moods: [], requested: 5 }),
+      expect.objectContaining({ laneId: "lane_soul", genres: ["Soul"], moods: [], requested: 12 }),
     ]);
   });
 

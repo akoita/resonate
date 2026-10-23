@@ -34,7 +34,7 @@ import {
   requestCoverageFor,
   type AgentRequestCoveragePick,
 } from "./agent_session_request";
-import { AgentSelectorService, isHiddenTasteQuery } from "./agent_selector.service";
+import { AgentSelectorService, HeldBack, isHiddenTasteQuery } from "./agent_selector.service";
 import type {
   AgentRuntimeInput,
   AgentRuntimeResult,
@@ -375,7 +375,7 @@ export class AgentRuntimePolicyService {
             audioFeaturesByTrack.get(pick.trackId),
           ),
     );
-    const coverage = requestCoverageFor(input.preferences.request, facts);
+    const coverage = requestCoverageFor(input.preferences.request, facts, topUp.heldBack);
 
     const [first] = surviving;
     return {
@@ -575,7 +575,12 @@ export class AgentRuntimePolicyService {
     picks: LlmTrackPick[],
     artistKeyOf: (trackId: string) => string,
     priorSessionArtistKeys: string[],
-  ): Promise<{ picks: LlmTrackPick[]; facts: Map<string, AgentRequestCoveragePick> }> {
+  ): Promise<{
+    picks: LlmTrackPick[];
+    facts: Map<string, AgentRequestCoveragePick>;
+    /** Strong matches the selector left out (artist cap, explicit preference). */
+    heldBack?: HeldBack;
+  }> {
     const none = { picks: [], facts: new Map<string, AgentRequestCoveragePick>() };
     const target = getAgentTrackLimit();
     const need = target - picks.length;
@@ -638,7 +643,7 @@ export class AgentRuntimePolicyService {
           `Topped up ${added.length} LLM pick(s) to reach target ${target} from the ranked selector`,
         );
       }
-      return { picks: added, facts };
+      return { picks: added, facts, ...(selection.heldBack ? { heldBack: selection.heldBack } : {}) };
     } catch (error) {
       this.logger.warn(`Top-up unavailable for LLM picks: ${String(error)}`);
       return none;

@@ -912,6 +912,8 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   coverage?: {
     picks: number;
     gaps: Array<{ filter: "genres" | "moods" | "energy" | "bpm"; matched: number }>;
+    /** Strong matches left out: per-artist cap (variety) and the explicit preference; counts only. */
+    heldBack?: { variety: number; explicit: number };
   };
   /** Pre-rendered "not matched: ..." line for the live feed; set only when coverage has gaps. */
   coverageSummary?: string;
