@@ -718,7 +718,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal"],
+    keywords: ["A–B", "passage", "finite repeats", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj"],
     sections: [
       {
         id: "playing",
@@ -732,8 +732,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/player.png`,
-              alt: "The Player page with a large play control, progress and output sliders, a 'Queue Manifest' panel, and broadcast/sharing actions.",
-              caption: "The Now Playing console: transport controls, queue, and per-track actions.",
+              alt: "The Player page with a large play control, progress and output sliders, and a 'Queue Manifest' panel for an AI DJ set: a strip naming the AI DJ and its request, World Music and Afrobeats, with a Steer link, a sparkle mark on each pick the DJ chose, and a muted 'Outside your request' note on one pick.",
+              caption: "The Now Playing console: transport controls, per-track actions, and a queue that shows when it is an AI DJ set.",
               width: 1440,
               height: 900,
               source: STAGING,
@@ -769,6 +769,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "With a keyboard, use Tab to reach named playback controls and the position or volume sliders, then use the arrow keys to adjust a slider. A Skip to main content link appears when it receives focus, and the current navigation page and open playlist panel are announced to assistive technology.",
               "Open immersive mode from the Player for artwork, track details, controls, volume, and queue access. Use the visible control or Escape to leave it without losing your place.",
               "Signed-in listeners see Saved in green when the current track is already in their library. Select Saved to remove it again.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "ai-dj-queue",
+        heading: "When your queue is an AI DJ set",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "While an AI DJ session is live and its picks are in your queue, the Queue Manifest says so. A small strip above the queue shows the AI DJ and a short line about what the session was asked for, such as the genres, mood or energy you chose, or the track, artist or playlist it started from. The sentence you typed is never shown there.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Choose Steer in the strip to go back to the Now & Up next card on Home, where you can skip a pick, say Not this, or ask for More like this.",
+              "Each track the DJ picked has a small sparkle mark. Hover it, or move to it with the keyboard, to read why the DJ chose that track; screen readers announce the same reason.",
+              "A muted Outside your request mark means the catalog had fewer tracks matching your filters than the set needed, so the DJ added this one to keep the music going. Tracks without that mark matched your request, or your session had no filters.",
+              "Tracks you added yourself carry no mark. The strip and the marks disappear when you stop the session, or when none of its picks are left in your queue.",
             ],
           },
         ],
@@ -818,7 +837,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "now and up next", "up next", "skip", "not this", "more like this", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "starters", "moments", "sounds", "track counts", "missing sound", "adjust", "energy filter", "club", "late night", "warm", "calm", "focus", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks", "start from a track", "start from an artist", "start from a playlist", "seed", "from chip", "start a dj session from this"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "now and up next", "up next", "skip", "not this", "more like this", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "starters", "moments", "sounds", "track counts", "missing sound", "adjust", "energy filter", "club", "late night", "warm", "calm", "focus", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks", "start from a track", "start from an artist", "start from a playlist", "seed", "from chip", "start a dj session from this", "ai dj queue", "steer", "outside your request"],
     sections: [
       {
         id: "sessions",
@@ -846,6 +865,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "You can also start from something you already like. Choose Start a DJ session from this in a track's menu on its release page, on an artist's page, or on one of your own playlists (a playlist saved on this device only is not offered). You land on the Your AI DJ section with a From chip, for example From: Late night, in the box's filters. Press Start session and the DJ plays music close in sound to that track, that artist (their own tracks first) or that playlist (tracks like it from the same styles, with at most three of the playlist's own tracks in a batch so the session is not a replay). The seed stays for the whole session; remove the chip to drop it, and the upcoming picks follow. Your explicit-tracks choice, your hidden taste and the usual variety limits still apply. Only your own playlists, or public ones, can be used, and Session History shows what a session started from by its kind and name.",
+          },
+          {
+            kind: "paragraph",
+            text: "The player shows when its queue is your AI DJ set: a strip above the queue with a Steer link back here, and a mark on each pick with the reason it was chosen. See Playing music & the Now Playing console, under When your queue is an AI DJ set.",
           },
           {
             kind: "paragraph",

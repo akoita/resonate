@@ -50,6 +50,21 @@ describe("pickNotesFromResponse", () => {
         expect(JSON.stringify(notes)).not.toContain("MODEL FREE TEXT");
     });
 
+    it("carries the request-match flag of each pick only when the server sent a boolean (#2312)", () => {
+        const notes = pickNotesFromResponse({
+            status: "ok",
+            track: { id: "a", title: "A", artistId: "x" },
+            tracks: [
+                { trackId: "a", licenseType: "personal", priceUsd: 0, requestMatch: true },
+                { trackId: "b", licenseType: "personal", priceUsd: 0, requestMatch: false },
+                { trackId: "c", licenseType: "personal", priceUsd: 0 },
+            ],
+        });
+        expect(notes.a.matched).toBe(true);
+        expect(notes.b.matched).toBe(false);
+        expect(notes.c).not.toHaveProperty("matched");
+    });
+
     it("never marks a rule-based pick or a fallback as AI", () => {
         const rules = pickNotesFromResponse({ status: "ok", track: { id: "a", title: "A", artistId: "x" }, curatedBy: "rules" });
         const fallback = pickNotesFromResponse({
@@ -117,5 +132,20 @@ describe("pickNotesFromLicenses", () => {
             b: { source: "rules" },
         });
         expect(JSON.stringify(notes)).not.toContain("TEXT");
+    });
+
+    it("carries the request-match flag of a first pick, only when it is a boolean (#2312)", () => {
+        const notes = pickNotesFromLicenses([
+            { trackId: "a", recommendation: { curatedBy: "llm", requestMatch: false } },
+            { trackId: "b", recommendation: { curatedBy: "rules", requestMatch: true } },
+            { trackId: "c", recommendation: { requestMatch: false } },
+            { trackId: "d", recommendation: { curatedBy: "rules", requestMatch: "no" as unknown as boolean } },
+        ]);
+        expect(notes).toEqual({
+            a: { source: "ai", matched: false },
+            b: { source: "rules", matched: true },
+            c: { matched: false },
+            d: { source: "rules" },
+        });
     });
 });

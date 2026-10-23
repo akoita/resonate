@@ -269,6 +269,39 @@ describe("AgentOrchestratorService (listening picks)", () => {
       );
     });
 
+    it("flags each pick with requestMatch by the coverage predicates (#2312)", async () => {
+      const { orchestrator } = build([
+        track(1, { genre: "Deep House", moods: ["Dark"] }, measured(122)),
+        track(2, { genre: "Deep House", moods: ["Bright"] }, measured(122)),
+        track(3, { genre: "Techno", moods: ["Dark"] }, measured(122)),
+      ] as any);
+
+      const result = await orchestrator.orchestrate({
+        sessionId: "s1",
+        userId: "u1",
+        recentTrackIds: [],
+        preferences: { request },
+      });
+
+      const flags = Object.fromEntries(result.tracks.map((entry) => [entry.trackId, entry.pick.requestMatch]));
+      expect(flags).toEqual({ "track-1": true, "track-2": false, "track-3": false });
+    });
+
+    it("matches a genre through the track descriptor's families, like coverage", async () => {
+      const african = { ...track(1, { genre: "African", moods: [] }, measured(122)), descriptor: { families: ["world"] } };
+      const { orchestrator } = build([african] as any);
+
+      const result = await orchestrator.orchestrate({
+        sessionId: "s1",
+        userId: "u1",
+        recentTrackIds: [],
+        preferences: { request: { genres: ["World"], moods: [], energy: null, bpm: null } },
+      });
+
+      expect(result.tracks[0].pick.requestMatch).toBe(true);
+      expect(result.requestCoverage).toEqual({ picks: 1, gaps: [] });
+    });
+
     it("reports full coverage without a summary when every pick matches", async () => {
       const { orchestrator, events } = build([
         track(1, { genre: "Deep House", moods: ["Dark"] }, measured(122)),
@@ -316,6 +349,7 @@ describe("AgentOrchestratorService (listening picks)", () => {
           preferences,
         });
         expect(result).not.toHaveProperty("requestCoverage");
+        for (const entry of result.tracks) expect(entry.pick).not.toHaveProperty("requestMatch");
         const decision = events.find((event) => event.eventName === "agent.decision_made");
         expect(decision).not.toHaveProperty("coverage");
         expect(decision).not.toHaveProperty("coverageSummary");

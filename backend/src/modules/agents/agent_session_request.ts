@@ -292,6 +292,73 @@ export type AgentRequestCoveragePick = {
 
 const COVERAGE_FILTER_ORDER: AgentRequestCoverageFilter[] = ["genres", "moods", "energy", "bpm"];
 
+type PickPredicate = (pick: AgentRequestCoveragePick) => boolean;
+
+/**
+ * One predicate per filter the request actually sets. Coverage counts them and
+ * {@link pickMatchesRequest} requires all of them, so the two can never
+ * disagree about what "matches" means.
+ */
+function requestPredicates(
+  request: AgentSessionRequest,
+): Partial<Record<AgentRequestCoverageFilter, PickPredicate>> {
+  const predicates: Partial<Record<AgentRequestCoverageFilter, PickPredicate>> = {};
+  const requestedGenres = [...new Set(request.genres.map(normalizeTerm))];
+  const requestedMoods = new Set(request.moods.map(normalizeTerm));
+
+  if (requestedGenres.length > 0) {
+    // Free-text catalog genres: "African" satisfies a "World" request (#2088).
+    predicates.genres = (pick) =>
+      requestedGenres.some((requested) =>
+        genreOrDescriptorMatchesRequest(pick.genre, pick.descriptorFamilies, requested),
+      );
+  }
+  if (requestedMoods.size > 0) {
+    predicates.moods = (pick) => (pick.moods ?? []).some((mood) => requestedMoods.has(normalizeTerm(mood)));
+  }
+  if (request.energy !== null) {
+    const energy = request.energy;
+    predicates.energy = (pick) => pick.energyBand === energy;
+  }
+  if (hasTempo(request.bpm)) {
+    const { min, max } = request.bpm;
+    predicates.bpm = (pick) =>
+      pick.tempoMeasured &&
+      typeof pick.tempoBpm === "number" &&
+      Number.isFinite(pick.tempoBpm) &&
+      pick.tempoBpm >= (min ?? Number.NEGATIVE_INFINITY) &&
+      pick.tempoBpm <= (max ?? Number.POSITIVE_INFINITY);
+  }
+  return predicates;
+}
+
+/**
+ * True when the pick satisfies EVERY filter the request sets (#2312), by the
+ * same predicates {@link computeRequestCoverage} counts. Undefined when the
+ * request has no filters, so a pick of an unfiltered session carries no flag.
+ */
+export function pickMatchesRequest(
+  request: AgentSessionRequest,
+  pick: AgentRequestCoveragePick,
+): boolean | undefined {
+  if (!hasRequestFilters(request)) return undefined;
+  return Object.values(requestPredicates(request)).every((matches) => matches(pick));
+}
+
+/**
+ * The per-pick match flags for a raw (untrusted) request, in pick order:
+ * sanitize, require at least one filter, test each pick. Undefined without a
+ * request or without filters. Shared by the deterministic and LLM paths.
+ */
+export function requestMatchesFor(
+  rawRequest: unknown,
+  picks: readonly AgentRequestCoveragePick[],
+): boolean[] | undefined {
+  const request = sanitizeSessionRequest(rawRequest);
+  if (!request || !hasRequestFilters(request)) return undefined;
+  return picks.map((pick) => pickMatchesRequest(request, pick) === true);
+}
+
 /**
  * How well the picks matched each requested filter. Only filters the picks did
  * not all satisfy appear as gaps, largest gap first. Undefined when there are
@@ -304,35 +371,11 @@ export function computeRequestCoverage(
 ): AgentRequestCoverage | undefined {
   if (picks.length === 0 || !hasRequestFilters(request)) return undefined;
 
-  const requestedGenres = new Set(request.genres.map(normalizeTerm));
-  const requestedMoods = new Set(request.moods.map(normalizeTerm));
+  const predicates = requestPredicates(request);
   const counts: Partial<Record<AgentRequestCoverageFilter, number>> = {};
-
-  if (requestedGenres.size > 0) {
-    // Free-text catalog genres: "African" satisfies a "World" request (#2088).
-    counts.genres = picks.filter(
-      (pick) =>
-        [...requestedGenres].some((requested) =>
-          genreOrDescriptorMatchesRequest(pick.genre, pick.descriptorFamilies, requested),
-        ),
-    ).length;
-  }
-  if (requestedMoods.size > 0) {
-    counts.moods = picks.filter((pick) => (pick.moods ?? []).some((mood) => requestedMoods.has(normalizeTerm(mood)))).length;
-  }
-  if (request.energy !== null) {
-    counts.energy = picks.filter((pick) => pick.energyBand === request.energy).length;
-  }
-  if (hasTempo(request.bpm)) {
-    const { min, max } = request.bpm;
-    counts.bpm = picks.filter(
-      (pick) =>
-        pick.tempoMeasured &&
-        typeof pick.tempoBpm === "number" &&
-        Number.isFinite(pick.tempoBpm) &&
-        pick.tempoBpm >= (min ?? Number.NEGATIVE_INFINITY) &&
-        pick.tempoBpm <= (max ?? Number.POSITIVE_INFINITY),
-    ).length;
+  for (const filter of COVERAGE_FILTER_ORDER) {
+    const matches = predicates[filter];
+    if (matches) counts[filter] = picks.filter(matches).length;
   }
 
   const gaps = COVERAGE_FILTER_ORDER.flatMap((filter) => {

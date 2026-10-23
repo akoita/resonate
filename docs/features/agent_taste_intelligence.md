@@ -2394,3 +2394,62 @@ retrieval (#2242) and the "More like this" seed (#2243).
   session is still seeded); entry points on a public playlist page and on the
   player's action panel; a real-embedding measurement of how close the
   neighbours are.
+
+## Player queue identity (#2312)
+
+Vision-neutral UX (ADR-BM-6): no money, fee or payout change; presentation of
+data the DJ already produces.
+
+- **What `/player` shows.** While the live DJ set (`web/src/lib/agentDjSet.ts`)
+  has at least one track in the queue, the Queue Manifest gets a header strip
+  (`PlayerDjQueueHeader`): a small DJ orb with a live dot (still under
+  `prefers-reduced-motion`), "AI DJ", a one-line request summary and a **Steer**
+  link to `/#ai-dj` (the Now & Up next card on Home). Each queued track that
+  belongs to the set (`catalogTrackId || id`, the same membership test playback
+  attribution uses) gets a DJ glyph whose accessible name and hover text are
+  "Picked by your AI DJ: <reason>" (the server-authored sentence the Up next
+  card shows; no reason, no suffix). Stopping the session clears the set, which
+  removes the header and the marks; so does a queue that no longer holds any of
+  the set's tracks.
+- **Request summary, never the sentence.** `describeDjSetRequest`
+  (`web/src/lib/agentDjRequestSummary.ts`) reads the set's stored preferences
+  only: the seed ("From <label>"), else the request's genres, moods, energy and
+  tempo, else the session's genres, mood and energy, else the session intent,
+  else "Live session"; capped at 60 characters. `requestText` is stripped
+  before the set is stored and is ignored by the helper, so no typed sentence is
+  stored client-side or shown.
+- **`requestMatch` on each pick.** Each track of the next-pick response
+  (`POST /sessions/agent/next`, `tracks[]`) gains an optional
+  `requestMatch: boolean`: true when the pick satisfies **every** filter the
+  session's request sets (genres, including genre-family and stored descriptor
+  family matches such as "African" for a "World" request; moods; energy band;
+  measured tempo only), false when it misses at least one, and **absent when
+  the request has no filters**. The predicates are the ones request coverage
+  counts: `pickMatchesRequest` and `computeRequestCoverage` in
+  `agent_session_request.ts` share one per-filter predicate set, so the flag and
+  the coverage line cannot disagree (a parity test checks the counts). It is
+  computed in the LLM path's policy step and in the rule-based orchestrator
+  (`requestMatch` on the pick record), and passes through
+  `normalizeAgentRuntimeResult` and `SessionsService.toAgentNextResponse`.
+  The rule-based path's coverage facts now include the track's descriptor
+  families, as the LLM path's already did, so both paths read the same facts.
+- **"Outside your request".** The web keeps the flag on the pick note
+  (`DjPickNote.matched`, sessionStorage-mirrored with the other notes); a row
+  with `matched === false` shows a muted "Outside your request" mark ("Your AI
+  DJ added this to fill the set; it doesn't match your request's filters."),
+  making the padding visible when the catalog has fewer matches than the batch
+  size. No flag, no mark.
+- **Help and screenshot.** The User Guide's "Playing music & the Now Playing
+  console" article has a "When your queue is an AI DJ set" section and the AI
+  DJ article points to it; `player.png` is captured with a mock DJ set
+  (`web/scripts/capture-help-screenshots.mjs`).
+- **The first batch too.** The session's first picks reach the web through
+  Session History, so the run's per-pick note (`PickNote` in
+  `agent_pick_notes.ts`, in memory, no schema) also keeps `requestMatch` (only
+  when boolean), and `historyRecommendation` exposes it on the history
+  `recommendation` next to the explanation and `curatedBy`.
+  `pickNotesFromLicenses` turns it into `DjPickNote.matched`, so the first rows
+  can show "Outside your request" as well. Like the explanation, the note is
+  ephemeral: after a server restart (or on another instance) or for a pick the
+  listener already played (the recorded signal then has no flag), a first-batch
+  row simply shows no "Outside your request" mark.

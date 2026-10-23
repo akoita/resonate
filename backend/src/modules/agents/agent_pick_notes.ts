@@ -15,6 +15,11 @@ export interface PickNote {
   reasonCode?: string;
   /** "llm" only when the AI curator chose it and did not fall back (#2075). */
   curatedBy: "llm" | "rules";
+  /**
+   * Whether the pick satisfied every filter of the described session (#2312);
+   * absent when the session had no filters, and for notes recorded before this.
+   */
+  requestMatch?: boolean;
 }
 
 const SESSION_LIMIT = 200;
@@ -43,9 +48,31 @@ export function pickNotesFromRunResult(result: AgentRuntimeRunResult): Map<strin
       explanation,
       ...(track.reasonCode ? { reasonCode: track.reasonCode } : {}),
       curatedBy,
+      ...(typeof track.requestMatch === "boolean" ? { requestMatch: track.requestMatch } : {}),
     });
   }
   return notes;
+}
+
+/**
+ * The Session History `recommendation` of a license row: the signal recorded
+ * when the listener acted on the pick, else (a pick not played yet) the note
+ * the run produced. A note's signal fields still win over its own (as before).
+ */
+export function historyRecommendation(
+  note: PickNote | undefined,
+  signal: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (!note) return signal ?? null;
+  return {
+    recommendation: {
+      explanation: note.explanation,
+      ...(note.reasonCode ? { reasonCode: note.reasonCode } : {}),
+    },
+    curatedBy: note.curatedBy,
+    ...(typeof note.requestMatch === "boolean" ? { requestMatch: note.requestMatch } : {}),
+    ...(signal ?? {}),
+  };
 }
 
 export function rememberPickNotes(userId: string, sessionId: string, notes: Map<string, PickNote>): void {

@@ -534,6 +534,8 @@ export class SessionsService {
         explanation: item.explanation,
         reasonCode: item.reasonCode,
         signals: item.signals,
+        // #2312: whether the pick satisfies every filter of the described session; absent without filters.
+        ...(typeof item.requestMatch === "boolean" ? { requestMatch: item.requestMatch } : {}),
       })),
       shortfall: result.shortfall,
       // #2037: how well the picks matched the described session, on both curation paths.

@@ -103,10 +103,111 @@ const PUBLIC_TARGETS = [
   ["/shows/sennarin-paris", "show-campaign.png"],
   ["/crates?tab=stems", "marketplace.png"],
   ["/drops", "drops.png"],
-  ["/player", "player.png"],
   ["/wallet", "wallet.png"],
   ["/library", "connect-wallet.png"],
+  ["/player", "player.png", {
+    // Keep this target last: its mock DJ set, queue and routes stay in this
+    // browser context and must not leak into the other public shots.
+    // #2312: the queue as a live AI DJ set (header, pick marks, one pick
+    // outside the request), drawn from a fixed mock set so the picture needs
+    // no backend. Fixed sample data; nothing here comes from a real listener.
+    mockDjQueue: true,
+    viewportHeight: 1100,
+    reducedMotion: true,
+    prepare: seedDjQueue,
+  }],
 ];
+
+// ── Player DJ queue mock (#2312) ─────────────────────────────────────────
+// Catalog ids of the sample picks; the player queue and the DJ set both use them.
+const DJ_QUEUE_TRACKS = [
+  { id: "guide-dj-1", title: "Golden Road", artist: "Nadia Okoro", reason: "Sounds close to your taste", matched: true },
+  { id: "guide-dj-2", title: "Lantern Season", artist: "Hana Mori", reason: "Fits this session intent", matched: true },
+  { id: "guide-dj-3", title: "Signal Fire", artist: "Night Courier", reason: "Nearby vibe match", matched: false },
+  { id: "guide-dj-4", title: "Kora Sunrise", artist: "Amara Sol", reason: "Sounds close to your taste", matched: true },
+  // Added by the listener, not by the DJ: carries no DJ mark.
+  { id: "guide-own-1", title: "Quiet Harbour", artist: "Felicia Angels", reason: null, matched: null },
+  { id: "guide-dj-5", title: "Dune Radio", artist: "Nadia Okoro", reason: "Fits this session intent", matched: true },
+];
+
+/** A fixed DJ set in sessionStorage, restored by the app like after a reload. Runs before every page load. */
+function djSetInitScript(tracks) {
+  const picks = {};
+  const trackIds = [];
+  for (const track of tracks) {
+    if (!track.id.startsWith("guide-dj-")) continue;
+    trackIds.push(track.id);
+    picks[track.id] = {
+      reason: track.reason,
+      source: "ai",
+      ...(track.matched === false ? { matched: false } : {}),
+    };
+  }
+  sessionStorage.setItem("resonate.aiDjSet", JSON.stringify({
+    sessionId: "guide-dj-session",
+    preferences: { request: { genres: ["World Music", "Afrobeats"], moods: [], energy: null, bpm: null } },
+    trackIds,
+    picks,
+  }));
+}
+
+/**
+ * Seeds the player's own persisted queue (IndexedDB "resonate" / "player" /
+ * "current_state", the key localforage uses) and reloads, so the app hydrates
+ * it exactly as it does for a returning listener. Used as the player target's
+ * `prepare` step; the DJ set itself comes from the init script above.
+ */
+async function seedDjQueue(page) {
+  await page.evaluate(async (tracks) => {
+    const createdAt = "2026-10-01T12:00:00.000Z";
+    const queue = tracks.map((track) => ({
+      id: track.id,
+      catalogTrackId: track.id,
+      title: track.title,
+      artist: track.artist,
+      albumArtist: track.artist,
+      album: "First Light",
+      year: 2026,
+      genre: "World Music",
+      duration: 180,
+      createdAt,
+      source: "remote",
+      // Absolute: a root-relative artwork path is resolved against the API host.
+      remoteArtworkUrl: `${location.origin}/shows/felicia-angels-cover.webp`,
+    }));
+    const open = (version) => new Promise((resolve, reject) => {
+      const request = version ? indexedDB.open("resonate", version) : indexedDB.open("resonate");
+      // localforage creates each store lazily with a version bump and out-of-line keys; do the same.
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("player")) request.result.createObjectStore("player");
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    let db = await open();
+    if (!db.objectStoreNames.contains("player")) {
+      const next = db.version + 1;
+      db.close();
+      db = await open(next);
+    }
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("player", "readwrite");
+      tx.objectStore("player").put(
+        { queue, currentIndex: 0, volume: 0.8, shuffle: false, repeatMode: "none", queueSource: null },
+        "current_state",
+      );
+      tx.oncomplete = () => resolve(undefined);
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, DJ_QUEUE_TRACKS);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+  await page.locator(".queue-dj-header").waitFor({ state: "visible", timeout: 15000 });
+  await page.getByText("Outside your request", { exact: true }).first().waitFor({ state: "visible", timeout: 15000 });
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.mouse.move(0, 0);
+}
 
 const AUTH_TARGETS = [
   ["/artist/analytics", "analytics-consent-banner.png", {
@@ -339,6 +440,24 @@ async function capture(page, targets, passName) {
       await page.route("**/analytics/consent", (request) => request.fulfill({ json: {
         productAnalytics: false, decided: false, needsDecision: true,
         currentPolicyVersion: "analytics-consent:2026-10-03",
+      } }));
+    }
+    if (ready?.mockDjQueue) {
+      await page.addInitScript(djSetInitScript, DJ_QUEUE_TRACKS);
+      // The current track's actions (Save, Add to playlist, ...): a fixed answer instead of a catalog lookup.
+      await page.route("**/catalog/tracks/guide-dj-*/actions**", (request) => request.fulfill({ json: {
+        track: {
+          id: "guide-dj-1", title: "Golden Road", releaseId: "guide-release", releaseTitle: "First Light",
+          artistId: "guide-artist-nadia-okoro", artistName: "Nadia Okoro", genre: "World Music", moods: [],
+        },
+        library: null,
+        actions: [
+          { key: "save", label: "Save", status: "available" },
+          { key: "add_to_playlist", label: "Add to playlist", status: "available" },
+          { key: "inspect_stems", label: "Inspect stems", status: "disabled", reason: "No stems are available for this track." },
+          { key: "remix", label: "Remix", status: "disabled", reason: "Remix rights are not available for this track." },
+          { key: "buy_license", label: "Buy/license", status: "disabled", reason: "No active license is available." },
+        ],
       } }));
     }
     if (ready?.mockLibrary) {

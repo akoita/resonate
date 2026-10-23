@@ -140,6 +140,25 @@ describe("agentDjSet", () => {
             expect(picks?.["t-2"]).toEqual({ source: "rules" });
         });
 
+        it("keeps the request-match flag, accepting only booleans, even on a note with nothing else (#2312)", () => {
+            setDjSet({
+                ...SET,
+                picks: {
+                    "t-1": { matched: false },
+                    "t-2": { reason: "B", matched: true },
+                    bad: { matched: "no" as unknown as boolean },
+                },
+            });
+            expect(getDjSet()?.picks).toEqual({ "t-1": { matched: false }, "t-2": { reason: "B", matched: true } });
+        });
+
+        it("survives a reload through storage with the flag (#2312)", () => {
+            vi.stubGlobal("sessionStorage", memoryStorage());
+            setDjSet({ ...SET, picks: { "t-1": { reason: "A", source: "ai", matched: false } } });
+            resetDjSetForTests();
+            expect(getDjSet()?.picks).toEqual({ "t-1": { reason: "A", source: "ai", matched: false } });
+        });
+
         it("adds notes with new tracks and survives a reload through storage", () => {
             const storage = memoryStorage();
             vi.stubGlobal("sessionStorage", storage);

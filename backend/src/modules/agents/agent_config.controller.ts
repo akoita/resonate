@@ -40,7 +40,7 @@ import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../recommendations/taste_ed
 import { resolveMyMixPlan } from "./agent_my_mix";
 import type { MyMixPreferences } from "./agent_my_mix";
 import { resolveListeningLanes } from "./listening_lanes.service";
-import { clearPickNotes, getPickNotes, pickNotesFromRunResult, rememberPickNotes } from "./agent_pick_notes";
+import { clearPickNotes, getPickNotes, historyRecommendation, pickNotesFromRunResult, rememberPickNotes } from "./agent_pick_notes";
 
 /** Tracked per signed-in person where the guard has resolved them, else per IP. */
 const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
@@ -781,16 +781,7 @@ export class AgentConfigController {
                 const note = notes?.get(license.trackId);
                 return {
                     ...license,
-                    recommendation: note
-                        ? {
-                            recommendation: {
-                                explanation: note.explanation,
-                                ...(note.reasonCode ? { reasonCode: note.reasonCode } : {}),
-                            },
-                            curatedBy: note.curatedBy,
-                            ...(signal ?? {}),
-                        }
-                        : signal ?? null,
+                    recommendation: historyRecommendation(note, signal),
                 };
             });
         }

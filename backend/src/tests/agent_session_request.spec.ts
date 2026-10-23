@@ -6,6 +6,8 @@ import {
   describeTempoRange,
   hasRequestFilters,
   listeningRequestFromCrateParse,
+  pickMatchesRequest,
+  requestMatchesFor,
   requestRankingPreferences,
   sanitizeSessionRequest,
   type AgentSessionRequest,
@@ -283,6 +285,85 @@ describe("computeRequestCoverage", () => {
   it("only reports the filters the request set", () => {
     const coverage = computeRequestCoverage(request({ energy: "low" }), [measured(122)]);
     expect(coverage).toEqual({ picks: 1, gaps: [{ filter: "energy", matched: 0 }] });
+  });
+});
+
+describe("pickMatchesRequest (#2312)", () => {
+  const base = { genre: "Deep House", moods: ["Dark"], energyBand: "high", tempoBpm: 122, tempoMeasured: true };
+
+  it("is undefined when the request has no filters", () => {
+    expect(pickMatchesRequest(request(), base)).toBeUndefined();
+  });
+
+  it("matches a genre by its descriptor family", () => {
+    const pick = { genre: "African", descriptorFamilies: ["african", "world"], moods: [], tempoMeasured: false };
+    expect(pickMatchesRequest(request({ genres: ["World"] }), pick)).toBe(true);
+    expect(pickMatchesRequest(request({ genres: ["Techno"] }), pick)).toBe(false);
+    expect(
+      pickMatchesRequest(request({ genres: ["Techno"] }), { genre: "Techno", moods: [], tempoMeasured: false }),
+    ).toBe(true);
+  });
+
+  it("matches moods case-insensitively", () => {
+    expect(pickMatchesRequest(request({ moods: ["dark"] }), base)).toBe(true);
+    expect(pickMatchesRequest(request({ moods: ["bright"] }), base)).toBe(false);
+  });
+
+  it("matches the energy band", () => {
+    expect(pickMatchesRequest(request({ energy: "high" }), base)).toBe(true);
+    expect(pickMatchesRequest(request({ energy: "low" }), base)).toBe(false);
+  });
+
+  it("matches a measured tempo only", () => {
+    const bpm = request({ bpm: { min: 120, max: 125 } });
+    expect(pickMatchesRequest(bpm, base)).toBe(true);
+    expect(pickMatchesRequest(bpm, { ...base, tempoBpm: 130 })).toBe(false);
+    expect(pickMatchesRequest(bpm, { ...base, tempoMeasured: false })).toBe(false);
+    expect(pickMatchesRequest(bpm, { genre: null, moods: [], tempoMeasured: false })).toBe(false);
+  });
+
+  it("requires every requested filter", () => {
+    const both = request({ genres: ["Deep House"], energy: "high" });
+    expect(pickMatchesRequest(both, base)).toBe(true);
+    expect(pickMatchesRequest(both, { ...base, energyBand: "low" })).toBe(false);
+    expect(pickMatchesRequest(both, { ...base, genre: "Techno" })).toBe(false);
+  });
+
+  it("agrees with computeRequestCoverage for every single-filter request", () => {
+    const picks = [
+      base,
+      { ...base, tempoBpm: 130 },
+      { ...base, genre: "African", descriptorFamilies: ["world"], energyBand: "medium" },
+      { ...base, genre: "Techno", moods: ["Bright"], tempoMeasured: false },
+      { genre: null, moods: [], tempoMeasured: false },
+    ];
+    const requests: AgentSessionRequest[] = [
+      request({ genres: ["Deep House"] }),
+      request({ genres: ["World"] }),
+      request({ moods: ["dark"] }),
+      request({ energy: "high" }),
+      request({ bpm: { min: 120, max: 125 } }),
+      request({ bpm: { min: null, max: 125 } }),
+    ];
+    for (const single of requests) {
+      const matched = picks.filter((pick) => pickMatchesRequest(single, pick) === true).length;
+      const gap = computeRequestCoverage(single, picks)?.gaps[0];
+      expect(gap ? gap.matched : picks.length).toBe(matched);
+    }
+  });
+});
+
+describe("requestMatchesFor (#2312)", () => {
+  const pick = { genre: "Techno", moods: [], tempoMeasured: false };
+
+  it("flags each pick in order for a filtered request", () => {
+    expect(requestMatchesFor({ genres: ["Techno"] }, [pick, { ...pick, genre: "Soul" }])).toEqual([true, false]);
+  });
+
+  it("is undefined without a request, an empty request or garbage", () => {
+    expect(requestMatchesFor(undefined, [pick])).toBeUndefined();
+    expect(requestMatchesFor({ genres: [], moods: [] }, [pick])).toBeUndefined();
+    expect(requestMatchesFor("nope", [pick])).toBeUndefined();
   });
 });
 

@@ -10,6 +10,8 @@ import type { AgentRuntimeFallback } from "./agent_runtime.types";
 import type { SessionSeed } from "./agent_session_seed";
 import {
   requestCoverageFor,
+  requestMatchesFor,
+  type AgentRequestCoveragePick,
   type AgentRequestCoverage,
   type AgentRequestHeldBack,
   type AgentSessionRequest,
@@ -64,6 +66,8 @@ export interface OrchestratedPick {
   licenseType: "personal" | "remix" | "commercial";
   priceUsd: 0;
   reason: "selected";
+  /** Whether the pick satisfies every filter of the described session (#2312); absent without filters. */
+  requestMatch?: boolean;
   recommendation?: any;
 }
 
@@ -181,6 +185,16 @@ export class AgentOrchestratorService {
     // Plan the mix for every selected catalog track. Listening picks are not
     // priced, negotiated, or limited by budget.
     const tracks: OrchestratedTrack[] = [];
+    // Per pick, by the same predicates as the coverage below (#2312); absent
+    // when the request has no filters.
+    const selectedForMatch = selection.selected ?? [];
+    const matchFlags = requestMatchesFor(
+      input.preferences.request,
+      selectedForMatch.map(coverageFactsOf),
+    );
+    const requestMatchById = new Map<string, boolean>(
+      matchFlags ? selectedForMatch.map((track: { id: string }, index: number) => [track.id, matchFlags[index]]) : [],
+    );
     let previousTrackId = input.recentTrackIds[0];
 
     for (const track of ordered ?? []) {
@@ -209,6 +223,7 @@ export class AgentOrchestratorService {
           licenseType: input.preferences.licenseType ?? "personal",
           priceUsd: 0,
           reason: "selected",
+          ...(requestMatchById.has(track.id) ? { requestMatch: requestMatchById.get(track.id) } : {}),
           recommendation: (track as any).agentRecommendation,
         },
       });
@@ -260,26 +275,33 @@ export class AgentOrchestratorService {
  */
 function buildRequestCoverage(
   rawRequest: unknown,
-  selected: Array<{
-    release?: { genre?: string | null; moods?: string[] | null };
-    agentRecommendation?: { audioFeatures?: AgentAudioFeatures };
-  }>,
+  selected: CoverageSource[],
   heldBack?: AgentRequestHeldBack,
 ): { coverage: AgentRequestCoverage; summary: string } | undefined {
-  return requestCoverageFor(
-    rawRequest,
-    selected.map((track) => {
-      const features = track.agentRecommendation?.audioFeatures;
-      return {
-        genre: track.release?.genre ?? null,
-        moods: track.release?.moods ?? [],
-        energyBand: features?.energyBand,
-        tempoBpm: features?.tempoBpm,
-        tempoMeasured: features?.featureSources?.tempo === "measured",
-      };
-    }),
-    heldBack,
-  );
+  return requestCoverageFor(rawRequest, selected.map(coverageFactsOf), heldBack);
+}
+
+type CoverageSource = {
+  release?: { genre?: string | null; moods?: string[] | null };
+  descriptor?: { families?: string[] | null } | null;
+  agentRecommendation?: { audioFeatures?: AgentAudioFeatures };
+};
+
+/**
+ * What the request filters read about a selected track. One function feeds
+ * both coverage and the per-pick `requestMatch` (#2312), so they agree. The
+ * descriptor families let "African" satisfy a "World" request like the LLM path.
+ */
+function coverageFactsOf(track: CoverageSource): AgentRequestCoveragePick {
+  const features = track.agentRecommendation?.audioFeatures;
+  return {
+    genre: track.release?.genre ?? null,
+    descriptorFamilies: track.descriptor?.families ?? [],
+    moods: track.release?.moods ?? [],
+    energyBand: features?.energyBand,
+    tempoBpm: features?.tempoBpm,
+    tempoMeasured: features?.featureSources?.tempo === "measured",
+  };
 }
 
 function buildUnmetIntent(

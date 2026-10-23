@@ -502,8 +502,8 @@ describe('SessionsService (integration)', () => {
     const runtimeService = {
       runCommerce: jest.fn().mockResolvedValue({
         status: 'approved',
-        tracks: [{ trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 }],
-        primaryTrack: { trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0 },
+        tracks: [{ trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0, requestMatch: false }],
+        primaryTrack: { trackId: `${TEST_PREFIX}track`, licenseType: 'personal', priceUsd: 0, requestMatch: false },
         requestCoverage,
       }),
     };
@@ -523,6 +523,8 @@ describe('SessionsService (integration)', () => {
     }) as any;
 
     expect(first.requestCoverage).toEqual(requestCoverage);
+    // #2312: the per-pick flag rides on each response track.
+    expect(first.tracks[0].requestMatch).toBe(false);
     expect(runtimeService.runCommerce).toHaveBeenLastCalledWith(
       expect.objectContaining({
         preferences: expect.objectContaining({
@@ -572,6 +574,7 @@ describe('SessionsService (integration)', () => {
 
     expect(result.status).toBe('ok');
     expect(result).not.toHaveProperty('requestCoverage');
+    expect(result.tracks[0]).not.toHaveProperty('requestMatch');
   });
 
   it('returns only current stems in playlist track summaries', async () => {

@@ -32,6 +32,7 @@ import type {
 } from "./agent_audio_feature.service";
 import {
   requestCoverageFor,
+  requestMatchesFor,
   type AgentRequestCoveragePick,
 } from "./agent_session_request";
 import { AgentSelectorService, HeldBack, isHiddenTasteQuery } from "./agent_selector.service";
@@ -376,6 +377,11 @@ export class AgentRuntimePolicyService {
           ),
     );
     const coverage = requestCoverageFor(input.preferences.request, facts, topUp.heldBack);
+    // Per pick, by the same predicates (#2312); absent when the request has no filters.
+    const requestMatches = requestMatchesFor(input.preferences.request, facts);
+    const finalPicks = requestMatches
+      ? surviving.map((pick, index) => ({ ...pick, requestMatch: requestMatches[index] }))
+      : surviving;
 
     const [first] = surviving;
     return {
@@ -386,7 +392,7 @@ export class AgentRuntimePolicyService {
       trackId: first.trackId,
       licenseType: first.licenseType,
       priceUsd: first.priceUsd,
-      picks: surviving,
+      picks: finalPicks,
       policy,
       ...(coverage ? { requestCoverage: coverage.coverage } : {}),
     };
