@@ -28,6 +28,16 @@ person has an explicit granted decision, the browser suppresses optional
 events before sending them, and the consent banner plus Settings > Privacy
 surface let the person make or change that decision.
 
+The browser's copy of the decision recovers by itself (#2230). A failed check
+retries `GET /analytics/consent` after 5 s, 30 s, 2 min and 10 min, then waits
+for the next trigger: the tab becoming visible again, or one re-check after a
+server refusal (both rate-limited to one per 30 s). Retries stop on sign-out or
+token change. Recovery only re-reads the decision; the gate still fails closed
+while it is unknown, and nothing is queued or replayed. If the check keeps
+failing, Settings > Privacy says nothing is being recorded. There, the recorded
+answer is marked with `aria-pressed`, a check and a ring on whichever button
+matches, with both buttons otherwise identical (#2231).
+
 Refusal does not disable product capabilities, change prices, or affect the
 person's music, wallet, purchases, or account. It does reduce the behavioral
 data available for personalizing discovery and recommendations, producing
