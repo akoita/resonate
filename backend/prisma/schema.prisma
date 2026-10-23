@@ -37,6 +37,7 @@ model User {
   artistClaimsReviewed        ArtistClaimRequest[]           @relation("ArtistClaimRequestReviewer")
   agentConfig                 AgentConfig?
   agentSignals                AgentSignal[]
+  agentPickNotes              AgentPickNote[]
   communityBadges             CommunityBadge[]
   communityMemberships        CommunityMembership[]
   communityCohortMemberships  CommunityCohortMembership[]
@@ -1856,6 +1857,33 @@ model License {
   durationSeconds Int
   session         Session @relation(fields: [sessionId], references: [id])
   track           Track   @relation(fields: [trackId], references: [id])
+  /// #2299: why the DJ queued this pick; absent on picks recorded before it.
+  pickNote        AgentPickNote?
+}
+
+/// #2299: the bounded, listener-visible explanation of one AI DJ pick, kept so
+/// Session History shows the reason from any backend instance and after a
+/// restart. One row per pick-log `License` (the primary key IS the license id,
+/// so a pick has at most one note and the row is deleted with it). Holds only
+/// sentences from the shared discovery explanation vocabulary (at most 2, each
+/// at most 120 characters), never model free text. `userId` is the listener who
+/// owns the session: `License` is retained under a rights obligation and names
+/// the person only through its session, so the note carries its own person
+/// column and account erasure deletes it directly.
+model AgentPickNote {
+  licenseId    String   @id
+  userId       String
+  explanation  String[] @default([])
+  reasonCode   String?
+  /// "llm" only when the AI curator chose the pick and did not fall back; else "rules".
+  curatedBy    String
+  /// Whether the pick satisfied every filter of the described session (#2312); null without filters.
+  requestMatch Boolean?
+  createdAt    DateTime @default(now())
+  license      License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Payment {

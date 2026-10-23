@@ -2271,14 +2271,20 @@ Vision-neutral quality (ADR-BM-6): no money, payout or fee change. Phase 2
   `reason`; "Catalog candidate" is not shown. The web remembers it per pick in
   the DJ set (`DjSet.picks`, sessionStorage-mirrored, `web/src/lib/agentDjSet.ts`)
   as picks arrive from a next-pick response (re-plan, continuation, actions).
-  A session's first picks arrive through Session History: the controller keeps
-  each pick's explanation sentences and curator from the start run in a bounded,
-  owner-bound, ephemeral cache (`agent_pick_notes.ts`, like the My Mix batch
-  order; no schema change, no AgentSignal) and `GET /agents/config/history`
-  returns them as `license.recommendation` (`recommendation.explanation`,
-  `curatedBy`) until the listener plays the track and a real signal replaces
-  them. After a restart, or on another instance, the note is absent and the
-  card shows no reason line for those picks. One caption names who chose
+  A session's first picks arrive through Session History: each pick is stored
+  with a bounded note (#2299, the `AgentPickNote` table, one row per pick-log
+  `License`, written in the same transaction as the `License` by session start
+  and by next-pick; no AgentSignal) of at most two explanation sentences
+  (120 characters each, only sentences of the shared vocabulary, so a model's
+  free text and a cohort's name are never stored), the reason code, `curatedBy`
+  and `requestMatch`. `GET /agents/config/history` returns it as
+  `license.recommendation` (`recommendation.explanation`, `curatedBy`) until the
+  listener plays the track and a real signal's own fields replace them. The note
+  is database state, so the reason shows from any backend instance and after a
+  restart; the old per-instance in-memory cache is gone. It lives and dies with
+  the `License` (cascade) and is deleted by account erasure and included in the
+  personal-data export. Only picks recorded before #2299 have no note, and show
+  no reason line. One caption names who chose
   the picks: "Picked by the AI curator" only for an LLM pick that did not fall
   back, otherwise "Picked from your filters" (#2075 rule kept); picks with no
   note read "Picked for this session".
@@ -2450,12 +2456,12 @@ data the DJ already produces.
   DJ article points to it; `player.png` is captured with a mock DJ set
   (`web/scripts/capture-help-screenshots.mjs`).
 - **The first batch too.** The session's first picks reach the web through
-  Session History, so the run's per-pick note (`PickNote` in
-  `agent_pick_notes.ts`, in memory, no schema) also keeps `requestMatch` (only
-  when boolean), and `historyRecommendation` exposes it on the history
-  `recommendation` next to the explanation and `curatedBy`.
+  Session History, so each pick's stored note (`AgentPickNote`, #2299; shaped
+  by `agent_pick_notes.ts`) also keeps `requestMatch` (only when boolean; null
+  when the session had no filters), and `historyRecommendation` exposes it on
+  the history `recommendation` next to the explanation and `curatedBy`.
   `pickNotesFromLicenses` turns it into `DjPickNote.matched`, so the first rows
-  can show "Outside your request" as well. Like the explanation, the note is
-  ephemeral: after a server restart (or on another instance) or for a pick the
-  listener already played (the recorded signal then has no flag), a first-batch
-  row simply shows no "Outside your request" mark.
+  can show "Outside your request" as well. The note is persisted, so the mark
+  survives a server restart and a poll on another instance, and it stays after
+  the listener plays the pick (the recorded signal has no flag, so the note's
+  survives). Only a pick recorded before #2299 shows no mark.

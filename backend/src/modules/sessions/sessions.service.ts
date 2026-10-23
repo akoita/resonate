@@ -14,6 +14,8 @@ import { resolveListeningLanes } from "../agents/listening_lanes.service";
 import { resolveMyMixPlan } from "../agents/agent_my_mix";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
+import { pickCurator, pickNoteColumns, shapePickNote } from "../agents/agent_pick_notes";
+import type { PickNote } from "../agents/agent_pick_notes";
 import { resolveAllowExplicit } from "../agents/agent_explicit_preference";
 import { sanitizeArtistNames } from "../agents/agent_session_artists";
 import { rememberedSessionSeed, type SessionSeed } from "../agents/agent_session_seed";
@@ -491,7 +493,7 @@ export class SessionsService {
     }
 
     this.rememberRecentTrack(sessionId, track.id);
-    await this.recordSessionPicks(sessionId, [selected, ...result.tracks]);
+    await this.recordSessionPicks(sessionId, userId, [selected, ...result.tracks], pickCurator(result));
     // No taste signal here: the DJ queueing a track says nothing about whether
     // the listener likes it, and the web refills the queue without any user
     // action. Play, complete, skip, and save are the only signals.
@@ -699,7 +701,9 @@ export class SessionsService {
    */
   private async recordSessionPicks(
     sessionId: string,
+    userId: string,
     picks: AgentRuntimeCommerceResult["tracks"],
+    curatedBy: PickNote["curatedBy"],
   ) {
     const ids = [...new Set(picks.map((pick) => pick.trackId).filter(Boolean))];
     if (ids.length === 0) return;
@@ -720,16 +724,22 @@ export class SessionsService {
           picks.findIndex((other) => other.trackId === pick.trackId) === index,
       );
       if (fresh.length === 0) return;
-      // The DJ pick log, not a purchase: always priceUsd 0.
-      await prisma.license.createMany({
-        data: fresh.map((pick) => ({
-          sessionId,
-          trackId: pick.trackId,
-          type: pick.licenseType ?? "personal",
-          priceUsd: 0,
-          durationSeconds: 0,
-        })),
-      });
+      // The DJ pick log, not a purchase: always priceUsd 0. Each pick keeps its
+      // bounded explanation (#2299), written with the License or not at all.
+      await prisma.$transaction(
+        fresh.map((pick) =>
+          prisma.license.create({
+            data: {
+              sessionId,
+              trackId: pick.trackId,
+              type: pick.licenseType ?? "personal",
+              priceUsd: 0,
+              durationSeconds: 0,
+              pickNote: { create: { userId, ...pickNoteColumns(shapePickNote(pick, curatedBy)) } },
+            },
+          }),
+        ),
+      );
     } catch {
       // History is a record of the set, not a gate on it.
     }

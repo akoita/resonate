@@ -369,6 +369,26 @@ async function seed(person: Seed) {
   await prisma.stem.create({
     data: { id: own("stem"), trackId: own("track"), type: "vocals", uri: `ipfs://${TEST_PREFIX}${person.suffix}` },
   });
+  // #2299: an AI DJ pick-log License (retained) with its stored pick note (deleted).
+  await prisma.license.create({
+    data: {
+      id: own("license"),
+      sessionId: own("session"),
+      trackId: own("track"),
+      type: "personal",
+      priceUsd: 0,
+      durationSeconds: 0,
+      pickNote: {
+        create: {
+          userId: person.userId,
+          explanation: ["Nearby vibe match"],
+          reasonCode: "nearby_taste",
+          curatedBy: "rules",
+          requestMatch: false,
+        },
+      },
+    },
+  });
   await prisma.stemListing.create({
     data: {
       id: own("listing"),
@@ -703,6 +723,7 @@ async function cleanup() {
   await prisma.managementTransferRecoveryRequest.deleteMany({ where });
   await prisma.managementTransfer.deleteMany({ where });
   await prisma.managementGrant.deleteMany({ where });
+  await prisma.license.deleteMany({ where }); // cascades the pick notes
   await prisma.stemPurchase.deleteMany({ where });
   await prisma.stemListing.deleteMany({ where });
   await prisma.stem.deleteMany({ where });
@@ -887,6 +908,17 @@ describe("PersonalDataErasureService integration", () => {
 
     const session = await prisma.session.findUnique({ where: { id: id("session", "a") } });
     expect(session).not.toBeNull();
+  });
+
+  it("deletes the stored AI DJ pick notes but retains the pick-log License they hang off (#2299)", async () => {
+    expect(await prisma.license.count({ where: { id: id("license", "a") } })).toBe(1);
+    expect(await prisma.agentPickNote.count({ where: { licenseId: id("license", "a") } })).toBe(0);
+    // The control keeps the note about their own pick.
+    expect(await prisma.agentPickNote.findUnique({ where: { licenseId: id("license", "b") } })).toMatchObject({
+      userId: USER_B,
+      explanation: ["Nearby vibe match"],
+      requestMatch: false,
+    });
   });
 
   it("detaches the artist and withdraws the catalogue instead of deleting it", async () => {

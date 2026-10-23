@@ -423,6 +423,16 @@ describe("AgentConfigController", () => {
           type: "personal",
           priceUsd: 0,
           durationSeconds: 0,
+          // The pick's bounded note rides in the same write (#2299).
+          pickNote: {
+            create: {
+              userId: "user_1",
+              explanation: [],
+              reasonCode: null,
+              curatedBy: "rules",
+              requestMatch: null,
+            },
+          },
         },
       });
       expect(learningService.recordSignal).not.toHaveBeenCalled();
