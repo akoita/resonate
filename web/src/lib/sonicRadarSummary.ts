@@ -56,26 +56,43 @@ export function newFromDiscoveredItems(journal: DiscoveryJournal | null | undefi
     return journal?.newFromDiscovered ?? [];
 }
 
-export type SonicRadarBanner =
-    | { kind: "resonant"; count: number; newArtistsThisWeek: number; windowDays: number; newTracks: number }
+export type SonicRadarSessionLine =
+    | { kind: "session"; saved: number; replayed: number }
     | { kind: "pending"; count: number }
-    | { kind: "empty" };
+    | { kind: "none" };
 
-/** What the AI DJ page says about Sonic Radar, derived from the journal itself. */
-export function sonicRadarBanner(journal: DiscoveryJournal | null | undefined): SonicRadarBanner {
-    const count = resonantItemCount(journal);
-    if (journal && count > 0) {
-        return {
-            kind: "resonant",
-            count,
-            newArtistsThisWeek: journal.headline.newArtistsThisWeek,
-            windowDays: journal.window.days,
-            newTracks: newFromDiscoveredItems(journal).length,
-        };
+/**
+ * What the AI DJ panel says about Sonic Radar for the live session (#2313): only journal items
+ * whose track is in the live DJ set count. A resonant item has exactly one follow-up ("saved" or
+ * "replayed"), so no track is counted twice; a track both replayed and saved is reported by the
+ * journal as saved. Resonant tracks win over the "one save away" nudge. Nothing for no live set,
+ * or nothing from it in the journal (including items outside the journal's own window).
+ */
+export function sonicRadarSessionLine(
+    journal: DiscoveryJournal | null | undefined,
+    sessionTrackIds: readonly string[] | null | undefined,
+): SonicRadarSessionLine {
+    if (!journal || !sessionTrackIds || sessionTrackIds.length === 0) return { kind: "none" };
+    const live = new Set(sessionTrackIds);
+    const counted = new Set<string>();
+    let saved = 0;
+    let replayed = 0;
+    for (const group of journal.groups) {
+        for (const item of group.items) {
+            if (!live.has(item.trackId) || counted.has(item.trackId)) continue;
+            counted.add(item.trackId);
+            if (item.followUp === "saved") saved += 1;
+            else replayed += 1;
+        }
     }
-    const pendingCount = pendingItems(journal).length;
+    if (saved + replayed > 0) return { kind: "session", saved, replayed };
+    const pendingCount = new Set(
+        pendingItems(journal)
+            .map((item) => item.trackId)
+            .filter((id) => live.has(id)),
+    ).size;
     if (pendingCount > 0) return { kind: "pending", count: pendingCount };
-    return { kind: "empty" };
+    return { kind: "none" };
 }
 
 /** Whole days left to save or replay a track (rounded up, never below 0). */
