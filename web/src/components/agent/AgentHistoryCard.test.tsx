@@ -63,6 +63,19 @@ describe("AgentHistoryCard", () => {
     expect(html).toContain("Showing your 10 most recent of 34 sessions.");
   });
 
+  it("shows the lifetime session and track counts moved from the status card (#2237)", () => {
+    const html = renderToStaticMarkup(
+      <AgentHistoryCard sessions={tenSessions} totalCount={34} totalTracks={212} isLoading={false} />,
+    );
+    expect(html).toContain("34 sessions · 212 tracks picked");
+    expect(
+      renderToStaticMarkup(<AgentHistoryCard sessions={[]} totalCount={1} totalTracks={1} isLoading={false} />),
+    ).toContain("1 session · 1 track picked");
+    expect(
+      renderToStaticMarkup(<AgentHistoryCard sessions={tenSessions} totalCount={34} isLoading={false} />),
+    ).not.toContain("tracks picked");
+  });
+
   it("omits the window note when every session is listed", () => {
     const html = renderToStaticMarkup(<AgentHistoryCard sessions={tenSessions} totalCount={10} isLoading={false} />);
 

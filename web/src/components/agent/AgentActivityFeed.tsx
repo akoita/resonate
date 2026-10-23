@@ -4,7 +4,7 @@ import type { AgentEvent } from "../../hooks/useAgentEvents";
 
 const PLACEHOLDER_EVENTS: AgentEvent[] = [
     { id: "p1", type: "info", sessionId: "", message: "Ready to start curating", timestamp: "", icon: "🎯" },
-    { id: "p2", type: "info", sessionId: "", message: "Configure your preferences and hit Start Session", timestamp: "", icon: "💡" },
+    { id: "p2", type: "info", sessionId: "", message: "Describe the session or pick a quick start, then press Start session", timestamp: "", icon: "💡" },
 ];
 
 const EVENT_TYPE_CLASS: Record<string, string> = {

@@ -157,16 +157,18 @@ vi.mock("../../hooks/useDiscoveryJournal", () => ({
   }),
 }));
 
-// Capture the status card's toggle so the Start/Stop handler can be invoked.
+// Capture the command bar's Stop handler; Start is the prompt's onSubmit (#2237).
 const captured: {
-  onToggle?: () => void;
+  onStop?: () => void;
+  commandBar?: { name: string; isLive: boolean };
   onPick?: () => Promise<void>;
   pick?: AgentNextPickResponse | null;
   prompt?: PromptProps;
 } = {};
-vi.mock("./AgentStatusCard", () => ({
-  default: (props: { onToggle: () => void }) => {
-    captured.onToggle = props.onToggle;
+vi.mock("./AgentCommandBar", () => ({
+  default: (props: { name: string; isLive: boolean; onStop: () => void }) => {
+    captured.onStop = props.onStop;
+    captured.commandBar = { name: props.name, isLive: props.isLive };
     return null;
   },
 }));
@@ -238,7 +240,8 @@ describe("AgentSessionPanel", () => {
     hookState.isLoading = false;
     hookState.sessions = [];
     hookState.historyLoading = false;
-    captured.onToggle = undefined;
+    captured.onStop = undefined;
+    captured.commandBar = undefined;
     captured.onPick = undefined;
     captured.pick = null;
     captured.prompt = undefined;
@@ -280,20 +283,22 @@ describe("AgentSessionPanel", () => {
     hookState.config = config();
     const html = render();
     expect(html).not.toContain("Loading your DJ");
-    expect(html).toContain("Night DJ");
+    expect(captured.commandBar?.name).toBe("Night DJ");
   });
 
   it("renders the command bar for an inactive DJ and starts a session", async () => {
     hookState.config = config({ isActive: false });
     const html = render();
-    expect(html).toContain("Night DJ");
-    expect(html).toContain("Inactive");
-    expect(html).toContain("Start Session");
+    // The command bar is a separate component; here the panel hands it the name and state.
+    expect(captured.commandBar).toEqual({ name: "Night DJ", isLive: false });
+    // The only start action is the prompt's button (#2237).
+    expect(html).not.toContain("Start Session");
+    expect(captured.prompt?.isLive).toBe(false);
     // No ERC-8004 identity actions, no Crate Digger banner.
     expect(html).not.toContain("Portable Identity");
     expect(html).not.toContain("Crate Digger");
 
-    await captured.onToggle?.();
+    await captured.prompt?.onSubmit();
     expect(startSession).toHaveBeenCalledTimes(1);
     expect(stopSession).not.toHaveBeenCalled();
     expect(recordProductAnalytics).toHaveBeenCalledWith(
@@ -318,7 +323,7 @@ describe("AgentSessionPanel", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(parseAgentSessionRequest).not.toHaveBeenCalled();
 
-    await captured.onToggle?.();
+    await captured.prompt?.onSubmit();
 
     expect(updateConfig).not.toHaveBeenCalled();
     expect(startSession).toHaveBeenCalledTimes(1);
@@ -399,13 +404,14 @@ describe("AgentSessionPanel", () => {
   it("starts a plain session with no preferences when nothing was typed or chosen", async () => {
     hookState.config = config({ isActive: false });
     render();
-    await captured.onToggle?.();
+    await captured.prompt?.onSubmit();
     expect(startSession).toHaveBeenCalledWith(undefined);
     expect(recordProductAnalytics).toHaveBeenCalledWith(
       "tok",
       "agent.session_started",
       expect.objectContaining({
-        source: "agent_command_bar",
+        // Starts come from the prompt's button now; the command bar only stops.
+        source: "agent_session_prompt",
         payload: expect.objectContaining({ startedFrom: "plain", requestFilterKeys: [] }),
       }),
     );
@@ -420,7 +426,7 @@ describe("AgentSessionPanel", () => {
     render();
     expect(captured.prompt?.myMix?.preferences).toMatchObject({ context: expect.any(String) });
     expect(captured.prompt?.myMix?.preferences).not.toHaveProperty("lanes");
-    await captured.onToggle?.();
+    await captured.prompt?.onSubmit();
 
     const [input] = startSession.mock.calls[0] as unknown as [{ preferences: { myMix: Record<string, unknown> } }];
     expect(input.preferences.myMix).toMatchObject({ context: expect.any(String) });
@@ -498,12 +504,12 @@ describe("AgentSessionPanel", () => {
       render();
 
       // Still reading: starting now would ignore the sentence.
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
       expect(startSession).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(600);
       render();
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
 
       expect(startSession).toHaveBeenCalledWith({
         preferences: {
@@ -589,7 +595,7 @@ describe("AgentSessionPanel", () => {
       render();
       // An empty request (not null), so a live session's next picks drop the old filters.
       expect(captured.prompt?.request).toEqual({ genres: [], moods: [], energy: null, bpm: null });
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
       expect(startSession).toHaveBeenCalledWith(undefined);
     });
 
@@ -608,7 +614,7 @@ describe("AgentSessionPanel", () => {
       render();
       expect(captured.prompt?.request?.energy).toBe("low");
 
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
       const [input] = startSession.mock.calls[0] as unknown as [{ preferences: Record<string, unknown> }];
       expect(input.preferences).toEqual(
         expect.objectContaining({
@@ -859,7 +865,7 @@ describe("AgentSessionPanel", () => {
       effects.forEach((run) => run());
       const preset = SESSION_PRESETS.find((candidate) => candidate.intent === "Hype")!;
       await editAndRender(() => captured.prompt?.onSelectPreset(preset));
-      await captured.onToggle?.();
+      await captured.onStop?.();
       await vi.advanceTimersByTimeAsync(2000);
       expect(getAgentNextPick).not.toHaveBeenCalled();
     });
@@ -889,13 +895,34 @@ describe("AgentSessionPanel", () => {
     });
   });
 
+  it("goes idle, start (prompt button), live (Update / Stop), stop, with one start control", async () => {
+    hookState.config = config({ isActive: false });
+    render();
+    expect(captured.prompt?.isLive).toBe(false);
+    expect(captured.commandBar?.isLive).toBe(false);
+    // The prompt is the only thing handed a start action.
+    expect(captured.prompt?.onSubmit).toBeTypeOf("function");
+    expect(captured.onStop).toBeTypeOf("function");
+
+    await captured.prompt?.onSubmit();
+    expect(startSession).toHaveBeenCalledTimes(1);
+
+    hookState.config = config({ isActive: true });
+    render();
+    expect(captured.prompt?.isLive).toBe(true);
+    expect(captured.commandBar?.isLive).toBe(true);
+
+    await captured.onStop?.();
+    expect(stopSession).toHaveBeenCalledTimes(1);
+    expect(startSession).toHaveBeenCalledTimes(1);
+  });
+
   it("stops a live session", async () => {
     hookState.config = config({ isActive: true });
-    const html = render();
-    expect(html).toContain("Live");
-    expect(html).toContain("Stop Session");
+    render();
+    expect(captured.commandBar).toEqual({ name: "Night DJ", isLive: true });
 
-    await captured.onToggle?.();
+    await captured.onStop?.();
     expect(stopSession).toHaveBeenCalledTimes(1);
     expect(startSession).not.toHaveBeenCalled();
     expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Session Stopped" }));
@@ -1138,7 +1165,7 @@ describe("AgentSessionPanel", () => {
     it("records the DJ set for a started session's first picks and clears it on stop", async () => {
       hookState.config = config({ isActive: false });
       render();
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
 
       hookState.sessions = [session("s-1", ["t-1", "t-2"])];
       render();
@@ -1150,7 +1177,7 @@ describe("AgentSessionPanel", () => {
 
       hookState.config = config({ isActive: true });
       render();
-      await captured.onToggle?.();
+      await captured.onStop?.();
       expect(stopSession).toHaveBeenCalledTimes(1);
       expect(setDjSet).toHaveBeenLastCalledWith(null);
     });
@@ -1192,7 +1219,7 @@ describe("AgentSessionPanel", () => {
     it("plays a started session's picks once when they appear in history", async () => {
       hookState.config = config({ isActive: false });
       render();
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
       expect(playQueue).not.toHaveBeenCalled();
 
       // No picks yet: nothing plays.
@@ -1221,7 +1248,7 @@ describe("AgentSessionPanel", () => {
     it("autoplays the cached My Mix batch order instead of unordered pick-log rows", async () => {
       hookState.config = config({ isActive: false });
       render();
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
       hookState.sessions = [{ ...session("s-1", ["t-2"]), mixTrackIds: ["t-1", "t-3", "t-2"] }];
       render();
       effects.forEach((run) => run());
@@ -1242,7 +1269,7 @@ describe("AgentSessionPanel", () => {
     it("polls history while waiting, then gives up with a toast", async () => {
       hookState.config = config({ isActive: false });
       render();
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
 
       render();
       effects.forEach((run) => run());
@@ -1260,11 +1287,11 @@ describe("AgentSessionPanel", () => {
     it("stopping the session cancels the pending autoplay", async () => {
       hookState.config = config({ isActive: false });
       render();
-      await captured.onToggle?.();
+      await captured.prompt?.onSubmit();
 
       hookState.config = config({ isActive: true });
       render();
-      await captured.onToggle?.();
+      await captured.onStop?.();
       expect(stopSession).toHaveBeenCalledTimes(1);
 
       hookState.sessions = [session("s-1", ["t-1"])];
