@@ -780,6 +780,7 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
   // Catalogue and content records, keyed to a work rather than to a person.
   Track: "Catalogue record keyed by releaseId; the person's authorship is exported through Release and ReleaseArtistCredit.",
   TrackEmbedding: "Machine-generated similarity vector keyed by trackId, with no column naming a person.",
+  TrackDescriptor: "Derived genre-family, style and measured-band tags keyed by trackId, with no column naming a person (#2240).",
   Stem: "Audio component keyed by trackId; it names no person and carries the audio blob itself.",
   StemPricing: "Price configuration keyed by stemId, reachable only through a stem.",
   AudioFingerprint: "Acoustic fingerprint of a track, keyed by trackId and naming no person.",

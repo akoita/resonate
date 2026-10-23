@@ -936,6 +936,11 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Machine-generated similarity vector keyed by trackId, with no column naming a person.",
   },
   {
+    model: "TrackDescriptor",
+    disposition: "untouched",
+    reason: "Derived genre-family, style and measured-band tags keyed by trackId, with no column naming a person; deleted with its track (#2240).",
+  },
+  {
     model: "Stem",
     disposition: "untouched",
     reason: "Audio component keyed by trackId; it names no person and carries only the audio itself.",
