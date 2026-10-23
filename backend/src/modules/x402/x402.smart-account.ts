@@ -19,6 +19,14 @@ import { base, baseSepolia, foundry } from 'viem/chains';
 
 export const X402_TX_HASH_PATTERN = /^0x[a-fA-F0-9]{64}$/;
 
+/**
+ * How long a smart-account rail waits for the payment receipt. The browser
+ * posts only after the user operation's receipt, so the transaction is already
+ * mined; a long wait only helps a caller hold requests open on hashes that will
+ * never confirm.
+ */
+export const X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS = 15_000;
+
 const ERC20_TRANSFER_EVENT = {
   type: 'event',
   name: 'Transfer',

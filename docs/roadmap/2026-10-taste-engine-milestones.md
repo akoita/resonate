@@ -209,6 +209,11 @@ change (ADR-BM-4).
 These stay open issues so nothing is silently dropped; each gets a milestone
 only when its gate is met.
 
+An approved follow-up (2026-10-22, no milestone yet) for AI DJ retrieval
+quality, context signals and the session page is in the
+[AI DJ quality and experience plan](2026-10-ai-dj-quality-and-experience.md)
+(#2235–#2249).
+
 | Item | Gate | Issue |
 | --- | --- | --- |
 | Session DJ: intent sessions mixed on measured tempo, key and energy | Listener Pro gate: 500 to 1,000 genuine weekly active listeners (ADR-BM-6) | [#1971](https://github.com/akoita/resonate/issues/1971) |

@@ -13,16 +13,19 @@ import { createHash, randomUUID } from "node:crypto";
 import { getAddress, type Address } from "viem";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { AuthService } from "../auth/auth.service";
 import { loadX402CommerceSettled, publishCommerceSettled } from "../analytics/analytics_commerce_settled";
 import { X402Config } from "../x402/x402.config";
 import { PaymentsService } from "../payments/payments.service";
 import { resolveX402AssetInfo, type X402AssetInfo } from "../x402/x402.public";
 import { formatUsdcAmount, toUsdBreakdown, toX402TokenAmount } from "../x402/x402.quote";
 import {
+  X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
   X402_TX_HASH_PATTERN,
   createX402PublicClient,
   findVerifiedUsdcTransfer,
 } from "../x402/x402.smart-account";
+import { assertPaymentBoundToBuyer } from "../x402/x402.payer-binding";
 import {
   PunchlineCollectException,
   PunchlineCollectService,
@@ -53,6 +56,8 @@ const PAID_RAIL = "smart_account";
 type SmartAccountCollectBody = {
   txHash?: string;
   payer?: string;
+  /** Required only when `payer` is not one of the buyer's own addresses (`x402.payer-binding`). */
+  payerSignature?: string;
   collectorWallet?: string | null;
 };
 
@@ -73,6 +78,7 @@ export class PunchlineX402Service {
     private readonly collectService: PunchlineCollectService,
     private readonly eventBus: EventBus,
     @Optional() private readonly paymentsService?: PaymentsService,
+    @Optional() private readonly authService?: AuthService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -173,6 +179,20 @@ export class PunchlineX402Service {
 
     const moment = await this.loadPricedMoment(momentId);
 
+    // A transaction hash and its sender are public on-chain: only the buyer the
+    // payment belongs to may redeem it, including as a replay below.
+    await assertPaymentBoundToBuyer({
+      buyerId: userId,
+      payer,
+      resource: { kind: "moment", id: moment.id },
+      payerSignature: body.payerSignature,
+      chainId: this.x402Config.chainId,
+      isAddressForUser: this.authService
+        ? (buyerId, address) => this.authService!.isAddressForUser(buyerId, address)
+        : undefined,
+      getPublicClient: () => this.getPublicClient(),
+    });
+
     // Idempotency / replay: a prior settlement for this exact payment wins.
     const existing = await prisma.x402Settlement.findFirst({
       where: {
@@ -185,7 +205,11 @@ export class PunchlineX402Service {
     if (existing) {
       if (
         existing.resourceKind !== PAID_RESOURCE_KIND ||
-        existing.momentId !== moment.id
+        existing.momentId !== moment.id ||
+        // Matched on the public transaction hash alone: another account
+        // naming its own address is not the payer of this settlement.
+        (existing.payerAddress !== null &&
+          existing.payerAddress.toLowerCase() !== payer.toLowerCase())
       ) {
         throw new ConflictException({
           code: "payment_redeemed_elsewhere",
@@ -326,7 +350,7 @@ export class PunchlineX402Service {
 
     const receipt = await this.getPublicClient().waitForTransactionReceipt({
       hash: input.txHash,
-      timeout: 60_000,
+      timeout: X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
     });
     if (receipt.status !== "success") {
       throw new Error("The smart-account payment transaction reverted.");

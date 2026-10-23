@@ -62,7 +62,15 @@ export interface PunchlineCollectModuleProps {
 type DropsByTrack = Map<string, PunchlineDrop[]>;
 
 export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectModuleProps) {
-  const { token, login, webAuthnKey, status: authStatus } = useAuth();
+  const {
+    token,
+    login,
+    webAuthnKey,
+    status: authStatus,
+    userId,
+    address: authAddress,
+    smartAccountAddress,
+  } = useAuth();
   const { addToast } = useToast();
 
   const [dropsByTrack, setDropsByTrack] = useState<DropsByTrack | null>(null);
@@ -243,12 +251,17 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   const runPaidCollect = useCallback(
     async (moment: PunchlineMoment): Promise<PunchlineCollectResult> => {
       let key = webAuthnKey;
-      if (!key || authStatus !== "authenticated") {
+      let session = { token, userId, addresses: [userId, authAddress, smartAccountAddress] };
+      if (!key || authStatus !== "authenticated" || !token || !userId) {
         const result = await login();
         key = result?.webAuthnKey;
+        session = {
+          token: result?.token ?? null,
+          userId: result?.userId ?? null,
+          addresses: [result?.userId ?? null, result?.smartAccountAddress ?? null],
+        };
       }
-      const activeToken = token;
-      if (!key || !activeToken) {
+      if (!key || !session.token || !session.userId) {
         throw new Error(
           "Sign in with your Resonate passkey to collect this moment.",
         );
@@ -256,13 +269,14 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
       const quote = await fetchPunchlineMomentQuote(moment.id);
       return payMomentWithX402SmartAccount({
         quote,
-        token: activeToken,
+        token: session.token,
+        buyer: { buyerId: session.userId, buyerAddresses: session.addresses },
         webAuthnKey: key,
         chainId: quote.chainId,
         onStatus: (phase) => setPaidPhase(phase),
       });
     },
-    [webAuthnKey, authStatus, login, token],
+    [webAuthnKey, authStatus, login, token, userId, authAddress, smartAccountAddress],
   );
 
   const collect = useCallback(

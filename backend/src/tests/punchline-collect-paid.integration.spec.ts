@@ -28,6 +28,7 @@ import { BadRequestException, ConflictException, HttpException } from "@nestjs/c
 import { encodeAbiParameters, encodeEventTopics, getAddress } from "viem";
 import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
+import { AuthService } from "../modules/auth/auth.service";
 import { PunchlineCollectService } from "../modules/punchline/punchline-collect.service";
 import { PunchlineDropService } from "../modules/punchline/punchline-drop.service";
 import { PunchlineX402Service } from "../modules/punchline/punchline-x402.service";
@@ -54,12 +55,14 @@ const PRIOR_OWNER = `${TEST_PREFIX}prior`;
 
 const PAYOUT = getAddress("0x22222222222222222222222222222222222222aa");
 const PAYER = getAddress("0x11111111111111111111111111111111111111bb");
+const OTHER_PAYER = getAddress("0x33333333333333333333333333333333333333cc");
 // Default Base Sepolia USDC (see x402.public.ts DEFAULT_USDC_ASSETS).
 const USDC = getAddress("0x036CbD53842c5426634e7929541eC2318f3dCF7e");
 
 const TX_A = `0x${"a".repeat(64)}` as const;
 const TX_SOLDOUT = `0x${"d".repeat(64)}` as const;
 const TX_BADVERIFY = `0x${"e".repeat(64)}` as const;
+const TX_STRANGER = `0x${"f".repeat(64)}` as const;
 
 function fakeX402Config(): X402Config {
   return {
@@ -142,7 +145,15 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
       eventBus.subscribe(name, (event) => events.push(event));
     }
     collectService = new PunchlineCollectService(eventBus);
-    x402 = new PunchlineX402Service(fakeX402Config(), collectService, eventBus);
+    // The real ownership check (`isAddressForUser` reads the Wallet table only).
+    const authService = new AuthService({} as never, {} as never);
+    x402 = new PunchlineX402Service(
+      fakeX402Config(),
+      collectService,
+      eventBus,
+      undefined,
+      authService,
+    );
     dropService = new PunchlineDropService(
       eventBus,
       {} as never,
@@ -162,6 +173,15 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
         data: { id: fan, email: `${fan}@test.resonate` },
       });
     }
+    // FAN_A and FAN_B pay from PAYER, their own smart account; PRIOR_OWNER owns OTHER_PAYER only.
+    for (const fan of [FAN_A, FAN_B]) {
+      await prisma.wallet.create({
+        data: { userId: fan, address: PAYER.toLowerCase(), chainId: 84532 },
+      });
+    }
+    await prisma.wallet.create({
+      data: { userId: PRIOR_OWNER, address: OTHER_PAYER.toLowerCase(), chainId: 84532 },
+    });
     await prisma.release.create({
       data: { id: RELEASE_ID, artistId: ARTIST_ID, title: "Paid Release", status: "ready" },
     });
@@ -219,6 +239,7 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
     await prisma.track.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.release.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.wallet.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
   });
 
@@ -387,6 +408,43 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
       where: { paymentTransactionHash: TX_BADVERIFY },
     });
     expect(settlement).toBeNull();
+  });
+
+  // (e2) Someone else's public payment ----------------------------------
+  it("(e2) refuses to redeem a payment made from another account", async () => {
+    stubVerified(BigInt(2_000_000));
+    await expect(
+      x402.collectWithSmartAccount(PRIOR_OWNER, MOMENT_PAID, {
+        txHash: TX_STRANGER,
+        payer: PAYER,
+      }),
+    ).rejects.toMatchObject({ response: { code: "payer_not_linked" } });
+
+    const settlement = await prisma.x402Settlement.findFirst({
+      where: { paymentTransactionHash: TX_STRANGER },
+    });
+    expect(settlement).toBeNull();
+    expect(events.some((e) => (e as any).transactionHash === TX_STRANGER)).toBe(false);
+  });
+
+  // (e3) A replay of a settled payment by someone else ---------------------
+  it("(e3) refuses another account replaying an already-settled payment", async () => {
+    await expect(
+      x402.collectWithSmartAccount(PRIOR_OWNER, MOMENT_PAID, {
+        txHash: TX_A,
+        payer: PAYER,
+      }),
+    ).rejects.toMatchObject({ response: { code: "payer_not_linked" } });
+  });
+
+  // (e4) Someone else's settled transaction under one's own address ------
+  it("(e4) refuses a settled transaction hash claimed with a different payer", async () => {
+    await expect(
+      x402.collectWithSmartAccount(PRIOR_OWNER, MOMENT_PAID, {
+        txHash: TX_A,
+        payer: OTHER_PAYER,
+      }),
+    ).rejects.toMatchObject({ response: { code: "payment_redeemed_elsewhere" } });
   });
 
   // (f) Price band ---------------------------------------------------------

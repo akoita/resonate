@@ -185,7 +185,15 @@ export function BuyModal({
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
   const [x402Payer, setX402Payer] = useState<string | null>(null);
   const [completed, setCompleted] = useState<CompletedPurchase | null>(null);
-  const { status: authStatus, webAuthnKey, login, token } = useAuth();
+  const {
+    status: authStatus,
+    webAuthnKey,
+    login,
+    token,
+    userId,
+    address: authAddress,
+    smartAccountAddress,
+  } = useAuth();
   const { chainId } = useZeroDev();
   const { assets: paymentAssets } = usePaymentAssets(chainId);
   const listingChainMismatch = listingChainId != null && chainId !== listingChainId;
@@ -428,16 +436,24 @@ export function BuyModal({
     setX402Payer(null);
     try {
       let key = webAuthnKey;
-      if (!key || authStatus !== "authenticated") {
+      let session = { token, userId, addresses: [userId, authAddress, smartAccountAddress] };
+      if (!key || authStatus !== "authenticated" || !token || !userId) {
         const result = await login();
         key = result?.webAuthnKey;
+        session = {
+          token: result?.token ?? null,
+          userId: result?.userId ?? null,
+          addresses: [result?.userId ?? null, result?.smartAccountAddress ?? null],
+        };
       }
-      if (!key) {
+      if (!key || !session.token || !session.userId) {
         throw new Error("Sign in with your Resonate passkey before using x402 checkout.");
       }
       setX402Status("signing");
       const result = await payStemWithX402SmartAccount({
         stemId,
+        token: session.token,
+        buyer: { buyerId: session.userId, buyerAddresses: session.addresses },
         webAuthnKey: key,
         chainId: x402Config.chainId,
         assetAddress: x402Asset.address as `0x${string}`,
