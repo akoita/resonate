@@ -172,7 +172,6 @@ vi.mock("./AgentCommandBar", () => ({
     return null;
   },
 }));
-vi.mock("./AgentActivityFeed", () => ({ default: () => null }));
 vi.mock("./AgentNextPickCard", () => ({
   default: (props: { onPick: () => Promise<void>; pick: AgentNextPickResponse | null }) => {
     captured.onPick = props.onPick;
@@ -187,6 +186,7 @@ vi.mock("./AgentSessionPrompt", () => ({
   },
 }));
 vi.mock("./AgentHistoryCard", () => ({ default: () => null }));
+vi.mock("./AgentEventsDebug", () => ({ default: () => null }));
 vi.mock("./AgentSetupWizard", () => ({ default: () => null }));
 
 import AgentSessionPanel, { toIntentPreferences } from "./AgentSessionPanel";

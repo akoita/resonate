@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentSessionRequest } from "./api";
 import {
   chipsFromRequest,
-  coverageNotes,
+  coverageLine,
   emptyRequest,
   hasFilters,
   ignoredKeyLabels,
@@ -121,10 +121,17 @@ describe("ignoredKeyLabels", () => {
   });
 });
 
-describe("coverageNotes", () => {
-  it("explains each gap using the request's own wording", () => {
+describe("coverageLine", () => {
+  it("says every pick matched when there are no gaps", () => {
+    expect(coverageLine({ picks: 5, gaps: [] }, request)).toEqual({
+      kind: "full",
+      text: "All picks matched your request",
+    });
+  });
+
+  it("explains partial gaps using the request's own wording", () => {
     expect(
-      coverageNotes(
+      coverageLine(
         {
           picks: 5,
           gaps: [
@@ -134,16 +141,30 @@ describe("coverageNotes", () => {
         },
         request,
       ),
-    ).toEqual([
-      "Only 1 of 5 picks matched 120–125 BPM",
-      "None of the 5 picks matched deep house, house",
-    ]);
+    ).toEqual({
+      kind: "partial",
+      text: "Only 1 of 5 picks matched 120–125 BPM · None of the 5 picks matched deep house, house",
+    });
+  });
+
+  it("is honest when nothing matched any filter", () => {
+    const genreOnly: AgentSessionRequest = { genres: ["World"], moods: [], energy: null, bpm: null };
+    expect(coverageLine({ picks: 5, gaps: [{ filter: "genres", matched: 0 }] }, genreOnly)).toEqual({
+      kind: "none",
+      text: "Nothing in the catalog matched World yet \u2014 playing the closest picks",
+    });
   });
 
   it("drops gaps for filters that were removed and handles no coverage", () => {
-    expect(coverageNotes({ picks: 5, gaps: [{ filter: "bpm", matched: 2 }] }, removeChip(request, "bpm"))).toEqual([]);
-    expect(coverageNotes(null, request)).toEqual([]);
-    expect(coverageNotes({ picks: 0, gaps: [] }, request)).toEqual([]);
+    const withoutBpm = removeChip(request, "bpm");
+    expect(coverageLine({ picks: 5, gaps: [{ filter: "bpm", matched: 2 }] }, withoutBpm)).toEqual({
+      kind: "full",
+      text: "All picks matched your request",
+    });
+    expect(coverageLine(null, request)).toBeNull();
+    expect(coverageLine({ picks: 0, gaps: [] }, request)).toBeNull();
+    expect(coverageLine({ picks: 5, gaps: [] }, emptyRequest())).toBeNull();
+    expect(coverageLine({ picks: 5, gaps: [] }, null)).toBeNull();
   });
 });
 

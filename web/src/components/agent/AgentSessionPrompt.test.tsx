@@ -189,12 +189,41 @@ describe("AgentSessionPrompt", () => {
     expect(html).not.toContain("Not used for listening");
   });
 
-  it("explains coverage gaps in the request's own words", () => {
-    const html = render({
-      request,
-      coverage: { picks: 5, gaps: [{ filter: "bpm", matched: 1 }] },
+  describe("request coverage line (#2238)", () => {
+    const coverageText = (html: string) =>
+      html.match(/data-testid="agent-session-coverage">([^<]*)</)?.[1] ?? null;
+
+    it("says every pick matched when nothing fell short", () => {
+      const html = render({ request, coverage: { picks: 5, gaps: [] } });
+      expect(coverageText(html)).toBe("All picks matched your request");
+      expect(html).toContain("aid-prompt-note--coverage-full");
     });
-    expect(html).toContain("Only 1 of 5 picks matched 120–125 BPM");
+
+    it("explains a partial match in the request's own words, once", () => {
+      const html = render({ request, coverage: { picks: 5, gaps: [{ filter: "bpm", matched: 1 }] } });
+      expect(coverageText(html)).toBe("Only 1 of 5 picks matched 120–125 BPM");
+      expect(html.match(/agent-session-coverage/g)).toHaveLength(1);
+      expect(html).toContain("aid-prompt-note--coverage-partial");
+    });
+
+    it("is honest when nothing in the catalog matched", () => {
+      const html = render({
+        request: { genres: ["World"], moods: [], energy: null, bpm: null },
+        coverage: { picks: 5, gaps: [{ filter: "genres", matched: 0 }] },
+      });
+      expect(coverageText(html)).toBe("Nothing in the catalog matched World yet \u2014 playing the closest picks");
+      expect(html).toContain("aid-prompt-note--coverage-none");
+    });
+
+    it("shows nothing without coverage or without filters", () => {
+      expect(render({ request })).not.toContain("agent-session-coverage");
+      expect(render({ coverage: { picks: 5, gaps: [] } })).not.toContain("agent-session-coverage");
+    });
+
+    it("sits right under the filter chips", () => {
+      const html = render({ request, coverage: { picks: 5, gaps: [] } });
+      expect(html.indexOf("Session filters")).toBeLessThan(html.indexOf("agent-session-coverage"));
+    });
   });
 
   it("shows the reading and error states and blocks the action while reading", () => {
