@@ -15,7 +15,7 @@ import {
     pendingItems,
     resonantItemCount,
     saveDeadlineLabel,
-    sonicRadarBanner,
+    sonicRadarSessionLine,
 } from "./sonicRadarSummary";
 
 const NOW = new Date("2026-10-04T12:00:00.000Z");
@@ -111,36 +111,70 @@ describe("resonantItemCount / pendingItems", () => {
     });
 });
 
-describe("sonicRadarBanner", () => {
-    it("reports resonant tracks with the journal's own window and new artists", () => {
-        expect(sonicRadarBanner(journal([["a", "b"], ["c"]], ["p1"], 2))).toEqual({
-            kind: "resonant",
-            count: 3,
-            newArtistsThisWeek: 2,
-            windowDays: 28,
-            newTracks: 0,
-        });
+describe("sonicRadarSessionLine", () => {
+    const withFollowUps = (items: Array<[string, "saved" | "replayed"]>, pendingIds: string[] = []): DiscoveryJournal => ({
+        ...journal([[]], pendingIds),
+        groups: [
+            {
+                key: "day:0",
+                sessionId: null,
+                date: "2026-10-03",
+                items: items.map(([id, followUp]) => ({ ...resonant(id), followUp })),
+            },
+        ],
     });
 
-    it("counts new tracks from artists the listener discovered", () => {
-        expect(sonicRadarBanner(journal([["a"]], [], 0, ["n1", "n2", "n3"]))).toMatchObject({
-            kind: "resonant",
-            newTracks: 3,
-        });
+    it("splits this session's saved and replayed tracks", () => {
+        const data = withFollowUps([["a", "saved"], ["b", "saved"], ["c", "replayed"], ["d", "saved"]]);
+        expect(sonicRadarSessionLine(data, ["a", "b", "c"])).toEqual({ kind: "session", saved: 2, replayed: 1 });
     });
 
-    it("falls back to the pending count when nothing has resonated", () => {
-        expect(sonicRadarBanner(journal([], ["p1", "p2"]))).toEqual({ kind: "pending", count: 2 });
+    it("ignores resonant tracks that are not in the live set", () => {
+        const data = withFollowUps([["a", "saved"], ["x", "saved"], ["y", "replayed"]]);
+        expect(sonicRadarSessionLine(data, ["a"])).toEqual({ kind: "session", saved: 1, replayed: 0 });
     });
 
-    it("is empty with no resonant and no pending tracks", () => {
-        expect(sonicRadarBanner(journal([], []))).toEqual({ kind: "empty" });
-        expect(sonicRadarBanner(journal([], undefined))).toEqual({ kind: "empty" });
-        expect(sonicRadarBanner(null)).toEqual({ kind: "empty" });
+    it("counts a track once even if the journal lists it in several groups", () => {
+        const data = journal([["a"], ["a", "b"]], []);
+        expect(sonicRadarSessionLine(data, ["a", "b"])).toEqual({ kind: "session", saved: 2, replayed: 0 });
     });
 
-    it("ignores groups that hold no items", () => {
-        expect(sonicRadarBanner(journal([[]], ["p1"]))).toEqual({ kind: "pending", count: 1 });
+    it("prefers saved when the same track appears as saved and replayed", () => {
+        const data: DiscoveryJournal = {
+            ...withFollowUps([["a", "saved"]]),
+        };
+        data.groups.push({ key: "day:1", sessionId: null, date: "2026-10-02", items: [{ ...resonant("a"), followUp: "replayed" }] });
+        expect(sonicRadarSessionLine(data, ["a"])).toEqual({ kind: "session", saved: 1, replayed: 0 });
+    });
+
+    it("scopes the one-save-away nudge to this session's tracks", () => {
+        const data = journal([["x"]], ["p1", "p2", "p3"]);
+        expect(sonicRadarSessionLine(data, ["p1", "p3", "other"])).toEqual({ kind: "pending", count: 2 });
+    });
+
+    it("shows resonant session tracks instead of the pending nudge", () => {
+        const data = withFollowUps([["a", "replayed"]], ["p1"]);
+        expect(sonicRadarSessionLine(data, ["a", "p1"])).toEqual({ kind: "session", saved: 0, replayed: 1 });
+    });
+
+    it("falls back to the pending nudge when only other tracks resonated", () => {
+        const data = withFollowUps([["x", "saved"]], ["p1"]);
+        expect(sonicRadarSessionLine(data, ["p1"])).toEqual({ kind: "pending", count: 1 });
+    });
+
+    it("is none without a live set, a journal, or anything from the session", () => {
+        const data = journal([["a"]], ["p1"]);
+        expect(sonicRadarSessionLine(data, null)).toEqual({ kind: "none" });
+        expect(sonicRadarSessionLine(data, undefined)).toEqual({ kind: "none" });
+        expect(sonicRadarSessionLine(data, [])).toEqual({ kind: "none" });
+        expect(sonicRadarSessionLine(null, ["a"])).toEqual({ kind: "none" });
+        expect(sonicRadarSessionLine(undefined, ["a"])).toEqual({ kind: "none" });
+        expect(sonicRadarSessionLine(data, ["unrelated"])).toEqual({ kind: "none" });
+        expect(sonicRadarSessionLine(journal([], undefined), ["a"])).toEqual({ kind: "none" });
+    });
+
+    it("does not read new releases as session discoveries", () => {
+        expect(sonicRadarSessionLine(journal([], [], 0, ["n1"]), ["n1"])).toEqual({ kind: "none" });
     });
 });
 

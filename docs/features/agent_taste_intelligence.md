@@ -1793,19 +1793,25 @@ records the `library.saved` product event like the player does, and refetches
 the journal. The User Guide article `sonic-radar` (AI DJ & Sonic Radar)
 describes both.
 
-**AI DJ link.** The Sonic Radar banner on the AI DJ panel
+**AI DJ link.** The Sonic Radar line on the AI DJ panel
 (`web/src/components/agent/AgentSessionPanel.tsx`) reads the same journal
-instead of counting every track the DJ served, so it never promises tracks
-Sonic Radar will not show. It shows how many tracks resonated in the window
-(and new artists this week); when none did, how many played-through tracks are
-one save away; and otherwise how a track gets into Sonic Radar. The copy
-helpers live in `web/src/lib/sonicRadarSummary.ts`.
+instead of counting every track the DJ served, and is scoped to the live
+session (#2313; it replaced the 28-day "N tracks resonated with you" banner of
+#2089). `sonicRadarSessionLine(journal, trackIds)` in
+`web/src/lib/sonicRadarSummary.ts` counts only journal items whose track is in
+the live set (`useDjSet().trackIds`): "From this session: 2 saved, 1 replayed"
+with a Sonic Radar link. A resonant item has one follow-up, so a track is counted
+once (saved wins if the journal lists both). When none of the session's tracks
+resonated, it shows the "one save away" nudge for the session's own
+played-through tracks. With no live set, or nothing from it in the journal, the
+panel shows no banner and no empty state. Client-side only; Sonic Radar's own page
+is unchanged.
 
 **New from artists you discovered.** At the top of the page, a section lists
 `newFromDiscovered[]` with Play and Save on each card; "Almost there" cards
 also get Play, since a replay makes a track resonate too. Play queues the
-catalog stream without adding the track to the library. The AI DJ banner adds
-the count of new tracks from discovered artists. Notifications or digests for
+catalog stream without adding the track to the library. The AI DJ panel no longer
+mentions new tracks from discovered artists (they stay on Sonic Radar). Notifications or digests for
 new releases, scheduled playlists and an artist follow model stay out of scope
 ([#2086](https://github.com/akoita/resonate/issues/2086)).
 
