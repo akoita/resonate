@@ -84,9 +84,12 @@ Response body:
 }
 ```
 
-If `INTERNAL_SERVICE_KEY` is configured, callers must send it as
-`x-internal-service-key`. In production, the worker refuses requests unless the
-secret is configured.
+Callers must send `INTERNAL_SERVICE_KEY` as `x-internal-service-key`; the key is
+compared in constant time. Without a configured key the worker refuses every
+request, in every environment (the backend then falls back in-process as
+described below, unless the worker is required). A local worker without a key
+can accept calls with `AGENT_RUNTIME_WORKER_ALLOW_UNAUTHENTICATED=true`, which is
+ignored when `NODE_ENV=production`.
 
 ## Fallback
 

@@ -381,6 +381,53 @@ describe('X402Middleware', () => {
       expect(res.json).toHaveBeenCalledWith({ error: 'Stem not found' });
     });
 
+    it('refuses a smart-account proof on the x402 header route, even when a settlement exists', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: { x402Settlement: { findUnique: jest.Mock } };
+      };
+      prisma.x402Settlement.findUnique.mockResolvedValue({
+        id: 'settlement_1',
+        stemId: 'stem_1',
+        paymentRail: 'smart_account',
+      });
+      const middleware = createMiddleware(createMockConfig());
+      const proof = `smart-account:0x1111111111111111111111111111111111111111:0x${'a'.repeat(64)}`;
+      const req = createMockReq('/api/stems/stem_1/x402', { 'x-payment': proof });
+      (req as any).params = { stemId: 'stem_1' };
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'smart_account_proof_not_accepted' }),
+      );
+      expect(prisma.x402Settlement.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('never replays a smart-account settlement through the x402 header route', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: { x402Settlement: { findUnique: jest.Mock } };
+      };
+      prisma.x402Settlement.findUnique.mockResolvedValue({
+        id: 'settlement_1',
+        stemId: 'stem_1',
+        paymentRail: 'smart_account',
+      });
+      const middleware = createMiddleware(createMockConfig());
+      const req = createMockReq('/api/stems/stem_1/x402', { 'x-payment': 'opaque-proof' });
+      (req as any).params = { stemId: 'stem_1' };
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
     it('should pass through non-x402 routes', async () => {
       const config = createMockConfig();
       const middleware = createMiddleware(config);

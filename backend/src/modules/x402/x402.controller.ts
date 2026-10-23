@@ -11,7 +11,11 @@ import {
   Post,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
+import { IsOptional, IsString, Matches } from 'class-validator';
 import { Request, Response } from 'express';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -39,11 +43,41 @@ import { PaymentsService } from '../payments/payments.service';
 import { StorageProvider } from '../storage/storage_provider';
 import { EventBus } from '../shared/event_bus';
 import { loadX402CommerceSettled, publishCommerceSettled } from '../analytics/analytics_commerce_settled';
+import { AuthService } from '../auth/auth.service';
+import { minutes } from '../shared/rate_limits';
+import {
+  PAYMENT_BINDING_SIGNATURE_PATTERN,
+  SMART_ACCOUNT_PROOF_REFUSAL,
+  assertPaymentBoundToBuyer,
+  isSmartAccountPaymentProof,
+} from './x402.payer-binding';
+import { X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS } from './x402.smart-account';
 
-type SmartAccountPaymentBody = {
-  txHash?: string;
-  payer?: string;
-};
+/**
+ * Body of `POST /api/stems/:stemId/x402/smart-account`. Only shapes are checked
+ * here; `verifySmartAccountPayment` still returns its own messages for a
+ * well-formed hash or payer that does not verify on-chain.
+ */
+export class SmartAccountPaymentDto {
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{64}$/)
+  txHash!: string;
+
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/)
+  payer!: string;
+
+  /** Required only when `payer` is not one of the buyer's own addresses (x402 on another chain). */
+  @IsOptional()
+  @IsString()
+  @Matches(PAYMENT_BINDING_SIGNATURE_PATTERN)
+  payerSignature?: string;
+}
+
+type SmartAccountPaymentBody = Partial<SmartAccountPaymentDto>;
+
+/** A paid download: generous for a person retrying, tight for a script. */
+const SMART_ACCOUNT_DOWNLOAD_RATE_LIMIT = { limit: 10, ttl: minutes(1) } as const;
 
 type VerifiedSmartAccountPayment = {
   txHash: `0x${string}`;
@@ -151,6 +185,8 @@ export class X402Controller {
     private readonly storageProvider?: StorageProvider,
     @Optional()
     private readonly eventBus?: EventBus,
+    @Optional()
+    private readonly authService?: AuthService,
   ) {}
 
   /**
@@ -178,6 +214,12 @@ export class X402Controller {
     const paymentHeader = Array.isArray(paymentHeaderValue)
       ? paymentHeaderValue[0]
       : paymentHeaderValue;
+    // Defense in depth behind the middleware: a smart-account proof is public
+    // on-chain data, redeemable only through the buyer-bound POST route.
+    if (isSmartAccountPaymentProof(paymentHeader)) {
+      res.status(HttpStatus.FORBIDDEN).json(SMART_ACCOUNT_PROOF_REFUSAL);
+      return;
+    }
 
     return this.servePaidStemDownload({
       stemId,
@@ -190,6 +232,7 @@ export class X402Controller {
       logIndex: 0,
       blockNumber: BigInt(0),
       blockHash: '',
+      allowSmartAccountSettlement: false,
     });
   }
 
@@ -201,11 +244,17 @@ export class X402Controller {
    * the configured x402 payout address. This endpoint verifies the resulting
    * chain transaction before serving the same receipt + stem artifact as the
    * facilitator-backed x402 route.
+   *
+   * A transaction hash and its sender are public on-chain, so the payment is
+   * redeemable only by the signed-in buyer it belongs to (`x402.payer-binding`):
+   * the payer must be one of the buyer's addresses, or sign the binding.
    */
   @Post(':stemId/x402/smart-account')
+  @UseGuards(AuthGuard('jwt'))
+  @Throttle({ default: SMART_ACCOUNT_DOWNLOAD_RATE_LIMIT })
   async downloadWithSmartAccountPayment(
     @Param('stemId') stemId: string,
-    @Body() body: SmartAccountPaymentBody,
+    @Body() body: SmartAccountPaymentDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -215,6 +264,8 @@ export class X402Controller {
       });
       return;
     }
+
+    await this.assertSmartAccountPayerIsBuyer(stemId, body, req);
 
     try {
       const verified = await this.verifySmartAccountPayment(stemId, body);
@@ -230,6 +281,8 @@ export class X402Controller {
         blockNumber: verified.blockNumber,
         blockHash: verified.blockHash,
         payer: verified.payer,
+        // The caller was bound to this payer and the transfer verified above.
+        allowSmartAccountSettlement: true,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -263,6 +316,8 @@ export class X402Controller {
     blockNumber: bigint;
     blockHash: string;
     payer?: string;
+    /** Only the buyer-bound smart-account route may serve a smart-account settlement. */
+    allowSmartAccountSettlement: boolean;
   }) {
     try {
       const { stemId, req, res } = input;
@@ -307,6 +362,10 @@ export class X402Controller {
           : null,
       });
       if (existingSettlement) {
+        if (existingSettlement.paymentRail === 'smart_account' && !input.allowSmartAccountSettlement) {
+          res.status(HttpStatus.FORBIDDEN).json(SMART_ACCOUNT_PROOF_REFUSAL);
+          return;
+        }
         if (existingSettlement.stemId !== stem.id) {
           res.status(HttpStatus.CONFLICT).json({
             error: 'Payment already redeemed',
@@ -670,6 +729,42 @@ export class X402Controller {
     }
   }
 
+  /**
+   * Refuse before any chain or storage work unless the signed-in caller is the
+   * buyer this payment belongs to. Fails closed (403) without a caller.
+   */
+  private async assertSmartAccountPayerIsBuyer(
+    stemId: string,
+    body: SmartAccountPaymentBody | undefined,
+    req: Request,
+  ): Promise<void> {
+    const user = (req as Request & { user?: { userId?: string; sub?: string } }).user;
+    const buyerId = user?.userId || user?.sub || '';
+    const txHash = body?.txHash;
+    const payerInput = body?.payer;
+    if (!txHash || !TX_HASH_PATTERN.test(txHash) || !payerInput) {
+      // Malformed input is reported by verification with its own message.
+      return;
+    }
+    let payer: Address;
+    try {
+      payer = getAddress(payerInput);
+    } catch {
+      return;
+    }
+    await assertPaymentBoundToBuyer({
+      buyerId,
+      payer,
+      resource: { kind: 'stem', id: stemId },
+      payerSignature: body?.payerSignature,
+      chainId: this.x402Config.chainId,
+      isAddressForUser: this.authService
+        ? (userId, address) => this.authService!.isAddressForUser(userId, address)
+        : undefined,
+      getPublicClient: () => this.getX402PublicClient(),
+    });
+  }
+
   private resolvePaymentRail(transactionHash: string): 'facilitator' | 'smart_account' {
     return TX_HASH_PATTERN.test(transactionHash) ? 'smart_account' : 'facilitator';
   }
@@ -713,7 +808,7 @@ export class X402Controller {
 
     const receipt = await this.getX402PublicClient().waitForTransactionReceipt({
       hash: txHash,
-      timeout: 60_000,
+      timeout: X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
     });
     if (receipt.status !== 'success') {
       throw new Error('The smart-account payment transaction reverted.');

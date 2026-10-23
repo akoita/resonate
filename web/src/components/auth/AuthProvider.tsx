@@ -46,13 +46,26 @@ type AuthState = {
   // Returns the freshly-built kernel account and the webAuthnKey for callers
   // that need to operate on a different chain (e.g. x402 builds a parallel
   // Base Sepolia account from the same passkey). The return is null on error.
-  login: () => Promise<{ account: unknown; webAuthnKey: unknown } | null>;
+  login: () => Promise<LoginResult | null>;
   signup: () => Promise<void>;
   connectPrivy: () => Promise<void>;
   connectEmbedded: () => Promise<void>;
   disconnect: () => void;
   refreshWallet: () => Promise<void>;
   signMessage: (message: string) => Promise<string>;
+};
+
+/**
+ * What a fresh sign-in returns to its caller. `token`, `userId` and
+ * `smartAccountAddress` are returned too because React state updates do not
+ * flush until the next render, and a checkout continues in the same handler.
+ */
+export type LoginResult = {
+  account: unknown;
+  webAuthnKey: unknown;
+  token?: string | null;
+  userId?: string | null;
+  smartAccountAddress?: string | null;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -424,9 +437,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         });
       }
 
-      // Return the account and webAuthnKey so callers can use them
+      // Return the account, webAuthnKey and session so callers can use them
       // immediately (React state updates won't flush until next render).
-      return { account, webAuthnKey };
+      return {
+        account,
+        webAuthnKey,
+        token: result.accessToken,
+        userId: u,
+        smartAccountAddress: saAddress.toLowerCase(),
+      };
 
     } catch (err) {
       const message = formatPasskeyAuthError(err);

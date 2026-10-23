@@ -9,6 +9,7 @@ import { AuthService } from "../auth/auth.service";
 import { AuthNonceService } from "../auth/auth_nonce.service";
 import { accountClosureNonceKey, buildAccountClosureMessage } from "./account_closure_message";
 import { writeStructuredLog } from "../shared/structured_logging";
+import { LOCAL_CHAIN_ID, LOCAL_UNIVERSAL_SIG_VALIDATOR } from "../shared/local_signature_validator";
 
 /** What actually convinced us the signature was real. */
 export type AccountClosureStepUpMode =
@@ -24,14 +25,6 @@ export interface AccountClosureChallenge {
   message: string;
   nonce: string;
 }
-
-/**
- * The local UniversalSigValidator, mirrored from `AuthController.verify`. The
- * canonical ERC-6492 validators do not exist on Anvil, so viem has to be
- * pointed at the one this repository deploys.
- */
-const LOCAL_UNIVERSAL_SIG_VALIDATOR = "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0";
-const LOCAL_CHAIN_ID = 31337;
 
 /**
  * The step-up in front of account closure (#1771 slice 3b).

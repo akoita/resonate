@@ -6,6 +6,7 @@ import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { X402PaymentService } from './x402.payment.service';
 import { writeStructuredLog } from '../shared/structured_logging';
+import { SMART_ACCOUNT_PROOF_REFUSAL, isSmartAccountPaymentProof } from './x402.payer-binding';
 
 /**
  * X402Middleware — NestJS adapter for the x402 Express payment middleware.
@@ -62,8 +63,23 @@ export class X402Middleware implements NestMiddleware {
       (req.headers['payment-signature'] as string | undefined) ??
       (req.headers['x-payment'] as string | undefined);
 
+    // A smart-account proof is built from public on-chain values, so it is not
+    // a credential here: those payments are redeemed only by their signed-in
+    // buyer through POST /api/stems/:stemId/x402/smart-account.
+    if (paymentHeader && isSmartAccountPaymentProof(paymentHeader)) {
+      this.logX402Event(req, "x402.payment.replay_rejected", "x402 smart-account proof refused on the x402 route", {
+        stemId,
+        statusCode: 403,
+        reason: "smart_account_proof",
+      });
+      return res.status(403).json(SMART_ACCOUNT_PROOF_REFUSAL);
+    }
+
     if (paymentHeader) {
       const existingSettlement = await this.findExistingSettlement(paymentHeader);
+      if (existingSettlement?.paymentRail === 'smart_account') {
+        return res.status(403).json(SMART_ACCOUNT_PROOF_REFUSAL);
+      }
       if (existingSettlement) {
         if (existingSettlement.stemId !== stemId) {
           this.logX402Event(req, "x402.payment.replay_rejected", "x402 payment replay rejected", {
@@ -214,7 +230,7 @@ export class X402Middleware implements NestMiddleware {
           .update(paymentHeader)
           .digest('hex'),
       },
-      select: { id: true, stemId: true },
+      select: { id: true, stemId: true, paymentRail: true },
     });
   }
 

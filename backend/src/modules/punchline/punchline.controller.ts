@@ -24,6 +24,11 @@ import {
   SetDropUnlockInput,
 } from "./punchline-unlock.service";
 import { Put } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
+import { minutes } from "../shared/rate_limits";
+
+/** A paid collect: generous for a person retrying, tight for a script (each call may verify a signature on-chain). */
+const SMART_ACCOUNT_COLLECT_RATE_LIMIT = { limit: 10, ttl: minutes(1) } as const;
 
 @Controller("punchline")
 export class PunchlineController {
@@ -256,6 +261,7 @@ export class PunchlineController {
    * `paid_but_unfulfilled` (support refund; no edition granted).
    */
   @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: SMART_ACCOUNT_COLLECT_RATE_LIMIT })
   @Post("moments/:momentId/collect/smart-account")
   collectMomentWithSmartAccount(
     @Req() req: any,
