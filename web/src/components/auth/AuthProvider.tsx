@@ -22,6 +22,12 @@ import { useToast } from "../ui/Toast";
 
 type AuthState = {
   status: "idle" | "loading" | "authenticated" | "error";
+  /**
+   * `false` until the stored-session restore on mount has run, `true` after
+   * that whatever the result. Lets a page tell "not restored yet" from
+   * "signed out" (#2254).
+   */
+  sessionChecked: boolean;
   address: string | null;
   token: string | null;
   role: string | null;
@@ -85,6 +91,16 @@ function getRecoverableSmartAccountAddress() {
 
   const knownAddresses = getKnownAddresses().filter((addr) => ETH_ADDRESS_PATTERN.test(addr));
   return knownAddresses.length === 1 ? knownAddresses[0].toLowerCase() : null;
+}
+
+/** What the stored-session restore found: the persisted session, or `null` when there is none. */
+export function readStoredSession(
+  storage: Pick<Storage, "getItem">,
+): { token: string; address: string; smartAccountAddress: string | null } | null {
+  const token = storage.getItem(TOKEN_KEY);
+  const address = storage.getItem(ADDRESS_KEY);
+  if (!token || !address) return null;
+  return { token, address, smartAccountAddress: storage.getItem(SA_ADDRESS_KEY) };
 }
 
 function shortAddress(addr: string) {
@@ -156,6 +172,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const resolveAuth = useCallback((jwt: string | null) => decodeAuthClaims(jwt), []);
 
   const [status, setStatus] = useState<AuthState["status"]>("idle");
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -185,24 +202,24 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    const storedAddress = localStorage.getItem(ADDRESS_KEY);
-    const storedSmartAccount = localStorage.getItem(SA_ADDRESS_KEY);
+    const stored = readStoredSession(localStorage);
 
     setKnownAddresses(getKnownAddresses());
 
-    if (!storedToken || !storedAddress) {
+    if (!stored) {
       clearAuthState("idle");
+      setSessionChecked(true);
       return;
     }
 
-    const { role: storedRole, userId: storedUserId } = resolveAuth(storedToken);
-    setToken(storedToken);
-    setAddress(storedAddress);
-    setSmartAccountAddress(storedSmartAccount);
+    const { role: storedRole, userId: storedUserId } = resolveAuth(stored.token);
+    setToken(stored.token);
+    setAddress(stored.address);
+    setSmartAccountAddress(stored.smartAccountAddress);
     setRole(storedRole);
     setUserId(storedUserId);
     setStatus("authenticated");
+    setSessionChecked(true);
   }, [clearAuthState, resolveAuth]);
 
   useEffect(() => {
@@ -468,6 +485,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const value = useMemo<AuthState>(
     () => ({
       status,
+      sessionChecked,
       address,
       token,
       role,
@@ -487,7 +505,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshWallet,
       signMessage,
     }),
-    [status, address, token, role, userId, wallet, error, activeAccount, storedWebAuthnKey, knownAddresses, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
+    [status, sessionChecked, address, token, role, userId, wallet, error, activeAccount, storedWebAuthnKey, knownAddresses, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
   );
 
 

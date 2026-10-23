@@ -43,6 +43,21 @@ the other (#2228).
 
 The User Guide entry "Why don't my listens show up in the charts?" (`discover-music` article, `#charts-listens`) explains which listens count; the low-data notice links to it (#2229).
 
+Home reveals its sections in layout order (#2254): `AuthProvider.sessionChecked`
+says the stored session has been restored (or not found), and
+`homeRevealState` (`web/src/components/home/homeReveal.ts`) decides from the
+session and the load state of the personalized feed and each popularity rail
+which slots show a skeleton and which show content. A signed-in listener's feed
+slot is reserved with a shelf skeleton while the feed loads (nothing is reserved
+before the session is checked, so signed-out visitors never see one), and
+Trending Now / Top Artists stay on their skeletons until the feed has settled
+(ready, failed or not expected) and their own data has arrived, so real
+content never has to move down when the feed lands. A failed feed counts as
+settled; a cold-start feed still renders its "Your feed is warming up" shelf.
+Stem Lab, Upcoming Live Events and Drops are deliberately not held: each can
+legitimately be empty, so reserving a skeleton would trade a push-down for a
+collapse, and they sit below the rails that now hold their place.
+
 Dataform assertions cover identifiers, windows, nonnegative bounded scores,
 audience floors and freshness. Rebuilds read bounded recent events; the
 exporter reads only precomputed marts.

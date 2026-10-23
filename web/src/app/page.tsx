@@ -18,7 +18,6 @@ import {
   Release,
   startAgentSession,
   type HomeFeedItem,
-  type HomeFeedResponse,
   type PublicPlaylistSummary,
   type TopArtistItem,
   type TrendingTrackItem,
@@ -45,6 +44,7 @@ import { CatalogStemTrackRow } from "../components/catalog/CatalogStemTrackRow";
 import { AiDisclosureBadge } from "../components/content/AiDisclosureBadge";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
 import type { ArtistCoverFallback } from "../components/home/PopularityRails";
+import { FEED_ERROR, FEED_LOADING, homeRevealState, type FeedState } from "../components/home/homeReveal";
 import { RAIL_ERROR, RAIL_LOADING, type RailState } from "../components/home/railState";
 import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
 import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
@@ -167,6 +167,7 @@ function ShelfSkeleton({
   itemWidth,
   count,
   variant,
+  description = false,
 }: {
   kickerTone: "primary" | "tertiary" | "violet";
   kicker: string;
@@ -175,6 +176,8 @@ function ShelfSkeleton({
   itemWidth: number;
   count: number;
   variant: "tile" | "round" | "drop";
+  /** Reserve the one-line description the personalized feed rails carry. */
+  description?: boolean;
 }) {
   const style = {
     "--shelf-item": `${itemWidth}px`,
@@ -186,6 +189,7 @@ function ShelfSkeleton({
         <div className="ng-shelf__heading">
           <span className={`ng-kicker ng-kicker--${kickerTone}`}>{kicker}</span>
           <h3 className="ng-section-title">{title}</h3>
+          {description ? <p className="ng-shelf__description">&nbsp;</p> : null}
         </div>
         {meta ? (
           <div className="ng-shelf__aside">
@@ -212,6 +216,25 @@ function ShelfSkeleton({
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * Personalized feed placeholder (#2254): one shelf (header + description line +
+ * one row of tiles) reserved while a signed-in listener's feed is loading, so
+ * the feed lands in place instead of on top of the rails below it.
+ */
+function HomeFeedRailSkeleton() {
+  return (
+    <ShelfSkeleton
+      kickerTone="violet"
+      kicker="Personalized picks"
+      title="Picked for you"
+      itemWidth={196}
+      count={6}
+      variant="tile"
+      description
+    />
   );
 }
 
@@ -364,7 +387,10 @@ export default function Home() {
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
   const [catalogSearch, setCatalogSearch] = useState("");
   // #1454 WS-7: multi-rail personalized feed. null = loading, [] rails = honest empty.
-  const [homeFeed, setHomeFeed] = useState<HomeFeedResponse | null>(null);
+  // #2254: explicit loading / ready / error so a failed feed is not mistaken
+  // for a loading one (which would hold the rails below it forever).
+  const [feedState, setFeedState] = useState<FeedState>(FEED_LOADING);
+  const homeFeed = feedState.status === "ready" ? feedState.feed : null;
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   // Bumped after a session starts from the tuner/feed so the AI DJ section refetches.
@@ -375,7 +401,7 @@ export default function Home() {
   const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
   const [heroPaused, setHeroPaused] = useState(false);
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
-  const { status, token, userId, connectPrivy } = useAuth();
+  const { status, sessionChecked, token, userId, connectPrivy } = useAuth();
   const { addToast } = useToast();
   const { playQueue } = usePlayer();
   const { releaseActions } = useCatalogReleaseActions();
@@ -476,7 +502,7 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !userId) {
-      setHomeFeed(null);
+      setFeedState(FEED_LOADING);
       return;
     }
 
@@ -484,7 +510,7 @@ export default function Home() {
     fetchHomeFeed(userId, token)
       .then((feed) => {
         if (cancelled) return;
-        setHomeFeed(feed);
+        setFeedState({ status: "ready", feed });
         // #1449 WS-2: Home ranking impressions — one served event per rail.
         for (const rail of feed.rails) {
           if (!rail.items.length) continue;
@@ -493,8 +519,10 @@ export default function Home() {
           });
         }
       })
-      .catch(() => {
-        if (!cancelled) setHomeFeed(null);
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.warn("Failed to load the personalized home feed:", error);
+        setFeedState(FEED_ERROR);
       });
 
     return () => {
@@ -756,6 +784,13 @@ export default function Home() {
   // catalog is below the minimum-audience threshold (honest empty state),
   // `error` = the request failed (unavailable notice, #2228).
   const topArtists = rankedTopArtists;
+  const reveal = homeRevealState({
+    sessionChecked,
+    signedIn: status === "authenticated" && Boolean(token) && Boolean(userId),
+    feed: feedState,
+    trending: trendingRail,
+    topArtists,
+  });
   // Most artists have no portrait yet; their newest credited release cover
   // stands in so the Top Artists shelf shows real art instead of initials.
   // Keyed by credited-artist id — the id the popularity tables rank by.
@@ -988,8 +1023,14 @@ export default function Home() {
         />
 
         {/* 3. PERSONALIZED FEED — multi-rail (#1454 WS-7) ————————— */}
+        {/* #2254: sections reveal in layout order. A signed-in listener's feed
+            slot is reserved with a skeleton while the feed loads, and the
+            popularity rails below stay on their skeletons until the feed has
+            settled, so real content never paints above-then-below a loading
+            slot. Before the session is checked nothing is reserved here. */}
+        {reveal.feedSlot === "skeleton" && <HomeFeedRailSkeleton />}
         <HomeFeedRails
-          feed={homeFeed}
+          feed={reveal.feedSlot === "content" ? homeFeed : null}
           startingSeed={startingSeed}
           onOpen={(item, railId, position) => emitRecommendationClick(item.id, railId, position)}
           onStartSession={(item, railId, position) => {
@@ -999,21 +1040,24 @@ export default function Home() {
         />
 
         {/* 4. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
-        {/* The rail itself renders null while `loading`, so gating the
-            lazy mount on resolved data is behaviour-identical — it just keeps
-            the loading skeleton from reserving a box the rail would not fill
-            yet (#1491). */}
-        {trendingRail.status !== "loading" && (
+        {/* The rail renders null while its own data is loading, so the lazy
+            mount waits for `reveal` (data arrived AND the feed above has
+            settled, #2254) and the skeleton holds the slot until then (#1491). */}
+        {reveal.trending === "content" ? (
           <TrendingNowRail state={trendingRail} genreLabel={popularityGenre} />
+        ) : (
+          <TrendingNowRailSkeleton />
         )}
 
         {/* 5. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
-        {topArtists.status !== "loading" && (
+        {reveal.topArtists === "content" ? (
           <TopArtistsRail
             state={topArtists}
             genreLabel={popularityGenre}
             coverFallbacks={artistCoverFallbacks}
           />
+        ) : (
+          <TopArtistsRailSkeleton />
         )}
 
         {/* 6. STEM LAB — real stems, one-tap solo in the mixer ———— */}
