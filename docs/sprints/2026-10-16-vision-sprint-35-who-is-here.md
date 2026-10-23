@@ -1,7 +1,8 @@
 # Vision Sprint 35: Seeing who's here, and reaching them
 
-**Status:** Owner-approved 2026-10-16; in progress. No due date: it closes when
-its exit checks pass on staging.
+**Status:** Closed 2026-10-23. All six issues are closed. Real email delivery
+on staging waits on the deployment half,
+[resonate-iac#284](https://github.com/akoita/resonate-iac/issues/284).
 **Milestone:** [37](https://github.com/akoita/resonate/milestone/37).
 **Goal:** Before a real cohort, the operator can see who signed up and who is
 active without querying the database, and people can get important notices by
