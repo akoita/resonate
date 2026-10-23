@@ -8,6 +8,8 @@ type Props = {
     sessions: AgentSession[];
     /** Lifetime session count; may exceed `sessions.length`. */
     totalCount: number;
+    /** Lifetime count of tracks the DJ has picked across all sessions. */
+    totalTracks?: number;
     isLoading: boolean;
 };
 
@@ -78,7 +80,7 @@ function SessionFiltersLine({ filters }: { filters: AgentSession["filters"] }) {
     );
 }
 
-export default function AgentHistoryCard({ sessions, totalCount, isLoading }: Props) {
+export default function AgentHistoryCard({ sessions, totalCount, totalTracks, isLoading }: Props) {
     if (isLoading) {
         return (
             <div className="aid-card aid-card--history">
@@ -113,6 +115,12 @@ export default function AgentHistoryCard({ sessions, totalCount, isLoading }: Pr
                     <span className="aid-count-badge">{totalCount}</span>
                 )}
             </div>
+
+            {totalCount > 0 && totalTracks !== undefined && (
+                <p className="aid-history-window-note" data-testid="agent-history-lifetime">
+                    {totalCount} session{totalCount !== 1 ? "s" : ""} · {totalTracks} track{totalTracks !== 1 ? "s" : ""} picked
+                </p>
+            )}
 
             {sessions.length === 0 ? (
                 <div className="aid-history-empty">

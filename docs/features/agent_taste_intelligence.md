@@ -801,6 +801,32 @@ took them as its genres on pick requests.
   not depend on the answer. The status-card chips are removed by a separate
   slice (#2237).
 
+## One Start action on the AI DJ page (#2237)
+
+Vision-neutral quality (ADR-BM-6): no money path touched. The page used to show
+three buttons that started a session; only the prompt's carried what the
+listener typed or picked.
+
+- The prompt's button is the only start action ("Start session", then "Update
+  session" while live). The command bar (`AgentCommandBar`) shows the DJ name
+  and live state, plus **Stop Session** only while a session is live.
+- `AgentStatusCard` (name, status, saved-vibes chips, Start/Stop, counts) and the
+  unused `AgentDashboard` copy are deleted. The saved vibes now appear as the
+  labelled line in the prompt (#2239). The lifetime session and track counts
+  moved to the top of Session History (`AgentHistoryCard`, same
+  `GET /agents/config/history/summary` source).
+- Analytics: `agent.session_started` is sent from the prompt's button, so
+  `source` is `agent_session_prompt` for plain, typed and My Mix starts and
+  `agent_session_intent_panel` for an untouched quick start; the removed
+  `agent_command_bar` start source no longer appears (`payload.startedFrom`
+  still separates `plain`, `prompt`, `preset` and `my_mix`). `agent.session_stopped`
+  keeps `agent_command_bar`, since Stop still lives there. `source` is a free
+  string, so no enum or contract changed.
+- Tests: `AgentCommandBar.test.tsx`, `AgentSessionControls.test.tsx` (exactly one
+  start control idle; Update and Stop, no start, live), the idle, start, live,
+  stop flow in `AgentSessionPanel.test.tsx`, `AgentHistoryCard.test.tsx`.
+- Screenshots in the User Guide are not refreshed in this slice.
+
 ## Played-through milestone for Sonic Radar (#2097)
 
 Sonic Radar's resonance rule needs a `complete` `AgentSignal` with

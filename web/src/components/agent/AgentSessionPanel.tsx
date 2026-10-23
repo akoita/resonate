@@ -55,7 +55,7 @@ import AgentSessionPrompt from "./AgentSessionPrompt";
 import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
 import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
 import AgentSetupWizard from "./AgentSetupWizard";
-import AgentStatusCard from "./AgentStatusCard";
+import AgentCommandBar from "./AgentCommandBar";
 
 /** Analytics surface for the DJ session panel (it lives in the Home `#ai-dj` section). */
 const ANALYTICS_SURFACE = "home";
@@ -676,12 +676,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 }
                 // Filter kinds and counts only: never the typed sentence or the filter values.
                 void recordProductAnalytics(token, "agent.session_started", {
+                    // Every start comes from the prompt's button (#2237), so the
+                    // command-bar source no longer applies to starts; `startedFrom`
+                    // still tells a plain start from a described one.
                     source:
-                        startedFrom === "preset"
-                            ? "agent_session_intent_panel"
-                            : startedFrom === "prompt" || startedFrom === "my_mix"
-                              ? "agent_session_prompt"
-                              : "agent_command_bar",
+                        startedFrom === "preset" ? "agent_session_intent_panel" : "agent_session_prompt",
                     subjectType: "agent_session",
                     subjectId: result?.sessionId,
                     payload: {
@@ -857,25 +856,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             ) : (
                 <>
                     {/* Command bar */}
-                    <div className="aid-command">
-                        <div className="aid-orb">
-                            <span className="aid-orb-badge">{config.name.slice(0, 2).toUpperCase()}</span>
-                        </div>
-                        <div className="aid-command-info">
-                            <span className="aid-command-name">{config.name}</span>
-                            <span className={`aid-command-status ${config.isActive ? "active" : ""}`}>
-                                {config.isActive ? "● Live" : "○ Inactive"}
-                            </span>
-                        </div>
-                        <div className="aid-command-actions">
-                            <button
-                                className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
-                                onClick={() => handleToggle()}
-                            >
-                                {config.isActive ? "Stop Session" : "Start Session"}
-                            </button>
-                        </div>
-                    </div>
+                    <AgentCommandBar name={config.name} isLive={config.isActive} onStop={() => handleToggle()} />
 
                     {/* What's this session for? */}
                     <AgentSessionPrompt
@@ -915,14 +896,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         onSubmit={handleSubmit}
                     />
 
-                    {/* Middle row: Status | Activity | Next Pick */}
-                    <div className="aid-middle-row">
-                        <AgentStatusCard
-                            config={config}
-                            onToggle={() => handleToggle()}
-                            sessionCount={lifetime.sessionCount}
-                            trackCount={lifetime.trackCount}
-                        />
+                    {/* Middle row: Activity | Next Pick */}
+                    <div className="aid-middle-row aid-middle-row--pair">
                         <AgentActivityFeed isActive={config.isActive} events={events} />
                         <AgentNextPickCard
                             config={config}
@@ -973,7 +948,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     )}
 
                     {/* History */}
-                    <AgentHistoryCard sessions={sessions} totalCount={lifetime.sessionCount} isLoading={showHistoryLoader} />
+                    <AgentHistoryCard
+                        sessions={sessions}
+                        totalCount={lifetime.sessionCount}
+                        totalTracks={lifetime.trackCount}
+                        isLoading={showHistoryLoader}
+                    />
 
                     <p className="aid-taste-hint">
                         Rename your DJ or change its vibes in{" "}

@@ -100,7 +100,7 @@ test("My Mix starts a session, carries live edits into the next pick, shows cove
   await expect(panel.getByRole("list", { name: "Added session filters" }).getByText("Genre · Dancehall")).toBeVisible();
   expect(savedEdits).toHaveLength(0);
 
-  await panel.locator(".aid-command-actions").getByRole("button", { name: "Start Session", exact: true }).click();
+  await panel.getByTestId("agent-session-prompt").getByRole("button", { name: "Start session", exact: true }).click();
   await expect(panel.getByText("● Live")).toBeVisible();
   expect(sessionPreferences[0]?.myMix).toMatchObject({
     lanes: [{ id: laneId, boost: true }],
