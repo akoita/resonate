@@ -3,6 +3,8 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import {
+  bandForEnergy,
+  bandForTempo,
   EMPTY_MEASURED_TRACK_FEATURES,
   MeasuredTrackFeatures,
   measuredTrackFeatures,
@@ -118,18 +120,6 @@ function hashNumber(value: string) {
     hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
   }
   return hash;
-}
-
-function bandForEnergy(energy: number): AgentEnergyBand {
-  if (energy >= 0.67) return "high";
-  if (energy >= 0.38) return "medium";
-  return "low";
-}
-
-function bandForTempo(tempoBpm: number): AgentTempoBand {
-  if (tempoBpm >= 124) return "fast";
-  if (tempoBpm >= 96) return "mid";
-  return "slow";
 }
 
 function bucketForDuration(durationSeconds?: number): AgentDurationBucket {

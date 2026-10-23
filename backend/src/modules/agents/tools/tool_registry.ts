@@ -11,7 +11,10 @@ import {
 } from "../../catalog/ai-disclosure.policy";
 import { AgentObservabilityService } from "../agent_observability.service";
 import { getAgentSemanticMinSimilarity } from "../agent_runtime.config";
-import { expandGenreSearchTerms } from "../../recommendations/genre_families";
+import {
+  expandGenreSearchTerms,
+  genreFamiliesFor,
+} from "../../recommendations/genre_families";
 
 /** Upper bound on candidates lazily embedded / ranked per tool call. */
 const EMBEDDINGS_SIMILARITY_MAX_CANDIDATES = 100;
@@ -54,7 +57,13 @@ export class ToolRegistry {
 
         // Genre labels are free text, so a genre query also searches the
         // labels of its genre family ("World" reaches "African", #2088). The
-        // title match stays literal.
+        // title match stays literal. It also matches the stored track
+        // descriptor's families (#2240), so "World" reaches a track whose
+        // genre says "Bambara" but whose descriptor says world/african. This
+        // only READS the stored descriptor: no model call on this path.
+        const descriptorFamilyIds = query
+          ? genreFamiliesFor(query).map((family) => family.id)
+          : [];
         const items = await this.loadCandidateTracks({
           explicitAllowed,
           take,
@@ -64,6 +73,9 @@ export class ToolRegistry {
                 ...expandGenreSearchTerms(query).map((term) => ({
                   release: { genre: { contains: term, mode: "insensitive" as const } },
                 })),
+                ...(descriptorFamilyIds.length > 0
+                  ? [{ descriptor: { is: { families: { hasSome: descriptorFamilyIds } } } }]
+                  : []),
                 { title: { contains: query, mode: "insensitive" as const } },
               ],
             }
@@ -223,6 +235,17 @@ export class ToolRegistry {
             artworkUrl: true,
             primaryArtist: true,
             artist: { select: { displayName: true } },
+          },
+        },
+        // #2240: stored descriptor (families, sub-genres, bands); data for the
+        // ranker, read-only here.
+        descriptor: {
+          select: {
+            families: true,
+            subGenres: true,
+            tempoBand: true,
+            energyBand: true,
+            vocal: true,
           },
         },
         stems: {

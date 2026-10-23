@@ -710,11 +710,17 @@ function canSwapForDiscovery(pageSize: number, priorExplorationCount?: number) {
  * measured; the inferred tempo is a metadata hash.
  */
 function coverageFactsFor(
-  track: { release?: { genre?: string | null; moods?: string[] | null } | null } | undefined,
+  track:
+    | {
+        release?: { genre?: string | null; moods?: string[] | null } | null;
+        descriptor?: { families?: string[] | null } | null;
+      }
+    | undefined,
   features: AgentAudioFeatures | undefined,
 ): AgentRequestCoveragePick {
   return {
     genre: track?.release?.genre ?? null,
+    descriptorFamilies: track?.descriptor?.families ?? [],
     moods: track?.release?.moods ?? [],
     energyBand: features?.energyBand,
     tempoBpm: features?.tempoBpm,

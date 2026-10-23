@@ -24,6 +24,23 @@ export const MEASURED_ENERGY_ONSET_FULL_SCALE = 8;
 export const MEASURED_ENERGY_RMS_WEIGHT = 0.65;
 export const MEASURED_ENERGY_ONSET_WEIGHT = 0.35;
 
+export type MeasuredEnergyBand = "low" | "medium" | "high";
+export type MeasuredTempoBand = "slow" | "mid" | "fast";
+
+/** Energy band of a 0..1 energy value; shared by the audio features and the track descriptor (#2240). */
+export function bandForEnergy(energy: number): MeasuredEnergyBand {
+  if (energy >= 0.67) return "high";
+  if (energy >= 0.38) return "medium";
+  return "low";
+}
+
+/** Tempo band of a BPM; shared by the audio features and the track descriptor (#2240). */
+export function bandForTempo(tempoBpm: number): MeasuredTempoBand {
+  if (tempoBpm >= 124) return "fast";
+  if (tempoBpm >= 96) return "mid";
+  return "slow";
+}
+
 export type MeasuredTrackFeatures = {
   tempoBpm: number | null;
   tempoConfidence: number | null;

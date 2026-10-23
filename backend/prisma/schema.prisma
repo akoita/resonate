@@ -946,6 +946,7 @@ model Track {
   agentSignals         AgentSignal[]
   stems                Stem[]
   embedding            TrackEmbedding?
+  descriptor           TrackDescriptor?
   crateItems           CrateItem[]
   fingerprint          AudioFingerprint?
   dmcaReports          DmcaReport[]
@@ -987,6 +988,33 @@ model TrackEmbedding {
 
   @@index([updatedAt])
   @@index([model])
+}
+
+/// #2240: one enriched, versioned descriptor per track. It is DERIVED data:
+/// genre families (ids of `genre_families.ts`), free sub-genres, measured tempo
+/// and energy bands and vocal/instrumental, computed once and recomputed only
+/// when `contentHash` (over the inputs, strategy, model and `version`) changes.
+/// `source` records who wrote it: "deterministic" (family matcher plus measured
+/// bands), "model" (model-assisted, re-validated against the family
+/// vocabulary) or, in a later slice (#2292), "artist" (a correction that no
+/// automatic pass may overwrite). Nothing here is writable into the track's
+/// disclosure, moderation, rights or release-status columns.
+model TrackDescriptor {
+  trackId     String   @id
+  version     Int
+  families    String[] @default([])
+  subGenres   String[] @default([])
+  tempoBand   String?
+  energyBand  String?
+  vocal       String?
+  source      String
+  model       String?
+  contentHash String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  track       Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([families], type: Gin)
 }
 
 model Stem {

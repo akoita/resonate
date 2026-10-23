@@ -34,7 +34,9 @@
     "catalog:report-attestation-candidates": "ts-node --transpile-only src/scripts/report_ai_disclosure_attestation_candidates.ts",
     "catalog:report-attestation-candidates:prod": "node dist/scripts/report_ai_disclosure_attestation_candidates.js",
     "catalog:apply-attestation": "ts-node --transpile-only src/scripts/apply_ai_disclosure_attestation.ts",
-    "catalog:apply-attestation:prod": "node dist/scripts/apply_ai_disclosure_attestation.js"
+    "catalog:apply-attestation:prod": "node dist/scripts/apply_ai_disclosure_attestation.js",
+    "catalog:backfill-descriptors": "ts-node --transpile-only src/scripts/backfill_track_descriptors.ts",
+    "catalog:backfill-descriptors:prod": "node dist/scripts/backfill_track_descriptors.js"
   },
   "dependencies": {
     "@google-cloud/kms": "^6.0.0",

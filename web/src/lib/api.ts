@@ -573,6 +573,21 @@ export type ReleaseArtistCredit = {
   };
 };
 
+/**
+ * Tags Resonate generated for a track (#2240), from its details and its measured
+ * sound. Only the owner-scoped release route returns them; the artist sees them
+ * read-only in the release editor (corrections: #2292).
+ */
+export type TrackDescriptor = {
+  families: string[];
+  familyLabels: string[];
+  subGenres: string[];
+  tempoBand: "slow" | "mid" | "fast" | null;
+  energyBand: "low" | "medium" | "high" | null;
+  vocal: "vocal" | "instrumental" | null;
+  source: "deterministic" | "model" | "artist";
+};
+
 export type Track = {
   id: string;
   releaseId: string;
@@ -595,6 +610,8 @@ export type Track = {
   rightsPolicyVersion?: string | null;
   rightsEvaluatedAt?: string | null;
   aiDisclosure?: AiDisclosure | null;
+  /** Owner-scoped release route only (#2240). */
+  descriptor?: TrackDescriptor | null;
   stems?: Array<{
     id: string;
     trackId: string;

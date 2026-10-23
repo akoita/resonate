@@ -7,6 +7,9 @@
  * writes the per-case report. A failing case is kept as a known gap with the
  * baseline the current ranker achieves; this suite never asserts more.
  *
+ * Every seeded track is tagged with the real deterministic tagger first (#2240),
+ * so the numbers include the stored track descriptor, as production reads it.
+ *
  * Embedding-backed semantic retrieval is off (TRACK_EMBEDDING_PROVIDER=disabled):
  * the report measures the deterministic path only.
  *
@@ -21,6 +24,7 @@ import { AgentAudioFeatureService } from "../modules/agents/agent_audio_feature.
 import { ToolRegistry } from "../modules/agents/tools/tool_registry";
 import { EmbeddingService } from "../modules/embeddings/embedding.service";
 import { EmbeddingStore } from "../modules/embeddings/embedding.store";
+import { TrackDescriptorTagger } from "../modules/descriptors/track_descriptor_tagger";
 import { GOLDEN_CASES, GOLDEN_CATALOG } from "./dj_retrieval_golden/fixtures";
 import {
   buildGoldenReport,
@@ -95,6 +99,19 @@ describe("AI DJ retrieval golden set (integration)", () => {
         durationSeconds: 200,
         ...(track.measured ? { audioFeatures: stemFeaturesPayload(track.measured) } : {}),
       })),
+    });
+
+    // #2240: the descriptors exactly as the backfill (deterministic strategy,
+    // the default) writes them: the real tagger over the seeded rows.
+    const tagged = await new TrackDescriptorTagger({ env: {} }).tagTracks(
+      GOLDEN_CATALOG.map((track) => `${TEST_PREFIX}${track.key}`),
+      { apply: true },
+    );
+    expect(tagged).toMatchObject({
+      strategy: "deterministic",
+      tagged: GOLDEN_CATALOG.length,
+      modelCalls: 0,
+      failed: 0,
     });
 
     const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());

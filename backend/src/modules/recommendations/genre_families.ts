@@ -320,6 +320,39 @@ export function genreMatchesRequest(
 }
 
 /**
+ * Whether a track's stored descriptor families (#2240: ids of this module's
+ * families, set once from its genre, title and sound) satisfy a requested
+ * term, by the same request-side rule as a release genre: the families the term
+ * NAMES, or narrowly belongs to. "World" reaches a track the descriptor tagged
+ * `world`/`african` even if its genre field says "Bambara".
+ */
+export function descriptorMatchesRequest(
+  descriptorFamilies: readonly string[] | null | undefined,
+  requestedTerm: string | null | undefined,
+): boolean {
+  if (!descriptorFamilies || descriptorFamilies.length === 0) return false;
+  const term = normalizeGenreTerm(requestedTerm ?? "");
+  if (!term) return false;
+  const have = new Set(descriptorFamilies);
+  return requestSideFamilies(term).some((entry) => have.has(entry.family.id));
+}
+
+/**
+ * The genre matcher with the track descriptor as a second source: the release
+ * genre label (`genreMatchesRequest`) OR the stored descriptor families.
+ */
+export function genreOrDescriptorMatchesRequest(
+  releaseGenre: string | null | undefined,
+  descriptorFamilies: readonly string[] | null | undefined,
+  requestedTerm: string | null | undefined,
+): boolean {
+  return (
+    genreMatchesRequest(releaseGenre, requestedTerm) ||
+    descriptorMatchesRequest(descriptorFamilies, requestedTerm)
+  );
+}
+
+/**
  * Other labels in the families a term resolves to, for describing a session in
  * words ("Hip-Hop, plus related styles: rap, trap, ..."). Excludes the term.
  */

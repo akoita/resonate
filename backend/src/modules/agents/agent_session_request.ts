@@ -1,5 +1,5 @@
 import type { CrateFilters, CrateParseResult } from "../crates/crate.types";
-import { genreMatchesRequest } from "../recommendations/genre_families";
+import { genreOrDescriptorMatchesRequest } from "../recommendations/genre_families";
 
 /**
  * A listener describes an AI DJ session in their own words (#2037). The text is
@@ -237,6 +237,8 @@ export function requestRankingPreferences(preferences: {
 /** The facts about one pick that the request filters read. */
 export type AgentRequestCoveragePick = {
   genre: string | null;
+  /** Genre family ids of the track's stored descriptor (#2240). */
+  descriptorFamilies?: readonly string[];
   moods: string[];
   energyBand?: string;
   tempoBpm?: number;
@@ -265,8 +267,9 @@ export function computeRequestCoverage(
     // Free-text catalog genres: "African" satisfies a "World" request (#2088).
     counts.genres = picks.filter(
       (pick) =>
-        !!pick.genre &&
-        [...requestedGenres].some((requested) => genreMatchesRequest(pick.genre, requested)),
+        [...requestedGenres].some((requested) =>
+          genreOrDescriptorMatchesRequest(pick.genre, pick.descriptorFamilies, requested),
+        ),
     ).length;
   }
   if (requestedMoods.size > 0) {

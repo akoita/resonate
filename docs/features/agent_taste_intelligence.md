@@ -603,14 +603,15 @@ achieves today, never a higher one. An unmatched request must stay an honest
 unmet request (ADR-TE-4).
 
 Only the deterministic path is measured. Embedding-backed semantic retrieval is
-off in the eval because it needs a real embedding model.
+off in the eval because it needs a real embedding model. Every fixture track
+carries the descriptor the deterministic backfill produces for it (#2240).
 
 | Case | Recall@10 | Recall@20 | Known gap |
 | --- | ---: | ---: | --- |
 | World → African, Mandingue, region (West Africa) | 100% | 100% | none |
-| World → country name (Senegal) | 0% | 0% | no family lists country names |
-| World → release with no genre | 0% | 0% | catalog search reads only genre and track title |
-| World → every World-family track (14) | 71% | 86% | the two above; equal scores keep catalog order |
+| World → country name (Senegal) | 100% | 100% | none (track descriptor, #2240; was 0% / 0%) |
+| World → release with no genre | 0% | 100% | found only via its title and release title (kora, Bamako) in the track descriptor; ranks 14th (was 0% / 0%) |
+| World → every World-family track (14) | 71% | 100% | equal scores keep catalog order, so the four oldest slip past rank 10 (was 71% / 86%) |
 | Hip-Hop, explicit allowed → explicit rap | 100% | 100% | none |
 | Hip-Hop, explicit off → clean rap, no explicit track | 100% | 100% | none |
 | Rap → French Rap, Trap, Drill | 100% | 100% | none |
@@ -623,7 +624,8 @@ off in the eval because it needs a real embedding model.
 | Calm and low energy → measured low energy, no mood tag | 0% | 0% | mood words match only genre and title |
 | Nothing matches (Gregorian Chant) | n/a | n/a | stays unmet (`no_matching_taste_candidates`) |
 
-Mean over the 18 scored cases: recall@10 69%, recall@20 71% (the two
+Mean over the 18 scored cases: recall@10 75%, recall@20 83% (was 69% / 71% before
+track descriptors; the two
 aggregate rows weigh the same as a single-track case).
 
 - **Runners.** `backend/src/tests/agent_golden_eval.spec.ts` (`npm run
@@ -637,6 +639,73 @@ aggregate rows weigh the same as a single-track case).
   `backend/src/tests/dj_retrieval_golden/fixtures.ts`.
 - **Ratcheting.** When a change improves a case, raise its `baseline` in the
   same PR. Never lower one to make a run pass.
+
+## Enriched track descriptors (#2240)
+
+The keyword gate and the track embedding both used to depend on the free-text
+genre an artist typed, so "Bambara", a country name, or no genre at all was
+invisible to a "World" session. Each track now has a stored, versioned
+**descriptor** (`TrackDescriptor`, one row per track, cascade-deleted with the
+track): genre **families** (ids of `genre_families.ts`), free **sub-genres**,
+measured **tempo** and **energy** bands (from the full-mix features, #1959,
+same confidence gates and thresholds as the AI DJ audio features) and a
+**vocal / instrumental** value (only from an explicit word such as
+"instrumental"; no vocal measurement exists yet). `source` is `deterministic`,
+`model`, or (later, #2292) `artist`.
+
+- **Strategy** (`TRACK_DESCRIPTOR_STRATEGY`). `deterministic` (default): the
+  shared family matcher over the genre and its `/ , ;` parts, plus a small
+  conservative place lexicon (African, Middle Eastern, Latin American and a few
+  other countries, regions, cities and traditional instruments) read from the
+  genre, title and release title. `model-assisted`: the same, then one model
+  call per tag run, following the crate request parser pattern: bounded JSON
+  data under a "data, not instructions" rule, strict schema, every family tag
+  re-validated against the vocabulary, unknown tags kept as short plain-text
+  sub-genres (at most 40 characters and 4 words), deterministic fallback on a
+  missing key, timeout or malformed output. The model never sets a band and
+  never touches a track, release, disclosure, moderation or rights column; the
+  tagger writes `TrackDescriptor` only.
+- **Pay once per track.** A content hash over the sanitized inputs (genre,
+  title, release title), the measured bands, strategy, model and descriptor
+  version decides whether to tag. Equal hash: nothing runs. A failed model
+  call stores the deterministic result under the deterministic hash, so a
+  later run retries it. A model descriptor under 24 hours old is kept even if
+  the inputs changed (edit rate limit), and a call budget
+  (`TRACK_DESCRIPTOR_DAILY_CALL_BUDGET`, per UTC day and process for ingest;
+  `--max-model-calls` per backfill run) falls back to deterministic tagging and
+  logs `catalog.track_descriptor.budget_exceeded` once per window.
+- **When it runs.** On `catalog.release_ready` (non-blocking; a failure never
+  fails or delays an upload) and by `npm run catalog:backfill-descriptors`
+  (`:prod` for the built script): dry run by default (no write and no model
+  call; reports `wouldCallModel`), `--apply`, `--limit N` (default 500, re-run
+  until `deferred` is 0), `--max-model-calls N`, `--reembed` (embed the changed
+  tracks now). Never on the AI DJ session or pick path, which only reads stored
+  descriptors.
+- **Embedding.** The track embedding text (format v2) appends the descriptor
+  (families, styles, bands). A track without a descriptor renders exactly as
+  before, so its hash is unchanged and nothing is re-embedded needlessly; a
+  tagged track's hash changes and the existing incremental embedding backfill
+  (or embed-on-ingest, which now tags a release first) re-embeds it. After a
+  descriptor backfill, run the embedding backfill to completion, or use
+  `--reembed`.
+- **Retrieval.** `catalog.search` also matches `descriptor.families` for the
+  families a query names, the ranking core's session-request signal and request
+  coverage accept a descriptor match next to the release genre
+  (`genreOrDescriptorMatchesRequest`), so "World" reaches a track whose genre
+  says "Senegal". My Mix lane membership still reads the release genre only
+  (follow-up).
+- **Artists.** The release page shows each track's tags read-only to people who
+  manage the release (owner route `GET /catalog/me/releases/:releaseId` returns
+  `tracks[].descriptor`; public responses never do), with the line "Suggested by
+  Resonate from your track's details and sound". Correction is a follow-up
+  (#2292); `source = artist` rows are already never overwritten.
+- **Inputs not available.** The schema has no release description and no artist
+  country or region, so those are not inputs yet.
+- **Tests.** `track_descriptor.spec.ts` (mapping, validation, injection, hash,
+  embedding text), `track_descriptor.integration.spec.ts` (dry run, idempotent
+  apply, hash change, limit, fake-provider model path with fallback, budget and
+  cooldown, protected columns, ingest hook, embedding, retrieval), the golden
+  set above, and `TrackDescriptorTags.test.tsx`.
 
 ## One genre matcher for sessions and My Mix lanes (#2236)
 
