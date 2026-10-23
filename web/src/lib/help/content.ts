@@ -663,6 +663,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
+            text: "Some older catalog recordings carry a Resonate attestation instead of an uploader declaration. For well-known releases whose human origin is publicly established, Resonate itself records them as human-made, and those tracks no longer show \"AI disclosure unavailable\". It is a catalog attestation, not something the artist declared, and Resonate does not attest recordings whose origin it cannot establish from public knowledge. Artists who claim a track can still correct its declaration.",
+          },
+          {
+            kind: "paragraph",
             text: "Fully AI-generated tracks stay available through the catalog, search, artist pages, playlists, direct links, playback, and Browse stems. They are not placed in personalized recommendations, AI DJ picks, Trending, or the activity used to rank Top Artists. AI-assisted tracks remain eligible for those discovery surfaces and keep their label.",
           },
           {

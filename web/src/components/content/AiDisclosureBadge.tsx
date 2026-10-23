@@ -25,7 +25,10 @@ function getPresentation(
       return showHumanMade
         ? {
             label: "Human-made",
-            title: "The uploader declared that this music contains no AI contribution.",
+            title:
+              disclosure.source === "catalog_attestation"
+                ? "Resonate identified this recording as a published human-made work."
+                : "The uploader declared that this music contains no AI contribution.",
             color: "#a7f3d0",
             background: "rgba(16, 185, 129, 0.12)",
             border: "rgba(16, 185, 129, 0.3)",
