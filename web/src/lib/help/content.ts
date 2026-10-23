@@ -534,7 +534,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge", "tuner", "energy", "stem lab", "mixer", "solo", "live events", "shows", "studio"],
+    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "charts empty", "empty charts", "my plays don't count", "my listens don't count", "listens not counted", "not enough listening", "minimum listeners", "why am I not trending", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge", "tuner", "energy", "stem lab", "mixer", "solo", "live events", "shows", "studio"],
     sections: [
       {
         id: "home",
@@ -580,6 +580,33 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Artist links follow the credited profile when the music has a clear artist identity. If a credit could refer to more than one artist, it opens a catalog page for the credited name until the identity is reviewed.",
+          },
+        ],
+      },
+      {
+        id: "charts-listens",
+        heading: "Why don't my listens show up in the charts?",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "If you listened and the charts still say \"not enough listening yet\", the charts are probably working as designed. Only some listens count toward Trending Now and Top Artists:",
+          },
+          {
+            kind: "list",
+            items: [
+              "Different people, not more plays. A track appears in a chart only when enough different listeners have played it in the last 7 days — by default at least three. Several plays from one person count once, and listens spread across different tracks do not add up for a track. Top Artists adds up the different listeners across an artist's tracks, but needs the same minimum.",
+              "A listen means playing past 30 seconds, or 80% of a track shorter than 30 seconds. A track you start and then skip does not count.",
+              "Your own releases do not count. Plays from the account that uploaded a release, or from an artist credited on it, are left out.",
+              "Usage measurement must be on. A listen counts only after you have said yes to usage measurement under the current wording. When that wording changes in a meaningful way, everyone is asked again, and listens do not count until you answer. You can check or change your answer in Settings, under Privacy.",
+              "Fully AI-generated tracks are left out of the charts. See Understanding AI labels below; AI-assisted tracks can still appear.",
+              "Charts refresh periodically, so a new listen can take a while to show up.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Testing with several accounts?",
+            text: "Each account needs usage measurement turned on, must listen past 30 seconds to the same track, and must not be the track's uploader or a credited artist.",
           },
         ],
       },
@@ -678,7 +705,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Discover", href: "/", description: "Featured, trending, and recommended music." },
       { label: "Browse the catalog", href: "/catalog", description: "Recent releases, artists, stems, and public playlists." },
     ],
-    related: ["playing-music", "ai-dj", "library-playlists"],
+    related: ["playing-music", "ai-dj", "library-playlists", "product-analytics"],
   },
   {
     slug: "playing-music",
