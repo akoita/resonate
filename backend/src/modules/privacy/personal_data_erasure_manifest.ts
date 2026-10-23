@@ -663,6 +663,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "Per-play taste signals — behavioural state about the person, kept only to personalise for them.",
   },
   {
+    model: "AgentPickNote",
+    disposition: "delete",
+    reason:
+      "Why the AI DJ picked a track for this person (#2299): listener-specific recommendation reasons, with no use once the "
+      + "account is closed. The pick-log `License` it hangs off is retained, so the note carries its own `userId` and is deleted directly.",
+    note:
+      "Holds only vocabulary sentences, a reason code, the curator and a match flag, never model free text. Deleted "
+      + "also (cascade) with its License, which erasure itself never deletes.",
+  },
+  {
     model: "ArtistFollow",
     disposition: "delete",
     reason:

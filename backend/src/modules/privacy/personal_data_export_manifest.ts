@@ -250,6 +250,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
   },
   {
+    model: "AgentPickNote",
+    primaryKey: "licenseId",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2299. The bounded reason the AI DJ gave for each pick of this person's sessions: at most two sentences "
+      + "from the shared explanation vocabulary, the reason code, who curated it and whether it matched the described session.",
+  },
+  {
     model: "ArtistFollow",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
