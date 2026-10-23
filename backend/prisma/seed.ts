@@ -5,6 +5,10 @@
  * Run via: npx prisma db seed
  */
 import { Prisma, PrismaClient } from "@prisma/client";
+import {
+    AI_DISCLOSURE_VERSION,
+    normalizeAiDisclosureInput,
+} from "../src/modules/catalog/ai-disclosure.policy";
 
 const prisma = new PrismaClient();
 
@@ -108,6 +112,16 @@ async function main() {
     });
 
     // 5. Track
+    // #2257: seeded tracks are artist uploads and declare human-made (NONE)
+    // explicitly, so local data never shows "AI disclosure unavailable".
+    const disclosure = normalizeAiDisclosureInput({ level: "none", facets: [] });
+    const disclosureFields = {
+        aiDisclosureLevel: disclosure.level,
+        aiContributionFacets: disclosure.facets,
+        aiDisclosureSource: "artist",
+        aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+        aiDeclaredAt: NOW,
+    };
     await prisma.track.upsert({
         where: { id: TRACK_ID },
         update: {
@@ -115,6 +129,7 @@ async function main() {
             artist: "Test Artist",
             processingStatus: "complete",
             position: 1,
+            ...disclosureFields,
         },
         create: {
             id: TRACK_ID,
@@ -123,6 +138,7 @@ async function main() {
             artist: "Test Artist",
             processingStatus: "complete",
             position: 1,
+            ...disclosureFields,
         },
     });
 

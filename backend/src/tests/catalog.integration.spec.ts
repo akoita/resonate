@@ -162,6 +162,123 @@ describe('CatalogService (integration)', () => {
     expect(processedTrack).toEqual({ title: editedTitle, processingStatus: 'complete' });
   });
 
+  describe('stems.processed never creates a track without an AI disclosure (#2257)', () => {
+    const waitFor = async (predicate: () => boolean | Promise<boolean>) => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (await predicate()) return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
+    };
+
+    it('rejects the event atomically when a track was not created by stems.uploaded', async () => {
+      const releaseId = `${TEST_PREFIX}undeclared_guard_release`;
+      const knownTrackId = `${TEST_PREFIX}undeclared_guard_known`;
+      const unknownTrackId = `${TEST_PREFIX}undeclared_guard_unknown`;
+      await prisma.release.create({
+        data: {
+          id: releaseId,
+          artistId: `${TEST_PREFIX}artist`,
+          title: 'Undeclared Guard Release',
+          status: 'processing',
+          tracks: {
+            create: [{
+              id: knownTrackId,
+              title: 'Known Track',
+              position: 1,
+              processingStatus: 'pending',
+              aiDisclosureLevel: 'PARTLY',
+              aiContributionFacets: ['instruments'],
+              aiDisclosureSource: 'artist',
+            }],
+          },
+        },
+      });
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        eventBus.publish({
+          eventName: 'stems.processed',
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          releaseId,
+          artistId: `${TEST_PREFIX}artist`,
+          modelVersion: 'integration-test',
+          tracks: [
+            { id: knownTrackId, title: 'Known Track', position: 1, stems: [] },
+            { id: unknownTrackId, title: 'Unknown Track', position: 2, stems: [] },
+          ],
+        } satisfies StemsProcessedEvent);
+
+        const rejected = await waitFor(() =>
+          errorSpy.mock.calls.some((call) => String(call[0]).includes('Rejecting stems.processed')),
+        );
+        expect(rejected).toBe(true);
+        expect(String(errorSpy.mock.calls.flat().join(' '))).toContain(unknownTrackId);
+      } finally {
+        errorSpy.mockRestore();
+      }
+
+      // No UNDECLARED / migration row was fabricated, and nothing was half-applied.
+      expect(await prisma.track.findUnique({ where: { id: unknownTrackId } })).toBeNull();
+      const known = await prisma.track.findUniqueOrThrow({ where: { id: knownTrackId } });
+      expect(known.processingStatus).toBe('pending');
+      expect(known.aiDisclosureLevel).toBe('PARTLY');
+      const release = await prisma.release.findUniqueOrThrow({ where: { id: releaseId } });
+      expect(release.status).toBe('processing');
+    });
+
+    it('keeps the declared disclosure of an existing track when processing completes', async () => {
+      const releaseId = `${TEST_PREFIX}undeclared_keep_release`;
+      const trackId = `${TEST_PREFIX}undeclared_keep_track`;
+      const declaredAt = new Date('2026-01-02T03:04:05.000Z');
+      await prisma.release.create({
+        data: {
+          id: releaseId,
+          artistId: `${TEST_PREFIX}artist`,
+          title: 'Disclosure Kept Release',
+          status: 'processing',
+          tracks: {
+            create: [{
+              id: trackId,
+              title: 'Declared Track',
+              position: 1,
+              processingStatus: 'pending',
+              aiDisclosureLevel: 'ALL',
+              aiContributionFacets: ['vocals', 'production'],
+              aiDisclosureSource: 'artist',
+              aiDisclosureVersion: 'test-version',
+              aiDeclaredAt: declaredAt,
+            }],
+          },
+        },
+      });
+      eventBus.publish({
+        eventName: 'stems.processed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        modelVersion: 'integration-test',
+        tracks: [{ id: trackId, title: 'Declared Track', position: 1, stems: [] }],
+      } satisfies StemsProcessedEvent);
+
+      expect(
+        await waitFor(async () => {
+          const row = await prisma.track.findUnique({ where: { id: trackId } });
+          return row?.processingStatus === 'complete';
+        }),
+      ).toBe(true);
+      const track = await prisma.track.findUniqueOrThrow({ where: { id: trackId } });
+      expect(track).toMatchObject({
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: ['vocals', 'production'],
+        aiDisclosureSource: 'artist',
+        aiDisclosureVersion: 'test-version',
+      });
+      expect(track.aiDeclaredAt?.toISOString()).toBe(declaredAt.toISOString());
+    });
+  });
+
   it('activates a replacement without changing playback until commit and keeps historical stems addressable', async () => {
     const releaseId = `${TEST_PREFIX}replacement_lifecycle_release`;
     const trackId = `${TEST_PREFIX}replacement_lifecycle_track`;

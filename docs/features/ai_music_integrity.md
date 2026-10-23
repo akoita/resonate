@@ -180,14 +180,28 @@ existing auditable post-publication path, which records source `artist`.
 
 ### No new `UNDECLARED` writers
 
-Every track-creation path that runs in production writes an explicit
-declaration: multipart ingestion and `createRelease` require one
-(`normalizeAiDisclosureInput` rejects a missing or `undeclared` input), native
-generation records `ALL` / `resonate_native`, and Remix Studio publish records
-a derived level / `remix_derived`. The known remaining paths that still default
-to `UNDECLARED` are the dev seed, the privacy-harness fixtures, and the
-`stems.processed` upsert fallback for a track row that does not yet exist; they
-are tracked as follow-ups rather than part of this batch.
+Every track-creation path writes an explicit declaration (#2257 closed the last
+three):
+
+- multipart ingestion (`stems.uploaded`) and `createRelease` require one
+  (`normalizeAiDisclosureInput` rejects a missing or `undeclared` input);
+- native generation records `ALL` / `resonate_native`, and Remix Studio publish
+  records a derived level / `remix_derived`;
+- the `stems.processed` handler never creates a track. The event carries no
+  disclosure and its production producer (the Demucs stem-result subscriber)
+  does not have one, so the handler only updates tracks that `stems.uploaded`
+  or `createRelease` already created. An event naming a track that does not
+  exist is rejected atomically (logged as `Rejecting stems.processed ...`, the
+  release is left unchanged) instead of upserting an `UNDECLARED` /
+  `migration` row;
+- the dev seed (`prisma/seed.ts`) and the privacy-harness fixture
+  (`src/scripts/governance_validation.ts`) declare `NONE` / `artist`
+  explicitly.
+
+Test-only fixtures under `src/tests/*.integration.spec.ts` are out of scope.
+`catalog.integration.spec.ts` covers the `stems.processed` rule against real
+Postgres. The only remaining `UNDECLARED` rows are legacy records and
+releases the attestation batch has not (or could not) classify.
 
 ## Listener and promotion behavior
 
