@@ -38,7 +38,7 @@ export interface StemsUploadedEvent extends BaseEvent {
       aiDisclosure?: {
         level: "NONE" | "PARTLY" | "ALL";
         facets: string[];
-        source: "artist" | "resonate_native" | "remix_derived";
+        source: "artist" | "resonate_native" | "remix_derived" | "catalog_attestation";
       };
       stems: Array<{
         id: string;
@@ -854,7 +854,7 @@ export interface CatalogAiDisclosureRecordedEvent extends BaseEvent {
   releaseId: string;
   trackId: string;
   level: "NONE" | "PARTLY" | "ALL";
-  source: "artist" | "resonate_native" | "remix_derived";
+  source: "artist" | "resonate_native" | "remix_derived" | "catalog_attestation";
   facets: string[];
 }
 

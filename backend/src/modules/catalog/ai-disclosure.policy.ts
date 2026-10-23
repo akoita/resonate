@@ -2,6 +2,14 @@ import { Prisma, type AiDisclosureLevel } from "@prisma/client";
 
 export const AI_DISCLOSURE_VERSION = "ddex-ern-4.3.2-resonate-v1";
 
+/**
+ * #2252: source recorded for a track whose human origin Resonate itself
+ * attested from public knowledge (a platform/catalog attestation, never an
+ * artist self-declaration). Kept as a constant so the one-off batch, the
+ * inverse SQL in the docs and the tests share one spelling.
+ */
+export const CATALOG_ATTESTATION_SOURCE = "catalog_attestation" as const;
+
 export const AI_CONTRIBUTION_FACETS = [
   "vocals",
   "instruments",
@@ -15,6 +23,7 @@ export type AiDisclosureSource =
   | "artist"
   | "resonate_native"
   | "remix_derived"
+  | "catalog_attestation"
   | "migration";
 export type DdexContainsAi = "None" | "Partly" | "All";
 export type PublicAiDisclosureLevel = "undeclared" | "none" | "partly" | "all";
@@ -52,6 +61,7 @@ const SOURCES = new Set<AiDisclosureSource>([
   "artist",
   "resonate_native",
   "remix_derived",
+  "catalog_attestation",
   "migration",
 ]);
 
