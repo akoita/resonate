@@ -1,11 +1,64 @@
 # Vision Sprint 36: A DJ you can understand, a catalog you can trust
 
-**Status:** Owner-approved 2026-10-23; in progress. No due date: it closes when
-its exit checks pass on staging.
+**Status:** Closed 2026-10-23. Ten of eleven issues are closed; #2249 shipped
+slice 1 of 3 and moves out for slices 2–3. Verified on staging at `13a88eea`.
+The attestation run on staging is the deployment half,
+[resonate-iac#316](https://github.com/akoita/resonate-iac/issues/316).
 **Milestone:** [38](https://github.com/akoita/resonate/milestone/38).
 **Goal:** A listener can start the AI DJ from one place and see what it will
 play from, we can measure whether it finds what was asked for, and well-known
 human recordings no longer show "AI disclosure unavailable".
+
+## Outcome
+
+The goal sentence holds on staging, except the last clause: the human-made
+attestation is built and tested, but the pill only disappears once the
+operator approves a manifest and runs it in resonate-iac#316.
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #2235 | Golden set: 19 cases, recall@10/@20 baseline recorded (mean 69% / 71%; 7 known gaps) | #2261 |
+| #2236 | One genre matcher for sessions and My Mix lanes; free-text genres form lanes | #2271 |
+| #2239 | Starting-taste line with an Edit link; mood-only sessions no longer narrow to saved vibes | #2265 |
+| #2237 | One Start action; the status card and unused `AgentDashboard` removed | #2266 |
+| #2238 | Live Feed card removed; request coverage under the filter chips | #2267 |
+| #2249 | Slice 1: plain starters that write their sentence, Moments without hidden genres, an Adjust row | #2273 (partial) |
+| #2252 | `catalog_attestation` source; report and dry-run-first apply scripts with tests | #2260 |
+| #2228 | A failed chart request says "Charts are unavailable right now." | #2262 |
+| #2229 | User Guide: which listens count toward the charts | #2263 |
+| #2254 | Home reveals in layout order; no reshuffle for signed-in listeners | #2264 |
+| #2216 | Mutation campaigns re-sharded; verification run green, longest leg 61 min | #2256 |
+
+Unplanned:
+
+- #2251, buyer-bound x402 smart-account redemption and the AI DJ quality plan,
+  had failing tests that needed updating; fixed and merged.
+- #2278 bounds the CI ffmpeg install after a stalled apt mirror twice held
+  the merge queue.
+- #2291 fixes a pre-existing streaming race in which Home was briefly in the
+  DOM twice; it blocked the first staging release. The root cause is #2290.
+
+**Staging verification (2026-10-23, `13a88eea`):**
+
+- Signed-out Home shows one AI DJ section with plain starters, and Trending
+  Now renders.
+- The deployed AI DJ code contains the starting-taste line, Stop-only command
+  bar, Adjust row, coverage line and attestation tooltip, and no Live Feed
+  card.
+- The charts help entry and the rewritten AI DJ article are live.
+- The signed-in AI DJ page was seen through the refreshed screenshot, captured
+  locally with mock sign-in, because staging has no test sign-in. A signed-in
+  look on staging joins the owner checks in #2154.
+
+**Carry-over and follow-ups:**
+
+- #2249 slices 2–3.
+- #2257: UNDECLARED writers.
+- #2258: persist MusicBrainz and Wikidata ids.
+- #2259: an operator view of agent events.
+- #2270: My Mix "no lanes" reasons and family-lane boosts.
+- #2290: AppShell Suspense streaming.
+- The next sprint is not yet selected.
 
 ## Why this theme
 
