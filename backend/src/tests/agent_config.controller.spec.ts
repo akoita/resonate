@@ -30,9 +30,18 @@ import { Logger } from "@nestjs/common";
 import { AgentConfigController } from "../modules/agents/agent_config.controller";
 import { defaultCrateFilters } from "../modules/crates/crate_filters";
 import { mergeSessionGenres } from "../modules/agents/agent_session_genres";
+import { AnalyticsDomainEventBridgeService } from "../modules/analytics/analytics_domain_event_bridge.service";
+import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
+import { EventBus } from "../modules/shared/event_bus";
 
 function makeController(
-  overrides: { runResult?: unknown; identity?: unknown; learningService?: unknown; parser?: unknown } = {},
+  overrides: {
+    runResult?: unknown;
+    identity?: unknown;
+    learningService?: unknown;
+    parser?: unknown;
+    eventBus?: unknown;
+  } = {},
 ) {
   return new AgentConfigController(
     {} as any,
@@ -52,7 +61,7 @@ function makeController(
       mergeLearnedGenres: jest.fn(),
       recordSignal: jest.fn(),
     }) as any,
-    { publish: jest.fn() } as any,
+    (overrides.eventBus ?? { publish: jest.fn() }) as any,
     overrides.parser as any,
   );
 }
@@ -527,6 +536,100 @@ describe("AgentConfigController", () => {
       expect((ctrl as any).eventBus.publish).not.toHaveBeenCalledWith(
         expect.objectContaining({ eventName: "agent.decision_made", priceUsd: expect.anything() }),
       );
+    });
+
+    describe("decision events of a 12-pick session start (#2317)", () => {
+      // Realistic ids: 12 of them comma-joined are about 330 characters, past the
+      // 200-character analytics subjectId cap that rejected the single batch event.
+      const trackIds = Array.from({ length: 12 }, (_, i) => `cm${String(i).padStart(2, "0")}${"x".repeat(23)}`);
+      const twelvePicks = trackIds.map((trackId) => ({
+        trackId,
+        licenseType: "personal" as const,
+        priceUsd: 0,
+      }));
+
+      it("emits one single-track decision event per pick and one live-feed batch marker", async () => {
+        buyConfig();
+        const eventBus = new EventBus();
+        const decisions: any[] = [];
+        eventBus.subscribe("agent.decision_made", (event) => decisions.push(event));
+        const ctrl = makeController({
+          eventBus,
+          runResult: { status: "picked", reason: "llm", reasoning: "Warm set", latencyMs: 40, picks: twelvePicks },
+        });
+
+        await runSession(ctrl);
+
+        expect(decisions).toHaveLength(12);
+        expect(decisions.map((event) => event.trackId)).toEqual(trackIds);
+        for (const [index, event] of decisions.entries()) {
+          expect(event.trackId).not.toContain(",");
+          expect(event).toEqual(
+            expect.objectContaining({
+              sessionId: "session_1",
+              licenseType: "personal",
+              curatedBy: "llm",
+              pickIndex: index,
+              pickCount: 12,
+            }),
+          );
+          expect(event).not.toHaveProperty("priceUsd");
+        }
+        // Batch-level fields ride on the first event only.
+        expect(decisions[0]).toEqual(expect.objectContaining({ reasoning: "Warm set", latencyMs: 40 }));
+        expect(decisions[1]).not.toHaveProperty("reasoning");
+        eventBus.destroy();
+      });
+
+      it("bridges all 12 decision events into analytics without a rejected subject", async () => {
+        buyConfig();
+        const eventBus = new EventBus();
+        const ingest = new AnalyticsIngestService();
+        const bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+        bridge.onModuleInit();
+        const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+        const ctrl = makeController({
+          eventBus,
+          runResult: { status: "picked", reason: "llm", latencyMs: 40, picks: twelvePicks },
+        });
+
+        await runSession(ctrl);
+        await jest.advanceTimersByTimeAsync(10);
+
+        const bridged = (await ingest.listEvents()).filter((event) => event.eventName === "agent.decision_made");
+        expect(bridged).toHaveLength(12);
+        expect(bridged.map((event) => event.subjectId)).toEqual(trackIds);
+        for (const event of bridged) {
+          expect(event.subjectId!.length).toBeLessThanOrEqual(200);
+          expect(event.sessionId).toBe("session_1");
+        }
+        expect(warn.mock.calls.filter(([message]) => String(message).includes("Failed to bridge"))).toEqual([]);
+        bridge.onModuleDestroy();
+        eventBus.destroy();
+        warn.mockRestore();
+      });
+
+      it("keeps one bridgeable event with an empty subject when the runtime picked nothing", async () => {
+        buyConfig();
+        const eventBus = new EventBus();
+        const ingest = new AnalyticsIngestService();
+        const bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+        bridge.onModuleInit();
+        const ctrl = makeController({
+          eventBus,
+          runResult: { status: "no_pick", reason: "empty_catalog", latencyMs: 12, picks: [] },
+        });
+
+        await runSession(ctrl);
+        await jest.advanceTimersByTimeAsync(10);
+
+        const bridged = (await ingest.listEvents()).filter((event) => event.eventName === "agent.decision_made");
+        expect(bridged).toHaveLength(1);
+        expect(bridged[0].subjectId).toBeUndefined();
+        expect(bridged[0].payload).toEqual(expect.objectContaining({ reason: "empty_catalog" }));
+        bridge.onModuleDestroy();
+        eventBus.destroy();
+      });
     });
 
     describe("PATCH /agents/config", () => {

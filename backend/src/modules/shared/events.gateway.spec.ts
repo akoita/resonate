@@ -585,7 +585,7 @@ describe("EventsGateway", () => {
         eventVersion: 1,
         occurredAt: "2026-10-02T12:00:00.000Z",
         sessionId: "session-1",
-        trackId: "track-1,track-2",
+        trackId: "track-1",
         reason: "llm",
         curatedBy: "llm",
         coverageSummary: "not matched: soul (1 of 2)",
@@ -594,6 +594,33 @@ describe("EventsGateway", () => {
       const payload = decisionPayload(roomEmit);
       expect(payload.message).toBe("AI selected track \u00b7 not matched: soul (1 of 2)");
       expect(payload.curatedBy).toBe("llm");
+      gateway.onModuleDestroy();
+    });
+
+    it("shows a per-pick session start as one live-feed line, from the first pick (#2317)", () => {
+      const { gateway, eventBus, roomEmit } = createGateway();
+      startSession(eventBus);
+
+      for (let pickIndex = 0; pickIndex < 12; pickIndex += 1) {
+        eventBus.publish({
+          eventName: "agent.decision_made",
+          eventVersion: 1,
+          occurredAt: "2026-10-02T12:00:00.000Z",
+          sessionId: "session-1",
+          trackId: `track-${pickIndex}`,
+          pickIndex,
+          pickCount: 12,
+          reason: "llm",
+          curatedBy: "llm",
+          ...(pickIndex === 0 ? { latencyMs: 1200 } : {}),
+        } as any);
+      }
+
+      const decisions = roomEmit.mock.calls.filter(
+        ([name, payload]) => name === "agent.event" && payload.type === "agent.decision_made",
+      );
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0][1].message).toBe("AI selected 12 tracks (1.2s)");
       gateway.onModuleDestroy();
     });
 
