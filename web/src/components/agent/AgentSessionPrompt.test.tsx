@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentMixVocabulary, AgentSessionRequest, ListeningLane } from "../../lib/api";
 import AgentSessionPrompt from "./AgentSessionPrompt";
-import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES } from "./sessionPresetData";
+import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, soundPresetsForFamilies } from "./sessionPresetData";
 
 const request: AgentSessionRequest = {
   genres: ["deep house"],
@@ -315,5 +315,36 @@ describe("AgentSessionPrompt", () => {
 
   it("keeps an unknown name under Didn't catch", () => {
     expect(render({ unparsed: ["Zed Nonexistent"] })).toContain("Zed Nonexistent");
+  });
+});
+
+describe("AgentSessionPrompt Sounds counts (#2249)", () => {
+  const families = [
+    { id: "world", label: "World", count: 41 },
+    { id: "jazz", label: "Jazz", count: 12 },
+    { id: "hip-hop", label: "Hip-Hop", count: 7 },
+  ];
+
+  it("shows a light count next to each Sounds starter and none without data", () => {
+    const { presets, counts } = soundPresetsForFamilies(families);
+    const html = render({
+      presets: [...SESSION_PRESETS.filter((preset) => preset.group === "mood"), ...presets],
+      soundCounts: counts,
+    });
+    expect(html).toMatch(/World Music<span[^>]*>· 40\+/);
+    expect(html).toMatch(/>Jazz<span[^>]*>· 10\+/);
+    expect(html).toMatch(/Hip-Hop &amp; Rap<span[^>]*>· 7/);
+    // Moments carry no count.
+    expect(html).not.toMatch(/Focus<span/);
+    expect(render()).not.toContain("aid-prompt-preset-count");
+  });
+
+  it("lists Sounds in the order given and omits families that were not returned", () => {
+    const { presets, counts } = soundPresetsForFamilies(families);
+    const html = render({ presets, soundCounts: counts });
+    expect(html.indexOf("World Music")).toBeLessThan(html.indexOf(">Jazz<"));
+    expect(html.indexOf(">Jazz<")).toBeLessThan(html.indexOf("Hip-Hop &amp; Rap"));
+    expect(html).not.toContain("Reggae &amp; Dancehall");
+    expect(html).not.toContain("Pop Hits");
   });
 });

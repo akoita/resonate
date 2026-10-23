@@ -5689,6 +5689,16 @@ export async function getAgentMixVocabulary(token: string): Promise<AgentMixVoca
   return apiRequest<AgentMixVocabulary>("/agents/config/session/mix-vocabulary", {}, token);
 }
 
+/**
+ * The Sounds row (#2249): genre families with playable-track counts for this
+ * listener, ordered by their taste. `allowExplicit` previews the explicit
+ * choice before it is saved; omitted, the saved choice applies.
+ */
+export async function getAgentSounds(token: string, allowExplicit?: boolean): Promise<AgentSounds> {
+  const query = allowExplicit === undefined ? "" : `?allowExplicit=${allowExplicit ? "true" : "false"}`;
+  return apiRequest<AgentSounds>(`/agents/config/session/sounds${query}`, {}, token);
+}
+
 export async function stopAgentSession(token: string): Promise<{ status: string }> {
   return apiRequest<{ status: string }>(
     "/agents/config/session/stop",
@@ -5815,6 +5825,15 @@ export type AgentMixCoverageLane = {
 
 export type AgentMixCoverage = {
   lanes: AgentMixCoverageLane[];
+};
+
+/** One genre family the catalog can fill for this listener (#2249). */
+export type AgentSoundFamily = { id: string; label: string; count: number };
+
+export type AgentSounds = {
+  families: AgentSoundFamily[];
+  /** The fewest playable tracks a family needs to be offered. */
+  minTracks: number;
 };
 
 export type AgentMixVocabulary = {

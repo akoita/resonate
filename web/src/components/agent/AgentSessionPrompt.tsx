@@ -19,7 +19,7 @@ import {
     coverageLine,
     ignoredKeyLabels,
 } from "../../lib/agentSessionRequest";
-import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, type SessionPreset } from "./sessionPresetData";
+import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, soundCountLabel, type SessionPreset } from "./sessionPresetData";
 import AgentMyMixEditor from "./AgentMyMixEditor";
 import { selectedMyMixLanes } from "../../lib/agentMyMix";
 
@@ -58,6 +58,11 @@ type Props = {
     text: string;
     onTextChange: (value: string) => void;
     presets?: SessionPreset[];
+    /**
+     * Playable tracks per Sounds starter intent, from the catalog. A starter with
+     * a count shows it lightly ("World Music · 40+"); one without shows none (#2249).
+     */
+    soundCounts?: Readonly<Record<string, number>>;
     /** Intent of the preset that stands for the current filters, if untouched. */
     activePresetIntent?: string | null;
     onSelectPreset: (preset: SessionPreset) => void;
@@ -113,6 +118,7 @@ export default function AgentSessionPrompt({
     text,
     onTextChange,
     presets = SESSION_PRESETS,
+    soundCounts,
     activePresetIntent = null,
     onSelectPreset,
     request,
@@ -234,6 +240,13 @@ export default function AgentSessionPrompt({
                                         onClick={() => onSelectPreset(preset)}
                                     >
                                         {preset.name}
+                                        {preset.group === "genre" && soundCounts?.[preset.intent] !== undefined ? (
+                                            <span className="aid-prompt-preset-count" data-testid="agent-sound-count">
+                                                {"· "}
+                                                {soundCountLabel(soundCounts[preset.intent])}
+                                                <span className="visually-hidden"> tracks</span>
+                                            </span>
+                                        ) : null}
                                     </button>
                                 ))}
                             </div>

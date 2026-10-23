@@ -78,6 +78,10 @@ const getTasteMemory = vi.fn(async (): Promise<{ summary: { listeningLanes?: Lis
   summary: { listeningLanes: [myMixLane] },
 }));
 const getAgentMixVocabulary = vi.fn(async () => ({ genres: ["Dancehall", "Soul"], moods: ["Warm", "Zen"] }));
+const getAgentSounds = vi.fn(async (...args: unknown[]): Promise<unknown> => {
+  void args;
+  throw new Error("sounds unavailable");
+});
 const getAgentMixCoverage = vi.fn(async () => ({ mixCoverage: { lanes: [] } }));
 const applyTasteEdits = vi.fn(async () => ({ edits: { appliedCount: 0, ignoredCount: 0 } }));
 
@@ -136,6 +140,7 @@ vi.mock("../../lib/api", () => ({
   getAgentMixCoverage: (...args: unknown[]) => getAgentMixCoverage(...(args as [])),
   getAgentMixVocabulary: (...args: unknown[]) => getAgentMixVocabulary(...(args as [])),
   getAgentNextPick: (...args: unknown[]) => getAgentNextPick(...(args as [])),
+  getAgentSounds: (...args: unknown[]) => getAgentSounds(...args),
   parseAgentSessionRequest: (...args: unknown[]) => parseAgentSessionRequest(...(args as [string, string])),
   getTasteMemory: (...args: unknown[]) => getTasteMemory(...(args as [])),
 }));
@@ -375,6 +380,44 @@ describe("AgentSessionPanel", () => {
         }),
       }),
     );
+  });
+
+  describe("catalog-aware Sounds (#2249)", () => {
+    async function loadSounds() {
+      render();
+      effects.forEach((run) => run());
+      await Promise.resolve();
+      await Promise.resolve();
+      render();
+    }
+
+    it("keeps today's Sounds starters when the request fails", async () => {
+      hookState.config = config({ isActive: false });
+      await loadSounds();
+      expect(getAgentSounds).toHaveBeenCalledWith("tok", undefined);
+      expect(captured.prompt?.presets).toEqual(SESSION_PRESETS);
+      expect(captured.prompt?.soundCounts).toBeUndefined();
+    });
+
+    it("shows the families the catalog returned, in order, hiding thin ones", async () => {
+      getAgentSounds.mockResolvedValueOnce({
+        minTracks: 3,
+        families: [
+          { id: "world", label: "World", count: 41 },
+          { id: "jazz", label: "Jazz", count: 12 },
+          { id: "pop", label: "Pop", count: 2 },
+          { id: "hip-hop", label: "Hip-Hop", count: 5 },
+        ],
+      });
+      hookState.config = config({ isActive: false, allowExplicit: true });
+      await loadSounds();
+      expect(getAgentSounds).toHaveBeenCalledWith("tok", true);
+      const sounds = captured.prompt!.presets!.filter((preset) => preset.group === "genre");
+      expect(sounds.map((preset) => preset.intent)).toEqual(["World", "Jazz", "Hip-Hop"]);
+      expect(captured.prompt?.soundCounts).toEqual({ World: 41, Jazz: 12, "Hip-Hop": 5 });
+      // Moments are unaffected.
+      expect(captured.prompt!.presets!.filter((preset) => preset.group === "mood")).toHaveLength(8);
+    });
   });
 
   describe("starters and optional filters (#2249)", () => {

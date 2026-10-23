@@ -3,10 +3,14 @@ import { listeningRequestFromCrateParse } from "../../../../backend/src/modules/
 import { parseCrateRequestText } from "../../../../backend/src/modules/crates/crate_request_parser";
 import { CATALOG_GENRE_OPTIONS, MOOD_TAG_OPTIONS } from "../../lib/catalogVocabulary";
 import {
+  DEFAULT_SOUNDS_MIN_TRACKS,
+  EXTRA_SOUND_PRESETS,
   LEGACY_PRESET_NAMES,
   SESSION_PRESETS,
   SESSION_PROMPT_EXAMPLES,
   plainPresetLabel,
+  soundCountLabel,
+  soundPresetsForFamilies,
 } from "./sessionPresetData";
 
 /**
@@ -131,5 +135,73 @@ describe("plainPresetLabel", () => {
       const legacy = plainPresetLabel(preset.intent);
       if (legacy !== preset.intent) expect([preset.intent, legacy]).toEqual([preset.intent, preset.name]);
     }
+  });
+});
+
+describe("catalog-aware Sounds (#2249)", () => {
+  const familyCounts = (count: number) =>
+    [...SESSION_PRESETS, ...EXTRA_SOUND_PRESETS]
+      .filter((preset) => preset.familyId)
+      .map((preset) => ({ id: preset.familyId!, label: preset.name, count }));
+
+  it("buckets counts: exact under 10, then 10+, 20+, 40+", () => {
+    expect([0, 3, 9].map(soundCountLabel)).toEqual(["0", "3", "9"]);
+    expect([10, 19].map(soundCountLabel)).toEqual(["10+", "10+"]);
+    expect([20, 39].map(soundCountLabel)).toEqual(["20+", "20+"]);
+    expect([40, 41, 5000].map(soundCountLabel)).toEqual(["40+", "40+", "40+"]);
+  });
+
+  it("keeps the order the backend returned", () => {
+    const { presets } = soundPresetsForFamilies([
+      { id: "world", label: "World", count: 50 },
+      { id: "jazz", label: "Jazz", count: 4 },
+      { id: "hip-hop", label: "Hip-Hop", count: 9 },
+    ]);
+    expect(presets.map((preset) => preset.intent)).toEqual(["World", "Jazz", "Hip-Hop"]);
+  });
+
+  it("shows no Sounds starter below the minimum playable-track threshold", () => {
+    const families = [
+      { id: "world", label: "World", count: DEFAULT_SOUNDS_MIN_TRACKS },
+      { id: "jazz", label: "Jazz", count: DEFAULT_SOUNDS_MIN_TRACKS - 1 },
+      { id: "hip-hop", label: "Hip-Hop", count: 0 },
+    ];
+    const { presets, counts } = soundPresetsForFamilies(families);
+    expect(presets.map((preset) => preset.intent)).toEqual(["World"]);
+    expect(counts).toEqual({ World: DEFAULT_SOUNDS_MIN_TRACKS });
+    // The backend's own threshold wins when it sends one.
+    expect(soundPresetsForFamilies(families, 1).presets.map((preset) => preset.intent)).toEqual([
+      "World",
+      "Jazz",
+    ]);
+  });
+
+  it("leaves out families that have no starter instead of inventing one", () => {
+    const { presets } = soundPresetsForFamilies([
+      { id: "african", label: "African", count: 99 },
+      { id: "not-a-family", label: "Nope", count: 99 },
+    ]);
+    expect(presets).toEqual([]);
+  });
+
+  it("generates only starters whose sentence the parser reads with nothing left over", () => {
+    const { presets } = soundPresetsForFamilies(familyCounts(100));
+    expect(presets.length).toBeGreaterThanOrEqual(SESSION_PRESETS.filter((preset) => preset.group === "genre").length);
+    for (const preset of presets) {
+      expect(preset.group).toBe("genre");
+      const parsed = read(preset.sentence);
+      expect([preset.name, parsed.unparsed]).toEqual([preset.name, []]);
+      expect([preset.name, parsed.ignored]).toEqual([preset.name, []]);
+      expect([preset.name, preset.request]).toEqual([preset.name, parsed.request]);
+      expect(preset.request.genres.length).toBeGreaterThan(0);
+      for (const genre of preset.searchVibes) expect(CATALOG_GENRE_OPTIONS).toContain(genre);
+    }
+  });
+
+  it("gives every extra Sounds starter a unique intent and family", () => {
+    const all = [...SESSION_PRESETS, ...EXTRA_SOUND_PRESETS];
+    expect(new Set(all.map((preset) => preset.intent)).size).toBe(all.length);
+    const families = all.filter((preset) => preset.familyId).map((preset) => preset.familyId);
+    expect(new Set(families).size).toBe(families.length);
   });
 });

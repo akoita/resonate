@@ -12,6 +12,7 @@ import {
     getAgentMixCoverage,
     getAgentMixVocabulary,
     getAgentNextPick,
+    getAgentSounds,
     getTasteMemory,
     parseAgentSessionRequest,
     type AgentMixCoverage,
@@ -22,6 +23,7 @@ import {
     type AgentSessionEnergy,
     type AgentSessionRequest,
     type AgentSessionRequestIgnoredKey,
+    type AgentSounds,
     type ListeningLane,
 } from "../../lib/api";
 import {
@@ -53,7 +55,7 @@ import AgentUpNextCard from "./AgentUpNextCard";
 import { useDjUpNext } from "./useDjUpNext";
 import { pickNotesFromLicenses, pickNotesFromResponse } from "../../lib/agentUpNext";
 import AgentSessionPrompt from "./AgentSessionPrompt";
-import { SESSION_PRESETS, type SessionPreset } from "./sessionPresetData";
+import { SESSION_PRESETS, soundPresetsForFamilies, type SessionPreset } from "./sessionPresetData";
 import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
 import AgentSetupWizard from "./AgentSetupWizard";
 import AgentCommandBar from "./AgentCommandBar";
@@ -129,6 +131,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const [myMixSaveMessage, setMyMixSaveMessage] = useState<string | null>(null);
     // Optimistic "include explicit tracks" value while the save is in flight (#2088).
     const [explicitPending, setExplicitPending] = useState<boolean | null>(null);
+    // The catalog's Sounds for this listener (#2249); null until loaded or when the request fails,
+    // which keeps the static Sounds starters.
+    const [sounds, setSounds] = useState<AgentSounds | null>(null);
     const [explicitError, setExplicitError] = useState<string | null>(null);
     const [isParsing, setIsParsing] = useState(false);
     const [parseError, setParseError] = useState<string | null>(null);
@@ -200,6 +205,36 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             });
         return () => { current = false; };
     }, [token]);
+
+    // The Sounds row follows the catalog: one cached request per explicit choice, never per render.
+    const soundsExplicit = explicitPending ?? config?.allowExplicit;
+    useEffect(() => {
+        if (!token) {
+            setSounds(null);
+            return;
+        }
+        let current = true;
+        void getAgentSounds(token, soundsExplicit)
+            .then((next) => {
+                if (current) setSounds(next);
+            })
+            .catch(() => {
+                if (current) setSounds(null);
+            });
+        return () => { current = false; };
+    }, [token, soundsExplicit]);
+
+    const { starterPresets, soundCounts } = useMemo(() => {
+        if (!sounds) return { starterPresets: SESSION_PRESETS, soundCounts: undefined };
+        const available = soundPresetsForFamilies(sounds.families, sounds.minTracks);
+        return {
+            starterPresets: [
+                ...SESSION_PRESETS.filter((preset) => preset.group === "mood"),
+                ...available.presets,
+            ],
+            soundCounts: available.counts,
+        };
+    }, [sounds]);
 
     const beginAwaitingAutoplay = useCallback((sessionId: string) => {
         awaitingAutoplayRef.current = sessionId;
@@ -888,6 +923,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     <AgentSessionPrompt
                         text={text}
                         onTextChange={handleTextChange}
+                        presets={starterPresets}
+                        soundCounts={soundCounts}
                         activePresetIntent={activePreset?.intent ?? null}
                         onSelectPreset={handleSelectPreset}
                         request={request}

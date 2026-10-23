@@ -14,6 +14,7 @@ import { PolicyGuardService } from "./policy_guard.service";
 import { AgentCuratorController } from "./agent_curator.controller";
 import { AgentsController } from "./agents.controller";
 import { AgentConfigController } from "./agent_config.controller";
+import { AgentSoundsService } from "./agent_sounds.service";
 import { IdentityModule } from "../identity/identity.module";
 import { CatalogModule } from "../catalog/catalog.module";
 import { X402Module } from "../x402/x402.module";
@@ -55,6 +56,8 @@ import { SceneScoutModule } from "../scene_scout/scene_scout.module";
     AgentStemQualityService,
     AgentWalletService,
     AgentPurchaseService,
+    // One cached catalog aggregate behind the Sounds row (#2249).
+    AgentSoundsService,
     // The session sentence parser (#2037, #2241): Crate Digger rules plus catalog
     // artist names, model-assisted only under AGENT_SESSION_PARSER_STRATEGY
     // (default deterministic). Crate requests keep CRATE_REQUEST_PARSER_STRATEGY.
