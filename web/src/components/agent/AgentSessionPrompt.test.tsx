@@ -47,7 +47,32 @@ describe("AgentSessionPrompt", () => {
     expect(html).toContain("Warm deep house around 122 BPM for cooking");
     expect(html).toContain("not saved");
     expect(html).toContain("Start session");
-    expect(html).toContain("No filters yet");
+    // No saved vibes are known yet, so no starting-taste line.
+    expect(html).not.toContain("your DJ starts from");
+  });
+
+  it("labels the DJ's starting taste in the empty state and links to where it is edited (#2239)", () => {
+    const html = render({ savedVibes: ["Chill", "Deep House", "Lo-fi", "Jazz"] });
+    expect(html).toContain("With no filters, your DJ starts from:");
+    expect(html).toContain("<strong>Chill, Deep House, Lo-fi…</strong>");
+    expect(html).toMatch(/<a[^>]*href="\/settings\?section=dj"[^>]*>Edit<\/a>/);
+  });
+
+  it("lists every saved vibe without an ellipsis when there are only a few", () => {
+    const html = render({ savedVibes: ["Chill", "Deep House"] });
+    expect(html).toContain("<strong>Chill, Deep House</strong>");
+    expect(html).not.toContain("…</strong>");
+  });
+
+  it("offers a way to set vibes when the DJ has none", () => {
+    const html = render({ savedVibes: [] });
+    expect(html).toContain("No saved vibes");
+    expect(html).toMatch(/<a[^>]*href="\/settings\?section=dj"[^>]*>Set them<\/a>/);
+    expect(html).not.toContain("your DJ starts from");
+  });
+
+  it("hides the starting-taste line once filters exist", () => {
+    expect(render({ savedVibes: ["Chill"], request })).not.toContain("your DJ starts from");
   });
 
   it("offers an accessible include-explicit-tracks toggle that reflects the saved choice (#2088)", () => {
@@ -145,7 +170,7 @@ describe("AgentSessionPrompt", () => {
     expect(html).toMatch(/<option value="medium" selected="">medium<\/option>/);
     expect(html).toContain('<option value="low">low</option>');
     expect(html).toContain('<option value="high">high</option>');
-    expect(html).not.toContain("No filters yet");
+    expect(html).not.toContain("your DJ starts from");
   });
 
   it("lists phrases it did not catch and filters not used for listening", () => {

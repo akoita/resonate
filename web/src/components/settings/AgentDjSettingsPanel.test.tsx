@@ -34,6 +34,19 @@ describe("AgentDjSettingsPanel", () => {
     hookState.isLoading = false;
   });
 
+  it("explains in one table how saved vibes, Taste memory and My Mix differ (#2239)", () => {
+    hookState.config = config();
+    const html = renderToStaticMarkup(<AgentDjSettingsPanel />);
+    expect(html).toContain('data-testid="dj-taste-guide"');
+    expect(html.match(/<table/g)).toHaveLength(1);
+    expect(html).toContain("Saved vibes");
+    expect(html).toContain("Your DJ&#x27;s starting point when you give it no filters.");
+    expect(html).toContain("Taste memory");
+    expect(html).toContain("What Resonate learned from your listening and what you told it.");
+    expect(html).toContain("My Mix");
+    expect(html).toContain("Only when you choose My Mix for a session.");
+  });
+
   it("explains the DJ and offers setup when there is no config", () => {
     const html = renderToStaticMarkup(<AgentDjSettingsPanel />);
     expect(html).toContain("AI DJ");

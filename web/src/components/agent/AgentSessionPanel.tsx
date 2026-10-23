@@ -53,6 +53,7 @@ import AgentNextPickCard from "./AgentNextPickCard";
 import { humanPickReason } from "../../lib/agentPickReason";
 import AgentSessionPrompt from "./AgentSessionPrompt";
 import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
+import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
 import AgentSetupWizard from "./AgentSetupWizard";
 import AgentStatusCard from "./AgentStatusCard";
 
@@ -202,16 +203,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     /** The preferences a next-pick request carries; also what the continuation reuses to keep the set going. */
     const buildNextPickPreferences = useCallback((): AgentNextPreferences => {
         if (myMixPreferences) return { myMix: myMixPreferences };
-        const regularPreferences = buildSessionPreferences({
+        const regularPreferences = buildPickPreferences({
             activePreset,
             request,
-            fallbackGenres: config?.vibes,
-        }) ?? {
-            genres: config?.vibes,
-            // Every chip removed: an empty request tells the DJ to drop the
-            // session's earlier filters (omitting the key would keep them).
-            ...(request ? { request } : {}),
-        };
+            savedVibes: config?.vibes,
+        });
         return myMixWasSelectedRef.current
             ? { ...regularPreferences, myMix: null }
             : regularPreferences;
@@ -895,6 +891,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         coverage={config.isActive ? coverage : null}
                         isParsing={isParsing}
                         parseError={parseError}
+                        savedVibes={config.vibes}
                         isLive={config.isActive}
                         isBusy={isStarting || isReplanning}
                         explicit={{
@@ -997,46 +994,4 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
 export type SessionStartedFrom = "preset" | "prompt" | "plain" | "my_mix";
 
-export function toIntentPreferences(preset: SessionPreset): AgentNextPreferences {
-    return {
-        ...preset.preferences,
-        genres: preset.searchVibes,
-        sessionIntent: preset.intent,
-        sessionIntentName: preset.name,
-        queueStyle: preset.queueStyle,
-        source: "agent_session_intent",
-    };
-}
-
-/**
- * The preferences a session start (or a pick request) carries for the current
- * filters, or undefined when there is nothing to steer: a plain start.
- *
- * An untouched preset keeps its exact preferences and adds its request. Typed or
- * edited filters travel as the request plus the session genres, mood and energy
- * derived from it. The typed sentence is never part of the preferences.
- */
-export function buildSessionPreferences({
-    activePreset,
-    request,
-    fallbackGenres,
-}: {
-    activePreset: SessionPreset | null;
-    request: AgentSessionRequest | null;
-    /** Saved vibes to use when the filters name no genre (pick requests only). */
-    fallbackGenres?: string[];
-}): AgentNextPreferences | undefined {
-    if (activePreset) {
-        return request
-            ? { ...toIntentPreferences(activePreset), request }
-            : toIntentPreferences(activePreset);
-    }
-    if (!request || !hasFilters(request)) return undefined;
-    return {
-        request,
-        genres: request.genres.length > 0 ? request.genres : fallbackGenres ?? request.genres,
-        mood: request.moods[0],
-        energy: request.energy ?? undefined,
-        source: "agent_session_prompt",
-    };
-}
+export { buildPickPreferences, buildSessionPreferences, toIntentPreferences };

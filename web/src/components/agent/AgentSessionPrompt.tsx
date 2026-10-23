@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useState } from "react";
 import type {
     AgentMixCoverage,
@@ -21,6 +22,16 @@ import {
 import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
 import AgentMyMixEditor from "./AgentMyMixEditor";
 import { selectedMyMixLanes } from "../../lib/agentMyMix";
+
+/** Where the DJ's saved vibes are edited. */
+export const DJ_SETTINGS_HREF = "/settings?section=dj";
+const STARTING_TASTE_VISIBLE_VIBES = 3;
+
+/** "Chill, Deep House…" for a few saved vibes; the ellipsis marks that there are more. */
+export function startingTasteSummary(vibes: readonly string[]): string {
+    const shown = vibes.slice(0, STARTING_TASTE_VISIBLE_VIBES).join(", ");
+    return vibes.length > STARTING_TASTE_VISIBLE_VIBES ? `${shown}…` : shown;
+}
 
 export const SESSION_PROMPT_PLACEHOLDER = "Warm deep house around 122 BPM for cooking";
 
@@ -53,6 +64,11 @@ type Props = {
     /** The sentence is being read (debounce or request in flight). */
     isParsing?: boolean;
     parseError?: string | null;
+    /**
+     * The DJ's saved vibes: where a session starts when it has no filters.
+     * Undefined while the DJ is not loaded, which hides the line.
+     */
+    savedVibes?: readonly string[];
     /** A session is live: the main action updates it instead of starting one. */
     isLive?: boolean;
     isBusy?: boolean;
@@ -96,6 +112,7 @@ export default function AgentSessionPrompt({
     coverage = null,
     isParsing = false,
     parseError = null,
+    savedVibes,
     isLive = false,
     isBusy = false,
     explicit,
@@ -262,8 +279,20 @@ export default function AgentSessionPrompt({
                         ))}
                     </ul>
                 ) : myMix?.preferences ? null : (
-                    <p className="aid-prompt-hint">
-                        {isParsing ? "Reading what you wrote…" : "No filters yet: the DJ will choose from your saved vibes."}
+                    <p className="aid-prompt-hint" data-testid="agent-dj-starting-taste">
+                        {isParsing ? (
+                            "Reading what you wrote…"
+                        ) : savedVibes === undefined ? null : savedVibes.length > 0 ? (
+                            <>
+                                With no filters, your DJ starts from: <strong>{startingTasteSummary(savedVibes)}</strong>
+                                {" · "}
+                                <Link href={DJ_SETTINGS_HREF}>Edit</Link>
+                            </>
+                        ) : (
+                            <>
+                                No saved vibes · <Link href={DJ_SETTINGS_HREF}>Set them</Link>
+                            </>
+                        )}
                     </p>
                 )}
                 {parseError ? (
