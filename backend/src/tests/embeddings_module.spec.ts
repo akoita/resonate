@@ -31,7 +31,10 @@ describe("EmbeddingsModule wiring (#1452)", () => {
     expect(moduleRef.get(EmbeddingStore)).toBeInstanceOf(EmbeddingStore);
     expect(moduleRef.get(TrackEmbeddingService)).toBeInstanceOf(TrackEmbeddingService);
     expect(moduleRef.get(ToolRegistry).get("embeddings.similarity")).toBeDefined();
+    // One embedding subscription per event, plus the track descriptor service's
+    // own release_ready subscription (#2240; imported by EmbeddingsModule).
     expect(subscribe.mock.calls.map(([name]) => name).sort()).toEqual([
+      "catalog.release_ready",
       "catalog.release_ready",
       "catalog.updated",
     ]);

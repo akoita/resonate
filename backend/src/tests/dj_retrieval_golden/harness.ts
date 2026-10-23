@@ -32,7 +32,15 @@ import {
 import { mergeSessionGenres } from "../../modules/agents/agent_session_genres";
 import { measuredTrackFeatures } from "../../modules/agents/measured_track_features";
 import { deterministicCrateRequestParser } from "../../modules/crates/crate_request_parser";
-import { expandGenreSearchTerms } from "../../modules/recommendations/genre_families";
+import {
+  buildDescriptorInput,
+  deterministicDescriptor,
+  type TrackDescriptorValue,
+} from "../../modules/descriptors/track_descriptor";
+import {
+  expandGenreSearchTerms,
+  genreFamiliesFor,
+} from "../../modules/recommendations/genre_families";
 import { DiscoveryRankingService } from "../../modules/recommendations/discovery-ranking.service";
 import {
   GOLDEN_CASES,
@@ -61,6 +69,25 @@ export function stemFeaturesPayload(measured: MeasuredStemFeatures) {
     energyRms: measured.energyRms,
     onsetDensity: measured.onsetDensity,
   };
+}
+
+/**
+ * The descriptor the backfill (`backfill_track_descriptors.ts`, deterministic
+ * strategy, the default) produces for a fixture track (#2240): the same pure
+ * functions it runs over the same inputs, including the measured bands of the
+ * seeded original stem. The integration runner does not use this: it runs the
+ * real tagger over the seeded rows, and the twin parity test proves the two
+ * agree.
+ */
+export function goldenDescriptor(track: GoldenTrack): TrackDescriptorValue {
+  return deterministicDescriptor(
+    buildDescriptorInput({
+      title: track.title,
+      genre: track.genre,
+      releaseTitle: track.releaseTitle ?? track.title,
+      audioFeatures: track.measured ? stemFeaturesPayload(track.measured) : undefined,
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +166,8 @@ export class FixtureAudioFeatureService extends AgentAudioFeatureService {
  * The `ToolRegistry` surface the selector reads, over the fixture catalog.
  * `catalog.search` repeats the real tool's filter: explicit tracks only when
  * allowed; a genre-family-expanded, case-insensitive `contains` on the release
- * genre, or a literal title match; newest first; at most 50.
+ * genre, a match on the stored descriptor's families (#2240), or a literal
+ * title match; newest first; at most 50.
  * Embedding tools report "unavailable", as the real ones do with the
  * embedding provider disabled.
  */
@@ -171,6 +199,7 @@ export class InMemoryGoldenTools {
     const take = Math.min(Math.max(Number(input.limit ?? 20), 1), 50);
     const explicitAllowed = Boolean(input.allowExplicit ?? false);
     const terms = query ? expandGenreSearchTerms(query).map((term) => term.toLowerCase()) : [];
+    const familyIds = query ? genreFamiliesFor(query).map((family) => family.id) : [];
     const items = this.catalog
       .filter((track) => explicitAllowed || !track.explicit)
       .filter((track) => {
@@ -178,6 +207,7 @@ export class InMemoryGoldenTools {
         const genre = track.genre?.toLowerCase() ?? "";
         return (
           terms.some((term) => genre.includes(term)) ||
+          goldenDescriptor(track).families.some((id) => familyIds.includes(id)) ||
           track.title.toLowerCase().includes(query.toLowerCase())
         );
       })
@@ -188,6 +218,7 @@ export class InMemoryGoldenTools {
         artist: track.artist,
         explicit: Boolean(track.explicit),
         hasListing: false,
+        descriptor: goldenDescriptor(track),
         aiDisclosure: { level: "UNDECLARED" },
         release: {
           title: track.releaseTitle ?? track.title,

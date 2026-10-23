@@ -464,6 +464,8 @@ export class AgentSelectorService {
           firstListenerTrackIds.has(track.id) &&
           aiDisclosureLevelOf(track) !== "ALL",
         aiDisclosureLevel: aiDisclosureLevelOf(track),
+        // Stored descriptor families (#2240): a second source for genre requests.
+        descriptorFamilies: track.descriptor?.families ?? [],
         release: {
           genre: track.release?.genre ?? null,
           title: track.release?.title ?? null,

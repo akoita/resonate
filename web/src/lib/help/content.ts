@@ -2373,7 +2373,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution"],
+    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution", "suggested tags", "genre tags", "descriptor"],
     sections: [
       {
         id: "upload",
@@ -2452,6 +2452,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "Tag the mood",
             text: "Add mood tags so your release surfaces in mood browsing and the AI DJ can match it to the right sessions.",
+          },
+        ],
+      },
+      {
+        id: "suggested-tags",
+        heading: "Suggested tags on your tracks",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Resonate suggests tags for each published track from the genre, titles and measured sound of your music: broad genre families such as World or Hip-Hop, finer styles, and its tempo, energy and whether it has vocals. The AI DJ and discovery use them to find your music when someone asks for a style, even if the genre you typed is a place name, a local style or empty. You see them under each track on your release page.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Read-only for now",
+            text: "The tags are suggestions by Resonate and you cannot edit them yet; letting you correct them is planned. They never change your AI declaration, the explicit flag, your rights status or whether your release is published.",
           },
         ],
       },

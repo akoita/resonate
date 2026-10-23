@@ -14,6 +14,7 @@ import {
 } from "../../events/event_types";
 import { AI_PROMOTIONAL_ELIGIBILITY_WHERE } from "../catalog/ai-disclosure.policy";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
+import { TrackDescriptorService } from "../descriptors/track_descriptor.service";
 import { EventBus } from "../shared/event_bus";
 import { VERTEX_EMBEDDING_BATCH_SIZE } from "./embedding.config";
 import { EmbeddingService } from "./embedding.service";
@@ -65,6 +66,16 @@ const trackEmbeddingSelect = {
         select: { role: true, displayName: true },
         orderBy: { sortOrder: "asc" as const },
       },
+    },
+  },
+  // #2240: the embedding text includes the stored descriptor.
+  descriptor: {
+    select: {
+      families: true,
+      subGenres: true,
+      tempoBand: true,
+      energyBand: true,
+      vocal: true,
     },
   },
 } satisfies Prisma.TrackSelect;
@@ -137,6 +148,7 @@ export class TrackEmbeddingService implements OnModuleInit, OnModuleDestroy {
     private readonly embeddingService: EmbeddingService,
     private readonly embeddingStore: EmbeddingStore,
     @Optional() private readonly eventBus?: EventBus,
+    @Optional() private readonly descriptors?: TrackDescriptorService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -179,7 +191,11 @@ export class TrackEmbeddingService implements OnModuleInit, OnModuleDestroy {
       where: { releaseId },
       select: { id: true },
     });
-    return this.embedTracks(tracks.map((track) => track.id));
+    const ids = tracks.map((track) => track.id);
+    // Tag first (#2240), so a new release is embedded once, with its
+    // descriptor. Never throws; a tagging problem only costs the descriptor.
+    await this.descriptors?.ensureTracks(ids);
+    return this.embedTracks(ids);
   }
 
   // ---------------------------------------------------------------------------

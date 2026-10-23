@@ -9,6 +9,12 @@
  * current code achieves (never an aspiration). A later retrieval change must
  * not drop below a baseline, and raises it in the same PR when it improves.
  *
+ * Descriptors (#2240): every fixture track carries the descriptor the
+ * deterministic backfill produces for it (the integration runner runs the real
+ * tagger over the seeded rows; the twin runner computes the same value with the
+ * same pure functions), so the numbers measure retrieval WITH the stored
+ * descriptor, as production reads it.
+ *
  * Ranker under test: AgentSelectorService + DiscoveryRankingService through
  * `deterministicSelectorInput`, the same request a listening session builds.
  * Embedding-backed semantic retrieval is OFF here (it needs a real embedding
@@ -240,8 +246,9 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     description: "World reaches a release labelled with a country name (Senegal).",
     request: { kind: "structured", genres: ["World"] },
     relevant: ["w_country"],
-    knownGap: "No genre family lists country names, so a country label never matches World.",
-    baseline: NONE,
+    // #2240: the track descriptor maps the country name to world/african, so
+    // catalog search and the ranker's session fit reach it (was 0% / 0%).
+    baseline: ONE,
   },
   {
     id: "world-no-genre",
@@ -249,8 +256,9 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     description: "World reaches a release that has no genre at all.",
     request: { kind: "structured", genres: ["World"] },
     relevant: ["w_nogenre"],
-    knownGap: "Catalog search matches only the genre label and track title, so a release with no genre cannot be found.",
-    baseline: NONE,
+    knownGap:
+      "Found only through the track descriptor (#2240), and only because its title and release title name a traditional instrument (kora) and a city (Bamako) the place lexicon knows; a no-genre track with a neutral title is still invisible. It ranks 14th, not in the top 10: with no genre the inferred energy scores one point lower than its tied World peers.",
+    baseline: { recallAt10: 0, recallAt20: 1 },
   },
   {
     id: "world-all",
@@ -263,8 +271,8 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
       "wx_flamenco", "wx_fado", "wx_cumbia", "wx_gnawa",
     ],
     knownGap:
-      "Country names and a missing genre never match (see world-country, world-no-genre), and equally scored tracks keep catalog order, so older ones slip past rank 10.",
-    baseline: { recallAt10: 10 / 14, recallAt20: 12 / 14 },
+      "Equally scored tracks keep catalog order, so the four oldest slip past rank 10 (rank 10 caps recall@10 at 10 / 14). The country and no-genre tracks are reached through the track descriptor (#2240); see world-no-genre.",
+    baseline: { recallAt10: 10 / 14, recallAt20: 1 },
   },
 
   // ----------------------------------------------------------- Rap / Hip-Hop

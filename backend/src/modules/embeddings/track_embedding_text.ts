@@ -1,5 +1,20 @@
 import { createHash } from "crypto";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import {
+  descriptorEmbeddingLines,
+  type EmbeddingDescriptorSource,
+} from "../descriptors/track_descriptor";
+
+/**
+ * Embedding text format (#2240). v2 appends the track descriptor (genre
+ * families, styles, measured bands) to the v1 metadata, so a weak or missing
+ * genre no longer means a weak vector. A track WITHOUT a descriptor renders
+ * exactly as in v1: its content hash is unchanged and it is not re-embedded for
+ * nothing. A track WITH one renders new lines, so its stored hash no longer
+ * matches and the existing incremental backfill / embed-on-ingest re-embeds it
+ * (and again whenever the descriptor changes).
+ */
+export const TRACK_EMBEDDING_TEXT_VERSION = 2;
 
 /** The descriptive metadata a track embedding is computed from. */
 export interface TrackEmbeddingSource {
@@ -15,6 +30,8 @@ export interface TrackEmbeddingSource {
     artist?: { displayName?: string | null } | null;
     artistCredits?: Array<{ role: string; displayName: string }> | null;
   } | null;
+  /** Stored descriptor (#2240); absent or empty for an untagged track. */
+  descriptor?: EmbeddingDescriptorSource | null;
 }
 
 function clean(value?: string | null): string {
@@ -23,7 +40,8 @@ function clean(value?: string | null): string {
 
 /**
  * Stable text a track is embedded from: title, credited artist, featured
- * artists, release title (when it adds information), genre and moods. Pure and
+ * artists, release title (when it adds information), genre, moods and the
+ * track descriptor (#2240). Pure and
  * deterministic: the same metadata always yields the same string, so the
  * content hash only changes when the descriptive metadata does. No listener,
  * play or commercial data is included.
@@ -54,6 +72,7 @@ export function trackEmbeddingText(track: TrackEmbeddingSource): string {
   }
   if (genre) lines.push(`Genre: ${genre}`);
   if (moods.length) lines.push(`Moods: ${moods.join(", ")}`);
+  lines.push(...descriptorEmbeddingLines(track.descriptor));
   return lines.join("\n");
 }
 

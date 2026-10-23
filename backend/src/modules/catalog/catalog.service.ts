@@ -19,6 +19,7 @@ import {
 } from "../../events/event_types";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 import { withPublicAudioFeatures } from "./track-audio-features";
+import { ownerDescriptorView } from "../descriptors/track_descriptor";
 import {
   compareRouteSeverity,
   getUploadRightsActions,
@@ -2278,7 +2279,29 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    return release;
+    // #2240: the generated descriptor tags are shown read-only to the people
+    // who manage the release. This owner-scoped route is the only reader; the
+    // public release responses never carry them.
+    const descriptors = await prisma.trackDescriptor.findMany({
+      where: { trackId: { in: (release.tracks ?? []).map((track) => track.id) } },
+      select: {
+        trackId: true,
+        families: true,
+        subGenres: true,
+        tempoBand: true,
+        energyBand: true,
+        vocal: true,
+        source: true,
+      },
+    });
+    const byTrack = new Map(descriptors.map((row) => [row.trackId, ownerDescriptorView(row)]));
+    return {
+      ...release,
+      tracks: (release.tracks ?? []).map((track) => ({
+        ...track,
+        descriptor: byTrack.get(track.id) ?? null,
+      })),
+    };
   }
 
   async listByArtist(

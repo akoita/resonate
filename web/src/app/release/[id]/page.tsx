@@ -73,6 +73,7 @@ import { FollowArtistButton } from "../../../components/artist/FollowArtistButto
 import { summarizeProcessingFailure } from "../../../components/release/processingFailure";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
+import { TrackDescriptorTags } from "../../../components/content/TrackDescriptorTags";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
 import { DEFAULT_MARKETPLACE_LISTING_PRICE_WEI } from "../../../lib/stakeSafeListingPrice";
@@ -2629,6 +2630,9 @@ function ReleaseDetailsContent() {
                           >✎</button>}
                         </div>
                       )}
+
+                      {/* #2240: tags Resonate suggested for this track. Read-only; only the owner-scoped release response carries them. */}
+                      {canReadCatalog && <TrackDescriptorTags descriptor={track.descriptor} />}
 
                       {(track.audioReplacementStatus || (canReplaceTrackAudio && release.status === "ready")) && <div
                         style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 5 }}
