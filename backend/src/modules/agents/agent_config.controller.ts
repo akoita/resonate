@@ -602,24 +602,43 @@ export class AgentConfigController {
                         const coverageSummary = requested.request && result.requestCoverage
                             ? describeCoverageGaps(requested.request, result.requestCoverage)
                             : "";
-                        // Publish decision event with LLM reasoning
-                        this.eventBus.publish({
-                            eventName: "agent.decision_made",
-                            eventVersion: 1,
-                            occurredAt: new Date().toISOString(),
-                            sessionId: session.id,
-                            trackId: picks.map(p => p.trackId).join(","),
-                            licenseType: picks[0]?.licenseType,
-                            reason: result.reason ?? "llm",
+                        // Publish the decision with the LLM reasoning: one event per
+                        // pick, as analytics expects (#2317). The envelope subject is
+                        // one track (200 characters at most), so a comma-joined list
+                        // of a 12-track batch was rejected and the decision was lost.
+                        // The batch-level fields (reasoning, latency, coverage) ride
+                        // on the first event only; the live feed shows one line per
+                        // batch (pickIndex > 0 is skipped there).
+                        const batchFields = {
                             reasoning: result.reasoning,
                             latencyMs: result.latencyMs,
-                            curatedBy: "llm",
                             ...(result.requestCoverage
                                 ? {
                                     coverage: result.requestCoverage,
                                     ...(coverageSummary ? { coverageSummary } : {}),
                                 }
                                 : {}),
+                        };
+                        const decisionBase = () => ({
+                            eventName: "agent.decision_made" as const,
+                            eventVersion: 1,
+                            occurredAt: new Date().toISOString(),
+                            sessionId: session.id,
+                            reason: result.reason ?? "llm",
+                            curatedBy: "llm" as const,
+                        });
+                        if (picks.length === 0) {
+                            this.eventBus.publish({ ...decisionBase(), trackId: "", ...batchFields });
+                        }
+                        picks.forEach((pick, pickIndex) => {
+                            this.eventBus.publish({
+                                ...decisionBase(),
+                                trackId: pick.trackId,
+                                licenseType: pick.licenseType,
+                                pickIndex,
+                                pickCount: picks.length,
+                                ...(pickIndex === 0 ? batchFields : {}),
+                            });
                         });
                     }
                 })
