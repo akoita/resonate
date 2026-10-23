@@ -827,6 +827,35 @@ listener typed or picked.
   stop flow in `AgentSessionPanel.test.tsx`, `AgentHistoryCard.test.tsx`.
 - Screenshots in the User Guide are not refreshed in this slice.
 
+## Live Feed removed; request coverage under the filters (#2238)
+
+Vision-neutral quality (ADR-BM-6): no money path touched. The Live Feed card was
+an engineering log: two hard-coded placeholder lines before a session, then raw
+backend events, and a leftover 💰 icon for the retired buy mode (ADR-TE-1).
+
+- `AgentActivityFeed` and its layout row are deleted; the Next AI Pick card now
+  sits on its own. Its pick reasons (explanation pills and the plain-language
+  reason) are unchanged and remain where listeners see why a track was picked
+  until the "Now & Up next" card (#2243) takes them over.
+- How well the picks matched the request is one line under the filter chips in
+  the prompt, built by `coverageLine` (`web/src/lib/agentSessionRequest.ts`)
+  from the same coverage as before (a pick response's `requestCoverage` or the
+  newest `agent.decision_made` event): "All picks matched your request", "Only 1
+  of 5 picks matched 120–125 BPM" (largest gap first), or "Nothing in the
+  catalog matched World yet — playing the closest picks" when no pick matched
+  any filter. An unmet request is stated, never dressed up as a match (ADR-TE-4).
+  It replaces the per-gap notes, so coverage appears once.
+- Raw events for developers: no admin view of agent events exists, and events
+  reach only the session owner's socket (#2078), so an operator cannot read
+  another account's stream. `AgentEventsDebug` renders the viewer's own events in
+  a plain `<details>` only when the page is opened with `?debug=agent`; listeners
+  never see it. A real cross-account operator view would need a backend read
+  path and is a separate follow-up.
+- `agent.negotiated` no longer has an icon mapping in `useAgentEvents`.
+- Tests: `agentSessionRequest.test.ts` and `AgentSessionPrompt.test.tsx` (full,
+  partial, none), `AgentEventsDebug.test.tsx`, `useAgentEvents.test.ts`.
+- Screenshots in the User Guide are not refreshed in this slice.
+
 ## Played-through milestone for Sonic Radar (#2097)
 
 Sonic Radar's resonance rule needs a `complete` `AgentSignal` with

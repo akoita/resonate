@@ -160,28 +160,47 @@ function coverageSubject(
   }
 }
 
+export type CoverageLine = { kind: "full" | "partial" | "none"; text: string };
+
 /**
- * One line per gap, largest gap first (as sent), e.g.
- * "Only 1 of 5 picks matched 120–125 BPM". Gaps for filters the listener
- * has since removed are dropped.
+ * One plain line about how well the latest picks matched the request, or null
+ * when there is nothing to say (no coverage, no picks, or no filters left).
+ *
+ * - full: every pick matched every filter.
+ * - partial: some filters were only partly matched, e.g. "Only 1 of 5 picks
+ *   matched 120–125 BPM", largest gap first (as sent).
+ * - none: no pick matched any filter. The DJ still plays the closest picks and
+ *   says so instead of implying a match (ADR-TE-4: never fill with fakes).
+ *
+ * Gaps for filters the listener has since removed are dropped.
  */
-export function coverageNotes(
+export function coverageLine(
   coverage: AgentRequestCoverage | null | undefined,
   request: AgentSessionRequest | null | undefined,
-): string[] {
-  if (!coverage || coverage.picks <= 0) return [];
-  const notes: string[] = [];
-  for (const gap of coverage.gaps) {
-    if (gap.matched >= coverage.picks) continue;
+): CoverageLine | null {
+  if (!coverage || coverage.picks <= 0 || !hasFilters(request)) return null;
+  const gaps = coverage.gaps.flatMap((gap) => {
+    if (gap.matched >= coverage.picks) return [];
     const subject = coverageSubject(gap.filter, request);
-    if (!subject) continue;
-    notes.push(
-      gap.matched <= 0
-        ? `None of the ${coverage.picks} picks matched ${subject}`
-        : `Only ${gap.matched} of ${coverage.picks} picks matched ${subject}`,
-    );
+    return subject ? [{ matched: gap.matched, subject }] : [];
+  });
+  if (gaps.length === 0) return { kind: "full", text: "All picks matched your request" };
+  if (gaps.length >= requestFilterKeys(request).length && gaps.every((gap) => gap.matched <= 0)) {
+    return {
+      kind: "none",
+      text: `Nothing in the catalog matched ${gaps.map((gap) => gap.subject).join(" and ")} yet \u2014 playing the closest picks`,
+    };
   }
-  return notes;
+  return {
+    kind: "partial",
+    text: gaps
+      .map((gap) =>
+        gap.matched <= 0
+          ? `None of the ${coverage.picks} picks matched ${gap.subject}`
+          : `Only ${gap.matched} of ${coverage.picks} picks matched ${gap.subject}`,
+      )
+      .join(" \u00B7 "),
+  };
 }
 
 type QueuedTrackLike = { id: string; catalogTrackId?: string | null };

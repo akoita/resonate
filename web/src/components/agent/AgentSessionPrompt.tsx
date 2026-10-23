@@ -16,7 +16,7 @@ import {
     SESSION_ENERGY_BANDS,
     SESSION_REQUEST_MAX_TEXT_LENGTH,
     chipsFromRequest,
-    coverageNotes,
+    coverageLine,
     ignoredKeyLabels,
 } from "../../lib/agentSessionRequest";
 import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
@@ -132,7 +132,7 @@ export default function AgentSessionPrompt({
         `${id}-preset-${preset.intent.replace(/[^a-zA-Z0-9_-]/g, "")}`;
     const chips = chipsFromRequest(request);
     const ignoredLabels = ignoredKeyLabels(ignored);
-    const notes = coverageNotes(coverage, request);
+    const coverageSummary = coverageLine(coverage, request);
     const myMixHasInputs = myMix?.preferences
         ? selectedMyMixLanes(myMix.preferences, myMix.lanes).length > 0 || (myMix.preferences.additions?.length ?? 0) > 0
         : false;
@@ -295,6 +295,14 @@ export default function AgentSessionPrompt({
                         )}
                     </p>
                 )}
+                {coverageSummary ? (
+                    <p
+                        className={`aid-prompt-note aid-prompt-note--coverage aid-prompt-note--coverage-${coverageSummary.kind}`}
+                        data-testid="agent-session-coverage"
+                    >
+                        {coverageSummary.text}
+                    </p>
+                ) : null}
                 {parseError ? (
                     <p className="aid-prompt-note aid-prompt-note--error" role="status">
                         {parseError}
@@ -308,11 +316,6 @@ export default function AgentSessionPrompt({
                 {ignoredLabels.length > 0 ? (
                     <p className="aid-prompt-note">Not used for listening: {ignoredLabels.join(", ")}</p>
                 ) : null}
-                {notes.map((note) => (
-                    <p key={note} className="aid-prompt-note aid-prompt-note--coverage">
-                        {note}
-                    </p>
-                ))}
             </div>
 
             {explicit ? (

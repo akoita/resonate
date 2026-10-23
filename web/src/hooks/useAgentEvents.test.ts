@@ -134,10 +134,13 @@ describe("useAgentEvents", () => {
     renderPass();
 
     emit(sockets[0], { id: "evt-1", type: "agent.decision_made" });
-    emit(sockets[0], { id: "evt-2", type: "unknown.type" });
+    // The retired buy mode's event has no dedicated icon any more (ADR-TE-1).
+    emit(sockets[0], { id: "evt-2", type: "agent.negotiated" });
+    emit(sockets[0], { id: "evt-3", type: "unknown.type" });
     const events = renderPass();
 
     expect(events.map((event) => [event.id, event.icon])).toEqual([
+      ["evt-3", "📋"],
       ["evt-2", "📋"],
       ["evt-1", "✅"],
     ]);

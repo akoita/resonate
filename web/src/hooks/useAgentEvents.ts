@@ -22,7 +22,6 @@ const EVENT_ICONS: Record<string, string> = {
     "session.ended": "⏹️",
     "agent.selection": "🔍",
     "agent.mix_planned": "🎧",
-    "agent.negotiated": "💰",
     "agent.decision_made": "✅",
 };
 

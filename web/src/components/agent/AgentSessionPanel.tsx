@@ -47,7 +47,6 @@ import { usePlayer } from "../../lib/playerContext";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { sonicRadarBanner } from "../../lib/sonicRadarSummary";
 import { useToast } from "../ui/Toast";
-import AgentActivityFeed from "./AgentActivityFeed";
 import AgentHistoryCard from "./AgentHistoryCard";
 import AgentNextPickCard from "./AgentNextPickCard";
 import { humanPickReason } from "../../lib/agentPickReason";
@@ -56,6 +55,7 @@ import { SESSION_PRESETS, type SessionPreset } from "./AgentSessionPresets";
 import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
 import AgentSetupWizard from "./AgentSetupWizard";
 import AgentCommandBar from "./AgentCommandBar";
+import AgentEventsDebug from "./AgentEventsDebug";
 
 /** Analytics surface for the DJ session panel (it lives in the Home `#ai-dj` section). */
 const ANALYTICS_SURFACE = "home";
@@ -129,7 +129,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const [parseError, setParseError] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(false);
     const [isReplanning, setIsReplanning] = useState(false);
-    // Coverage from the latest pick this panel requested (the live feed may carry a newer one).
+    // Coverage from the latest pick this panel requested (the live event stream may carry a newer one).
     const [pickCoverage, setPickCoverage] = useState<{ coverage: AgentRequestCoverage | null; at: number } | null>(null);
     const parseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const parseSeqRef = useRef(0);
@@ -256,7 +256,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     openSessionIdRef.current = openSessionId;
 
     // How well the latest picks matched the filters: the newest of this panel's own
-    // pick response and the live feed's newest decision for the open session.
+    // pick response and the event stream's newest decision for the open session.
     const coverage = useMemo((): AgentRequestCoverage | null => {
         const event = openSessionId
             ? events.find(
@@ -896,18 +896,17 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         onSubmit={handleSubmit}
                     />
 
-                    {/* Middle row: Activity | Next Pick */}
-                    <div className="aid-middle-row aid-middle-row--pair">
-                        <AgentActivityFeed isActive={config.isActive} events={events} />
-                        <AgentNextPickCard
-                            config={config}
-                            activeSessionId={openSessionId}
-                            pick={nextPick}
-                            isLoading={isPickingNext}
-                            mixCoverage={myMixPreferences ? myMixCoverage : null}
-                            onPick={handleNextPick}
-                        />
-                    </div>
+                    {/* Next pick, with its reasons */}
+                    <AgentNextPickCard
+                        config={config}
+                        activeSessionId={openSessionId}
+                        pick={nextPick}
+                        isLoading={isPickingNext}
+                        mixCoverage={myMixPreferences ? myMixCoverage : null}
+                        onPick={handleNextPick}
+                    />
+
+                    <AgentEventsDebug events={events} />
 
                     {/* Discovery banner: numbers come from the Sonic Radar journal itself. */}
                     {!journalLoading && journal && (
