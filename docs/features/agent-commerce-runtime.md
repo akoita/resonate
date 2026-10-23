@@ -32,7 +32,7 @@ Available now:
 
 - `SessionsService.agentNext()` routes through `AgentRuntimeService.runCommerce()`.
 - Runtime output is normalized into `status`, `tracks`, `primaryTrack`, `licenseType`, and `priceUsd`.
-- Home's **Your AI DJ** section (`/#ai-dj`; `/agent` redirects) exposes a "Next AI Pick" control that calls the shared runtime-commerce path for the active session and shows the track, score, reasons and runtime status. It shows no license or price: listening sessions have none (#2036).
+- Home's **Your AI DJ** section (`/#ai-dj`; `/agent` redirects) shows a "Now & Up next" card (#2243, replacing the Next AI Pick control) whose Not this and More like this actions call the shared runtime-commerce path (`POST /sessions/agent/next`) for the active session. It shows no score, runtime status, license or price: listening sessions have none (#2036).
 - The Home page exposes a "Recommended for You" row backed by `GET /recommendations/:userId`, with a seeded "Start session" action that starts a session in place from the seed genre. A first-time listener's DJ is created with the seed as its saved vibes; an existing DJ keeps the vibes saved in Settings and the seed steers that session only (#2036).
 - Joined, consented listener cohorts can influence Home recommendations and AI DJ picks as a bounded additive signal. Explanations name only the safe cohort label; member lists, exact raw membership, wallets, and raw listening history are not exposed.
 - `SessionsService.agentNext()` searches the listener's learned favorite genres plus the session's genres, as session start does, and passes every track the session already holds (in-memory next picks and the session's licenses) as `recentTrackIds`, so a next pick never repeats a session track.
@@ -102,8 +102,8 @@ Lyria tools were removed ([ADR-TE-4](../strategy/taste-engine-decisions.md)).
 2. Go to `/agent`.
 3. Connect a wallet and configure the AI DJ.
 4. Start a session.
-5. Use the "Next Pick" button in the "Next AI Pick" card.
-6. Review the selected track, license type, price, runtime status, and any no-pick/policy status shown in the card.
+5. Use Not this or More like this in the "Now & Up next" card.
+6. Review the queued picks, their artist and reason shown in the card.
 7. Watch the activity feed/history for selected tracks and spend.
 
 The activity feed arrives over Socket.IO as `agent.event`. The gateway sends

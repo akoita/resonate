@@ -37,6 +37,7 @@ import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../recommendations/taste_ed
 import { resolveMyMixPlan } from "./agent_my_mix";
 import type { MyMixPreferences } from "./agent_my_mix";
 import { resolveListeningLanes } from "./listening_lanes.service";
+import { clearPickNotes, getPickNotes, pickNotesFromRunResult, rememberPickNotes } from "./agent_pick_notes";
 
 /** Tracked per signed-in person where the guard has resolved them, else per IP. */
 const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
@@ -443,6 +444,13 @@ export class AgentConfigController {
                     return this.runtimeService.run(runtimeInput);
                 })
                 .then(async (result) => {
+                    // Keep each pick's explanation for Session History: it is
+                    // lost otherwise until the listener plays the track (#2243).
+                    try {
+                        rememberPickNotes(req.user.userId, session.id, pickNotesFromRunResult(result));
+                    } catch {
+                        this.logger.warn("Pick explanations were skipped after an agent session result.");
+                    }
                     const resultStatus = typeof result.status === "string" ? result.status : "";
                     const foundTrackIds = "tracks" in result
                         ? result.tracks.map((track) => track.trackId)
@@ -582,6 +590,7 @@ export class AgentConfigController {
                 data: { endedAt: new Date() },
             });
             this.runtimeService.clearMyMixSession(req.user.userId, openSession.id);
+            clearPickNotes(req.user.userId, openSession.id);
             await this.learningService.annotateSessionOutcome({
                 userId: req.user.userId,
                 sessionId: openSession.id,
@@ -693,11 +702,27 @@ export class AgentConfigController {
             const mixTrackIds = this.runtimeService.getMyMixTrackOrder?.(req.user.userId, session.id);
             if (mixTrackIds) Object.assign(session, { mixTrackIds });
             const signalByTrack = new Map(session.agentSignals.map((signal) => [signal.trackId, signal.metadata]));
+            // A pick the listener has not played has no signal yet: fall back to
+            // the explanation the run produced (ephemeral; absent after a restart).
+            const notes = getPickNotes(req.user.userId, session.id);
             // @ts-ignore - hydrating dynamic props for frontend
-            session.licenses = session.licenses.map((license) => ({
-                ...license,
-                recommendation: signalByTrack.get(license.trackId) ?? null,
-            }));
+            session.licenses = session.licenses.map((license) => {
+                const signal = signalByTrack.get(license.trackId) as Record<string, unknown> | null | undefined;
+                const note = notes?.get(license.trackId);
+                return {
+                    ...license,
+                    recommendation: note
+                        ? {
+                            recommendation: {
+                                explanation: note.explanation,
+                                ...(note.reasonCode ? { reasonCode: note.reasonCode } : {}),
+                            },
+                            curatedBy: note.curatedBy,
+                            ...(signal ?? {}),
+                        }
+                        : signal ?? null,
+                };
+            });
         }
 
         // Hydrate transactions with Stem info (same pattern as AgentPurchaseService)

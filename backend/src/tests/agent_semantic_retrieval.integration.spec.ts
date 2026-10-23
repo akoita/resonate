@@ -186,6 +186,52 @@ describe("AI DJ semantic retrieval (integration)", () => {
         expect(idsOf(excluded.items)).not.toContain(ids.africanExplicit);
       });
 
+      it("returns a seed track's stored-vector neighbours without a model call (#2243)", async () => {
+        const embedQuery = jest.spyOn(embeddingService, "embedQuery");
+        try {
+          const result = await tools.get("catalog.semantic_search").run({
+            seedTrackId: ids.african,
+            limit: 10,
+            allowExplicit: false,
+          });
+          expect(result.status).toBe("ok");
+          const found = idsOf(result.items);
+          // Never the seed itself; explicit and fully AI-generated stay out.
+          expect(found).not.toContain(ids.african);
+          expect(found).not.toContain(ids.africanExplicit);
+          expect(found).not.toContain(ids.africanAi);
+          expect(found.length).toBeGreaterThan(0);
+          const scores = (result.items as Array<{ semanticScore: number }>).map((i) => i.semanticScore);
+          expect(scores).toEqual([...scores].sort((a, b) => b - a));
+          expect(embedQuery).not.toHaveBeenCalled();
+
+          const open = await tools.get("catalog.semantic_search").run({
+            seedTrackId: ids.african,
+            limit: 10,
+            allowExplicit: true,
+            excludeTrackIds: [ids.hipHop],
+          });
+          expect(idsOf(open.items)).toContain(ids.africanExplicit);
+          expect(idsOf(open.items)).not.toContain(ids.hipHop);
+          expect(embedQuery).not.toHaveBeenCalled();
+        } finally {
+          embedQuery.mockRestore();
+        }
+      });
+
+      it("reports unavailable for a seed without a stored vector, and applies the floor", async () => {
+        const unknown = await tools
+          .get("catalog.semantic_search")
+          .run({ seedTrackId: `${TEST_PREFIX}no_such_track`, limit: 10 });
+        expect(unknown).toEqual({ items: [], status: "unavailable" });
+
+        process.env.AGENT_SEMANTIC_MIN_SIMILARITY = "1";
+        const strict = await tools
+          .get("catalog.semantic_search")
+          .run({ seedTrackId: ids.african, limit: 10 });
+        expect(strict).toEqual({ items: [], status: "ok" });
+      });
+
       it("drops neighbours below the similarity floor", async () => {
         process.env.AGENT_SEMANTIC_MIN_SIMILARITY = "1";
         const result = await tools.get("catalog.semantic_search").run({

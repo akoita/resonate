@@ -17,7 +17,6 @@ import {
     type AgentMixCoverage,
     type AgentMixVocabulary,
     type AgentMyMixPreferences,
-    type AgentNextPickResponse,
     type AgentNextPreferences,
     type AgentRequestCoverage,
     type AgentSessionEnergy,
@@ -31,7 +30,7 @@ import {
     getMyMixLocalContext,
 } from "../../lib/agentMyMix";
 import { resolveDjQueue } from "../../lib/agentDjPlayback";
-import { getDjSet, setDjSet } from "../../lib/agentDjSet";
+import { getDjSet, setDjSet, type DjPickNote } from "../../lib/agentDjSet";
 import {
     emptyRequest,
     hasFilters,
@@ -48,8 +47,10 @@ import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { sonicRadarBanner } from "../../lib/sonicRadarSummary";
 import { useToast } from "../ui/Toast";
 import AgentHistoryCard from "./AgentHistoryCard";
-import AgentNextPickCard from "./AgentNextPickCard";
 import { humanPickReason } from "../../lib/agentPickReason";
+import AgentUpNextCard from "./AgentUpNextCard";
+import { useDjUpNext } from "./useDjUpNext";
+import { pickNotesFromLicenses, pickNotesFromResponse } from "../../lib/agentUpNext";
 import AgentSessionPrompt from "./AgentSessionPrompt";
 import { SESSION_PRESETS, type SessionPreset } from "./sessionPresetData";
 import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
@@ -107,8 +108,6 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const { playQueue } = player;
     const [wizardOpen, setWizardOpen] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-    const [nextPick, setNextPick] = useState<AgentNextPickResponse | null>(null);
-    const [isPickingNext, setIsPickingNext] = useState(false);
     // What this session is for. The typed sentence lives only here, in memory:
     // it is parsed into `request` and never stored, sent with a session, or logged.
     const [text, setText] = useState("");
@@ -220,7 +219,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
-        async (sessionId: string, trackIds: string[]): Promise<number> => {
+        async (sessionId: string, trackIds: string[], notes?: Record<string, DjPickNote>): Promise<number> => {
             try {
                 const queue = await resolveDjQueue(trackIds, token);
                 if (queue.length === 0) return 0;
@@ -231,6 +230,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     sessionId,
                     preferences: buildNextPickPreferences(),
                     trackIds: queue.map((track) => track.catalogTrackId || track.id),
+                    ...(notes && Object.keys(notes).length > 0 ? { picks: notes } : {}),
                 });
                 const installedSet = getDjSet();
                 try {
@@ -260,6 +260,21 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const openSessionIdRef = useRef(openSessionId);
     openSessionIdRef.current = openSessionId;
 
+    // Now & Up next: the playing DJ track, the next picks, and the actions that steer them (#2243).
+    const upNext = useDjUpNext({
+        token,
+        sessionId: config?.isActive ? openSessionId : null,
+        buildPreferences: buildNextPickPreferences,
+        surface: ANALYTICS_SURFACE,
+        intent: activePreset?.intent,
+        intentName: activePreset?.name,
+        onPicks: (result) => {
+            setPickCoverage({ coverage: result.requestCoverage ?? null, at: Date.now() });
+            if (myMixPreferences) setMyMixCoverage(result.mixCoverage ?? null);
+            void refetchHistory();
+        },
+    });
+
     // How well the latest picks matched the filters: the newest of this panel's own
     // pick response and the event stream's newest decision for the open session.
     const coverage = useMemo((): AgentRequestCoverage | null => {
@@ -282,12 +297,17 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
      * Re-plan the DJ's upcoming picks after the filters changed: ask for picks that
      * follow them, then swap them in for the not-yet-played DJ picks in the player.
      * Tracks already played, the one playing, and tracks the listener queued stay.
+     *
+     * With no DJ set in the player (nothing from this session is playing), an edit
+     * does nothing by itself; the explicit "Update session" (`playIfIdle`) asks the
+     * DJ for picks that follow the filters and starts playing them, which is also
+     * the way back when the first picks could not play.
      */
-    const replanUpcoming = async () => {
+    const replanUpcoming = async ({ playIfIdle = false }: { playIfIdle?: boolean } = {}) => {
         if (!token || !openSessionId || !config?.isActive) return;
         const set = getDjSet();
-        // No DJ set in the player yet: the next pick and the continuation read the new filters.
-        if (!set || set.sessionId !== openSessionId) return;
+        const idle = !set || set.sessionId !== openSessionId;
+        if (idle && !playIfIdle) return;
         const preferences = buildNextPickPreferences();
         const sequence = ++replanSeqRef.current;
         const isCurrent = () => sequence === replanSeqRef.current;
@@ -305,13 +325,22 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 addToast({
                     type: "info",
                     title: "No new picks for those filters",
-                    message: result.reason ?? "The DJ kept your upcoming tracks.",
+                    message: idle
+                        ? humanPickReason(result.status, result.reason, myMixPreferences ? result.mixCoverage ?? null : null)
+                        : result.reason ?? "The DJ kept your upcoming tracks.",
                 });
                 return;
             }
             const ids = Array.from(
                 new Set([result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]),
             );
+            if (idle) {
+                // Nothing of this session is playing: these picks start the set.
+                clearAwaitingAutoplay();
+                await playDjTracks(openSessionId, ids, pickNotesFromResponse(result));
+                void refetchHistory();
+                return;
+            }
             const resolved = await resolveDjQueue(ids, token);
             if (!isCurrent()) return;
             if (resolved.length === 0) {
@@ -336,6 +365,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 sessionId: openSessionId,
                 preferences,
                 trackIds: [...live.trackIds.filter((id) => !removedIds.has(id)), ...addedIds],
+                picks: { ...(live.picks ?? {}), ...pickNotesFromResponse(result) },
             });
             // The server recorded the new picks on the session; show them in Session History.
             void refetchHistory();
@@ -581,7 +611,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             addToast({
                 type: "info",
                 title: "The DJ found nothing to play yet",
-                message: "Try Next AI Pick, or start a session with another intent.",
+                message: "Try other filters, or start a session with another quick start.",
             });
         }, AUTOPLAY_MAX_WAIT_MS);
         return () => {
@@ -597,7 +627,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         const session = sessions.find((candidate) => candidate.id === sessionId);
         if (!session || session.licenses.length === 0) return;
         clearAwaitingAutoplay();
-        void playDjTracks(sessionId, session.mixTrackIds ?? session.licenses.map((license) => license.trackId));
+        void playDjTracks(
+            sessionId,
+            session.mixTrackIds ?? session.licenses.map((license) => license.trackId),
+            pickNotesFromLicenses(session.licenses),
+        );
     }, [sessions, playDjTracks, clearAwaitingAutoplay]);
 
     useEffect(() => {
@@ -652,7 +686,6 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             setPickCoverage(null);
             invalidateMyMixCoverage();
             setActiveSessionId(null);
-            setNextPick(null);
             void recordProductAnalytics(token, "agent.session_stopped", {
                 source: "agent_command_bar",
                 subjectType: "agent_session",
@@ -794,84 +827,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         if (isParsing) return;
         if (replanTimerRef.current) clearTimeout(replanTimerRef.current);
         replanTimerRef.current = null;
-        const set = getDjSet();
-        if (set && set.sessionId === openSessionId) {
-            await replanUpcoming();
-        } else {
-            addToast({
-                type: "info",
-                title: "Filters updated",
-                message: "The DJ's next picks will follow them.",
-            });
-        }
+        await replanUpcoming({ playIfIdle: true });
     };
 
-    const handleNextPick = async () => {
-        if (!token || !openSessionId || !config) return;
-        const requestedSessionId = openSessionId;
-        const requestedMixVersion = myMixPreferences ? myMixEditVersionRef.current : null;
-        const requestIsCurrent = () =>
-            requestedMixVersion === null ||
-            (requestedMixVersion === myMixEditVersionRef.current &&
-                myMixPreferencesRef.current !== null &&
-                openSessionIdRef.current === requestedSessionId);
-        setIsPickingNext(true);
-        try {
-            const result = await getAgentNextPick(token, {
-                sessionId: requestedSessionId,
-                preferences: buildNextPickPreferences(),
-            });
-            if (!requestIsCurrent()) return;
-            void recordProductAnalytics(token, "agent.next_pick_requested", {
-                source: "agent_next_pick_card",
-                subjectType: "agent_session",
-                subjectId: requestedSessionId,
-                payload: {
-                    surface: ANALYTICS_SURFACE,
-                    intent: activePreset?.intent,
-                    intentName: activePreset?.name,
-                    status: result.status,
-                    trackId: result.track?.id,
-                    runtimeStatus: result.runtimeStatus,
-                    score: result.score,
-                    // #2005: variant labels so DJ picks are counted per ranker variant.
-                    ...(result.rankerVariant ? { rankerVariant: result.rankerVariant } : {}),
-                    ...(result.experimentKey ? { experimentKey: result.experimentKey } : {}),
-                },
-            });
-            setNextPick(result);
-            setPickCoverage({ coverage: result.requestCoverage ?? null, at: Date.now() });
-            if (myMixPreferences) setMyMixCoverage(result.mixCoverage ?? null);
-            if (result.status === "ok" && result.track) {
-                // A rule-based fallback is not an AI pick; say so (#2075).
-                addToast({
-                    type: "success",
-                    title: result.runtimeFallback ? "Pick Ready" : "AI Pick Ready",
-                    message: result.runtimeFallback
-                        ? `Playing ${result.track.title} · rule-based pick, the AI curator is unavailable`
-                        : `Playing ${result.track.title}`,
-                });
-                void playDjTracks(requestedSessionId, [result.track.id, ...(result.tracks ?? []).map((pick) => pick.trackId)]);
-            } else {
-                addToast({
-                    type: "info",
-                    title: "No new pick",
-                    message: humanPickReason(result.status, result.reason),
-                });
-            }
-            void refetchHistory();
-        } catch (error) {
-            if (!requestIsCurrent()) return;
-            const message = error instanceof Error ? error.message : "Unable to request next pick.";
-            addToast({
-                type: "error",
-                title: "Runtime Pick Failed",
-                message,
-            });
-        } finally {
-            setIsPickingNext(false);
-        }
-    };
 
     // A refetch must not blank the panel: only show the loaders on first load.
     const showConfigLoader = isLoading && !config;
@@ -936,14 +894,17 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         onSubmit={handleSubmit}
                     />
 
-                    {/* Next pick, with its reasons */}
-                    <AgentNextPickCard
-                        config={config}
-                        activeSessionId={openSessionId}
-                        pick={nextPick}
-                        isLoading={isPickingNext}
+                    {/* Now & Up next: what plays, what is queued, and how to steer it (#2243) */}
+                    <AgentUpNextCard
+                        sessionLive={Boolean(config.isActive && openSessionId)}
+                        now={upNext.view.now}
+                        upNext={upNext.view.upNext}
+                        busy={upNext.busy}
+                        notice={upNext.notice}
                         mixCoverage={myMixPreferences ? myMixCoverage : null}
-                        onPick={handleNextPick}
+                        onSkip={() => void upNext.skip()}
+                        onNotThis={(item) => void upNext.notThis(item)}
+                        onMoreLikeThis={(item) => void upNext.moreLikeThis(item)}
                     />
 
                     <AgentEventsDebug events={events} />

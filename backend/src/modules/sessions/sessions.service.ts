@@ -41,6 +41,8 @@ export interface AgentPreferences {
   request?: AgentSessionRequest;
   /** Session-only preference; explicit null clears it on the next request. */
   myMix?: MyMixPreferences | null;
+  /** "More like this" (#2243): one request's seed track; never remembered or published. */
+  seedTrackId?: string;
 }
 
 @Injectable()
@@ -87,7 +89,7 @@ export class SessionsService {
       },
     });
     if (input.preferences) {
-      this.agentPreferences.set(session.id, input.preferences);
+      this.agentPreferences.set(session.id, withoutSeed(input.preferences) ?? {});
     }
     this.eventBus.publish({
       eventName: "session.started",
@@ -288,7 +290,7 @@ export class SessionsService {
 
     const preferences = this.mergeAgentPreferences(
       input.sessionId,
-      sanitizeIncomingRequest(input.preferences),
+      sanitizeIncomingRequest(withoutSeed(input.preferences)),
     );
     // The described session (#2037); without a request nothing below changes.
     const requested = requestRankingPreferences(preferences);
@@ -312,6 +314,13 @@ export class SessionsService {
       });
     }
     const recentTrackIds = await this.sessionTrackIds(input.sessionId);
+    // "More like this" (#2243): only a track this session already picked can be
+    // a seed, and it steers this request alone (it is never merged above).
+    const seedTrackId =
+      typeof input.preferences?.seedTrackId === "string" &&
+      recentTrackIds.includes(input.preferences.seedTrackId)
+        ? input.preferences.seedTrackId
+        : undefined;
     // Wire-contract field only: listening runs are not budget-limited
     // (ADR-TE-1), so the remaining budget never reduces the picks.
     const budgetRemainingUsd = Math.max(0, session.budgetCapUsd - session.spentUsd);
@@ -326,6 +335,7 @@ export class SessionsService {
         genres: await this.withLearnedGenres(session.userId, sessionGenres),
         // What this session asked for itself, so it outranks learned taste (#2059).
         ...(sessionGenres?.length ? { sessionGenres } : {}),
+        ...(seedTrackId ? { seedTrackId } : {}),
         ...(requested.request
           ? {
               mood: requested.mood,
@@ -702,6 +712,13 @@ function cohortInfluenceFromSignals(signals?: Array<{ label: string; reason: str
 }
 
 function publicSessionPreferences(preferences: AgentPreferences): Record<string, unknown> {
-  const { myMix: _myMix, ...publicPreferences } = preferences;
+  const { myMix: _myMix, seedTrackId: _seedTrackId, ...publicPreferences } = preferences;
   return publicPreferences;
+}
+
+/** The preferences a session remembers: a seed track belongs to one request only (#2243). */
+function withoutSeed(preferences?: AgentPreferences): AgentPreferences | undefined {
+  if (!preferences || !("seedTrackId" in preferences)) return preferences;
+  const { seedTrackId: _seedTrackId, ...remembered } = preferences;
+  return remembered;
 }

@@ -58,6 +58,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     const agent = createCurationAgent(this.tools, {
       allowExplicit: input.preferences.allowExplicit ?? false,
       recentTrackIds: input.recentTrackIds,
+      seedTrackId: input.preferences.seedTrackId,
     });
     return new InMemoryRunner({ agent, appName: APP_NAME });
   }

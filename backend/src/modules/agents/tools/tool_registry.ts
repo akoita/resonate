@@ -85,19 +85,27 @@ export class ToolRegistry {
             (id): id is string => typeof id === "string",
           )
           : undefined;
+        // "More like this" (#2243): a seed track stands in for the query text,
+        // using its stored vector. No model call; the seed itself is excluded.
+        const seedTrackId =
+          typeof input.seedTrackId === "string" ? input.seedTrackId.trim() : "";
         // Provider disabled or failing: report it and let the caller keep its
         // keyword candidates. Never throws.
-        if (!query || !this.embeddingService.modelId) {
+        if ((!query && !seedTrackId) || !this.embeddingService.modelId) {
           return { items: [], status: "unavailable" };
         }
-        const vector = await this.embeddingService.embedQuery(query);
+        const vector = seedTrackId
+          ? await this.embeddingStore.get(seedTrackId, this.embeddingService.modelId)
+          : await this.embeddingService.embedQuery(query);
         if (!vector) {
           return { items: [], status: "unavailable" };
         }
         const neighbours = await trackEmbeddingService.neighboursOfVector(vector, {
           limit,
           allowExplicit: explicitAllowed,
-          excludeTrackIds,
+          excludeTrackIds: seedTrackId
+            ? [...(excludeTrackIds ?? []), seedTrackId]
+            : excludeTrackIds,
         });
         const floor = getAgentSemanticMinSimilarity();
         const kept = neighbours.filter((neighbour) => neighbour.score >= floor);

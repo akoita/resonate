@@ -36,6 +36,12 @@ export interface AgentRuntimeInput {
     request?: AgentSessionRequest;
     /** Untrusted session-only preferences; resolved server-side at runtime. */
     myMix?: MyMixPreferences | null;
+    /**
+     * "More like this" (#2243): a track of this session whose stored-embedding
+     * neighbours become one more semantic source for this request only.
+     * Set by the sessions service after it checked the track belongs to the session.
+     */
+    seedTrackId?: string;
   };
 }
 

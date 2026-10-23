@@ -7,6 +7,7 @@ import { addDjSetTracks, getDjSet, setDjSet, useDjSet, type DjSet } from "../../
 import { getAgentNextPick } from "../../lib/api";
 import { saveTracksMetadata, type LocalTrack } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
+import { pickNotesFromResponse } from "../../lib/agentUpNext";
 
 /** Refill when the player is on the last or second-to-last track of the queue. */
 const REFILL_WITHIN_LAST = 2;
@@ -117,7 +118,7 @@ export default function AgentDjContinuation() {
                     exhaustedKeyRef.current = key;
                     return;
                 }
-                addDjSetTracks(resolved.map((track) => track.catalogTrackId || track.id));
+                addDjSetTracks(resolved.map((track) => track.catalogTrackId || track.id), pickNotesFromResponse(result));
             } catch (error) {
                 console.warn("AI DJ could not fetch more picks", error);
                 exhaustedKeyRef.current = key;
