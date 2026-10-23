@@ -612,6 +612,30 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it("accepts the AI DJ Now & Up next action event with ids and an action only (#2243)", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        eventName: "agent.up_next_action",
+        sessionId: "product-session-1",
+        subjectType: "agent_session",
+        subjectId: "agent-session-1",
+        clientEventId: "client-event-3",
+        payload: { surface: "home", action: "more_like_this", trackId: "track-1", position: 2 },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "agent.up_next_action",
+        subjectType: "agent_session",
+        subjectId: "agent-session-1",
+        payload: expect.objectContaining({ action: "more_like_this", trackId: "track-1", position: 2 }),
+      }),
+    );
+  });
+
   it("accepts artist community product analytics events", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")

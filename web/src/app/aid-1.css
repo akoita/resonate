@@ -300,7 +300,7 @@
 
 /* card variants */
 .aid-card--status   { border-top: 2px solid var(--r-secondary); }
-.aid-card--next-pick{ border-top: 2px solid var(--r-secondary-soft); }
+.aid-card--up-next{ border-top: 2px solid var(--r-secondary-soft); }
 .aid-card--finance  { border-top: 2px solid rgba(52,211,153,0.4); }
 .aid-card--taste    { border-top: 2px solid rgba(251,146,60,0.4); }
 .aid-card--history  { border-top: 2px solid rgba(148,163,184,0.3); }
@@ -372,39 +372,55 @@
   color: var(--r-secondary-soft);
 }
 
-/* ── Next-pick card ─────────────────────────────────────── */
-.aid-np-body { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
-
-.aid-np-art {
-  width: 72px;
-  height: 72px;
-  border-radius: 10px;
-  object-fit: cover;
-  flex-shrink: 0;
-  border: 1px solid rgba(255,255,255,0.1);
-}
-.aid-np-art-placeholder {
-  width: 72px;
-  height: 72px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  background: rgba(139, 92, 246, 0.12);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-  display: flex;
+/* ── Now & Up next card (#2243) ─────────────────────────── */
+.aid-un-source { margin: 0; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--r-secondary-soft); }
+.aid-un-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.aid-un-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
-  color: rgba(167, 139, 250, 0.4);
-  font-size: 1.6rem;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  min-width: 0;
 }
-
-.aid-np-info    { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
-.aid-np-kicker  { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--r-secondary-soft); }
-.aid-np-title   { font-size: 0.95rem; font-weight: 700; color: #f0eaff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.aid-np-meta    { font-size: 0.75rem; color: rgba(240,234,255,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.aid-np-price   { font-size: 0.8rem; font-weight: 700; color: #4ade80; }
-
-.aid-np-reasons { display: flex; flex-wrap: wrap; gap: 5px; }
-.aid-np-reason-pill {
+.aid-un-row--now { background: rgba(139, 92, 246, 0.08); border-color: rgba(139, 92, 246, 0.22); }
+.aid-un-art { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1); }
+.aid-un-art--placeholder {
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.2);
+  color: rgba(167, 139, 250, 0.5);
+}
+.aid-un-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.aid-un-info p { margin: 0; }
+.aid-un-kicker { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--r-secondary-soft); }
+.aid-un-title { font-size: 0.92rem; font-weight: 700; color: #f0eaff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aid-un-artist { font-size: 0.78rem; color: rgba(240,234,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aid-un-reason { font-size: 0.72rem; color: rgba(240,234,255,0.5); overflow-wrap: anywhere; }
+.aid-un-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.aid-un-btn {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(240,234,255,0.85);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+.aid-un-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.28); }
+.aid-un-btn--more { border-color: rgba(139, 92, 246, 0.4); color: var(--r-secondary-soft); }
+.aid-un-btn:focus-visible { outline: 2px solid var(--r-secondary-soft); outline-offset: 2px; }
+.aid-un-btn:disabled { cursor: progress; opacity: 0.55; }
+.aid-un-empty, .aid-un-notice { margin: 0; font-size: 0.8rem; color: rgba(240,234,255,0.55); }
+.aid-un-notice { color: rgba(240,234,255,0.75); }
+.aid-un-mix { display: flex; flex-wrap: wrap; gap: 5px; }
+.aid-un-pill {
   font-size: 0.68rem;
   padding: 2px 9px;
   border-radius: 999px;
@@ -412,56 +428,12 @@
   color: var(--r-secondary-soft);
   border: 1px solid rgba(139, 92, 246, 0.25);
 }
-.aid-np-tag {
-  font-size: 0.68rem;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.06);
-  color: rgba(240,234,255,0.5);
+@media (max-width: 640px) {
+  .aid-un-row { grid-template-columns: 48px minmax(0, 1fr); }
+  .aid-un-art { width: 48px; height: 48px; }
+  .aid-un-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .aid-un-btn { flex: 1 1 auto; min-height: 40px; }
 }
-.aid-np-hint { font-size: 0.75rem; color: rgba(240,234,255,0.4); }
-
-.aid-np-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  margin-top: auto;
-  padding: 10px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: var(--r-secondary-soft);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.18s, border-color 0.18s;
-}
-.aid-np-btn:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.35), rgba(139, 92, 246, 0.25));
-  border-color: rgba(139, 92, 246, 0.45);
-}
-.aid-np-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-.aid-np-btn:disabled:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
-  border-color: rgba(139, 92, 246, 0.3);
-}
-
-.aid-np-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 102px;
-  padding: 16px 0;
-  text-align: center;
-}
-.aid-np-empty-icon { font-size: 2rem; opacity: 0.3; }
 
 @media (max-width: 820px) {
   .aid-command {

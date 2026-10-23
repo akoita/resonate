@@ -123,6 +123,7 @@ export function deterministicSelectorInput(
     fallback: true,
     ...requestedTermsFor(input.preferences),
     semanticQuery: buildSemanticSessionQuery(input.preferences),
+    ...(input.preferences.seedTrackId ? { seedTrackId: input.preferences.seedTrackId } : {}),
     myMixPlan: input.myMixPlan,
   };
 }

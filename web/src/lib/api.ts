@@ -5722,9 +5722,12 @@ export type AgentRecommendationSummary = {
   recommendation?: {
     score?: number;
     explanation?: string[];
+    reasonCode?: string;
     signals?: AgentRecommendationSignal[];
     audioFeatures?: AgentAudioFeatureSummary;
   } | null;
+  /** #2243: who chose the pick; "llm" only when the AI curator did and did not fall back. */
+  curatedBy?: "llm" | "rules";
   reason?: string;
   reasoning?: string;
   source?: string;
@@ -5834,6 +5837,12 @@ export type AgentNextPreferences = {
   /** #2065: session-only taste lanes and catalog additions. */
   /** `null` explicitly clears a previously selected session mix. */
   myMix?: AgentMyMixPreferences | null;
+  /**
+   * #2243 "More like this": a track the DJ already picked in this session. The
+   * server adds its stored-embedding neighbours to this one request only; it
+   * is never part of the remembered set preferences.
+   */
+  seedTrackId?: string;
 };
 
 /** #2075: why the AI curator could not pick; categorical, never an error message. */
@@ -5853,6 +5862,8 @@ export type AgentNextPickResponse = {
   priceUsd?: number;
   score?: number;
   explanation?: string[];
+  /** Primary reason from the shared discovery vocabulary (server-authored). */
+  reasonCode?: string;
   signals?: AgentRecommendationSignal[];
   audioFeatures?: AgentAudioFeatureSummary;
   runtimeStatus?: string;
@@ -5872,6 +5883,7 @@ export type AgentNextPickResponse = {
     reason?: string;
     score?: number;
     explanation?: string[];
+    reasonCode?: string;
     signals?: AgentRecommendationSignal[];
   }>;
   /** Tracks requested minus tracks returned; agents never generate fills (ADR-TE-4). */

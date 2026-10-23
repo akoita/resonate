@@ -142,6 +142,83 @@ describe("AI DJ session picks (integration)", () => {
     });
   });
 
+  describe("pick explanations in Session History (#2243)", () => {
+    const history = async (controller: AgentConfigController) =>
+      (await controller.getHistory({ user: { userId: USER_ID } })) as unknown as Array<{
+        id: string;
+        licenses: Array<{ trackId: string; recommendation: any }>;
+      }>;
+
+    it("returns a rule-based pick's explanation before the listener plays it, and no AgentSignal", async () => {
+      const { controller } = makeController({
+        status: "approved",
+        tracks: [
+          {
+            trackId: TRACK_ID,
+            mixPlan: {},
+            pick: {
+              licenseType: "personal",
+              priceUsd: 0,
+              reason: "FREE TEXT",
+              recommendation: {
+                score: 42,
+                explanation: ["Catalog candidate", "Fits this session intent", "Nearby vibe match", "Third"],
+                reasonCode: "session_fit",
+              },
+            },
+          },
+        ],
+        shortfall: 4,
+      });
+      const started = (await controller.startSession({ user: { userId: USER_ID } }, {})) as { sessionId: string };
+      await waitFor(() => prisma.license.findFirst({ where: { sessionId: started.sessionId, trackId: TRACK_ID } }));
+
+      const row = (await history(controller)).find((session) => session.id === started.sessionId)!;
+      const license = row.licenses.find((entry) => entry.trackId === TRACK_ID)!;
+      expect(license.recommendation).toMatchObject({
+        recommendation: { explanation: ["Fits this session intent", "Nearby vibe match"], reasonCode: "session_fit" },
+        curatedBy: "rules",
+      });
+      expect(JSON.stringify(license.recommendation)).not.toContain("FREE TEXT");
+      expect(await prisma.agentSignal.count({ where: { userId: USER_ID } })).toBe(0);
+    });
+
+    it("marks an LLM pick as AI-curated, and a fallback as rules", async () => {
+      const llm = makeController({
+        status: "approved",
+        reason: "vertex_llm",
+        picks: [{ trackId: TRACK_ID, licenseType: "personal", priceUsd: 0, explanation: ["Sounds close to your taste"] }],
+      });
+      const first = (await llm.controller.startSession({ user: { userId: USER_ID } }, {})) as { sessionId: string };
+      await waitFor(() => prisma.license.findFirst({ where: { sessionId: first.sessionId, trackId: TRACK_ID } }));
+      const llmLicense = (await history(llm.controller)).find((s) => s.id === first.sessionId)!.licenses[0];
+      expect(llmLicense.recommendation).toMatchObject({
+        recommendation: { explanation: ["Sounds close to your taste"] },
+        curatedBy: "llm",
+      });
+
+      const fallback = makeController({
+        status: "approved",
+        tracks: [{ trackId: TRACK_ID, mixPlan: {}, pick: { licenseType: "personal", priceUsd: 0 } }],
+        runtimeFallback: { from: "adk", reason: "timeout" },
+      });
+      const second = (await fallback.controller.startSession({ user: { userId: USER_ID } }, {})) as { sessionId: string };
+      await waitFor(() => prisma.license.findFirst({ where: { sessionId: second.sessionId, trackId: TRACK_ID } }));
+      const fallbackLicense = (await history(fallback.controller)).find((s) => s.id === second.sessionId)!.licenses[0];
+      expect(fallbackLicense.recommendation.curatedBy).toBe("rules");
+    });
+
+    it("keeps the explanation private to the session owner", async () => {
+      const { controller } = makeController({
+        status: "approved",
+        tracks: [{ trackId: TRACK_ID, mixPlan: {}, pick: { licenseType: "personal", priceUsd: 0, recommendation: { explanation: ["Selected vibe match"] } } }],
+      });
+      const started = (await controller.startSession({ user: { userId: USER_ID } }, {})) as { sessionId: string };
+      await waitFor(() => prisma.license.findFirst({ where: { sessionId: started.sessionId, trackId: TRACK_ID } }));
+      expect(await controller.getHistory({ user: { userId: `${TEST_PREFIX}stranger` } })).toEqual([]);
+    });
+  });
+
   describe("a described session (#2037)", () => {
     const SENTENCE = "dark deep house for a late-night drive, 120-125 bpm";
 

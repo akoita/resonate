@@ -112,6 +112,67 @@ describe("AgentSelectorService semantic retrieval (#2088)", () => {
   });
 });
 
+describe("AgentSelectorService seed track (#2243 More like this)", () => {
+  it("asks the semantic tool for the seed's neighbours and keeps the keyword candidates", async () => {
+    const { selector, semanticRun } = selectorWith({
+      keyword: [item("keyword", "House")],
+      semantic: [item("neighbour", "Zzyzx", { semanticScore: 0.9 })],
+    });
+    const result = await selector.select({
+      queries: ["House"],
+      recentTrackIds: ["played"],
+      allowExplicit: false,
+      limit: 5,
+      seedTrackId: " seed-1 ",
+    });
+    expect([...result.candidates].sort()).toEqual(["keyword", "neighbour"]);
+    // One call, by seed only: no query text, so no model call to embed one.
+    expect(semanticRun).toHaveBeenCalledTimes(1);
+    expect(semanticRun).toHaveBeenCalledWith({
+      seedTrackId: "seed-1",
+      limit: 20,
+      allowExplicit: false,
+      excludeTrackIds: ["played"],
+    });
+  });
+
+  it("adds the seed as a second source beside the session description and keeps the better score", async () => {
+    const { selector, semanticRun } = selectorWith({
+      semantic: [item("both", "Zzyzx", { semanticScore: 0.7 })],
+    });
+    const result = await selector.select({
+      queries: ["World"],
+      recentTrackIds: [],
+      semanticQuery: "World music",
+      seedTrackId: "seed-1",
+    });
+    expect((semanticRun.mock.calls as unknown[][]).map(([args]) => args)).toEqual([
+      expect.objectContaining({ query: "World music" }),
+      expect.objectContaining({ seedTrackId: "seed-1" }),
+    ]);
+    expect(result.candidates).toEqual(["both"]);
+  });
+
+  it("does not call the semantic tool for a blank seed", async () => {
+    const { selector, semanticRun } = selectorWith({ keyword: [item("a", "House")] });
+    await selector.select({ queries: ["House"], recentTrackIds: [], seedTrackId: "  " });
+    expect(semanticRun).not.toHaveBeenCalled();
+  });
+
+  it("drops fully AI-generated neighbours of the seed", async () => {
+    const { selector } = selectorWith({
+      keyword: [item("keyword", "House")],
+      semantic: [item("ai", "Zzyzx", { aiDisclosureLevel: "ALL", semanticScore: 0.9 })],
+    });
+    const result = await selector.select({
+      queries: ["House"],
+      recentTrackIds: [],
+      seedTrackId: "seed-1",
+    });
+    expect(result.candidates).toEqual(["keyword"]);
+  });
+});
+
 describe("buildSemanticSessionQuery (#2088)", () => {
   it("is undefined unless the session asked for something itself", () => {
     expect(buildSemanticSessionQuery({ genres: ["Pop"], energy: "high" })).toBeUndefined();

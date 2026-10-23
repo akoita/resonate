@@ -28,7 +28,7 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > **AI DJ surface (#2032).** The standalone AI DJ page is gone. `/agent`
 > redirects to Home's **Your AI DJ** section (`/#ai-dj`): signed in, the
 > listener starts and stops a session, picks an intent preset, and sees status,
-> activity, Next AI Pick and session history; signed out they see the presets
+> activity, the Now & Up next card (#2243) and session history; signed out they see the presets
 > and a sign-in button. The Home tuner and feed "start a session" actions start
 > a session in place. DJ preferences (DJ name, vibes, first-time setup) live in
 > Settings → **AI DJ** (`/settings?section=dj`). The ERC-8004 identity and
@@ -65,7 +65,7 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > the preset's energy, and a requested tempo range gives a ranking boost to
 > tracks whose tempo was **measured** (an inferred tempo never counts, #1960).
 > Filters are boosts, not guarantees: after each set the AI DJ reports, in the
-> live feed and as `requestCoverage` on Next AI Pick, which requested filters
+> live feed and as `requestCoverage` on a next-pick response, which requested filters
 > some picks did not match ("not matched: 120-125 BPM (1 of 5)"). Coverage is
 > computed on both paths (#2075): the deterministic selector computes it for its
 > picks, and for the LLM runtime (`AGENT_RUNTIME=adk|vertex`) the runtime policy
@@ -101,7 +101,7 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989, 1954, 1955, 1956, 1456, 1957, 1
 > `web/src/lib/catalogVocabulary.ts`; starter tests check that every genre and
 > mood belongs to that vocabulary.
 
-> **Next AI Pick keeps going on a small catalog (#2056).** Vision-neutral
+> **The DJ keeps going on a small catalog (#2056).** Vision-neutral
 > quality: no money, payout or fee changes. A listening session used to
 > dead-end with `no_tracks` after one Next Pick on a catalog with few artists:
 > every matching track was already in the session, or every artist already
@@ -834,9 +834,8 @@ an engineering log: two hard-coded placeholder lines before a session, then raw
 backend events, and a leftover 💰 icon for the retired buy mode (ADR-TE-1).
 
 - `AgentActivityFeed` and its layout row are deleted; the Next AI Pick card now
-  sits on its own. Its pick reasons (explanation pills and the plain-language
-  reason) are unchanged and remain where listeners see why a track was picked
-  until the "Now & Up next" card (#2243) takes them over.
+  sits on its own. Its pick reasons moved to the "Now & Up next" card (#2243,
+  below).
 - How well the picks matched the request is one line under the filter chips in
   the prompt, built by `coverageLine` (`web/src/lib/agentSessionRequest.ts`)
   from the same coverage as before (a pick response's `requestCoverage` or the
@@ -1732,7 +1731,7 @@ configured) on an accepted pick. It comes from the same
 re-bucketed. The field is additive and labels-only. On an accepted pick the web
 (`getAgentNextPick`) remembers the variant for that track for 30 minutes in
 sessionStorage (`web/src/lib/discoveryAttribution.ts`, mirroring Home's
-helper), and the AI DJ page sends it on `agent.next_pick_requested` so DJ
+helper), and the AI DJ page sent it on `agent.next_pick_requested` (retired from the web app in #2243; the backend still accepts and reports it) so DJ
 impressions are counted per variant. `playback.started|completed|skipped` and
 `library.saved` for that track then forward `surface: "dj"`, `rankerVariant`
 and `experimentKey`. If a track has both a Home rail and a DJ attribution, the
@@ -1934,3 +1933,68 @@ Useful next warehouse jobs:
   `workers/analytics-dataflow/dataform/`.
 - Feature work that changes the serving table contract must update this page,
   `docs/features/README.md`, and `docs/deployment/environment.md`.
+
+## "Now & Up next" replaces Next AI Pick (#2243)
+
+Vision-neutral quality (ADR-BM-6): no money, payout or fee change. Phase 2
+(C2) of `docs/roadmap/2026-10-ai-dj-quality-and-experience.md`.
+
+- `AgentNextPickCard` and its "Next Pick" button are deleted. The button played
+  a new pick at once and replaced the queue, which the DJ continuation already
+  does on its own, and its idle state was a disabled button. The AI DJ section
+  now shows `AgentUpNextCard` (`web/src/components/agent/`): the playing DJ
+  track and the next three DJ picks from the player queue (listener-queued
+  tracks are not listed), each with artwork, credited artist and one plain
+  reason. Idle: one line pointing to the prompt, no button. The score,
+  audio-feature and runtime strings are gone.
+- **Reasons.** The first sentence of the pick's `explanation` (the shared
+  discovery vocabulary, `discovery-explanations.ts`), never the model's free
+  `reason`; "Catalog candidate" is not shown. The web remembers it per pick in
+  the DJ set (`DjSet.picks`, sessionStorage-mirrored, `web/src/lib/agentDjSet.ts`)
+  as picks arrive from a next-pick response (re-plan, continuation, actions).
+  A session's first picks arrive through Session History: the controller keeps
+  each pick's explanation sentences and curator from the start run in a bounded,
+  owner-bound, ephemeral cache (`agent_pick_notes.ts`, like the My Mix batch
+  order; no schema change, no AgentSignal) and `GET /agents/config/history`
+  returns them as `license.recommendation` (`recommendation.explanation`,
+  `curatedBy`) until the listener plays the track and a real signal replaces
+  them. After a restart, or on another instance, the note is absent and the
+  card shows no reason line for those picks. One caption names who chose
+  the picks: "Picked by the AI curator" only for an LLM pick that did not fall
+  back, otherwise "Picked from your filters" (#2075 rule kept); picks with no
+  note read "Picked for this session".
+- **Skip** is the player's skip (which records the usual `skipped` playback
+  event when analytics consent allows).
+- **Not this** writes the existing agent `skip` signal
+  (`POST /agents/config/signals`, `recordAgentSignal`; the server enforces the
+  playback-training consent), removes the track from the player queue and the
+  DJ set (on the playing track it advances the player instead, so that track
+  also gets the player's own skip), and requests a refill with the set's
+  filters. Every pick is already logged on the session and sent back as
+  `recentTrackIds`, so the DJ never offers the track again in that session
+  (`agent_up_next_seed.integration.spec.ts`); the web additionally filters
+  rejected ids out of its refill.
+- **More like this** sends `seedTrackId` on the next-pick request
+  (`AgentNextPreferences.seedTrackId`). The sessions service honours it only
+  for a track the session already picked, passes it to the runtime for that
+  request only (never merged into the session's remembered preferences, never
+  published), and the selector adds the seed's stored-embedding neighbours as a
+  second semantic source beside the session description
+  (`catalog.semantic_search` with `seedTrackId`: stored vector, the same
+  `AGENT_SEMANTIC_MIN_SIMILARITY` floor, explicit and AI-promotion filters, the
+  seed excluded; no embedding-model call). The curator runtimes force the seed
+  onto their semantic searches. The web swaps the not-yet-played DJ picks for
+  the neighbours and keeps the seed queued. #2244 generalizes seeds later.
+- **Limits.** `POST /sessions/agent/next` is throttled to 30 per minute per
+  user. The buttons are disabled while one action is in flight; a 429 shows a
+  calm note and the queue keeps playing.
+- **Analytics.** `agent.up_next_action` is the per-click event:
+  `{ surface, action: skip | not_this | more_like_this, trackId, intent?,
+  added? }`, ids only, sent through `recordProductAnalytics` (consent gated),
+  subject `agent_session`. `agent.next_pick_requested` keeps its DJ-impression
+  meaning with an unchanged payload (`status`, `trackId`, `runtimeStatus`,
+  `score`, `intent`, `intentName`, `rankerVariant`, `experimentKey`): the web
+  sends it whenever the AI DJ adds picks to the queue after a Not this refill
+  or a More like this, so ranker-variant metrics (#2005, #2242) stay comparable.
+- The User Guide AI DJ article describes the card; its screenshot is not
+  refreshed in this slice.

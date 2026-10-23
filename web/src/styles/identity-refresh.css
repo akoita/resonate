@@ -485,7 +485,7 @@ button:focus-visible,
   background: rgba(139, 92, 246, 0.22);
   color: var(--r-agent-soft);
 }
-.aid-card--next-pick { border-top-color: var(--r-agent); }
+.aid-card--up-next { border-top-color: var(--r-agent); }
 
 /* "Start session" commands the agent → consistent electric-violet
  * (was violet fill + mismatched coral shadow). */
@@ -500,22 +500,6 @@ button:focus-visible,
   background: linear-gradient(135deg, var(--r-agent), var(--r-agent-soft));
   color: #fff;
   box-shadow: 0 3px 14px var(--r-agent-glow);
-}
-
-/* The next-pick action plays an actual track → coral, the sound colour.
- * This is the one warm beat inside the cool agent console. */
-.aid-np-btn {
-  background: linear-gradient(135deg, rgba(255, 107, 74, 0.20), rgba(255, 143, 107, 0.12));
-  border-color: rgba(255, 107, 74, 0.34);
-  color: var(--r-play-soft);
-}
-.aid-np-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(255, 107, 74, 0.34), rgba(255, 143, 107, 0.22));
-  border-color: rgba(255, 107, 74, 0.50);
-}
-.aid-np-btn:disabled:hover {
-  background: linear-gradient(135deg, rgba(255, 107, 74, 0.20), rgba(255, 143, 107, 0.12));
-  border-color: rgba(255, 107, 74, 0.34);
 }
 
 /* ----------------------------------------------------------------------

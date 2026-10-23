@@ -25,6 +25,8 @@ import { describeTempoRange } from "../agent_session_request";
 export interface CurationAgentOptions {
   allowExplicit?: boolean;
   recentTrackIds?: string[];
+  /** "More like this" (#2243): added to every semantic search, never model-chosen. */
+  seedTrackId?: string;
 }
 
 function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): FunctionTool[] {
@@ -77,6 +79,7 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         ...args,
         allowExplicit,
         excludeTrackIds: options.recentTrackIds ?? [],
+        ...(options.seedTrackId ? { seedTrackId: options.seedTrackId } : {}),
       });
       return result;
     },

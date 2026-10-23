@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Throttle } from "@nestjs/throttler";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import {
   PlaybackCommandAction,
@@ -10,6 +11,10 @@ import {
 } from "./playback_intents.service";
 import { AgentNextDto, PlayTrackDto, StartSessionDto, StopSessionDto } from "./sessions.dto";
 import { SessionsService } from "./sessions.service";
+import { minutes } from "../shared/rate_limits";
+
+/** Tracked per signed-in person where the guard has resolved them, else per IP. */
+const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 @Controller("sessions")
 export class SessionsController {
@@ -51,6 +56,8 @@ export class SessionsController {
 
   @UseGuards(AuthGuard("jwt"))
   @AllowWhileSuspended()
+  // Skip, "Not this" and "More like this" on the AI DJ card each ask for picks (#2243).
+  @Throttle({ default: { limit: 30, ttl: minutes(1), getTracker: trackByUser } })
   @Post("agent/next")
   agentNext(
     @Body() body: AgentNextDto,

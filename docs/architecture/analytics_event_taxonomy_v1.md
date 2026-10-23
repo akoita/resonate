@@ -302,7 +302,10 @@ when they follow the privacy and versioning rules above.
 | `agent.intent_selected` | `web-app` | `agent_session` when known | auth user | `intent`, `intentName`, `source` | `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
 | `agent.session_started` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
 | `agent.session_stopped` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `sessionDurationMs`, `clientEventId` |
-| `agent.next_pick_requested` | `web-app` | `agent_session` | auth user | `status`, `source` | `intent`, `intentName`, `trackId`, `runtimeStatus`, `score`, `clientEventId` |
+| `agent.next_pick_requested` | `web-app` | `agent_session` | auth user | `status`, `source` | `intent`, `intentName`, `trackId`, `runtimeStatus`, `score`, `rankerVariant`, `experimentKey`, `clientEventId` |
+| `agent.up_next_action` | `web-app` | `agent_session` | auth user | `source`, `action` (`skip`, `not_this`, `more_like_this`), `trackId` | `surface`, `intent`, `added`, `clientEventId` |
+
+`agent.next_pick_requested` is the DJ-impression / accepted-pick event (`status` `ok` with a `trackId`; the discovery-quality report and the `accepted_pick` agent-quality metric read it). Since #2243 the web app sends it every time the AI DJ adds picks to the player queue from a next-pick response triggered by the listener (the refill after "Not this" and "More like this"), with the same payload and meaning as when the Next AI Pick button sent it; the background continuation and re-plan never sent it. `agent.up_next_action` is the separate per-click event of the Now & Up next card (what the listener did, ids only); it feeds no DJ-quality metric.
 | `agent.evaluated` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `trackId`, `licenseType`, `priceUsd`, `reason` | none |
 | `agent.decision_made` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `reason` | `trackId`, `artistId`, `releaseId`, `licenseType`, `priceUsd` |
 | `agent.purchase_completed` | `agent-purchase-service` | `listing` | `userId` | `sessionId`, `userId`, `listingId`, `tokenId`, `amount`, `priceUsd`, `txHash` | `mode` |
