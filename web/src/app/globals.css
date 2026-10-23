@@ -16043,6 +16043,25 @@ tr[draggable="true"]:hover {
   margin-top: var(--space-3);
 }
 
+.analytics-consent-settings__note {
+  margin-top: var(--space-2);
+  font-size: 13px;
+}
+
+/* #2231: mark the recorded choice, do not promote it. The same rule applies to
+   either button, and the mark is a check plus an inset ring, not colour alone
+   (WCAG 1.4.1); the ring is the text colour on the button, well above 3:1
+   (1.4.11). Size, fill and weight are untouched so refusing stays exactly as
+   prominent as accepting. */
+.analytics-consent-action[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--color-text);
+}
+
+.analytics-consent-action[aria-pressed="true"]::before {
+  content: "\2713";
+  font-weight: 700;
+}
+
 .analytics-consent-settings__state {
   margin: 0;
   font-size: 14px;

@@ -37,6 +37,12 @@ export type AnalyticsConsentState = {
    * bundled wording rather than copied from a response.
    */
   currentPolicyVersion: string | null;
+  /**
+   * True once the decision has been unreachable for a while (several failed
+   * checks in a row). Display-only: it lets Settings say nothing is being
+   * recorded because the check failed. It never grants anything.
+   */
+  checkFailed: boolean;
 };
 
 const UNKNOWN: AnalyticsConsentState = {
@@ -45,13 +51,31 @@ const UNKNOWN: AnalyticsConsentState = {
   productAnalytics: false,
   needsDecision: false,
   currentPolicyVersion: null,
+  checkFailed: false,
 };
+
+/**
+ * #2230: after a failed check, ask again after these delays (5 s, 30 s, 2 min,
+ * 10 min) and then stop until the next trigger. Bounded on purpose: a backend
+ * that is down must not be hammered by every open tab.
+ */
+export const CONSENT_RETRY_DELAYS_MS: readonly number[] = [5_000, 30_000, 120_000, 600_000];
+/** Triggered re-checks (tab visible, server refusal) are at least this far apart. */
+export const CONSENT_RECHECK_MIN_INTERVAL_MS = 30_000;
+/** Failed checks in a row before Settings is told to say so. */
+const CHECK_FAILED_AFTER = 2;
 
 type Listener = (state: AnalyticsConsentState) => void;
 
 let state: AnalyticsConsentState = { ...UNKNOWN };
 let cachedToken: string | null = null;
 let inFlight: Promise<AnalyticsConsentState> | null = null;
+/** Bumped on every reset so a late response can't touch a newer session. */
+let generation = 0;
+let consecutiveFailures = 0;
+let lastCheckAt = Number.NEGATIVE_INFINITY;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+let visibilityListening = false;
 const listeners = new Set<Listener>();
 
 function publish(next: AnalyticsConsentState) {
@@ -69,6 +93,7 @@ function fromResponse(response: AnalyticsConsentResponse): AnalyticsConsentState
     needsDecision: Boolean(response?.needsDecision),
     currentPolicyVersion:
       typeof response?.currentPolicyVersion === "string" ? response.currentPolicyVersion : null,
+    checkFailed: false,
   };
 }
 
@@ -125,15 +150,25 @@ export async function loadAnalyticsConsent(
   }
 
   cachedToken = token;
+  const startedIn = generation;
+  lastCheckAt = Date.now();
+  startVisibilityRecheck();
   const request = (async () => {
     try {
       const response = await getAnalyticsConsent(token);
+      if (startedIn !== generation) return state;
+      consecutiveFailures = 0;
+      clearPendingTimer();
       publish(fromResponse(response));
     } catch {
-      // Unknown stays unknown, and unknown emits nothing.
-      publish({ ...UNKNOWN });
+      if (startedIn !== generation) return state;
+      // Unknown stays unknown, and unknown emits nothing. Only the decision is
+      // recovered: nothing is queued while we wait, and nothing is replayed.
+      consecutiveFailures += 1;
+      publish({ ...UNKNOWN, checkFailed: consecutiveFailures >= CHECK_FAILED_AFTER });
+      scheduleRetry();
     } finally {
-      inFlight = null;
+      if (startedIn === generation) inFlight = null;
     }
     return state;
   })();
@@ -153,6 +188,80 @@ export async function loadAnalyticsConsent(
  */
 export function noteServerRefusal(): void {
   publish({ ...state, known: false, productAnalytics: false });
+  // #2230: nothing else re-reads the decision, so ask once, rate-limited.
+  requestConsentRecheck({ defer: true });
+}
+
+function clearPendingTimer() {
+  if (pendingTimer !== null) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  }
+}
+
+function setPendingTimer(delayMs: number, run: () => void) {
+  clearPendingTimer();
+  const timer = setTimeout(() => {
+    pendingTimer = null;
+    run();
+  }, delayMs);
+  // Never keep a node process (tests, SSR) alive for a consent check.
+  (timer as { unref?: () => void }).unref?.();
+  pendingTimer = timer;
+}
+
+/** Retry a failed check with bounded exponential backoff, then stop. */
+function scheduleRetry() {
+  if (!cachedToken) return;
+  const delay = CONSENT_RETRY_DELAYS_MS[consecutiveFailures - 1];
+  if (delay === undefined) {
+    // Exhausted: wait for the next trigger (tab visible, refusal, remount).
+    clearPendingTimer();
+    return;
+  }
+  setPendingTimer(delay, () => {
+    if (cachedToken) void loadAnalyticsConsent(cachedToken, { force: true });
+  });
+}
+
+/**
+ * Re-read the decision because something suggests our copy is missing or
+ * stale. Rate-limited so a refusing or unreachable server is not hammered.
+ * Starts a fresh retry sequence if the check fails.
+ */
+function requestConsentRecheck({ defer }: { defer: boolean }) {
+  const token = cachedToken;
+  if (!token || inFlight) return;
+  const wait = CONSENT_RECHECK_MIN_INTERVAL_MS - (Date.now() - lastCheckAt);
+  const run = () => {
+    if (cachedToken !== token) return;
+    consecutiveFailures = 0;
+    void loadAnalyticsConsent(token, { force: true });
+  };
+  if (wait <= 0) {
+    run();
+  } else if (defer) {
+    setPendingTimer(wait, run);
+  }
+}
+
+function onVisibilityChange() {
+  if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+  // A known decision needs no re-read; a refusal already drops it to unknown.
+  if (state.known) return;
+  requestConsentRecheck({ defer: false });
+}
+
+function startVisibilityRecheck() {
+  if (visibilityListening || typeof document === "undefined") return;
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  visibilityListening = true;
+}
+
+function stopVisibilityRecheck() {
+  if (!visibilityListening || typeof document === "undefined") return;
+  document.removeEventListener("visibilitychange", onVisibilityChange);
+  visibilityListening = false;
 }
 
 export type AnalyticsConsentDecisionResult =
@@ -182,6 +291,8 @@ export async function recordAnalyticsConsentDecision(
   const result = await updateAnalyticsConsent(token, { productAnalytics, policyVersion, consentTextVersion: ANALYTICS_CONSENT_TEXT_VERSION });
   if (result.status === "recorded") {
     cachedToken = token;
+    consecutiveFailures = 0;
+    clearPendingTimer();
     publish(fromResponse(result.decision));
     return { status: "recorded", state };
   }
@@ -192,7 +303,12 @@ export async function recordAnalyticsConsentDecision(
 
 /** Drop everything — used on sign-out, token change, and in tests. */
 export function resetAnalyticsConsent(): void {
+  generation += 1;
   cachedToken = null;
   inFlight = null;
+  consecutiveFailures = 0;
+  lastCheckAt = Number.NEGATIVE_INFINITY;
+  clearPendingTimer();
+  stopVisibilityRecheck();
   publish({ ...UNKNOWN });
 }
