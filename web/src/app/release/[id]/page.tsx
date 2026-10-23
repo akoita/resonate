@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useMemo, useState, useCallback } from "react";
+import { Suspense, useRef, useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -390,7 +390,7 @@ const getRightsTone = (route?: string | null) => {
   }
 };
 
-export default function ReleaseDetails() {
+function ReleaseDetailsContent() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -4440,5 +4440,16 @@ export default function ReleaseDetails() {
       onClose={() => setErrorDetails(null)}
     />
     </>
+  );
+}
+
+// useSearchParams() bails this page out of static prerendering up to the nearest
+// Suspense boundary, so the boundary lives here rather than around the whole app
+// shell (#2290). The fallback is empty on purpose: the shell chrome stays inline.
+export default function ReleaseDetails() {
+  return (
+    <Suspense fallback={null}>
+      <ReleaseDetailsContent />
+    </Suspense>
   );
 }
