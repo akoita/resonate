@@ -1,9 +1,9 @@
 # Vision Sprint 37: A DJ that understands what you mean
 
 **Status:** Closed 2026-10-23. Nine of ten issues are closed; #2249 shipped
-slice 2 of 3 and moves out for slice 3. Verified on staging at `e8214124`.
-The descriptor backfill dry run passed on staging; the write run is tracked in
-[resonate-iac#317](https://github.com/akoita/resonate-iac/issues/317).
+slice 2 of 3 and moves out for slice 3. Verified on staging at `e8214124`,
+where the descriptor backfill has run (the remaining deployment wiring is
+[resonate-iac#317](https://github.com/akoita/resonate-iac/issues/317)).
 **Milestone:** [39](https://github.com/akoita/resonate/milestone/39).
 **Goal:** A listener's request reaches the right tracks even when the
 catalog's genre text doesn't contain the word they used, and the listener can
@@ -11,9 +11,8 @@ see and steer what plays next.
 
 ## Outcome
 
-The goal sentence holds in code and on the golden set. On staging, the
-descriptors that make it hold for real catalog data are written once the
-backfill in resonate-iac#317 runs.
+The goal sentence holds in code, on the golden set and on staging, where
+every track now has a descriptor and an embedding built from it.
 
 | Issue | Result | PR |
 | --- | --- | --- |
@@ -64,16 +63,17 @@ Unplanned:
 - Staging has no test sign-in, so the signed-in AI DJ page was seen through the
   refreshed User Guide screenshot, captured locally with mock sign-in. A
   signed-in look on staging joins the owner checks in #2154.
-- Descriptor backfill dry run: 27 tracks would be tagged, all deterministic,
-  with 0 model calls. The write run, with re-embedding, is in
-  resonate-iac#317.
+- Descriptor backfill: the dry run planned 27 tracks, all deterministic, with
+  0 model calls. The write run tagged and re-embedded all 27 with 0 model
+  calls and no failures. A second dry run found all 27 current.
 
 **Carry-over and follow-ups:**
 
 - #2249 slice 3.
 - #2292: artists correct their generated descriptor tags.
 - #2299: persist each pick's explanation.
-- resonate-iac#317: the descriptor write run on staging.
+- resonate-iac#317: the remaining descriptor wiring (strategy and budget
+  settings on the service, a dedicated one-off job).
 - resonate-iac#318: the session parser flag on staging.
 - The `hybrid_rrf_v1` staging experiment, and the audio-embedding spike
   (#2248, with EmbeddingGemma 2 as a candidate), are decided from real-embedding
