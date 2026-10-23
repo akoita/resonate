@@ -38,8 +38,12 @@ export const DEFAULT_SOURCE_BUDGETS: Readonly<Record<RetrievalSource, number>> =
   lane: 20,
   seed: 20,
 };
-/** Latency budget of the whole retrieval step; a source still running at the deadline is cut off. */
-export const DEFAULT_RETRIEVAL_TIMEOUT_MS = 1500;
+/**
+ * Latency budget of the whole retrieval step; a source still running at the
+ * deadline is cut off. 1500 ms proved too tight on a small staging database,
+ * where keyword and semantic retrieval both overran it on every pick.
+ */
+export const DEFAULT_RETRIEVAL_TIMEOUT_MS = 5000;
 /** Cap on the fused candidate list handed to the ranking core. */
 export const DEFAULT_MAX_FUSED_CANDIDATES = 150;
 const MAX_BUDGET = 50;
@@ -177,6 +181,14 @@ export function hasAudioRangeRequest(request: AudioRangeRequest): boolean {
 }
 
 /** What the retrieval step did, returned on the selection for coverage and explanations. */
+/** Every hybrid source that ran failed; carries what each one did so the fallback can log it. */
+export class HybridRetrievalUnavailableError extends Error {
+  constructor(readonly sources: RetrievalReport["sources"]) {
+    super("Hybrid retrieval unavailable: every source failed");
+    this.name = "HybridRetrievalUnavailableError";
+  }
+}
+
 export interface RetrievalReport {
   variant: string;
   sources: Array<{
