@@ -34,6 +34,7 @@ describe("listeningRequestFromCrateParse", () => {
     );
     expect(result).toEqual({
       request: { genres: ["Deep House"], moods: ["Dark"], energy: null, bpm: { min: 120, max: 125 } },
+      artists: [],
       unparsed: ["for the commute"],
       ignored: [],
       strategy: "model-assisted",
@@ -158,6 +159,7 @@ describe("hasRequestFilters", () => {
 describe("requestRankingPreferences", () => {
   it("passes the preferences through untouched without a valid request", () => {
     expect(requestRankingPreferences({ mood: "Chill", energy: "low", request: { genres: [] } })).toEqual({
+      artists: [],
       sessionGenres: [],
       mood: "Chill",
       moods: [],
@@ -171,6 +173,7 @@ describe("requestRankingPreferences", () => {
         request: { genres: ["Deep House"], moods: ["Dark", "Moody"], energy: "high", bpm: { min: 120, max: 125 } },
       }),
     ).toEqual({
+      artists: [],
       request: { genres: ["Deep House"], moods: ["Dark", "Moody"], energy: "high", bpm: { min: 120, max: 125 } },
       sessionGenres: ["Deep House"],
       mood: "Dark",
@@ -331,5 +334,18 @@ describe("describeCoverageGaps", () => {
         },
       ),
     ).toBe("not matched: dark, moody (1 of 4), soul, jazz (2 of 4), high energy (3 of 4)");
+  });
+});
+
+describe("the sentence and artists in ranking preferences (#2241)", () => {
+  it("bounds the sentence, keeps it with no valid filters, and sanitizes the artists", () => {
+    const result = requestRankingPreferences({
+      requestText: `  ${"y".repeat(700)} `,
+      artists: ["Nadia Okoro", "", 4],
+    });
+    expect(result.requestText).toHaveLength(500);
+    expect(result.artists).toEqual(["Nadia Okoro"]);
+    expect(result.request).toBeUndefined();
+    expect(requestRankingPreferences({ requestText: 5 }).requestText).toBeUndefined();
   });
 });

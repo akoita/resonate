@@ -34,6 +34,7 @@ import { getDjSet, setDjSet, type DjPickNote } from "../../lib/agentDjSet";
 import {
     emptyRequest,
     hasFilters,
+    removeArtistChip,
     removeChip,
     requestFilterKeys,
     requestFromPreset,
@@ -108,9 +109,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const { playQueue } = player;
     const [wizardOpen, setWizardOpen] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-    // What this session is for. The typed sentence lives only here, in memory:
-    // it is parsed into `request` and never stored, sent with a session, or logged.
+    // What this session is for. The typed sentence lives in memory here only: it is parsed into
+    // `request` and, while the chips stand, travels with the session so the DJ can search by its
+    // meaning (#2241). It is never stored in the browser, and the server never stores or logs it.
     const [text, setText] = useState("");
+    // The sentence the current chips were read from, and the catalog artists it named. Both are
+    // dropped as soon as the listener edits the chips by hand or picks a starter.
+    const [parsedSentence, setParsedSentence] = useState<string | null>(null);
+    const [artists, setArtists] = useState<string[]>([]);
     const [request, setRequest] = useState<AgentSessionRequest | null>(null);
     const [unparsed, setUnparsed] = useState<string[]>([]);
     const [ignored, setIgnored] = useState<AgentSessionRequestIgnoredKey[]>([]);
@@ -211,11 +217,13 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             activePreset,
             request,
             savedVibes: config?.vibes,
+            sentence: parsedSentence,
+            artists,
         });
         return myMixWasSelectedRef.current
             ? { ...regularPreferences, myMix: null }
             : regularPreferences;
-    }, [myMixPreferences, activePreset, request, config?.vibes]);
+    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists]);
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
@@ -428,6 +436,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             const parsed = await parseAgentSessionRequest(token, sentence);
             if (sequence !== parseSeqRef.current) return;
             setRequest(parsed.request);
+            setParsedSentence(sentence);
+            setArtists(parsed.artists ?? []);
             setUnparsed(parsed.unparsed ?? []);
             setIgnored(parsed.ignored ?? []);
             setParseError(null);
@@ -459,6 +469,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         if (!value.trim()) {
             // Empty, not null: a live session's next picks then drop the old filters.
             setRequest(emptyRequest());
+            setParsedSentence(null);
+            setArtists([]);
             setUnparsed([]);
             setIgnored([]);
             setParseError(null);
@@ -474,8 +486,13 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     };
 
     /** A chip edit makes the filters the listener's own: the preset no longer describes them. */
-    const applyRequestEdit = (next: AgentSessionRequest) => {
+    const applyRequestEdit = (next: AgentSessionRequest, options: { keepSentence?: boolean } = {}) => {
         cancelParse();
+        // Removing a chip is the listener's own reading of the session: stop using the sentence's wording.
+        if (!options.keepSentence) {
+            setParsedSentence(null);
+            setArtists([]);
+        }
         setRequest(next);
         setActivePreset(null);
         if (starterRef.current) starterRef.current.edited = true;
@@ -491,6 +508,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
     const handleRemoveChip = (chipKey: string) => {
         if (chipKey === "energy") energyAdjustedRef.current = false;
+        if (chipKey.startsWith("artist:")) {
+            // Only this artist goes; the rest of the sentence still steers the session.
+            setArtists(removeArtistChip(artists, chipKey));
+            applyRequestEdit(request ?? emptyRequest(), { keepSentence: true });
+            return;
+        }
         if (request) applyRequestEdit(removeChip(request, chipKey));
     };
 
@@ -513,6 +536,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         starterRef.current = { row: "for_you", id: "my_mix", edited: false };
         setText("");
         setRequest(null);
+        setParsedSentence(null);
+        setArtists([]);
         setUnparsed([]);
         setIgnored([]);
         setParseError(null);
@@ -723,7 +748,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             // session preferences and never overwrites the vibes saved in Settings.
             const preferences = myMixPreferences
                 ? { myMix: { ...myMixPreferences, context: getMyMixLocalContext() } }
-                : buildSessionPreferences({ activePreset: preset, request });
+                : buildSessionPreferences({ activePreset: preset, request, sentence: parsedSentence, artists });
             try {
                 setIsStarting(true);
                 const result = await startSession(preferences ? { preferences } : undefined);
@@ -789,6 +814,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         const adjustedEnergy = energyAdjustedRef.current ? (request?.energy ?? null) : null;
         const starterRequest = requestFromPreset(preset);
         setRequest(adjustedEnergy ? { ...starterRequest, energy: adjustedEnergy } : starterRequest);
+        // A starter's canned sentence is not sent; its filters and intent are the session.
+        setParsedSentence(null);
+        setArtists([]);
         setUnparsed([]);
         setIgnored([]);
         setParseError(null);
@@ -863,6 +891,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         activePresetIntent={activePreset?.intent ?? null}
                         onSelectPreset={handleSelectPreset}
                         request={request}
+                        artists={artists}
                         onRemoveChip={handleRemoveChip}
                         onEnergyChange={handleEnergyChange}
                         unparsed={unparsed}

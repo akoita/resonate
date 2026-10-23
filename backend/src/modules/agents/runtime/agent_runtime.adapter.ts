@@ -34,6 +34,13 @@ export interface AgentRuntimeInput {
     tempoBpm?: AgentSessionTempoRange;
     /** The listening filters parsed from the listener's own words (#2037); never the text. */
     request?: AgentSessionRequest;
+    /**
+     * The listener's sentence, bounded (#2241). Joins this session's semantic
+     * query only; never stored, logged, published or sent to a model on the pick path.
+     */
+    requestText?: string;
+    /** Catalog artists the sentence named (#2241); seed neighbours for retrieval. */
+    artists?: string[];
     /** Untrusted session-only preferences; resolved server-side at runtime. */
     myMix?: MyMixPreferences | null;
     /**

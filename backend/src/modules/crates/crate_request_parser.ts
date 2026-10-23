@@ -50,9 +50,14 @@ import {
 /** Nest injection token for the configured {@link CrateRequestParser}. */
 export const CRATE_REQUEST_PARSER = Symbol("CRATE_REQUEST_PARSER");
 
+/** Who is asking; only the model-assisted session parser reads it (per-user budget). */
+export interface CrateParseContext {
+  userId?: string;
+}
+
 /** The seam the optional model-assisted parser also implements. */
 export interface CrateRequestParser {
-  parse(text: string): Promise<CrateParseResult>;
+  parse(text: string, context?: CrateParseContext): Promise<CrateParseResult>;
 }
 
 export const CRATE_MAX_UNPARSED = 10;

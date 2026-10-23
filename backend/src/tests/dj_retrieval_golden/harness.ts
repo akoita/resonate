@@ -9,7 +9,8 @@
  *    the real `catalog.search` tool and the real audio-feature service;
  *  - `agent_golden_eval.spec.ts` (npm run eval:golden, no Docker) uses
  *    `InMemoryGoldenTools`, a line-for-line twin of `catalog.search`'s filter
- *    over the same fixture, so a Docker-free run reports the same numbers.
+ *    (and of `catalog.artist_seed`'s own-track lookup) over the same fixture,
+ *    so a Docker-free run reports the same numbers.
  *
  * Tests only; not shipped code.
  */
@@ -32,6 +33,13 @@ import {
 import { mergeSessionGenres } from "../../modules/agents/agent_session_genres";
 import { measuredTrackFeatures } from "../../modules/agents/measured_track_features";
 import { deterministicCrateRequestParser } from "../../modules/crates/crate_request_parser";
+import { ArtistAwareRulesParser } from "../../modules/agents/agent_session_parser";
+import {
+  buildArtistNameIndex,
+  findArtistMentions,
+  matchArtistName,
+} from "../../modules/agents/agent_session_artists";
+import type { SessionArtistResolver } from "../../modules/agents/agent_session_artist_resolver";
 import {
   buildDescriptorInput,
   deterministicDescriptor,
@@ -97,14 +105,39 @@ export function goldenDescriptor(track: GoldenTrack): TrackDescriptorValue {
 type SessionPreferences = AgentRecommendationInput["preferences"];
 
 /**
+ * The catalog's credited artists, from the fixture: the stand-in for
+ * `AgentSessionArtistResolver`, which reads the same names from Postgres.
+ */
+export function fixtureArtistResolver(catalog: readonly GoldenTrack[] = GOLDEN_CATALOG): SessionArtistResolver {
+  const index = buildArtistNameIndex(catalog.map((track) => track.artist));
+  return {
+    mentionsIn: async (text) => findArtistMentions(text, index),
+    resolveNames: async (names) =>
+      names.flatMap((name) => {
+        const match = matchArtistName(name, index);
+        return match ? [match] : [];
+      }),
+  };
+}
+
+/**
  * The preferences `POST /agents/session` derives from a request (see
  * `AgentConfigController.startSession`): request genres become session genres,
- * moods and energy ride along, and an empty request changes nothing.
+ * moods and energy ride along, and an empty request changes nothing. A typed
+ * sentence also contributes the sentence itself and the artists it names
+ * (#2241), through the same deterministic session parser the parse route uses.
  */
-export async function preferencesFor(request: GoldenRequest): Promise<SessionPreferences> {
+export async function preferencesFor(
+  request: GoldenRequest,
+  artists: SessionArtistResolver = fixtureArtistResolver(),
+): Promise<SessionPreferences> {
+  const parsedText =
+    request.kind === "text"
+      ? listeningRequestFromCrateParse(await new ArtistAwareRulesParser(artists).parse(request.text))
+      : undefined;
   const rawRequest =
     request.kind === "text"
-      ? listeningRequestFromCrateParse(await deterministicCrateRequestParser.parse(request.text)).request
+      ? parsedText?.request
       : sanitizeSessionRequest({
           genres: request.genres ?? [],
           moods: request.moods ?? [],
@@ -120,6 +153,8 @@ export async function preferencesFor(request: GoldenRequest): Promise<SessionPre
     energy: requested.energy,
     allowExplicit: request.allowExplicit ?? false,
     licenseType: "personal",
+    ...(request.kind === "text" ? { requestText: request.text } : {}),
+    ...(parsedText?.artists.length ? { artists: parsedText.artists } : {}),
     ...(requested.request
       ? {
           moods: requested.moods,
@@ -187,11 +222,50 @@ export class InMemoryGoldenTools {
         return { run: async (input: Record<string, unknown>) => this.search(input) };
       case "catalog.semantic_search":
         return { run: async () => ({ items: [], status: "unavailable" }) };
+      case "catalog.artist_seed":
+        return { run: async (input: Record<string, unknown>) => this.artistSeed(input) };
       case "embeddings.similarity":
         return { run: async () => ({ ranked: [], status: "unavailable" }) };
       default:
         throw new Error(`Tool not found: ${name}`);
     }
+  }
+
+  /** `catalog.artist_seed` without embeddings: each named artist's own tracks, newest first. */
+  private artistSeed(input: Record<string, unknown>) {
+    const names = ((input.artists as string[]) ?? []).map((name) => name.toLowerCase());
+    const excluded = new Set((input.excludeTrackIds as string[]) ?? []);
+    const explicitAllowed = Boolean(input.allowExplicit ?? false);
+    const limit = Math.min(Math.max(Number(input.limit ?? 20), 1), 50);
+    const items = names.flatMap((name) =>
+      this.catalog
+        .filter((track) => explicitAllowed || !track.explicit)
+        .filter((track) => track.artist.toLowerCase() === name)
+        .filter((track) => !excluded.has(`${this.idPrefix}${track.key}`))
+        .slice(0, 8)
+        .map((track) => ({ ...this.toItem(track), artistSeed: "own", seedArtist: track.artist })),
+    );
+    return { items: items.slice(0, limit), status: "ok" };
+  }
+
+  private toItem(track: GoldenTrack) {
+    return {
+      id: `${this.idPrefix}${track.key}`,
+      title: track.title,
+      artist: track.artist,
+      explicit: Boolean(track.explicit),
+      hasListing: false,
+      descriptor: goldenDescriptor(track),
+      aiDisclosure: { level: "UNDECLARED" },
+      release: {
+        title: track.releaseTitle ?? track.title,
+        genre: track.genre,
+        moods: track.moods ?? [],
+        artistId: `${this.idPrefix}uploader`,
+        primaryArtist: track.artist,
+        artist: { displayName: "Fixture uploader" },
+      },
+    };
   }
 
   private search(input: Record<string, unknown>) {
@@ -212,23 +286,7 @@ export class InMemoryGoldenTools {
         );
       })
       .slice(0, take)
-      .map((track) => ({
-        id: `${this.idPrefix}${track.key}`,
-        title: track.title,
-        artist: track.artist,
-        explicit: Boolean(track.explicit),
-        hasListing: false,
-        descriptor: goldenDescriptor(track),
-        aiDisclosure: { level: "UNDECLARED" },
-        release: {
-          title: track.releaseTitle ?? track.title,
-          genre: track.genre,
-          moods: track.moods ?? [],
-          artistId: `${this.idPrefix}uploader`,
-          primaryArtist: track.artist,
-          artist: { displayName: "Fixture uploader" },
-        },
-      }));
+      .map((track) => this.toItem(track));
     return { items };
   }
 }
@@ -318,8 +376,9 @@ export async function runGoldenCase(
   selector: AgentSelectorService,
   goldenCase: GoldenCase,
   idPrefix: string,
+  artists?: SessionArtistResolver,
 ): Promise<GoldenCaseResult> {
-  const preferences = await preferencesFor(goldenCase.request);
+  const preferences = await preferencesFor(goldenCase.request, artists);
   const result = await selector.select(
     deterministicSelectorInput({
       userId: `${idPrefix}user`,
@@ -378,10 +437,11 @@ export async function runGoldenCases(
   selector: AgentSelectorService,
   idPrefix: string,
   cases: readonly GoldenCase[] = GOLDEN_CASES,
+  artists?: SessionArtistResolver,
 ): Promise<GoldenCaseResult[]> {
   const results: GoldenCaseResult[] = [];
   for (const goldenCase of cases) {
-    results.push(await runGoldenCase(selector, goldenCase, idPrefix));
+    results.push(await runGoldenCase(selector, goldenCase, idPrefix, artists));
   }
   return results;
 }

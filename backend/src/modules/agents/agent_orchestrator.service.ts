@@ -42,6 +42,9 @@ export interface AgentOrchestratorInput {
     tempoBpm?: AgentSessionTempoRange;
     /** Listening filters parsed from the listener's words (#2037), for coverage. */
     request?: AgentSessionRequest;
+    /** The listener's sentence and the artists it named (#2241); see AgentRuntimeInput. */
+    requestText?: string;
+    artists?: string[];
     myMix?: MyMixPreferences | null;
   };
   /** Trusted server-resolved lane plan. */

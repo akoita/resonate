@@ -15,9 +15,11 @@ import { resolveMyMixPlan } from "../agents/agent_my_mix";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
 import { resolveAllowExplicit } from "../agents/agent_explicit_preference";
+import { sanitizeArtistNames } from "../agents/agent_session_artists";
 import { sameSessionFilters, sessionFilterSummary } from "../agents/agent_session_filters";
 import {
   requestRankingPreferences,
+  sanitizeRequestText,
   sanitizeSessionRequest,
   type AgentSessionRequest,
 } from "../agents/agent_session_request";
@@ -39,6 +41,13 @@ export interface AgentPreferences {
    * text itself. Sent again on a mid-session edit, it replaces the old request.
    */
   request?: AgentSessionRequest;
+  /**
+   * The listener's sentence (#2241). Held in memory for this session's picks so
+   * the semantic query stays the same; never persisted, published or logged.
+   */
+  requestText?: string;
+  /** Catalog artists the sentence named (#2241); seed neighbours for retrieval. */
+  artists?: string[];
   /** Session-only preference; explicit null clears it on the next request. */
   myMix?: MyMixPreferences | null;
   /** "More like this" (#2243): one request's seed track; never remembered or published. */
@@ -89,7 +98,10 @@ export class SessionsService {
       },
     });
     if (input.preferences) {
-      this.agentPreferences.set(session.id, withoutSeed(input.preferences) ?? {});
+      this.agentPreferences.set(
+        session.id,
+        sanitizeIncomingRequest(withoutSeed(input.preferences)) ?? {},
+      );
     }
     this.eventBus.publish({
       eventName: "session.started",
@@ -694,8 +706,13 @@ export class SessionsService {
  * listener removed every filter); omitting the key leaves it as it was.
  */
 function sanitizeIncomingRequest(preferences?: AgentPreferences): AgentPreferences | undefined {
-  if (!preferences || !("request" in preferences)) return preferences;
-  return { ...preferences, request: sanitizeSessionRequest(preferences.request) };
+  if (!preferences) return preferences;
+  const sanitized: AgentPreferences = { ...preferences };
+  if ("request" in preferences) sanitized.request = sanitizeSessionRequest(preferences.request);
+  // The sentence and its artists are replaced as sent (an empty sentence clears them).
+  if ("requestText" in preferences) sanitized.requestText = sanitizeRequestText(preferences.requestText);
+  if ("artists" in preferences) sanitized.artists = sanitizeArtistNames(preferences.artists);
+  return sanitized;
 }
 
 function cohortInfluenceFromSignals(signals?: Array<{ label: string; reason: string }>) {
@@ -712,7 +729,14 @@ function cohortInfluenceFromSignals(signals?: Array<{ label: string; reason: str
 }
 
 function publicSessionPreferences(preferences: AgentPreferences): Record<string, unknown> {
-  const { myMix: _myMix, seedTrackId: _seedTrackId, ...publicPreferences } = preferences;
+  // The sentence and the artists it named never leave the session (#2241); nor does a one-request seed (#2243).
+  const {
+    myMix: _myMix,
+    seedTrackId: _seedTrackId,
+    requestText: _requestText,
+    artists: _artists,
+    ...publicPreferences
+  } = preferences;
   return publicPreferences;
 }
 

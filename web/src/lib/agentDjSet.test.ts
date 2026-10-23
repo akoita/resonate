@@ -165,3 +165,22 @@ describe("agentDjSet", () => {
         });
     });
 });
+
+describe("the sentence is not mirrored to sessionStorage (#2241)", () => {
+    afterEach(() => {
+        resetDjSetForTests();
+        vi.unstubAllGlobals();
+    });
+
+    it("drops requestText but keeps the other preferences", () => {
+        const storage = memoryStorage();
+        vi.stubGlobal("sessionStorage", storage);
+        setDjSet({
+            sessionId: "s1",
+            preferences: { requestText: "private words", artists: ["Nadia Okoro"], genres: ["Jazz"] },
+            trackIds: ["t1"],
+        });
+        expect(JSON.stringify([...storage.data.values()])).not.toContain("private words");
+        expect(getDjSet()?.preferences).toEqual({ artists: ["Nadia Okoro"], genres: ["Jazz"] });
+    });
+});

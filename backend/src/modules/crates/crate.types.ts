@@ -106,6 +106,12 @@ export type CrateParseResult = {
   unparsed: string[];
   /** Which parser produced the filters. */
   strategy: "deterministic" | "model-assisted";
+  /**
+   * Catalog artists the AI DJ session parser (#2241) resolved from the request
+   * (credited names exactly as the catalog spells them). Absent for crate
+   * requests, which never read artist names.
+   */
+  artists?: string[];
 };
 
 /** The facts about one candidate track the filters and ordering read. */

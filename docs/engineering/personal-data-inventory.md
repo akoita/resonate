@@ -270,6 +270,24 @@ energy, tempo, a My Mix flag and the explicit choice). It never holds the typed
 sentence or My Mix lane details. It lives on the listener's `Session` row, so
 export and erasure already cover it.
 
+The AI DJ sentence (#2241) is never persisted. The listener's typed sentence
+(500 characters at most) is processed in memory in three places and nowhere is
+it stored or logged: (1) the session parse request, where the rules read it; (2)
+the session's semantic query, which is sent as embedding text to the configured
+embedding provider (Vertex AI when `TRACK_EMBEDDING_PROVIDER=vertex`; the offline
+hash embedder and the disabled setting send nothing) and held in memory with its
+vector for the live session, and which is kept in the server's in-memory session
+preferences until the session ends or the instance restarts; (3) only when
+`AGENT_SESSION_PARSER_STRATEGY=model-assisted` (off by default, every
+environment) and only for a sentence the rules could not fully read, the same
+bounded sentence plus the allowed genre and mood vocabulary is sent to the
+configured model provider (Google AI) to be read into filters, with no listener
+identifier in the payload. The artist names a sentence resolves to are catalog
+names, sent back by the browser for the session and kept in the same in-memory
+preferences; they are not written to `Session.filters`. It is excluded from the
+`session.started` and `agent.track_selected` events, analytics, and
+`sessionStorage`. Nothing about it needs export or erasure handling.
+
 First-listener discovery (#1970) adds `FirstListenerExposure`, keyed by the
 listener's `userId`. It records the release and time of a placement, so export
 includes only that person's rows and erasure deletes them before rotating the

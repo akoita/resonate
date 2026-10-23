@@ -14,6 +14,7 @@ import type {
 } from "../../lib/api";
 import {
     SESSION_REQUEST_MAX_TEXT_LENGTH,
+    artistChips,
     chipsFromRequest,
     coverageLine,
     ignoredKeyLabels,
@@ -61,6 +62,8 @@ type Props = {
     activePresetIntent?: string | null;
     onSelectPreset: (preset: SessionPreset) => void;
     request: AgentSessionRequest | null;
+    /** Catalog artists the sentence named (#2241), shown as removable "Like: <Artist>" chips. */
+    artists?: readonly string[];
     onRemoveChip: (chipKey: string) => void;
     /** Sets the Energy filter; null clears it back to "the DJ decides". */
     onEnergyChange: (band: AgentSessionEnergy | null) => void;
@@ -113,6 +116,7 @@ export default function AgentSessionPrompt({
     activePresetIntent = null,
     onSelectPreset,
     request,
+    artists = [],
     onRemoveChip,
     onEnergyChange,
     unparsed = [],
@@ -146,7 +150,7 @@ export default function AgentSessionPrompt({
     }, [boxIsEmpty]);
     const presetDescriptionId = (preset: SessionPreset) =>
         `${id}-preset-${preset.intent.replace(/[^a-zA-Z0-9_-]/g, "")}`;
-    const chips = chipsFromRequest(request);
+    const chips = [...artistChips(artists), ...chipsFromRequest(request)];
     const ignoredLabels = ignoredKeyLabels(ignored);
     const coverageSummary = coverageLine(coverage, request);
     const myMixHasInputs = myMix?.preferences
@@ -174,7 +178,7 @@ export default function AgentSessionPrompt({
                 onChange={(event) => onTextChange(event.target.value)}
             />
             <p className="aid-prompt-hint">
-                Your sentence is read once to set the filters below and is not saved.
+                Your sentence sets the filters below and helps the DJ find music for this session. It is not saved.
             </p>
 
             <div className="aid-prompt-preset-groups">
