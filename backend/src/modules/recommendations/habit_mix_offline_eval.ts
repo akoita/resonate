@@ -21,6 +21,7 @@ import {
 import type { ResolvedMyMixLane } from "../agents/agent_my_mix";
 import type { RankedDiscoveryCandidate } from "./discovery-ranking.service";
 import { applyDiscoveryPolicy } from "./discovery-policy";
+import { genreMatchesRequest } from "./genre_families";
 import { meanOverRankable, ndcgAtK, recallAtK } from "./rankingMetrics";
 import { learnGenreWeights } from "./discovery_offline_eval";
 import type { TrainingSignal } from "./discovery_offline_eval";
@@ -505,11 +506,17 @@ function rankWithLanes(
 }
 
 function laneDotScore(lane: ListeningLane, candidate: HabitMixCatalogRow): number {
-  const genre = canonicalCatalogValue(candidate.genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
   const moods = new Set((candidate.moods ?? [])
     .map((mood) => canonicalCatalogValue(mood, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES))
     .filter((mood): mood is string => Boolean(mood)));
-  const genreScore = genre ? positive(lane.genreWeights[genre]) : 0;
+  // The shared matcher (#2236): a lane key is a vocabulary label or a genre family id.
+  const genreScore = Object.entries(lane.genreWeights).reduce(
+    (best, [key, weight]) =>
+      candidate.genre && positive(weight) > best && genreMatchesRequest(candidate.genre, key)
+        ? positive(weight)
+        : best,
+    0,
+  );
   const moodScore = [...moods].reduce((sum, mood) => sum + positive(lane.moodWeights[mood]), 0);
   return genreScore + moodScore;
 }

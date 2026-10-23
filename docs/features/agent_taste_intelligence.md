@@ -638,6 +638,59 @@ aggregate rows weigh the same as a single-track case).
 - **Ratcheting.** When a change improves a case, raise its `baseline` in the
   same PR. Never lower one to make a run pass.
 
+## One genre matcher for sessions and My Mix lanes (#2236)
+
+There used to be two genre matchers. Ordinary sessions used the genre-family
+matcher (#2088); My Mix lanes compared exact canonical labels from the taste-edit
+vocabulary, so the same track could match a "World" session and miss a "World"
+lane. Now `genreMatchesRequest` in
+`backend/src/modules/recommendations/genre_families.ts` is the only genre
+matcher. It is used by catalog search expansion, the ranking core's
+`session_request` signal, request coverage, lane membership
+(`matchingMyMixLaneIds`), lane ordering (`laneSessionRequestMatch`), habit
+ordering's lane assignment and the habit-mix offline eval. It also treats the
+taste-edit vocabulary's spellings as one genre ("DnB" = "Drum & Bass"), so lane
+keys written before the change keep matching.
+
+- **Lane keys.** A genre in the taste-edit vocabulary keeps its canonical label
+  as the lane key, so existing lanes keep the same `id` (lane hide controls
+  refer to it). Any other genre is keyed by the id of the genre family that
+  names it (`primaryGenreFamily`: a narrow family wins, then the smallest broad
+  one; "Mandingue" is `african`, "French Rap" is `hip-hop`). A genre neither the
+  vocabulary nor a family names (a country name, a missing genre) still forms
+  no lane. The listener's genre controls apply to the genre's own label, as they
+  do for the taste profile.
+- **Payload.** `listeningLanes[].genreWeights` (taste memory summary, My Mix
+  plan) may now hold a family id (`african`, `hip-hop`, `r&b-soul`,
+  `ambient-lofi`, ...) as a key next to vocabulary labels; `label` shows the
+  family label ("African"). No field was added or removed and lane ids for
+  vocabulary-only listeners are unchanged. A consumer must treat a genre key as
+  a request for the matcher, not as a vocabulary entry. A boosted lane still
+  saves its genre keys as taste edits; a family id is stored as written.
+- **Why an active account may not be offered My Mix.** The web offers the My Mix
+  preset only when the taste memory summary holds at least one visible lane
+  (`AgentSessionPrompt`; a failed taste memory call also shows none). A lane
+  comes from `AgentSignal` rows (listener actions), not from sessions:
+  1. a session that only logged picks leaves no signal until the listener
+     accepts, completes, saves or skips something (#2036);
+  2. a signal needs a session key (`agent:<sessionId>` or a `playback_...` id),
+     must be inside the 730-day window and after a taste reset, and only the
+     newest 500 count;
+  3. its genre must be known: before #2236 only the ~85-label taste-edit
+     vocabulary, so a free-text catalog ("African", "Mandingue", "French Rap")
+     produced nothing. This is what #2236 fixes;
+  4. a lane needs at least 2 distinct positive sessions and 2.0 net positive
+     decayed genre evidence (behavioral half-life 60 days, so light, old
+     interaction decays below the floor);
+  5. hidden genres or artists drop signals, negatives cancel evidence, and
+     hidden lanes are not offered.
+  Which of these applies to a given account needs its signal rows (counts by
+  action, genre and session key); that diagnostic has not been run. Causes 1, 2
+  and 4 are not matcher problems and are not fixed here.
+- Tests: `genre_matcher_lanes.spec.ts`, `genre_families.spec.ts`,
+  `listening_lanes.integration.spec.ts` (free-text history yields a lane),
+  `habit_ordering.integration.spec.ts`; the #2235 golden set did not change.
+
 ## Diversity cap counts the credited artist (#2092)
 
 Rule 4 (at most two tracks per artist per page, or per 10 session tracks) used

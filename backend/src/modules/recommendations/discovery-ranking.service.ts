@@ -25,7 +25,7 @@ import {
   TASTE_EDIT_MOODS,
   TASTE_EDIT_MOOD_ALIASES,
 } from "./taste_edit_vocabulary";
-import { genreMatchesRequest } from "./genre_families";
+import { firstMatchingGenreTerm, genreMatchesRequest } from "./genre_families";
 
 /**
  * The unified discovery scoring core (#1448 WS-1, RFC
@@ -462,9 +462,10 @@ function laneSessionRequestMatch(
   policy?: TasteMemoryPolicy,
 ): { multiplier: number } | undefined {
   if (!request) return undefined;
-  const releaseGenre = canonicalCatalogMetadata(candidate.release?.genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
-  const requestedGenres = new Set(request.genres.map((value) => canonicalCatalogMetadata(value, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES)));
-  if (releaseGenre && requestedGenres.has(releaseGenre)) {
+  // Same matcher as an ordinary session (#2236): a lane genre key may be a
+  // vocabulary label ("Hip-Hop") or a genre family id ("african").
+  if (firstMatchingGenreTerm(candidate.release?.genre, request.genres) !== undefined) {
+    const releaseGenre = canonicalCatalogMetadata(candidate.release?.genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
     const multiplier = sessionRequestPolicyMultiplier(policy, "genre", candidate.release?.genre ?? "", releaseGenre);
     return multiplier > 0 ? { multiplier } : undefined;
   }

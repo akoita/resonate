@@ -13,6 +13,7 @@ import {
   TASTE_EDIT_MOODS,
   TASTE_EDIT_MOOD_ALIASES,
 } from "../recommendations/taste_edit_vocabulary";
+import { firstMatchingGenreTerm } from "../recommendations/genre_families";
 import type { ListeningLane } from "./listening_lanes";
 
 export const MY_MIX_CONTEXTS = [
@@ -187,20 +188,23 @@ export function resolveMyMixPlan(
   };
 }
 
-/** Exact catalog metadata matching: genre is the anchor when present. */
+/**
+ * Catalog metadata matching: genre is the anchor when present. Genres match
+ * with the same family-aware matcher an ordinary session uses (#2236), so a
+ * release that satisfies a "World" session also belongs to a "World" lane;
+ * a lane's keys are vocabulary labels or genre family ids.
+ */
 export function matchingMyMixLaneIds(
   lanePlan: ResolvedMyMixLane[],
   release: { genre?: string | null; moods?: string[] | null } | undefined,
 ): string[] {
   if (!release) return [];
-  const genre = canonicalizeCatalogMetadata(release.genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
   const moods = new Set((release.moods ?? [])
     .map((mood) => canonicalizeCatalogMetadata(mood, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES))
     .filter(Boolean));
   return lanePlan.filter((lane) => {
-    const laneGenres = Object.keys(lane.genreWeights)
-      .map((value) => canonicalizeCatalogMetadata(value, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES));
-    if (laneGenres.length > 0) return laneGenres.includes(genre);
+    const laneGenres = Object.keys(lane.genreWeights);
+    if (laneGenres.length > 0) return firstMatchingGenreTerm(release.genre, laneGenres) !== undefined;
     return Object.keys(lane.moodWeights)
       .map((value) => canonicalizeCatalogMetadata(value, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES))
       .some((mood) => moods.has(mood));

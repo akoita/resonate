@@ -219,6 +219,27 @@ describe("HabitOrderingService (integration)", () => {
     await expect(service.orderMyMix(USER_ID, SESSION_ID, [ambient, deep], mismatchPlan)).resolves.toEqual([ambient, deep]);
   });
 
+  it("assigns historical lanes through the shared genre matcher, for lane keys that are genre family ids (#2236)", async () => {
+    // Same history as above, but the ambient lane is keyed by its family id.
+    // Soul (Warm) shares only the mood with the lanes, so it must not be
+    // assigned to a genre-anchored lane; the family-keyed lane still anchors on genre.
+    const familyPlan = resolvedPlan([
+      lane("lane_ambient", "Ambient", { "ambient-lofi": 2 }, { Warm: 3 }, 3),
+      lane("lane_deep", "Deep House", { "Deep House": 2 }, { Warm: 3 }, 2),
+    ]);
+    for (let index = 0; index < 4; index += 1) {
+      const browser = playbackKey(index + 60);
+      await start(AMBIENT_TRACK_ID, browser, 90_000 - index * 10_000, `family-a-${index}`);
+      await start(SOUL_TRACK_ID, browser, 89_000 - index * 10_000, `family-b-${index}`);
+      await outcome(SOUL_TRACK_ID, browser, 88_500 - index * 10_000, "skip", `family-b-${index}`);
+    }
+    await start(AMBIENT_TRACK_ID, playbackKey(2), 5_000, "family-boundary", { agentSessionId: SESSION_ID });
+    const ambient = selected("ambient-pick", "lane_ambient", "Ambient");
+    const deep = selected("deep-pick", "lane_deep", "Deep House");
+
+    await expect(service.orderMyMix(USER_ID, SESSION_ID, [ambient, deep], familyPlan)).resolves.toEqual([ambient, deep]);
+  });
+
   it("uses strength-only neutral ordering when consent is absent, stale, or training is disabled", async () => {
     await seedLearnedTransitions();
     await start(AMBIENT_TRACK_ID, playbackKey(1), 5_000, "current-boundary", { agentSessionId: SESSION_ID });
