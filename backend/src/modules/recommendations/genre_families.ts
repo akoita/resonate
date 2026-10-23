@@ -16,7 +16,17 @@
  *    their own names, never through a member: asking for "Afrobeats" must not
  *    widen to everything under "World", while a "World" request does match an
  *    Afrobeats release.
+ *
+ * `genreMatchesRequest` is the ONE genre matcher (#2236): ordinary sessions,
+ * My Mix lanes (membership and ordering), request coverage and the ranking
+ * `session_request` signal all call it, so a track that matches a session for a
+ * genre also matches a lane for that genre.
  */
+
+import {
+  TASTE_EDIT_GENRE_ALIASES,
+  TASTE_EDIT_GENRES,
+} from "./taste_edit_vocabulary";
 
 export interface GenreFamily {
   id: string;
@@ -272,6 +282,18 @@ export function expandGenreSearchTerms(
   return out.slice(0, Math.max(1, max));
 }
 
+const CANONICAL_VOCABULARY_GENRES: ReadonlyMap<string, string> = new Map([
+  ...Object.entries(TASTE_EDIT_GENRE_ALIASES).map(
+    ([alias, canonical]): [string, string] => [normalizeGenreTerm(alias), normalizeGenreTerm(canonical)],
+  ),
+  ...TASTE_EDIT_GENRES.map((genre): [string, string] => [normalizeGenreTerm(genre), normalizeGenreTerm(genre)]),
+]);
+
+/** The taste-edit vocabulary genre (normalized) a normalized label names, if any. */
+function canonicalVocabularyGenre(normalized: string): string | undefined {
+  return CANONICAL_VOCABULARY_GENRES.get(normalized);
+}
+
 /**
  * Whether a catalog genre satisfies a requested genre: same label modulo
  * spacing, hyphens and accents; one contains the other as whole words ("Deep
@@ -286,6 +308,10 @@ export function genreMatchesRequest(
   const term = normalizeGenreTerm(requestedTerm ?? "");
   if (!genre || !term) return false;
   if (genre === term) return true;
+  // The taste-edit vocabulary's spellings ("DnB" = "Drum & Bass") name the same
+  // genre; My Mix lanes keyed by those labels depend on it.
+  const canonical = canonicalVocabularyGenre(genre);
+  if (canonical !== undefined && canonical === canonicalVocabularyGenre(term)) return true;
   if (containsWholePhrase(genre, term)) return true;
   if (genre.length >= 3 && containsWholePhrase(term, genre)) return true;
   const requested = new Set(requestSideFamilies(term).map((entry) => entry.family.id));
@@ -311,4 +337,34 @@ export function relatedGenreLabels(term: string, max = 8): string[] {
     }
   }
   return out;
+}
+
+/**
+ * The first of `requestedTerms` a catalog genre satisfies, or undefined. The
+ * lane paths (membership, ordering) ask this of a lane's genre keys.
+ */
+export function firstMatchingGenreTerm(
+  releaseGenre: string | null | undefined,
+  requestedTerms: readonly string[],
+): string | undefined {
+  return requestedTerms.find((term) => genreMatchesRequest(releaseGenre, term));
+}
+
+/**
+ * The single family a free-text catalog genre is keyed by in a listening lane
+ * (#2236): a narrow family wins over a broad one (a "French Rap" release is
+ * hip-hop), and among broad families the smallest wins, so "Mandingue" is
+ * african rather than world. Undefined when no family names the genre.
+ */
+export function primaryGenreFamily(releaseGenre: string | null | undefined): GenreFamily | undefined {
+  const families = releaseGenreFamilies(releaseGenre ?? "");
+  if (families.length === 0) return undefined;
+  const narrow = families.filter((family) => !family.broad);
+  if (narrow.length > 0) return narrow[0];
+  return [...families].sort((a, b) => a.members.length - b.members.length)[0];
+}
+
+/** The family a lane key names (its id), for display and tests. */
+export function genreFamilyById(id: string): GenreFamily | undefined {
+  return GENRE_FAMILIES.find((family) => family.id === id);
 }

@@ -12,6 +12,7 @@ import {
 } from "./habit_ordering";
 import { AnalyticsConsentService } from "../analytics/analytics_consent.service";
 import { readTasteMemoryPolicy, hasSignal, TasteMemoryPolicy } from "../recommendations/taste_memory.service";
+import { genreFamilyById, genreMatchesRequest } from "../recommendations/genre_families";
 import {
   TASTE_EDIT_GENRES,
   TASTE_EDIT_GENRE_ALIASES,
@@ -218,7 +219,7 @@ function parseLane(value: ResolvedMyMixPlan["lanes"][number]): LaneDefinition | 
   return {
     id,
     strength: strength === undefined ? 0 : Math.max(0, strength),
-    genreWeights: canonicalWeights(value.genreWeights, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES),
+    genreWeights: laneGenreWeights(value.genreWeights),
     moodWeights: canonicalWeights(value.moodWeights, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES),
   };
 }
@@ -235,13 +236,18 @@ function matchingLane(
   if (genre && isCatalogValueHidden(policy, "genre", rawGenre, genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES)) {
     return undefined;
   }
+  // A free-text genre is governed by the listener's controls on its own label.
+  if (!genre && typeof rawGenre === "string" && hasSignal(policy.hidden, "genre", rawGenre)) {
+    return undefined;
+  }
   if (hasHiddenArtist(policy, artists, artistAliases)) return undefined;
 
   const moods = canonicalCatalogValues(rawMoods, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES)
     .filter((mood) => !isCatalogValueHidden(policy, "mood", mood, mood, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES));
   const matching = lanes.flatMap((lane) => {
     if (hasSignal(policy.hidden, "lane", lane.id)) return [];
-    const genreWeight = genre ? lane.genreWeights[genre] ?? 0 : 0;
+    // The shared matcher (#2236): a lane key is a vocabulary label or a genre family id.
+    const genreWeight = typeof rawGenre === "string" ? laneGenreWeight(lane.genreWeights, rawGenre) : 0;
     const moodWeight = moods.reduce((best, mood) => Math.max(best, lane.moodWeights[mood] ?? 0), 0);
     const genreAnchored = Object.keys(lane.genreWeights).length > 0;
     if (genreAnchored ? !(genreWeight > 0) : !(moodWeight > 0)) return [];
@@ -286,6 +292,26 @@ function hasHiddenArtist(
     for (const value of values) labels.add(value);
   }
   return [...labels].some((label) => hasSignal(policy.hidden, "artist", label));
+}
+
+/** Lane genre keys: vocabulary labels (canonicalized) or genre family ids (kept). */
+function laneGenreWeights(value: unknown): Record<string, number> {
+  const weights: Record<string, number> = {};
+  for (const [rawLabel, rawWeight] of Object.entries(asRecord(value))) {
+    const label = canonicalCatalogValue(rawLabel, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES)
+      ?? (genreFamilyById(rawLabel.trim()) ? rawLabel.trim() : undefined);
+    const weight = finiteNumber(rawWeight);
+    if (label && weight !== undefined && weight > 0) weights[label] = (weights[label] ?? 0) + weight;
+  }
+  return weights;
+}
+
+/** The strongest weight among the lane's genre keys that the release genre satisfies. */
+function laneGenreWeight(weights: Record<string, number>, releaseGenre: string): number {
+  return Object.entries(weights).reduce(
+    (best, [key, weight]) => (weight > best && genreMatchesRequest(releaseGenre, key) ? weight : best),
+    0,
+  );
 }
 
 function canonicalWeights(

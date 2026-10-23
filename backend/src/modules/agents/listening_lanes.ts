@@ -14,6 +14,7 @@ import {
   TASTE_EDIT_MOODS,
   TASTE_EDIT_MOOD_ALIASES,
 } from "../recommendations/taste_edit_vocabulary";
+import { genreFamilyById, primaryGenreFamily } from "../recommendations/genre_families";
 import type { TasteMemoryPolicy, TasteSignalType } from "../recommendations/taste_memory.service";
 import { AgentTasteSignalInput, computeAgentTasteProfileFromSignals } from "./agent_learning.service";
 
@@ -107,10 +108,11 @@ export function computeListeningLanes(
   const vectors = new Map<string, MutableVector>();
   for (const { signal, createdAt } of boundedSignals) {
     const sessionKey = signal.sessionKey!.trim();
-    const canonicalGenre = canonicalCatalogValue(signal.genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
-    // Genres are the lane anchor. An unknown genre or a sessionless signal can
+    const laneGenre = laneGenreFor(signal.genre);
+    // Genres are the lane anchor. A genre that is neither in the catalog
+    // vocabulary nor named by a genre family, or a sessionless signal, can
     // support neither a public label nor a stable habit identity.
-    if (!canonicalGenre) continue;
+    if (!laneGenre) continue;
     const canonicalMoods = canonicalCatalogValues(signal.moods, TASTE_EDIT_MOODS, TASTE_EDIT_MOOD_ALIASES);
     const contextKey = playbackContextKey(signal.localHourBucket, signal.weekdayKind);
     const groupKey = JSON.stringify([sessionKey, contextKey ?? null]);
@@ -126,18 +128,21 @@ export function computeListeningLanes(
     const normalizedSignal: AgentTasteSignalInput = {
       ...signal,
       createdAt,
-      genre: canonicalGenre,
+      genre: laneGenre.profileGenre,
       moods: canonicalMoods,
     };
     const profile = computeAgentTasteProfileFromSignals([normalizedSignal], [], now, {
       policy: normalizedPolicy,
     });
+    // The profile weighs the signal under the genre label the listener's own
+    // controls name; the lane files that weight under its lane key.
+    const genreWeights = rekeyedGenreWeights(profile.genreWeights, laneGenre.key);
 
-    addRecordToMap(vector.genres, profile.genreWeights);
+    addRecordToMap(vector.genres, genreWeights);
     addRecordToMap(vector.moods, profile.moodWeights ?? {});
     addRecordToMap(vector.energy, profile.energyBandWeights ?? {});
     if (contextKey) {
-      const signedGenreEvidence = Object.values(profile.genreWeights).reduce((sum, weight) => sum + weight, 0);
+      const signedGenreEvidence = Object.values(genreWeights).reduce((sum, weight) => sum + weight, 0);
       addMapValue(vector.contexts, contextKey, signedGenreEvidence);
     }
     vectors.set(groupKey, vector);
@@ -286,7 +291,8 @@ function toLane(cluster: LaneCluster): ListeningLane | undefined {
   const moodMembership = [...moods.keys()].sort((a, b) => a.localeCompare(b));
   const idMaterial = JSON.stringify({ genres: genreMembership, moods: moodMembership });
   const id = "lane_" + createHash("sha256").update(idMaterial).digest("hex").slice(0, 32);
-  const topGenres = Object.keys(genreWeights).slice(0, 2);
+  // A family id reads as its label ("african" -> "African"); other keys are already labels.
+  const topGenres = Object.keys(genreWeights).slice(0, 2).map((key) => genreFamilyById(key)?.label ?? key);
   const topMood = Object.keys(moodWeights)[0];
   const label = [...topGenres, ...(topMood ? [topMood] : [])].join(" · ");
   const energyBand = (
@@ -302,6 +308,27 @@ function toLane(cluster: LaneCluster): ListeningLane | undefined {
     contexts: contextWeights,
     energyBand,
   };
+}
+
+/**
+ * The key a signal's genre files under in a lane (#2236). A genre in the
+ * catalog vocabulary keeps its canonical label, so existing lanes (and their
+ * ids, which hide controls reference) do not change. Any other genre is keyed
+ * by the id of the genre family that names it ("Mandingue" -> "african"), so
+ * free-text catalog genres form lanes too. `profileGenre` is the label the
+ * taste profile (and the listener's genre controls) see.
+ */
+export function laneGenreFor(genre: unknown): { key: string; profileGenre: string } | undefined {
+  const canonical = canonicalCatalogValue(genre, TASTE_EDIT_GENRES, TASTE_EDIT_GENRE_ALIASES);
+  if (canonical) return { key: canonical, profileGenre: canonical };
+  if (typeof genre !== "string") return undefined;
+  const family = primaryGenreFamily(genre);
+  return family ? { key: family.id, profileGenre: genre } : undefined;
+}
+
+function rekeyedGenreWeights(weights: Record<string, number>, key: string): Record<string, number> {
+  const entries = Object.values(weights).filter((weight) => Number.isFinite(weight));
+  return entries.length === 0 ? {} : { [key]: entries.reduce((sum, weight) => sum + weight, 0) };
 }
 
 function policyForCatalogSpellings(policy: TasteMemoryPolicy | undefined): TasteMemoryPolicy | undefined {

@@ -3,6 +3,8 @@ import { TasteMemoryService } from "../modules/recommendations/taste_memory.serv
 import { EventBus } from "../modules/shared/event_bus";
 import { getListeningLaneSummary, resolveListeningLanes } from "../modules/agents/listening_lanes.service";
 import * as computation from "../modules/agents/listening_lanes";
+import { matchingMyMixLaneIds, resolveMyMixPlan } from "../modules/agents/agent_my_mix";
+import { genreMatchesRequest } from "../modules/recommendations/genre_families";
 
 const PREFIX = `lanes_${Date.now()}_`;
 const userId = `${PREFIX}listener`;
@@ -12,6 +14,10 @@ const service = new TasteMemoryService(new EventBus());
 const genres = ["Soul", "Dancehall"];
 const trackIds = genres.map((_, i) => `${PREFIX}track${i}`);
 const releaseIds = genres.map((_, i) => `${PREFIX}release${i}`);
+// Free-text catalog genres: none is in the taste-edit vocabulary (#2236).
+const freeTextGenres = ["African", "Mandingue", "Highlife"];
+const freeTextTrackIds = freeTextGenres.map((_, i) => `${PREFIX}ft_track${i}`);
+const freeTextReleaseIds = freeTextGenres.map((_, i) => `${PREFIX}ft_release${i}`);
 
 async function seedHabits() {
   const createdAt = new Date(Date.now() - 60_000);
@@ -35,6 +41,12 @@ describe("Listening lanes lifecycle (real DB)", () => {
       await prisma.track.create({ data: { id: trackIds[i], releaseId: releaseIds[i], title: `Track ${i}`, artist: "Lane Artist" } });
     }
   });
+  beforeAll(async () => {
+    for (let i = 0; i < freeTextGenres.length; i++) {
+      await prisma.release.create({ data: { id: freeTextReleaseIds[i], artistId, title: freeTextGenres[i], genre: freeTextGenres[i], status: "published" } });
+      await prisma.track.create({ data: { id: freeTextTrackIds[i], releaseId: freeTextReleaseIds[i], title: `Free text ${i}`, artist: "Lane Artist" } });
+    }
+  });
   beforeEach(async () => {
     jest.restoreAllMocks();
     await prisma.agentSignal.deleteMany({ where: { userId } });
@@ -46,8 +58,8 @@ describe("Listening lanes lifecycle (real DB)", () => {
     await prisma.agentSignal.deleteMany({ where: { userId } });
     await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: { in: [userId, otherUserId] } } });
     await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: { in: [userId, otherUserId] } } });
-    await prisma.track.deleteMany({ where: { id: { in: trackIds } } });
-    await prisma.release.deleteMany({ where: { id: { in: releaseIds } } });
+    await prisma.track.deleteMany({ where: { id: { in: [...trackIds, ...freeTextTrackIds] } } });
+    await prisma.release.deleteMany({ where: { id: { in: [...releaseIds, ...freeTextReleaseIds] } } });
     await prisma.artist.delete({ where: { id: artistId } });
     await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
   });
@@ -125,5 +137,46 @@ describe("Listening lanes lifecycle (real DB)", () => {
     expect(memory.summary.listeningLanes).toEqual([]);
     expect(memory.controls.map((control) => control.signalType)).not.toContain("lane");
     expect(memory.controls).toEqual(expect.arrayContaining([expect.objectContaining({ value: "Jazz", action: "boosted" })]));
+  });
+
+  it("forms a lane from a free-text-genre history, and that lane claims the same tracks a World session matches (#2236)", async () => {
+    // Three free-text genres, two browser sessions each. Before #2236 none is in
+    // the taste-edit vocabulary, so the history produced no lane and no My Mix.
+    const createdAt = new Date(Date.now() - 60_000);
+    let session = 0;
+    for (const trackId of freeTextTrackIds) {
+      for (let repeat = 0; repeat < 2; repeat++) {
+        session += 1;
+        await prisma.agentSignal.create({ data: {
+          userId, trackId, action: "save", weight: 3, createdAt,
+          metadata: { playbackSessionId: `playback_${String(1000 + session).padStart(32, "0")}`,
+            localHourBucket: "evening", weekdayKind: "weekday" },
+        } });
+      }
+    }
+
+    const lanes = await resolveListeningLanes(userId);
+    expect(lanes).toHaveLength(1);
+    expect(Object.keys(lanes[0].genreWeights)).toEqual(["african"]);
+    expect(lanes[0].label).toBe("African");
+
+    // The listener-facing summary carries the same lane, so My Mix is offered.
+    const summary = (await service.getTasteMemory(userId)).summary.listeningLanes;
+    expect(summary).toEqual([expect.objectContaining({ id: lanes[0].id, hidden: false, label: "African" })]);
+
+    // A track that matches a "World" session matches the lane, whatever its label.
+    const plan = resolveMyMixPlan({}, lanes, 5)!;
+    const releases = await prisma.release.findMany({ where: { id: { in: freeTextReleaseIds } }, select: { genre: true } });
+    expect(releases).toHaveLength(3);
+    for (const { genre } of releases) {
+      expect(genreMatchesRequest(genre, "World")).toBe(true);
+      expect(matchingMyMixLaneIds(plan.lanes, { genre })).toEqual([lanes[0].id]);
+    }
+
+    // The new lane id is hide-able like any other.
+    const control = await service.upsertSignalControl(userId, { signalType: "lane", value: lanes[0].id, action: "hidden" });
+    expect(await resolveListeningLanes(userId)).toEqual([]);
+    await service.removeSignalControl(userId, control.id);
+    expect(await resolveListeningLanes(userId)).toHaveLength(1);
   });
 });

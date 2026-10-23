@@ -1,8 +1,10 @@
 import {
   expandGenreSearchTerms,
+  firstMatchingGenreTerm,
   genreFamiliesFor,
   genreMatchesRequest,
   normalizeGenreTerm,
+  primaryGenreFamily,
   relatedGenreLabels,
   releaseGenreFamilies,
 } from "../modules/recommendations/genre_families";
@@ -126,6 +128,44 @@ describe("genre families (#2088)", () => {
       expect(related.length).toBeLessThanOrEqual(8);
       expect(related).toContain("rap");
       expect(related.map(normalizeGenreTerm)).not.toContain("hip hop");
+    });
+  });
+
+  describe("one matcher for sessions and lanes (#2236)", () => {
+    it("treats the taste-edit vocabulary's spellings as one genre", () => {
+      expect(genreMatchesRequest("DnB", "Drum & Bass")).toBe(true);
+      expect(genreMatchesRequest("Lo Fi", "Lo-Fi")).toBe(true);
+      expect(genreMatchesRequest("Afrobeats", "Afrobeat")).toBe(true);
+      expect(genreMatchesRequest("Techno", "Drum & Bass")).toBe(false);
+    });
+
+    it("returns the first requested term a genre satisfies", () => {
+      expect(firstMatchingGenreTerm("Mandingue", ["Techno", "World", "African"])).toBe("World");
+      expect(firstMatchingGenreTerm("Mandingue", ["Techno", "Jazz"])).toBeUndefined();
+      expect(firstMatchingGenreTerm(null, ["World"])).toBeUndefined();
+      expect(firstMatchingGenreTerm("African", [])).toBeUndefined();
+    });
+
+    it("keys a free-text genre by one family: narrow first, then the smallest broad one", () => {
+      expect(primaryGenreFamily("French Rap")?.id).toBe("hip-hop");
+      expect(primaryGenreFamily("Mandingue")?.id).toBe("african");
+      expect(primaryGenreFamily("African")?.id).toBe("african");
+      expect(primaryGenreFamily("Afrobeats")?.id).toBe("afrobeats");
+      expect(primaryGenreFamily("Flamenco")?.id).toBe("world");
+      expect(primaryGenreFamily("Senegal")).toBeUndefined();
+      expect(primaryGenreFamily(null)).toBeUndefined();
+    });
+
+    it("a family id is a request the matcher understands", () => {
+      for (const [genre, id] of [
+        ["Mandingue", "african"],
+        ["French Rap", "hip-hop"],
+        ["Neo Soul", "r&b-soul"],
+        ["Chillhop", "ambient-lofi"],
+      ] as const) {
+        expect(primaryGenreFamily(genre)?.id).toBe(id);
+        expect(genreMatchesRequest(genre, id)).toBe(true);
+      }
     });
   });
 });
