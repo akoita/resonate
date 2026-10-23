@@ -96,6 +96,9 @@ describe("TrendingNowRail", () => {
     expect(html).toContain("Not enough listening yet in Jazz");
     expect(html).toContain("Trending Now");
     expect(html).not.toContain("ng-tile");
+    // #2229: the low-data notice links to the User Guide entry.
+    expect(html).toContain('href="/help/discover-music#charts-listens"');
+    expect(html).toContain(">Why?</a>");
   });
 
   it("shows an unavailable notice, not the low-data copy, when the request failed", () => {
@@ -105,6 +108,7 @@ describe("TrendingNowRail", () => {
     expect(html).toContain("Trending Now");
     expect(html).toContain("Charts are unavailable right now.");
     expect(html).not.toContain("Not enough listening yet");
+    expect(html).not.toContain("charts-listens");
     expect(html).not.toContain("ng-tile");
   });
 
@@ -221,6 +225,7 @@ describe("TopArtistsRail", () => {
     const html = renderToStaticMarkup(<TopArtistsRail items={[]} genreLabel="Jazz" />);
     expect(html).toContain("Not enough listening yet in Jazz");
     expect(html).not.toContain("ng-tile__portrait");
+    expect(html).toContain('href="/help/discover-music#charts-listens"');
   });
 
   it("shows an unavailable notice, not the low-data copy, when the request failed", () => {

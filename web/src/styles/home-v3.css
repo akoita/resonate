@@ -168,6 +168,18 @@
   max-width: 60ch;
 }
 
+.home-ng .ng-popularity-empty__why {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.home-ng .ng-popularity-empty__why:hover,
+.home-ng .ng-popularity-empty__why:focus-visible {
+  color: var(--r-secondary-soft);
+}
+
 /* ---------- Tile ----------------------------------------------------- */
 
 .home-ng .ng-tile {

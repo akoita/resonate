@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { type TopArtistItem, type TrendingTrackItem } from "../../lib/api";
 import { artistProfileHref, catalogArtistHref, publicReleaseHref } from "../../lib/artistRoutes";
 import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
@@ -23,6 +24,9 @@ export type { RailState } from "./railState";
  * No state ever falls back to upload recency.
  */
 
+/** User Guide entry explaining which listens count toward the charts (#2229). */
+export const CHARTS_HELP_HREF = "/help/discover-music#charts-listens";
+
 function listenersLabel(count: number) {
   return `${count} ${count === 1 ? "listener" : "listeners"}`;
 }
@@ -31,7 +35,14 @@ function LowDataNotice({ subject, genreLabel }: { subject: string; genreLabel?: 
   return (
     <p className="ng-play-card__artist ng-popularity-empty" style={{ opacity: 0.75 }}>
       Not enough listening yet{genreLabel ? ` in ${genreLabel}` : ""} to rank {subject}{" "}
-      honestly — charts appear once more people press play.
+      honestly — charts appear once more people press play.{" "}
+      <Link
+        href={CHARTS_HELP_HREF}
+        className="ng-popularity-empty__why"
+        aria-label="Why? Which listens count toward the charts"
+      >
+        Why?
+      </Link>
     </p>
   );
 }

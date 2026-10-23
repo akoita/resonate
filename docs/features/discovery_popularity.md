@@ -41,6 +41,8 @@ On Home, Trending Now and Top Artists track their own load state
 low-data copy and never a recency fallback, and one rail failing does not blank
 the other (#2228).
 
+The User Guide entry "Why don't my listens show up in the charts?" (`discover-music` article, `#charts-listens`) explains which listens count; the low-data notice links to it (#2229).
+
 Dataform assertions cover identifiers, windows, nonnegative bounded scores,
 audience floors and freshness. Rebuilds read bounded recent events; the
 exporter reads only precomputed marts.
