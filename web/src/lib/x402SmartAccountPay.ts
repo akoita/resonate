@@ -16,6 +16,12 @@ import { normalizeContractWriteError } from "./contractErrors";
 import { getX402Chain } from "./x402BrowserWallet";
 import { getX402KernelAccount } from "./x402KernelAccount";
 import { decodeAudioResponse, type X402PaymentResult } from "./x402Pay";
+import {
+  PAYER_NOT_LINKED_CODE,
+  payerIsKnownBuyerAddress,
+  paymentBindingTypedData,
+  type PaymentBindingResource,
+} from "./x402PaymentBinding";
 
 type X402SmartAccountStatus = "signing" | "settling" | "downloading";
 
@@ -31,12 +37,29 @@ type PayWithX402SmartAccountInput = {
   extraBody?: Record<string, unknown>;
   /** Extra request headers (e.g. Authorization for JWT-guarded endpoints). */
   extraHeaders?: Record<string, string>;
+  /**
+   * Ties the payment to the signed-in buyer (`x402PaymentBinding`). A payment
+   * from an address the server does not know as the buyer's is signed by the
+   * paying account; without this, only the buyer's own addresses redeem.
+   */
+  binding?: PaymentBuyerBinding;
   onStatus?: (status: X402SmartAccountStatus) => void;
   onPayer?: (address: Address) => void;
 };
 
+/** Who is buying: the signed-in user id and the addresses the server already links to them. */
+export type PaymentBuyer = {
+  buyerId: string;
+  buyerAddresses: Array<string | null | undefined>;
+};
+
+type PaymentBuyerBinding = PaymentBuyer & { resource: PaymentBindingResource };
+
 type PayStemWithX402SmartAccountInput = {
   stemId: string;
+  /** The signed-in session: the endpoint redeems a payment only for its buyer. */
+  token: string;
+  buyer: PaymentBuyer;
   webAuthnKey: unknown;
   chainId: number;
   assetAddress: Address;
@@ -84,6 +107,36 @@ export async function payWithX402SmartAccount(
     chainId: input.chainId,
   });
   input.onPayer?.(account.address);
+
+  // Tie the payment to the signed-in buyer (`x402PaymentBinding`). An account
+  // the server does not know as the buyer's signs before any money moves, so a
+  // cancelled prompt costs nothing.
+  const binding = input.binding;
+  const bindingTypedData = () =>
+    paymentBindingTypedData({
+      chainId: input.chainId,
+      resource: binding!.resource,
+      buyer: binding!.buyerId,
+    });
+  const signBinding = () =>
+    account.signTypedData(bindingTypedData() as Parameters<typeof account.signTypedData>[0]);
+  let payerSignature =
+    binding !== undefined && !payerIsKnownBuyerAddress(account.address, binding.buyerAddresses)
+      ? await signBinding()
+      : undefined;
+  // Check the signature the way the server will, still before the transfer:
+  // a wallet whose signature cannot be verified must not pay for nothing.
+  if (payerSignature) {
+    const verified = await publicClient
+      .verifyTypedData({ address: account.address, ...bindingTypedData(), signature: payerSignature })
+      .catch(() => false);
+    if (!verified) {
+      throw new Error(
+        "We could not confirm that your payment wallet belongs to your account, so nothing was charged. Sign in again and retry, or use direct wallet checkout.",
+      );
+    }
+  }
+
   const transferData = encodeFunctionData({
     abi: ERC20_TRANSFER_ABI,
     functionName: "transfer",
@@ -98,29 +151,50 @@ export async function payWithX402SmartAccount(
   });
 
   input.onStatus?.("settling");
-  const response = await fetch(input.submitUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(input.extraHeaders ?? {}) },
-    body: JSON.stringify({
-      txHash,
-      payer: account.address,
-      ...(input.extraBody ?? {}),
-    }),
-  });
+  const submit = (signature?: `0x${string}`) =>
+    fetch(input.submitUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(input.extraHeaders ?? {}) },
+      body: JSON.stringify({
+        txHash,
+        payer: account.address,
+        ...(signature ? { payerSignature: signature } : {}),
+        ...(input.extraBody ?? {}),
+      }),
+    });
+
+  // The transfer is already on-chain here: if the server does not link an
+  // address we expected it to know, sign and retry once rather than strand it.
+  let response = await submit(payerSignature);
+  if (binding && !payerSignature && response.status === 403 && (await isPayerNotLinked(response))) {
+    payerSignature = await signBinding();
+    response = await submit(payerSignature);
+  }
 
   return { response, txHash, payer: account.address as Address };
+}
+
+async function isPayerNotLinked(response: Response): Promise<boolean> {
+  try {
+    const body = (await response.clone().json()) as { code?: string } | null;
+    return body?.code === PAYER_NOT_LINKED_CODE;
+  } catch {
+    return false;
+  }
 }
 
 export async function payStemWithX402SmartAccount(
   input: PayStemWithX402SmartAccountInput,
 ): Promise<X402PaymentResult> {
-  const { response } = await payWithX402SmartAccount({
+  const { response, txHash } = await payWithX402SmartAccount({
     submitUrl: `${API_BASE}/api/stems/${encodeURIComponent(input.stemId)}/x402/smart-account`,
     webAuthnKey: input.webAuthnKey,
     chainId: input.chainId,
     assetAddress: input.assetAddress,
     payTo: input.payTo,
     amountUnits: input.amountUnits,
+    extraHeaders: { Authorization: `Bearer ${input.token}` },
+    binding: { ...input.buyer, resource: { kind: "stem", id: input.stemId } },
     onStatus: input.onStatus,
     onPayer: input.onPayer,
   });
@@ -137,10 +211,11 @@ export async function payStemWithX402SmartAccount(
     } catch {
       // The endpoint returns audio on success; failed responses may not be JSON.
     }
+    // The transfer already happened: say so, so the buyer does not pay twice.
     throw new Error(
-      reason
-        ? `x402 smart-account payment failed (HTTP ${response.status}): ${reason}`
-        : `x402 smart-account payment failed: HTTP ${response.status}`,
+      `Your payment was sent (transaction ${txHash}) but the download could not be completed` +
+        (reason ? ` (HTTP ${response.status}: ${reason})` : ` (HTTP ${response.status})`) +
+        ". Do not pay again; contact support with this transaction.",
     );
   }
 
@@ -169,6 +244,7 @@ export class PunchlineCheckoutError extends Error {
 export async function payMomentWithX402SmartAccount(input: {
   quote: PunchlineMomentQuote;
   token: string;
+  buyer: PaymentBuyer;
   webAuthnKey: unknown;
   chainId: number;
   collectorWallet?: string | null;
@@ -184,6 +260,7 @@ export async function payMomentWithX402SmartAccount(input: {
     amountUnits: input.quote.amountUnits,
     extraHeaders: { Authorization: `Bearer ${input.token}` },
     extraBody: { collectorWallet: input.collectorWallet ?? null },
+    binding: { ...input.buyer, resource: { kind: "moment", id: input.quote.momentId } },
     onStatus: input.onStatus,
     onPayer: input.onPayer,
   });

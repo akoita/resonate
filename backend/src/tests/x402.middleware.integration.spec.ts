@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { ConflictException } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
+import { getAddress } from "viem";
 import { prisma } from "../db/prisma";
 import { X402Config } from "../modules/x402/x402.config";
 import { X402Controller } from "../modules/x402/x402.controller";
@@ -70,12 +71,38 @@ function createResponse() {
 function createRequest(
   headers: Record<string, string> = {},
   stemId = STEM_ID,
+  userId?: string,
 ) {
   return {
     path: `/api/stems/${stemId}/x402`,
     headers,
     query: {},
+    ...(userId ? { user: { userId } } : {}),
   } as unknown as Request;
+}
+
+const BUYER_PAYER = `0x${"d1".repeat(20)}`;
+
+/** Real controller, with only the buyer-ownership lookup stubbed (USER_ID owns BUYER_PAYER). */
+function createBuyerBoundController(
+  storage: object = {},
+  config: X402Config = createConfig(),
+) {
+  const authService = {
+    isAddressForUser: jest.fn(
+      async (userId: string, address: string) =>
+        userId === USER_ID && address.toLowerCase() === BUYER_PAYER,
+    ),
+  };
+  const controller = new X402Controller(
+    config,
+    storage as never,
+    undefined,
+    undefined,
+    undefined,
+    authService as never,
+  );
+  return { controller, authService };
 }
 
 describe("X402Middleware current stem purchase gate (integration)", () => {
@@ -344,9 +371,119 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
     );
   });
 
-  it("grants a historical stem for a verified smart-account payment and blocks cross-stem replay", async () => {
+  it("refuses a smart-account proof on the x402 header route without charging or granting", async () => {
+    const proof = `smart-account:${BUYER_PAYER}:0x${"1".repeat(64)}`;
+    for (const headerName of ["payment-signature", "x-payment"]) {
+      const { res, state } = createResponse();
+      const next = jest.fn() as unknown as NextFunction;
+
+      await middleware.use(createRequest({ [headerName]: proof }), res, next);
+
+      expect(state.statusCode).toBe(403);
+      expect(state.body).toEqual(
+        expect.objectContaining({ code: "smart_account_proof_not_accepted" }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    }
+
+    // The handler refuses on its own too, in case the middleware is bypassed.
+    const controller = new X402Controller(createConfig(), {} as never);
+    const { res, state } = createResponse();
+    await controller.downloadWithPayment(
+      STEM_ID,
+      createRequest({ "payment-signature": proof }),
+      res,
+    );
+    expect(state.statusCode).toBe(403);
+    expect(state.body).toEqual(
+      expect.objectContaining({ code: "smart_account_proof_not_accepted" }),
+    );
+
+    expect(paymentService.buildPaymentChallenge).not.toHaveBeenCalled();
+    expect(paymentService.verifyAndSettle).not.toHaveBeenCalled();
+    await expect(
+      prisma.x402Settlement.findMany({
+        where: { stemId: STEM_ID, paymentRail: "smart_account" },
+      }),
+    ).resolves.toHaveLength(0);
+    await expect(
+      prisma.contractEvent.findFirst({
+        where: { transactionHash: { contains: `x402:${STEM_ID}:` } },
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("never replays an already-settled smart-account settlement on the x402 header route", async () => {
+    const txHash = `0x${"e".repeat(64)}`;
+    const proof = `smart-account:${BUYER_PAYER}:${txHash}`;
+    // A proof that is not recognizable as a smart-account proof, but whose hash
+    // matches a smart-account settlement, must not be served either.
+    const opaqueProof = "opaque-header-matching-a-smart-account-settlement";
+    await prisma.x402Settlement.create({
+      data: {
+        resourceKind: "stem",
+        stemId: STEM_ID,
+        paymentProofSha256: createHash("sha256").update(opaqueProof).digest("hex"),
+        paymentTransactionHash: txHash,
+        paymentRail: "smart_account",
+        receiptId: `${TEST_PREFIX}smart_header_receipt`,
+        receipt: { version: "1", type: "resonate.x402.purchase_receipt" },
+        paymentToken: `0x${"0".repeat(40)}`,
+        paymentAssetSymbol: "USDC",
+        paymentAssetDecimals: 6,
+        settlementAmount: "0.05",
+        settlementAmountUnits: "50000",
+        canonicalAmountUsd: "0.05",
+        purchasedAt: new Date(),
+      },
+    });
+
+    const { res, state } = createResponse();
+    const next = jest.fn() as unknown as NextFunction;
+    await middleware.use(
+      createRequest({ "payment-signature": opaqueProof }),
+      res,
+      next,
+    );
+    expect(state.statusCode).toBe(403);
+    expect(state.body).toEqual(
+      expect.objectContaining({ code: "smart_account_proof_not_accepted" }),
+    );
+    expect(next).not.toHaveBeenCalled();
+
+    const controller = new X402Controller(createConfig(), {} as never);
+    const serve = jest.spyOn(controller as any, "writePaidStemResponse");
+    const { res: handlerRes, state: handlerState } = createResponse();
+    await controller.downloadWithPayment(
+      STEM_ID,
+      createRequest({ "payment-signature": opaqueProof }),
+      handlerRes,
+    );
+    expect(handlerState.statusCode).toBe(403);
+    expect(handlerState.body).toEqual(
+      expect.objectContaining({ code: "smart_account_proof_not_accepted" }),
+    );
+    expect(serve).not.toHaveBeenCalled();
+
+    // The direct proof form is refused too, and nothing new is written.
+    const { res: proofRes, state: proofState } = createResponse();
+    await middleware.use(
+      createRequest({ "payment-signature": proof }),
+      proofRes,
+      jest.fn() as unknown as NextFunction,
+    );
+    expect(proofState.statusCode).toBe(403);
+    expect(paymentService.verifyAndSettle).not.toHaveBeenCalled();
+    await expect(
+      prisma.x402Settlement.findMany({
+        where: { stemId: STEM_ID, paymentRail: "smart_account" },
+      }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("grants a historical stem for a verified buyer-bound smart-account payment and blocks cross-stem replay", async () => {
     const txHash = `0x${"c".repeat(64)}`;
-    const payer = `0x${"d1".repeat(20)}`;
+    const payer = BUYER_PAYER;
     const verifiedPayment = {
       txHash,
       payer,
@@ -356,9 +493,9 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
       blockNumber: BigInt(1),
       blockHash: `0x${"a2".repeat(32)}`,
     };
-    const controller = new X402Controller(createConfig(), {
+    const { controller, authService } = createBuyerBoundController({
       loadSourceBuffer: jest.fn().mockResolvedValue(Buffer.from([1, 2, 3, 4])),
-    } as never);
+    });
     const verify = jest
       .spyOn(controller as any, "verifySmartAccountPayment")
       .mockResolvedValue(verifiedPayment);
@@ -367,10 +504,14 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
     await controller.downloadWithSmartAccountPayment(
       STEM_ID,
       { txHash, payer },
-      createRequest({}, STEM_ID),
+      createRequest({}, STEM_ID, USER_ID),
       res,
     );
 
+    expect(authService.isAddressForUser).toHaveBeenCalledWith(
+      USER_ID,
+      getAddress(payer),
+    );
     expect(verify).toHaveBeenCalledWith(STEM_ID, { txHash, payer });
     expect(state.statusCode).toBe(200);
     expect(state.body).toBeInstanceOf(Buffer);
@@ -386,21 +527,21 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
       }),
     );
 
-    const crossStemController = new X402Controller(createConfig(), {} as never);
+    const { controller: crossStemController } = createBuyerBoundController();
+    jest
+      .spyOn(crossStemController as any, "verifySmartAccountPayment")
+      .mockResolvedValue(verifiedPayment);
     const { res: replayRes, state: replayState } = createResponse();
     await crossStemController.downloadWithSmartAccountPayment(
       CURRENT_STEM_ID,
       { txHash, payer },
-      createRequest({}, CURRENT_STEM_ID),
+      createRequest({}, CURRENT_STEM_ID, USER_ID),
       replayRes,
     );
 
-    expect(replayState.statusCode).toBe(402);
+    expect(replayState.statusCode).toBe(409);
     expect(replayState.body).toEqual(
-      expect.objectContaining({
-        error: "Smart-account payment verification failed",
-        message: expect.stringContaining("already been redeemed for a different stem"),
-      }),
+      expect.objectContaining({ error: "Payment already redeemed" }),
     );
     await expect(
       prisma.x402Settlement.findMany({
@@ -409,13 +550,40 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
     ).resolves.toHaveLength(1);
   });
 
-  it("keeps an already-settled smart-account replay eligible for exact download", async () => {
-    const txHash = `0x${"e".repeat(64)}`;
+  it("refuses to redeem a smart-account payment for a buyer who does not own the payer", async () => {
+    const txHash = `0x${"b".repeat(64)}`;
+    const { controller, authService } = createBuyerBoundController();
+    const verify = jest.spyOn(controller as any, "verifySmartAccountPayment");
+    const { res } = createResponse();
+
+    await expect(
+      controller.downloadWithSmartAccountPayment(
+        STEM_ID,
+        { txHash, payer: BUYER_PAYER },
+        createRequest({}, STEM_ID, `${TEST_PREFIX}someone_else`),
+        res,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "payer_not_linked" }),
+    });
+
+    expect(authService.isAddressForUser).toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
+    await expect(
+      prisma.x402Settlement.findMany({
+        where: { paymentTransactionHash: txHash },
+      }),
+    ).resolves.toHaveLength(0);
+  });
+
+  it("keeps an already-settled smart-account replay eligible for exact download by the same buyer", async () => {
+    const txHash = `0x${"f".repeat(64)}`;
     await prisma.x402Settlement.create({
       data: {
         resourceKind: "stem",
         stemId: STEM_ID,
         paymentTransactionHash: txHash,
+        paymentRail: "smart_account",
         receiptId: `${TEST_PREFIX}smart_receipt`,
         receipt: { version: "1", type: "resonate.x402.purchase_receipt" },
         paymentToken: `0x${"0".repeat(40)}`,
@@ -428,10 +596,10 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
       },
     });
 
-    const controller = new X402Controller(createConfig(), {} as never);
+    const { controller } = createBuyerBoundController();
     const verifiedPayment = {
       txHash,
-      payer: `0x${"d1".repeat(20)}`,
+      payer: BUYER_PAYER,
       assetAddress: `0x${"f1".repeat(20)}`,
       amountUnits: "50000",
       logIndex: 1,
@@ -449,7 +617,7 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
     await controller.downloadWithSmartAccountPayment(
       STEM_ID,
       { txHash, payer: verifiedPayment.payer },
-      createRequest(),
+      createRequest({}, STEM_ID, USER_ID),
       res,
     );
 
@@ -458,7 +626,11 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
       payer: verifiedPayment.payer,
     });
     expect(serve).toHaveBeenCalledWith(
-      expect.objectContaining({ stemId: STEM_ID, eventTransactionHash: txHash }),
+      expect.objectContaining({
+        stemId: STEM_ID,
+        eventTransactionHash: txHash,
+        allowSmartAccountSettlement: true,
+      }),
     );
     expect(state.statusCode).toBe(200);
   });

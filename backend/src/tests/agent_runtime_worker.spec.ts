@@ -212,6 +212,58 @@ describe("AgentRuntimeWorkerController internal auth", () => {
       InternalServerErrorException
     );
   });
+
+  it("refuses without a key outside production too", async () => {
+    delete process.env.INTERNAL_SERVICE_KEY;
+    delete process.env.AGENT_RUNTIME_WORKER_ALLOW_UNAUTHENTICATED;
+    process.env.NODE_ENV = "development";
+    const run = jest.fn().mockResolvedValue({ status: "approved", tracks: [] });
+    const controller = new AgentRuntimeWorkerController({
+      run,
+    } as unknown as AgentRuntimeExecutorService);
+
+    await expect(controller.execute({ input: baseInput })).rejects.toThrow(
+      InternalServerErrorException
+    );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("allows an unkeyed local worker only with the explicit opt-in", async () => {
+    delete process.env.INTERNAL_SERVICE_KEY;
+    process.env.NODE_ENV = "development";
+    process.env.AGENT_RUNTIME_WORKER_ALLOW_UNAUTHENTICATED = "true";
+    const controller = new AgentRuntimeWorkerController({
+      run: jest.fn().mockResolvedValue({ status: "approved", tracks: [] }),
+    } as unknown as AgentRuntimeExecutorService);
+
+    await expect(controller.execute({ input: baseInput })).resolves.toEqual(
+      expect.objectContaining({ result: expect.anything() })
+    );
+  });
+
+  it("ignores the opt-in in production", async () => {
+    delete process.env.INTERNAL_SERVICE_KEY;
+    process.env.NODE_ENV = "production";
+    process.env.AGENT_RUNTIME_WORKER_ALLOW_UNAUTHENTICATED = "true";
+    const controller = new AgentRuntimeWorkerController({
+      run: jest.fn().mockResolvedValue({ status: "approved", tracks: [] }),
+    } as unknown as AgentRuntimeExecutorService);
+
+    await expect(controller.execute({ input: baseInput })).rejects.toThrow(
+      InternalServerErrorException
+    );
+  });
+
+  it("accepts the matching internal service key", async () => {
+    process.env.INTERNAL_SERVICE_KEY = "expected";
+    const controller = new AgentRuntimeWorkerController({
+      run: jest.fn().mockResolvedValue({ status: "approved", tracks: [] }),
+    } as unknown as AgentRuntimeExecutorService);
+
+    await expect(controller.execute({ input: baseInput }, "expected")).resolves.toEqual(
+      expect.objectContaining({ result: expect.anything() })
+    );
+  });
 });
 
 describe("AgentRuntimeExecutorService My Mix boundary", () => {
