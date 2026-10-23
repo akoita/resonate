@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   filterPublicPlaylists,
@@ -35,7 +35,7 @@ const RECENT_CATALOG_LIMIT = 200;
 const PLAYLIST_DISCOVERY_LIMIT = 60;
 const GENRE_CHIP_LIMIT = 8;
 
-export default function GlobalCatalogPage() {
+function GlobalCatalogPageContent() {
   const searchParams = useSearchParams();
   const [releases, setReleases] = useState<Release[]>([]);
   const [playlists, setPlaylists] = useState<PublicPlaylistSummary[]>([]);
@@ -403,5 +403,16 @@ function filterStems(stems: CatalogStemSummary[], search: string) {
       stem.releaseTitle,
       stem.artistName,
     ].some((value) => value.toLowerCase().includes(search)),
+  );
+}
+
+// useSearchParams() bails this page out of static prerendering up to the nearest
+// Suspense boundary, so the boundary lives here rather than around the whole app
+// shell (#2290). The fallback is empty on purpose: the shell chrome stays inline.
+export default function GlobalCatalogPage() {
+  return (
+    <Suspense fallback={null}>
+      <GlobalCatalogPageContent />
+    </Suspense>
   );
 }
