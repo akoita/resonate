@@ -25,7 +25,8 @@ function page(isLive: boolean) {
 
 function buttonLabels(html: string): string[] {
   return [...html.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map((match) =>
-    match[1].replace(/<[^>]*>/g, "").trim(),
+    // Keep only the text between tags (a label, not markup to sanitize).
+    match[1].split(/<[^>]*>/).join("").trim(),
   );
 }
 
