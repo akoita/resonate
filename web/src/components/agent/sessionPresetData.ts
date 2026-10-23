@@ -15,6 +15,12 @@ export type SessionPreset = {
   name: string;
   /** "genre" starters are the Sounds row; "mood" starters are the Moments row. */
   group: "genre" | "mood";
+  /**
+   * The catalog genre family a Sounds starter stands for (a `genre_families.ts`
+   * id), so the Sounds row can show the catalog's count and hide the starter
+   * when the family is too thin to fill a session (#2249).
+   */
+  familyId?: string;
   /** What the session is for, in plain words. */
   description: string;
   /** Short hint of the style, shown on the gallery card. */
@@ -36,7 +42,7 @@ type Gradient = string;
 const gradient = (from: string, to: string): Gradient => `linear-gradient(135deg, ${from} 0%, ${to} 100%)`;
 
 function sound(
-  fields: Pick<SessionPreset, "intent" | "name" | "description" | "input" | "sentence" | "output" | "queueStyle"> & {
+  fields: Pick<SessionPreset, "intent" | "name" | "description" | "input" | "sentence" | "output" | "queueStyle" | "familyId"> & {
     genres: string[];
     gradient: Gradient;
   },
@@ -182,6 +188,7 @@ export const SESSION_PRESETS: SessionPreset[] = [
   }),
   sound({
     intent: "Hip-Hop",
+    familyId: "hip-hop",
     name: "Hip-Hop & Rap",
     description: "Beats and bars, from classic hip-hop to today's trap.",
     input: "Hip-hop, rap, trap",
@@ -193,6 +200,7 @@ export const SESSION_PRESETS: SessionPreset[] = [
   }),
   sound({
     intent: "R&B",
+    familyId: "r&b-soul",
     name: "R&B & Soul",
     description: "Smooth vocals and slow grooves for any time of day.",
     input: "R&B, soul, funk",
@@ -204,6 +212,7 @@ export const SESSION_PRESETS: SessionPreset[] = [
   }),
   sound({
     intent: "Pop",
+    familyId: "pop",
     name: "Pop Hits",
     description: "Catchy songs with big choruses you can sing along to.",
     input: "Pop, dance, synthpop",
@@ -215,6 +224,7 @@ export const SESSION_PRESETS: SessionPreset[] = [
   }),
   sound({
     intent: "Afrobeats",
+    familyId: "afrobeats",
     name: "Afrobeats & Amapiano",
     description: "Dance-floor rhythms from Lagos to Johannesburg.",
     input: "Afrobeat, Afro-pop, amapiano",
@@ -226,6 +236,7 @@ export const SESSION_PRESETS: SessionPreset[] = [
   }),
   sound({
     intent: "Reggae",
+    familyId: "reggae-dancehall",
     name: "Reggae & Dancehall",
     description: "Laid-back island grooves and dancehall bounce.",
     input: "Reggae, dancehall, dub",
@@ -237,6 +248,7 @@ export const SESSION_PRESETS: SessionPreset[] = [
   }),
   sound({
     intent: "Latin",
+    familyId: "latin",
     name: "Latin & Reggaeton",
     description: "Party rhythms and Latin pop to get everyone moving.",
     input: "Latin, reggaeton",
@@ -248,6 +260,7 @@ export const SESSION_PRESETS: SessionPreset[] = [
   }),
   sound({
     intent: "World",
+    familyId: "world",
     name: "World Music",
     description: "Traditional and modern sounds from around the globe.",
     input: "World, musiques du monde",
@@ -258,6 +271,115 @@ export const SESSION_PRESETS: SessionPreset[] = [
     genres: ["World", "Musiques du monde"],
   }),
 ];
+
+/**
+ * Sounds the catalog may offer beyond the everyday starters above. They appear
+ * only when the catalog has enough playable tracks in the family (#2249), so
+ * they are not part of `SESSION_PRESETS` (the static fallback).
+ */
+export const EXTRA_SOUND_PRESETS: SessionPreset[] = [
+  sound({
+    intent: "Electronic",
+    familyId: "electronic",
+    name: "Electronic",
+    description: "House, techno and electronic beats for dancing or focus.",
+    input: "Electronic, house, techno",
+    sentence: "Electronic, house, techno",
+    output: "Pulsing synths and steady beats built for the dance floor",
+    gradient: gradient("#06b6d4", "#4f46e5"),
+    queueStyle: "Steady groove",
+    genres: ["Electronic", "House", "Techno"],
+  }),
+  sound({
+    intent: "Jazz",
+    familyId: "jazz",
+    name: "Jazz",
+    description: "Improvised, swinging and smooth jazz from many eras.",
+    input: "Jazz",
+    sentence: "Jazz",
+    output: "Horns, piano and brushed drums with room for improvisation",
+    gradient: gradient("#b45309", "#1e3a8a"),
+    queueStyle: "Easy swing",
+    genres: ["Jazz"],
+  }),
+  sound({
+    intent: "Rock",
+    familyId: "rock",
+    name: "Rock & Indie",
+    description: "Guitars and live drums, from indie to heavy rock.",
+    input: "Rock, indie",
+    sentence: "Rock, indie",
+    output: "Driving guitars, live drums and big choruses",
+    gradient: gradient("#dc2626", "#1f2937"),
+    queueStyle: "Loud and live",
+    genres: ["Rock", "Indie"],
+  }),
+  sound({
+    intent: "Ambient",
+    familyId: "ambient-lofi",
+    name: "Ambient & Lo-fi",
+    description: "Soft textures and dusty beats for quiet moments.",
+    input: "Ambient, lo-fi",
+    sentence: "Ambient, lo-fi",
+    output: "Slow, airy textures and laid-back beats that stay out of the way",
+    gradient: gradient("#0ea5e9", "#6366f1"),
+    queueStyle: "Long blends",
+    genres: ["Ambient", "Lo-Fi"],
+  }),
+  sound({
+    intent: "Classical",
+    familyId: "classical",
+    name: "Classical",
+    description: "Orchestral and piano pieces, old and new.",
+    input: "Classical",
+    sentence: "Classical",
+    output: "Strings, piano and orchestra, from baroque to modern",
+    gradient: gradient("#7c3aed", "#be185d"),
+    queueStyle: "Long blends",
+    genres: ["Classical"],
+  }),
+];
+
+/** One family as the backend reports it for this listener. */
+export type SoundFamilyAvailability = { id: string; label: string; count: number };
+
+/**
+ * Fewest playable tracks a Sounds starter needs when the backend's own
+ * threshold is unknown; mirrors `AGENT_SOUNDS_MIN_TRACKS`' default.
+ */
+export const DEFAULT_SOUNDS_MIN_TRACKS = 3;
+
+/**
+ * The Sounds starters the catalog can fill, in the order the backend returned
+ * them (taste, then catalog size). A family below the minimum, or one with no
+ * starter, is left out so a starter never dead-ends. Counts are returned by
+ * intent for the "World · 40+" hint.
+ */
+export function soundPresetsForFamilies(
+  families: readonly SoundFamilyAvailability[],
+  minTracks: number = DEFAULT_SOUNDS_MIN_TRACKS,
+): { presets: SessionPreset[]; counts: Record<string, number> } {
+  const byFamily = new Map<string, SessionPreset>();
+  for (const preset of [...SESSION_PRESETS, ...EXTRA_SOUND_PRESETS]) {
+    if (preset.group === "genre" && preset.familyId) byFamily.set(preset.familyId, preset);
+  }
+  const presets: SessionPreset[] = [];
+  const counts: Record<string, number> = {};
+  for (const family of families) {
+    const preset = byFamily.get(family.id);
+    if (!preset || family.count < minTracks || counts[preset.intent] !== undefined) continue;
+    presets.push(preset);
+    counts[preset.intent] = family.count;
+  }
+  return { presets, counts };
+}
+
+/** "7" under 10, then "10+", "20+", "40+" (never overstating the catalog). */
+export function soundCountLabel(count: number): string {
+  if (count < 10) return String(Math.max(0, Math.floor(count)));
+  const bucket = [40, 20, 10].find((floor) => count >= floor) ?? 10;
+  return `${bucket}+`;
+}
 
 /**
  * Plain labels for sessions recorded under an earlier name. History stores the

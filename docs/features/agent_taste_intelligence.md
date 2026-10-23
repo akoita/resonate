@@ -984,9 +984,9 @@ backend events, and a leftover 💰 icon for the retired buy mode (ADR-TE-1).
   partial, none), `AgentEventsDebug.test.tsx`, `useAgentEvents.test.ts`.
 - Screenshots in the User Guide are not refreshed in this slice.
 
-## AI DJ quick starts: plain starters and composable filters (#2249, slice 1 of 3)
+## AI DJ quick starts: plain starters and composable filters (#2249, slices 1 and 2 of 3)
 
-Status: **partial** (slice 1 of 3 shipped). Vision-neutral quality (ADR-BM-6):
+Status: **partial** (slices 1 and 2 of 3 shipped). Vision-neutral quality (ADR-BM-6):
 no fee, split, price, payout or purchase change.
 
 Shipped in slice 1 (frontend and copy only):
@@ -1036,17 +1036,61 @@ Shipped in slice 1 (frontend and copy only):
   removing only that filter, and the analytics payload. `AgentHistoryCard.test.tsx`
   checks that every old intent id and brand name renders its plain label.
 
+Shipped in slice 2 (catalog-aware Sounds):
+
+- **One cached catalog aggregate.** `agent_sounds.service.ts` counts, per genre
+  family from `genre_families.ts`, the tracks the DJ could actually play: a
+  ready or published release, clean content, a public rights route
+  (`classifyTrackAvailability`, the catalog's own availability rule), at least
+  one current stem, and promotion-eligible (`AI_PROMOTIONAL_ELIGIBILITY_WHERE`,
+  so fully AI-generated tracks are excluded as in the other DJ and discovery
+  filters, ADR-BM-5). A track counts toward a family when its release genre text
+  or its stored descriptor families (#2240) satisfy the family through the
+  shared matcher `genreOrDescriptorMatchesRequest`, so a "Bambara" track tagged
+  `world` counts toward World. Each family stores a total and a count without
+  explicit tracks. The scan is paged and bounded, and the result is held in
+  memory for `AGENT_SOUNDS_CACHE_TTL_MS` (default 10 minutes); concurrent
+  requests share one refresh and a failed refresh keeps serving the last good
+  aggregate. A render never queries the catalog.
+- **`GET /agents/config/session/sounds`** (JWT) returns
+  `{ families: [{ id, label, count }], minTracks }` for this listener. The
+  explicit preference selects the count (the optional `allowExplicit=true|false`
+  query previews the choice before it is saved; otherwise the saved
+  `AgentConfig.allowExplicit` applies). Families under `AGENT_SOUNDS_MIN_TRACKS`
+  (default 3) are omitted. The rest are ordered by the listener's learned taste
+  (the shared v2 taste profile's positive genre weights, added to every family
+  the genre belongs to), then by catalog count, then by label. If taste cannot be
+  read, the order falls back to catalog size.
+- **Sounds row from that data.** The row shows "World Music · 40+": the exact
+  count under 10, then 10+, 20+ and 40+. It keeps the returned order and hides any
+  family under the threshold, so a starter never dead-ends; the web also checks
+  the count against the server's `minTracks`. Families with no starter (for
+  example African, which World and Afrobeats cover) are not shown. Beyond the
+  seven everyday starters, Electronic, Jazz, Rock & Indie, Ambient & Lo-fi and
+  Classical appear when the catalog can fill them. If the request fails, today's
+  seven static Sounds starters stay. A starter's sentence and chips are unchanged
+  (genre names the parser reads), now with a `familyId`.
+- **Tests.** `agent_sounds.spec.ts` (tally, threshold, explicit, ordering, ties,
+  config), `agent_sounds.integration.spec.ts` (real Postgres fixtures: explicit,
+  AI-generated, unready, withdrawn, quarantined and stemless tracks excluded,
+  descriptor-only match counted, below-threshold families hidden, cache reuse,
+  the route handler), the route's `401` in
+  `agent_config_session_parse.controller.http.spec.ts`, and web tests for order,
+  buckets, hiding below the threshold (`sessionPresetData.test.ts`), the panel
+  fallback and wiring (`AgentSessionPanel.test.tsx`), and that every generated
+  starter parses with nothing left over.
+- **Deferred inside slice 2:** lane weights are not used separately for ordering
+  (the same history feeds the taste profile); the aggregate is per backend
+  instance (no shared cache) since it is cheap to recompute; the "dimmed" variant
+  was dropped in favour of hiding.
+
 Remaining (explicitly tracked on #2249, which stays open):
 
-- **Slice 2, catalog-aware Sounds:** one cached aggregate of playable tracks per
-  genre family, ordering by the listener's taste, light counts, and hiding or
-  dimming families below a minimum so a starter never dead-ends (the "no Sounds
-  starter below the threshold" acceptance test belongs here).
 - **Slice 3, For you and Discovery:** "Right now" (#2245), "More like..." (#2244),
   "New artists in..." and the Familiar, Mixed, New segmented control on the
   exploration share (default Mixed; owner decision 2), plus the optional Tempo
   filter in Adjust and the dismissible "you can combine" tip.
-- Screenshots in the User Guide are not refreshed in this slice.
+- Screenshots in the User Guide are not refreshed in these slices.
 
 ## Played-through milestone for Sonic Radar (#2097)
 

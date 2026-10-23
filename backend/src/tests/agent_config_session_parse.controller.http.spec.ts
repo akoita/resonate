@@ -79,6 +79,12 @@ describe('AgentConfigController session parse (e2e)', () => {
       .expect(401);
   });
 
+  it('GET /agents/config/session/sounds requires a JWT (#2249)', async () => {
+    await request(app.getHttpServer())
+      .get('/agents/config/session/sounds')
+      .expect(401);
+  });
+
   it('GET /agents/config/session/:sessionId/mix-coverage requires a JWT', async () => {
     await request(app.getHttpServer())
       .get('/agents/config/session/session-1/mix-coverage')

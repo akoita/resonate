@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import type { Prisma } from "@prisma/client";
@@ -15,6 +15,7 @@ import {
     type AgentSignalAction,
 } from "./agent_learning.service";
 import { mergeSessionGenres } from "./agent_session_genres";
+import { AgentSoundsService } from "./agent_sounds.service";
 import { resolveAllowExplicit } from "./agent_explicit_preference";
 import { sessionFilterSummary } from "./agent_session_filters";
 import {
@@ -68,7 +69,13 @@ export class AgentConfigController {
         private requestParser?: CrateRequestParser,
         @Optional()
         private readonly unmetDemand?: UnmetDemandService,
-    ) { }
+        @Optional()
+        sounds?: AgentSoundsService,
+    ) {
+        this.sounds = sounds ?? new AgentSoundsService();
+    }
+
+    private readonly sounds: AgentSoundsService;
 
     @Get()
     @UseGuards(AuthGuard("jwt"))
@@ -172,6 +179,35 @@ export class AgentConfigController {
     @UseGuards(AuthGuard("jwt"))
     getMixVocabulary() {
         return { genres: [...TASTE_EDIT_GENRES], moods: [...TASTE_EDIT_MOODS] };
+    }
+
+    /**
+     * The Sounds row (#2249): genre families the catalog can fill, for this
+     * listener. Counts come from one cached catalog aggregate (never a query
+     * per render); the explicit preference (`allowExplicit` query value, else
+     * the saved choice) selects the count, families below
+     * `AGENT_SOUNDS_MIN_TRACKS` are omitted, and the rest follow the listener's
+     * learned taste, then catalog size.
+     */
+    @Get("session/sounds")
+    @UseGuards(AuthGuard("jwt"))
+    async getSessionSounds(@Req() req: any, @Query("allowExplicit") allowExplicitQuery?: string) {
+        const userId = req.user.userId;
+        const config = await prisma.agentConfig.findUnique({
+            where: { userId },
+            select: { allowExplicit: true, vibes: true },
+        });
+        const requested =
+            allowExplicitQuery === "true" ? true : allowExplicitQuery === "false" ? false : undefined;
+        const allowExplicit = resolveAllowExplicit(requested, config?.allowExplicit);
+        // Taste only orders the row: a failure to read it falls back to catalog size.
+        const profile = await this.learningService
+            .resolveTasteProfile(userId, config?.vibes ?? [])
+            .catch((error) => {
+                this.logger.warn(`Sounds taste unavailable: ${error instanceof Error ? error.message : String(error)}`);
+                return null;
+            });
+        return this.sounds.getForListener({ allowExplicit, genreWeights: profile?.genreWeights });
     }
 
     @Get("session/:sessionId/mix-coverage")
