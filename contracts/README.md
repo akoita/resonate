@@ -321,7 +321,7 @@ MAX_MUTANTS=10 scripts/mutation-score.sh gambit-revenue-escrow.json RevenueEscro
 # .github/workflows/mutation.yml, not on the per-PR path. Large campaigns use
 # deterministic interleaved shards; every generated mutant is still scored once.
 # To reproduce one shard locally, set its zero-based index and total count:
-MUTANT_SHARD_INDEX=0 MUTANT_SHARD_COUNT=2 \
+MUTANT_SHARD_INDEX=0 MUTANT_SHARD_COUNT=4 \
   scripts/mutation-score.sh gambit-content-protection.json ContentProtection
 
 # Gas report
