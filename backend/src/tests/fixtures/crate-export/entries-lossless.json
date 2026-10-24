@@ -1,0 +1,50 @@
+{
+  "crateTitle": "Official stems",
+  "entries": [
+    {
+      "position": 0,
+      "trackId": "track-1",
+      "stemId": "dddddd44-0000-4000-8000-000000000004",
+      "stemType": "vocals",
+      "title": "Night Drive",
+      "artistName": "DJ Öz",
+      "licenseType": "commercial",
+      "mimeType": "audio/wav",
+      "source": "official",
+      "bpm": 122.5,
+      "key": "F#m",
+      "camelot": "11A",
+      "firstBeatSec": 0.25
+    },
+    {
+      "position": 0,
+      "trackId": "track-1",
+      "stemId": "eeeeee55-0000-4000-8000-000000000005",
+      "stemType": "bass",
+      "title": "Night Drive",
+      "artistName": "DJ Öz",
+      "licenseType": "remix",
+      "mimeType": "audio/flac",
+      "source": "official",
+      "bpm": 122.5,
+      "key": "F#m",
+      "camelot": "11A",
+      "firstBeatSec": 0.25
+    },
+    {
+      "position": 0,
+      "trackId": "track-1",
+      "stemId": "ffffff66-0000-4000-8000-000000000006",
+      "stemType": "drums",
+      "title": "Night Drive",
+      "artistName": "DJ Öz",
+      "licenseType": "personal",
+      "mimeType": "audio/mpeg",
+      "source": "separated",
+      "bpm": null,
+      "key": null,
+      "camelot": null,
+      "firstBeatSec": null
+    }
+  ]
+}

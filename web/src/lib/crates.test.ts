@@ -60,6 +60,7 @@ const baseFilters: CrateFilters = {
   includeCamelotNeighbors: false,
   energy: null,
   requiredStems: [],
+  stemSource: null,
   licenseType: null,
   maxTotalUsd: null,
   maxPerItemUsd: null,
@@ -187,6 +188,10 @@ describe("filter chips", () => {
     expect(next.bpm).toBeNull();
     expect(filters.bpm).toEqual({ min: 120, max: 126 });
     expect(removeChip(filters, "stem:vocals").requiredStems).toEqual([]);
+    // The stem source chip (#1976).
+    const official = { ...filters, stemSource: "official" as const };
+    expect(filterChips(official).map((chip) => chip.label)).toContain("Official stems");
+    expect(removeChip(official, "stemSource").stemSource).toBeNull();
     expect(removeChip(filters, "genre:house").genres).toEqual([]);
     expect(removeChip(filters, "mood:dark").moods).toEqual([]);
     expect(removeChip(filters, "licenseType").licenseType).toBeNull();

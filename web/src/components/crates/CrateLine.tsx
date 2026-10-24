@@ -7,8 +7,10 @@ import {
   INDICATIVE_PRICE_TEXT,
   NO_STANDARD_TERMS_TEXT,
   type CrateItemDto,
+  type CrateLineStem,
   type CrateTransitionFacts,
 } from "../../lib/crates";
+import { StemSourceBadge } from "../stem/StemSourceBadge";
 import "../../styles/crates.css";
 
 export type TransitionPreviewState = "idle" | "loading" | "playing";
@@ -65,7 +67,7 @@ export function CrateLine({
 }: CrateLineProps) {
   const label = `"${item.title}"`;
   const ai = aiLabel(item.aiDisclosureLevel);
-  const stems =
+  const stems: CrateLineStem[] =
     item.stems.length > 0
       ? item.stems
       : item.stemTypes.map((type) => ({ type, qualityScore: null as number | null }));
@@ -113,8 +115,9 @@ export function CrateLine({
           {stems.map((stem) => {
             const quality = formatStemQuality(stem.qualityScore);
             return (
-              <li key={stem.type} className="crates-stem-chip">
+              <li key={`${stem.type}:${stem.source ?? ""}`} className="crates-stem-chip">
                 {titleCase(stem.type)}
+                {stem.source ? <> <StemSourceBadge source={stem.source} /></> : null}
                 {quality ? ` · quality ${quality}` : " · quality not scored"}
               </li>
             );

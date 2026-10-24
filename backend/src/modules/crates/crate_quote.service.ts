@@ -64,6 +64,7 @@ import {
   type CrateQuoteItemDto,
   type CrateQuoteLineDto,
 } from "./crate_quote.dto";
+import { resolveStemSource, stemSourceFields } from "../shared/stem-source";
 
 /**
  * Crate quote and settlement (#1964, docs/rfc/taste-engine.md §5.4).
@@ -240,6 +241,7 @@ export class CrateQuoteService {
           select: {
             id: true,
             type: true,
+            source: true,
             listings: {
               where: {
                 status: "active",
@@ -280,7 +282,9 @@ export class CrateQuoteService {
       const stems = row.stems
         .filter((stem) => {
           const type = stem.type.toLowerCase();
-          return type !== "original" && type !== "master";
+          if (type === "original" || type === "master") return false;
+          // The crate's source filter (#1976) limits which stems are quoted.
+          return filters.stemSource === null || resolveStemSource(stem) === filters.stemSource;
         })
         .sort((a, b) => a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
 
@@ -816,6 +820,12 @@ export class CrateQuoteService {
       },
     });
     const trackById = new Map(tracks.map((track) => [track.id, track]));
+    // Where each quoted stem's audio comes from, next to the tier's rights (#1976).
+    const stemRows = await prisma.stem.findMany({
+      where: { id: { in: [...new Set(quote.lines.map((line) => line.stemId))] } },
+      select: { id: true, type: true, source: true, separationModel: true, mimeType: true },
+    });
+    const sourceByStem = new Map(stemRows.map((stem) => [stem.id, stemSourceFields(stem)]));
 
     const settledLogIndexes = quote.lines
       .map((line) => line.logIndex)
@@ -871,7 +881,7 @@ export class CrateQuoteService {
         };
         lines.push(line);
       }
-      line.items.push(toItemDto(row, quote, decorate, purchaseIdByLog));
+      line.items.push(toItemDto(row, quote, decorate, purchaseIdByLog, sourceByStem.get(row.stemId)));
     }
 
     const totals = aggregateQuoteTotals(
@@ -942,6 +952,7 @@ function toItemDto(
   quote: CrateQuote,
   decorate: DecorateUnits,
   purchaseIdByLog: ReadonlyMap<number, string>,
+  sourceFields?: ReturnType<typeof stemSourceFields>,
 ): CrateQuoteItemDto {
   const priced =
     row.paymentToken !== null && row.totalPriceUnits !== null
@@ -955,6 +966,9 @@ function toItemDto(
     quoteLineId: row.id,
     stemId: row.stemId,
     stemType: row.stemType,
+    source: sourceFields?.source === "official" ? "official" : sourceFields?.source ? "separated" : null,
+    sourceLabel: sourceFields?.sourceLabel ?? null,
+    mimeType: sourceFields?.mimeType ?? null,
     status: row.status,
     reason: row.reason,
     listingId: row.listingId?.toString() ?? null,

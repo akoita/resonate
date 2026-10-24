@@ -275,3 +275,11 @@ listing manager stabilizes.
   - `web/src/lib/marketplaceStemGroups.ts`
   - `web/src/components/marketplace/TierPicker.tsx`
 - Buyer home for purchased stems: [#2042](https://github.com/akoita/resonate/issues/2042)
+
+## Stem source (#1976)
+
+Each listing's stem has a source, `official` (the artist's lossless parts) or
+`separated` (AI), returned on `GET /api/metadata/listings` and filterable with
+`?source=`. The source is catalog metadata: nothing changes on the marketplace
+contracts, and the two sources are separate stems with their own listings and
+prices. See [Official stems](official_stems.md).

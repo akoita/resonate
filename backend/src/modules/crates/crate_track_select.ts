@@ -35,6 +35,7 @@ export function crateTrackSelect(now: Date) {
       select: {
         id: true,
         type: true,
+        source: true,
         isCurrent: true,
         audioFeatures: true,
         pricing: {

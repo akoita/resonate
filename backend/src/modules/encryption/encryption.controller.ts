@@ -22,6 +22,8 @@ import {
     evaluatePurchaseDeliveries,
     linkConsentToPurchase,
 } from '../purchase_consent/purchase_consent_delivery';
+import { stemContentType, stemDownloadFileName } from '../shared/stem-media';
+import { lookupStemMimeType } from './stem-mime-lookup';
 
 @Controller('encryption')
 export class EncryptionController {
@@ -104,9 +106,10 @@ export class EncryptionController {
                 authSig,
             );
 
-            // Set content type for audio
+            // Content type follows the stored stem (#1976): official stems are
+            // WAV or FLAC. An unknown URI keeps the MP3 default.
             res.set({
-                'Content-Type': 'audio/mpeg',
+                'Content-Type': stemContentType(await lookupStemMimeType(uri)),
                 'Content-Length': decryptedBuffer.length,
             });
 
@@ -242,9 +245,11 @@ export class EncryptionController {
             }
 
             // Set response headers for download
-            const filename = `${stem.title || stem.type || 'stem'}.mp3`;
+            // Name and Content-Type follow the stem's stored format (#1976): a
+            // buyer of an official stem receives the lossless file as uploaded.
+            const filename = stemDownloadFileName(stem);
             res.set({
-                'Content-Type': 'audio/mpeg',
+                'Content-Type': stemContentType(stem.mimeType),
                 'Content-Length': audioBuffer.length,
                 'Content-Disposition': `attachment; filename="${filename}"`,
             });

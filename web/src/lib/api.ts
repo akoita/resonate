@@ -624,6 +624,10 @@ export type Track = {
     durationSeconds?: number | null;
     isEncrypted?: boolean;
     encryptionMetadata?: string | null;
+    /** `official` (lossless, from the artist) or `separated` (AI); null on full-mix rows (#1976). */
+    source?: "official" | "separated" | null;
+    separationModel?: string | null;
+    mimeType?: string | null;
   }>;
   release?: Release;
 };
@@ -5229,6 +5233,57 @@ export async function replaceTrackAudio(
     status: "processing" | "complete";
   }>(
     `/ingestion/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(trackId)}/audio`,
+    { method: "POST", body: formData },
+    token,
+  );
+}
+
+/** Stem types an official package may carry (#1976); one file field per type. */
+export const OFFICIAL_STEM_TYPES = ["vocals", "drums", "bass", "guitar", "piano", "other"] as const;
+export type OfficialStemType = (typeof OFFICIAL_STEM_TYPES)[number];
+
+/** A readable reason when `file` cannot be an official stem (WAV or FLAC only), else null. */
+export function getOfficialStemFileValidationError(file: File): string | null {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension !== "wav" && extension !== "flac") {
+    return `${file.name} must be a WAV or FLAC file. Official stems are lossless.`;
+  }
+  if (file.size <= 0) return `${file.name} is empty.`;
+  return null;
+}
+
+export type OfficialStemUploadResponse = {
+  releaseId: string;
+  trackId: string;
+  stems: Array<{ id: string; type: string; source: "official"; mimeType: string; durationSeconds: number }>;
+  /** Earlier official stems of the track that this package replaced. */
+  replaced: number;
+};
+
+/**
+ * Uploads an official stem package (lossless WAV or FLAC) for one track of a
+ * release (#1976). The server checks the files against the published mix and
+ * answers 400 with a readable reason when they do not line up.
+ */
+export async function uploadOfficialStems(
+  token: string,
+  releaseId: string,
+  trackId: string,
+  files: Partial<Record<OfficialStemType, File>>,
+) {
+  const formData = new FormData();
+  let count = 0;
+  for (const type of OFFICIAL_STEM_TYPES) {
+    const file = files[type];
+    if (!file) continue;
+    const validationError = getOfficialStemFileValidationError(file);
+    if (validationError) throw new Error(validationError);
+    formData.append(type, file);
+    count += 1;
+  }
+  if (count === 0) throw new Error("Choose at least one stem file (WAV or FLAC).");
+  return apiRequest<OfficialStemUploadResponse>(
+    `/ingestion/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(trackId)}/official-stems`,
     { method: "POST", body: formData },
     token,
   );

@@ -1043,6 +1043,13 @@ model Stem {
   data               Bytes?
   mimeType           String?
   durationSeconds    Float?
+  // Where the audio of a stem comes from (#1976, ADR-TE-7): `separated` by the
+  // ingestion worker from the uploaded mix, or `official`, uploaded by the
+  // artist. Null for the full-mix rows (`original`, remix `master`), which are
+  // not stems a buyer licenses. `separationModel` names the model of a
+  // separated stem (for example `demucs-htdemucs-6s`); null otherwise.
+  source             StemSource?
+  separationModel    String?
   // Measured musical features (tempo/key/beats/energy) extracted by the
   // demucs worker (#1184). The JSON carries its own schemaVersion.
   audioFeatures      Json?
@@ -1062,6 +1069,12 @@ model Stem {
   x402Settlements    X402Settlement[]
 
   @@index([trackId, isCurrent])
+  @@index([source])
+}
+
+enum StemSource {
+  separated
+  official
 }
 
 model StemQualityRating {

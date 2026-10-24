@@ -10,6 +10,7 @@ const licensePricing = {
 const licenseOptions = [
   {
     key: "personal",
+    terms: expect.any(String),
     price: { currency: "USDC", amount: "0.05" },
     displayPrice: "0.05 USDC",
     breakdown: {
@@ -22,6 +23,7 @@ const licenseOptions = [
   },
   {
     key: "remix",
+    terms: expect.any(String),
     price: { currency: "USDC", amount: "5" },
     displayPrice: "5 USDC",
     breakdown: {
@@ -34,6 +36,7 @@ const licenseOptions = [
   },
   {
     key: "commercial",
+    terms: expect.any(String),
     price: { currency: "USDC", amount: "25" },
     displayPrice: "25 USDC",
     breakdown: {
@@ -105,6 +108,7 @@ describe("StorefrontService", () => {
       trackId: "track_1",
       trackTitle: "Midnight Run",
       stemType: "vocals",
+      source: expect.objectContaining({ source: "separated", label: "Separated (AI)" }),
       stemTypes: ["vocals", "drums"],
       hasIpnft: true,
       price: {

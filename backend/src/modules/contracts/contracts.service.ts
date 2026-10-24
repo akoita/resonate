@@ -75,6 +75,7 @@ import {
   type UploadRightsRoute,
   UPLOAD_RIGHTS_POLICY_VERSION,
 } from "../rights/upload-rights-policy";
+import type { StemSourceValue } from "../shared/stem-source";
 
 // ABI for the marketplace getListing view function
 const MARKETPLACE_ABI = [
@@ -1416,10 +1417,12 @@ export class ContractsService implements OnModuleInit {
     minPrice?: string;
     maxPrice?: string;
     excludeSellerAddress?: string;
+    /** Only stems of this source (#1976): official (lossless) or separated (AI). */
+    source?: StemSourceValue;
     limit?: number;
     offset?: number;
   }) {
-    const { status, sellerAddress, chainId, stemId, artistId, releaseId, genre, search, sortBy, minPrice, maxPrice, excludeSellerAddress, limit = 20, offset = 0 } = options;
+    const { status, sellerAddress, chainId, stemId, artistId, releaseId, genre, search, sortBy, minPrice, maxPrice, excludeSellerAddress, source, limit = 20, offset = 0 } = options;
 
     // Build stem relation filter for artist/release/genre/search
     const stemFilter: any = {};
@@ -1427,6 +1430,7 @@ export class ContractsService implements OnModuleInit {
     const releaseFilter: any = {};
 
     if (stemId) stemFilter.id = stemId;
+    if (source) stemFilter.source = source;
     if (artistId) releaseFilter.artistId = artistId;
     if (releaseId) releaseFilter.id = releaseId;
     if (genre) releaseFilter.genre = { contains: genre, mode: "insensitive" as const };
@@ -1486,6 +1490,9 @@ export class ContractsService implements OnModuleInit {
             uri: true,
             artworkUrl: true,
             durationSeconds: true,
+            source: true,
+            separationModel: true,
+            mimeType: true,
             nftMint: {
               select: { royaltyBps: true },
             },
@@ -1708,6 +1715,9 @@ export class ContractsService implements OnModuleInit {
             uri: true,
             artworkUrl: true,
             durationSeconds: true,
+            source: true,
+            separationModel: true,
+            mimeType: true,
             nftMint: {
               select: { royaltyBps: true },
             },
@@ -2079,6 +2089,8 @@ export class ContractsService implements OnModuleInit {
                 artworkUrl: true,
                 title: true,
                 mimeType: true,
+                source: true,
+                separationModel: true,
                 durationSeconds: true,
                 encryptionMetadata: true,
                 isEncrypted: true,

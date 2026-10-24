@@ -750,7 +750,7 @@ describe("CratesService (integration)", () => {
         const t1 = byId.get(id("t1"));
         expect(t1?.originalStemId).toBe(id("t1_original"));
         // The mean of 80 and 91, rounded; the original stem is never listed.
-        expect(t1?.stems).toEqual([{ type: "drums", qualityScore: 86 }]);
+        expect(t1?.stems).toEqual([{ type: "drums", source: "separated", qualityScore: 86 }]);
         expect(t1?.licenseOptions).toEqual([
           {
             licenseType: "personal",
@@ -778,7 +778,7 @@ describe("CratesService (integration)", () => {
         // Unrated stem: null score. Expired commercial listing: not an option.
         const t2 = byId.get(id("t2"));
         expect(t2?.originalStemId).toBe(id("t2_original"));
-        expect(t2?.stems).toEqual([{ type: "vocals", qualityScore: null }]);
+        expect(t2?.stems).toEqual([{ type: "vocals", source: "separated", qualityScore: null }]);
         expect(t2?.licenseOptions.map((option) => option.licenseType)).toEqual([
           "personal",
           "remix",
@@ -788,7 +788,7 @@ describe("CratesService (integration)", () => {
 
         // Listed but unpriced tier: an option with a null price.
         const t3 = byId.get(id("t3"));
-        expect(t3?.stems).toEqual([{ type: "bass", qualityScore: 70 }]);
+        expect(t3?.stems).toEqual([{ type: "bass", source: "separated", qualityScore: 70 }]);
         expect(t3?.licenseOptions).toEqual([
           {
             licenseType: "remix",
@@ -1024,7 +1024,7 @@ describe("CratesService (integration)", () => {
         const response = await service.updateCrate(EDITOR, crate.id, { title: "enriched" });
         const t1 = response.crate.items.find((item) => item.trackId === id("t1"));
         expect(t1?.originalStemId).toBe(id("t1_original"));
-        expect(t1?.stems).toEqual([{ type: "drums", qualityScore: 86 }]);
+        expect(t1?.stems).toEqual([{ type: "drums", source: "separated", qualityScore: 86 }]);
         expect(t1?.licenseOptions.map((option) => option.licenseType)).toEqual([
           "personal",
           "remix",

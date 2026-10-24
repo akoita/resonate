@@ -22,6 +22,7 @@ import {
   type AiDisclosureSource,
 } from "../catalog/ai-disclosure.policy";
 import { validateArtworkUpload } from "../shared/artwork-validation";
+import { readIngestionUploadBuffer } from "./ingestion-upload-buffer";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
 const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
@@ -994,27 +995,7 @@ export class IngestionService {
   }
 
   private async readUploadBuffer(file: Express.Multer.File): Promise<Buffer> {
-    if (Buffer.isBuffer(file.buffer)) return file.buffer;
-    if (typeof file.path === "string" && file.path.length > 0) {
-      const tempRoot = resolve(getIngestionMultipartTempRoot());
-      const directory = typeof file.destination === "string"
-        ? resolveContainedPath(tempRoot, file.destination)
-        : null;
-      const filename = typeof file.filename === "string" ? file.filename : "";
-      if (
-        !directory || dirname(directory) !== tempRoot ||
-        !/^request-[A-Za-z0-9_-]+$/.test(basename(directory)) ||
-        !/^audio-[1-9][0-9]*\.upload$/.test(filename)
-      ) {
-        throw new BadRequestException("Uploaded audio file has no readable content");
-      }
-      const ownedPath = join(directory, filename);
-      if (file.path !== ownedPath) {
-        throw new BadRequestException("Uploaded audio file has no readable content");
-      }
-      return readFile(ownedPath);
-    }
-    throw new BadRequestException("Uploaded audio file has no readable content");
+    return readIngestionUploadBuffer(file);
   }
 
   private generateId(prefix: string) {

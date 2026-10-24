@@ -17,6 +17,7 @@ import {
   crateReasonText,
   type LineChoice,
 } from "../../lib/crateQuote";
+import { StemSourceBadge } from "../stem/StemSourceBadge";
 import type { PreflightDrop } from "../../lib/crateQuotePreflight";
 import {
   NO_STANDARD_TERMS_TEXT,
@@ -47,7 +48,10 @@ function ItemRow({ item }: { item: CrateQuoteItem }) {
       data-quote-line-id={item.quoteLineId}
       data-status={item.status}
     >
-      <span className="crates-quote-stem">{titleCase(item.stemType)}</span>
+      <span className="crates-quote-stem">
+        {titleCase(item.stemType)}
+        {item.source ? <> <StemSourceBadge source={item.source} /></> : null}
+      </span>
       {dropped ? (
         <span className="crates-quote-reason">Not in this quote: {crateReasonText(item.reason)}</span>
       ) : (

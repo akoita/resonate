@@ -61,6 +61,7 @@ import { CrateQuoteService } from "./crate_quote.service";
 import { crateLicenseOptions } from "./crate_license_rights";
 import { orderCrateAsSetPath, transitionFacts } from "./crate_ordering";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
+import { resolveStemSource } from "../shared/stem-source";
 import {
   CRATE_REQUEST_PARSER,
   filtersFromReferenceTrack,
@@ -1051,6 +1052,7 @@ export class CratesService {
       );
       const stems: CrateItemStemDto[] = lineStems(line.row).map((stem) => ({
         type: stem.type,
+        source: stem.source,
         qualityScore: scores.get(stem.id) ?? null,
       }));
       return {
@@ -1093,12 +1095,14 @@ export class CratesService {
 }
 
 /** Current non-original, non-master stems with an id, sorted by type then id. */
-function lineStems(row: CrateTrackRow): Array<{ id: string; type: string }> {
-  const stems: Array<{ id: string; type: string }> = [];
+function lineStems(
+  row: CrateTrackRow,
+): Array<{ id: string; type: string; source: "official" | "separated" }> {
+  const stems: Array<{ id: string; type: string; source: "official" | "separated" }> = [];
   for (const stem of row.stems) {
     const type = stem.type.toLowerCase();
     if (!stem.isCurrent || !stem.id || NON_STEM_TYPES.has(type)) continue;
-    stems.push({ id: stem.id, type });
+    stems.push({ id: stem.id, type, source: resolveStemSource(stem) ?? "separated" });
   }
   return stems.sort((a, b) => a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
 }

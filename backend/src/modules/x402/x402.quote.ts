@@ -1,4 +1,6 @@
 import type { X402LicenseKey, X402LicensePricing } from "./x402.config";
+import { plainLicenseTerms } from "../contracts/stem_license_tier";
+import { stemSourceFacts, type StemSourceFacts } from "../shared/stem-source";
 
 export type QuoteLicenseKey = X402LicenseKey;
 
@@ -11,6 +13,12 @@ export type X402QuoteInput = {
   releaseTitle: string | null;
   hasNft: boolean;
   tokenId: string | null;
+  /**
+   * Where the stem's audio comes from (#1976): the quote shows it next to the
+   * license terms. Omitted for callers that carry no stem row; the source is
+   * then reported as unknown (null) rather than guessed.
+   */
+  source?: { source?: string | null; separationModel?: string | null } | null;
   basePlayPriceUsd?: number | null;
   remixLicenseUsd?: number | null;
   commercialLicenseUsd?: number | null;
@@ -93,6 +101,7 @@ function makeLicenseOption(key: QuoteLicenseKey, amount: number, feeBps: number)
   const normalized = formatUsdcAmount(amount);
   return {
     key,
+    terms: plainLicenseTerms(key),
     price: {
       currency: "USDC",
       amount: normalized,
@@ -105,6 +114,7 @@ function makeLicenseOption(key: QuoteLicenseKey, amount: number, feeBps: number)
 function makePersonalLicenseOption(quote: X402PersonalQuoteOverride) {
   return {
     key: "personal" as const,
+    terms: plainLicenseTerms("personal"),
     price: {
       currency: quote.currency,
       amount: quote.amount,
@@ -126,6 +136,15 @@ function makePersonalLicenseOption(quote: X402PersonalQuoteOverride) {
       },
     },
   };
+}
+
+function resolveQuoteSource(input: X402QuoteInput): StemSourceFacts | null {
+  if (!input.source) return null;
+  return stemSourceFacts({
+    type: input.type,
+    source: input.source.source,
+    separationModel: input.source.separationModel,
+  });
 }
 
 export function buildStemX402Quote(input: X402QuoteInput) {
@@ -158,6 +177,9 @@ export function buildStemX402Quote(input: X402QuoteInput) {
     releaseTitle: input.releaseTitle,
     hasNft: input.hasNft,
     tokenId: input.tokenId,
+    // Official (lossless, uploaded by the artist) or Separated (AI), with the
+    // plain description and the separation model (#1976).
+    source: resolveQuoteSource(input),
     price: {
       currency: input.personalQuote?.currency ?? "USDC",
       amount: fromAmount,

@@ -214,3 +214,22 @@ describe("candidateFactsFromRow", () => {
     expect(source.release.moods).toEqual(["dark"]);
   });
 });
+
+describe("candidateFactsFromRow stem sources (#1976)", () => {
+  it("lists the current stem types per source and counts an unsourced stem as separated", () => {
+    const track = row([
+      stem({ type: "original" }),
+      stem({ type: "vocals", source: "official" }),
+      stem({ type: "bass", source: "official" }),
+      stem({ type: "vocals", source: "separated" }),
+      stem({ type: "drums", source: null }),
+      stem({ type: "guitar", source: "official", isCurrent: false }),
+    ]);
+    const facts = candidateFactsFromRow(track, new Set(), NOW);
+    expect(facts.stemTypesBySource).toEqual({
+      official: ["bass", "vocals"],
+      separated: ["drums", "vocals"],
+    });
+    expect(facts.stemTypes).toEqual(["bass", "drums", "vocals"]);
+  });
+});

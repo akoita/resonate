@@ -16,6 +16,9 @@ import {
 import { formatUsdcAmount, QuoteLicenseKey } from "../x402/x402.quote";
 import { getX402ChainId } from "../x402/x402.public";
 import { MCP_ERROR_RECOVERY, type McpErrorCode } from "./mcp.constants";
+import { knownStemFileExtension } from "../shared/stem-media";
+import { stemSourceFacts, type StemSourceFacts } from "../shared/stem-source";
+import { plainLicenseTerms } from "../contracts/stem_license_tier";
 
 export type McpStemQuote = {
   summary: string;
@@ -35,6 +38,8 @@ export type McpStemQuote = {
     artist: string | null;
     releaseTitle: string | null;
     mimeType: string;
+    /** Official (lossless) or Separated (AI), with the model (#1976). */
+    source: StemSourceFacts | null;
   };
 };
 
@@ -60,6 +65,8 @@ type McpStemRightsSummary = {
   trackTitle: string | null;
   releaseTitle: string | null;
   usage: string;
+  /** The license tier's terms in plain words (#1976). */
+  terms: string | null;
   attribution: string;
   constraints: string[];
 };
@@ -153,6 +160,7 @@ export class McpStemService {
       releaseTitle: stem.track?.release?.title ?? null,
       hasNft: !!stem.nftMint,
       tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+      stemSource: stem,
       licenseKey: licenseType,
       amountUsd,
       network: this.x402Config.network,
@@ -361,6 +369,7 @@ export class McpStemService {
         artist: stem.track?.release?.primaryArtist ?? null,
         releaseTitle: stem.track?.release?.title ?? null,
         mimeType: this.mimeType(stem),
+        source: stemSourceFacts(stem),
       },
     };
   }
@@ -375,6 +384,7 @@ export class McpStemService {
       artist: stem.track?.release?.primaryArtist ?? null,
       trackTitle: stem.track?.title ?? null,
       releaseTitle: stem.track?.release?.title ?? null,
+      terms: plainLicenseTerms(licenseType),
       usage:
         licenseType === "personal"
           ? "Personal listening or evaluation of the purchased stem."
@@ -556,12 +566,7 @@ export class McpStemService {
     if (existingExtension) {
       return existingExtension;
     }
-    if (mimeType === "audio/mp4") {
-      return ".m4a";
-    }
-    if (mimeType === "audio/mpeg") {
-      return ".mp3";
-    }
-    return "";
+    const known = knownStemFileExtension(mimeType);
+    return known ? `.${known}` : "";
   }
 }

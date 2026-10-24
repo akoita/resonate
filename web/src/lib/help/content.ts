@@ -1672,7 +1672,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Preview and collect licensed audio stems from artists worldwide, choosing the license tier that fits how you'll use them.",
     category: "marketplace",
     audiences: ["listener", "producer"],
-    keywords: ["marketplace", "buy", "collect", "stem", "license", "personal", "remix", "commercial", "purchase", "checkout", "x402", "receipt", "nft", "library", "my purchased stems", "my purchases", "where are my stems", "upgrade"],
+    keywords: ["marketplace", "buy", "collect", "stem", "official stems", "separated", "lossless", "wav", "flac", "stem source", "license", "personal", "remix", "commercial", "purchase", "checkout", "x402", "receipt", "nft", "library", "my purchased stems", "my purchases", "where are my stems", "upgrade"],
     sections: [
       {
         id: "browse",
@@ -1716,6 +1716,27 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "Buying to remix?",
             text: "Pick the Remix tier. A remix-tier purchase is what gives you permission to open the stem in Remix Studio.",
+          },
+        ],
+      },
+      {
+        id: "stem-sources",
+        heading: "Official or Separated (AI)?",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Every stem shows where its audio comes from, on its card, its page, the checkout and your receipt, next to the license you are buying and what that license lets you do in plain words. What you pay for is the license; the audio file is how it is delivered.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "Official", description: "The artist's own parts, uploaded as lossless WAV or FLAC and aligned with the published track. You receive the lossless file." },
+              { term: "Separated (AI)", description: "Resonate separated the stem from the published track with an AI model, named in the badge's tooltip, and delivers it as an MP3 (320 kbps)." },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Use the source filter in Browse stems, or ask for official stems in a crate request, to see only one kind. Artists price the two kinds separately, so the same part can cost different amounts as Official and as Separated (AI).",
           },
         ],
       },
@@ -1845,7 +1866,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "marketplace",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["sell", "list", "listing", "mint", "manage listings", "relist", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
+    keywords: ["sell", "list", "listing", "official stems", "lossless", "wav", "flac", "upload stems", "mint", "manage listings", "relist", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
     sections: [
       {
         id: "listing",
@@ -1885,6 +1906,32 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "Payouts need a verified-human account",
             text: "Because a sale sends money to you, minting a stem for sale requires your account to be human-verified and your catalog rights to allow payouts. Run the human-verification check on your artist profile first; if you're not eligible yet, the app tells you exactly what's missing.",
+          },
+        ],
+      },
+      {
+        id: "official-stems",
+        heading: "Adding official stems",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Resonate separates every stem from your published track with an AI model, and shows those as Separated (AI). If you have the real parts, upload them as official stems on your release page: buyers see them as Official and receive your lossless files.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Open one of your published releases and find Official stems.",
+              "Choose Upload official stems for a track and pick a WAV or FLAC file for each part you have (vocals, drums, bass, guitar, piano, other).",
+              "Export every part from the same start point as the published track, at the same sample rate, and upload the full set: added together, the parts must sound like the published track.",
+              "Resonate checks the files and tells you in plain words what to fix, for example a part with the wrong length or a set that does not line up. Nothing is saved until the whole set passes.",
+              "Price your Official and Separated (AI) stems separately in the stem prices below. Resonate sets no minimum price.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Only the release's own account can upload",
+            text: "Official stems follow the same checks as the release itself: only an account that manages the release can add them, and not while the release is under rights review. A new upload replaces your earlier official stems for that track, unless one of them has already been minted.",
           },
         ],
       },

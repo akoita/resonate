@@ -119,6 +119,12 @@ export type CrateQuoteItemDto = {
   quoteLineId: string;
   stemId: string;
   stemType: string;
+  /** Where the stem's audio comes from (#1976); null when the stem row is gone. */
+  source: "official" | "separated" | null;
+  /** "Official" or "Separated (AI)". */
+  sourceLabel: string | null;
+  /** Stored format of the delivered file (`audio/mpeg`, or `audio/wav` / `audio/flac`). */
+  mimeType: string | null;
   /** "quoted" | "dropped" | "settled" | "failed" */
   status: string;
   /** Fixed code (crate_quote.ts) for a dropped or failed stem; else null. */

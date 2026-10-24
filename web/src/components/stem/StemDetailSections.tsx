@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { StemSourceBadge } from "./StemSourceBadge";
+import type { StemSource } from "../../lib/stemSource";
 import Link from "next/link";
 import {
   formatListingCountdown,
@@ -25,6 +27,9 @@ export type StemIdentity = {
   releaseId: string | null;
   creatorAddress: string;
   isAiGenerated: boolean;
+  /** Official (lossless, from the artist) or Separated (AI); null when unknown (#1976). */
+  source?: StemSource | null;
+  separationModel?: string | null;
   remixable: boolean | null;
   listingExpiresAt: string | null;
 };
@@ -153,6 +158,7 @@ export function StemHero({
                   {identity.stemType}
                 </span>
               )}
+              <StemSourceBadge source={identity.source} separationModel={identity.separationModel} />
               {identity.remixable === true && (
                 <span
                   className="stem-type-badge"

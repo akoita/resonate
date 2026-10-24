@@ -457,6 +457,7 @@ describe("parseCrateRequestText", () => {
         includeCamelotNeighbors: false,
         energy: { min: 0.65, max: 1 },
         requiredStems: ["vocals"],
+        stemSource: null,
         licenseType: "remix",
         maxTotalUsd: 40,
         maxPerItemUsd: 5,
@@ -595,5 +596,30 @@ describe("text and reference-track requests share one filter structure", () => {
     const ref = filtersFromReferenceTrack({ tempoBpm: 124, camelot: "8A", energy: 0.8, genre: "House" });
     expect(sanitizeCrateFilters(text)).toEqual({ filters: text, errors: [] });
     expect(sanitizeCrateFilters(ref)).toEqual({ filters: ref, errors: [] });
+  });
+});
+
+describe("official stems in a request (#1976)", () => {
+  it.each([
+    "official stems",
+    "lossless stems please",
+    "WAV stems",
+    "flac stems",
+    "official wav stems",
+    "stems from the artist",
+  ])("reads %j as the official source", (text) => {
+    const result = parse(`house, ${text}`);
+    expect(result.filters.stemSource).toBe("official");
+    expect(result.unparsed).toEqual([]);
+  });
+
+  it("leaves the source open when the text does not ask for one", () => {
+    expect(filtersOf("house with drums and bass").stemSource).toBeNull();
+  });
+
+  it("combines with the stem types asked for", () => {
+    const filters = filtersOf("official stems, acapella available");
+    expect(filters.stemSource).toBe("official");
+    expect(filters.requiredStems).toEqual(["vocals"]);
   });
 });

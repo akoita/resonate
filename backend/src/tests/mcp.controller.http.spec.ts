@@ -74,6 +74,7 @@ describe("McpController (HTTP)", () => {
         trackTitle: "Midnight Run",
         releaseTitle: "Neon Heat",
         usage: "Remix-oriented use.",
+        terms: "Use the stem in a remix, mashup or new composition and publish it.",
         attribution: "Retain receipt context.",
         constraints: ["Payment verification is required."],
       },
@@ -106,6 +107,13 @@ describe("McpController (HTTP)", () => {
         artist: "Koita",
         releaseTitle: "Neon Heat",
         mimeType: "audio/mpeg",
+        source: {
+          source: "official",
+          label: "Official",
+          description: "Lossless audio uploaded by the artist, aligned with the published mix.",
+          separationModel: null,
+          lossless: true,
+        },
       },
     });
     mockStemService.download.mockResolvedValue({

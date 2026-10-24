@@ -62,6 +62,7 @@ import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { ErrorDetailsDialog } from "../../../components/ui/ErrorDetailsDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
+import { OfficialStemsPanel } from "../../../components/release/OfficialStemsPanel";
 import { PunchlineDropsPanel } from "../../../components/punchline/PunchlineDropsPanel";
 import { PunchlineCollectModule } from "../../../components/punchline/PunchlineCollectModule";
 import { tracksWithVocalsStem } from "../../../components/punchline/PunchlineDropsPanel";
@@ -3257,11 +3258,26 @@ function ReleaseDetailsContent() {
             trackTitle: t.title,
             stems: (t.stems || [])
               .filter((s) => hasMixerStem([s]))
-              .map((s) => ({ id: s.id, type: s.type })),
+              .map((s) => ({ id: s.id, type: s.type, source: s.source, separationModel: s.separationModel })),
           }))
           .filter((t) => t.stems.length > 0);
         if (pricingTracks.length === 0) return null;
-        return <StemPricingPanel releaseId={release.id} tracks={pricingTracks} />;
+        return (
+          <>
+            <OfficialStemsPanel
+              releaseId={release.id}
+              tracks={release.tracks.map((t) => ({
+                trackId: t.id,
+                trackTitle: t.title,
+                officialTypes: (t.stems || [])
+                  .filter((s) => s.source === "official" && (s as { isCurrent?: boolean }).isCurrent !== false)
+                  .map((s) => s.type),
+              }))}
+              releaseStatus={release.status}
+            />
+            <StemPricingPanel releaseId={release.id} tracks={pricingTracks} />
+          </>
+        );
       })()}
 
       {/* Punchline Drops — owner-only clip selection + preview (#483).

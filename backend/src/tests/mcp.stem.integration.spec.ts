@@ -36,6 +36,7 @@ describe("McpStemService (integration)", () => {
   };
   const stemId = `${TEST_PREFIX}stem`;
   const noFileStemId = `${TEST_PREFIX}stem_no_file`;
+  const officialStemId = `${TEST_PREFIX}stem_official`;
 
   const createService = (config = mockConfig(), eventBus?: EventBus) =>
     new McpStemService(
@@ -131,6 +132,17 @@ describe("McpStemService (integration)", () => {
         mimeType: "audio/mpeg",
       },
     });
+    await prisma.stem.create({
+      data: {
+        id: officialStemId,
+        trackId: `${TEST_PREFIX}track`,
+        type: "bass",
+        title: "Official Bass",
+        uri: "https://audio.example.com/official-bass.flac",
+        mimeType: "audio/flac",
+        source: "official",
+      },
+    });
     await prisma.stemPricing.create({
       data: {
         id: `${TEST_PREFIX}pricing`,
@@ -148,7 +160,7 @@ describe("McpStemService (integration)", () => {
     });
     await prisma.stemPricing.deleteMany({ where: { stemId } });
     await prisma.stem.deleteMany({
-      where: { id: { in: [stemId, noFileStemId] } },
+      where: { id: { in: [stemId, noFileStemId, officialStemId] } },
     });
     await prisma.track.deleteMany({
       where: { release: { artistId: `${TEST_PREFIX}artist` } },
@@ -166,6 +178,33 @@ describe("McpStemService (integration)", () => {
       ok: true,
       arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer,
     } as Response) as jest.Mock;
+  });
+
+  it("quotes the source of the stem and the license terms in plain words (#1976)", async () => {
+    const official = await service.quote(officialStemId, "remix");
+    expect(official.stem).toEqual(
+      expect.objectContaining({
+        mimeType: "audio/flac",
+        source: expect.objectContaining({
+          source: "official",
+          label: "Official",
+          lossless: true,
+          separationModel: null,
+        }),
+      }),
+    );
+    expect(official.rights.terms).toMatch(/remix, mashup or new composition/);
+
+    const separated = await service.quote(stemId, "personal");
+    expect(separated.stem.source).toEqual(
+      expect.objectContaining({
+        source: "separated",
+        label: "Separated (AI)",
+        lossless: false,
+        separationModel: "demucs-htdemucs-6s",
+      }),
+    );
+    expect(separated.rights.terms).toMatch(/own listening/);
   });
 
   it("passes persisted unencrypted URIs directly to the bounded source loader", async () => {

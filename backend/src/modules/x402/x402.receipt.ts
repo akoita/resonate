@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { QuoteLicenseKey, formatUsdcAmount, quoteEntitledNet } from './x402.quote';
 import { ZERO_PAYMENT_TOKEN } from '../payments/payment-asset-metadata';
+import { plainLicenseTerms } from '../contracts/stem_license_tier';
+import { stemSourceFacts } from '../shared/stem-source';
 
 export type X402ReceiptInput = {
   stemId: string;
@@ -11,6 +13,8 @@ export type X402ReceiptInput = {
   releaseTitle: string | null;
   hasNft: boolean;
   tokenId: string | null;
+  /** Where the stem's audio comes from (#1976); recorded on the receipt next to the license. */
+  stemSource?: { source?: string | null; separationModel?: string | null } | null;
   licenseKey?: QuoteLicenseKey;
   amountUsd: number;
   /** Exact decimal token amount from the server's canonical payment terms. */
@@ -87,6 +91,13 @@ export function buildStemX402Receipt(input: X402ReceiptInput) {
       releaseTitle: input.releaseTitle,
       hasNft: input.hasNft,
       tokenId: input.tokenId,
+      source: input.stemSource
+        ? stemSourceFacts({
+            type: input.stemType,
+            source: input.stemSource.source,
+            separationModel: input.stemSource.separationModel,
+          })
+        : null,
       endpoint: input.resource,
       quoteUrl: input.quoteUrl,
       mimeType: input.mimeType,
@@ -118,6 +129,7 @@ export function buildStemX402Receipt(input: X402ReceiptInput) {
     license: {
       key: licenseKey,
       name: LICENSE_NAMES[licenseKey],
+      terms: plainLicenseTerms(licenseKey),
       currency: paymentAsset.symbol,
       amount: normalizedAmount,
       amountUsd: normalizedAmount,

@@ -361,6 +361,14 @@ deleted on erasure (see `docs/engineering/personal-data-inventory.md`).
 | `/crates?tab=stems` | Browse stems tab (public), with Add to crate on every listing; `/marketplace` redirects here |
 | `/crates`, `/crates/:id` | Crate Digger request box, crate list and crate page with the quote and purchase panel |
 
+## Stem source filter (#1976)
+
+The `stemSource` filter (`official` or `separated`) limits a crate to tracks that
+have a current stem of that source, and required stems are then looked up among
+stems of that source. Quotes and the export manifest report each stem's source
+and format; an exported official stem uses its lossless extension and the
+rekordbox `Kind` of its file. See [Official stems](official_stems.md).
+
 ## Configuration
 
 `CRATE_REQUEST_PARSER_STRATEGY`, `CRATE_REQUEST_PARSER_MODEL` and

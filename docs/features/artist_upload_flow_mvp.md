@@ -67,3 +67,12 @@ The stem separation is handled by a containerized Demucs worker using the `htdem
 GPU is enabled by default in the `resonate-iac` stack. Requires NVIDIA GPU + Container Toolkit.
 
 See [`workers/demucs/README.md`](../../workers/demucs/README.md) for full setup and troubleshooting.
+
+## Official stems (#1976)
+
+Stems separated by the ingestion worker are recorded as `separated` (with the
+model) and shown as "Separated (AI)". After a release is ready, the artist can
+upload their own lossless WAV or FLAC parts for a track from the release page
+("Official stems"); they are checked against the published mix, stored encrypted
+and delivered lossless, and shown as "Official". See
+[Official stems](official_stems.md).

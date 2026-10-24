@@ -543,6 +543,84 @@ describe('MetadataController (integration)', () => {
       }
     });
 
+    it('carries the stem source on each listing and filters the marketplace by it (#1976)', async () => {
+      const officialStem = await prisma.stem.create({
+        data: {
+          trackId: `${TEST_PREFIX}track`,
+          type: 'bass',
+          uri: '/meta/bass.wav',
+          mimeType: 'audio/wav',
+          source: 'official',
+        },
+      });
+      const separatedStem = await prisma.stem.create({
+        data: {
+          trackId: `${TEST_PREFIX}track`,
+          type: 'drums',
+          uri: '/meta/drums.mp3',
+          mimeType: 'audio/mpeg',
+          source: 'separated',
+          separationModel: 'demucs-htdemucs-6s',
+        },
+      });
+      const txHashes = ['0x' + '5'.repeat(64), '0x' + '6'.repeat(64)];
+      await prisma.stemListing.createMany({
+        data: [officialStem, separatedStem].map((stem, index) => ({
+          listingId: BigInt(870 + index),
+          stemId: stem.id,
+          tokenId: BigInt(70 + index),
+          chainId: 31337,
+          contractAddress: '0xStemNFT',
+          sellerAddress: creatorWalletAddress,
+          pricePerUnit: '50000',
+          amount: 1n,
+          paymentToken: ('0x' + '3'.repeat(40)).toLowerCase(),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          transactionHash: txHashes[index],
+          blockNumber: BigInt(110 + index),
+          status: 'active',
+          listedAt: new Date(),
+        })),
+      });
+
+      try {
+        const args = (source?: string) =>
+          [
+            'active', undefined, '31337', undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, source,
+          ] as const;
+        const all = await controller.getListings(...args());
+        const byId = new Map(all.listings.map((listing) => [listing.listingId, listing]));
+        expect(byId.get('870')!.stem).toEqual(
+          expect.objectContaining({
+            source: 'official',
+            sourceLabel: 'Official',
+            lossless: true,
+            separationModel: null,
+            mimeType: 'audio/wav',
+          }),
+        );
+        expect(byId.get('871')!.stem).toEqual(
+          expect.objectContaining({
+            source: 'separated',
+            sourceLabel: 'Separated (AI)',
+            lossless: false,
+            separationModel: 'demucs-htdemucs-6s',
+            mimeType: 'audio/mpeg',
+          }),
+        );
+
+        const official = await controller.getListings(...args('official'));
+        expect(official.listings.map((listing) => listing.listingId)).toEqual(['870']);
+        const separated = await controller.getListings(...args('separated'));
+        expect(separated.listings.map((listing) => listing.listingId)).toEqual(['871']);
+        await expect(controller.getListings(...args('ai-made'))).rejects.toThrow('source must be official or separated');
+      } finally {
+        await prisma.stemListing.deleteMany({ where: { transactionHash: { in: txHashes } } });
+        await prisma.stem.deleteMany({ where: { id: { in: [officialStem.id, separatedStem.id] } } });
+      }
+    });
+
     it('hydrates an indexed listing when the frontend listing intent arrives after the indexer', async () => {
       const previousChainId = process.env.AA_CHAIN_ID;
       const previousIndexerChainId = process.env.INDEXER_CHAIN_ID;

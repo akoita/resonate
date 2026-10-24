@@ -8,6 +8,8 @@
  * Prices are indicative; the quote (#1964) sets the final price.
  */
 
+import { STEM_SOURCE_LABELS, type StemSource } from "./stemSource";
+
 export const CRATE_STEM_TYPES = ["vocals", "drums", "bass", "piano", "guitar", "other"] as const;
 export type CrateStemType = (typeof CRATE_STEM_TYPES)[number];
 
@@ -39,6 +41,8 @@ export type CrateFilters = {
   includeCamelotNeighbors: boolean;
   energy: CrateNumberRange | null;
   requiredStems: CrateStemType[];
+  /** Only stems of this source (#1976): `official` (lossless) or `separated` (AI); null for any. */
+  stemSource: StemSource | null;
   licenseType: CrateLicenseType | null;
   maxTotalUsd: number | null;
   maxPerItemUsd: number | null;
@@ -53,6 +57,7 @@ export type CrateFilterKey =
   | "keys"
   | "energy"
   | "requiredStems"
+  | "stemSource"
   | "licenseType"
   | "maxPerItemUsd"
   | "maxTotalUsd"
@@ -86,6 +91,8 @@ export type CrateTransitionFacts = {
 
 export type CrateLineStem = {
   type: string;
+  /** Official (lossless) or Separated (AI) (#1976). */
+  source?: StemSource;
   qualityScore: number | null;
 };
 
@@ -207,6 +214,10 @@ export type CrateQuoteItem = {
   quoteLineId: string;
   stemId: string;
   stemType: string;
+  /** Where the stem's audio comes from, and the format it is delivered in (#1976). */
+  source?: StemSource | null;
+  sourceLabel?: string | null;
+  mimeType?: string | null;
   status: CrateQuoteItemStatus | string;
   reason: string | null;
   listingId: string | null;
@@ -377,6 +388,9 @@ export function filterChips(filters: CrateFilters): FilterChip[] {
   for (const stem of filters.requiredStems) {
     chips.push({ key: `stem:${stem}`, label: `Has ${stem} stem` });
   }
+  if (filters.stemSource) {
+    chips.push({ key: "stemSource", label: `${STEM_SOURCE_LABELS[filters.stemSource]} stems` });
+  }
   if (filters.licenseType) {
     chips.push({ key: "licenseType", label: `${titleCase(filters.licenseType)} license` });
   }
@@ -405,6 +419,7 @@ export function filterChips(filters: CrateFilters): FilterChip[] {
 export function removeChip(filters: CrateFilters, chipKey: string): CrateFilters {
   if (chipKey === "bpm") return { ...filters, bpm: null };
   if (chipKey === "energy") return { ...filters, energy: null };
+  if (chipKey === "stemSource") return { ...filters, stemSource: null };
   if (chipKey === "licenseType") return { ...filters, licenseType: null };
   if (chipKey === "maxPerItemUsd") return { ...filters, maxPerItemUsd: null };
   if (chipKey === "maxTotalUsd") return { ...filters, maxTotalUsd: null };
@@ -602,6 +617,7 @@ const GAP_LABELS: Record<CrateFilterKey, string> = {
   keys: "Key match",
   energy: "Energy range",
   requiredStems: "Required stems",
+  stemSource: "Stem source",
   licenseType: "License type",
   maxPerItemUsd: "Per-line price cap",
   maxTotalUsd: "Total budget",

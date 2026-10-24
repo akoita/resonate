@@ -118,6 +118,9 @@ function candidateDraftsForFilter(
         .filter((stem) => (CRATE_STEM_TYPES as readonly string[]).includes(stem) && !available.has(stem))
         .map((stem) => make("stem", stem, "track"));
     }
+    case "stemSource":
+      // A source preference (#1976) is not a catalog gap the platform records.
+      return [];
     case "licenseType":
       return filters.licenseType && (CRATE_LICENSE_TYPES as readonly string[]).includes(filters.licenseType)
         ? [make("license", filters.licenseType, "track")]

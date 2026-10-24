@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { X402Config } from "../x402/x402.config";
+import type { StemSourceValue } from "../shared/stem-source";
 import {
   buildStorefrontStemDetail,
   buildStorefrontStemItem,
@@ -12,6 +13,8 @@ type StorefrontStemSearchFilters = {
   q?: string;
   stemType?: string;
   hasIpnft?: boolean;
+  /** Only stems of this source (#1976). */
+  source?: StemSourceValue;
   limit?: number;
 };
 
@@ -68,6 +71,7 @@ export class StorefrontService {
           ...(filters.stemType
             ? { type: { equals: filters.stemType, mode: "insensitive" } }
             : {}),
+          ...(filters.source ? { source: filters.source } : {}),
           ...(filters.hasIpnft !== undefined
             ? filters.hasIpnft
               ? { ipnftId: { not: null } }
@@ -139,6 +143,8 @@ export class StorefrontService {
           title: true,
           ipnftId: true,
           mimeType: true,
+          source: true,
+          separationModel: true,
           durationSeconds: true,
           pricing: {
             select: {
@@ -204,6 +210,8 @@ export class StorefrontService {
           title: true,
           ipnftId: true,
           mimeType: true,
+          source: true,
+          separationModel: true,
           durationSeconds: true,
           pricing: {
             select: {

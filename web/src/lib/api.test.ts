@@ -2322,4 +2322,36 @@ describe('API Client', () => {
       expect((error as Error).message).not.toMatch(/API 429/);
     });
   });
+
+  describe('uploadOfficialStems (#1976)', () => {
+    const okResponse = () => ({
+      ok: true,
+      status: 201,
+      text: async () => JSON.stringify({ releaseId: 'r 1', trackId: 't/2', stems: [], replaced: 0 }),
+    });
+
+    it('posts one form field per stem type to the track route', async () => {
+      mockFetch.mockResolvedValue(okResponse());
+      const vocals = new File([new Uint8Array([1])], 'v.wav', { type: 'audio/wav' });
+      const bass = new File([new Uint8Array([1])], 'b.flac', { type: 'audio/flac' });
+
+      await api.uploadOfficialStems('tok', 'r 1', 't/2', { vocals, bass });
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/ingestion/releases/r%201/tracks/t%2F2/official-stems');
+      expect(options.method).toBe('POST');
+      expect(options.headers.get('Authorization')).toBe('Bearer tok');
+      const form = options.body as FormData;
+      expect((form.get('vocals') as File).name).toBe('v.wav');
+      expect((form.get('bass') as File).name).toBe('b.flac');
+      expect(form.has('drums')).toBe(false);
+    });
+
+    it('refuses a lossy file and an empty package before calling the server', async () => {
+      const mp3 = new File([new Uint8Array([1])], 'v.mp3', { type: 'audio/mpeg' });
+      await expect(api.uploadOfficialStems('tok', 'r', 't', { vocals: mp3 })).rejects.toThrow('must be a WAV or FLAC file');
+      await expect(api.uploadOfficialStems('tok', 'r', 't', {})).rejects.toThrow('Choose at least one stem file');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
 });
