@@ -9,6 +9,8 @@ import { toManagementInvitationItems, useManagementInvitations } from "../../hoo
 import { usePlatformNotices } from "../../hooks/usePlatformNotices";
 import type { PlatformNotice } from "../../lib/api";
 import PlatformNoticeItems from "./PlatformNoticeItems";
+import EmailPromptCard from "../email/EmailPromptCard";
+import { selectStaleUnreadNotices } from "../../lib/emailPrompt";
 
 const typeIcon = (type: string) => {
   switch (type) {
@@ -141,8 +143,14 @@ export default function NotificationBell() {
     refetch: refetchPlatformNotices,
     markRead: markNoticeRead,
   } = usePlatformNotices();
-  const badgeCount = walletUnreadCount + managementInvitationItems.length + noticeUnreadCount;
   const [open, setOpen] = useState(false);
+  // The clock is read when the dropdown opens, not during render.
+  const [openedAtMs, setOpenedAtMs] = useState(0);
+  const hasStaleNotices = useMemo(
+    () => open && selectStaleUnreadNotices(platformNotices, openedAtMs).length > 0,
+    [open, openedAtMs, platformNotices],
+  );
+  const badgeCount = walletUnreadCount + managementInvitationItems.length + noticeUnreadCount;
   const [isMobile, setIsMobile] = useState(false);
   const [menuTop, setMenuTop] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -166,6 +174,7 @@ export default function NotificationBell() {
 
   const toggleOpen = () => {
     if (!open) {
+      setOpenedAtMs(Date.now());
       measureMenuTop();
       void refetchManagementInvitations();
       void refetchWalletNotifications();
@@ -244,6 +253,9 @@ export default function NotificationBell() {
               )}
             </div>
           </div>
+
+          {/* #2182: account or refund notices left unread for a few days. */}
+          <EmailPromptCard context="stale_notices" enabled={hasStaleNotices} onNavigate={() => setOpen(false)} />
 
           {walletNotifications.length === 0 && managementInvitationItems.length === 0 && platformNotices.length === 0 ? (
             <div style={emptyStyle}>No notifications or invitations yet</div>

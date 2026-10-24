@@ -33,6 +33,7 @@ import {
   type RelistTerms,
 } from "../../../lib/batchRelist";
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
+import EmailPromptCard from "../../../components/email/EmailPromptCard";
 import { sellerNetProceedsLine } from "../../../lib/marketplaceProceeds";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
 import { PURCHASED_STEMS_HREF } from "../../../lib/ownedStems";
@@ -581,6 +582,10 @@ function MarketplaceListingManagerPageContent() {
 
       {success && <div className="marketplace-manager-alert marketplace-manager-alert--success">{success}</div>}
       {loadError && <div className="marketplace-manager-alert marketplace-manager-alert--error">{loadError}</div>}
+
+      {/* #2182: once there is a first listing (any state, sold included), offer the
+          optional email for account notices. Dismissible; never blocks the page. */}
+      <EmailPromptCard context="artist_listing" enabled={!loading && listings.length > 0} />
 
       {loading ? (
         <div className="marketplace-empty">Loading listings...</div>

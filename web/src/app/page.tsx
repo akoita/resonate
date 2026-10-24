@@ -52,6 +52,7 @@ import { HomeTuner } from "../components/home/HomeTuner";
 import { LiveEventRail } from "../components/home/LiveEventRail";
 import { StemLab, selectStemLabEntries } from "../components/home/StemLab";
 import { HomeHeroEmpty, HomeHeroMotif, HomeHeroSkeleton } from "../components/home/HomeHeroEmpty";
+import EmailPromptCard from "../components/email/EmailPromptCard";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { rememberHomeAttribution } from "../lib/homeAttribution";
@@ -1008,6 +1009,13 @@ export default function Home() {
             </div>
           )}
         </section>
+
+        {/* #2182: the optional, skippable email step. Renders nothing unless the
+            signed-in person has no address and has not skipped it; never blocks
+            anything below. The slot collapses while it is empty. */}
+        <div className="ng-section ng-section--tight ng-section--prompt">
+          <EmailPromptCard context="onboarding" />
+        </div>
 
         {/* 2. TUNER — genre/mood filter + vibe session ——————————— */}
         <HomeTuner
