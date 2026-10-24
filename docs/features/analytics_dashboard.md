@@ -68,9 +68,66 @@ response). The dashboard labels the KPI and the track-table column **Gross
 sales**. The KPI shows the line "Settled stablecoin sales before the platform
 fee and royalty splits. Native-token sales are counted but not converted to
 USD." The fee percentage appears only after the page has read the live on-chain
-marketplace fee. A net artist-share figure remains open in #2172. Paid stem
-downloads through the agent payment router and MCP count toward gross sales
-from #2144 on.
+marketplace fee. Paid stem downloads through the agent payment router and MCP
+count toward gross sales from #2144 on.
+
+### Net received (#2172)
+
+Beside the gross KPI, `GET /analytics/artist/:id/v1` returns a `netReceived`
+block and the dashboard shows a **Net received** KPI plus a **Marketplace sales:
+gross and net** table (gross, platform fee, net, or **Pending**, per recent
+sale). It is read-only reporting: no fee, split or payout changes, and the
+artist share stays at least 85% (ADR-BM-4). Revenue line: ADR-BM-6 Line 3
+(marketplace).
+
+- **Design.** The gross `commerce.settled` fact is left exactly as emitted (an
+  immutable ledger row; no new event name, so the warehouse mappings and the
+  Dataflow transform are untouched). The net is derived from the settlement
+  record the indexer already keeps: `StemPurchase` now carries the real split,
+  finalised by `finalizeMarketplaceSaleSplit`
+  (`backend/src/modules/contracts/marketplace_sale_split.ts`) from facts the
+  indexer holds: the `RoyaltyPaid` log that precedes the `Sold` log in the same
+  transaction (matched by token and log position, so a batched transaction keeps
+  each sale's royalty apart) and `protocolFeeBps()` read at the Sold block, so a
+  later fee change never rewrites a past sale. The amounts follow the contract's
+  arithmetic (`fee = floor(total x bps / 10000)`; the seller keeps the
+  remainder). The three amount columns are `"0"` until `splitFinalizedAt` is set:
+  `"0"` there means "not known yet", never "zero".
+- **What counts as received.** The part of a sale paid to the artist's own
+  addresses (artist payout address, the owning user's wallet, the stem's
+  creator address): the seller proceeds when the artist was the seller, plus the
+  royalty when the artist was its recipient. A first sale by the artist nets the
+  gross minus the platform fee (the royalty returns to them); a collector's
+  resale nets the royalty only; a royalty paid to another creator is not the
+  artist's. Per asset, net + platform fee + other parties = the gross of the
+  finalised sales, so the figures reconcile with the canonical fee table in
+  [`docs/rfc/business-model.md`](../rfc/business-model.md) (10% on-chain take on
+  marketplace sales, ADR-BM-2).
+- **Pending.** A sale whose split is not final is `pending` and carries no net.
+  It is counted apart (`pendingSales`, `pendingGrossUnits`), never as zero or
+  as the gross, and the UI says so. A sale is pending when its `RoyaltyPaid` log
+  is not indexed yet (with no log, the royalty is proven zero by asking the
+  StemNFT `royaltyInfo` at the Sold block before it is believed), when the fee or
+  royalty cannot be read from the chain, when the StemNFT is unknown, or when
+  the row predates `logIndex`. The `RoyaltyPaid` handler and a replay of the Sold
+  log both retry a pending sale. Rows indexed before this change are retried at
+  backend start (the 50 most recent pending sales, via
+  `ContractsService.finalizePendingSaleSplits`); one whose block the RPC node
+  can no longer serve stays pending rather than guessing.
+- **Not covered.** x402 sales that settle outside the marketplace contract are
+  paid to the platform payout address and no per-sale artist split is recorded
+  for them yet, so they are in Gross sales but not in Net received; the
+  response says so (`coverage.x402: false`). Native-token sales are reported in
+  their own units (no invented USD price). Up to 2000 of the newest sales in the
+  window are summed (`truncated` flags more).
+- **Tests.** `marketplace_sale_split.integration.spec.ts` (Anvil: recorded split
+  and net equal the balances each address gained on-chain; fee pinned to the
+  sale block; pending then final when `RoyaltyPaid` arrives; proven-zero royalty;
+  batched transaction), `marketplace_sale_split.spec.ts`,
+  `analytics_net_received.spec.ts`, `analytics_net_received_dashboard.spec.ts`,
+  `artistNetReceived.test.ts` and `ArtistAnalyticsDashboard.test.tsx`. The chain
+  fixture is a test-only contract that reproduces `StemMarketplaceV2._buy`'s
+  payments and logs (`backend/src/tests/fixtures/SplitMarketplaceHarness.sol`).
 
 The same `GET /analytics/artist/:id/v1?days=N` response now includes an
 `actions` array with stable artist action cards:

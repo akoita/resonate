@@ -2855,11 +2855,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "artist-analytics",
     title: "Artist analytics & your action cockpit",
     summary:
-      "See plays, gross sales, and protection activity in one dashboard — with a cockpit of suggested next actions tailored to your catalog.",
+      "See plays, gross sales, what you actually received, and protection activity in one dashboard — with a cockpit of suggested next actions tailored to your catalog.",
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["analytics", "dashboard", "plays", "payouts", "gross sales", "sales", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
+    keywords: ["analytics", "dashboard", "plays", "payouts", "gross sales", "net received", "pending", "platform fee", "royalty", "sales", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
     sections: [
       {
         id: "dashboard",
@@ -2870,6 +2870,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Plays over time, shown as a trend you can scan at a glance.",
               "Gross sales: settled stablecoin sales of your music before the platform fee and royalty splits. This is not the amount you received. Sales paid in a native token are counted, but not converted to US dollars.",
+              "Net received: what reached your own addresses from marketplace sales, shown beside gross sales. See the next section for what it counts.",
               "Content-protection activity and your staking history.",
             ],
           },
@@ -2883,6 +2884,24 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 1700,
               source: LOCAL,
             },
+          },
+        ],
+      },
+      {
+        id: "net-received",
+        heading: "Net received and pending sales",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Gross sales is the price buyers paid. Net received is what actually reached your own addresses: the sale price minus the platform fee and any share paid to someone else. When you sell your own stem, that is the price minus the platform fee, because the royalty comes back to you. When a collector resells your stem, you receive the royalty only, and the collector keeps the rest. A royalty paid to another creator is not counted as yours.",
+          },
+          {
+            kind: "paragraph",
+            text: "The Marketplace sales table shows each recent sale with its gross, the platform fee, and your net. A sale marked Pending has not had its royalty split confirmed yet, so its net is not known. It is not counted in your net and it is not shown as zero or as the full price. It updates by itself once the split is confirmed, and a sale from before this view existed may stay Pending.",
+          },
+          {
+            kind: "paragraph",
+            text: "Net received covers marketplace sales only. Sales paid through x402 are in Gross sales, but they are not in Net received: no per-sale split is recorded for them yet. Sales paid in a native token are shown in that token, not converted to US dollars. This is reporting only; it does not change any fee or split, and artists keep at least 85% of each transaction.",
           },
         ],
       },

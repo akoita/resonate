@@ -45,6 +45,73 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("/shows/create?city=paris&amp;country=FR&amp;releaseId=release-1");
     expect(html).toContain("Aggregate signals only");
   });
+  describe("net received beside gross (#2172)", () => {
+    const netReceived: ArtistAnalyticsDashboardData["netReceived"] = {
+      status: "ready",
+      basis: "net_after_fee_and_split",
+      coverage: { marketplace: true, x402: false, x402Reason: "x402 reason" },
+      saleCount: 2,
+      finalizedSales: 1,
+      pendingSales: 1,
+      totals: { grossFinalizedUsd: 10, netUsd: 9, pendingGrossUsd: 4 },
+      byAsset: [],
+      truncated: false,
+      recentSales: [
+        {
+          settlementKey: "sale-final", occurredAt: "2026-10-20T10:00:00.000Z", trackId: "track-1", trackTitle: "Glass City",
+          symbol: "USDC", decimals: 6, grossAmountUnits: "10000000", grossAmount: "10", grossUsd: 10, status: "final",
+          platformFeeUnits: "1000000", otherPartiesUnits: "0", netAmountUnits: "9000000", netAmount: "9", netUsd: 9,
+        },
+        {
+          settlementKey: "sale-pending", occurredAt: "2026-10-21T10:00:00.000Z", trackId: "track-1", trackTitle: "Pending Groove",
+          symbol: "USDC", decimals: 6, grossAmountUnits: "4000000", grossAmount: "4", grossUsd: 4, status: "pending",
+        },
+      ],
+    };
+
+    it("shows the net received card next to gross sales, with the pending count", () => {
+      const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+        data={{ ...dashboard, netReceived }} onDaysChange={() => {}} />);
+      expect(html).toContain("Gross sales");
+      expect(html).toContain("$87.65");
+      expect(html).toContain("Net received");
+      expect(html).toContain("$9.00");
+      expect(html).toContain("1 of 2 marketplace sales counted, 1 pending");
+      expect(html).toContain("x402 sales are not included");
+    });
+
+    it("lists each sale with gross beside net, and a pending sale reads Pending (not $0 or its gross)", () => {
+      const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+        data={{ ...dashboard, netReceived }} onDaysChange={() => {}} />);
+      const table = html.slice(html.indexOf('data-testid="marketplace-sales-net"'));
+      expect(table).toContain("Marketplace sales: gross and net");
+      // The final sale: gross, fee and net.
+      expect(table).toContain("$10.00");
+      expect(table).toContain("1 USDC");
+      expect(table).toContain("$9.00");
+      // The pending sale: its gross, and Pending where the net would be.
+      const pendingRow = table.slice(table.indexOf("Pending Groove"));
+      expect(pendingRow).toContain("$4.00");
+      expect(pendingRow).toContain("Pending");
+      expect(pendingRow.slice(0, pendingRow.indexOf("</tr>"))).not.toContain("$0.00");
+    });
+
+    it("says net is unavailable rather than showing zero when the report fails", () => {
+      const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+        data={{ ...dashboard, netReceived: { status: "unavailable", reason: "Net received is temporarily unavailable." } }}
+        onDaysChange={() => {}} />);
+      expect(html).toContain("Unavailable");
+      expect(html).toContain("Net received is temporarily unavailable.");
+      expect(html).not.toContain("marketplace-sales-net");
+    });
+
+    it("leaves the dashboard as it was when the backend sends no net block", () => {
+      const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+        data={dashboard} onDaysChange={() => {}} />);
+      expect(html).not.toContain("Net received");
+    });
+  });
+
   it("renders a loading state", () => {
     const html = renderToStaticMarkup(
       <ArtistAnalyticsDashboard status="loading" days={30} onDaysChange={() => {}} />,
