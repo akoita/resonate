@@ -1,14 +1,47 @@
 # Vision Sprint 40: Honest numbers, toward Artist Pro
 
-**Status:** Approved 2026-10-24 under the owner's delegated authority (overnight
-run); in progress. Decisions taken on the owner's behalf are recorded on each
-issue as overridable defaults. No due date: it closes when its exit checks pass
-on staging.
+**Status:** Closed 2026-10-24. Three issues are closed. #1422 shipped its
+Sprint 40 slice and stays open for buying credits, which waits on the owner's
+pricing (#1421). Verified on staging at `3ef74447`. The sprint was approved and
+run under the owner's delegated authority overnight.
 **Milestone:** [42](https://github.com/akoita/resonate/milestone/42).
 **Goal:** Artists see what they actually received, everyone sees what their
 metered actions use in one place, catalog attestation has a durable artist
 signal, and agent analytics store no free text. This is the groundwork for
 Business Model Phase 2 that needs no pricing decision.
+
+## Outcome
+
+The groundwork that needs no pricing decision is in place, and nothing is
+charged.
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #2172 | Net received per marketplace sale beside gross. The split is finalised from the indexed `RoyaltyPaid` and the fee rate at the sale block, and a sale stays **pending** until both are proven, never shown as 0 or the gross. Proven against real on-chain balances (Anvil) | #2345 |
+| #1422 | Slice: one registry for metered costs and limits, read by the enforcers (no numbers changed); per-kind 30-day spend; a limit meter in Remix Studio; the dead "Auto-reload" button removed; "How credits are granted today" explained | #2343 (partial) |
+| #2258 | MusicBrainz id, Wikidata QID, match confidence and match time stored on the artist; attestation prefers them over URL-host inference | #2342 |
+| #2337 | Agent analytics store unmet-intent keys only and no track titles; a hostile-payload test covers every agent event | #2340 |
+
+**Unplanned:** #2339 (sprint plan). A migration timestamp clash between #2258
+and #2172 was renamed before merge.
+
+**Staging verification (2026-10-24, `3ef74447`):**
+
+- The deployed code contains:
+  - Net received;
+  - "How credits are granted today";
+  - "Spend by action".
+- The usage summary answers 401 without a sign-in.
+- The three migrations (analytics session index, artist external ids, sale
+  split columns) were applied by the deploy.
+
+**Carry-over and follow-ups:**
+
+- #1422: buy credits, auto-reload and Stripe, after #1421 (pricing, the
+  owner's decision) and #1193.
+- #2344: x402 net received, legacy pending sales, and an existing
+  `RoyaltyPayment` batch collision.
+- The next sprint is not yet selected.
 
 ## Why this theme
 

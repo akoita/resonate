@@ -1,15 +1,59 @@
 # Vision Sprint 39: A DJ that listens while you listen
 
-**Status:** Approved 2026-10-24 under the owner's delegated authority (the owner
-asked for the next sprint to be planned, started and run overnight without
-approval round-trips); in progress. Decisions taken on the owner's behalf are
-recorded on each issue as overridable defaults. No due date: it closes when its
-exit checks pass on staging.
+**Status:** Closed 2026-10-24. All six issues are closed, verified on staging
+at `3ef74447`. The sprint was approved and run under the owner's delegated
+authority overnight; the decisions taken on the owner's behalf are recorded on
+each issue as overridable defaults.
 **Milestone:** [41](https://github.com/akoita/resonate/milestone/41).
 **Goal:** Skips and saves steer the rest of the session, trending tracks join
 only inside the request, listeners choose how familiar or new the session is,
 artists can correct their tracks' tags, My Mix explains an empty state, and
 operators can read a session's agent decisions.
+
+## Outcome
+
+The goal is built and deployed. The DJ now reacts to what the listener does
+during a session, and the session page gives the listener more control.
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #2247 | In-session steering: a bounded (±15), decaying, session-scoped ranking term from this session's skips, "Not this", completes and saves; it works inside the request tiers, leaves Home unchanged, and explains a pick it changed | #2335 |
+| #2246 | Trending in your families: a sixth hybrid source, capped at 20%, admitting tier A/B tracks only, reading the popularity serving tables with the minimum-audience thresholds | #2334 |
+| #2327 | Discovery (Familiar · Mixed · New), a Tempo range that edits the request's BPM, and a once-only first-session tip stored locally | #2336 |
+| #2270 | My Mix reason codes (no signals, unknown genres, too few sessions, evidence decayed), distinct from a failed call; family-keyed lane boosts work | #2333 |
+| #2292 | Artists correct their tracks' families and sub-genres from the vocabulary; a correction survives re-tagging and the backfill and re-embeds the track | #2331 |
+| #2259 | An admin-only, audited view of a session's agent decisions, read from the existing analytics events with field-by-field whitelisting | #2332 |
+
+**Unplanned:**
+
+- #2330 (sprint plan).
+- Two stale test expectations: the My Mix E2E copy, and the session id on the
+  adapter specs.
+- A flaky contracts integration test, re-run.
+- One real code conflict between #2246 and #2247 in the selector's explanation
+  lines, resolved by keeping both.
+
+**Staging verification (2026-10-24, `3ef74447`):**
+
+- The deployed code contains:
+  - the Discovery control;
+  - the Tempo hint;
+  - the first-session tip;
+  - the My Mix reason copy;
+  - the operator events page;
+  - the release page's tag editor.
+- The admin events route answers 401 without a sign-in, and the descriptor
+  vocabulary is public.
+- The steering and trending sentences are written by the backend and covered
+  by integration tests.
+- Not yet tested by the owner on staging: steering and Discovery = New.
+
+**Carry-over and follow-ups:**
+
+- #2337 (minimised agent analytics) shipped in Sprint 40.
+- A stronger MusicBrainz identity bind and the session-start preference
+  strings are noted on #2342 and #2340.
+- Promoting `hybrid_rrf_v1` still waits for production traffic (#1455).
 
 ## Why this theme
 
