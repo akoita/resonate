@@ -13,6 +13,7 @@ import { authToken, createControllerTestApp } from "./e2e-helpers";
 
 const mockArtistService = {
     authorizeProfileEdit: jest.fn().mockResolvedValue({ id: "artist-1", displayName: "Ada Example" }),
+    recordEnrichmentMatch: jest.fn().mockResolvedValue(true),
 };
 
 const mockEnrichmentService = {
@@ -47,6 +48,7 @@ describe("Artist enrichment routes (HTTP)", () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockArtistService.authorizeProfileEdit.mockResolvedValue({ id: "artist-1", displayName: "Ada Example" });
+        mockArtistService.recordEnrichmentMatch.mockResolvedValue(true);
         mockEnrichmentService.findCandidates.mockResolvedValue([]);
         mockEnrichmentService.buildSuggestions.mockResolvedValue({
             candidate: { id: "12345678-1234-4234-8234-123456789abc", name: "Ada Example" },
@@ -89,6 +91,17 @@ describe("Artist enrichment routes (HTTP)", () => {
         });
         expect(mockArtistService.authorizeProfileEdit).toHaveBeenCalledWith("profile-editor", "artist-1");
         expect(mockEnrichmentService.buildSuggestions).toHaveBeenCalledWith(candidateId);
+        expect(mockArtistService.recordEnrichmentMatch).toHaveBeenCalledWith("artist-1", response.body);
+    });
+
+    it("still returns the suggestions when storing the resolved ids fails", async () => {
+        mockArtistService.recordEnrichmentMatch.mockRejectedValue(new Error("db unavailable"));
+
+        await request(app.getHttpServer())
+            .post("/artists/artist-1/enrichment/suggestions")
+            .set("Authorization", `Bearer ${authToken("owner-1")}`)
+            .send({ candidateId: "12345678-1234-4234-8234-123456789abc" })
+            .expect(200);
     });
 
     it("does not call enrichment providers when profile_edit authorization fails", async () => {
@@ -106,6 +119,7 @@ describe("Artist enrichment routes (HTTP)", () => {
 
         expect(mockEnrichmentService.findCandidates).not.toHaveBeenCalled();
         expect(mockEnrichmentService.buildSuggestions).not.toHaveBeenCalled();
+        expect(mockArtistService.recordEnrichmentMatch).not.toHaveBeenCalled();
     });
 
     it("tracks both enrichment route limits by client IP before JWT guards", () => {

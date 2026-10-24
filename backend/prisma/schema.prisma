@@ -646,6 +646,15 @@ model Artist {
   socialLinks               Json?
   website                   String?
   remixConsent              String                        @default("allowed")
+  /// #2258. Reference identifiers from artist enrichment (MusicBrainz, then
+  /// Wikidata through its relationships): public metadata about a public
+  /// artist, not personal data. Written when enrichment resolves the artist;
+  /// the match confidence compares the display name with the matched record.
+  /// The #2252 catalog attestation report reads them as its artist signal.
+  musicbrainzArtistId       String?                       @db.VarChar(36)
+  wikidataQid               String?                       @db.VarChar(16)
+  externalIdMatchConfidence String?                       @db.VarChar(16)
+  externalIdMatchedAt       DateTime?
   createdAt                 DateTime                      @default(now())
   updatedAt                 DateTime                      @updatedAt
   user                      User?                         @relation(fields: [userId], references: [id])
