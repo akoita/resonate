@@ -15,6 +15,11 @@ function mockConfig(): X402Config {
     facilitatorUrl: "https://facilitator.example.com",
     network: "eip155:84532",
     chainId: 84532,
+    licensePricing: {
+      personal: { amountUsd: 0.05, feeBps: 1500 },
+      remix: { amountUsd: 5, feeBps: 1000 },
+      commercial: { amountUsd: 25, feeBps: 1000 },
+    },
   } as X402Config;
 }
 
@@ -423,6 +428,8 @@ describe("McpStemService (integration)", () => {
         licenseKey: "commercial",
         amount: "19",
         currency: "USDC",
+        // #2344: the quoted net to the seller is recorded at the time of sale.
+        quote: { feeBps: 1000, platformFeeUnits: "1900000", netToSellerUnits: "17100000" },
       }),
     );
 

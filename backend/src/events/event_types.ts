@@ -1132,6 +1132,12 @@ export interface ContractRoyaltyPaidEvent extends BaseEvent {
   chainId: number;
   contractAddress: string;
   transactionHash: string;
+  /**
+   * Position of the RoyaltyPaid log in its transaction. A batched transaction can
+   * carry several sales of one token, so (transactionHash, logIndex) identifies
+   * one payment (#2344).
+   */
+  logIndex: number;
   blockNumber: string;
 }
 

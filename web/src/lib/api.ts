@@ -894,11 +894,68 @@ export type ArtistNetReceivedAsset = {
   pendingGrossAmount: string;
 };
 
+/**
+ * #2344: one x402 sale (facilitator route, agent router, MCP, Punchline moment),
+ * gross beside the ENTITLED net: the price minus the platform fee quoted at the
+ * time of sale. It is what the artist is owed, not a payout fact. A sale with no
+ * recorded quote is `unquoted` and carries no net.
+ */
+export type ArtistEntitledNetSale = {
+  settlementKey: string;
+  occurredAt: string;
+  paymentRail: string;
+  resourceKind: "stem" | "punchline_moment";
+  trackId: string | null;
+  trackTitle: string | null;
+  symbol: string;
+  decimals: number;
+  grossAmountUnits: string;
+  grossAmount: string;
+  grossUsd: number | null;
+  status: "quoted" | "unquoted";
+  feeBps?: number;
+  platformFeeUnits?: string;
+  entitledNetUnits?: string;
+  entitledNetAmount?: string;
+  entitledNetUsd?: number | null;
+};
+
+export type ArtistEntitledNetAsset = {
+  paymentToken: string;
+  assetId: string | null;
+  symbol: string;
+  decimals: number;
+  sales: number;
+  quotedSales: number;
+  unquotedSales: number;
+  grossQuotedUnits: string;
+  grossQuotedAmount: string;
+  platformFeeUnits: string;
+  entitledNetUnits: string;
+  entitledNetAmount: string;
+  grossQuotedUsd: number | null;
+  entitledNetUsd: number | null;
+  unquotedGrossUnits: string;
+  unquotedGrossAmount: string;
+};
+
+export type ArtistEntitledNet = {
+  basis: "quoted_net_to_seller";
+  note: string;
+  saleCount: number;
+  quotedSales: number;
+  unquotedSales: number;
+  totals: { grossQuotedUsd: number; entitledNetUsd: number };
+  byAsset: ArtistEntitledNetAsset[];
+  recentSales: ArtistEntitledNetSale[];
+  truncated: boolean;
+};
+
 export type ArtistNetReceivedReport =
   | {
       status: "ready";
       basis: "net_after_fee_and_split";
-      coverage: { marketplace: true; x402: false; x402Reason: string };
+      coverage: { marketplace: true; x402: "entitled_only"; x402Note: string };
       saleCount: number;
       finalizedSales: number;
       pendingSales: number;
@@ -906,6 +963,8 @@ export type ArtistNetReceivedReport =
       byAsset: ArtistNetReceivedAsset[];
       recentSales: ArtistNetReceivedSale[];
       truncated: boolean;
+      /** x402 sales: the entitled net, kept apart from the on-chain figures above (#2344). */
+      entitled?: ArtistEntitledNet;
     }
   | { status: "unavailable"; reason: string };
 

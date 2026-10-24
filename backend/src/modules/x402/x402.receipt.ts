@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { QuoteLicenseKey, formatUsdcAmount } from './x402.quote';
+import { QuoteLicenseKey, formatUsdcAmount, quoteEntitledNet } from './x402.quote';
 import { ZERO_PAYMENT_TOKEN } from '../payments/payment-asset-metadata';
 
 export type X402ReceiptInput = {
@@ -31,6 +31,12 @@ export type X402ReceiptInput = {
   eventTransactionHash: string;
   paymentHeader?: string | null;
   purchasedAt?: Date;
+  /**
+   * The platform fee rate of the license that was quoted (#2344). When given, the
+   * receipt records the quoted `netToSeller` (the artist's entitled net) beside
+   * the gross, so artist reporting never has to guess it later.
+   */
+  feeBps?: number;
   settlement?: {
     status: 'download_only' | 'contract_required_missing' | 'contract_backed' | 'contract_failed';
     entitlement: 'download_access' | 'marketplace_purchase' | 'license';
@@ -105,6 +111,9 @@ export function buildStemX402Receipt(input: X402ReceiptInput) {
         decimals: paymentAsset.decimals,
       },
       paymentProofSha256: paymentProofDigest,
+      ...(input.feeBps === undefined
+        ? {}
+        : { quote: quoteEntitledNet(paymentAsset.amountUnits, input.feeBps) }),
     },
     license: {
       key: licenseKey,

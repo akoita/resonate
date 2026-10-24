@@ -180,6 +180,12 @@ describe('X402Controller', () => {
     );
     expect(decodedReceipt.resource.stemId).toBe('stem_1');
     expect(decodedReceipt.payment.amount).toBe('0.75');
+    // #2344: the quoted net to the seller is recorded at the time of sale (15% personal take).
+    expect(decodedReceipt.payment.quote).toEqual({
+      feeBps: 1500,
+      platformFeeUnits: '112500',
+      netToSellerUnits: '637500',
+    });
     expect(decodedReceipt.license.key).toBe('personal');
     expect(decodedReceipt.settlement).toEqual(expect.objectContaining({
       rail: 'x402',

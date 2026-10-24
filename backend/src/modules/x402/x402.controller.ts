@@ -585,6 +585,7 @@ export class X402Controller {
         eventTransactionHash: input.eventTransactionHash,
         paymentHeader: input.paymentProof,
         purchasedAt: input.purchasedAt,
+        feeBps: this.x402Config.licensePricing.personal.feeBps,
         settlement: contractSettlement,
       });
 

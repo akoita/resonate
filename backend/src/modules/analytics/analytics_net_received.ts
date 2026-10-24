@@ -2,6 +2,12 @@ import { formatUnits } from "viem";
 import { prisma } from "../../db/prisma";
 import { resolvePaymentAssetForToken } from "../payments/payment-asset-metadata";
 import { exactStablecoinUsd, marketplaceCommerceSettlementKey } from "./analytics_commerce_settled";
+import {
+  buildArtistEntitledNet,
+  loadArtistEntitledNetSales,
+  type ArtistEntitledNet,
+  type EntitledNetSaleInput,
+} from "./analytics_entitled_net";
 
 /**
  * #2172: what an artist actually received from marketplace sales, beside the
@@ -22,9 +28,11 @@ import { exactStablecoinUsd, marketplaceCommerceSettlementKey } from "./analytic
  * royalty alone. A sale whose split is not final is PENDING: it is counted
  * apart and never as zero or as the gross.
  *
- * x402 sales that never touch the marketplace contract are not included: their
- * proceeds reach the platform payout address and no per-sale artist split is
- * recorded yet, so the report says so instead of estimating.
+ * x402 sales that never touch the marketplace contract are NOT part of this net:
+ * their proceeds reach the platform payout address and no per-sale artist payout
+ * is recorded. Since #2344 they are reported in the separate `entitled` block as
+ * the artist's ENTITLED net (the quoted `netToSeller` recorded at the time of
+ * sale, analytics_entitled_net.ts), never added to the on-chain figures above.
  */
 
 export const ARTIST_NET_RECEIVED_SOURCE = Symbol("ARTIST_NET_RECEIVED_SOURCE");
@@ -99,7 +107,7 @@ export type ArtistNetReceivedAsset = {
 export type ArtistNetReceived = {
   basis: typeof ARTIST_NET_RECEIVED_BASIS;
   /** Rails the net covers, and the ones it does not (and why). */
-  coverage: { marketplace: true; x402: false; x402Reason: string };
+  coverage: { marketplace: true; x402: "entitled_only"; x402Note: string };
   saleCount: number;
   finalizedSales: number;
   pendingSales: number;
@@ -109,6 +117,11 @@ export type ArtistNetReceived = {
   recentSales: ArtistNetReceivedSale[];
   /** True when more sales than the cap matched; the newest are counted. */
   truncated: boolean;
+  /**
+   * x402 sales (#2344): the artist's entitled net from the quote recorded at the
+   * time of sale. A separate block, never summed into the on-chain figures above.
+   */
+  entitled: ArtistEntitledNet;
 };
 
 export type ArtistNetReceivedReport =
@@ -119,8 +132,8 @@ export interface ArtistNetReceivedSource {
   getArtistNetReceived(input: { artistId: string; from: Date; to: Date }): Promise<ArtistNetReceivedReport>;
 }
 
-export const X402_NET_NOT_RECORDED_REASON =
-  "x402 sales that settle outside the marketplace contract are paid to the platform payout address and do not record a per-sale artist split yet, so they are not part of net received.";
+export const X402_ENTITLED_ONLY_NOTE =
+  "x402 sales that settle outside the marketplace contract are paid to the platform payout address and no per-sale artist payout is recorded, so they are not part of net received. They are reported apart as entitled net, from the quote recorded at the time of sale.";
 
 function lower(value: string | null | undefined) {
   return value ? value.toLowerCase() : "";
@@ -150,7 +163,14 @@ type MutableAsset = {
 export function buildArtistNetReceived(
   sales: NetReceivedSaleInput[],
   artistAddresses: ReadonlySet<string>,
-  options: { truncated?: boolean; recentLimit?: number } = {},
+  options: {
+    truncated?: boolean;
+    recentLimit?: number;
+    /** x402 sales for the separate entitled-net block (#2344). */
+    x402Sales?: EntitledNetSaleInput[];
+    x402Truncated?: boolean;
+    x402RecentLimit?: number;
+  } = {},
 ): ArtistNetReceived {
   const assets = new Map<string, MutableAsset>();
   const listed: ArtistNetReceivedSale[] = [];
@@ -282,7 +302,7 @@ export function buildArtistNetReceived(
 
   return {
     basis: ARTIST_NET_RECEIVED_BASIS,
-    coverage: { marketplace: true, x402: false, x402Reason: X402_NET_NOT_RECORDED_REASON },
+    coverage: { marketplace: true, x402: "entitled_only", x402Note: X402_ENTITLED_ONLY_NOTE },
     saleCount: sales.length,
     finalizedSales,
     pendingSales,
@@ -294,6 +314,10 @@ export function buildArtistNetReceived(
     byAsset,
     recentSales: listed.slice(0, options.recentLimit ?? NET_RECEIVED_RECENT_SALES),
     truncated: options.truncated ?? false,
+    entitled: buildArtistEntitledNet(options.x402Sales ?? [], {
+      truncated: options.x402Truncated,
+      recentLimit: options.x402RecentLimit,
+    }),
   };
 }
 
@@ -383,6 +407,14 @@ export class PrismaArtistNetReceivedSource implements ArtistNetReceivedSource {
       };
     });
 
-    return { status: "ready", ...buildArtistNetReceived(sales, artistAddresses, { truncated }) };
+    const x402 = await loadArtistEntitledNetSales(input);
+    return {
+      status: "ready",
+      ...buildArtistNetReceived(sales, artistAddresses, {
+        truncated,
+        x402Sales: x402.sales,
+        x402Truncated: x402.truncated,
+      }),
+    };
   }
 }

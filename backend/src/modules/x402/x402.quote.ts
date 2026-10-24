@@ -47,6 +47,28 @@ export function toX402TokenAmount(amount: number, decimals: number): string {
   return (intPart + paddedDec).replace(/^0+/, "") || "0";
 }
 
+/**
+ * What the quote promised the seller for one sale, in the payment token's
+ * smallest unit (#2344): the platform fee at the license's rate
+ * (`floor(amount x bps / 10000)`, as the quote and the marketplace contract round
+ * it) and the remainder, `netToSeller`. Recorded on the receipt at settlement
+ * time so a later change of the configured rate never rewrites a past sale. This
+ * is an ENTITLEMENT (what the artist is owed), not a payout fact.
+ */
+export type X402EntitledNetQuote = {
+  feeBps: number;
+  platformFeeUnits: string;
+  netToSellerUnits: string;
+};
+
+export function quoteEntitledNet(amountUnits: string, feeBps: number): X402EntitledNetQuote | null {
+  if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 10_000) return null;
+  if (!/^\d+$/.test(amountUnits)) return null;
+  const amount = BigInt(amountUnits);
+  const fee = (amount * BigInt(feeBps)) / 10_000n;
+  return { feeBps, platformFeeUnits: fee.toString(), netToSellerUnits: (amount - fee).toString() };
+}
+
 export function toUsdBreakdown(amount: number, feeBps: number) {
   const feeUsd = amount * feeBps / 10_000;
   const netToSellerUsd = Math.max(0, amount - feeUsd);

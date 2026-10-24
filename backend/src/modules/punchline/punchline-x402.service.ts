@@ -18,7 +18,7 @@ import { loadX402CommerceSettled, publishCommerceSettled } from "../analytics/an
 import { X402Config } from "../x402/x402.config";
 import { PaymentsService } from "../payments/payments.service";
 import { resolveX402AssetInfo, type X402AssetInfo } from "../x402/x402.public";
-import { formatUsdcAmount, toUsdBreakdown, toX402TokenAmount } from "../x402/x402.quote";
+import { formatUsdcAmount, quoteEntitledNet, toUsdBreakdown, toX402TokenAmount } from "../x402/x402.quote";
 import {
   X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS,
   X402_TX_HASH_PATTERN,
@@ -413,6 +413,8 @@ export class PunchlineX402Service {
           decimals: input.asset.decimals,
         },
         paymentProofSha256: input.paymentProofSha256,
+        // The quoted net to the artist (#2344): an entitlement, recorded at the time of sale.
+        quote: quoteEntitledNet(input.amountUnits, this.x402Config.licensePricing.personal.feeBps),
       },
       settlement: {
         rail: "x402",

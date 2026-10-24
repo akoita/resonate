@@ -317,6 +317,12 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
       settlementAmountUnits: "1500000",
       payerAddress: PAYER.toLowerCase(),
     });
+    // #2344: the quoted net to the artist is recorded at the time of sale (15% take).
+    expect((settlement!.receipt as any).payment.quote).toEqual({
+      feeBps: 1500,
+      platformFeeUnits: "225000",
+      netToSellerUnits: "1275000",
+    });
 
     const purchase = events.find(
       (e) => e.eventName === "x402.purchase" && (e as any).momentId === MOMENT_PAID,

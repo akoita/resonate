@@ -115,11 +115,97 @@ artist share stays at least 85% (ADR-BM-4). Revenue line: ADR-BM-6 Line 3
   `ContractsService.finalizePendingSaleSplits`); one whose block the RPC node
   can no longer serve stays pending rather than guessing.
 - **Not covered.** x402 sales that settle outside the marketplace contract are
-  paid to the platform payout address and no per-sale artist split is recorded
-  for them yet, so they are in Gross sales but not in Net received; the
-  response says so (`coverage.x402: false`). Native-token sales are reported in
-  their own units (no invented USD price). Up to 2000 of the newest sales in the
-  window are summed (`truncated` flags more).
+  paid to the platform payout address and no per-sale artist payout is recorded,
+  so they are never part of Net received (`coverage.x402: "entitled_only"`):
+  they are reported apart as **entitled net** (below). Native-token sales are
+  reported in their own units (no invented USD price). Up to 2000 of the newest
+  sales in the window are summed (`truncated` flags more).
+- **Legacy pending sales (#2344).** Sales indexed before #2172 finalise at
+  startup only for the 50 most recent, and only if the RPC node still serves the
+  old block. The dry-run-first backfill finalises the rest with the same logic
+  (see [Backfilling pending sale splits](#backfilling-pending-sale-splits-2344)).
+- **`RoyaltyPayment` batches (#2344).** `RoyaltyPayment` is now keyed on the
+  `RoyaltyPaid` log, (`transactionHash`, `logIndex`), not on (`transactionHash`,
+  `tokenId`): a batched transaction with two sales of one token used to keep only
+  the first royalty row, so royalty reports undercounted. The migration
+  `20261024140000_royalty_payment_log_index` adds a nullable `logIndex` and
+  backfills every existing row from the raw `RoyaltyPaid` event (matched by
+  transaction, chain, token, recipient and amount; lowest position). A row with
+  no match keeps a null position (a Postgres unique key treats nulls as
+  distinct); the indexer then **adopts** it when the same payment arrives again
+  instead of adding a duplicate. The split logic (#2172) reads the raw events and
+  was never affected.
+
+### Entitled net for x402 sales (#2344)
+
+`netReceived.entitled` (and the dashboard's **Entitled net (x402)** card and
+**x402 sales: gross and entitled net** table) report what x402 sales entitle the
+artist to. Revenue line: ADR-BM-6 x402 rail; reporting only, no fee, split or
+payout change (the artist share stays at least 85%, ADR-BM-4).
+
+- **What it is.** The quoted `netToSeller`: the price minus the platform fee at
+  the license's rate (`floor(amount x feeBps / 10000)`, the rounding of the
+  quote). It is an **entitlement** ("Entitled — owed to you"), never a
+  received figure and never added to the on-chain Net received or to its
+  totals: the block has its own totals, assets and sales. Resonate does not
+  record a per-sale payout to the artist yet; if one is added later, that fact
+  replaces this quote.
+- **Recorded at the time of sale.** The rails write the quote with the sale:
+  `receipt.payment.quote` on the `X402Settlement` receipt (facilitator route and
+  Punchline moment editions) and `quote` in the `x402.purchase` event args of the
+  direct rails (agent payment router, MCP `stem.download`), built by
+  `quoteEntitledNet` in `x402.quote.ts` with the configured `X402_*_FEE_BPS` of
+  the license. A later change of the configured rate never rewrites a past sale.
+- **Which sales.** The same x402 sales the gross `commerce.settled` facts count:
+  final settlements outside the marketplace contract, for the artist's stems and
+  Punchline moments, plus direct agent/MCP purchases (a payment already recorded
+  by the HTTP rail is counted once). Contract-backed x402 sales are counted by
+  the marketplace rail.
+- **Unquoted.** A sale settled before the quote was recorded (or whose record
+  does not add up to the gross) is `unquoted`: counted in `unquotedSales` and
+  shown as **Not recorded**, with no net. The rate is not reconstructed from
+  today's configuration, and it is never shown as zero or as the gross.
+- **USD.** Exact only for the stablecoin (as for the gross); other assets are in
+  their own units.
+- **Tests.** `analytics_entitled_net.spec.ts`,
+  `analytics_entitled_net.integration.spec.ts` (real Postgres: all four rails,
+  exclusions, windows, artist scoping), the recorded quote asserted in
+  `x402.controller.spec.ts`, `payment_router_x402.integration.spec.ts`,
+  `mcp.stem.integration.spec.ts` and `punchline-collect-paid.integration.spec.ts`,
+  plus the web `artistNetReceived.test.ts` and `ArtistAnalyticsDashboard.test.tsx`.
+
+### Backfilling pending sale splits (#2344)
+
+`backend/src/scripts/backfill_sale_splits.ts` finalises sales still pending after
+#2172, with exactly the live path's logic (royalty from the indexed `RoyaltyPaid`
+log or proven zero by `royaltyInfo` at the Sold block; fee rate from
+`protocolFeeBps()` at the Sold block). A final split is never rewritten, so it
+is idempotent, and it writes only the split columns of `StemPurchase`.
+
+```
+npm run contracts:backfill-sale-splits -- [--dry-run | --apply] [--limit N] [--before ISO_TIMESTAMP]
+node dist/scripts/backfill_sale_splits.js  [same flags]   # built image: npm run contracts:backfill-sale-splits:prod
+```
+
+- **Dry run is the default.** It makes the same reads, including the read-only
+  chain calls, and writes nothing. `--apply` together with `--dry-run` is
+  rejected.
+- **Report.** Pending sales examined, would finalise (or finalised), the sales
+  that stay pending by reason (`no_log_index`: indexed before the Sold log
+  position was kept, never guessed; `royalty_not_indexed`; `stem_nft_unknown`;
+  `fee_unreadable` / `royalty_unreadable`: the RPC did not serve the block;
+  `split_inconsistent`), failures and the number deferred.
+- **Bounded.** `--limit` (default 200) examines the newest pending sales first;
+  when more remain the report prints `nextBefore`: pass it as `--before` (inclusive)
+  to continue.
+- **Needs** the database and the chain RPC the backend already uses, and an RPC
+  that serves the sale blocks. Running it on an environment is the deployment
+  half, tracked in resonate-iac#321 (this repository documents the procedure
+  only).
+- **Test.** `backfill_sale_splits.integration.spec.ts` (Anvil: dry run writes
+  nothing; finalised splits equal what the chain paid; each pending reason;
+  idempotent second run; paging).
+
 - **Tests.** `marketplace_sale_split.integration.spec.ts` (Anvil: recorded split
   and net equal the balances each address gained on-chain; fee pinned to the
   sale block; pending then final when `RoyaltyPaid` arrives; proven-zero royalty;
