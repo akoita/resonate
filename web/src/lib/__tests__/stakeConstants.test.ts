@@ -12,7 +12,8 @@ import {
   STAKE_STATUS_LABELS,
   ESCROW_STATUS_LABELS,
   TIER_LABELS,
-  stakeActionLabel,
+  deriveStakeClaimAction,
+  escrowDaysFromClaimableAt,
 } from "../stakeConstants";
 
 // ============ formatEth ============
@@ -286,37 +287,60 @@ describe("label maps", () => {
   });
 });
 
-// ============ stakeActionLabel (#1758) ============
+// ============ deriveStakeClaimAction (#1758, #1759) ============
 
-describe("stakeActionLabel", () => {
-  it("never promises the viewer an action they cannot perform", () => {
-    // refundStake is owner-only on-chain, so no state may read as an
-    // invitation to withdraw until #1759 ships a creator-callable claim.
-    const labels = [
-      stakeActionLabel("active"),
-      stakeActionLabel("releasable"),
-      stakeActionLabel("refunded"),
-      stakeActionLabel("slashed"),
-      stakeActionLabel("not_staked"),
-    ];
-    for (const label of labels) {
-      expect(label.toLowerCase()).not.toContain("withdraw");
-      expect(label.toLowerCase()).not.toContain("claim");
-      expect(label.toLowerCase()).not.toContain("release your");
-    }
+describe("deriveStakeClaimAction", () => {
+  const now = Date.parse("2026-10-24T12:00:00Z");
+  const future = "2026-11-20T00:00:00Z";
+  const past = "2026-10-01T00:00:00Z";
+  const failSafe = "2027-05-19T00:00:00Z";
+
+  it("offers Claim only when the contract says the claim would succeed", () => {
+    expect(deriveStakeClaimAction({ active: true, claimable: true, claimableAt: past, locked: false }, now)).toEqual({
+      kind: "claim",
+      label: "Claim",
+    });
+    // Elapsed escrow alone is not enough: the contract has the final word.
+    expect(deriveStakeClaimAction({ active: true, claimable: false, claimableAt: past, locked: false }, now).kind).not.toBe(
+      "claim",
+    );
   });
 
-  it("says who issues the refund once the escrow has elapsed", () => {
-    expect(stakeActionLabel("releasable")).toBe("Refund issued by Resonate");
+  it("shows the claim date while the escrow runs", () => {
+    const action = deriveStakeClaimAction({ active: true, claimable: false, claimableAt: future, locked: false }, now);
+    expect(action.kind).toBe("scheduled");
+    expect(action.label).toBe(`Claimable on ${new Date(future).toLocaleDateString()}`);
   });
 
-  it("keeps an in-escrow stake marked as locked", () => {
-    expect(stakeActionLabel("active")).toBe("Locked");
+  it("explains a dispute hold and its latest end date", () => {
+    const action = deriveStakeClaimAction(
+      { active: true, claimable: false, claimableAt: past, failSafeAt: failSafe, locked: true },
+      now,
+    );
+    expect(action.kind).toBe("on_hold");
+    expect(action.label).toBe("On hold: under dispute");
+    expect(action.detail).toContain(new Date(failSafe).toLocaleDateString());
   });
 
-  it("has nothing to say about settled stakes", () => {
-    expect(stakeActionLabel("refunded")).toBe("\u2014");
-    expect(stakeActionLabel("slashed")).toBe("\u2014");
+  it("does not promise a date it does not know", () => {
+    const action = deriveStakeClaimAction({ active: true, claimable: false, claimableAt: null, locked: null }, now);
+    expect(action.kind).toBe("pending");
+    expect(action.label).toBe("Claim date pending");
+  });
+
+  it("has nothing to offer for settled stakes", () => {
+    expect(deriveStakeClaimAction({ active: false, claimable: false }, now)).toEqual({ kind: "none", label: "\u2014" });
+  });
+});
+
+describe("escrowDaysFromClaimableAt", () => {
+  it("derives whole escrow days from the contract deadline", () => {
+    expect(escrowDaysFromClaimableAt("2026-10-01T00:00:00Z", "2026-10-31T00:00:00Z")).toBe(30);
+  });
+
+  it("returns null when either date is missing or inconsistent", () => {
+    expect(escrowDaysFromClaimableAt(null, "2026-10-31T00:00:00Z")).toBeNull();
+    expect(escrowDaysFromClaimableAt("2026-10-31T00:00:00Z", "2026-10-01T00:00:00Z")).toBeNull();
   });
 });
 

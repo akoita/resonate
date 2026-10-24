@@ -8,6 +8,9 @@
  *   1. Only the owner can slash, refund, or blacklist.
  *   2. Slash and refund require an active stake and deactivate it (no double-spend).
  *   3. A successful slash never leaves the stake active.
+ *   4. Self-claim (#1759): the attester's claim needs an active stake, deactivates it,
+ *      is blocked by the pause, and a dispute-locked stake cannot leave through any
+ *      non-owner call before escrow + fail-safe.
  *
  * The stake-amount-split arithmetic (60/30/10) is covered by the fuzz/invariant
  * suites and the Halmos formal test, which can reason about token balances.
@@ -23,6 +26,9 @@ methods {
     function paused() external returns (bool) envfree;
     function stakes(uint256) external returns (uint256, uint256, bool) envfree;
     function isBlacklisted(address) external returns (bool) envfree;
+    function stakeLocked(uint256) external returns (bool) envfree;
+    function stakeClaimableAt(uint256) external returns (uint256) envfree;
+    function STAKE_CLAIM_FAIL_SAFE() external returns (uint256) envfree;
 }
 
 // ============ Definitions ============
@@ -124,4 +130,40 @@ rule blacklistOnlyLiftedByRemove(env e, method f, calldataarg args, address acco
         || isBlacklisted(account)
         || f.selector == sig:removeBlacklist(address).selector,
         "blacklist must only be lifted by removeBlacklist";
+}
+
+// ============ Self-claim (#1759) ============
+
+/// The attester's self-claim requires an active stake.
+rule claimRequiresActiveStake(env e, uint256 tokenId) {
+    require !stakeActive(tokenId);
+    claimStakeRefund@withrevert(e, tokenId);
+    assert lastReverted, "claim of an inactive stake must revert";
+}
+
+/// A successful claim always deactivates the stake (no claim/refund/slash double-spend).
+rule claimDeactivatesStake(env e, uint256 tokenId) {
+    claimStakeRefund@withrevert(e, tokenId);
+    assert lastReverted || !stakeActive(tokenId), "claim must deactivate the stake";
+}
+
+rule pausedBlocksClaim(env e, uint256 tokenId) {
+    require paused();
+    claimStakeRefund@withrevert(e, tokenId);
+    assert lastReverted, "paused claim must revert";
+}
+
+/// The front-running guard: while a dispute lock holds a stake and the fail-safe has not
+/// passed, no call by anyone other than the owner or the upgrade authority can make the
+/// stake inactive. (The owner keeps slash/refund; the upgrade authority is timelocked.)
+rule lockedStakeCannotLeaveBeforeFailSafe(env e, method f, calldataarg args, uint256 tokenId) {
+    require stakeActive(tokenId);
+    require stakeLocked(tokenId);
+    require to_mathint(e.block.timestamp) < stakeClaimableAt(tokenId) + STAKE_CLAIM_FAIL_SAFE();
+    require e.msg.sender != owner();
+    require e.msg.sender != upgradeAuthority();
+
+    f@withrevert(e, args);
+
+    assert lastReverted || stakeActive(tokenId), "a locked stake left before the fail-safe";
 }

@@ -10,7 +10,7 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | --------------------- | ----------------------------------- | ----------------------------------------------------------- |
 | **StemNFT**           | `src/core/StemNFT.sol`              | ERC-1155 NFT for music stems. Gates minting on attestation. |
 | **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | Guarded UUPS proxy for list / buy / resale with protocol fees and fast pause. |
-| **ContentProtection** | `src/core/ContentProtection.sol`    | Guarded UUPS proxy. Attest (registrar-voucher gated), stake, slash (60/30/10), blacklist, owner pause, and delayed upgrade authority. |
+| **ContentProtection** | `src/core/ContentProtection.sol`    | Guarded UUPS proxy. Attest (registrar-voucher gated), stake, creator self-claim after escrow with a dispute hold and 180-day fail-safe (V7, #1759), slash (60/30/10), blacklist, owner pause, and delayed upgrade authority. |
 | **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | UUPS proxy (timelock + guardian). Per-token escrow with global pause, freeze, release, and redirect. |
 | **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
@@ -174,6 +174,8 @@ forge script script/DeployProtocol.s.sol \
 | `UpgradeContentProtection.s.sol` | Schedule/execute post-V6 upgrades through the ContentProtection timelock |
 | `SetContentProtectionPaused.s.sol` | Operational-owner ContentProtection emergency pause/unpause |
 | `SmokeContentProtection.s.sol` | Read-only ContentProtection implementation and authority-graph validation |
+| `BackfillContentProtectionStakeEscrow.s.sol` | Owner backfill of self-claim deadlines for pre-V7 stakes (#1759) |
+| `ConfigureContentProtectionStakeLock.s.sol` | Authorise DisputeResolution as stake-lock authority, then turn dispute stake locking on (#1759) |
 | `DeployRevenueEscrow.s.sol` | Revenue escrow only — deploy UUPS implementation, timelock, and proxy |
 | `UpgradeRevenueEscrow.s.sol` | Timelocked RevenueEscrow UUPS upgrade: `UPGRADE_ACTION=schedule` then `execute` |
 | `SetRevenueEscrowPaused.s.sol` | Owner-controlled global custody pause/unpause |

@@ -1191,6 +1191,24 @@ export interface ContractStakeSlashedEvent extends BaseEvent {
   blockNumber: string;
 }
 
+/**
+ * A Content Protection stake returned to its attester: either the owner-issued
+ * `StakeRefunded(WithAsset)` or the attester's own `StakeRefundClaimed` (#1759).
+ */
+export interface ContractStakeRefundedEvent extends BaseEvent {
+  eventName: "contract.stake_refunded";
+  tokenId: string;
+  stakerAddress: string;
+  amount: string;
+  paymentToken?: string;
+  /** True when the attester claimed it themselves via `claimStakeRefund`. */
+  selfClaimed: boolean;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
 export interface ContractEscrowReleasedEvent extends BaseEvent {
   eventName: "contract.escrow_released";
   tokenId: string;
@@ -1699,6 +1717,7 @@ export type ResonateEvent =
   | ContractContentAttestedEvent
   | ContractStakeDepositedEvent
   | ContractStakeSlashedEvent
+  | ContractStakeRefundedEvent
   | ContractEscrowReleasedEvent
   | ContractEscrowFrozenEvent
   | ContractEscrowRedirectedEvent

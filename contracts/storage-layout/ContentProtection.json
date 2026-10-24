@@ -184,11 +184,35 @@
     "type": "bool"
   },
   {
-    "bytes": "1536",
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakeClaimableAt",
+    "offset": 0,
+    "slot": "22",
+    "type": "mapping(uint256 => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakeLocked",
+    "offset": 0,
+    "slot": "23",
+    "type": "mapping(uint256 => bool)"
+  },
+  {
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "stakeLockAuthority",
+    "offset": 0,
+    "slot": "24",
+    "type": "address"
+  },
+  {
+    "bytes": "1440",
     "encoding": "inplace",
     "label": "__gap",
     "offset": 0,
-    "slot": "22",
-    "type": "uint256[48]"
+    "slot": "25",
+    "type": "uint256[45]"
   }
 ]

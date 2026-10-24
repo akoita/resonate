@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { useToast } from "../ui/Toast";
+import { useStakeClaim } from "../../hooks/useContracts";
 import {
   formatStakeAmount,
   formatOptionalDate,
   parseDateToEpochSeconds,
   deriveStakeStatus,
   deriveEscrowStatus,
+  deriveStakeClaimAction,
+  escrowDaysFromClaimableAt,
   STAKE_STATUS_LABELS,
   STAKE_STATUS_COLORS,
   ESCROW_STATUS_LABELS,
-  stakeActionLabel,
+  type StakeClaimAction,
   type StakeStatus,
   type EscrowStatus,
 } from "../../lib/stakeConstants";
@@ -25,24 +29,62 @@ interface StakeRecord {
   amountUsd?: string | null;
   depositedAt: string;  // ISO timestamp from backend
   active: boolean;
-  escrowDays: number;
+  escrowDays?: number;
+  /** #1759: live claim state from ContentProtection.getStakeClaimState. */
+  claimableAt?: string | null;
+  failSafeAt?: string | null;
+  locked?: boolean | null;
+  claimable?: boolean;
 }
 
 interface DerivedStake extends StakeRecord {
   status: StakeStatus;
   escrow: { status: EscrowStatus; daysRemaining: number };
+  action: StakeClaimAction;
 }
 
 /**
  * Wallet dashboard card showing all stakes for the authenticated user.
  *
- * Fetches from backend indexer `/api/stakes?owner=`.
- * Falls back to an empty state when the endpoint is unavailable.
+ * Fetches from the backend indexer (`/api/metadata/stakes/:owner`), which adds
+ * the contract's live claim state. A creator claims their own stake back with
+ * `claimStakeRefund` (#1759); the Claim button appears only when the contract
+ * says the claim would succeed. Falls back to an empty state when the endpoint
+ * is unavailable.
  */
 export default function MyStakesCard() {
   const { address } = useAuth();
+  const { addToast } = useToast();
+  const { claim, pending } = useStakeClaim();
   const [stakes, setStakes] = useState<DerivedStake[]>([]);
   const [loading, setLoading] = useState(true);
+  const [claimingTokenId, setClaimingTokenId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const handleClaim = useCallback(
+    async (stake: DerivedStake) => {
+      setClaimingTokenId(stake.tokenId);
+      try {
+        await claim(BigInt(stake.tokenId));
+        addToast({
+          type: "success",
+          title: "Stake claimed",
+          message: `${formatStakeAmount(stake.amount, { symbol: stake.assetSymbol, decimals: stake.assetDecimals, usd: stake.amountUsd })} is on its way back to your wallet.`,
+        });
+        setReloadKey((key) => key + 1);
+      } catch (err) {
+        addToast({
+          type: "error",
+          title: "Could not claim this stake",
+          message: err instanceof Error ? err.message : String(err),
+          duration: 9000,
+        });
+      } finally {
+        setClaimingTokenId(null);
+      }
+    },
+    [addToast, claim],
+  );
 
   // Fetch stakes from backend
   useEffect(() => {
@@ -61,6 +103,8 @@ export default function MyStakesCard() {
         const derived = data.map(s => {
           const depositedEpoch = parseDateToEpochSeconds(s.depositedAt);
           const hasDepositedAt = depositedEpoch > 0n;
+          // Prefer the escrow the contract recorded for this stake (#1759).
+          const escrowDays = escrowDaysFromClaimableAt(s.depositedAt, s.claimableAt) ?? s.escrowDays ?? 30;
 
           return {
             ...s,
@@ -69,7 +113,7 @@ export default function MyStakesCard() {
                   s.active,
                   BigInt(s.amount),
                   depositedEpoch,
-                  s.escrowDays || 30,
+                  escrowDays,
                 )
               : s.active
                 ? "active"
@@ -78,9 +122,10 @@ export default function MyStakesCard() {
               ? deriveEscrowStatus(
                   s.active,
                   depositedEpoch,
-                  s.escrowDays || 30,
+                  escrowDays,
                 )
               : { status: s.active ? "locked" as const : "released" as const, daysRemaining: 0 },
+            action: deriveStakeClaimAction(s),
           };
         });
         setStakes(derived);
@@ -91,7 +136,7 @@ export default function MyStakesCard() {
         setStakes([]);
         setLoading(false);
       });
-  }, [address]);
+  }, [address, reloadKey]);
 
   if (!address) return null;
 
@@ -103,7 +148,7 @@ export default function MyStakesCard() {
         <div>
           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>My Stakes</h3>
           <p style={{ margin: 0, fontSize: "12px", opacity: 0.5 }}>
-            Content Protection deposits — returned by Resonate after the escrow period
+            Content Protection deposits — claim yours back once its escrow ends
           </p>
         </div>
       </div>
@@ -182,12 +227,36 @@ export default function MyStakesCard() {
                     </span>
                   </td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
-                    {/* No control here: refundStake is owner-only on-chain, so
-                        a Withdraw button could never succeed for its viewer.
-                        #1759 tracks the self-service claim that would earn one. */}
-                    <span style={{ fontSize: "11px", opacity: 0.4 }}>
-                      {stakeActionLabel(stake.status)}
-                    </span>
+                    {/* The Claim button renders only when the contract says
+                        claimStakeRefund would succeed (#1759); otherwise the
+                        cell says why not, so there is never a dead control. */}
+                    {stake.action.kind === "claim" ? (
+                      <button
+                        type="button"
+                        style={claimButtonStyle}
+                        disabled={pending}
+                        aria-busy={claimingTokenId === stake.tokenId}
+                        onClick={() => handleClaim(stake)}
+                      >
+                        {claimingTokenId === stake.tokenId ? "Claiming…" : "Claim"}
+                      </button>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          opacity: stake.action.kind === "on_hold" ? 0.85 : 0.5,
+                          color: stake.action.kind === "on_hold" ? "#f59e0b" : undefined,
+                        }}
+                        title={stake.action.detail}
+                      >
+                        {stake.action.label}
+                      </span>
+                    )}
+                    {stake.action.detail && stake.action.kind === "on_hold" && (
+                      <div style={{ fontSize: "10px", opacity: 0.5, marginTop: "2px" }}>
+                        {stake.action.detail}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -243,6 +312,17 @@ const thStyle: React.CSSProperties = {
 
 const trStyle: React.CSSProperties = {
   transition: "background 0.15s",
+};
+
+const claimButtonStyle: React.CSSProperties = {
+  padding: "6px 14px",
+  borderRadius: "8px",
+  border: "1px solid rgba(16,185,129,0.4)",
+  background: "rgba(16,185,129,0.12)",
+  color: "#10b981",
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
 };
 
 const tdStyle: React.CSSProperties = {

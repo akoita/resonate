@@ -81,6 +81,14 @@ interface IContentProtection is IContentProtectionEvents {
 
     function resolveStakeRoot(uint256 tokenId) external view returns (uint256);
 
+    /// @notice Dispute hold on a stake root (#1759); callable by the owner or the
+    /// authorised stake-lock authority (DisputeResolution).
+    function setStakeLock(uint256 tokenId, bool locked) external;
+
+    function stakeLocked(uint256 tokenId) external view returns (bool);
+
+    function stakeLockAuthority() external view returns (address);
+
     function stakeAmount() external view returns (uint256);
 
     function maxPriceMultiplier() external view returns (uint256);

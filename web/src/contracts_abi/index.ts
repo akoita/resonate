@@ -483,6 +483,26 @@ export const ContentProtectionABI = [
     outputs: [],
   },
   {
+    // #1759: the attester withdraws their own stake once it is claimable.
+    name: "claimStakeRefund",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "getStakeClaimState",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "claimableAt", type: "uint256" },
+      { name: "failSafeAt", type: "uint256" },
+      { name: "locked", type: "bool" },
+      { name: "claimable", type: "bool" },
+    ],
+  },
+  {
     name: "stakeAmount",
     type: "function",
     stateMutability: "view",

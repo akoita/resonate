@@ -22,6 +22,7 @@ import type {
   ContractContentAttestedEvent,
   ContractStakeDepositedEvent,
   ContractStakeSlashedEvent,
+  ContractStakeRefundedEvent,
 } from "../../events/event_types";
 import { CuratorReputationService } from "./curator-reputation.service";
 import { resolveIndexerChainId } from "./indexer.service";
@@ -38,6 +39,7 @@ import {
   type ListingLifecycleStatus,
 } from "./listing-lifecycle";
 import { bestStandardLicenseTier } from "./stem_license_tier";
+import { toStakeClaimView, UNKNOWN_STAKE_CLAIM_STATE, type StakeClaimView } from "./stake-claim-state";
 import {
   intentsForSeller,
   loadTokenListingSiblings,
@@ -152,6 +154,19 @@ const CONTENT_PROTECTION_ABI = [
       { name: "amount", type: "uint256" },
       { name: "depositedAt", type: "uint256" },
       { name: "active", type: "bool" },
+    ],
+  },
+  {
+    // #1759 (ContentProtection V7): self-claim deadline, fail-safe, dispute lock.
+    name: "getStakeClaimState",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "claimableAt", type: "uint256" },
+      { name: "failSafeAt", type: "uint256" },
+      { name: "locked", type: "bool" },
+      { name: "claimable", type: "bool" },
     ],
   },
 ] as const;
@@ -1210,6 +1225,30 @@ export class ContractsService implements OnModuleInit {
       }
     });
 
+    // Handle StakeRefunded / StakeRefundClaimed (#1759): the owner refund and the
+    // attester's own claim both end the stake and return it to the attester.
+    this.eventBus.subscribe("contract.stake_refunded", async (event: ContractStakeRefundedEvent) => {
+      this.logger.log(
+        `Processing stake refund: tokenId=${event.tokenId}, selfClaimed=${event.selfClaimed}, tx=${event.transactionHash}`,
+      );
+
+      try {
+        await prisma.contentProtectionStake.updateMany({
+          where: {
+            tokenId: event.tokenId.toString(),
+            chainId: event.chainId,
+            active: true,
+          },
+          data: {
+            active: false,
+            refundedAt: new Date(event.occurredAt),
+          },
+        });
+      } catch (error) {
+        this.logger.error(`Failed to process stake refund: ${error}`);
+      }
+    });
+
     // ============ Community Curation Phase 3 Events ============
 
     // Handle DisputeFiled → create/update dispute in DB
@@ -2241,6 +2280,49 @@ export class ContractsService implements OnModuleInit {
         : undefined;
       return { ...s, releaseTitle };
     });
+  }
+
+  /**
+   * Live self-claim state for active stakes (#1759), keyed by `chainId:tokenId`.
+   * Inactive stakes and unreadable chains/contracts (including a proxy that is
+   * not yet on the V7 implementation) map to the unknown state, which the
+   * wallet renders as "not claimable" rather than guessing.
+   */
+  async getStakeClaimStates(
+    stakes: Array<{ tokenId: string; chainId: number; active: boolean }>,
+  ): Promise<Map<string, StakeClaimView>> {
+    const states = new Map<string, StakeClaimView>();
+
+    await Promise.all(
+      stakes.map(async (stake) => {
+        const key = `${stake.chainId}:${stake.tokenId}`;
+        if (!stake.active) {
+          states.set(key, UNKNOWN_STAKE_CLAIM_STATE);
+          return;
+        }
+        const address = CONTENT_PROTECTION_ADDRESSES[stake.chainId];
+        const chainConfig = CHAIN_CONFIGS[stake.chainId];
+        if (!address || address === "0x0000000000000000000000000000000000000000" || !chainConfig) {
+          states.set(key, UNKNOWN_STAKE_CLAIM_STATE);
+          return;
+        }
+        try {
+          const client = createPublicClient({ chain: chainConfig.chain, transport: http(chainConfig.rpcUrl) });
+          const tuple = await client.readContract({
+            address,
+            abi: CONTENT_PROTECTION_ABI,
+            functionName: "getStakeClaimState",
+            args: [BigInt(stake.tokenId)],
+          });
+          states.set(key, toStakeClaimView(tuple as readonly [bigint, bigint, boolean, boolean]));
+        } catch (error) {
+          this.logger.warn(`Could not read stake claim state for ${key}: ${error}`);
+          states.set(key, UNKNOWN_STAKE_CLAIM_STATE);
+        }
+      }),
+    );
+
+    return states;
   }
 
   async getContentProtectionByRelease(releaseId: string) {

@@ -95,6 +95,23 @@ interface IContentProtectionEvents is
     event BurnedSwept(address indexed token, address indexed treasury, uint256 amount);
     event ContentProtectionPaused(bool paused);
 
+    /// @notice The attester withdrew their own stake through `claimStakeRefund` (#1759).
+    /// Emitted instead of `StakeRefunded`, which stays the owner-issued refund event.
+    event StakeRefundClaimed(
+        uint256 indexed tokenId, address indexed attester, address indexed token, uint256 amount
+    );
+
+    /// @notice The self-claim deadline of a stake was recorded, at stake time or by
+    /// the owner backfill for stakes deposited before V7 (#1759).
+    event StakeEscrowRecorded(uint256 indexed tokenId, uint256 claimableAt);
+
+    /// @notice A stake's dispute hold was set or cleared by the owner or the
+    /// authorised stake-lock authority (DisputeResolution) (#1759).
+    event StakeLockUpdated(uint256 indexed tokenId, bool locked, address indexed updatedBy);
+
+    /// @notice The address allowed to set and clear stake locks besides the owner changed.
+    event StakeLockAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
+
     // ============ Errors ============
 
     error NotOwner();
@@ -122,4 +139,19 @@ interface IContentProtectionEvents is
 
     /// @notice The attestation authorization voucher deadline has passed (CP-1, #1271).
     error AttestationAuthorizationExpired(uint256 deadline, uint256 currentTime);
+
+    /// @notice `claimStakeRefund` was called by someone other than the stake's attester.
+    error NotStakeAttester(uint256 tokenId, address caller);
+
+    /// @notice The stake predates V7 and its claim deadline has not been backfilled yet.
+    error StakeEscrowNotRecorded(uint256 tokenId);
+
+    /// @notice The stake's escrow has not elapsed; it becomes claimable at `claimableAt`.
+    error StakeEscrowActive(uint256 tokenId, uint256 claimableAt);
+
+    /// @notice The stake is held by a dispute; the fail-safe opens the claim at `failSafeAt`.
+    error StakeLockActive(uint256 tokenId, uint256 failSafeAt);
+
+    /// @notice `setStakeLock` was called by neither the owner nor the stake-lock authority.
+    error NotStakeLockAuthority(address caller);
 }

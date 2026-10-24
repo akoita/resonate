@@ -49,6 +49,16 @@ const STAKE_SLASHED_EVENT = parseAbiItem(
 const STAKE_SLASHED_WITH_ASSET_EVENT = parseAbiItem(
   "event StakeSlashedWithAsset(uint256 indexed tokenId, address indexed reporter, address indexed token, uint256 reporterAmount, uint256 treasuryAmount, uint256 burnedAmount)"
 );
+const STAKE_REFUNDED_EVENT = parseAbiItem(
+  "event StakeRefunded(uint256 indexed tokenId, address indexed staker, uint256 amount)"
+);
+const STAKE_REFUNDED_WITH_ASSET_EVENT = parseAbiItem(
+  "event StakeRefundedWithAsset(uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount)"
+);
+// #1759: the attester's own claim (ContentProtection V7).
+const STAKE_REFUND_CLAIMED_EVENT = parseAbiItem(
+  "event StakeRefundClaimed(uint256 indexed tokenId, address indexed attester, address indexed token, uint256 amount)"
+);
 const ESCROW_RELEASED_EVENT = parseAbiItem(
   "event EscrowReleased(uint256 indexed tokenId, address indexed beneficiary, uint256 amount)"
 );
@@ -801,6 +811,9 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       STAKE_DEPOSITED_EVENT,
       STAKE_SLASHED_WITH_ASSET_EVENT,
       STAKE_SLASHED_EVENT,
+      STAKE_REFUNDED_WITH_ASSET_EVENT,
+      STAKE_REFUNDED_EVENT,
+      STAKE_REFUND_CLAIMED_EVENT,
       ESCROW_RELEASED_WITH_ASSET_EVENT,
       ESCROW_RELEASED_EVENT,
       ESCROW_FROZEN_WITH_ASSET_EVENT,
@@ -1060,6 +1073,25 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           reporterAmount: decodedArgs.reporterAmount?.toString(),
           treasuryAmount: decodedArgs.treasuryAmount?.toString(),
           burnedAmount: decodedArgs.burnedAmount?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "StakeRefunded":
+      case "StakeRefundedWithAsset":
+      case "StakeRefundClaimed":
+        this.eventBus.publish({
+          eventName: "contract.stake_refunded",
+          eventVersion: 1,
+          occurredAt,
+          tokenId: decodedArgs.tokenId?.toString(),
+          stakerAddress: decodedArgs.staker ?? decodedArgs.attester,
+          amount: decodedArgs.amount?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
+          selfClaimed: eventName === "StakeRefundClaimed",
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,

@@ -515,7 +515,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Every account comes with a built-in 'smart account' wallet for payouts, purchases, and stakes — funded with stablecoins and protected by your passkey.",
     category: "account",
     audiences: ["everyone", "listener", "artist"],
-    keywords: ["wallet", "smart account", "balance", "usdc", "stablecoin", "gas", "funding", "deposit", "recovery", "passkey", "budget cap", "erc-4337"],
+    keywords: ["wallet", "smart account", "balance", "usdc", "stablecoin", "gas", "funding", "deposit", "recovery", "passkey", "budget cap", "erc-4337", "stake", "claim stake", "withdraw stake"],
     sections: [
       {
         id: "overview",
@@ -574,7 +574,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "If you are an artist, the Wallet also surfaces stakes tied to content protection — funds you lock to back the authenticity of your releases. Each row shows the deposit in the currency it was paid in (usually a stablecoin such as USDC), when it was placed, and whether its escrow period is still running. Resonate returns the deposit once that period ends; there is no withdraw button to press. See Rights & content protection for how stakes and trust tiers work.",
+            text: "If you are an artist, the Wallet also surfaces stakes tied to content protection — funds you lock to back the authenticity of your releases. Each row shows the deposit in the currency it was paid in (usually a stablecoin such as USDC), when it was placed, and whether its escrow period is still running. See Rights & content protection for how stakes and trust tiers work.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Claimable on <date> — the escrow is still running. You can take your stake back from that date.",
+              "Claim — the escrow has ended. Press Claim and approve with your passkey; the stake returns to your wallet in the asset you paid it in (ETH or USDC). Nobody at Resonate has to act.",
+              "On hold: under dispute — someone reported the release, so the stake is held while the dispute is open. It becomes claimable again if the dispute is rejected or inconclusive. A hold never lasts more than 180 days past the end of the escrow: from the date shown, you can claim even if the dispute is still open.",
+              "Claim date pending — the claim date for an older stake has not been recorded yet. Your deposit is safe and the Claim button appears once it is.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "If a dispute is upheld",
+            text: "When a dispute finds the content was misattributed, the stake is slashed instead of returned: part goes to the reporter and part to the treasury. That is why a stake cannot be claimed while a dispute about it is open.",
           },
         ],
       },
@@ -3480,7 +3495,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Escrow periods",
-            text: "New activity may pass through a short escrow window that gives the community time to flag a problem before everything settles.",
+            text: "New activity may pass through a short escrow window that gives the community time to flag a problem before everything settles. When a stake's escrow ends you claim it back yourself from My Stakes in the Wallet; an open dispute holds it, for at most 180 days past the escrow.",
           },
         ],
       },

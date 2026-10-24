@@ -67,6 +67,13 @@ interface IDisputeResolutionEvents is IAddressGuard, IDisputeGuards {
     event JuryVoteCast(uint256 indexed disputeId, address indexed juror, JuryVote vote);
     event JuryResolved(uint256 indexed disputeId, Outcome outcome, uint8 votesForReporter, uint8 votesForCreator);
 
+    /// @notice Stake locking was enabled (both non-zero) or disabled (both zero) (#1759).
+    event StakeLockingConfigured(address indexed contentProtection, address indexed disputeFiler);
+
+    /// @notice A dispute started or stopped holding the Content Protection stake of
+    /// `stakeRoot` (#1759). The stake stays locked while any dispute holds it.
+    event StakeHoldUpdated(uint256 indexed disputeId, uint256 indexed stakeRoot, bool held);
+
     // ============ Errors ============
 
     error DisputeNotFound();
@@ -85,4 +92,13 @@ interface IDisputeResolutionEvents is IAddressGuard, IDisputeGuards {
     error NotAssignedJuror();
     error AlreadyVoted();
     error JuryVotePending();
+
+    /// @notice Stake locking is on and the caller is not the configured dispute filer.
+    error UnauthorizedDisputeFiler(address caller);
+
+    /// @notice Stake locking needs both addresses set, or both cleared.
+    error InvalidStakeLockConfig();
+
+    /// @notice The dispute holds no stake lock to release.
+    error NoStakeHold(uint256 disputeId);
 }

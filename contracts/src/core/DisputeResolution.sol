@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
+import {IContentProtection} from "../interfaces/IContentProtection.sol";
 
 /**
  * @title DisputeResolution
@@ -15,8 +16,16 @@ import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
  *   - Admin resolves in Phase 1 (Kleros/DAO jury in future phases)
  *   - Resolution triggers slash or counter-stake refund via CurationRewards
  *   - Losing party may appeal up to 2 times (RFC §5.4)
+ *   - Stake hold (#1759): once `configureStakeLocking` is set, an open dispute locks
+ *     the creator's Content Protection stake root so the creator cannot self-claim it
+ *     ahead of a slash. The lock is released when the dispute resolves Rejected or
+ *     Inconclusive. An Upheld outcome keeps holding the stake for the slash; an appeal
+ *     can still release it, and the owner can release it with `releaseStakeHold`.
+ *     ContentProtection caps any hold with its own fail-safe. While locking is on,
+ *     only the configured filer (CurationRewards) may file or appeal, so a free
+ *     direct call cannot lock someone else's deposit.
  *
- * @custom:version 2.0.0
+ * @custom:version 2.1.0
  */
 contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     // ============ Constants ============
@@ -63,12 +72,34 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     /// @notice disputeId → juror → vote
     mapping(uint256 => mapping(address => JuryVote)) public juryVotes;
 
+    /// @notice ContentProtection whose stakes open disputes hold (#1759). address(0) =
+    /// stake locking off (the pre-#1759 behaviour).
+    IContentProtection public contentProtection;
+
+    /// @notice The only address allowed to file and appeal while stake locking is on
+    /// (CurationRewards, which collects the reporter's counter-stake).
+    address public disputeFiler;
+
+    /// @notice stake root → number of disputes currently holding it.
+    mapping(uint256 => uint256) public activeStakeHolds;
+
+    /// @notice disputeId → stake hold bookkeeping.
+    mapping(uint256 => StakeHold) public stakeHolds;
+
     // ============ Structs ============
 
     struct Evidence {
         address submitter;
         string evidenceURI;
         uint256 timestamp;
+    }
+
+    /// @dev The stake root is resolved once, when the dispute first holds the stake,
+    /// so a later hierarchy registration cannot redirect its release.
+    struct StakeHold {
+        uint256 stakeRoot;
+        bool rootRecorded;
+        bool held;
     }
 
     // ============ Constructor ============
@@ -90,6 +121,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         payable
         returns (uint256 disputeId)
     {
+        _requireFiler();
         if (activeDisputeByToken[tokenId] != 0) revert ActiveDisputeExists();
         if (hasReportedByToken[tokenId][reporter]) revert AlreadyReported();
 
@@ -118,6 +150,8 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         hasReportedByToken[tokenId][reporter] = true;
 
         emit DisputeFiled(disputeId, tokenId, reporter, creator, evidenceURI, msg.value);
+
+        _holdStake(disputeId, tokenId);
     }
 
     // ============ Evidence ============
@@ -193,6 +227,8 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         activeDisputeByToken[d.tokenId] = 0;
 
         emit DisputeResolved(disputeId, d.tokenId, outcome, msg.sender);
+
+        if (outcome != Outcome.Upheld) _releaseStake(disputeId);
     }
 
     // ============ Jury Management ============
@@ -300,6 +336,8 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
         emit JuryResolved(disputeId, d.outcome, d.votesForReporter, d.votesForCreator);
         emit DisputeResolved(disputeId, d.tokenId, d.outcome, msg.sender);
+
+        if (d.outcome != Outcome.Upheld) _releaseStake(disputeId);
     }
 
     // ============ Appeals ============
@@ -313,6 +351,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
      * @param appealer The address appealing (validated as the losing party)
      */
     function appeal(uint256 disputeId, address appealer) external {
+        _requireFiler();
         Dispute storage d = disputes[disputeId];
         if (d.filedAt == 0) revert DisputeNotFound();
         if (d.status != DisputeStatus.Resolved) revert DisputeNotResolved();
@@ -340,6 +379,75 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         activeDisputeByToken[d.tokenId] = disputeId;
 
         emit DisputeAppealed(disputeId, appealer, d.appealCount);
+
+        _holdStake(disputeId, d.tokenId);
+    }
+
+    // ============ Stake hold (#1759) ============
+
+    /**
+     * @notice Turn stake locking on (both addresses set) or off (both zero).
+     * @dev ContentProtection must already list this contract as its
+     *      `stakeLockAuthority`, otherwise filing a dispute reverts. Holds taken under
+     *      a previous configuration keep their recorded stake root.
+     * @param contentProtection_ The ContentProtection proxy whose stakes disputes hold.
+     * @param disputeFiler_ The only caller allowed to file and appeal (CurationRewards).
+     */
+    function configureStakeLocking(address contentProtection_, address disputeFiler_) external onlyOwner {
+        if ((contentProtection_ == address(0)) != (disputeFiler_ == address(0))) revert InvalidStakeLockConfig();
+        contentProtection = IContentProtection(contentProtection_);
+        disputeFiler = disputeFiler_;
+        emit StakeLockingConfigured(contentProtection_, disputeFiler_);
+    }
+
+    /**
+     * @notice Release the stake hold of a resolved dispute, typically an Upheld one
+     *         after the slash, or one the platform decided not to enforce.
+     * @param disputeId The resolved dispute whose hold to release.
+     */
+    function releaseStakeHold(uint256 disputeId) external onlyOwner {
+        Dispute storage d = disputes[disputeId];
+        if (d.filedAt == 0) revert DisputeNotFound();
+        if (d.status != DisputeStatus.Resolved) revert DisputeNotResolved();
+        if (!stakeHolds[disputeId].held) revert NoStakeHold(disputeId);
+        _releaseStake(disputeId);
+    }
+
+    function _requireFiler() internal view {
+        address filer = disputeFiler;
+        if (filer != address(0) && msg.sender != filer) revert UnauthorizedDisputeFiler(msg.sender);
+    }
+
+    /// @dev Idempotent per dispute. Locks the stake root on every new hold, so a hold
+    /// re-asserts the lock even if the owner cleared it by hand meanwhile.
+    function _holdStake(uint256 disputeId, uint256 tokenId) internal {
+        IContentProtection cp = contentProtection;
+        if (address(cp) == address(0)) return;
+        StakeHold storage hold = stakeHolds[disputeId];
+        if (hold.held) return;
+        if (!hold.rootRecorded) {
+            hold.stakeRoot = cp.resolveStakeRoot(tokenId);
+            hold.rootRecorded = true;
+        }
+        hold.held = true;
+        uint256 root = hold.stakeRoot;
+        activeStakeHolds[root] += 1;
+        cp.setStakeLock(root, true);
+        emit StakeHoldUpdated(disputeId, root, true);
+    }
+
+    /// @dev Clears the ContentProtection lock only when no other dispute still holds
+    /// the same stake root (several tracks of one release can be disputed at once).
+    function _releaseStake(uint256 disputeId) internal {
+        StakeHold storage hold = stakeHolds[disputeId];
+        if (!hold.held) return;
+        hold.held = false;
+        uint256 root = hold.stakeRoot;
+        uint256 remaining = activeStakeHolds[root] - 1;
+        activeStakeHolds[root] = remaining;
+        IContentProtection cp = contentProtection;
+        if (remaining == 0 && address(cp) != address(0)) cp.setStakeLock(root, false);
+        emit StakeHoldUpdated(disputeId, root, false);
     }
 
     // ============ Views ============

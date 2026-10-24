@@ -26,6 +26,7 @@ Common workflow inputs:
 | `target_network` | Selects `base-sepolia` or `sepolia`; normal staging ops use `base-sepolia`. |
 | `operation` | Selects the deploy, config, create, or verify action. |
 | `campaign_id` | Campaign id for Shows lifecycle operations. Leave empty for non-lifecycle operations. |
+| `token_ids` | Comma-separated ContentProtection stake ids for `backfill-content-protection-stake-escrow`. Leave empty otherwise. |
 | `verify_contracts` | BaseScan/Etherscan mode for Base Sepolia deploys: `auto`, `true`, or `false`. |
 
 Core GitHub environment secrets:
@@ -65,6 +66,8 @@ Core GitHub environment variables:
 | `prepare-content-protection-v6-migration` / `execute-content-protection-v6-migration` | One-time bootstrap of a legacy owner-authorized proxy into guarded V6 governance. | Prepare with `CONTENT_PROTECTION_PROXY`, owner, independent guardian and 48h delay; verify the emitted candidate implementation + timelock; execute separately with `NEW_IMPLEMENTATION`, `CONTENT_PROTECTION_TIMELOCK_ADDRESS`, and non-zero `MINT_AUTHORIZER_ADDRESS`. Secret: current owner signer. | Candidate JSON + `.candidate.env` + ABI and governance broadcasts, then an atomic `upgradeToAndCall(reinitializeV6)` transaction followed by a separate voucher-signer registrar transaction in the same reviewed workflow run. Proxy address stays unchanged. | Candidate handoffs are not live configuration. Execute requires separate operator approval. The workflow verifies both transactions' resulting state; run `smoke-content-protection` before deploying voucher-aware backend/web code. |
 | `schedule-content-protection-upgrade` / `execute-content-protection-upgrade` | Schedule or execute a post-V6 implementation upgrade. | Vars: `CONTENT_PROTECTION_PROXY`, `CONTENT_PROTECTION_TIMELOCK_ADDRESS`, optional `CONTENT_PROTECTION_UPGRADE_SALT`; execute also needs the exact scheduled `NEW_IMPLEMENTATION`. Secret: owner or guardian timelock-role signer. | Timelock operation id, candidate implementation, ETA/broadcast, candidate JSON/env/ABI, and Base Sepolia Sourcify evidence. | Candidate handoffs are not live configuration. Schedule and execute calldata must match exactly; verify the candidate before execution. |
 | `pause-content-protection` | Toggle the fast custody/protection pause. | Vars: `CONTENT_PROTECTION_PROXY`, `CONTENT_PROTECTION_PAUSED`. Secret: operational owner signer. | Pause event and broadcast. | Failed-payment claims and protective blacklist/revocation intentionally remain available while paused. |
+| `backfill-content-protection-stake-escrow` | After the V7 self-claim upgrade (#1759): record the claim deadline of stakes deposited before V7. | Workflow: `operation=backfill-content-protection-stake-escrow`, `token_ids=<id,id,...>`. Vars: `CONTENT_PROTECTION_PROXY`; optional `STAKE_ESCROW_BATCH_SIZE` (100). Secret: ContentProtection owner signer. | `StakeEscrowRecorded` events, Forge counts (supplied, needing a deadline, recorded), step summary. | Over-inclusion and reruns are safe. The script refuses to broadcast if any listed active stake would stay unrecorded. Afterwards each creator sees "Claim" or "Claimable on <date>" in My Stakes. |
+| `configure-content-protection-stake-lock` | Let open disputes hold stakes (#1759): authorise `DisputeResolution` on ContentProtection, then turn locking on. | Workflow: `operation=configure-content-protection-stake-lock`. Vars: `CONTENT_PROTECTION_PROXY`, `DISPUTE_RESOLUTION_ADDRESS`, `CURATION_REWARDS_ADDRESS`. Secret: the ContentProtection owner for step 1, the DisputeResolution owner for step 2 (one run if they are the same key). | Broadcast, Forge log of both steps (and `PENDING` if step 2 needs the other signer), step summary. | Run `smoke-content-protection` with `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` set. From then on only `CurationRewards` can file or appeal disputes. |
 | `set-content-protection-stake` | Change the ERC-20 stake amount required by ContentProtection. | Workflow: `operation=set-content-protection-stake`. Vars: `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; optional `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL`. Secret: owner signer. | Console summary and broadcast file. No deployment handoff. | Update docs/product copy if the visible stake policy changed. |
 | `set-marketplace-protocol-fee` | Change marketplace protocol fee and optionally rotate the fee recipient. | Workflow: `operation=set-marketplace-protocol-fee`. Vars: `MARKETPLACE_ADDRESS`, `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`. Secret: `StemMarketplaceV2` owner signer. | Console summary, workflow summary, broadcast file. | If fee economics changed beyond accepted ADR values, update the business-model RFC first. No address promotion. |
 | `set-show-campaign-fee-config` | Change Shows campaign fee rate for future campaigns or rotate the charge-time fee recipient. | Workflow: `operation=set-show-campaign-fee-config`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEW_FEE_BPS`, `NEW_FEE_RECIPIENT`. Secret: `ShowCampaignEscrow` owner signer. | Console summary, workflow summary, broadcast file. | Fee rate affects future campaigns only; recipient rotation applies when fees are charged. Update public/operator docs if terms changed. |
@@ -165,7 +168,7 @@ place. Before promoting the replacement:
 
 1. **Contain first:** the operational owner runs `pause-content-protection`
    with `CONTENT_PROTECTION_PAUSED=true`. New attestations/stakes, hierarchy
-   registrations, slashing, refunds, and burned-balance sweeps stop. Reads,
+   registrations, slashing, refunds, creator self-claims, and burned-balance sweeps stop. Reads, dispute stake locks,
    protective blacklist/revocation, recipient-owned failed-payment claims, and
    upgrade governance remain available.
 2. **Account:** record the implementation slot, owner/pending owner, timelock and
@@ -193,6 +196,54 @@ and execute a delayed recovery implementation. Rotating `upgradeAuthority` is
 itself authority-gated, so the owner cannot bypass the timelock. The one-time
 legacy V6 bootstrap follows the separately approved migration procedure above;
 it is not an incident shortcut.
+
+## ContentProtection Self-Claim Rollout (V7, #1759)
+
+Creators withdraw their own Content Protection stake from My Stakes once its
+escrow has ended. An open dispute holds the stake, for at most 180 days past
+the escrow. Roll the feature out to an environment in this order; each step is
+one workflow run:
+
+1. **Preflight and verify.** Run `preflight`, then confirm the candidate passed
+   the storage-layout gate (`contracts/scripts/check-storage-layout.sh` on a
+   clean build) and the ContentProtection unit, fuzz, invariant, and Halmos
+   suites.
+2. **Schedule.** Set the environment variable
+   `CONTENT_PROTECTION_UPGRADE_CALLDATA` to the output of
+   `cast calldata "reinitializeV7()"`. Run `schedule-content-protection-upgrade`.
+   Record the candidate implementation, operation id, salt, and ETA from the
+   step summary.
+3. **Execute.** After the delay, set `NEW_IMPLEMENTATION` to the candidate,
+   keep the same calldata and salt, and run `execute-content-protection-upgrade`.
+   Then run `smoke-content-protection` with `CONTENT_PROTECTION_IMPLEMENTATION`
+   updated.
+4. **Backfill.** Collect the token ids of every stake that is still active,
+   from the indexer's stake records or from `StakeDeposited` logs since the
+   proxy's deployment block. Run `backfill-content-protection-stake-escrow` with
+   them in `token_ids`. The run may include inactive or already-recorded ids;
+   they are skipped. Rerun until the log shows `Active stakes needing a
+   deadline: 0`.
+5. **Authorise disputes.** Once a lock-capable `DisputeResolution` (v2.1.0+) and
+   its `CurationRewards` are deployed, run
+   `configure-content-protection-stake-lock`. If the Forge log prints `PENDING`,
+   rerun with the DisputeResolution owner key. Smoke again with
+   `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` set to the DisputeResolution address.
+6. **Promote ABIs/app.** Deploy the backend and web builds that read
+   `getStakeClaimState` and call `claimStakeRefund`. Until step 3 is live the
+   wallet shows "Claim date pending" rather than a button.
+
+Order matters in step 5. If `DisputeResolution` locking is turned on before
+ContentProtection lists it as `stakeLockAuthority`, every report reverts with
+`NotStakeLockAuthority`. The script enforces the order. An environment whose
+`DisputeResolution` predates v2.1.0 cannot run step 5: the contract is not
+upgradeable, so it needs a replacement dispute stack first. Until then the
+operational owner can hold a disputed stake by hand with
+`setStakeLock(tokenId, true)` on the stake root
+(`resolveStakeRoot(disputedTokenId)`). Release it after the outcome. The owner
+`refundStake` path stays available for exceptional cases throughout.
+
+Deployment-specific wiring (which environment runs which step, and the
+addresses involved) lives in `resonate-iac`.
 
 ## CP-1 Attestation Registrar (backend voucher signer)
 

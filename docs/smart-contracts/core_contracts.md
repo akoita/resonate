@@ -174,6 +174,17 @@ UUPS-upgradeable contract for anti-piracy enforcement:
   destroyed**: it accrues per-asset in `totalBurned` and the owner sweeps it to the
   treasury via `sweepBurned(token)`, so it is never permanently locked (#1282). The
   UUPS implementation reserves a trailing `__gap` for upgrade-safe storage (#1281).
+- **Self-claim (V7, #1759)** — the attester withdraws their own stake with
+  `claimStakeRefund(tokenId)` once `stakeClaimableAt[tokenId]` has passed. That
+  deadline is snapshotted at stake time as the deposit time plus the longest
+  configured tier escrow; pre-V7 stakes get it from the owner's idempotent
+  `backfillStakeEscrow`. A dispute hold (`stakeLocked`) blocks the claim until
+  `STAKE_CLAIM_FAIL_SAFE` (180 days) after the deadline. The hold is set by the
+  owner or the `stakeLockAuthority` (`DisputeResolution`). Slashing ignores it,
+  and the owner `refundStake` path remains. Blacklisted attesters and a paused
+  contract cannot claim. Events: `StakeRefundClaimed`, `StakeEscrowRecorded`,
+  `StakeLockUpdated`, `StakeLockAuthorityUpdated`; wallets read
+  `getStakeClaimState(tokenId)`.
 - **Blacklisting** — Repeat offenders blocked from all protocol operations
 - **Hierarchy** — Releases and tracks are directly protected; stems inherit verification from a canonical parent track
 - **Stake-to-price proportionality** — `maxPriceMultiplier` (default 10×) caps listing price relative to staked amount, preventing high-price listings with minimal stakes
@@ -204,9 +215,20 @@ contentProtection.setMaxPriceMultiplier(15); // 15× stake
 // 5. Admin: slash on confirmed theft
 contentProtection.slash(releaseId, reporterAddress);
 
-// 6. Admin: refund stake after clean escrow period
+// 6. Creator: claim the stake back once its escrow ends (#1759)
+contentProtection.claimStakeRefund(releaseId);
+
+// 7. Admin (exceptional cases): refund a stake directly
 contentProtection.refundStake(releaseId);
 ```
+
+`DisputeResolution` (v2.1.0) holds the stake root of a disputed token while the
+dispute is open once `configureStakeLocking(contentProtection, curationRewards)`
+is set. Rejected and Inconclusive outcomes release the hold. Upheld keeps it for
+the slash; the owner releases it with `releaseStakeHold`. Several disputes on
+one root clear the lock only together. While locking is on, only
+`CurationRewards` can file or appeal, so no one can lock a deposit without a
+counter-stake.
 
 Hierarchy model:
 

@@ -10,6 +10,11 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
 /// @notice Schedules or executes a post-V6 ContentProtection upgrade through its timelock.
 /// @dev This script cannot perform the one-time owner-authorized V5 -> V6 bootstrap;
 /// use MigrateContentProtectionV6 for that explicitly bounded operation.
+///
+/// `CONTENT_PROTECTION_UPGRADE_CALLDATA` (optional hex, default empty) is passed as the
+/// `upgradeToAndCall` data so a reinitializer runs atomically with the upgrade. The V7
+/// self-claim upgrade (#1759) uses `cast calldata "reinitializeV7()"` (0x...). Schedule
+/// and execute must use the same value, like the salt: it is part of the operation id.
 contract UpgradeContentProtection is DeploymentKey {
     uint256 internal constant MIN_REMOTE_TIMELOCK_DELAY = 48 hours;
     bytes32 internal constant ERC1967_IMPLEMENTATION_SLOT =
@@ -22,30 +27,36 @@ contract UpgradeContentProtection is DeploymentKey {
         address proxy = vm.envAddress("CONTENT_PROTECTION_PROXY");
         TimelockController timelock = TimelockController(payable(vm.envAddress("CONTENT_PROTECTION_TIMELOCK_ADDRESS")));
         bytes32 salt = vm.envOr("CONTENT_PROTECTION_UPGRADE_SALT", bytes32(0));
+        bytes memory initData = vm.envOr("CONTENT_PROTECTION_UPGRADE_CALLDATA", bytes(""));
 
         require(ContentProtection(payable(proxy)).upgradeAuthority() == address(timelock), "timelock mismatch");
         bool isLocal = block.chainid == 31337 || block.chainid == 1337;
         require(isLocal || timelock.getMinDelay() >= MIN_REMOTE_TIMELOCK_DELAY, "timelock delay below 48h");
         if (keccak256(bytes(action)) == keccak256("schedule")) {
-            _schedule(signerKey, signer, proxy, timelock, salt);
+            _schedule(signerKey, signer, proxy, timelock, salt, initData);
         } else if (keccak256(bytes(action)) == keccak256("execute")) {
-            _execute(signerKey, signer, proxy, timelock, salt);
+            _execute(signerKey, signer, proxy, timelock, salt, initData);
         } else {
             revert("UPGRADE_ACTION must be 'schedule' or 'execute'");
         }
     }
 
-    function _calldata(address newImplementation) internal pure returns (bytes memory) {
-        return abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (newImplementation, bytes("")));
+    function _calldata(address newImplementation, bytes memory initData) internal pure returns (bytes memory) {
+        return abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (newImplementation, initData));
     }
 
-    function _schedule(uint256 signerKey, address signer, address proxy, TimelockController timelock, bytes32 salt)
-        internal
-    {
+    function _schedule(
+        uint256 signerKey,
+        address signer,
+        address proxy,
+        TimelockController timelock,
+        bytes32 salt,
+        bytes memory initData
+    ) internal {
         uint256 delay = timelock.getMinDelay();
         vm.startBroadcast(signerKey);
         ContentProtection newImplementation = new ContentProtection();
-        bytes memory data = _calldata(address(newImplementation));
+        bytes memory data = _calldata(address(newImplementation), initData);
         timelock.schedule(proxy, 0, data, bytes32(0), salt, delay);
         vm.stopBroadcast();
 
@@ -57,20 +68,27 @@ contract UpgradeContentProtection is DeploymentKey {
         console.log("New implementation:", address(newImplementation));
         console.log("Delay (s):", delay);
         console.log("ETA (unix):", block.timestamp + delay);
+        console.log("Upgrade call data (reinitializer):");
+        console.logBytes(initData);
         console.log("Operation id:");
         console.logBytes32(operationId);
     }
 
-    function _execute(uint256 signerKey, address signer, address proxy, TimelockController timelock, bytes32 salt)
-        internal
-    {
+    function _execute(
+        uint256 signerKey,
+        address signer,
+        address proxy,
+        TimelockController timelock,
+        bytes32 salt,
+        bytes memory initData
+    ) internal {
         address newImplementation = vm.envAddress("NEW_IMPLEMENTATION");
         require(newImplementation.code.length != 0, "new implementation has no code");
         require(
             ContentProtection(payable(newImplementation)).proxiableUUID() == ERC1967_IMPLEMENTATION_SLOT,
             "new implementation is not ERC1967-compatible"
         );
-        bytes memory data = _calldata(newImplementation);
+        bytes memory data = _calldata(newImplementation, initData);
         bytes32 operationId = timelock.hashOperation(proxy, 0, data, bytes32(0), salt);
         vm.startBroadcast(signerKey);
         timelock.execute(proxy, 0, data, bytes32(0), salt);

@@ -259,6 +259,51 @@ describe("normalizeContractWriteError NotOwner", () => {
     // The old text sent readers hunting for a wallet or indexing bug.
     expect(message).not.toContain("does not own this Content Protection record");
     expect(message).toContain("Content Protection contract owner");
-    expect(message).toContain("Resonate");
+    // Points creators at the self-claim instead of an operator (#1759).
+    expect(message).toContain("Claim in My Stakes");
+  });
+});
+
+// ============ Self-claim decode (#1759) ============
+
+describe("normalizeContractWriteError self-claim errors", () => {
+  const wrap = (data: string) =>
+    normalizeContractWriteError(
+      new Error(`Execution reverted with reason:\nUserOperation reverted during simulation with reason: ${data}`),
+    ).message;
+  const claimableAt = 1_800_000_000n;
+
+  it("gives the claim date while the escrow runs", () => {
+    const data = encodeErrorResult({
+      abi: knownContractErrorAbi,
+      errorName: "StakeEscrowActive",
+      args: [1n, claimableAt],
+    });
+    expect(wrap(data)).toContain(new Date(Number(claimableAt) * 1000).toLocaleDateString());
+  });
+
+  it("explains a dispute hold and its latest end date", () => {
+    const data = encodeErrorResult({
+      abi: knownContractErrorAbi,
+      errorName: "StakeLockActive",
+      args: [1n, claimableAt],
+    });
+    const message = wrap(data);
+    expect(message).toContain("dispute");
+    expect(message).toContain(new Date(Number(claimableAt) * 1000).toLocaleDateString());
+  });
+
+  it("names the right wallet when someone else tries to claim", () => {
+    const data = encodeErrorResult({
+      abi: knownContractErrorAbi,
+      errorName: "NotStakeAttester",
+      args: [1n, "0x000000000000000000000000000000000000dEaD"],
+    });
+    expect(wrap(data)).toContain("Only the creator who deposited this stake");
+  });
+
+  it("reassures when the claim date is not recorded yet", () => {
+    const data = encodeErrorResult({ abi: knownContractErrorAbi, errorName: "StakeEscrowNotRecorded", args: [1n] });
+    expect(wrap(data)).toContain("nothing is lost");
   });
 });
