@@ -571,6 +571,7 @@ export class AgentRuntimePolicyService {
       const queries = buildAgentRecommendationQueries(input.preferences);
       const selection = await this.selector.select({
         userId: input.userId,
+        sessionId: input.sessionId,
         queries,
         recentTrackIds: input.recentTrackIds,
         allowExplicit: input.preferences.allowExplicit,
@@ -701,6 +702,7 @@ export class AgentRuntimePolicyService {
       const selection = await this.selector.select({
         ...deterministicSelectorInput({
           userId: input.userId,
+          sessionId: input.sessionId,
           recentTrackIds: input.recentTrackIds,
           preferences: input.preferences,
           limit: Math.min(50, target + picks.length),

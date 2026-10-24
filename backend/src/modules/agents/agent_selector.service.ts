@@ -23,7 +23,7 @@ import {
   TasteMemoryPolicy,
   TasteMemoryService,
 } from "../recommendations/taste_memory.service";
-import type { DiscoveryReasonCode } from "../recommendations/discovery-explanations";
+import { DISCOVERY_EXPLANATION_VARIANTS, type DiscoveryReasonCode } from "../recommendations/discovery-explanations";
 import { logDegradedFallback } from "../shared/degraded_fallback";
 import { resolveCreditedArtistName, resolveCreditedArtistNames } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
@@ -66,6 +66,14 @@ const FIRST_LISTENER_VALIDATION_LIMIT = 200;
 
 export interface AgentSelectorInput {
   userId?: string;
+  /**
+   * The AI DJ session being picked for (#2247). With a `userId`, the session's
+   * own skips ("Not this" included), saves and finishes steer this pick: a bounded
+   * (+-15), decaying ranking term read from the session's AgentSignal rows. It
+   * works inside a request tier and never moves a track across tiers. Absent
+   * (Home, offline evaluation, the plain DJ), ranking is unchanged.
+   */
+  sessionId?: string;
   queries?: string[];
   recentTrackIds: string[];
   allowExplicit?: boolean;
@@ -627,6 +635,7 @@ export class AgentSelectorService {
     // its tier instead.
     const servedHistory = scope ? [] : await this.resolveServedHistory(input.userId);
     const playedTrackIds = scope ? await this.resolvePlayedHistory(input.userId) : [];
+    const sessionSteering = await this.resolveSessionSteering(input, Boolean(scope));
     const sessionIntent = buildSessionIntent(input);
 
     const rankingCandidates = allCandidates.map((track: any) => ({
@@ -684,6 +693,7 @@ export class AgentSelectorService {
         // hard-excluded below.
         recentTrackIds: [...new Set([...input.recentTrackIds, ...servedHistory])],
         ...(scope ? { playedTrackIds } : {}),
+        ...(sessionSteering ? { sessionSteering } : {}),
         energy: input.energy,
         tempoBpm: input.tempoBpm,
         sessionIntent,
@@ -697,6 +707,15 @@ export class AgentSelectorService {
     // candidate, and selection order is tier first, then score. A tier never
     // moves with taste; taste only orders tracks inside it.
     const tierById = new Map<string, RequestTier>();
+    const tierOrdered = <T extends { id: string }>(list: readonly T[]): T[] =>
+      list
+        .map((entry, index) => ({ entry, index }))
+        .sort(
+          (a, b) =>
+            REQUEST_TIER_ORDER[tierById.get(a.entry.id) ?? "A"] - REQUEST_TIER_ORDER[tierById.get(b.entry.id) ?? "A"] ||
+            a.index - b.index,
+        )
+        .map(({ entry }) => entry);
     if (scope) {
       const factsById = new Map(
         rankingCandidates.map((candidate) => {
@@ -716,14 +735,7 @@ export class AgentSelectorService {
       for (const entry of ranked) {
         tierById.set(entry.id, requestTierOf(scope, factsById.get(entry.id) as AgentRequestCoveragePick));
       }
-      ranked = ranked
-        .map((entry, index) => ({ entry, index }))
-        .sort(
-          (a, b) =>
-            REQUEST_TIER_ORDER[tierById.get(a.entry.id) ?? "A"] - REQUEST_TIER_ORDER[tierById.get(b.entry.id) ?? "A"] ||
-            a.index - b.index,
-        )
-        .map(({ entry }) => entry);
+      ranked = tierOrdered(ranked);
     }
     const laneCandidateOrderByLaneId = new Map<string, string[]>();
     if (input.myMixPlan) {
@@ -769,6 +781,8 @@ export class AgentSelectorService {
 
     const byId2 = new Map(allCandidates.map((track) => [track.id, track]));
     const sessionTrackIds = new Set(input.recentTrackIds);
+    // In-session steering (#2247): the sentence of each pick the signal changed.
+    const steeringSentenceById = new Map<string, string>();
     const toAgentTrack = (entry: (typeof ranked)[number]) => {
       const track = byId2.get(entry.id)!;
       const sources = retrievedBy?.get(track.id);
@@ -792,6 +806,7 @@ export class AgentSelectorService {
           signals: entry.signals,
           explanation: [
             ...(lane ? [`Selected for your ${lane.label} mix.`] : []),
+            ...(steeringSentenceById.has(entry.id) ? [steeringSentenceById.get(entry.id) as string] : []),
             // "Catalog candidate" explains nothing once the trending sentence does.
             ...(trendingFamily ? entry.explanation.filter((line) => line !== DISCOVERY_EXPLANATIONS.catalog) : entry.explanation),
             // A track only the audio-range source found is named as such, so
@@ -880,6 +895,18 @@ export class AgentSelectorService {
         policyInput = fresh.filter((entry) => !entry.firstListenerEligible);
         policyResult = applyDiscoveryPolicy(policyInput, policyOptions);
       }
+    }
+    if (sessionSteering && ranked.some((entry) => entry.steeringPoints)) {
+      const sentences = await this.steeringSentences({
+        candidates: rankingCandidates,
+        context: rankingContext,
+        tierOrdered,
+        sessionTrackIds,
+        policyInput,
+        policyOptions,
+        steered: policyResult.items,
+      });
+      for (const [id, sentence] of sentences) steeringSentenceById.set(id, sentence);
     }
     const selected = policyResult.items.map(toAgentTrack);
     const scored = ranked.map(toAgentTrack);
@@ -1546,6 +1573,73 @@ export class AgentSelectorService {
       artists: relaxed.artists,
       ...(relaxed.top && name ? { top: { artist: name, tracks: relaxed.top.tracks } } : {}),
     };
+  }
+
+  /**
+   * The session's steering events (#2247). Undefined without a session and
+   * listener, and when the session has no skip, save or finish yet. Fails open:
+   * a read error means the pick is ranked exactly as it was.
+   */
+  private async resolveSessionSteering(input: AgentSelectorInput, performerCap: boolean) {
+    const steeringReader = this.policyContext?.sessionSteering;
+    if (!input.userId || !input.sessionId || !this.policyContext || typeof steeringReader !== "function") {
+      return undefined;
+    }
+    try {
+      const steering = await steeringReader.call(this.policyContext, input.userId, input.sessionId, { performerCap });
+      return steering.events.length > 0 ? steering : undefined;
+    } catch (error) {
+      logDegradedFallback({ component: "session_steering", reason: "unavailable", error });
+      this.logger.warn(`Session steering unavailable: ${String(error)}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * The sentence for each pick the steering changed (#2247), by comparing the
+   * batch with the batch the same pipeline picks without the steering term:
+   *  - a pick that is in the batch only because of it ("Less like the tracks you
+   *    skipped" when it took the place of a demoted one, "More like what you
+   *    saved" when it was lifted by a positive term), or
+   *  - a pick the term itself lifted (positive points) to an earlier place.
+   * A demoted pick, or one that merely shifted a place, gets no sentence.
+   */
+  private async steeringSentences(args: {
+    candidates: Parameters<DiscoveryRankingService["rank"]>[0];
+    context: Parameters<DiscoveryRankingService["rank"]>[1];
+    tierOrdered: <T extends { id: string }>(list: readonly T[]) => T[];
+    sessionTrackIds: ReadonlySet<string>;
+    policyInput: ReadonlyArray<{ id: string }>;
+    policyOptions: Parameters<typeof applyDiscoveryPolicy>[1];
+    steered: ReadonlyArray<{ id: string; steeringPoints?: number }>;
+  }): Promise<Map<string, string>> {
+    const sentences = new Map<string, string>();
+    try {
+      const unsteered = await this.rankingService.rank(args.candidates, { ...args.context, sessionSteering: undefined });
+      const inPolicyInput = new Set(args.policyInput.map((entry) => entry.id));
+      const baseline = applyDiscoveryPolicy(
+        args.tierOrdered(unsteered).filter(
+          (entry) => !args.sessionTrackIds.has(entry.id) && inPolicyInput.has(entry.id),
+        ),
+        args.policyOptions,
+      );
+      const baselineIndex = new Map(baseline.items.map((entry, index) => [entry.id, index] as const));
+      args.steered.forEach((entry, index) => {
+        const points = entry.steeringPoints ?? 0;
+        const before = baselineIndex.get(entry.id);
+        const entered = before === undefined;
+        const lifted = points > 0 && before !== undefined && index < before;
+        if (!entered && !lifted) return;
+        sentences.set(
+          entry.id,
+          points > 0 ? DISCOVERY_EXPLANATION_VARIANTS.steered_toward : DISCOVERY_EXPLANATION_VARIANTS.steered_away,
+        );
+      });
+    } catch (error) {
+      // The sentence is a courtesy; the pick stands without it.
+      this.logger.warn(`Steering explanation unavailable: ${String(error)}`);
+    }
+    return sentences;
   }
 
   /** The tracks the listener recently played, for the gentle within-tier step (#2316). Fails open. */

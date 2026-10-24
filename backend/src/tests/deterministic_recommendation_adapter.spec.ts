@@ -85,7 +85,9 @@ describe("deterministicSelectorInput (#2094)", () => {
       sessionId: "s1",
       ...input,
     });
-    expect(selector.select).toHaveBeenCalledWith(deterministicSelectorInput(input));
+    // The live session rides along so its own signals can steer the pick (#2247).
+    expect(selector.select).toHaveBeenCalledWith(deterministicSelectorInput({ sessionId: "s1", ...input }));
+    expect(deterministicSelectorInput(input)).not.toHaveProperty("sessionId");
   });
 
   it("sends no embeddings query when the session asked for nothing", () => {

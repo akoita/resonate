@@ -143,13 +143,16 @@ export function buildSemanticSessionQuery(
  * rank the catalog the same way.
  */
 export function deterministicSelectorInput(
-  input: Pick<AgentRecommendationInput, "userId" | "recentTrackIds" | "preferences" | "limit" | "myMixPlan">,
+  input: Pick<AgentRecommendationInput, "userId" | "recentTrackIds" | "preferences" | "limit" | "myMixPlan"> &
+    Partial<Pick<AgentRecommendationInput, "sessionId">>,
 ): AgentSelectorInput {
   const queries = buildAgentRecommendationQueries(input.preferences, input.myMixPlan);
   const requestScope = input.myMixPlan ? undefined : requestScopeFor(input.preferences);
   const tasteQueries = tasteQueriesFor(input.preferences, input.myMixPlan);
   return {
     userId: input.userId,
+    // The live session, so its own skips, saves and finishes steer this pick (#2247).
+    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     queries,
     ...(requestScope ? { requestScope } : {}),
     ...(tasteQueries.length > 0 ? { tasteQueries } : {}),

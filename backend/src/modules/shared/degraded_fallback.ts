@@ -14,6 +14,7 @@ export type DegradedFallbackComponent =
   | "taste_profile"
   | "served_history"
   | "played_history"
+  | "session_steering"
   | "discovery_policy_context";
 
 export const DEGRADED_FALLBACK_EVENT = "degraded.fallback";
