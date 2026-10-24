@@ -1,5 +1,5 @@
 import type { AgentRequestCoverage, AgentSessionRequest, AgentSessionTempoRange } from "../agent_session_request";
-import type { MyMixPreferences } from "../agent_my_mix";
+import type { MyMixContext, MyMixPreferences } from "../agent_my_mix";
 import type { SessionSeed } from "../agent_session_seed";
 
 export interface AgentRuntimeInput {
@@ -44,6 +44,13 @@ export interface AgentRuntimeInput {
     artists?: string[];
     /** Untrusted session-only preferences; resolved server-side at runtime. */
     myMix?: MyMixPreferences | null;
+    /**
+     * "Right now" (#2245): the client's current coarse time/day bucket (one of
+     * eight; never a timezone, timestamp or place). Read only when the session
+     * has no filters; the runtime weights the listener's habit lanes by it and
+     * strips it before anything else sees the preferences. Never stored or published.
+     */
+    listeningContext?: MyMixContext;
     /**
      * "More like this" (#2243): a track of this session whose stored-embedding
      * neighbours become one more semantic source for this request only.

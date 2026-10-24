@@ -5685,6 +5685,22 @@ export async function getAgentMixCoverage(
 }
 
 /** Canonical catalog choices for session-only My Mix additions (#2065). */
+/**
+ * "Right now" (#2245): what a session with no filters follows at this coarse
+ * time of day, and why. Only the bucket is sent; the server reads the listener's
+ * own habits and stores nothing about the bucket.
+ */
+export async function getAgentRightNow(
+  token: string,
+  context: ListeningLaneContextKey,
+): Promise<AgentRightNow> {
+  return apiRequest<AgentRightNow>(
+    `/agents/config/session/right-now?context=${encodeURIComponent(context)}`,
+    {},
+    token,
+  );
+}
+
 export async function getAgentMixVocabulary(token: string): Promise<AgentMixVocabulary> {
   return apiRequest<AgentMixVocabulary>("/agents/config/session/mix-vocabulary", {}, token);
 }
@@ -5857,6 +5873,20 @@ export type AgentMixVocabulary = {
   moods: string[];
 };
 
+/**
+ * "Right now" (#2245). `ready`: the genres the listener usually plays in this
+ * bucket, strongest first. `cold_start`: too little history, so the session
+ * starts from the saved vibes (`no_context_history`: there is history, but none
+ * at this time of day).
+ */
+export type AgentRightNow =
+  | { status: "ready"; context: ListeningLaneContextKey; highlights: string[] }
+  | {
+      status: "cold_start";
+      context: ListeningLaneContextKey;
+      reason: "no_history" | "no_context_history";
+    };
+
 export type AgentMyMixAddition = { genre?: string; mood?: string };
 
 export type AgentMyMixPreferences = {
@@ -5898,6 +5928,13 @@ export type AgentNextPreferences = {
   /** #2065: session-only taste lanes and catalog additions. */
   /** `null` explicitly clears a previously selected session mix. */
   myMix?: AgentMyMixPreferences | null;
+  /**
+   * #2245 "Right now": the current coarse time/day bucket, sent only by a session
+   * with no filters (the server weights the listener's habit lanes by it and
+   * ignores it as soon as the session has any filter). Never a timezone, a
+   * timestamp or a place; re-bucketed on every pick request.
+   */
+  listeningContext?: ListeningLaneContextKey;
   /**
    * #2243 "More like this": a track the DJ already picked in this session. The
    * server adds its stored-embedding neighbours to this one request only; it

@@ -19,7 +19,7 @@ import {
   type SessionSeedKind,
 } from "../agents/agent_session_seed";
 import type { AgentSessionRequest } from "../agents/agent_session_request";
-import type { MyMixPreferences } from "../agents/agent_my_mix";
+import { MY_MIX_CONTEXTS, type MyMixContext, type MyMixPreferences } from "../agents/agent_my_mix";
 
 /**
  * Session bodies (#1890). The global pipe keeps unknown fields and does not
@@ -131,6 +131,14 @@ export class SessionPreferencesDto {
 
   /** Session-only taste lanes (#2065); validated by the service. `null` clears them. */
   myMix?: MyMixPreferences | null;
+
+  /**
+   * "Right now" (#2245): the client's coarse time/day bucket, one of the eight
+   * My Mix buckets. Read only by a session with no filters; never stored.
+   */
+  @IsOptional()
+  @IsIn([...MY_MIX_CONTEXTS])
+  listeningContext?: MyMixContext;
 }
 
 /** POST /sessions/start. `userId` in the body is ignored: the caller is the owner. */

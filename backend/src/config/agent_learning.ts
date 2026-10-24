@@ -32,6 +32,14 @@ export const AGENT_LISTENING_LANE_SIMILARITY_THRESHOLD = 0.5;
 
 /** Maximum multiplier from a lane's current coarse playback context. */
 export const AGENT_MIX_CONTEXT_GAIN = 1;
+/**
+ * "Right now" (#2245): a lane belongs to the current coarse time/day bucket only
+ * when its weight there is at least this share of its strongest bucket. A single
+ * stray play in an unusual bucket is not a habit of that bucket.
+ */
+export const AGENT_RIGHT_NOW_MIN_CONTEXT_SHARE = 0.25;
+/** Most genres named in the visible "Right now" reason. */
+export const AGENT_RIGHT_NOW_MAX_HIGHLIGHTS = 3;
 /** Session-only multiplier for an explicitly boosted lane. */
 export const AGENT_MIX_BOOST_MULTIPLIER = 2;
 /** Bounded number of learned plus user-added lanes in one My Mix request. */

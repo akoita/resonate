@@ -1036,6 +1036,69 @@ eight of the nine fail. Tests: `agent_request_first.spec.ts` (pure),
 the live session); a saved listener setting would need a schema change and is
 open. Hybrid retrieval and the default path both follow the same rules.
 
+## "Right now": a session with no filters follows the time of day (#2245)
+
+Vision-neutral quality (ADR-BM-6): no money path, no new data, no external cost.
+A session with no request scope (see "Request-first selection": no genre, mood,
+energy, tempo, seed, named artist, sentence or starter intent, and not My Mix)
+used to play from the flat saved vibes. Now, when the client sends its coarse
+time/day bucket and the listener has enough history, the runtime weights the
+listener's visible habit lanes by that bucket instead.
+
+- **Reuse of My Mix.** `resolveRightNow` (`agent_right_now.ts`) calls
+  `resolveMyMixPlan({ context }, visibleLanes, limit)`: the same eight buckets
+  (`night|morning|afternoon|evening` x `weekday|weekend`), the same context gain
+  and largest-remainder lane quotas. Hidden lanes stay out. The plan runs through
+  `AgentRuntimeService.run`, the choke point both `POST /agents/config/session`
+  and `POST /sessions/agent/next` reach, so the first batch and every later pick
+  follow the same rule. Like My Mix it uses the deterministic selector (the LLM
+  curator is bypassed for such a session).
+- **What it is not.** It sets no request scope (the lane plan makes
+  `requestScopeFor` ignore the session, exactly as for My Mix), so nothing gates
+  retrieval, and it writes no chips, so no hidden genre can leak into the request
+  chips (#2239/#2249). It is not a My Mix session: no coverage snapshot, no lane
+  demand observation, no habit-ordering arm (`orderingVariant: "neutral"`), and
+  `sessionSource` stays `preset` in the recommendation events.
+- **Cold start.** A listener with no lane gets `no_history`; a listener whose
+  lanes have no habit in the current bucket gets `no_context_history` (a lane
+  belongs to a bucket when its weight there is at least
+  `AGENT_RIGHT_NOW_MIN_CONTEXT_SHARE`, 25%, of its strongest bucket, so one stray
+  play is not a habit). Either way the plan is withheld and the session uses the
+  saved vibes, as before.
+- **Privacy.** The client computes the bucket from the device clock and sends only
+  `preferences.listeningContext` (one of the eight strings, validated: 400
+  `invalid_listening_context`, or the session DTO's `IsIn`). The server never
+  stores or publishes it (it is stripped from `session.started` and from the
+  preferences handed to the executor and the remote worker); no timezone,
+  timestamp or place is sent. The web re-buckets it on every pick request
+  (`withCurrentMyMixContext`), and sends it only while the session has no filters
+  (`withRightNowContext`); a filter, a starter, a sentence, a seed or My Mix drops
+  it and the request decides.
+- **The starter and its reason.** `GET /agents/config/session/right-now?context=`
+  returns `{ status: "ready", context, highlights }` (the genres of the habit
+  lanes of that bucket, strongest first, at most three) or `{ status:
+  "cold_start", context, reason }`. A dedicated endpoint (rather than computing
+  the reason from the taste-memory lanes in the browser) keeps one definition of
+  "belongs to this time of day" for what is shown and what is played. The web adds
+  "Right now" as the first starter of the For you row (beside My Mix, above Moments
+  and Sounds; it does not replace the default empty state), always showing its
+  reason ("Your usual weekday-evening mix: Deep House, Jazz.") or, on a cold start,
+  "Not enough listening history yet. Your DJ will start from your saved vibes." If
+  the summary cannot load, the starter is hidden. Choosing it clears the other
+  choices and starts a session with no filters; analytics carry `starterRow:
+  for_you`, `starterId: right_now`, `startedFrom: right_now`. The empty-state line
+  reads "With no filters, your DJ follows your usual weekday-evening mix. Your
+  saved vibes are the fallback: ..." once the habits are known.
+- **Tests.** `agent_right_now.spec.ts` (evening-jazz and morning-electronic
+  fixture history: evening leans jazz, morning leans electronic; cold starts; stray
+  play), `agent_right_now.integration.spec.ts` (real history, runtime routing,
+  selector leaning, filtered sessions untouched, the endpoint),
+  `agent_config.controller.spec.ts`, `sessions.controller.http.spec.ts`, and web
+  `agentRightNow.test.ts`, `AgentSessionPrompt.test.tsx`, `AgentSessionPanel.test.tsx`.
+- **Open:** the reason is fetched once per page load (a tab left open across a
+  time-of-day boundary shows the old reason, while the session itself uses the
+  fresh bucket); Session History does not label a Right now session.
+
 ## One genre matcher for sessions and My Mix lanes (#2236)
 
 There used to be two genre matchers. Ordinary sessions used the genre-family
@@ -1355,7 +1418,8 @@ Shipped in slice 2 (catalog-aware Sounds):
 
 Remaining (explicitly tracked on #2249, which stays open):
 
-- **Slice 3, For you and Discovery:** "Right now" (#2245), "More like..." (#2244),
+- **Slice 3, For you and Discovery:** "Right now" shipped (#2245, see its section);
+  "More like..." (#2244),
   "New artists in..." and the Familiar, Mixed, New segmented control on the
   exploration share (default Mixed; owner decision 2), plus the optional Tempo
   filter in Adjust and the dismissible "you can combine" tip.

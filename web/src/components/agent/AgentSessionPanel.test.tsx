@@ -5,6 +5,7 @@ import type {
   AgentConfig,
   DiscoveryJournal,
   AgentNextPickResponse,
+  AgentRightNow,
   AgentSession,
   AgentSessionRequestParse,
   ListeningLane,
@@ -83,6 +84,11 @@ const getAgentSounds = vi.fn(async (...args: unknown[]): Promise<unknown> => {
   throw new Error("sounds unavailable");
 });
 const getAgentMixCoverage = vi.fn(async () => ({ mixCoverage: { lanes: [] } }));
+// "Right now" (#2245): unavailable unless a test loads it, so the starter stays hidden.
+const getAgentRightNow = vi.fn(async (...args: unknown[]): Promise<AgentRightNow> => {
+  void args;
+  throw new Error("right now unavailable");
+});
 const applyTasteEdits = vi.fn(async () => ({ edits: { appliedCount: 0, ignoredCount: 0 } }));
 
 vi.mock("../auth/AuthProvider", () => ({ useAuth: () => ({ token: "tok", status: "authenticated" }) }));
@@ -141,6 +147,7 @@ vi.mock("../../lib/api", () => ({
   getAgentMixCoverage: (...args: unknown[]) => getAgentMixCoverage(...(args as [])),
   getAgentMixVocabulary: (...args: unknown[]) => getAgentMixVocabulary(...(args as [])),
   getAgentNextPick: (...args: unknown[]) => getAgentNextPick(...(args as [])),
+  getAgentRightNow: (...args: unknown[]) => getAgentRightNow(...args),
   getAgentSounds: (...args: unknown[]) => getAgentSounds(...args),
   parseAgentSessionRequest: (...args: unknown[]) => parseAgentSessionRequest(...(args as [string, string])),
   getTasteMemory: (...args: unknown[]) => getTasteMemory(...(args as [])),
@@ -222,6 +229,9 @@ import type AgentSessionPrompt from "./AgentSessionPrompt";
 
 type PromptProps = React.ComponentProps<typeof AgentSessionPrompt>;
 
+/** One of the eight coarse time/day buckets. */
+const BUCKET = /^(night|morning|afternoon|evening):(weekday|weekend)$/;
+
 function config(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     id: "agent-1",
@@ -262,6 +272,9 @@ describe("AgentSessionPanel", () => {
     vi.useFakeTimers();
     slots.length = 0;
     resolveDjQueue.mockImplementation(async (ids: string[]) => ids.map(track));
+    getAgentRightNow.mockImplementation(async () => {
+      throw new Error("right now unavailable");
+    });
     hookState.config = null;
     hookState.isLoading = false;
     hookState.sessions = [];
@@ -687,7 +700,9 @@ describe("AgentSessionPanel", () => {
     hookState.config = config({ isActive: false });
     render();
     await captured.prompt?.onSubmit();
-    expect(startSession).toHaveBeenCalledWith(undefined);
+    // Only the coarse time-of-day bucket travels (#2245): no filter, no timezone, no timestamp.
+    expect(startSession).toHaveBeenCalledWith({ preferences: { listeningContext: expect.stringMatching(BUCKET) } });
+    expect(JSON.stringify(startSession.mock.calls)).not.toMatch(/timezone|UTC|T\d\d:\d\d/);
     expect(recordProductAnalytics).toHaveBeenCalledWith(
       "tok",
       "agent.session_started",
@@ -697,6 +712,114 @@ describe("AgentSessionPanel", () => {
         payload: expect.objectContaining({ startedFrom: "plain", requestFilterKeys: [] }),
       }),
     );
+  });
+
+  describe("Right now (#2245)", () => {
+    const ready: AgentRightNow = { status: "ready", context: "evening:weekday", highlights: ["Deep House", "Jazz"] };
+
+    async function loadRightNow(summary: AgentRightNow | Error) {
+      // Effects run on each hand-driven render, so the answer must outlive one call.
+      getAgentRightNow.mockImplementation(async () => {
+        if (summary instanceof Error) throw summary;
+        return summary;
+      });
+      await loadMyMixCatalog();
+    }
+
+    it("asks for the habits of the current bucket only, and hides the starter when it cannot load", async () => {
+      hookState.config = config({ isActive: false });
+      await loadRightNow(new Error("offline"));
+      expect(getAgentRightNow).toHaveBeenCalledWith("tok", expect.stringMatching(BUCKET));
+      expect(captured.prompt?.rightNow).toBeUndefined();
+    });
+
+    it("offers the starter with its reason, and picking it sets no filters", async () => {
+      hookState.config = config({ isActive: false });
+      await loadRightNow(ready);
+      expect(captured.prompt?.rightNow).toMatchObject({ summary: ready, selected: false });
+
+      captured.prompt?.rightNow?.onSelect();
+      render();
+      expect(captured.prompt?.rightNow?.selected).toBe(true);
+      expect(captured.prompt?.text).toBe("");
+      expect(captured.prompt?.request).toEqual({ genres: [], moods: [], energy: null, bpm: null });
+      expect(captured.prompt?.myMix?.preferences).toBeNull();
+    });
+
+    it("starts a session with no filters and the bucket, a taste-driven session rather than a request", async () => {
+      hookState.config = config({ isActive: false, vibes: ["Ambient"] });
+      await loadRightNow(ready);
+      captured.prompt?.rightNow?.onSelect();
+      render();
+      await captured.prompt?.onSubmit();
+
+      const [input] = startSession.mock.calls[0] as unknown as [{ preferences: Record<string, unknown> }];
+      expect(input.preferences).toEqual({ listeningContext: expect.stringMatching(BUCKET) });
+      expect(input.preferences).not.toHaveProperty("request");
+      expect(input.preferences).not.toHaveProperty("genres");
+      expect(input.preferences).not.toHaveProperty("myMix");
+      const started = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      expect((started?.[2] as { payload: Record<string, unknown> }).payload).toMatchObject({
+        startedFrom: "right_now",
+        starterRow: "for_you",
+        starterId: "right_now",
+        requestFilterKeys: [],
+      });
+      // The reason names habits as genres; it never reaches analytics.
+      expect(JSON.stringify(recordProductAnalytics.mock.calls)).not.toContain("Deep House");
+    });
+
+    it("keeps the bucket on every pick of a session with no filters, with the saved vibes as the fallback", async () => {
+      hookState.config = config({ isActive: true, vibes: ["Ambient"] });
+      await loadRightNow(ready);
+      expect(captured.upNext?.buildPreferences()).toMatchObject({
+        genres: ["Ambient"],
+        listeningContext: expect.stringMatching(BUCKET),
+      });
+    });
+
+    it("drops the bucket as soon as the session has a filter of its own", async () => {
+      hookState.config = config({ isActive: true, vibes: ["Ambient"] });
+      await loadRightNow(ready);
+      captured.prompt?.onSelectPreset(SESSION_PRESETS[0]);
+      render();
+      expect(captured.upNext?.buildPreferences()).not.toHaveProperty("listeningContext");
+
+      captured.prompt?.rightNow?.onSelect();
+      render();
+      expect(captured.upNext?.buildPreferences()).toHaveProperty("listeningContext");
+      captured.prompt?.onSelectPreset(SESSION_PRESETS[0]);
+      render();
+      expect(captured.prompt?.rightNow?.selected).toBe(false);
+    });
+
+    it("is replaced by My Mix, a sentence or a starter", async () => {
+      hookState.config = config({ isActive: false });
+      await loadRightNow(ready);
+      captured.prompt?.rightNow?.onSelect();
+      render();
+      captured.prompt?.myMix?.onSelect();
+      render();
+      expect(captured.prompt?.rightNow?.selected).toBe(false);
+      expect(captured.prompt?.myMix?.preferences).not.toBeNull();
+
+      captured.prompt?.rightNow?.onSelect();
+      render();
+      expect(captured.prompt?.myMix?.preferences).toBeNull();
+      captured.prompt?.onTextChange("something for cooking");
+      render();
+      expect(captured.prompt?.rightNow?.selected).toBe(false);
+    });
+
+    it("on a cold start still starts, from the saved vibes, with only the bucket", async () => {
+      hookState.config = config({ isActive: false, vibes: ["Ambient"] });
+      await loadRightNow({ status: "cold_start", context: "evening:weekday", reason: "no_history" });
+      expect(captured.prompt?.rightNow?.summary.status).toBe("cold_start");
+      captured.prompt?.rightNow?.onSelect();
+      render();
+      await captured.prompt?.onSubmit();
+      expect(startSession).toHaveBeenCalledWith({ preferences: { listeningContext: expect.stringMatching(BUCKET) } });
+    });
   });
 
   it("starts My Mix with coarse session preferences and does not auto-save taste edits", async () => {
@@ -874,7 +997,8 @@ describe("AgentSessionPanel", () => {
       // An empty request (not null), so a live session's next picks drop the old filters.
       expect(captured.prompt?.request).toEqual({ genres: [], moods: [], energy: null, bpm: null });
       await captured.prompt?.onSubmit();
-      expect(startSession).toHaveBeenCalledWith(undefined);
+      // No filters left: a plain start, which carries only the coarse bucket (#2245).
+      expect(startSession).toHaveBeenCalledWith({ preferences: { listeningContext: expect.stringMatching(BUCKET) } });
     });
 
     it("editing a chip makes the filters the listener's own and drops the preset", async () => {
