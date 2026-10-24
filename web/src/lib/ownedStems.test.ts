@@ -218,3 +218,15 @@ describe("fetchOwnedCollectionStems (#2139)", () => {
     errorSpy.mockRestore();
   });
 });
+
+describe("mergeStemDelivery (#1776)", () => {
+  it("delivers a stem if either address view delivers it, else the earlier release", async () => {
+    const { mergeStemDelivery } = await import("./ownedStems");
+    const held1 = { state: "held" as const, availableAt: "2026-11-01T00:00:00.000Z" };
+    const held2 = { state: "held" as const, availableAt: "2026-11-09T00:00:00.000Z" };
+    expect(mergeStemDelivery(held2, { state: "released" })).toEqual({ state: "released" });
+    expect(mergeStemDelivery(held2, held1)).toEqual(held1);
+    expect(mergeStemDelivery(undefined, held1)).toEqual(held1);
+    expect(mergeStemDelivery(null, undefined)).toBeNull();
+  });
+});

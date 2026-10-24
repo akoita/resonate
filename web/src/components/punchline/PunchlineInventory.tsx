@@ -1,5 +1,6 @@
 "use client";
 
+import { formatHoldDate } from "../consent/deliveryConsent";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type {
@@ -293,6 +294,11 @@ export function PunchlineInventory({
                     {formatAcquiredAt(item.acquiredAt) && (
                       <span className="punchline-inventory-acquired">
                         {formatAcquiredAt(item.acquiredAt)}
+                      </span>
+                    )}
+                    {item.delivery?.state === "held" && (
+                      <span className="punchline-inventory-held" role="status">
+                        Reserved for you. Delivered on {formatHoldDate(item.delivery.availableAt)}, when your 14-day withdrawal period ends.
                       </span>
                     )}
                   </div>

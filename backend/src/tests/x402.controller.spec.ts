@@ -2,6 +2,7 @@ import { X402Controller } from '../modules/x402/x402.controller';
 import { X402Config } from '../modules/x402/x402.config';
 import { StorageUriPolicyError } from '../modules/storage/storage_uri_policy';
 import { encodeAbiParameters, encodeEventTopics } from 'viem';
+import { useClockAfterConsentCutover } from './purchase_consent_clock';
 
 const ERC20_TRANSFER_EVENT = {
   type: 'event',
@@ -44,6 +45,9 @@ jest.mock('../db/prisma', () => {
         findFirst: jest.fn(),
         create: contractEventCreate,
       },
+      purchaseConsent: {
+        findMany: jest.fn(),
+      },
     },
   };
 });
@@ -56,6 +60,7 @@ const { prisma } = jest.requireMock('../db/prisma') as {
     x402Settlement: { findFirst: jest.Mock; create: jest.Mock };
     stemPricing: { findUnique: jest.Mock };
     contractEvent: { findFirst: jest.Mock; create: jest.Mock };
+    purchaseConsent: { findMany: jest.Mock };
   };
 };
 
@@ -119,11 +124,16 @@ describe('X402Controller', () => {
     download: jest.fn(),
   };
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.contractEvent.findFirst.mockResolvedValue(null);
     prisma.x402Settlement.findFirst.mockResolvedValue(null);
     prisma.stemListing.findFirst.mockResolvedValue(null);
+    prisma.purchaseConsent.findMany.mockResolvedValue([]);
     storageProvider.download.mockReset();
     encryptionService.decryptBuffer.mockReset();
     encryptionService.loadSourceBuffer.mockReset();
@@ -576,6 +586,7 @@ describe('X402Controller', () => {
   });
 
   it('serves downloads after verified smart-account x402 payments', async () => {
+    useClockAfterConsentCutover();
     prisma.stem.findUnique.mockResolvedValue({
       isCurrent: true,
       id: 'stem_smart',
@@ -622,6 +633,20 @@ describe('X402Controller', () => {
       blockHash: `0x${'b'.repeat(64)}`,
     });
 
+    // #1776: the buyer asked for immediate delivery at checkout.
+    prisma.purchaseConsent.findMany.mockResolvedValue([
+      {
+        id: 'consent_1',
+        surface: 'stem_purchase',
+        subjectId: 'stem_smart',
+        consented: true,
+        acknowledgedWaiver: true,
+        transactionHash: null,
+        purchaseRef: null,
+        createdAt: new Date(),
+      },
+    ]);
+
     const req: any = {
       headers: {},
       user: { userId: '0x1111111111111111111111111111111111111111' },
@@ -660,6 +685,68 @@ describe('X402Controller', () => {
         paymentTransactionHash: `0x${'a'.repeat(64)}`,
         payerAddress: '0x1111111111111111111111111111111111111111',
       }),
+    });
+  });
+
+  it('records a human smart-account purchase but holds the audio without a delivery consent (#1776)', async () => {
+    // The consent step only applies to purchases after the cutover (#1776).
+    useClockAfterConsentCutover();
+    prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
+      id: 'stem_held',
+      type: 'vocals',
+      title: 'Held Stem',
+      uri: 'https://example.com/held.mp3',
+      mimeType: 'audio/mpeg',
+      encryptionMetadata: null,
+      nftMint: null,
+      track: {
+        id: 'track_1',
+        title: 'Held Track',
+        release: { id: 'release_1', title: 'Held Release', primaryArtist: 'Koita' },
+      },
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({ basePlayPriceUsd: 0.05 });
+    const authService = {
+      isAddressForUser: jest.fn(async (userId: string, address: string) =>
+        userId.toLowerCase() === address.toLowerCase(),
+      ),
+    };
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+      undefined,
+      undefined,
+      undefined,
+      authService as any,
+    );
+    jest.spyOn(controller as any, 'verifySmartAccountPayment').mockResolvedValue({
+      txHash: `0x${'c'.repeat(64)}`,
+      payer: '0x1111111111111111111111111111111111111111',
+      assetAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      amountUnits: '50000',
+      logIndex: 1,
+      blockNumber: BigInt(5),
+      blockHash: `0x${'d'.repeat(64)}`,
+    });
+    const req: any = { headers: {}, user: { userId: '0x1111111111111111111111111111111111111111' } };
+    const res = createMockRes();
+
+    await controller.downloadWithSmartAccountPayment(
+      'stem_held',
+      { txHash: `0x${'c'.repeat(64)}`, payer: '0x1111111111111111111111111111111111111111' },
+      req,
+      res,
+    );
+
+    expect(res.statusCode).toBe(202);
+    expect(res.body).toMatchObject({ code: 'delivery_held', receiptId: expect.stringMatching(/^x402r_/) });
+    expect(Date.parse(res.body.deliveryAvailableAt)).toBeGreaterThan(Date.now() + 13 * 24 * 60 * 60 * 1000);
+    expect(Buffer.isBuffer(res.body)).toBe(false);
+    expect(encryptionService.loadSourceBuffer).not.toHaveBeenCalled();
+    // The payment itself is still recorded.
+    expect(prisma.x402Settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ stemId: 'stem_held', status: 'download_granted' }),
     });
   });
 

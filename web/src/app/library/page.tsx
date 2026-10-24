@@ -67,6 +67,8 @@ import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { ReleaseHeldDeliveryDialog } from "../../components/consent/ReleaseHeldDeliveryDialog";
+import { formatHoldDate } from "../../components/consent/deliveryConsent";
 import { MarqueeText } from "../../components/ui/MarqueeText";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import Link from "next/link";
@@ -241,6 +243,8 @@ function LibraryPageContent() {
                 // Best license tier bought; null when only listed (#2042)
                 licenseType?: string | null;
                 holding?: StemHolding | null;
+                // Released, or held until the 14-day withdrawal period ends (#1776)
+                delivery?: { state: "released" } | { state: "held"; availableAt: string } | null;
             };
 
             // Sign-in wallet plus the smart account (on-chain identity),
@@ -269,6 +273,7 @@ function LibraryPageContent() {
                 sourceTrackTitle: stem.trackTitle,
                 licenseType: isStemLicenseTier(stem.licenseType) ? stem.licenseType : null,
                 holding: stem.holding ?? undefined,
+                deliveryHeldUntil: stem.delivery?.state === "held" ? stem.delivery.availableAt : undefined,
                 listingId: stem.activeListingId,
                 purchaseDate: stem.purchasedAt,
                 isOwned: true,
@@ -485,6 +490,9 @@ function LibraryPageContent() {
         }
     };
 
+    // A held stem the buyer asks to have delivered now (#1776).
+    const [releaseTarget, setReleaseTarget] = useState<LocalTrack | null>(null);
+
     const handleStemDownload = async (stem: LocalTrack) => {
         if (!address || !token) {
             addToast({ type: "error", title: "Error", message: "Authentication required" });
@@ -509,7 +517,15 @@ function LibraryPageContent() {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(errorText || "Download failed");
+                // A held delivery answers with the date it is released (#1776).
+                let message = errorText;
+                try {
+                    const parsed = JSON.parse(errorText) as { message?: string };
+                    if (parsed?.message) message = parsed.message;
+                } catch {
+                    // Plain-text error.
+                }
+                throw new Error(message || "Download failed");
             }
 
             const blob = await response.blob();
@@ -804,6 +820,26 @@ function LibraryPageContent() {
                                 >
                                     {STEM_LICENSE_LABELS[track.licenseType]}
                                 </span>
+                            )}
+                            {track.stemType && track.deliveryHeldUntil && (
+                                <>
+                                    <span
+                                        className="library-delivery-badge"
+                                        title="Your 14-day withdrawal period is still running, so the download is on hold."
+                                    >
+                                        Download held until {formatHoldDate(track.deliveryHeldUntil)}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="library-delivery-release"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setReleaseTarget(track);
+                                        }}
+                                    >
+                                        Deliver now
+                                    </button>
+                                </>
                             )}
                             <TrackUnavailableNote availability={availability} />
                         </div>
@@ -1517,6 +1553,26 @@ function LibraryPageContent() {
                     onConfirm={confirmRemoval}
                     onCancel={() => setRemovalRequest(null)}
                 />
+
+                {releaseTarget && token && releaseTarget.deliveryHeldUntil && (
+                    <ReleaseHeldDeliveryDialog
+                        token={token}
+                        surface="stem_purchase"
+                        subjectId={releaseTarget.id}
+                        subjectLabel={releaseTarget.title}
+                        heldUntil={releaseTarget.deliveryHeldUntil}
+                        onClose={() => setReleaseTarget(null)}
+                        onReleased={() => {
+                            setReleaseTarget(null);
+                            addToast({
+                                type: "success",
+                                title: "Delivery requested",
+                                message: "We recorded your request and sent you a confirmation. You can download it now.",
+                            });
+                            void fetchCollection();
+                        }}
+                    />
+                )}
 
                 {/* Artwork Preview Modal */}
                 {hoveredArtwork && (

@@ -1,0 +1,131 @@
+/* Immediate-delivery consent step of a checkout (#1776). */
+.delivery-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text, #fff);
+}
+
+.delivery-consent--error {
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.delivery-consent__heading {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.delivery-consent__intro,
+.delivery-consent__footer,
+.delivery-consent__review,
+.delivery-consent__mint,
+.delivery-consent__required {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.delivery-consent__review {
+  font-size: 11px;
+}
+
+.delivery-consent__required {
+  color: #fbbf24;
+}
+
+.delivery-consent__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.delivery-consent__choice,
+.delivery-consent__ack {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.delivery-consent__ack {
+  margin-left: 26px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+}
+
+.delivery-consent__hint {
+  color: var(--color-muted);
+}
+
+.delivery-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.delivery-dialog {
+  width: min(480px, calc(100vw - 32px));
+  padding: 24px;
+  border-radius: 16px;
+  background: #14141c;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--color-text, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.delivery-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.delivery-dialog p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.delivery-dialog__ack {
+  margin-left: 0;
+}
+
+.delivery-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.library-delivery-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7em;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+}
+
+.library-delivery-release {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.7em;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: inherit;
+}

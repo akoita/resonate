@@ -240,7 +240,7 @@ describe("Remix eligibility and projects (integration)", () => {
         licenseType: "remix",
         transactionHash: `${TEST_PREFIX}buy_remix`,
         blockNumber: BigInt(103),
-        purchasedAt: new Date(),
+        purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
       },
     });
 
@@ -276,7 +276,7 @@ describe("Remix eligibility and projects (integration)", () => {
         paymentAssetDecimals: 6,
         settlementAmount: "2.00",
         settlementAmountUnits: "2000000",
-        purchasedAt: new Date(),
+        purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
       },
     });
 
@@ -315,7 +315,7 @@ describe("Remix eligibility and projects (integration)", () => {
         paymentAssetDecimals: 6,
         settlementAmount: "2.00",
         settlementAmountUnits: "2000000",
-        purchasedAt: new Date(),
+        purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
       },
     });
   });

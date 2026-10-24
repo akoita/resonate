@@ -38,6 +38,14 @@ import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { PurchaseHandoff } from "./PurchaseHandoff";
 import type { Listing } from "../../lib/contracts";
 import "../../styles/buy-modal.css";
+import { DeliveryConsentStep, useConsentWording } from "../consent/DeliveryConsentStep";
+import {
+  INITIAL_DELIVERY_CONSENT,
+  formatHoldDate,
+  isDeliveryConsentComplete,
+  recordDeliveryChoice,
+  type DeliveryConsentState,
+} from "../consent/deliveryConsent";
 import "../../styles/license-terms.css";
 
 type X402StatusPhase = "challenging" | "signing" | "settling" | "downloading";
@@ -102,7 +110,7 @@ const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
  * caller may refresh, consume, or swap underneath the open modal.
  */
 export type CompletedPurchase =
-  | { method: "onchain"; licenseType: LicenseType; txHash: string }
+  | { method: "onchain"; licenseType: LicenseType; txHash: string; waited?: boolean }
   | { method: "x402"; licenseType: LicenseType; result: X402PaymentResult };
 
 export type BuyModalView = "success" | "loading" | "consumed" | "listing" | "not_found";
@@ -185,6 +193,16 @@ export function BuyModal({
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
   const [x402Payer, setX402Payer] = useState<string | null>(null);
   const [completed, setCompleted] = useState<CompletedPurchase | null>(null);
+  // #1776: the delivery choice is made, and recorded, before any payment starts.
+  const [delivery, setDelivery] = useState<DeliveryConsentState>(INITIAL_DELIVERY_CONSENT);
+  const [consentError, setConsentError] = useState<string | null>(null);
+  const [recordingConsent, setRecordingConsent] = useState(false);
+  // An on-chain listing with no catalogue stem has no file this app delivers,
+  // so there is nothing to consent to.
+  const needsDeliveryConsent = Boolean(stemId);
+  const { wording, error: wordingError } = useConsentWording(isOpen && needsDeliveryConsent);
+  const deliveryComplete = !needsDeliveryConsent || isDeliveryConsentComplete(delivery);
+  const deliveryReady = !needsDeliveryConsent || Boolean(wording);
   const {
     status: authStatus,
     webAuthnKey,
@@ -287,6 +305,13 @@ export function BuyModal({
     return () => URL.revokeObjectURL(x402DownloadUrl);
   }, [x402DownloadUrl]);
 
+  // Every checkout starts with nothing chosen (#1776).
+  useEffect(() => {
+    if (!isOpen) return;
+    setDelivery(INITIAL_DELIVERY_CONSENT);
+    setConsentError(null);
+  }, [isOpen, listingId]);
+
   // Prefer stablecoin checkout when it is available for this stem.
   useEffect(() => {
     if (!isOpen) return;
@@ -380,6 +405,36 @@ export function BuyModal({
 
   if (!isOpen) return null;
 
+  /**
+   * Record the delivery choice before the payment is initiated (#1776). Returns
+   * false (and says why) when it could not be recorded; the caller must then
+   * not pay.
+   */
+  const recordConsentBeforePaying = async (sessionToken: string | null): Promise<boolean> => {
+    setConsentError(null);
+    if (!stemId) return true;
+    if (!sessionToken || !wording) {
+      setConsentError("Sign in and load the delivery terms before you pay.");
+      return false;
+    }
+    setRecordingConsent(true);
+    try {
+      await recordDeliveryChoice(sessionToken, wording, delivery, {
+        surface: "stem_purchase",
+        subjectId: stemId,
+        licenseType: selectedLicense,
+      });
+      return true;
+    } catch (err) {
+      setConsentError(
+        err instanceof Error ? err.message : "We could not record your delivery choice, so nothing was charged.",
+      );
+      return false;
+    } finally {
+      setRecordingConsent(false);
+    }
+  };
+
   const handleBuy = async () => {
     if (!selectedListingId) return;
     void recordProductAnalytics(token, "marketplace.purchase_intent", {
@@ -399,8 +454,14 @@ export function BuyModal({
     });
     try {
       if (listingChainMismatch) return;
+      if (!(await recordConsentBeforePaying(token))) return;
       const hash = await buy(selectedListingId, amount);
-      setCompleted({ method: "onchain", licenseType: selectedLicense, txHash: hash });
+      setCompleted({
+        method: "onchain",
+        licenseType: selectedLicense,
+        txHash: hash,
+        waited: delivery.choice === "wait",
+      });
       onSuccess?.(hash, {
         licenseType: selectedLicense,
         amount,
@@ -449,6 +510,7 @@ export function BuyModal({
       if (!key || !session.token || !session.userId) {
         throw new Error("Sign in with your Resonate passkey before using x402 checkout.");
       }
+      if (!(await recordConsentBeforePaying(session.token))) return;
       setX402Status("signing");
       const result = await payStemWithX402SmartAccount({
         stemId,
@@ -788,6 +850,22 @@ export function BuyModal({
               </div>
             )}
 
+            {/* Delivery and the withdrawal right (#1776): chosen before paying */}
+            {needsDeliveryConsent && (
+              <DeliveryConsentStep
+                wording={wording}
+                error={wordingError}
+                state={delivery}
+                onChange={setDelivery}
+                disabled={pending || x402Status !== null || recordingConsent}
+              />
+            )}
+            {consentError && (
+              <div className="buy-modal__alert buy-modal__alert--error" role="alert">
+                {consentError}
+              </div>
+            )}
+
             {/* Actions */}
             <div className="buy-modal__actions">
               <button className="buy-modal__btn buy-modal__btn--cancel" onClick={onClose}>
@@ -797,7 +875,16 @@ export function BuyModal({
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleBuy}
-                  disabled={pending || !quote || !selectedListingId || isLegacyNativeListing || listingChainMismatch}
+                  disabled={
+                    pending ||
+                    recordingConsent ||
+                    !deliveryComplete ||
+                    !deliveryReady ||
+                    !quote ||
+                    !selectedListingId ||
+                    isLegacyNativeListing ||
+                    listingChainMismatch
+                  }
                 >
                   {pending && <span className="buy-modal__spinner" />}
                   {pending ? "Confirming…" : "Confirm wallet purchase"}
@@ -806,7 +893,7 @@ export function BuyModal({
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleX402Pay}
-                  disabled={x402Status !== null || x402QuoteLoading || !x402Quote}
+                  disabled={x402Status !== null || recordingConsent || !deliveryComplete || !deliveryReady || x402QuoteLoading || !x402Quote}
                 >
                   {x402Status !== null && <span className="buy-modal__spinner" />}
                   {x402Status !== null
@@ -856,6 +943,11 @@ export function PurchaseSuccessPanel({
       {completed.method === "onchain" ? (
         <div className="buy-modal__alert buy-modal__alert--success" role="status">
           Purchase successful!{" "}
+          {completed.waited && (
+            <span data-testid="buy-modal-held-note">
+              You chose to keep your right to withdraw, so your download is held until 14 days after your purchase. We will confirm the date in your notices.{" "}
+            </span>
+          )}
           {txExplorerUrl && (
             <a
               href={txExplorerUrl}
@@ -877,7 +969,12 @@ export function PurchaseSuccessPanel({
       ) : x402Result ? (
         <div className="buy-modal__alert buy-modal__alert--success" role="status">
           Payment settled.{" "}
-          {x402DownloadUrl && (
+          {x402Result.held && (
+            <span data-testid="buy-modal-held-note">
+              Your download is held until {formatHoldDate(x402Result.held.availableAt)}, when your 14-day withdrawal period ends.{" "}
+            </span>
+          )}
+          {x402DownloadUrl && !x402Result.held && (
             <a
               href={x402DownloadUrl}
               download={x402Result.filename}

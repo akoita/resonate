@@ -114,7 +114,9 @@ describe('MetadataController collection route (HTTP)', () => {
       expect.objectContaining({ id: 'stem-1', licenseType: 'remix', holding: 'purchased' }),
     );
     expect(mockContractsService.getCallerWalletAddresses).toHaveBeenCalledWith(SMART_ACCOUNT);
-    expect(mockContractsService.getStemsByOwner).toHaveBeenCalledWith(SMART_ACCOUNT);
+    expect(mockContractsService.getStemsByOwner).toHaveBeenCalledWith(SMART_ACCOUNT, {
+      deliveryUserId: SMART_ACCOUNT,
+    });
   });
 
   it('200 for the caller reading their own owner EOA, case-insensitively', async () => {
@@ -123,7 +125,9 @@ describe('MetadataController collection route (HTTP)', () => {
       .get(`/metadata/collection/${checksummedLike}`)
       .set('Authorization', `Bearer ${authToken(SMART_ACCOUNT)}`)
       .expect(200);
-    expect(mockContractsService.getStemsByOwner).toHaveBeenCalledWith(checksummedLike);
+    expect(mockContractsService.getStemsByOwner).toHaveBeenCalledWith(checksummedLike, {
+      deliveryUserId: SMART_ACCOUNT,
+    });
   });
 
   it.each(['admin', 'operator'])('200 for %s support access to any wallet', async (role) => {
@@ -132,6 +136,8 @@ describe('MetadataController collection route (HTTP)', () => {
       .set('Authorization', `Bearer ${authToken(`${role}-1`, role)}`)
       .expect(200);
     expect(mockContractsService.getCallerWalletAddresses).not.toHaveBeenCalled();
-    expect(mockContractsService.getStemsByOwner).toHaveBeenCalledWith(OTHER_WALLET);
+    expect(mockContractsService.getStemsByOwner).toHaveBeenCalledWith(OTHER_WALLET, {
+      deliveryUserId: undefined,
+    });
   });
 });

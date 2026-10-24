@@ -276,7 +276,7 @@ describe("Remix sell-eligibility (integration)", () => {
         licenseType: "remix",
         transactionHash: `${TEST_PREFIX}buy_remix`,
         blockNumber: BigInt(302),
-        purchasedAt: new Date(),
+        purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
       },
     });
 
@@ -312,7 +312,7 @@ describe("Remix sell-eligibility (integration)", () => {
         licenseType: "commercial",
         transactionHash: `${TEST_PREFIX}buy_commercial`,
         blockNumber: BigInt(304),
-        purchasedAt: new Date(),
+        purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
       },
     });
 

@@ -67,6 +67,7 @@ import {
   type MarketplaceSplitChainReader,
 } from "./marketplace_sale_split";
 import { recordRoyaltyPayment } from "./royalty_payment_record";
+import { evaluatePurchaseDeliveries } from "../purchase_consent/purchase_consent_delivery";
 import {
   dedupeFlags,
   getUploadRightsActions,
@@ -2017,7 +2018,7 @@ export class ContractsService implements OnModuleInit {
    * Also checks purchases made by the user's linked smart account
    * (agent purchases go through the Kernel AA wallet, not the EOA).
    */
-  async getStemsByOwner(walletAddress: string) {
+  async getStemsByOwner(walletAddress: string, options: { deliveryUserId?: string } = {}) {
     this.logger.log(`Fetching collection for wallet: ${walletAddress}`);
 
     // Collect all addresses linked to this wallet (EOA + smart account)
@@ -2122,6 +2123,38 @@ export class ContractsService implements OnModuleInit {
       licensesByStem.set(stem.id, licenses);
     }
 
+    // #1776: whether each purchased stem is delivered or held until the end of
+    // the withdrawal period. Computed only for the holder themselves (support
+    // reads of another wallet carry no delivery state).
+    const deliveryByStem = new Map<
+      string,
+      { state: "released" } | { state: "held"; availableAt: string }
+    >();
+    if (options.deliveryUserId) {
+      const withStem = purchases.filter((purchase) => purchase.listing?.stem);
+      const decisions = await evaluatePurchaseDeliveries(
+        options.deliveryUserId,
+        withStem.map((purchase) => ({
+          surface: "stem_purchase" as const,
+          subjectId: purchase.listing.stem!.id,
+          purchasedAt: purchase.purchasedAt,
+          refs: [purchase.transactionHash],
+        })),
+      );
+      withStem.forEach((purchase, index) => {
+        const stemId = purchase.listing.stem!.id;
+        const decision = decisions[index];
+        const current = deliveryByStem.get(stemId);
+        if (decision.state === "released") {
+          deliveryByStem.set(stemId, { state: "released" });
+        } else if (!current) {
+          deliveryByStem.set(stemId, { state: "held", availableAt: decision.availableAt.toISOString() });
+        } else if (current.state === "held" && decision.availableAt.toISOString() < current.availableAt) {
+          deliveryByStem.set(stemId, { state: "held", availableAt: decision.availableAt.toISOString() });
+        }
+      });
+    }
+
     // Deduplicate stems
     const stemMap = new Map<string, any>();
 
@@ -2131,6 +2164,7 @@ export class ContractsService implements OnModuleInit {
       if (stem && !stemMap.has(stem.id)) {
         stemMap.set(stem.id, {
           ...stem,
+          delivery: deliveryByStem.get(stem.id) ?? null,
           purchasedAt: purchase.purchasedAt,
           tokenId: purchase.listing.tokenId,
           chainId: purchase.listing.chainId,

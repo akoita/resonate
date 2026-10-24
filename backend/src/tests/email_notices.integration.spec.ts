@@ -284,7 +284,7 @@ describe("email notices integration", () => {
       }
       await expectRejects(contacts.setPreferences(U.listener, ["bogus"]), BadRequestException);
       await expectRejects(contacts.setPreferences(U.listener, "policy"), BadRequestException);
-      expect((await contacts.getState(U.listener)).categories.filter((c) => c.required).map((c) => c.category)).toEqual(["terms", "account"]);
+      expect((await contacts.getState(U.listener)).categories.filter((c) => c.required).map((c) => c.category)).toEqual(["terms", "account", "purchase"]);
     });
   });
 

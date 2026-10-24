@@ -198,6 +198,7 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
   });
 
   afterAll(async () => {
+    await prisma.purchaseConsent.deleteMany({ where: { userId: USER_ID } });
     await prisma.x402Settlement.deleteMany({
       where: { stemId: { in: [STEM_ID, CURRENT_STEM_ID] } },
     });
@@ -482,6 +483,19 @@ describe("X402Middleware current stem purchase gate (integration)", () => {
   });
 
   it("grants a historical stem for a verified buyer-bound smart-account payment and blocks cross-stem replay", async () => {
+    // #1776: the human checkout delivers only against the consent recorded before paying.
+    await prisma.purchaseConsent.create({
+      data: {
+        userId: USER_ID,
+        surface: "stem_purchase",
+        subjectId: STEM_ID,
+        subjectLabel: "Historical stem",
+        deliveryKind: "off_chain",
+        consented: true,
+        acknowledgedWaiver: true,
+        textVersion: "test",
+      },
+    });
     const txHash = `0x${"c".repeat(64)}`;
     const payer = BUYER_PAYER;
     const verifiedPayment = {

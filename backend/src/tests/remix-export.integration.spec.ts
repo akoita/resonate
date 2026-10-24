@@ -139,7 +139,7 @@ async function seedListingAndPurchase(input: {
       licenseType: input.licenseType,
       transactionHash: `${TEST_PREFIX}buy_${input.suffix}`,
       blockNumber: BigInt(300 + input.listingId),
-      purchasedAt: new Date(),
+      purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
     },
   });
 }

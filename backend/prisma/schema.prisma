@@ -38,6 +38,7 @@ model User {
   agentConfig                 AgentConfig?
   agentSignals                AgentSignal[]
   agentPickNotes              AgentPickNote[]
+  purchaseConsents            PurchaseConsent[]
   communityBadges             CommunityBadge[]
   communityMemberships        CommunityMembership[]
   communityCohortMemberships  CommunityCohortMembership[]
@@ -3076,6 +3077,50 @@ model NoticeRead {
 
   @@id([noticeId, userId])
   @@index([userId])
+}
+
+/// #1776 immediate-delivery consent for consumer digital purchases (Directive
+/// 2011/83/EU art. 16(m)): the durable record that a buyer, BEFORE paying,
+/// either asked for immediate delivery and acknowledged that this ends the 14
+/// day withdrawal right (`consented` and `acknowledgedWaiver`), or chose to wait
+/// (`consented` false, `deliveryAvailableAt` set). It is written by the web
+/// checkout before the purchase or mint is initiated and linked to the payment
+/// afterwards (`transactionHash` / `purchaseRef`). Off-chain delivery (download,
+/// licence, collectible grant) is released only when a consent matches the
+/// purchase or the hold has elapsed; an on-chain mint requires a consent.
+/// Append-only: a later consent for the same item can release a held delivery.
+/// The wording shown is identified by `textVersion` (marked for legal review).
+/// Retained on account erasure like the purchase records it evidences.
+model PurchaseConsent {
+  id                  String    @id @default(uuid())
+  userId              String
+  /// stem_purchase | punchline_collect | credit_topup | collectible_mint
+  surface             String
+  /// The item: a stem id, a punchline moment id, a credit pack id.
+  subjectId           String
+  /// What the buyer was told they were buying, resolved by the server.
+  subjectLabel        String
+  /// The licence tier chosen at checkout, where the item has tiers.
+  licenseType         String?
+  /// off_chain | on_chain_mint
+  deliveryKind        String
+  consented           Boolean
+  acknowledgedWaiver  Boolean
+  textVersion         String
+  /// Payment transaction (lowercase hash) the consent was linked to afterwards.
+  transactionHash     String?
+  /// Another purchase reference (settlement receipt id, collectible id).
+  purchaseRef         String?
+  linkedAt            DateTime?
+  /// When a held delivery becomes available: indicative at creation, set from
+  /// the purchase time once the consent is linked. Null when consented.
+  deliveryAvailableAt DateTime?
+  createdAt           DateTime  @default(now())
+  user                User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, surface, subjectId, createdAt])
+  @@index([transactionHash])
+  @@index([purchaseRef])
 }
 
 /// #2169: an optional contact address used only for platform notices. Double

@@ -260,9 +260,19 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
 `ShowPledge`, `ShowPledgeDemandContext`, `ArtistFollow`, `ShowCampaignEvent`, `PunchlineCollectible`,
-`RecommendationProfile`, `PunchlineUnlockGrant`, `Crate`, `CrateItem`,
+`RecommendationProfile`, `PunchlineUnlockGrant`, `PurchaseConsent`, `Crate`, `CrateItem`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
 `CrateWatchMatch`.
+
+Immediate-delivery consent (#1776) adds `PurchaseConsent`: for each consumer
+digital purchase, the buyer's recorded choice made before paying (asked for
+immediate delivery and acknowledged losing the withdrawal right, or chose to
+wait), the item label the server resolved, the wording version shown, the
+linked payment reference and, for a held delivery, the release date. Keyed by
+`userId`; it holds no wallet address and no text typed by the person. It is
+exported, and **retained** on erasure with the purchase records it evidences
+(`StemPurchase`, `PunchlineCollectible`), because it is the proof used to answer
+a withdrawal or refund claim; the user id rotates with the cascade.
 
 AI DJ Session History (#2096) adds `Session.filters`, a bounded summary of a
 listening session's own filters (preset name, requested genres and moods,

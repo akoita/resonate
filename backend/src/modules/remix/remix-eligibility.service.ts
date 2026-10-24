@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { releasedStemIds } from "../purchase_consent/purchase_consent_delivery";
 import {
   evaluateRemixEligibility,
   type RemixEligibilityDecision,
@@ -198,7 +199,11 @@ export class RemixEligibilityService {
           buyerAddress: { equals: wallet.address, mode: "insensitive" },
           listing: { stemId: { in: stemIds } },
         },
-        select: { listing: { select: { stemId: true } } },
+        select: {
+          purchasedAt: true,
+          transactionHash: true,
+          listing: { select: { stemId: true } },
+        },
       }),
       prisma.x402Settlement.findMany({
         where: {
@@ -211,24 +216,49 @@ export class RemixEligibilityService {
           // proves the listing-backed remix license.
           status: "download_granted",
         },
-        select: { stemId: true },
+        select: {
+          stemId: true,
+          purchasedAt: true,
+          paymentTransactionHash: true,
+          contractSettlementTxHash: true,
+          receiptId: true,
+        },
       }),
     ]);
 
-    const licensed = new Set<string>();
+    // #1776: a licence is active only once its purchase is delivered, that is
+    // against a recorded immediate-delivery consent or after the withdrawal
+    // period. A held purchase confers nothing yet.
+    const candidates: Array<{
+      stemId: string;
+      purchasedAt: Date;
+      refs: Array<string | null>;
+    }> = [];
     for (const purchase of purchases) {
       if (purchase.listing.stemId) {
-        licensed.add(purchase.listing.stemId);
+        candidates.push({
+          stemId: purchase.listing.stemId,
+          purchasedAt: purchase.purchasedAt,
+          refs: [purchase.transactionHash],
+        });
       }
     }
     for (const settlement of settlements) {
       // stemId is nullable since #1462 (moment settlements); the query filters
       // to stem rows, but guard the type to keep only stem licenses.
       if (settlement.stemId) {
-        licensed.add(settlement.stemId);
+        candidates.push({
+          stemId: settlement.stemId,
+          purchasedAt: settlement.purchasedAt,
+          refs: [
+            settlement.paymentTransactionHash,
+            settlement.contractSettlementTxHash,
+            settlement.receiptId,
+          ],
+        });
       }
     }
-    return licensed;
+    return releasedStemIds(userId, candidates);
   }
 
   /**
@@ -262,7 +292,11 @@ export class RemixEligibilityService {
           buyerAddress: { equals: wallet.address, mode: "insensitive" },
           listing: { stemId: { in: stemIds } },
         },
-        select: { listing: { select: { stemId: true } } },
+        select: {
+          purchasedAt: true,
+          transactionHash: true,
+          listing: { select: { stemId: true } },
+        },
       }),
       prisma.x402Settlement.findMany({
         where: {
@@ -274,23 +308,48 @@ export class RemixEligibilityService {
           // proves the listing-backed commercial license.
           status: "download_granted",
         },
-        select: { stemId: true },
+        select: {
+          stemId: true,
+          purchasedAt: true,
+          paymentTransactionHash: true,
+          contractSettlementTxHash: true,
+          receiptId: true,
+        },
       }),
     ]);
 
-    const licensed = new Set<string>();
+    // #1776: a licence is active only once its purchase is delivered, that is
+    // against a recorded immediate-delivery consent or after the withdrawal
+    // period. A held purchase confers nothing yet.
+    const candidates: Array<{
+      stemId: string;
+      purchasedAt: Date;
+      refs: Array<string | null>;
+    }> = [];
     for (const purchase of purchases) {
       if (purchase.listing.stemId) {
-        licensed.add(purchase.listing.stemId);
+        candidates.push({
+          stemId: purchase.listing.stemId,
+          purchasedAt: purchase.purchasedAt,
+          refs: [purchase.transactionHash],
+        });
       }
     }
     for (const settlement of settlements) {
       // stemId is nullable since #1462 (moment settlements); the query filters
       // to stem rows, but guard the type to keep only stem licenses.
       if (settlement.stemId) {
-        licensed.add(settlement.stemId);
+        candidates.push({
+          stemId: settlement.stemId,
+          purchasedAt: settlement.purchasedAt,
+          refs: [
+            settlement.paymentTransactionHash,
+            settlement.contractSettlementTxHash,
+            settlement.receiptId,
+          ],
+        });
       }
     }
-    return licensed;
+    return releasedStemIds(userId, candidates);
   }
 }

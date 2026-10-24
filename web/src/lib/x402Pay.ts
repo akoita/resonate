@@ -22,6 +22,8 @@ export type X402PaymentResult = {
   receipt: X402Receipt | null;
   licenseKey: string | null;
   transactionHash: string | null;
+  /** Set when the payment settled but the audio is held until the withdrawal period ends (#1776). */
+  held?: { availableAt: string };
 };
 
 export type X402Receipt = {
@@ -131,6 +133,33 @@ export async function payStemWithX402(input: {
 
   onStatus?.("downloading");
   return decodeAudioResponse(paidResponse);
+}
+
+/**
+ * A 202 from the human checkout route: the payment is settled and recorded, the
+ * audio is held until the 14-day withdrawal period ends (#1776). There is no
+ * audio to hand back, only the receipt and the release date.
+ */
+export async function decodeHeldResponse(response: Response): Promise<X402PaymentResult | null> {
+  if (response.status !== 202) return null;
+  const body = (await response.json().catch(() => null)) as {
+    code?: string;
+    deliveryAvailableAt?: string;
+    receiptId?: string;
+    receipt?: X402Receipt;
+  } | null;
+  if (body?.code !== "delivery_held" || !body.deliveryAvailableAt) return null;
+  return {
+    audio: new Blob([], { type: "audio/mpeg" }),
+    filename: "stem",
+    mimeType: "audio/mpeg",
+    receiptId: body.receiptId ?? body.receipt?.receiptId ?? null,
+    receiptHeader: null,
+    receipt: body.receipt ?? null,
+    licenseKey: null,
+    transactionHash: null,
+    held: { availableAt: body.deliveryAvailableAt },
+  };
 }
 
 export async function decodeAudioResponse(response: Response): Promise<X402PaymentResult> {

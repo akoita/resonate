@@ -137,6 +137,8 @@ export interface LocalTrack {
     licenseType?: "personal" | "remix" | "commercial" | null;
     // Bought, or only listed for sale by this wallet (#2042)
     holding?: "purchased" | "listed";
+    /** ISO date until which the download of a purchased stem is held (#1776); unset when delivered. */
+    deliveryHeldUntil?: string;
     listingId?: string; // If listed for sale
     purchaseDate?: string;
     isOwned?: boolean;

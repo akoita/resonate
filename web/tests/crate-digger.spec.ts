@@ -409,6 +409,9 @@ test.describe("Crate quote (#1964)", () => {
     await expect(confirm.getByText("You are about to buy 4 stems:")).toBeVisible();
     await expect(confirm.getByText(/^Neon Drift: Vocals \(Personal\) for 0\.5 USDC$/)).toBeVisible();
     await expect(confirm.getByText(/^Midnight Courier/)).toHaveCount(0);
+    // Nothing is chosen for the buyer (#1776): signing waits for a delivery choice.
+    await expect(confirm.getByRole("button", { name: "Confirm and sign" })).toBeDisabled();
+    await confirm.getByRole("radio", { name: /^Wait 14 days/ }).check();
     await expect(confirm.getByRole("button", { name: "Confirm and sign" })).toBeEnabled();
     await confirm.getByRole("button", { name: "Back" }).click();
     await expect(panel(page).getByRole("button", { name: "Approve and buy" })).toBeVisible();

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { evaluatePurchaseDeliveries } from "../purchase_consent/purchase_consent_delivery";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { CrateEntitlementsService } from "./crate-entitlements";
 import {
@@ -198,12 +199,30 @@ export class CrateExportService {
               buyerAddress: wallet.address.toLowerCase(),
               listing: { stemId: { in: stemIds } },
             },
-            select: { licenseType: true, listing: { select: { stemId: true } } },
+            select: {
+              licenseType: true,
+              purchasedAt: true,
+              transactionHash: true,
+              listing: { select: { stemId: true } },
+            },
           });
+    // #1776: a purchase whose delivery is still held (no immediate-delivery
+    // consent, withdrawal period running) cannot be downloaded yet, so it is not
+    // exported either; every exported file stays downloadable through the
+    // licensed path.
+    const deliveries = await evaluatePurchaseDeliveries(
+      userId,
+      purchases.map((purchase) => ({
+        surface: "stem_purchase" as const,
+        subjectId: purchase.listing.stemId ?? "",
+        purchasedAt: purchase.purchasedAt,
+        refs: [purchase.transactionHash],
+      })),
+    );
     const licensesByStem = new Map<string, string[]>();
-    for (const purchase of purchases) {
+    for (const [index, purchase] of purchases.entries()) {
       const stemId = purchase.listing.stemId;
-      if (!stemId) continue;
+      if (!stemId || deliveries[index].state === "held") continue;
       const owned = licensesByStem.get(stemId) ?? [];
       owned.push(purchase.licenseType);
       licensesByStem.set(stemId, owned);
