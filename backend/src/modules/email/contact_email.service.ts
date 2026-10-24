@@ -75,7 +75,7 @@ export function categoriesFor(optOuts: readonly string[]): ContactEmailState["ca
  * It is separate from `User.email` (a placeholder for wallet accounts) and is
  * used only for platform notices. An address receives nothing until the person
  * confirms it from a link that is mailed to it; changing the address starts
- * over and kills the old link. Required categories (terms, account) cannot be
+ * over and kills the old link. Required categories (terms, account, purchase) cannot be
  * turned off; the rest can.
  *
  * Nothing here logs an address or a token.

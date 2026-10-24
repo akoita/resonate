@@ -18,6 +18,14 @@ import { useAuth } from "../auth/AuthProvider";
 import { payMomentWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useToast } from "../ui/Toast";
+import { DeliveryConsentStep, useConsentWording } from "../consent/DeliveryConsentStep";
+import {
+  INITIAL_DELIVERY_CONSENT,
+  formatHoldDate,
+  isDeliveryConsentComplete,
+  recordDeliveryChoice,
+  type DeliveryConsentState,
+} from "../consent/deliveryConsent";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
 import { MomentShareButton } from "./MomentShareButton";
 import { DROP_KIND_LABEL, formatPriceCents } from "./punchlineDropHelpers";
@@ -95,6 +103,16 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   const [collectingId, setCollectingId] = useState<string | null>(null);
   // Wallet-checkout phase label for the in-flight paid collect (#1462).
   const [paidPhase, setPaidPhase] = useState<string | null>(null);
+  // #1776: a paid collect asks how the edition is delivered before any payment starts.
+  const [consentTarget, setConsentTarget] = useState<{ drop: PunchlineDrop; moment: PunchlineMoment } | null>(null);
+  const [delivery, setDelivery] = useState<DeliveryConsentState>(INITIAL_DELIVERY_CONSENT);
+  const deliveryRef = useRef<DeliveryConsentState>(INITIAL_DELIVERY_CONSENT);
+  const [consentError, setConsentError] = useState<string | null>(null);
+  const { wording, error: wordingError } = useConsentWording(consentTarget !== null);
+  const wordingRef = useRef(wording);
+  useEffect(() => {
+    wordingRef.current = wording;
+  }, [wording]);
   const [playingMomentId, setPlayingMomentId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -266,6 +284,19 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
           "Sign in with your Resonate passkey to collect this moment.",
         );
       }
+      // Record the delivery choice before the quote and the payment (#1776).
+      const activeWording = wordingRef.current;
+      if (!activeWording) {
+        throw new Error("The delivery terms have not loaded yet. Try again in a moment.");
+      }
+      try {
+        await recordDeliveryChoice(session.token, activeWording, deliveryRef.current, {
+          surface: "punchline_collect",
+          subjectId: moment.id,
+        });
+      } catch {
+        throw new Error("We could not record your delivery choice, so nothing was charged. Try again.");
+      }
       const quote = await fetchPunchlineMomentQuote(moment.id);
       return payMomentWithX402SmartAccount({
         quote,
@@ -324,6 +355,14 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
             source: "release_page",
           },
         });
+        if (result.delivery?.state === "held") {
+          addToast({
+            type: "success",
+            title: `Edition #${result.collectible.editionNumber} is reserved for you`,
+            message: `“${moment.title}” will be delivered on ${formatHoldDate(result.delivery.availableAt)}, when your 14-day withdrawal period ends.`,
+          });
+          return;
+        }
         addToast({
           type: "success",
           title: `Edition #${result.collectible.editionNumber} is yours`,
@@ -547,7 +586,16 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                               phase={
                                 collectingId === moment.id ? paidPhase : null
                               }
-                              onCollect={() => collect(drop, moment)}
+                              onCollect={() => {
+                                if (moment.priceCents > 0 && token) {
+                                  setDelivery(INITIAL_DELIVERY_CONSENT);
+                                  deliveryRef.current = INITIAL_DELIVERY_CONSENT;
+                                  setConsentError(null);
+                                  setConsentTarget({ drop, moment });
+                                  return;
+                                }
+                                void collect(drop, moment);
+                              }}
                             />
                             {state === "owned" && (
                               <MomentShareButton
@@ -562,6 +610,43 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                               />
                             )}
                           </div>
+                          {consentTarget?.moment.id === moment.id && collectingId !== moment.id && (
+                            <div className="punchline-collect-consent" data-testid="punchline-collect-consent">
+                              <DeliveryConsentStep
+                                wording={wording}
+                                error={wordingError}
+                                state={delivery}
+                                onChange={(next) => {
+                                  setDelivery(next);
+                                  deliveryRef.current = next;
+                                }}
+                              />
+                              {consentError && (
+                                <p role="alert" className="punchline-collect-consent__error">{consentError}</p>
+                              )}
+                              <div className="punchline-collect-actions">
+                                <button
+                                  type="button"
+                                  className="punchline-btn-primary"
+                                  disabled={!wording || !isDeliveryConsentComplete(delivery)}
+                                  onClick={() => {
+                                    const target = consentTarget;
+                                    setConsentTarget(null);
+                                    void collect(target.drop, target.moment);
+                                  }}
+                                >
+                                  {`Pay ${formatPriceCents(moment.priceCents)}`}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="punchline-btn-secondary"
+                                  onClick={() => setConsentTarget(null)}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

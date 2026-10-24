@@ -152,6 +152,19 @@ licence you receive is the one displayed for that tier. Buying a stem does not
 transfer ownership of the underlying work, and does not grant rights beyond the
 tier you bought.
 
+**Delivery and your right to withdraw.** If you are a consumer you may
+withdraw from a distance purchase of digital content within 14 days, unless you
+asked us at checkout to deliver it straight away and acknowledged that this ends
+the right. Checkout asks you to choose before you pay: *Deliver now*, which
+ends your right to withdraw from that purchase once you tick the box, or *Wait
+14 days*, which keeps it and holds the delivery until 14 days after your
+purchase. Where delivery cannot be undone, such as a mint recorded on a
+blockchain, only *Deliver now* is offered. We confirm your choice to you in your
+notices (and by email if you have confirmed an address). The
+[refund policy](refund-policy.md) sets out the details. This checkout step does
+not apply to payments software agents make on their own account.
+*(Wording for legal review before production.)*
+
 Remixes carry attribution to the source work. Where a remix is itself licensed,
 the originating artists retain their share under the same 85% floor.
 
@@ -278,13 +291,14 @@ rather than guessing:
    from the deployment's own configuration; for the reference deployment they
    live in `resonate-iac`. A reviewer needs the resolved document, not this
    template, to check that the identification duties are actually met.
-5. **Digital content and the withdrawal right.** Checkout collects none of the
-   three things required to end a consumer's withdrawal right — prior express
-   consent, acknowledgement, durable confirmation — so the refund policy now
-   states that the right survives every digital purchase. Building the waiver
-   flow is [#1776](https://github.com/akoita/resonate/issues/1776). Section 7
-   should be re-read against whatever that flow settles, particularly for
-   on-chain purchases that cannot be reversed once made.
+5. **Digital content and the withdrawal right.** Checkout now collects prior
+   express consent and the acknowledgement before payment and confirms them by
+   notice and email ([#1776](https://github.com/akoita/resonate/issues/1776));
+   the sentences in section 7 and the refund policy are a draft. The scope
+   (human checkouts only; machine-to-machine agent purchases and Shows pledges
+   excluded) and the 14-day hold applied to purchases with no recorded choice
+   are decisions that need confirming, particularly for on-chain purchases that
+   cannot be reversed once made. See the refund policy's questions for review.
 6. **Artist relationship.** These terms treat artists as users. If the operator
    is acting as an intermediary for the artist's sale rather than a marketplace
    host, the disclosure obligations and the tax treatment both change.

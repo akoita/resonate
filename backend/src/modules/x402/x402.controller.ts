@@ -44,6 +44,7 @@ import { StorageProvider } from '../storage/storage_provider';
 import { EventBus } from '../shared/event_bus';
 import { loadX402CommerceSettled, publishCommerceSettled } from '../analytics/analytics_commerce_settled';
 import { AuthService } from '../auth/auth.service';
+import { deliveryHeldBody, evaluatePurchaseDelivery } from '../purchase_consent/purchase_consent_delivery';
 import { minutes } from '../shared/rate_limits';
 import {
   PAYMENT_BINDING_SIGNATURE_PATTERN,
@@ -283,6 +284,10 @@ export class X402Controller {
         payer: verified.payer,
         // The caller was bound to this payer and the transfer verified above.
         allowSmartAccountSettlement: true,
+        // Human checkout (#1776): delivery waits for the buyer's immediate-delivery
+        // consent or the end of the withdrawal period. The agent route above has
+        // no signed-in buyer and is a machine-to-machine sale, so it is not gated.
+        buyerUserId: this.requestUserId(req),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -318,6 +323,8 @@ export class X402Controller {
     payer?: string;
     /** Only the buyer-bound smart-account route may serve a smart-account settlement. */
     allowSmartAccountSettlement: boolean;
+    /** The signed-in consumer buyer; set only on the human checkout route (#1776). */
+    buyerUserId?: string;
   }) {
     try {
       const { stemId, req, res } = input;
@@ -383,6 +390,15 @@ export class X402Controller {
             receiptId: existingSettlement.receiptId,
             settlement: receipt.settlement,
           });
+          return;
+        }
+        const replayHold = await this.findDeliveryHold(input.buyerUserId, stem.id, existingSettlement.purchasedAt, [
+          existingSettlement.paymentTransactionHash,
+          existingSettlement.contractSettlementTxHash,
+          existingSettlement.receiptId,
+        ]);
+        if (replayHold) {
+          this.writeHeldStemResponse(res, receipt, replayHold);
           return;
         }
         const audioBuffer = await this.loadPaidStemAudio({
@@ -527,10 +543,19 @@ export class X402Controller {
         return;
       }
 
+      // #1776: the payment is already made, so the purchase is recorded below
+      // either way; only the delivery of the audio waits for the consent.
+      const deliveryHold = await this.findDeliveryHold(input.buyerUserId, stem.id, input.purchasedAt, [
+        input.eventTransactionHash,
+        contractSettlement.transactionHash,
+      ]);
+
       // 2. Fetch/decrypt the audio content
       let audioBuffer: Buffer;
 
-      if (stem.encryptionMetadata) {
+      if (deliveryHold) {
+        audioBuffer = Buffer.alloc(0);
+      } else if (stem.encryptionMetadata) {
         const encryptedBuffer = await this.fetchPaidStemSourceBuffer({
           uri: stem.uri,
           data: stem.data,
@@ -701,7 +726,11 @@ export class X402Controller {
         `x402 receipt=${receipt.receiptId}`,
       );
 
-      // 4. Serve the audio
+      // 4. Serve the audio, or tell the buyer when it will be released (#1776)
+      if (deliveryHold) {
+        this.writeHeldStemResponse(res, receipt, deliveryHold);
+        return;
+      }
       this.writePaidStemResponse({
         res,
         stem,
@@ -866,6 +895,42 @@ export class X402Controller {
     return this.fetchPaidStemSourceBuffer({
       uri: input.stem.uri,
       data: input.stem.data,
+    });
+  }
+
+  private requestUserId(req: Request): string | undefined {
+    const user = (req as Request & { user?: { userId?: string; sub?: string } }).user;
+    return user?.userId || user?.sub || undefined;
+  }
+
+  /**
+   * The release date when a human buyer's delivery is on hold (#1776): no
+   * recorded immediate-delivery consent and the withdrawal period is still
+   * running. Null when delivery may proceed, or for the machine-to-machine route
+   * (no `buyerUserId`).
+   */
+  private async findDeliveryHold(
+    buyerUserId: string | undefined,
+    stemId: string,
+    purchasedAt: Date,
+    refs: Array<string | null | undefined>,
+  ): Promise<Date | null> {
+    if (!buyerUserId) return null;
+    const decision = await evaluatePurchaseDelivery(buyerUserId, {
+      surface: 'stem_purchase',
+      subjectId: stemId,
+      purchasedAt,
+      refs,
+    });
+    return decision.state === 'held' ? decision.availableAt : null;
+  }
+
+  /** 202: the payment is settled and recorded, the audio is held until the withdrawal period ends. */
+  private writeHeldStemResponse(res: Response, receipt: X402SettlementReceipt, availableAt: Date) {
+    res.status(HttpStatus.ACCEPTED).json({
+      ...deliveryHeldBody(availableAt),
+      receiptId: receipt.receiptId,
+      receipt,
     });
   }
 

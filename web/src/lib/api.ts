@@ -3272,6 +3272,8 @@ export type PunchlineCollectResult = {
     pricePaidCents: number;
     acquiredAt: string | null;
   };
+  /** Released, or held until the withdrawal period ends (#1776). Absent on older responses. */
+  delivery?: DeliveryState;
   /** True when this collect completed the drop's full set (#488 hook). */
   setCompleted: boolean;
   /** The granted set reward when this collect completed the set (#488). */
@@ -3287,6 +3289,9 @@ export type PunchlineCollectResult = {
 /** One owned collectible with its moment/drop/track context (#485/#487). */
 export type PunchlineCollectibleItem = {
   id: string;
+  /** `pending` while the delivery is held (#1776). */
+  status?: string;
+  delivery?: DeliveryState;
   editionNumber: number;
   editionSize: number;
   acquiredAt: string | null;
@@ -7816,7 +7821,7 @@ export function respondToManagementTransfer(
 
 // ============ Platform notices (#2146) ============
 
-export type PlatformNoticeCategory = "policy" | "terms" | "incident" | "moderation" | "account" | "refund";
+export type PlatformNoticeCategory = "policy" | "terms" | "incident" | "moderation" | "account" | "refund" | "purchase";
 export type PlatformNoticeAudienceRole = "listener" | "artist" | "operator" | "admin";
 export type PlatformNoticeAudience = "all" | `role:${PlatformNoticeAudienceRole}`;
 
@@ -8367,4 +8372,79 @@ export function getAdminAgentSessionEvents(token: string, sessionId: string) {
     { cache: "no-store" },
     token,
   );
+}
+
+// ============ Immediate-delivery consent (#1776) ============
+
+/** Whether a purchase has been delivered, or is held until the withdrawal period ends. */
+export type DeliveryState = { state: "released" } | { state: "held"; availableAt: string };
+
+export type PurchaseConsentSurface = "stem_purchase" | "punchline_collect" | "credit_topup" | "collectible_mint";
+
+/** The checkout wording, served by the backend so the app never carries its own copy. */
+export type PurchaseConsentWording = {
+  version: string;
+  reviewStatus: string;
+  heading: string;
+  intro: string;
+  deliverNow: { label: string; description: string; acknowledgement: string };
+  wait: { label: string; description: string };
+  mint: { explanation: string };
+  confirmation: string;
+};
+
+export type PurchaseConsentRecord = {
+  id: string;
+  surface: PurchaseConsentSurface;
+  subjectId: string;
+  subjectLabel: string;
+  licenseType: string | null;
+  consented: boolean;
+  acknowledgedWaiver: boolean;
+  textVersion: string;
+  transactionHash: string | null;
+  purchaseRef: string | null;
+  deliveryAvailableAt: string | null;
+  createdAt: string;
+};
+
+export function getPurchaseConsentWording() {
+  return apiRequest<PurchaseConsentWording>("/purchase-consents/wording");
+}
+
+/** Record the buyer's choice BEFORE the purchase or mint is initiated. */
+export function recordPurchaseConsent(
+  token: string,
+  input: {
+    surface: PurchaseConsentSurface;
+    subjectId: string;
+    consented: boolean;
+    acknowledgedWaiver: boolean;
+    textVersion: string;
+    licenseType?: string;
+    subjectLabel?: string;
+  },
+) {
+  return apiRequest<PurchaseConsentRecord>(
+    "/purchase-consents",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Attach the payment to a consent once it is known. Best effort: delivery does not depend on it. */
+export function linkPurchaseConsent(
+  token: string,
+  id: string,
+  input: { transactionHash?: string; purchaseRef?: string },
+) {
+  return apiRequest<PurchaseConsentRecord>(
+    `/purchase-consents/${encodeURIComponent(id)}/link`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export function listPurchaseConsents(token: string) {
+  return apiRequest<{ items: PurchaseConsentRecord[] }>("/purchase-consents", {}, token);
 }

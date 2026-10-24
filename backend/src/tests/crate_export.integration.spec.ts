@@ -163,7 +163,7 @@ async function seedCatalog() {
         transactionHash: hex(`buy${counter}`),
         logIndex: 0,
         blockNumber: 2n,
-        purchasedAt: new Date(),
+        purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
       },
     });
   }

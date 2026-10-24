@@ -44,6 +44,7 @@ import { ShowsModule } from "./shows/shows.module";
 import { CreditsModule } from "./credits/credits.module";
 import { UsageModule } from "./usage/usage.module";
 import { PunchlineModule } from "./punchline/punchline.module";
+import { PurchaseConsentModule } from "./purchase_consent/purchase_consent.module";
 import { PrivacyModule } from "./privacy/privacy.module";
 import { ManagementModule } from "./management/management.module";
 import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.module";
@@ -107,6 +108,7 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
     CreditsModule,
     UsageModule,
     PunchlineModule,
+    PurchaseConsentModule,
     PrivacyModule,
     ManagementModule,
     DiscoveryJournalModule,

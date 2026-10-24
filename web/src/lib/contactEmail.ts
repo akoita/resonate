@@ -23,12 +23,14 @@ export const EMAIL_CATEGORY_DESCRIPTIONS: Record<PlatformNoticeCategory, string>
   moderation: "Action taken on something you posted or uploaded.",
   account: "Decisions about your account, and the reasons for them.",
   refund: "Refunds that are waiting for you.",
+  purchase: "Confirmations of the delivery choice you made when you bought something.",
 };
 
 /** Why a locked category cannot be switched off. Only required ones need one. */
 export const EMAIL_REQUIRED_REASONS: Partial<Record<PlatformNoticeCategory, string>> = {
   terms: "Required: we are obliged to tell you about changes to the terms.",
   account: "Required: you are entitled to know why we acted on your account.",
+  purchase: "Required: we must confirm in writing that you asked for immediate delivery.",
 };
 
 /** Categories a person cannot switch off: they are emailed to every confirmed address. */

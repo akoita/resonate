@@ -165,7 +165,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Notices appear in the notification bell when you are signed in, each labelled with its category: Policy, Terms, Incident, Moderation, Account or Refund. A policy, terms or incident notice also shows as a bar at the top of the app until you dismiss it. Dismissing it marks it read; it stays in your notifications.",
+            text: "Notices appear in the notification bell when you are signed in, each labelled with its category: Policy, Terms, Incident, Moderation, Account, Refund or Purchase. A policy, terms or incident notice also shows as a bar at the top of the app until you dismiss it. Dismissing it marks it read; it stays in your notifications.",
           },
           {
             kind: "paragraph",
@@ -202,7 +202,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Required notices",
-            text: "Terms and Account notices are always emailed to a confirmed address, because they are legal notices or explain why we acted on your account. They are marked Required and cannot be switched off. To stop them, remove your address. You still see them in the app.",
+            text: "Terms, Account and Purchase notices are always emailed to a confirmed address, because they are legal notices, explain why we acted on your account, or confirm the delivery choice you made when you bought something. They are marked Required and cannot be switched off. To stop them, remove your address. You still see them in the app.",
           },
           {
             kind: "paragraph",
@@ -1728,6 +1728,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Open a listing and choose its license tier.",
               "Choose x402 or direct wallet checkout when both are available. In x402 checkout, review the platform fee marked as included and the unchanged stablecoin total.",
+              "Choose how you want it delivered: Deliver now, which ends your 14-day right to withdraw once you tick the box, or Wait 14 days, which keeps it. Payment stays disabled until you choose. See Delivery and your right to withdraw.",
               "Confirm the total and pay from your wallet balance. Resonate disables payment if it cannot verify the current quote details.",
               "Approve with your passkey — your collected stem and receipt appear in your wallet and library. If your stablecoin payments come from a separate payment wallet, you approve one extra passkey prompt first, before anything is paid; it confirms that the payment is yours.",
             ],
@@ -1759,7 +1760,82 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Browse stems", href: "/crates?tab=stems", description: "Browse and collect stems." },
       { label: "My purchased stems", href: "/library?tab=stems", description: "Stems you bought, with their licenses." },
     ],
-    related: ["smart-wallet", "remix-studio", "marketplace-sell", "library-playlists"],
+    related: ["immediate-delivery-and-withdrawal", "smart-wallet", "remix-studio", "marketplace-sell", "library-playlists"],
+  },
+  {
+    slug: "immediate-delivery-and-withdrawal",
+    title: "Delivery and your right to withdraw",
+    summary:
+      "When you buy digital content you can have it right away and give up your 14-day right to withdraw, or wait and keep it. Here is what each choice means, where you make it, and how to see what you chose.",
+    category: "marketplace",
+    audiences: ["listener", "producer"],
+    status: "partial",
+    keywords: ["withdraw", "withdrawal", "14 days", "refund", "immediate delivery", "deliver now", "wait", "held", "download held", "consent", "cooling-off", "right of withdrawal", "mint", "collectible", "purchase confirmation"],
+    sections: [
+      {
+        id: "the-choice",
+        heading: "The choice at checkout",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "If you are a consumer, the law lets you withdraw from a distance purchase within 14 days. For digital content, that right ends only if you ask us to deliver it straight away and confirm you understand you are giving the right up. So before you pay for a stem, a licence or a collectible, checkout asks you to choose. Nothing is selected for you.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Choose Deliver now to have it as soon as your payment is confirmed. Tick the box to say you understand you lose your right to withdraw.",
+              "Or choose Wait 14 days to keep your right to withdraw. We hold the delivery until 14 days after your purchase and then release it automatically.",
+              "Pay. Your choice is recorded before any payment starts.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Things that cannot be undone",
+            text: "Where delivery means something recorded on a blockchain, which cannot be reversed, only Deliver now is offered, and you must tick the box to continue.",
+          },
+        ],
+      },
+      {
+        id: "held",
+        heading: "When delivery is on hold",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A held stem shows Download held until a date in your library, and downloading it before then explains when it will be released. A held licence does not unlock Remix Studio or export yet. A paid collectible is reserved for you straight away, so nobody else can take your edition, and it joins your collection on the date shown.",
+          },
+          {
+            kind: "paragraph",
+            text: "Changed your mind? Choose Deliver now next to a held stem. The same box asks you to confirm that you give up your right to withdraw.",
+          },
+          {
+            kind: "paragraph",
+            text: "Something you bought outside Resonate, or that an AI DJ session bought for you, has no recorded choice, so it is treated like Wait 14 days: it is released 14 days after the purchase unless you ask for it earlier.",
+          },
+        ],
+      },
+      {
+        id: "confirmation",
+        heading: "Your confirmation",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Each choice is confirmed with a Purchase notice in your notifications, stating what you chose, the item, the date and time, and the version of the wording you saw. If you have a confirmed email address for notices, the same confirmation is emailed to you; Purchase notices are always emailed and cannot be switched off.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Draft wording",
+            text: "The wording of this step is a draft that still has to be reviewed by a lawyer before it is used in production. It does not apply to payments made by AI agents on their own account, or to Shows pledges.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Library", href: "/library", description: "See which of your stems are held, and ask for delivery now." },
+      { label: "Refund policy", href: "/refunds", description: "How refunds and the withdrawal right work." },
+    ],
+    related: ["marketplace-buy", "platform-notices", "punchline-drops"],
   },
   {
     slug: "marketplace-sell",
@@ -3260,7 +3336,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Your catalog", href: "/artist/catalog", description: "Open a release to find its Punchline Drops panel." },
       { label: "Your moments", href: "/library?tab=moments", description: "The Punchline moments you have collected." },
     ],
-    related: ["upload-music", "artist-profile", "marketplace-sell", "library-playlists"],
+    related: ["immediate-delivery-and-withdrawal", "upload-music", "artist-profile", "marketplace-sell", "library-playlists"],
   },
   {
     slug: "rights-protection",

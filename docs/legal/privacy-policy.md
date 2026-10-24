@@ -155,6 +155,7 @@ the product does not have is a false statement, not an aspiration.
 | Warehouse raw and clean rows | The retention of the event they came from |
 | Behaviour facts linked to you | 24 months |
 | Financial, payout, royalty, dispute, settlement, rights and tax facts | 7–10 years, with personal fields minimised |
+| Your recorded delivery choice at checkout (immediate delivery and waiver, or wait) | As long as the purchase record it relates to, because it is the proof used to answer a withdrawal or refund claim |
 | Aggregate views that cannot re-identify you | Kept while useful |
 | Quarantined records | 30 days (personal or sensitive), 90 days (pseudonymous) |
 | Last sign-in and last activity | While your account exists; cleared when it is erased |

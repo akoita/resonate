@@ -432,6 +432,15 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     ],
   },
   {
+    model: "PurchaseConsent",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #1776. The person's recorded delivery choice at checkout: what they bought, whether they asked for "
+      + "immediate delivery and acknowledged losing the withdrawal right (or chose to wait), the wording version "
+      + "shown, the linked payment reference and the date a held delivery is released.",
+  },
+  {
     model: "RecommendationProfile",
     primaryKey: "userId",
     keys: [{ kind: "userId", column: "userId" }],

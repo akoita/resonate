@@ -15,7 +15,7 @@ import { getBundlerUrl, isPaymasterEnabled } from "./bundlerConfig";
 import { normalizeContractWriteError } from "./contractErrors";
 import { getX402Chain } from "./x402BrowserWallet";
 import { getX402KernelAccount } from "./x402KernelAccount";
-import { decodeAudioResponse, type X402PaymentResult } from "./x402Pay";
+import { decodeAudioResponse, decodeHeldResponse, type X402PaymentResult } from "./x402Pay";
 import {
   PAYER_NOT_LINKED_CODE,
   payerIsKnownBuyerAddress,
@@ -218,6 +218,9 @@ export async function payStemWithX402SmartAccount(
         ". Do not pay again; contact support with this transaction.",
     );
   }
+
+  const held = await decodeHeldResponse(response);
+  if (held) return held;
 
   input.onStatus?.("downloading");
   return decodeAudioResponse(response);

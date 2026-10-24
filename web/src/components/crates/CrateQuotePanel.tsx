@@ -36,6 +36,13 @@ import {
   type PurchaseStage,
   type SettlementOutcome,
 } from "../../lib/crateQuotePurchase";
+import { DeliveryConsentStep, useConsentWording } from "../consent/DeliveryConsentStep";
+import {
+  INITIAL_DELIVERY_CONSENT,
+  isDeliveryConsentComplete,
+  recordDeliveryChoice,
+  type DeliveryConsentState,
+} from "../consent/deliveryConsent";
 import type {
   CrateItemDto,
   CrateLicenseType,
@@ -123,6 +130,9 @@ export function CrateQuotePanel({
   );
   const [busy, setBusy] = useState<Busy>(null);
   const [confirming, setConfirming] = useState(false);
+  // #1776: the delivery choice is made, and recorded, before the batch is signed.
+  const [delivery, setDelivery] = useState<DeliveryConsentState>(INITIAL_DELIVERY_CONSENT);
+  const { wording, error: wordingError } = useConsentWording(confirming);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [leftOut, setLeftOut] = useState<PreflightDrop[] | null>(null);
@@ -280,6 +290,23 @@ export function CrateQuotePanel({
     setSent(null);
     setBusy("checking");
     try {
+      // Record the choice for every stem in the quote before anything is signed.
+      if (!wording || !isDeliveryConsentComplete(delivery)) {
+        setError("Choose how you want these delivered before you buy.");
+        return;
+      }
+      try {
+        for (const { line, item } of quotedStems(quote)) {
+          await recordDeliveryChoice(token, wording, delivery, {
+            surface: "stem_purchase",
+            subjectId: item.stemId,
+            licenseType: line.licenseType,
+          });
+        }
+      } catch {
+        setError("We could not record your delivery choice, so nothing was charged. Try again.");
+        return;
+      }
       const outcome = await runCrateQuotePurchase({
         quote,
         buyerAddress: buyer,
@@ -464,12 +491,19 @@ export function CrateQuotePanel({
                 You sign once. If a stem can no longer be bought, you will be told before anything
                 is charged.
               </p>
+              <DeliveryConsentStep
+                wording={wording}
+                error={wordingError}
+                state={delivery}
+                onChange={setDelivery}
+                disabled={busy !== null}
+              />
               <div className="crates-row">
                 <button
                   type="button"
                   className="crates-btn crates-btn--primary"
                   onClick={() => void approveAndBuy()}
-                  disabled={busy !== null || blocker !== null}
+                  disabled={busy !== null || blocker !== null || !wording || !isDeliveryConsentComplete(delivery)}
                 >
                   Confirm and sign
                 </button>
@@ -518,7 +552,10 @@ export function CrateQuotePanel({
                   <button
                     type="button"
                     className="crates-btn crates-btn--primary"
-                    onClick={() => setConfirming(true)}
+                    onClick={() => {
+                      setDelivery(INITIAL_DELIVERY_CONSENT);
+                      setConfirming(true);
+                    }}
                     disabled={busy !== null || blocker !== null || stems.length === 0}
                   >
                     Approve and buy

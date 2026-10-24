@@ -622,6 +622,32 @@ export function buildExportManifest(crate, options = {}) {
   };
 }
 
+/** The backend's checkout wording (#1776), as `GET /purchase-consents/wording` serves it. */
+const PURCHASE_CONSENT_WORDING = {
+  version: "2026-10-24.draft-1",
+  reviewStatus: "for_legal_review_before_production",
+  heading: "Delivery and your right to withdraw",
+  intro:
+    "You can withdraw from a digital purchase within 14 days. That right ends once we start delivering the content during those 14 days, if you ask us to and confirm you understand.",
+  deliverNow: {
+    label: "Deliver now",
+    description: "Delivery starts as soon as your payment is confirmed.",
+    acknowledgement:
+      "I ask for delivery to begin now, before the 14-day withdrawal period ends, and I understand that once delivery begins I lose my right to withdraw from this purchase.",
+  },
+  wait: {
+    label: "Wait 14 days",
+    description:
+      "Keep your right to withdraw. We hold delivery until 14 days after your purchase, then it is released to you automatically.",
+  },
+  mint: {
+    explanation:
+      "Minting is recorded on a blockchain and cannot be undone, so it starts delivery immediately. To buy this you must ask for immediate delivery and accept that you lose your right to withdraw.",
+  },
+  confirmation:
+    "We record your choice and send you a confirmation in your notices (and by email if you have confirmed a contact address).",
+};
+
 /**
  * Routes every Crate Digger request to in-memory crates. Anything else the
  * app shell asks the API for is answered with an empty success so the page
@@ -664,6 +690,31 @@ export async function mockCrateApi(page, options = {}) {
     const method = route.request().method();
     if (method === "OPTIONS") return route.fallback();
     return route.fulfill({ json: [] });
+  });
+  // The checkout's delivery step (#1776) loads its wording and records the choice.
+  await page.route(apiPath(/^\/purchase-consents\/wording$/), (route) =>
+    route.fulfill({ json: PURCHASE_CONSENT_WORDING }),
+  );
+  await page.route(apiPath(/^\/purchase-consents$/), (route) => {
+    if (route.request().method() !== "POST") return route.fulfill({ json: { items: [] } });
+    const body = route.request().postDataJSON();
+    return route.fulfill({
+      status: 201,
+      json: {
+        id: `consent-${body.subjectId}`,
+        surface: body.surface,
+        subjectId: body.subjectId,
+        subjectLabel: body.subjectId,
+        licenseType: body.licenseType ?? null,
+        consented: body.consented,
+        acknowledgedWaiver: body.acknowledgedWaiver,
+        textVersion: body.textVersion,
+        transactionHash: null,
+        purchaseRef: null,
+        deliveryAvailableAt: null,
+        createdAt: new Date().toISOString(),
+      },
+    });
   });
   // The shell's notification bell reads these.
   await page.route(apiPath(/^\/management\/invitations\/pending$/), (route) =>

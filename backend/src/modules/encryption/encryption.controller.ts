@@ -16,6 +16,12 @@ import { Response } from 'express';
 import { EncryptionService } from './encryption.service';
 import { AuthService } from '../auth/auth.service';
 import { DecryptRequestDto, DownloadRequestDto } from './encryption.dto';
+import {
+    deliveryHeldBody,
+    earliestHold,
+    evaluatePurchaseDeliveries,
+    linkConsentToPurchase,
+} from '../purchase_consent/purchase_consent_delivery';
 
 @Controller('encryption')
 export class EncryptionController {
@@ -153,13 +159,14 @@ export class EncryptionController {
             // Verify ownership via StemPurchase
             const { prisma } = await import('../../db/prisma');
 
-            const purchase = await prisma.stemPurchase.findFirst({
+            const purchases = await prisma.stemPurchase.findMany({
                 where: {
                     buyerAddress: walletAddress.toLowerCase(),
                     listing: {
                         stem: { id: stemId }
                     }
                 },
+                orderBy: { purchasedAt: 'asc' },
                 include: {
                     listing: {
                         include: {
@@ -169,10 +176,35 @@ export class EncryptionController {
                 }
             });
 
-            if (!purchase) {
+            if (purchases.length === 0) {
                 this.logger.warn(`Ownership verification failed: ${walletAddress} does not own stem ${stemId}`);
                 res.status(HttpStatus.FORBIDDEN).send('You do not own this stem.');
                 return;
+            }
+
+            // #1776: delivery of a consumer digital purchase starts only against a
+            // recorded immediate-delivery consent or once the withdrawal period is
+            // over. Any one released purchase of the stem is enough.
+            const decisions = await evaluatePurchaseDeliveries(
+                authenticatedUserId,
+                purchases.map((candidate) => ({
+                    surface: 'stem_purchase' as const,
+                    subjectId: stemId,
+                    purchasedAt: candidate.purchasedAt,
+                    refs: [candidate.transactionHash],
+                })),
+            );
+            const heldUntil = earliestHold(decisions);
+            if (heldUntil) {
+                this.logger.log(`Download of stem ${stemId} held until ${heldUntil.toISOString()} for ${walletAddress}`);
+                res.status(HttpStatus.FORBIDDEN).json(deliveryHeldBody(heldUntil));
+                return;
+            }
+            const releasedIndex = decisions.findIndex((decision) => decision.state === 'released');
+            const purchase = purchases[releasedIndex];
+            const releasedDecision = decisions[releasedIndex];
+            if (releasedDecision.state === 'released' && releasedDecision.basis === 'consent') {
+                await linkConsentToPurchase(releasedDecision.consentId, { transactionHash: purchase.transactionHash });
             }
 
             const stem = purchase.listing.stem;

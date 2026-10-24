@@ -20,8 +20,8 @@ Effective from {{EFFECTIVE_DATE}}. This policy forms part of the
 
 Resonate's escrow was built refund-first. This document describes what the
 system actually does today — including where it does less than you might
-expect, and where a right of yours survives because we have not yet built the
-step that would end it.
+expect, and where a right of yours survives unless you choose to give it up at
+checkout.
 
 ## Show campaign pledges
 
@@ -91,16 +91,54 @@ promised on a campaign page.
 > ⚖ **Jurisdiction-specific.** The consumer withdrawal right for digital
 > content, and the conditions for ending it, are European. An operator
 > elsewhere may owe a different right, or none.
+>
+> **Wording for legal review before production.** The delivery-consent
+> sentences below, and the checkout text they describe, are a draft. They have
+> not been reviewed by anyone qualified in the operator's jurisdiction.
 
-Stems, licences, downloads and collectibles are digital content delivered
-immediately.
+Stems, licences, downloads and collectibles are digital content.
 
 **If you are a consumer, you have a statutory right to withdraw from a distance
-purchase, and you still have it here.** That right can only be given up if you
-expressly consent to immediate delivery and acknowledge that you are losing it,
-and Resonate's checkout does not currently ask you to do either. Until it does,
-the withdrawal period applies to your digital purchases, and you may withdraw
-within it by writing to {{OPERATOR_CONTACT_EMAIL}}.
+purchase within 14 days.** For digital content that right ends only if you
+expressly ask for delivery to begin during the 14 days **and** acknowledge that
+you lose the right by doing so, and the seller confirms that agreement to you
+on a durable medium. Resonate's checkout asks for exactly that, before you pay,
+for every stem, licence and collectible bought in the app:
+
+- **Deliver now.** You ask for delivery as soon as your payment is confirmed
+  and tick a box saying you understand you lose your right to withdraw from
+  that purchase. Nothing is ticked or selected for you.
+- **Wait 14 days.** You keep your right to withdraw. We hold the delivery
+  (the download, the licence entitlement, the collectible) until 14 days after
+  your purchase, tell you the date, and release it automatically. A paid
+  collectible's edition is reserved for you at once, so nobody else can take
+  it; it is delivered to you on that date.
+
+Where delivery means something recorded on a blockchain that cannot be undone,
+**only Deliver now is offered**, and the checkout says why.
+
+We record your choice before payment starts (what you chose, the item, the
+time, and the version of the wording you saw) and send you a confirmation in
+your notices, which is also emailed if you have confirmed a contact address.
+You can see the record in your notices and ask for a held delivery to be
+released early at any time; doing so ends your right to withdraw from that
+purchase.
+
+**Held delivery is enforced where we can enforce it.** A purchase made on-chain
+cannot be refused by us, so the point of control is the delivery of the
+content: a download or licence is released only against a recorded Deliver-now
+choice or after the 14 days have passed. A purchase with no recorded choice at
+all (made outside the app, or by an AI agent's session key on your behalf) is treated as Wait 14 days.
+
+**Not covered by this checkout.** Purchases made by software agents on their own
+account over the machine-to-machine payment interface are sales to the agent's
+operator, not to a consumer, and do not go through this step. Show campaign
+pledges are not digital content and are governed by the section above.
+
+Purchases made before this checkout step existed are delivered as before and are not held; this policy does not change what you could already download or use.
+
+If you withdraw within the 14 days (having chosen Wait, or having never asked
+for delivery), write to {{OPERATOR_CONTACT_EMAIL}}.
 
 Beyond that period, these purchases are not refundable, with two exceptions:
 
@@ -144,13 +182,24 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
 
 ## Questions for legal review
 
-1. **The withdrawal right currently survives every digital purchase.** Losing
-   it requires prior express consent, an acknowledgement, and durable
-   confirmation of that agreement (Directive 2011/83/EU). Checkout collects
-   none of the three, so this policy now says the right applies. Building the
-   waiver flow is tracked in [#1776](https://github.com/akoita/resonate/issues/1776); until it ships and is
-   tested, consumer sales operate with a live withdrawal period, and the
-   operational cost of honouring it is real.
+1. **Immediate-delivery consent and the withdrawal right** ([#1776](https://github.com/akoita/resonate/issues/1776)).
+   The checkout now collects prior express consent and the acknowledgement
+   before payment, and confirms them by notice and email (Directive
+   2011/83/EU art. 16(m) and 8(7)). Questions: (a) is the wording
+   ("Deliver now" and its acknowledgement) sufficient and fairly presented in
+   the operator's jurisdiction; (b) is a notice in the app, plus email only to
+   buyers who confirmed an address, a durable medium, or must every buyer give
+   an email address first; (c) the **scope**: stem and licence purchases,
+   collectibles and credit top-ups are covered, machine-to-machine x402 / MCP
+   purchases and Shows pledges are not. Confirm the exclusions hold, in
+   particular that an AI agent buying with a session key for a consumer is not
+   itself a consumer sale; (d) a purchase with no recorded choice is held
+   14 days. Is that the right default, and is holding delivery of an
+   already-paid on-chain purchase acceptable; (e) a late request for
+   immediate delivery from a held purchase is treated as valid consent because
+   delivery has not begun; (f) free collectible claims are not covered (no
+   price); confirm that a free claim given for an account is not a contract for
+   this purpose; (g) on-chain mints are only offered with Deliver now.
 2. **Who is the seller?** If artists sell to buyers and the platform is an
    intermediary, the statutory refund obligations may sit with the artist while
    the refund mechanics sit with us. The two need to line up, and the terms of

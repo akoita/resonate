@@ -108,7 +108,7 @@ async function remixPurchase(
       licenseType: "remix",
       transactionHash: `${TEST_PREFIX}buy_${listingId}`,
       blockNumber: BigInt(listingId + 1),
-      purchasedAt: new Date(),
+      purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
     },
   });
 }
