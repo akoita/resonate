@@ -19,7 +19,14 @@ import {
 } from "../../events/event_types";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 import { withPublicAudioFeatures } from "./track-audio-features";
-import { ownerDescriptorView } from "../descriptors/track_descriptor";
+import {
+  artistDescriptorContentHash,
+  buildDescriptorInput,
+  deterministicDescriptor,
+  ownerDescriptorView,
+  TRACK_DESCRIPTOR_VERSION,
+  validateDescriptorCorrection,
+} from "../descriptors/track_descriptor";
 import {
   compareRouteSeverity,
   getUploadRightsActions,
@@ -2592,6 +2599,76 @@ export class CatalogService implements OnModuleInit {
     });
     this.clearCache();
     return updated;
+  }
+
+  /**
+   * Correct a track's generated descriptor tags (#2292): the release owner, or
+   * a manager holding the track-metadata scope, replaces the track's genre
+   * families and sub-genres, from the controlled vocabulary only. Tempo,
+   * energy and vocal bands are measured and are kept as they are. The row is
+   * stored with `source: "artist"`, which the tagger and the backfill never
+   * overwrite, and `catalog.updated` re-embeds the track so the correction
+   * reaches retrieval.
+   */
+  async updateTrackDescriptor(
+    releaseId: string,
+    trackId: string,
+    userId: string,
+    input: { families?: unknown; subGenres?: unknown },
+  ) {
+    const row = await prisma.$transaction(async (tx) => {
+      await this.lockManagedRelease(tx, releaseId, userId, "track_metadata");
+      const track = await tx.track.findFirst({
+        where: { id: trackId, releaseId },
+        select: {
+          title: true,
+          release: { select: { genre: true, title: true } },
+          stems: {
+            where: { isCurrent: true, type: "original" },
+            select: { audioFeatures: true },
+            take: 1,
+          },
+          descriptor: true,
+        },
+      });
+      if (!track) throw new NotFoundException("Track not found for this release.");
+      const checked = validateDescriptorCorrection(input ?? {}, track.descriptor?.subGenres ?? []);
+      if (!checked.ok) throw new BadRequestException(checked.errors);
+      // A track never tagged has no stored bands yet: take the measured ones.
+      const base = track.descriptor ?? deterministicDescriptor(
+        buildDescriptorInput({
+          title: track.title,
+          genre: track.release.genre,
+          releaseTitle: track.release.title,
+          audioFeatures: track.stems[0]?.audioFeatures,
+        }),
+      );
+      const data = {
+        version: TRACK_DESCRIPTOR_VERSION,
+        families: checked.value.families,
+        subGenres: checked.value.subGenres,
+        tempoBand: base.tempoBand,
+        energyBand: base.energyBand,
+        vocal: base.vocal,
+        source: "artist",
+        model: null,
+        contentHash: artistDescriptorContentHash(checked.value),
+      };
+      return tx.trackDescriptor.upsert({
+        where: { trackId },
+        create: { trackId, ...data },
+        update: data,
+      });
+    });
+    this.eventBus.publish({
+      eventName: "catalog.updated",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      trackId,
+      status: "descriptor_corrected",
+      version: TRACK_DESCRIPTOR_VERSION,
+    });
+    return ownerDescriptorView(row);
   }
 
   /**

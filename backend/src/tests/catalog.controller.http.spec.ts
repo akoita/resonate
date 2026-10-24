@@ -29,6 +29,7 @@ const mockCatalogService = {
   getTrack: jest.fn(),
   getPlayerTrackActions: jest.fn(),
   updateRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
+  updateTrackDescriptor: jest.fn().mockResolvedValue({ families: ['world'], familyLabels: ['World'], subGenres: [], tempoBand: null, energyBand: null, vocal: null, source: 'artist' }),
   updateTrackMetadata: jest.fn().mockResolvedValue({ id: 'trk-1', title: 'Edited Track', explicit: true }),
   withdrawRelease: jest.fn(),
   restoreRelease: jest.fn(),
@@ -191,6 +192,54 @@ describe('CatalogController (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ title: 'Denied' })
       .expect(403);
+  });
+
+  describe('PUT /catalog/releases/:releaseId/tracks/:trackId/descriptor (#2292)', () => {
+    const url = '/catalog/releases/rel-1/tracks/trk-1/descriptor';
+    const body = { families: ['world', 'african'], subGenres: ['senegal'] };
+
+    beforeEach(() => mockCatalogService.updateTrackDescriptor.mockClear());
+
+    it('requires a JWT', async () => {
+      await request(app.getHttpServer()).put(url).send(body).expect(401);
+      expect(mockCatalogService.updateTrackDescriptor).not.toHaveBeenCalled();
+    });
+
+    it('forwards the target, the caller and the correction', async () => {
+      const res = await request(app.getHttpServer())
+        .put(url).set('Authorization', `Bearer ${token}`).send(body).expect(200);
+      expect(res.body).toMatchObject({ source: 'artist' });
+      expect(mockCatalogService.updateTrackDescriptor).toHaveBeenCalledWith('rel-1', 'trk-1', 'user-1', body);
+    });
+
+    it('returns the service authorization denial as 403', async () => {
+      mockCatalogService.updateTrackDescriptor.mockRejectedValueOnce(
+        new ForbiddenException('Not authorized to manage this release'),
+      );
+      await request(app.getHttpServer())
+        .put(url).set('Authorization', `Bearer ${token}`).send(body).expect(403);
+    });
+
+    it.each([
+      ['a family outside the vocabulary', { families: ['not-a-family'], subGenres: [] }],
+      ['a family label instead of its id', { families: ['World'], subGenres: [] }],
+      ['families that are not a list', { families: 'world', subGenres: [] }],
+      ['a missing families list', { subGenres: [] }],
+      ['a missing sub-genres list', { families: [] }],
+      ['sub-genres that are not text', { families: [], subGenres: [1] }],
+      ['a sub-genre longer than 40 characters', { families: [], subGenres: ['x'.repeat(41)] }],
+      ['more than 8 sub-genres', { families: [], subGenres: Array.from({ length: 9 }, (_, i) => `s${i}`) }],
+    ])('answers 400 for %s, before the service is reached', async (_name, invalid) => {
+      await request(app.getHttpServer())
+        .put(url).set('Authorization', `Bearer ${token}`).send(invalid).expect(400);
+      expect(mockCatalogService.updateTrackDescriptor).not.toHaveBeenCalled();
+    });
+  });
+
+  it('GET /catalog/descriptor-vocabulary is public and lists families and sub-genres', async () => {
+    const res = await request(app.getHttpServer()).get('/catalog/descriptor-vocabulary').expect(200);
+    expect(res.body.families).toEqual(expect.arrayContaining([{ id: 'world', label: 'World' }]));
+    expect(res.body.subGenres).toEqual(expect.arrayContaining(['afrobeats']));
   });
 
   it('GET /catalog/me → 200 with JWT', async () => {

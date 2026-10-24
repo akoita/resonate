@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   Res,
@@ -24,6 +25,8 @@ import { RolesGuard } from "../auth/roles.guard";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
+import { UpdateTrackDescriptorDto } from "./track-descriptor.dto";
+import { trackDescriptorVocabulary } from "../descriptors/track_descriptor";
 import { getArtworkMaxBytes } from "../shared/artwork-validation";
 import {
   DiscoveryPopularityService,
@@ -441,6 +444,30 @@ export class CatalogController {
     @Request() req: any,
   ) {
     return this.catalogService.updateTrackMetadata(releaseId, trackId, req.user.userId, body);
+  }
+
+  /**
+   * The vocabulary artists can correct a track's tags from (#2292): genre
+   * families and sub-genre labels. Static, public, no personal data.
+   */
+  @Get("descriptor-vocabulary")
+  getDescriptorVocabulary() {
+    return trackDescriptorVocabulary();
+  }
+
+  /**
+   * Correct a track's generated tags (#2292). Authorization is the service's:
+   * the release owner or a manager with the track-metadata scope.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Put("releases/:releaseId/tracks/:trackId/descriptor")
+  updateTrackDescriptor(
+    @Param("releaseId") releaseId: string,
+    @Param("trackId") trackId: string,
+    @Body() body: UpdateTrackDescriptorDto,
+    @Request() req: any,
+  ) {
+    return this.catalogService.updateTrackDescriptor(releaseId, trackId, req.user.userId, body);
   }
 
   @UseGuards(AuthGuard("jwt"))

@@ -2500,7 +2500,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution", "suggested tags", "genre tags", "descriptor"],
+    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution", "suggested tags", "genre tags", "descriptor", "edit tags", "correct tags", "genre families", "styles"],
     sections: [
       {
         id: "upload",
@@ -2584,17 +2584,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
       {
         id: "suggested-tags",
-        heading: "Suggested tags on your tracks",
+        heading: "Tags on your tracks",
         blocks: [
           {
             kind: "paragraph",
             text: "Resonate suggests tags for each published track from the genre, titles and measured sound of your music: broad genre families such as World or Hip-Hop, finer styles, and its tempo, energy and whether it has vocals. The AI DJ and discovery use them to find your music when someone asks for a style, even if the genre you typed is a place name, a local style or empty. You see them under each track on your release page.",
           },
           {
+            kind: "paragraph",
+            text: "To correct them, open your release page and choose \"Edit tags\" under a track. You can tick or untick the genre families and add or remove styles from the suggestions the field offers (you cannot invent new styles), then choose \"Save tags\". The release owner and managers who are allowed to edit track details can do this. Once you save, the tags are yours: Resonate will not replace them when your track is analysed again, and the AI DJ starts using your version.",
+          },
+          {
             kind: "callout",
             tone: "note",
-            title: "Read-only for now",
-            text: "The tags are suggestions by Resonate and you cannot edit them yet; letting you correct them is planned. They never change your AI declaration, the explicit flag, your rights status or whether your release is published.",
+            title: "What you cannot change",
+            text: "Tempo, energy and whether a track has vocals are measured from the audio, so they are shown but cannot be edited. Tags never change your AI declaration, the explicit flag, your rights status or whether your release is published.",
           },
         ],
       },
