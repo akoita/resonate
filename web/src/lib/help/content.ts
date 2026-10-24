@@ -192,6 +192,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
+            text: "You may see a small card offering this: on Home the first time you visit, after you pledge to a show (so we can tell you if a refund is ever owed), after your first listing, and when an account or refund notice has sat unread for a few days. Choose Add an email to go ahead, or Skip or Not now to dismiss it. We do not ask again for that moment on this browser, nothing is ever blocked, and you can add an address later in Settings. If you do not add one, nothing changes: every notice still reaches you in the app.",
+          },
+          {
+            kind: "paragraph",
             text: "Nothing is emailed to an address until you confirm it. Changing the address means confirming the new one, and until you do, notices reach you in the app only. Remove the address in the same place at any time.",
           },
           {

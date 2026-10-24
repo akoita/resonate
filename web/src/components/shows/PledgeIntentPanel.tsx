@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import EmailPromptCard from "../email/EmailPromptCard";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import {
@@ -337,6 +338,9 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
           )}
         </div>
       ) : null}
+
+      {/* #2182: after a confirmed pledge, offer the optional email for refund notices. */}
+      <EmailPromptCard context="pledge" enabled={Boolean(execution)} />
 
       {activeError ? (
         <p className="show-detail__pledge-error" role="alert">
