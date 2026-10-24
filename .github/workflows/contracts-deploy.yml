@@ -38,6 +38,8 @@ on:
           - pause-content-protection
           - smoke-content-protection
           - set-content-protection-stake
+          - backfill-content-protection-stake-escrow
+          - configure-content-protection-stake-lock
           - set-marketplace-protocol-fee
           - set-show-campaign-fee-config
           - set-show-campaign-confirmer
@@ -57,6 +59,11 @@ on:
           - release-show-campaign-funds
       campaign_id:
         description: Campaign id for lifecycle operations
+        required: false
+        default: ""
+        type: string
+      token_ids:
+        description: Comma-separated ContentProtection stake token ids (backfill-content-protection-stake-escrow)
         required: false
         default: ""
         type: string
@@ -98,9 +105,16 @@ jobs:
         shell: bash
         env:
           INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+          INPUT_TOKEN_IDS: ${{ inputs.token_ids }}
         run: |
           set -euo pipefail
           case "${{ inputs.operation }}" in
+            backfill-content-protection-stake-escrow)
+              if [[ ! "${INPUT_TOKEN_IDS}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+                echo "::error::backfill-content-protection-stake-escrow requires token_ids as comma-separated integers."
+                exit 1
+              fi
+              ;;
             confirm-show-campaign-booking|confirm-show-campaign-fulfillment|release-show-campaign-funds)
               if [[ -z "${INPUT_CAMPAIGN_ID}" ]]; then
                 echo "::error::${{ inputs.operation }} requires campaign_id."
@@ -166,6 +180,12 @@ jobs:
           INPUT_CONTENT_PROTECTION_TIMELOCK_MIN_DELAY: ${{ vars.CONTENT_PROTECTION_TIMELOCK_MIN_DELAY }}
           INPUT_CONTENT_PROTECTION_PAUSED: ${{ vars.CONTENT_PROTECTION_PAUSED }}
           INPUT_CONTENT_PROTECTION_UPGRADE_SALT: ${{ vars.CONTENT_PROTECTION_UPGRADE_SALT }}
+          INPUT_CONTENT_PROTECTION_UPGRADE_CALLDATA: ${{ vars.CONTENT_PROTECTION_UPGRADE_CALLDATA }}
+          INPUT_CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY: ${{ vars.CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY }}
+          INPUT_DISPUTE_RESOLUTION_ADDRESS: ${{ vars.DISPUTE_RESOLUTION_ADDRESS }}
+          INPUT_CURATION_REWARDS_ADDRESS: ${{ vars.CURATION_REWARDS_ADDRESS }}
+          INPUT_STAKE_ESCROW_BATCH_SIZE: ${{ vars.STAKE_ESCROW_BATCH_SIZE }}
+          INPUT_STAKE_ESCROW_TOKEN_IDS: ${{ inputs.token_ids }}
           INPUT_MINT_AUTHORIZER_ADDRESS: ${{ vars.MINT_AUTHORIZER_ADDRESS }}
           INPUT_STAKE_ASSET_ADDRESS: ${{ vars.STAKE_ASSET_ADDRESS }}
           INPUT_STAKE_ASSET_AMOUNT: ${{ vars.STAKE_ASSET_AMOUNT }}
@@ -258,6 +278,12 @@ jobs:
             CONTENT_PROTECTION_TIMELOCK_MIN_DELAY
             CONTENT_PROTECTION_PAUSED
             CONTENT_PROTECTION_UPGRADE_SALT
+            CONTENT_PROTECTION_UPGRADE_CALLDATA
+            CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY
+            DISPUTE_RESOLUTION_ADDRESS
+            CURATION_REWARDS_ADDRESS
+            STAKE_ESCROW_BATCH_SIZE
+            STAKE_ESCROW_TOKEN_IDS
             MINT_AUTHORIZER_ADDRESS
             STAKE_ASSET_ADDRESS
             STAKE_ASSET_AMOUNT
@@ -483,6 +509,17 @@ jobs:
                 if [[ -z "${!name:-}" ]]; then echo "::error::${{ inputs.operation }} requires ${name}."; exit 1; fi
               done
               ;;
+            backfill-content-protection-stake-escrow)
+              if [[ -z "${CONTENT_PROTECTION_PROXY:-}" || -z "${STAKE_ESCROW_TOKEN_IDS:-}" ]]; then
+                echo "::error::backfill-content-protection-stake-escrow requires CONTENT_PROTECTION_PROXY and the token_ids input."
+                exit 1
+              fi
+              ;;
+            configure-content-protection-stake-lock)
+              for name in CONTENT_PROTECTION_PROXY DISPUTE_RESOLUTION_ADDRESS CURATION_REWARDS_ADDRESS; do
+                if [[ -z "${!name:-}" ]]; then echo "::error::configure-content-protection-stake-lock requires ${name}."; exit 1; fi
+              done
+              ;;
             pause-content-protection)
               if [[ -z "${CONTENT_PROTECTION_PROXY:-}" || -z "${CONTENT_PROTECTION_PAUSED:-}" ]]; then
                 echo "::error::pause-content-protection requires CONTENT_PROTECTION_PROXY and CONTENT_PROTECTION_PAUSED."
@@ -704,7 +741,16 @@ jobs:
           fi
 
           case "${{ inputs.operation }}" in
-            execute-content-protection-v6-migration|pause-content-protection)
+            schedule-content-protection-upgrade|execute-content-protection-upgrade)
+              if [[ -n "${CONTENT_PROTECTION_UPGRADE_CALLDATA:-}" && ! "${CONTENT_PROTECTION_UPGRADE_CALLDATA}" =~ ^0x([0-9a-fA-F]{2})*$ ]]; then
+                echo "::error::CONTENT_PROTECTION_UPGRADE_CALLDATA must be 0x-prefixed hex (e.g. cast calldata \"reinitializeV7()\")."
+                exit 1
+              fi
+              ;;
+          esac
+
+          case "${{ inputs.operation }}" in
+            execute-content-protection-v6-migration|pause-content-protection|backfill-content-protection-stake-escrow)
               live_owner="$(cast call "${CONTENT_PROTECTION_PROXY}" 'owner()(address)' --rpc-url "${rpc_url}")"
               if [[ "${live_owner,,}" != "${deployer,,}" ]]; then
                 echo "::error::ContentProtection signer ${deployer} is not current owner ${live_owner}."
@@ -951,6 +997,33 @@ jobs:
           set -euo pipefail
           cd contracts
           forge script script/SetContentProtectionPaused.s.sol --rpc-url "${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+      - name: Backfill ContentProtection stake claim deadlines
+        if: inputs.operation == 'backfill-content-protection-stake-escrow'
+        run: make backfill-content-protection-stake-escrow
+
+      - name: Authorise dispute stake locking
+        if: inputs.operation == 'configure-content-protection-stake-lock'
+        run: make configure-content-protection-stake-lock
+
+      - name: Summarise ContentProtection self-claim operation
+        if: inputs.operation == 'backfill-content-protection-stake-escrow' || inputs.operation == 'configure-content-protection-stake-lock'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### ContentProtection self-claim operation (#1759)"
+            echo ""
+            echo "- operation: \`${{ inputs.operation }}\`"
+            echo "- ContentProtection proxy: \`${CONTENT_PROTECTION_PROXY}\`"
+            if [[ "${{ inputs.operation }}" == "backfill-content-protection-stake-escrow" ]]; then
+              echo "- token ids: \`${STAKE_ESCROW_TOKEN_IDS}\` (inactive and already-recorded ids are skipped)"
+            else
+              echo "- DisputeResolution: \`${DISPUTE_RESOLUTION_ADDRESS}\`"
+              echo "- CurationRewards (dispute filer): \`${CURATION_REWARDS_ADDRESS}\`"
+              echo "- note: Forge logs whether step 2 still needs the DisputeResolution owner signer"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Smoke ContentProtection authority graph
         if: inputs.operation == 'smoke-content-protection'

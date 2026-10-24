@@ -20,6 +20,9 @@ import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
  *   1. Slash pays 60% reporter / 30% treasury and retains the 10% remainder;
  *      the three parts sum exactly to the stake.
  *   2. Refund returns the exact stake to the attester.
+ *   3. Self-claim (#1759): a stake held by a dispute lock cannot be claimed before the
+ *      fail-safe; an eligible claim returns the exact stake; no one but the attester
+ *      can claim.
  */
 contract ContentProtectionFormalTest is Test, SymTest {
     ContentProtection public cp;
@@ -129,6 +132,52 @@ contract ContentProtectionFormalTest is Test, SymTest {
         assert(!success);
         assert(active);
         assert(recorded == MIN_STAKE);
+        assert(usdc.balanceOf(address(cp)) == MIN_STAKE);
+    }
+
+    /// A dispute-locked stake cannot leave the contract through the attester's self-claim
+    /// before escrow + fail-safe, at any symbolic time (#1759).
+    function check_lockedStakeIsNotClaimableBeforeFailSafe(uint256 tokenId, uint256 elapsed) public {
+        _attestAndStakeAsset(tokenId, MIN_STAKE);
+        uint256 failSafeAt = cp.stakeClaimableAt(tokenId) + cp.STAKE_CLAIM_FAIL_SAFE();
+        vm.assume(elapsed < failSafeAt - block.timestamp);
+        vm.prank(owner);
+        cp.setStakeLock(tokenId, true);
+        vm.warp(block.timestamp + elapsed);
+
+        vm.prank(attester);
+        (bool success,) = address(cp).call(abi.encodeCall(ContentProtection.claimStakeRefund, (tokenId)));
+        (,, bool active) = cp.stakes(tokenId);
+        assert(!success);
+        assert(active);
+        assert(usdc.balanceOf(address(cp)) == MIN_STAKE);
+    }
+
+    /// An unlocked stake past its escrow pays back exactly the stake to the attester.
+    function check_eligibleClaimReturnsExactStake(uint256 tokenId, uint256 elapsed) public {
+        _attestAndStakeAsset(tokenId, MIN_STAKE);
+        uint256 escrow = cp.stakeClaimableAt(tokenId) - block.timestamp;
+        vm.assume(elapsed >= escrow && elapsed <= 10 * 365 days);
+        vm.warp(block.timestamp + elapsed);
+
+        vm.prank(attester);
+        cp.claimStakeRefund(tokenId);
+        (,, bool active) = cp.stakes(tokenId);
+        assert(!active);
+        assert(usdc.balanceOf(attester) == MIN_STAKE);
+        assert(usdc.balanceOf(address(cp)) == 0);
+    }
+
+    /// Nobody but the attester can self-claim, however late.
+    function check_nonAttesterCannotClaim(uint256 tokenId, address caller, uint256 elapsed) public {
+        vm.assume(caller != attester);
+        vm.assume(elapsed <= 10 * 365 days);
+        _attestAndStakeAsset(tokenId, MIN_STAKE);
+        vm.warp(block.timestamp + elapsed);
+
+        vm.prank(caller);
+        (bool success,) = address(cp).call(abi.encodeCall(ContentProtection.claimStakeRefund, (tokenId)));
+        assert(!success);
         assert(usdc.balanceOf(address(cp)) == MIN_STAKE);
     }
 

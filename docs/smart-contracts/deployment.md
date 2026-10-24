@@ -178,9 +178,46 @@ handoff; execution must use the same implementation, salt, proxy, and timelock
 after the delay. Base Sepolia scheduling verifies the candidate through
 Sourcify. The owner cannot bypass the timelock.
 `pause-content-protection` remains the immediate incident control: it blocks new
-attestations, staking, slashing/refunds/sweeps, and registrations while keeping
-reads, revocations, blacklist controls, failed-payment claims, governance, and
-recovery available.
+attestations, staking, slashing/refunds/sweeps, self-claims, and registrations
+while keeping reads, revocations, blacklist controls, dispute stake locks,
+failed-payment claims, governance, and recovery available.
+
+#### V7: creator self-claim (#1759)
+
+V7 lets the attester withdraw their own stake with `claimStakeRefund(tokenId)`
+once `stakeClaimableAt[tokenId]` has passed. While a dispute holds the stake
+(`stakeLocked[tokenId]`), the claim waits, for at most `STAKE_CLAIM_FAIL_SAFE`
+(180 days) past the deadline. V7 appends three linear slots (`stakeClaimableAt`,
+`stakeLocked`, `stakeLockAuthority`) and shrinks `__gap` 48 -> 45. It moves no
+existing state. The upgrade and its follow-through are, in order:
+
+1. `schedule-content-protection-upgrade` with
+   `CONTENT_PROTECTION_UPGRADE_CALLDATA` set to `cast calldata "reinitializeV7()"`
+   so the version bump is atomic. Keep the same value for execute: it is part of
+   the timelock operation id.
+2. `execute-content-protection-upgrade` after the delay, then
+   `smoke-content-protection`.
+3. `backfill-content-protection-stake-escrow` with every active pre-V7 stake id
+   in the `token_ids` input. `backfillStakeEscrow` is owner-only, idempotent,
+   anchors each deadline on the original deposit time, and never moves a
+   recorded deadline. Until it runs, a pre-V7 stake cannot be self-claimed
+   (`StakeEscrowNotRecorded`); the owner `refundStake` path is unaffected.
+4. `configure-content-protection-stake-lock` once a lock-capable
+   `DisputeResolution` (v2.1.0+) and its `CurationRewards` exist. It sets
+   `ContentProtection.setStakeLockAuthority(DisputeResolution)` (CP owner) and
+   then `DisputeResolution.configureStakeLocking(ContentProtection,
+   CurationRewards)` (DR owner), in that order. Turning locking on first would
+   make every report revert. Rerun with the other owner signer if the two
+   owners differ; the script skips steps already done. Smoke afterwards with
+   `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` set.
+
+The deadline is the deposit time plus the longest configured tier escrow:
+staking carries no tier argument, so this is the only rule that cannot make any
+stake claimable earlier than a tier allows. `DisputeResolution` is not
+upgradeable. A deployment whose existing `DisputeResolution` predates v2.1.0
+therefore needs a new `DisputeResolution` + `CurationRewards` pair before step 4.
+Until then the owner can still set locks by hand with `setStakeLock`. Fresh
+`deploy-protocol` runs wire step 4's two calls automatically.
 
 ### ShowCampaignEscrow deployment handoff
 
@@ -403,7 +440,9 @@ Deployment operations:
 | `pause-stem-marketplace` | Marketplace incident containment | Owner calls the fast pause without waiting for the upgrade timelock | New list/buy operations stop; cancellation, failed-payment claims, reads, configuration, and recovery remain available |
 | `prepare-content-protection-v6-migration` / `execute-content-protection-v6-migration` | One-time legacy V5 governance bootstrap | Prepare deploys a verifiable implementation + timelock; execute atomically upgrades the stable proxy and consumes `reinitializeV6` | Current owner signs execute; verify exact candidate addresses first; downstream references stay stable |
 | `schedule-content-protection-upgrade` / `execute-content-protection-upgrade` | Delayed post-V6 implementation change | Schedule deploys a candidate and queues exact UUPS calldata; execute uses `NEW_IMPLEMENTATION` after the timelock delay | Signer must hold the matching timelock proposer/executor role; proxy/app address stays stable |
-| `pause-content-protection` | Content-protection incident containment | Operational owner immediately pauses or resumes risk-creating writes | Existing failed-payment claims, revocations, blacklist controls, reads, governance, and recovery remain available |
+| `pause-content-protection` | Content-protection incident containment | Operational owner immediately pauses or resumes risk-creating writes | Existing failed-payment claims, revocations, blacklist controls, dispute stake locks, reads, governance, and recovery remain available; creator self-claims stop |
+| `backfill-content-protection-stake-escrow` | After the V7 self-claim upgrade (#1759) | No redeploy; owner calls `backfillStakeEscrow` in batches for the `token_ids` input | Idempotent; skips inactive and already-recorded stakes; fails before broadcasting if a listed active stake would stay unrecorded |
+| `configure-content-protection-stake-lock` | Let disputes hold stakes (#1759) | No redeploy; CP owner authorises `DisputeResolution` as stake-lock authority, then the DR owner turns locking on with `CurationRewards` as the only filer | Requires `CONTENT_PROTECTION_PROXY`, `DISPUTE_RESOLUTION_ADDRESS`, `CURATION_REWARDS_ADDRESS`; refuses a `CurationRewards` wired to other contracts |
 | `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
 | `set-marketplace-protocol-fee` | Marketplace fee config update | No redeploy; calls `StemMarketplaceV2.setProtocolFee` and optionally `setFeeRecipient` | Requires `MARKETPLACE_ADDRESS` and `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`; signer must be marketplace owner |
 | `set-show-campaign-fee-config` | Shows campaign fee config update | No redeploy; calls `ShowCampaignEscrow.setFeeConfig` | Requires `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEW_FEE_BPS`, and `NEW_FEE_RECIPIENT`; fee rate applies to future campaigns only, recipient rotates at charge time |
@@ -450,6 +489,10 @@ Optional GitHub environment variables:
 | `PAYMENT_ETH_USD_FEED`, `PAYMENT_USDC_USD_FEED`, `PAYMENT_ORACLE_MAX_STALENESS` | Optional oracle deployment inputs. |
 | `STEM_NFT_ADDRESS`, `MARKETPLACE_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`, `EXISTING_ADMIN` | Required/optional inputs for `deploy-content-protection`. `MARKETPLACE_ADDRESS` should be set when an existing marketplace must register protected content. `EXISTING_ADMIN` is only for local/fork impersonation-style workflows; real testnet runs must be signed by the admin. |
 | `CONTENT_PROTECTION_PROXY` | Required for `upgrade-content-protection`. |
+| `CONTENT_PROTECTION_UPGRADE_CALLDATA` | Optional `upgradeToAndCall` data for ContentProtection schedule/execute, e.g. `cast calldata "reinitializeV7()"` for the V7 self-claim upgrade. Must be identical for both phases. |
+| `DISPUTE_RESOLUTION_ADDRESS`, `CURATION_REWARDS_ADDRESS` | Inputs for `configure-content-protection-stake-lock`. |
+| `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` | Optional expected `stakeLockAuthority` checked by `smoke-content-protection` once V7 is live. |
+| `STAKE_ESCROW_BATCH_SIZE` | Optional batch size for `backfill-content-protection-stake-escrow` (default 100). The token ids come from the workflow's `token_ids` input. |
 | `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL` | Inputs for `set-content-protection-stake`. |
 | `REVENUE_ESCROW_OWNER`, `REVENUE_ESCROW_GUARDIAN`, `REVENUE_ESCROW_TIMELOCK_MIN_DELAY`, `REVENUE_ESCROW_PERIOD` | Guarded RevenueEscrow deployment inputs. Owner and independent guardian are required remotely; guardian differs from owner/deployer; delay is at least 48 hours. |
 | `REVENUE_ESCROW_ADDRESS`, `REVENUE_ESCROW_TIMELOCK_ADDRESS`, `REVENUE_ESCROW_UPGRADE_SALT`, `UPGRADE_ACTION`, `NEW_IMPLEMENTATION` | Existing proxy/timelock and two-phase upgrade inputs. `NEW_IMPLEMENTATION` is required only for execute. |

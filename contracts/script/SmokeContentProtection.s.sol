@@ -45,6 +45,16 @@ contract SmokeContentProtection is Script {
         require(isLocal || (guardian != governanceOwner && guardian != deployer), "guardian is not independent");
         require(isLocal || delay >= 48 hours, "timelock delay below 48h");
 
+        // #1759: once the V7 self-claim implementation is live and DisputeResolution is
+        // authorised, pin the lock authority too. Unset on pre-V7 proxies.
+        address expectedLockAuthority = vm.envOr("CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY", address(0));
+        if (expectedLockAuthority != address(0)) {
+            require(
+                contentProtection.stakeLockAuthority() == expectedLockAuthority, "stake lock authority mismatch"
+            );
+            console.log("Stake lock authority (DisputeResolution):", expectedLockAuthority);
+        }
+
         console.log("ContentProtection authority graph/config smoke check passed:", proxy);
         console.log("Registered mint/attestation voucher authorizer:", mintAuthorizer);
     }

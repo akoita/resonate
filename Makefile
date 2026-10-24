@@ -527,6 +527,19 @@ execute-content-protection-upgrade:
 smoke-content-protection:
 	cd contracts && forge script script/SmokeContentProtection.s.sol --rpc-url "$${RPC_URL}" --evm-version cancun --via-ir
 
+# #1759 self-claim follow-through. Run after the V7 upgrade executes (schedule with
+# CONTENT_PROTECTION_UPGRADE_CALLDATA=$$(cast calldata "reinitializeV7()")).
+# Backfill the claim deadline of stakes deposited before V7; idempotent, safe to rerun.
+backfill-content-protection-stake-escrow:
+	@: "$${STAKE_ESCROW_TOKEN_IDS:?STAKE_ESCROW_TOKEN_IDS (comma-separated token ids) is required}"
+	cd contracts && forge script script/BackfillContentProtectionStakeEscrow.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+# Authorise DisputeResolution to hold stakes, then turn dispute stake locking on.
+configure-content-protection-stake-lock:
+	@: "$${DISPUTE_RESOLUTION_ADDRESS:?DISPUTE_RESOLUTION_ADDRESS is required}"
+	@: "$${CURATION_REWARDS_ADDRESS:?CURATION_REWARDS_ADDRESS is required}"
+	cd contracts && forge script script/ConfigureContentProtectionStakeLock.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
 payments-dev-up: dev-up local-aa-up
 	$(MAKE) local-aa-deploy
 	@sleep 1

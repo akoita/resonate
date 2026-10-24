@@ -1077,26 +1077,36 @@ export class MetadataController {
   @Get("stakes/:owner")
   async getStakesByOwner(@Param("owner") owner: string) {
     const stakes = await this.contractsService.getStakesByOwner(owner);
+    // #1759: claim deadline, dispute lock and claimability come live from the
+    // contract, so the wallet only offers Claim when the transaction can succeed.
+    const claimStates = await this.contractsService.getStakeClaimStates(stakes);
 
     return {
       owner: owner.toLowerCase(),
       total: stakes.length,
-      stakes: stakes.map((s) => ({
-        tokenId: s.tokenId.toString(),
-        chainId: s.chainId,
-        amount: s.amount,
-        // `amount` is in base units of this asset (e.g. 5_000_000 for 5 USDC).
-        assetSymbol: s.paymentAssetSymbol,
-        assetDecimals: s.paymentAssetDecimals,
-        assetToken: s.paymentToken,
-        amountUsd: s.canonicalAmountUsd ?? null,
-        active: s.active,
-        depositedAt: s.depositedAt.toISOString(),
-        refundedAt: s.refundedAt?.toISOString() || null,
-        slashedAt: s.slashedAt?.toISOString() || null,
-        transactionHash: s.transactionHash,
-        releaseTitle: (s as any).releaseTitle || null,
-      })),
+      stakes: stakes.map((s) => {
+        const claim = claimStates.get(`${s.chainId}:${s.tokenId}`);
+        return {
+          tokenId: s.tokenId.toString(),
+          chainId: s.chainId,
+          amount: s.amount,
+          // `amount` is in base units of this asset (e.g. 5_000_000 for 5 USDC).
+          assetSymbol: s.paymentAssetSymbol,
+          assetDecimals: s.paymentAssetDecimals,
+          assetToken: s.paymentToken,
+          amountUsd: s.canonicalAmountUsd ?? null,
+          active: s.active,
+          depositedAt: s.depositedAt.toISOString(),
+          refundedAt: s.refundedAt?.toISOString() || null,
+          slashedAt: s.slashedAt?.toISOString() || null,
+          transactionHash: s.transactionHash,
+          releaseTitle: (s as any).releaseTitle || null,
+          claimableAt: claim?.claimableAt ?? null,
+          failSafeAt: claim?.failSafeAt ?? null,
+          locked: claim?.locked ?? null,
+          claimable: claim?.claimable ?? false,
+        };
+      }),
     };
   }
 

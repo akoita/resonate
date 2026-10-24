@@ -103,7 +103,50 @@ export const knownContractErrorAbi = [
     name: "AlreadyReported",
     inputs: [],
   },
+  {
+    type: "error",
+    name: "NotStaked",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "NotStakeAttester",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "caller", type: "address" },
+    ],
+  },
+  {
+    type: "error",
+    name: "StakeEscrowNotRecorded",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+  },
+  {
+    type: "error",
+    name: "StakeEscrowActive",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "claimableAt", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "StakeLockActive",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "failSafeAt", type: "uint256" },
+    ],
+  },
 ] as const;
+
+function formatEpochDate(seconds: unknown): string {
+  try {
+    const ms = Number(BigInt(String(seconds))) * 1000;
+    return Number.isFinite(ms) && ms > 0 ? new Date(ms).toLocaleDateString() : "a later date";
+  } catch {
+    return "a later date";
+  }
+}
 
 // ─── Pure helpers ────────────────────────────────────────────────────
 
@@ -231,8 +274,31 @@ export function normalizeContractWriteError(error: unknown): Error {
         // `onlyOwner` modifier (refundStake, slash, policy changes) and
         // depositStake's attester check. Only the owner-restricted calls are
         // reachable from this app, so the message describes that case rather
-        // than implying the viewer's record ownership is wrong (#1758).
-        return new Error("This action is restricted to the Content Protection contract owner. Stake refunds are issued by Resonate once the escrow period ends.");
+        // than implying the viewer's record ownership is wrong (#1758). Creators
+        // withdraw their own stake with claimStakeRefund (#1759).
+        return new Error("This action is restricted to the Content Protection contract owner. To get your own stake back, use Claim in My Stakes once it is claimable.");
+      }
+
+      if (decoded.errorName === "NotStaked") {
+        return new Error("There is no active Content Protection stake for this release. It may already have been returned.");
+      }
+
+      if (decoded.errorName === "NotStakeAttester") {
+        return new Error("Only the creator who deposited this stake can claim it. Switch to the wallet that published the release.");
+      }
+
+      if (decoded.errorName === "StakeEscrowNotRecorded") {
+        return new Error("The claim date for this stake has not been set up yet. It becomes claimable once Resonate records it; nothing is lost in the meantime.");
+      }
+
+      if (decoded.errorName === "StakeEscrowActive") {
+        const [, claimableAt] = decoded.args as readonly [bigint, bigint];
+        return new Error(`This stake is still in its escrow period. You can claim it from ${formatEpochDate(claimableAt)}.`);
+      }
+
+      if (decoded.errorName === "StakeLockActive") {
+        const [, failSafeAt] = decoded.args as readonly [bigint, bigint];
+        return new Error(`This stake is on hold while a dispute about the release is open. It becomes claimable when the dispute is resolved in your favour, and at the latest on ${formatEpochDate(failSafeAt)}.`);
       }
 
       if (decoded.errorName === "IsBlacklisted") {

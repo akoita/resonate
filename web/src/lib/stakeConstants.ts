@@ -213,8 +213,8 @@ export function deriveStakeStatus(
 }
 
 // "Escrow ended" rather than "Releasable": the status is derived from elapsed
-// time, not from a right to withdraw. `ContentProtection.refundStake` is
-// owner-only, so no viewer of this label can act on it (#1758).
+// time. Whether the creator can actually withdraw comes from the contract's
+// claim state (see `deriveStakeClaimAction`, #1759), not from this label.
 export const STAKE_STATUS_LABELS: Record<StakeStatus, string> = {
   active: "Active ✓",
   releasable: "Escrow ended",
@@ -262,23 +262,69 @@ export const ESCROW_STATUS_LABELS: Record<EscrowStatus, string> = {
   none: "—",
 };
 
+// ============ Self-claim (#1759) ============
+
+/** Claim state of a stake as returned by `GET /metadata/stakes/:owner`. */
+export interface StakeClaimInfo {
+  active: boolean;
+  /** ISO time the escrow ends; null when unknown or not yet recorded. */
+  claimableAt?: string | null;
+  /** ISO time a dispute hold stops blocking the claim; null when unknown. */
+  failSafeAt?: string | null;
+  /** Whether a dispute holds the stake; null when unknown. */
+  locked?: boolean | null;
+  /** Whether `claimStakeRefund` would succeed right now (read from the contract). */
+  claimable?: boolean;
+}
+
+export type StakeClaimActionKind = "claim" | "scheduled" | "on_hold" | "pending" | "none";
+
+export interface StakeClaimAction {
+  kind: StakeClaimActionKind;
+  /** Short label for the Actions column. */
+  label: string;
+  /** Optional longer explanation (tooltip / secondary line). */
+  detail?: string;
+}
+
 /**
- * What the viewer can do about a stake in this state.
+ * What the creator can do about their stake right now.
  *
- * Refunds are issued by Resonate: `ContentProtection.refundStake` is
- * owner-only, so a creator cannot withdraw their own deposit yet (#1759
- * tracks the self-service claim). This mapping exists so the wallet never
- * renders a control the viewer cannot use (#1758).
+ * The Claim control is offered only when the contract says the claim would
+ * succeed (`claimable`), so the wallet never renders a button that reverts
+ * (#1758). Otherwise it explains why not: the escrow date, a dispute hold
+ * (with the latest date the hold can last), or a date not yet recorded.
  */
-export function stakeActionLabel(status: StakeStatus): string {
-  switch (status) {
-    case "active":
-      return "Locked";
-    case "releasable":
-      return "Refund issued by Resonate";
-    case "refunded":
-    case "slashed":
-    case "not_staked":
-      return "—";
+export function deriveStakeClaimAction(stake: StakeClaimInfo, nowMs: number = Date.now()): StakeClaimAction {
+  if (!stake.active) return { kind: "none", label: "\u2014" };
+  if (stake.claimable) return { kind: "claim", label: "Claim" };
+
+  const claimableAtMs = stake.claimableAt ? Date.parse(stake.claimableAt) : NaN;
+  if (stake.locked) {
+    const failSafeMs = stake.failSafeAt ? Date.parse(stake.failSafeAt) : NaN;
+    return {
+      kind: "on_hold",
+      label: "On hold: under dispute",
+      detail: Number.isNaN(failSafeMs)
+        ? "Claimable once the dispute is resolved in your favour."
+        : `Claimable once the dispute is resolved in your favour, and on ${new Date(failSafeMs).toLocaleDateString()} at the latest.`,
+    };
   }
+  if (!Number.isNaN(claimableAtMs) && nowMs < claimableAtMs) {
+    return { kind: "scheduled", label: `Claimable on ${new Date(claimableAtMs).toLocaleDateString()}` };
+  }
+  return {
+    kind: "pending",
+    label: "Claim date pending",
+    detail: "Resonate has not recorded this stake's claim date yet, or claims are briefly paused. Your deposit is safe.",
+  };
+}
+
+/** Escrow length in whole days from the contract deadline, if known. */
+export function escrowDaysFromClaimableAt(depositedAt?: string | null, claimableAt?: string | null): number | null {
+  if (!depositedAt || !claimableAt) return null;
+  const start = Date.parse(depositedAt);
+  const end = Date.parse(claimableAt);
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+  return Math.round((end - start) / 86_400_000);
 }

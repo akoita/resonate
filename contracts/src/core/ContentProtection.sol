@@ -50,8 +50,24 @@ import {IContentProtectionEvents} from "../interfaces/IContentProtectionEvents.s
  *   reinitializers, so this migration uses reinitializer version 5.) V6
  *   (`reinitializeV6`) separates the upgrade authority from the operational owner and
  *   initializes the emergency pause state without moving any legacy linear storage.
+ *   V7 (`reinitializeV7`, #1759) adds the attester self-claim. It appends three
+ *   slots (per-stake claim deadline, dispute lock, lock authority) and moves no state;
+ *   stakes deposited before V7 get their deadline through `backfillStakeEscrow`.
  *
- * @custom:version 1.2.0
+ * Self-claim (#1759):
+ *   The attester can withdraw their own stake with `claimStakeRefund` once the
+ *   stake's escrow has elapsed. The escrow is snapshotted per stake at deposit time
+ *   (`stakeClaimableAt`). Staking takes no tier argument and every on-chain stake pays
+ *   the same `stakeAmount`, so the contract cannot tell which economic tier a
+ *   stake belongs to. It therefore applies the LONGEST configured tier escrow, so no
+ *   stake becomes claimable earlier than any tier policy allows.
+ *   A dispute holds the stake (`stakeLocked`, set by the owner or the authorised
+ *   DisputeResolution) so a flagged creator cannot withdraw ahead of a slash. The hold
+ *   is capped: `STAKE_CLAIM_FAIL_SAFE` after the escrow deadline the attester can claim
+ *   even while locked, so a deposit is never frozen indefinitely (owner decision,
+ *   2026-10-24). Slashing ignores the lock, and the owner `refundStake` path remains.
+ *
+ * @custom:version 1.3.0
  */
 contract ContentProtection is
     IContentProtectionEvents,
@@ -138,18 +154,38 @@ contract ContentProtection is
     /// @notice Global emergency stop for custody and protection-lifecycle mutations.
     bool public paused;
 
+    /// @notice tokenId => timestamp from which the attester may self-claim the stake
+    /// (#1759). Written at stake time; 0 means a pre-V7 stake not yet backfilled.
+    /// @dev Appended after all legacy state (V7).
+    mapping(uint256 => uint256) public stakeClaimableAt;
+
+    /// @notice tokenId => dispute hold. While set, `claimStakeRefund` reverts until the
+    /// fail-safe (`stakeClaimableAt + STAKE_CLAIM_FAIL_SAFE`). Slashing ignores it.
+    /// @dev Appended after all legacy state (V7).
+    mapping(uint256 => bool) public stakeLocked;
+
+    /// @notice Address allowed to set and clear stake locks besides the owner — the
+    /// DisputeResolution contract. address(0) means only the owner can lock.
+    /// @dev Appended after all legacy state (V7).
+    address public stakeLockAuthority;
+
     /// @dev Reserved storage slots so future upgrades can add state without shifting
     /// the existing layout. Must remain the last storage variable; shrink it by the
     /// number of slots any newly-added state occupies. Shrunk 50 -> 49 when
     /// `pendingOwner` was added (CP-3, #1271), then 49 -> 48 when the packed
-    /// `upgradeAuthority` + `paused` slot was added (#1579).
-    uint256[48] private __gap;
+    /// `upgradeAuthority` + `paused` slot was added (#1579), then 48 -> 45 when
+    /// `stakeClaimableAt`, `stakeLocked` and `stakeLockAuthority` were added (#1759).
+    uint256[45] private __gap;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
     uint256 public constant SLASH_TREASURY_BPS = 3000; // 30%
     // Remaining 10% is burned (sent to address(0) equivalent — kept in contract then swept)
     uint256 public constant BPS = 10000;
+
+    /// @notice How long after a stake's escrow deadline a dispute lock stops blocking
+    /// the attester's self-claim (#1759, owner decision 2026-10-24).
+    uint256 public constant STAKE_CLAIM_FAIL_SAFE = 180 days;
 
     // ============ Modifiers ============
 
@@ -184,7 +220,7 @@ contract ContentProtection is
 
     function initializeFresh(address _owner, address _treasury, uint256 _stakeAmount, address _upgradeAuthority)
         external
-        reinitializer(6)
+        reinitializer(7)
     {
         if (owner != address(0)) revert FreshInitializationOnly();
         if (_owner == address(0)) revert ZeroAddress();
@@ -361,9 +397,14 @@ contract ContentProtection is
 
         stakes[tokenId] = StakeInfo({amount: amount, depositedAt: block.timestamp, active: true});
         stakeTokens[tokenId] = token;
+        // Snapshot the self-claim deadline now so a later tier-policy change can
+        // neither shorten nor extend this stake's escrow (#1759).
+        uint256 claimableAt = block.timestamp + _longestTierEscrowDays() * 1 days;
+        stakeClaimableAt[tokenId] = claimableAt;
 
         emit StakeDeposited(tokenId, msg.sender, amount);
         emit StakeDepositedWithAsset(tokenId, msg.sender, token, amount);
+        emit StakeEscrowRecorded(tokenId, claimableAt);
     }
 
     /**
@@ -428,6 +469,86 @@ contract ContentProtection is
 
         emit StakeRefunded(tokenId, attester, amount);
         emit StakeRefundedWithAsset(tokenId, attester, token, amount);
+    }
+
+    /**
+     * @notice Withdraw your own stake once its escrow has elapsed (#1759).
+     * @dev Callable only by the stake's attester, who must not be blacklisted. Reverts
+     *      before `stakeClaimableAt[tokenId]`, and while the stake is locked by a
+     *      dispute unless the fail-safe (`STAKE_CLAIM_FAIL_SAFE` after the deadline)
+     *      has passed. Pays the stake back in the asset it was deposited in, with the
+     *      same push-then-escrow semantics and state transition as {refundStake}.
+     * @param tokenId The staked release or content identifier.
+     */
+    function claimStakeRefund(uint256 tokenId) external nonReentrant whenNotPaused {
+        address attester = attestations[tokenId].attester;
+        if (msg.sender != attester) revert NotStakeAttester(tokenId, msg.sender);
+        if (_blacklisted[msg.sender]) revert IsBlacklisted();
+        if (!stakes[tokenId].active) revert NotStaked();
+
+        uint256 claimableAt = stakeClaimableAt[tokenId];
+        if (claimableAt == 0) revert StakeEscrowNotRecorded(tokenId);
+        if (block.timestamp < claimableAt) revert StakeEscrowActive(tokenId, claimableAt);
+        if (stakeLocked[tokenId]) {
+            uint256 failSafeAt = claimableAt + STAKE_CLAIM_FAIL_SAFE;
+            if (block.timestamp < failSafeAt) revert StakeLockActive(tokenId, failSafeAt);
+        }
+
+        uint256 amount = stakes[tokenId].amount;
+        address token = stakeTokens[tokenId];
+
+        // Effects before the payout (CEI); reentry is blocked by nonReentrant.
+        stakes[tokenId].active = false;
+
+        _pay(token, attester, amount);
+
+        emit StakeRefundClaimed(tokenId, attester, token, amount);
+    }
+
+    /**
+     * @notice Record the self-claim deadline of stakes deposited before V7 (#1759).
+     * @dev Idempotent: skips inactive stakes and stakes whose deadline is already
+     *      recorded, so it never moves an existing deadline. The deadline is the
+     *      deposit time plus the longest configured tier escrow, the same rule new
+     *      stakes use; the owner cannot pick a shorter one. Not pause-gated: it moves
+     *      no funds.
+     * @param tokenIds Staked identifiers to backfill; over-inclusion is safe.
+     * @return recorded How many stakes got a deadline in this call.
+     */
+    function backfillStakeEscrow(uint256[] calldata tokenIds) external onlyOwner returns (uint256 recorded) {
+        uint256 escrowLength = _longestTierEscrowDays() * 1 days;
+        for (uint256 i; i < tokenIds.length; ++i) {
+            uint256 tokenId = tokenIds[i];
+            StakeInfo storage currentStake = stakes[tokenId];
+            if (!currentStake.active || stakeClaimableAt[tokenId] != 0) continue;
+            uint256 claimableAt = currentStake.depositedAt + escrowLength;
+            stakeClaimableAt[tokenId] = claimableAt;
+            emit StakeEscrowRecorded(tokenId, claimableAt);
+            ++recorded;
+        }
+    }
+
+    /**
+     * @notice Set or clear the dispute hold on a stake (#1759).
+     * @dev Callable by the owner or the stake-lock authority (DisputeResolution).
+     *      Deliberately not pause-gated: holding a stake is protective and clearing it
+     *      moves no funds. `tokenId` is the stake root (see {resolveStakeRoot}).
+     */
+    function setStakeLock(uint256 tokenId, bool locked) external {
+        // msg.sender is never address(0), so an unset authority authorises no one.
+        if (msg.sender != owner && msg.sender != stakeLockAuthority) {
+            revert NotStakeLockAuthority(msg.sender);
+        }
+        stakeLocked[tokenId] = locked;
+        emit StakeLockUpdated(tokenId, locked, msg.sender);
+    }
+
+    /// @notice Authorise the DisputeResolution contract to set and clear stake locks
+    /// (#1759). address(0) revokes the authority, leaving only the owner.
+    function setStakeLockAuthority(address authority) external onlyOwner {
+        address previousAuthority = stakeLockAuthority;
+        stakeLockAuthority = authority;
+        emit StakeLockAuthorityUpdated(previousAuthority, authority);
     }
 
     /// @notice Sweep the accumulated slash remainder (the retained "burn") for an asset
@@ -591,6 +712,13 @@ contract ContentProtection is
         paused = false;
         emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
     }
+
+    /// @notice V7 migration (#1759): marks the self-claim upgrade as applied. The new
+    /// slots start empty by design. No lock and no lock authority exist until the
+    /// owner sets them, and pre-V7 stakes get their deadline through
+    /// {backfillStakeEscrow}, so this moves no state and needs no caller check.
+    /// Schedule it as the `upgradeToAndCall` data so the version bump is atomic.
+    function reinitializeV7() external reinitializer(7) {}
 
     // ============ Views ============
 
@@ -782,6 +910,32 @@ contract ContentProtection is
         return (stakeTokens[tokenId], currentStake.amount, currentStake.active);
     }
 
+    /// @notice Self-claim state of a stake for wallets and indexers (#1759).
+    /// @return claimableAt When the escrow ends (0 = pre-V7 stake not backfilled).
+    /// @return failSafeAt When a dispute lock stops blocking the claim (0 if unrecorded).
+    /// @return locked Whether a dispute currently holds the stake.
+    /// @return claimable Whether `claimStakeRefund` would pass its gates right now for
+    /// the attester (active, deadline passed, lock clear or fail-safe passed, attester
+    /// not blacklisted, contract not paused).
+    function getStakeClaimState(uint256 tokenId)
+        external
+        view
+        returns (uint256 claimableAt, uint256 failSafeAt, bool locked, bool claimable)
+    {
+        claimableAt = stakeClaimableAt[tokenId];
+        failSafeAt = claimableAt == 0 ? 0 : claimableAt + STAKE_CLAIM_FAIL_SAFE;
+        locked = stakeLocked[tokenId];
+        claimable = !paused && stakes[tokenId].active && claimableAt != 0 && block.timestamp >= claimableAt
+            && (!locked || block.timestamp >= failSafeAt) && !_blacklisted[attestations[tokenId].attester];
+    }
+
+    /// @notice Escrow length recorded for a stake, in seconds (0 if unrecorded or never staked).
+    function escrowSeconds(uint256 tokenId) external view returns (uint256) {
+        uint256 claimableAt = stakeClaimableAt[tokenId];
+        if (claimableAt == 0) return 0;
+        return claimableAt - stakes[tokenId].depositedAt;
+    }
+
     function getTierPolicy(string calldata tierName)
         external
         view
@@ -853,6 +1007,18 @@ contract ContentProtection is
     function _isTrackVerified(uint256 trackId) internal view returns (bool) {
         uint256 releaseId = trackToParentRelease[trackId];
         return releaseId != 0 && attestations[trackId].valid && attestations[releaseId].valid;
+    }
+
+    /// @dev The longest escrow across the four tier policies. Staking carries no tier,
+    /// so this is the only value that cannot make any stake claimable early (#1759).
+    function _longestTierEscrowDays() internal view returns (uint256 longest) {
+        longest = _tierPolicies[_tierKey("verified")].escrowDays;
+        uint256 candidate = _tierPolicies[_tierKey("trusted")].escrowDays;
+        if (candidate > longest) longest = candidate;
+        candidate = _tierPolicies[_tierKey("established")].escrowDays;
+        if (candidate > longest) longest = candidate;
+        candidate = _tierPolicies[_tierKey("new")].escrowDays;
+        if (candidate > longest) longest = candidate;
     }
 
     function _initializeTierPoliciesFromStakeAmount(uint256 baseStakeAmount) internal {

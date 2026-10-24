@@ -170,6 +170,13 @@ contract DeployProtocol is ContentProtectionDeployment, RevenueEscrowDeployment,
             "  -> Mint/attestation voucher authorizer granted ContentProtection registrar role:", mintAuthorizer
         );
 
+        // #1759: open disputes hold the creator's stake so a self-claim cannot
+        // front-run a slash. Authorise DisputeResolution on ContentProtection first,
+        // then turn locking on (only CurationRewards may file/appeal from then on).
+        contentProtection.setStakeLockAuthority(address(disputeResolution));
+        disputeResolution.configureStakeLocking(address(contentProtection), address(curationRewards));
+        console.log("  -> DisputeResolution authorised to hold ContentProtection stakes");
+
         validator.setWhitelist(address(marketplaceDeployment.marketplace), true);
         console.log("  -> Marketplace whitelisted in validator");
 

@@ -88,9 +88,38 @@ Renders on the **wallet page** (`/wallet`). Table showing:
 | Deposited | Date of stake                             |
 | Escrow    | Countdown or status                       |
 | Status    | Active / Releasable / Refunded / Slashed  |
-| Actions   | **Withdraw** button (when escrow expired) |
+| Actions   | **Claim** button, or why not: "Claimable on <date>", "On hold: under dispute", "Claim date pending" |
 
 Fetches from backend (`/api/metadata/stakes/{address}`). Falls back to empty state when unavailable.
+
+**Self-claim (#1759).** A creator withdraws their own stake with
+`ContentProtection.claimStakeRefund` (V7) through the `useStakeClaim` UserOp hook;
+no operator action is needed. The endpoint adds the contract's live claim state to
+each active stake: `claimableAt`, `failSafeAt`, `locked`, `claimable`. These are read
+from `getStakeClaimState`, not stored. The Claim button appears only when
+`claimable` is true, so the wallet never shows a control that would revert.
+`deriveStakeClaimAction` in `lib/stakeConstants.ts` maps the state to the label.
+The escrow column uses the contract's recorded deadline when known. The indexer
+now handles `StakeRefunded(WithAsset)` and `StakeRefundClaimed`, marking the stake
+row inactive with `refundedAt`. Rules:
+
+- The claim opens at the deposit time plus the longest tier escrow, snapshotted
+  per stake. The contract cannot tell a stake's tier, so it never opens earlier
+  than any tier allows.
+- An open dispute holds the stake. The hold is released on a Rejected or
+  Inconclusive outcome, kept on Upheld for the slash, and capped at 180 days past
+  the escrow (owner decision, 2026-10-24).
+- Stakes deposited before the V7 upgrade show "Claim date pending" until the
+  operator runs the backfill. Rollout steps are in the
+  [operations runbook](../smart-contracts/operations-runbook.md#contentprotection-self-claim-rollout-v7-1759).
+- ADR-BM-6: vision-neutral infrastructure/quality. A creator's own deposit returns
+  to the creator, with no fee, price, split, or revenue-line change; ADR-BM-4 is not
+  implicated.
+
+Status: the contract, indexer, API, and wallet control ship in this branch.
+Each environment still needs the upgrade, the backfill, and the dispute-lock
+authorisation (deployment half: resonate-iac#324). The lock is set by the dispute
+flow only where a lock-capable `DisputeResolution` (v2.1.0+) is deployed.
 
 ### 5. Analytics Dashboard (`components/analytics/StakingOverview.tsx`)
 

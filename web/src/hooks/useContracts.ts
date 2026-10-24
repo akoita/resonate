@@ -1398,17 +1398,20 @@ export function useAttestationInfo(tokenId: bigint | undefined) {
 }
 
 /**
- * Hook to refund a stake after the escrow period has elapsed.
- * Calls ContentProtection.refundStake(tokenId).
+ * Hook for a creator to claim their own stake back once it is claimable (#1759).
+ * Calls ContentProtection.claimStakeRefund(tokenId), which only the stake's
+ * attester can call: after the escrow deadline, and while no dispute holds the
+ * stake (or after the 180-day fail-safe). The owner-only `refundStake` is
+ * deliberately not exposed to the wallet.
  */
-export function useStakeRefund() {
+export function useStakeClaim() {
   const { publicClient, chainId } = useZeroDev();
   const { address, status, kernelAccount } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const refund = useCallback(
+  const claim = useCallback(
     async (tokenId: bigint) => {
       if (status !== "authenticated" || !address) {
         throw new Error("Wallet not connected");
@@ -1428,7 +1431,7 @@ export function useStakeRefund() {
 
         const data = encodeFunctionData({
           abi: ContentProtectionABI,
-          functionName: "refundStake",
+          functionName: "claimStakeRefund",
           args: [tokenId],
         });
 
@@ -1455,7 +1458,7 @@ export function useStakeRefund() {
     [publicClient, address, status, chainId, kernelAccount]
   );
 
-  return { refund, pending, error, txHash };
+  return { claim, pending, error, txHash };
 }
 
 export interface ReportContentResult {
