@@ -1,12 +1,55 @@
 # Vision Sprint 41: Ready to charge, with honest money
 
-**Status:** Owner-approved 2026-10-24; in progress. No due date: it closes when
-its exit checks pass on staging.
+**Status:** Closed 2026-10-24. Five issues are closed. #1421 delivered its
+pricing proposal and stays open for the owner's sign-off. Verified on staging at
+`35a2ea14`.
 **Milestone:** [43](https://github.com/akoita/resonate/milestone/43).
 **Goal:** The owner has a measured, per-path pricing proposal for metered
 generation to sign off; money reporting has no known gaps; admin actions need
 a fresh passkey; and the staging API no longer has to run an always-on
 instance.
+
+## Outcome
+
+The trust-and-readiness work is in place. The pricing proposal now waits for
+the owner's decision and the private billing reconciliation.
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #1421 | Pricing proposal in `docs/rfc/generation-cost-model.md`. It finds that the flat 10¢/30 s over-charges per-song models about 5× and under-charges cold GPU renders. It proposes Lyria 2 at 10¢/30 s, Lyria 3 Pro at 13¢ per song, Lyria 3 Clip at 6¢ per song, and the GPU paths at 5¢ per request + 4¢/30 s, plus a $5 minimum top-up and a legal gate. The canonical price is unchanged | #2351 (proposal; sign-off pending) |
+| #2344 | `RoyaltyPayment` keyed on the log, so batched royalties are kept; a dry-run-first legacy split backfill; x402 **entitled net**, with the quote now recorded at sale time and labelled "Entitled — owed to you" | #2359 |
+| #2173 | Step-up confirmation for suspend, close and broadcast: a fresh wallet or passkey signature, a 5-minute purpose-bound proof, and a global guard. One durable admin audit log with an outcome and an admin view | #2356 |
+| #1933 | AI part takes have their own Usage & Billing line; totals unchanged | #2352 |
+| #2197 | About 70 request bodies moved to class DTOs, with 400 tests and a guard test that fails on any new unvalidated body | #2357 |
+| #1608 | `BACKEND_RUNTIME_MODE` (`combined` / `api` / `worker`): one image, one gate over every background loop | #2358 |
+
+**Unplanned:** #2355. The validation audit found two indexer maintenance routes
+without authentication (a finding already recorded in the repository's audit
+report). They now require an admin session.
+
+**Staging verification (2026-10-24, `35a2ea14`):**
+
+- The indexer maintenance routes, step-up challenge, audit log and usage
+  summary answer 401 without a sign-in. The indexer status stays public and
+  shows the indexer healthy, so the default `combined` mode still runs the
+  loops.
+- The deployed code contains the Audit Log page and the entitled-net wording.
+- The two migrations (audit outcome, `RoyaltyPayment` log key) were applied by
+  the deploy.
+
+**Carry-over and follow-ups:**
+
+- **Waiting on the owner:** #1421 sign-off, after the private billing
+  reconciliation and the legal gate.
+- **Deployment halves:**
+  - resonate-iac#320: billing figures;
+  - resonate-iac#321: the backfill run;
+  - resonate-iac#322: the worker cut-over and the API at minimum 0.
+- **Follow-ups:**
+  - #2360: a lease for the contract indexer;
+  - #2361: wallet amount value rules;
+  - #2362: step-up and audit for the remaining admin surfaces.
+- The next sprint is not yet selected.
 
 ## Why this theme
 
