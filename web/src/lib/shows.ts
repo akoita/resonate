@@ -6,7 +6,7 @@
  * to seeded campaign data for local demos and offline UI tests.
  */
 
-import { API_BASE, type Release } from "./api";
+import { ADMIN_STEP_UP_HEADER, API_BASE, ApiRequestError, type Release } from "./api";
 import { artistProfileHref, catalogArtistHref } from "./artistRoutes";
 import { getChainExplorerContractUrl } from "./explorer";
 
@@ -1965,10 +1965,13 @@ export async function confirmShowCampaignBooking(input: {
   token: string;
   evidenceBundleId?: string | null;
   reason?: string | null;
+  /** #2380: the fresh step-up proof this money-release action needs (see `withAdminStepUp`). */
+  stepUpProof?: string;
 }): Promise<Campaign> {
   return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/confirm-booking`, {
     method: "POST",
     token: input.token,
+    stepUpProof: input.stepUpProof,
     body: {
       evidenceBundleId: input.evidenceBundleId,
       reason: input.reason,
@@ -1981,10 +1984,13 @@ export async function confirmShowCampaignFulfillment(input: {
   token: string;
   evidenceBundleId?: string | null;
   reason?: string | null;
+  /** #2380: the fresh step-up proof this money-release action needs (see `withAdminStepUp`). */
+  stepUpProof?: string;
 }): Promise<Campaign> {
   return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/confirm-fulfillment`, {
     method: "POST",
     token: input.token,
+    stepUpProof: input.stepUpProof,
     body: {
       evidenceBundleId: input.evidenceBundleId,
       reason: input.reason,
@@ -2090,6 +2096,8 @@ export async function resolveShowCampaignDispute(input: {
   disputeId: string;
   outcome: "upheld" | "rejected" | "inconclusive";
   operatorNote?: string | null;
+  /** #2380: the fresh step-up proof this money-release action needs (see `withAdminStepUp`). */
+  stepUpProof?: string;
 }): Promise<ShowCampaignDispute> {
   const response = await fetch(
     `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/dispute/${encodeURIComponent(input.disputeId)}/resolve`,
@@ -2098,13 +2106,14 @@ export async function resolveShowCampaignDispute(input: {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${input.token}`,
+        ...(input.stepUpProof ? { [ADMIN_STEP_UP_HEADER]: input.stepUpProof } : {}),
       },
       body: JSON.stringify({ outcome: input.outcome, operatorNote: input.operatorNote }),
     },
   );
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(detail || `Resolving the dispute failed with status ${response.status}`);
+    throw failedRequest(detail, `Resolving the dispute failed with status ${response.status}`, response.status);
   }
   return await response.json() as ShowCampaignDispute;
 }
@@ -2140,14 +2149,32 @@ async function fetchShowsApi<T>(path: string): Promise<T | null> {
   }
 }
 
+/**
+ * An `Error` carrying the server's text as its message (as before), as an
+ * `ApiRequestError` so a `403 step_up_*` answer can be recognised by
+ * `withAdminStepUp` (#2380).
+ */
+function failedRequest(detail: string, fallback: string, status: number): ApiRequestError {
+  let details: unknown;
+  try {
+    details = JSON.parse(detail);
+  } catch {
+    details = undefined;
+  }
+  return new ApiRequestError(detail || fallback, status, details);
+}
+
 async function mutateShowCampaign(path: string, input: {
   method: "POST" | "PATCH";
   token: string;
   body: Record<string, unknown> | FormData;
+  /** #2380: sent as `X-Admin-Step-Up` on the money-release actions. */
+  stepUpProof?: string;
 }): Promise<Campaign> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${input.token}`,
   };
+  if (input.stepUpProof) headers[ADMIN_STEP_UP_HEADER] = input.stepUpProof;
   let requestBody: BodyInit;
   if (typeof FormData !== "undefined" && input.body instanceof FormData) {
     requestBody = input.body;
@@ -2163,7 +2190,7 @@ async function mutateShowCampaign(path: string, input: {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(detail || `Campaign update failed with status ${response.status}`);
+    throw failedRequest(detail, `Campaign update failed with status ${response.status}`, response.status);
   }
 
   return mapBackendCampaign(await response.json() as BackendShowCampaign);

@@ -74,7 +74,7 @@ export function auditResult(context: AdminAuditContext): Record<string, unknown>
 }
 
 /** Scalars only, no `undefined`, strings capped: the last line of defence against free text. */
-function toDetail(detail: Record<string, AdminAuditDetailValue> | undefined): Prisma.InputJsonObject | undefined {
+export function toAuditDetail(detail: Record<string, AdminAuditDetailValue> | undefined): Prisma.InputJsonObject | undefined {
   if (!detail) return undefined;
   const out: Record<string, string | number | boolean | null> = {};
   for (const [key, value] of Object.entries(detail)) {
@@ -141,7 +141,7 @@ export class AdminAuditInterceptor implements NestInterceptor {
       actorUserId,
       action: this.action,
       targetUserId: description.targetUserId ?? null,
-      detail: toDetail(description.detail),
+      detail: toAuditDetail(description.detail),
     });
   }
 }

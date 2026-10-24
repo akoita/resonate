@@ -8,6 +8,9 @@
  *   - 200 for the caller's own userId / Wallet.address / Wallet.ownerAddress
  *   - 200 for admin/operator support access
  *
+ * #2380: the admin/operator support branch writes one admin audit row; the
+ * owner's own read (and a refused one) writes none.
+ *
  * ContractsService is mocked at the controller boundary; the address-set
  * resolution itself is covered against real Postgres in
  * metadata.controller.integration.spec.ts.
@@ -23,6 +26,13 @@ import { EventBus } from '../modules/shared/event_bus';
 import { RightsRouteReassessmentService } from '../modules/rights/rights-route-reassessment.service';
 import { TrustedSourceService } from '../modules/rights/trusted-source.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
+import { writeAdminAuditEvent } from '../modules/admin_audit/admin_audit_event';
+
+jest.mock('../modules/admin_audit/admin_audit_event', () => ({
+  ...jest.requireActual('../modules/admin_audit/admin_audit_event'),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const SMART_ACCOUNT = `0x${'a1'.repeat(20)}`;
 const OWNER_EOA = `0x${'b2'.repeat(20)}`;
@@ -135,9 +145,33 @@ describe('MetadataController collection route (HTTP)', () => {
       .get(`/metadata/collection/${OTHER_WALLET}`)
       .set('Authorization', `Bearer ${authToken(`${role}-1`, role)}`)
       .expect(200);
-    expect(mockContractsService.getCallerWalletAddresses).not.toHaveBeenCalled();
     expect(mockContractsService.getStemsByOwner).toHaveBeenCalledWith(OTHER_WALLET, {
       deliveryUserId: undefined,
     });
+    // #2380: the support read of someone else's collection is recorded, address only.
+    expect(mockAudit).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith({
+      actorUserId: `${role}-1`,
+      action: 'collection.support_viewed',
+      targetUserId: null,
+      detail: { address: OTHER_WALLET },
+    });
+  });
+
+  it('writes no audit row for the owner, a refused read, or an admin reading their own wallet (#2380)', async () => {
+    await request(app.getHttpServer())
+      .get(`/metadata/collection/${SMART_ACCOUNT}`)
+      .set('Authorization', `Bearer ${authToken(SMART_ACCOUNT)}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/metadata/collection/${OTHER_WALLET}`)
+      .set('Authorization', `Bearer ${authToken(SMART_ACCOUNT)}`)
+      .expect(403);
+    mockContractsService.getCallerWalletAddresses.mockResolvedValueOnce(new Set([OTHER_WALLET]));
+    await request(app.getHttpServer())
+      .get(`/metadata/collection/${OTHER_WALLET}`)
+      .set('Authorization', `Bearer ${authToken('admin-1', 'admin')}`)
+      .expect(200);
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 });

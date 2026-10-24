@@ -77,6 +77,21 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "agents.evaluated", label: "Ran an agent evaluation" },
   { value: "agents.golden_eval_run", label: "Ran the golden agent evaluation" },
   { value: "agents.runtime_run", label: "Ran an agent on the runtime" },
+  // #2380: the broader branch an admin or operator took inside a route people use for their own data.
+  { value: "wallet.support_viewed", label: "Read someone's wallet" },
+  { value: "wallet.support_changed", label: "Changed someone's wallet" },
+  { value: "collection.support_viewed", label: "Opened someone's collection" },
+  { value: "notifications.support_viewed", label: "Read someone's notifications" },
+  { value: "seller_listings.support_viewed", label: "Opened a seller's listing inventory" },
+  { value: "listing_intent.support_recorded", label: "Recorded a listing for a seller" },
+  { value: "rights_evidence.privileged_submitted", label: "Submitted rights evidence as the platform" },
+  { value: "release_rights_request.support_viewed", label: "Opened an artist's release rights review" },
+  { value: "rights_reassessment_history.support_viewed", label: "Opened a release's route history" },
+  { value: "artist_analytics.support_viewed", label: "Opened an artist's analytics" },
+  { value: "show_campaign.operator_accessed", label: "Managed an artist's show campaign" },
+  { value: "show_pledge.operator_acted", label: "Acted on a backer's pledge" },
+  { value: "community_campaign_update.operator_posted", label: "Posted a show campaign update" },
+  { value: "community_benefit_rule.operator_managed", label: "Managed an artist's community benefits" },
 ];
 
 export const ADMIN_AUDIT_OUTCOME_OPTIONS: ReadonlyArray<{ value: AdminAuditOutcome; label: string }> = [
@@ -131,7 +146,7 @@ export function adminAuditDetailSummary(event: Pick<AdminAuditEvent, "action" | 
   const events = count("eventCount");
   if (events !== null) parts.push(`${events} ${events === 1 ? "event" : "events"}`);
   // #2362: codes and amounts the other admin actions record.
-  for (const key of ["decision", "action", "outcome", "status", "provider"]) {
+  for (const key of ["decision", "action", "outcome", "status", "provider", "via", "change", "evidenceRole"]) {
     const value = text(key);
     if (value) parts.push(value.replace(/_/g, " "));
   }

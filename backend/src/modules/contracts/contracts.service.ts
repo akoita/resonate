@@ -67,6 +67,8 @@ import {
   type MarketplaceSplitChainReader,
 } from "./marketplace_sale_split";
 import { recordRoyaltyPayment } from "./royalty_payment_record";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
+import { auditRef } from "../admin_audit/admin_audit.interceptor";
 import { evaluatePurchaseDeliveries } from "../purchase_consent/purchase_consent_delivery";
 import {
   dedupeFlags,
@@ -2538,10 +2540,16 @@ export class ContractsService implements OnModuleInit {
     return this.persistEvidenceBundle(normalizeEvidenceBundleInput(data));
   }
 
+  /**
+   * `auditActor` is the signed-in caller of a user-facing route. When only the
+   * admin role lets it in (it does not own the release), that is recorded (#2380).
+   * Internal calls made after an admin action pass none.
+   */
   async getLatestReleaseRightsUpgradeRequest(
     releaseId: string,
     requesterAddress: string,
     role?: string,
+    auditActor?: { userId?: string; role?: string },
   ) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
@@ -2562,8 +2570,15 @@ export class ContractsService implements OnModuleInit {
 
     const normalizedRequester = requesterAddress.toLowerCase();
     const ownerUserId = release.artist.userId?.toLowerCase();
-    if (role !== "admin" && (!ownerUserId || ownerUserId !== normalizedRequester)) {
+    const isOwner = Boolean(ownerUserId) && ownerUserId === normalizedRequester;
+    if (role !== "admin" && !isOwner) {
       throw new ForbiddenException("You do not have access to this release review");
+    }
+    if (role === "admin" && !isOwner && auditActor) {
+      await auditAdminBranch(auditActor, "release_rights_request.support_viewed", {
+        targetUserId: release.artist.userId,
+        detail: { releaseId: auditRef(releaseId) },
+      });
     }
 
     const request = await prisma.releaseRightsUpgradeRequest.findFirst({

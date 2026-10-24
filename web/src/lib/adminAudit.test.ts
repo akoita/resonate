@@ -19,8 +19,8 @@ describe("admin audit helpers (#2173)", () => {
       expect(adminAuditActionLabel(option.value)).toBe(option.label);
       expect(isAdminAuditAction(option.value)).toBe(true);
     }
-    expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(71);
-    expect(new Set(ADMIN_AUDIT_ACTION_OPTIONS.map((option) => option.value)).size).toBe(71);
+    expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(85);
+    expect(new Set(ADMIN_AUDIT_ACTION_OPTIONS.map((option) => option.value)).size).toBe(85);
     expect(adminAuditActionLabel("something.new")).toBe("something.new");
     expect(isAdminAuditAction("something.new")).toBe(false);
     expect(adminAuditOutcomeLabel("success")).toBe("Done");
@@ -46,6 +46,12 @@ describe("admin audit helpers (#2173)", () => {
       .toBe("approve");
     expect(adminAuditDetailSummary({ action: "community_moderation.report_resolved", detail: { action: "ban_member" } }))
       .toBe("ban member");
+    // #2380: branch codes read as plain words; addresses and ids are not repeated.
+    expect(adminAuditDetailSummary({ action: "show_pledge.operator_acted", detail: { pledgeId: "p-1", via: "refund_confirm" } }))
+      .toBe("refund confirm");
+    expect(adminAuditDetailSummary({ action: "wallet.support_changed", detail: { change: "fund" } })).toBe("fund");
+    expect(adminAuditDetailSummary({ action: "rights_evidence.privileged_submitted", detail: { evidenceRole: "trusted_source", subjectId: "r-1" } }))
+      .toBe("trusted source");
     expect(adminAuditDetailSummary({ action: "user.detail_viewed", detail: null })).toBeNull();
   });
 
