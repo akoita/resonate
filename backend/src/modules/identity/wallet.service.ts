@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -16,6 +17,51 @@ import { WalletProviderRegistry } from "./wallet_provider_registry";
 type WalletProviderName = "local" | "erc4337";
 const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 
+/**
+ * Largest single top-up or monthly cap a wallet call may set (USD) (#2361).
+ * Conservative on purpose: `fund` credits a spendable balance, so an absurd
+ * value is almost certainly a typo or an abuse attempt. Raise it deliberately
+ * once real payment rails settle larger amounts.
+ */
+export const MAX_WALLET_AMOUNT_USD = 10_000;
+
+function assertFiniteAmount(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new BadRequestException(`${field} must be a finite number`);
+  }
+  return value;
+}
+
+/** Fund: a strictly positive, finite amount up to the per-call maximum. */
+export function assertValidFundAmount(value: unknown): void {
+  const amount = assertFiniteAmount(value, "amountUsd");
+  if (amount <= 0) {
+    throw new BadRequestException("amountUsd must be greater than 0");
+  }
+  if (amount > MAX_WALLET_AMOUNT_USD) {
+    throw new BadRequestException(
+      `amountUsd must be at most ${MAX_WALLET_AMOUNT_USD}`,
+    );
+  }
+}
+
+/**
+ * Budget: `0` is allowed. A cap of 0 is the wallet's default and means nothing
+ * may be spent (spend() denies once spent + amount exceeds the cap); it is how
+ * a user pauses spending. It is not "no cap". Negative values are rejected.
+ */
+export function assertValidMonthlyCap(value: unknown): void {
+  const cap = assertFiniteAmount(value, "monthlyCapUsd");
+  if (cap < 0) {
+    throw new BadRequestException("monthlyCapUsd must not be negative");
+  }
+  if (cap > MAX_WALLET_AMOUNT_USD) {
+    throw new BadRequestException(
+      `monthlyCapUsd must be at most ${MAX_WALLET_AMOUNT_USD}`,
+    );
+  }
+}
+
 export type WalletCaller = { userId: string; role?: string };
 
 @Injectable()
@@ -31,6 +77,8 @@ export class WalletService {
   ) { }
 
   async fundWallet(rawInput: { userId: string; amountUsd: number }) {
+    // Value rules run before any read or write so a rejected call changes nothing.
+    assertValidFundAmount(rawInput.amountUsd);
     const input = { ...rawInput, userId: normalizeUserId(rawInput.userId) };
     const wallet = await this.getOrCreate(input.userId);
     const updated = await prisma.wallet.update({
@@ -53,6 +101,7 @@ export class WalletService {
     monthlyCapUsd: number;
     resetSpent?: boolean;
   }) {
+    assertValidMonthlyCap(rawInput.monthlyCapUsd);
     const input = { ...rawInput, userId: normalizeUserId(rawInput.userId) };
     const wallet = await this.getOrCreate(input.userId);
     const updated = await prisma.wallet.update({

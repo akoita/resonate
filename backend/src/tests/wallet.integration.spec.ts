@@ -7,6 +7,7 @@
  * Run: npm run test:integration
  */
 
+import { BadRequestException } from '@nestjs/common';
 import { prisma } from '../db/prisma';
 import { WalletService } from '../modules/identity/wallet.service';
 import { EventBus } from '../modules/shared/event_bus';
@@ -71,5 +72,43 @@ describe('WalletService (integration)', () => {
 
     expect(found.address).toBe(TEST_ADDRESS);
     expect(found.ownerAddress).toBeNull();
+  });
+
+  it('writes nothing when a fund or budget call is rejected (#2361)', async () => {
+    const userId = `${TEST_PREFIX}rejected`;
+    await prisma.user.create({ data: { id: userId, email: `${userId}@test.resonate` } });
+    const events: unknown[] = [];
+    const unsubscribe = (wallet as any).eventBus.subscribe('wallet.funded', (e: unknown) => events.push(e));
+
+    for (const amountUsd of [0, -5, NaN, Infinity, 10_001]) {
+      await expect(wallet.fundWallet({ userId, amountUsd })).rejects.toThrow(BadRequestException);
+    }
+    for (const monthlyCapUsd of [-1, NaN, Infinity, 10_001]) {
+      await expect(wallet.setBudget({ userId, monthlyCapUsd })).rejects.toThrow(BadRequestException);
+    }
+
+    expect(await prisma.wallet.count({ where: { userId } })).toBe(0);
+    expect(events).toHaveLength(0);
+    unsubscribe.unsubscribe();
+
+    // An existing wallet keeps its balance and cap.
+    await wallet.setBudget({ userId, monthlyCapUsd: 20 });
+    await wallet.fundWallet({ userId, amountUsd: 5 });
+    await expect(wallet.fundWallet({ userId, amountUsd: -1 })).rejects.toThrow(BadRequestException);
+    await expect(wallet.setBudget({ userId, monthlyCapUsd: -1 })).rejects.toThrow(BadRequestException);
+    const row = await prisma.wallet.findFirst({ where: { userId } });
+    expect(row!.balanceUsd).toBe(5);
+    expect(row!.monthlyCapUsd).toBe(20);
+
+    await prisma.wallet.deleteMany({ where: { userId } });
+    await prisma.user.deleteMany({ where: { id: userId } });
+  });
+
+  it('accepts a zero monthly cap (spending paused)', async () => {
+    const userId = `${TEST_PREFIX}user`;
+    await wallet.setBudget({ userId, monthlyCapUsd: 0 });
+    const row = await prisma.wallet.findFirst({ where: { userId } });
+    expect(row!.monthlyCapUsd).toBe(0);
+    await wallet.setBudget({ userId, monthlyCapUsd: 10 });
   });
 });
