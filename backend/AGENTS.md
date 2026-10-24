@@ -105,3 +105,11 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    stale and fresh cases. A new route gated this way also goes in the pinned list
    in `admin_step_up_routes.spec.ts`, and an admin action writes one
    `writeAdminAuditEvent` record.
+   Every other admin or operator route is recorded with `@AdminAudit(action,
+   describe)` (`admin_audit.interceptor.ts`; #2362): the action name goes in
+   `ADMIN_AUDIT_ACTIONS`, and the describer reads ids, codes and counts through
+   `auditRef` / `auditCode` / `auditNumber`, never operator-typed text.
+   `admin_audit_coverage.spec.ts` fails for an `admin` or `operator` route with
+   neither `@AdminAudit` nor a listed reason; specs of audited controllers mock
+   `writeAdminAuditEvent` (see `credits.controller.http.spec.ts`) and use
+   `confirmedBearer` / `expectStepUpRequired` from `e2e-helpers` for gated routes.

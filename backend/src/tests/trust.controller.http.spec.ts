@@ -4,7 +4,14 @@ import { RolesGuard } from "../modules/auth/roles.guard";
 import { TrustController } from "../modules/trust/trust.controller";
 import { TrustService } from "../modules/trust/trust.service";
 import { PayoutEligibilityService } from "../modules/trust/payout-eligibility.service";
+import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
+
+jest.mock("../modules/admin_audit/admin_audit_event", () => ({
+  ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 /**
  * HTTP contract for the self-serve payout-eligibility endpoint (#1498).
@@ -110,5 +117,29 @@ describe("TrustController payout-eligibility (http)", () => {
         expect(res.body.eligible).toBe(false);
         expect(res.body.reasons[0].code).toBe("artist_profile_required");
       });
+  });
+
+  it("records an admin verifying an artist, and refuses everyone else (#2362)", async () => {
+    mockTrustService.setVerified.mockResolvedValue({ artistId: "artist-1", tier: "verified" });
+    await request(app.getHttpServer())
+      .post("/api/trust/artist-1/verify")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post("/api/trust/artist-1/verify")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(403);
+    expect(mockAudit).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .post("/api/trust/artist-1/verify")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(201);
+    expect(mockAudit).toHaveBeenCalledWith({
+      actorUserId: "admin-1",
+      action: "trust.artist_verified",
+      targetUserId: null,
+      detail: { artistId: "artist-1" },
+    });
   });
 });

@@ -3,7 +3,11 @@
 #
 # Usage:
 #   ./backend/scripts/wipe-releases-remote.sh
-#   API_URL=http://localhost:3001 TOKEN=... ./backend/scripts/wipe-releases-remote.sh
+#   API_URL=http://localhost:3001 TOKEN=... STEP_UP_PROOF=... ./backend/scripts/wipe-releases-remote.sh
+#
+# The route needs a fresh admin step-up proof (#2362): POST /admin/step-up/challenge,
+# sign the message with the admin's own passkey or wallet, POST /admin/step-up/verify,
+# and pass the returned `proof` as STEP_UP_PROOF (valid for at most five minutes).
 #
 set -euo pipefail
 
@@ -35,6 +39,11 @@ if [[ -z "${TOKEN:-}" ]]; then
   exit 1
 fi
 
+if [[ -z "${STEP_UP_PROOF:-}" ]]; then
+  echo "❌ No STEP_UP_PROOF provided (wiping releases needs a fresh admin step-up proof)."
+  exit 1
+fi
+
 echo "🎯 Target: $API_URL"
 echo ""
 
@@ -54,6 +63,7 @@ echo ""
 echo "🗑️  Wiping..."
 RESULT=$(curl -s -X DELETE "$API_URL/admin/wipe-releases" \
   -H "Authorization: Bearer $TOKEN" \
+  -H "X-Admin-Step-Up: $STEP_UP_PROOF" \
   -H "Content-Type: application/json")
 
 echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"

@@ -23,6 +23,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import { hours } from "../shared/rate_limits";
 import { ArtistService } from "./artist.service";
 import { ArtistEnrichmentService } from "./artist-enrichment.service";
+import { AdminAudit, auditBody, auditCode, auditRef } from "../admin_audit/admin_audit.interceptor";
 
 const ARTIST_ENRICHMENT_THROTTLE = {
     default: {
@@ -163,6 +164,7 @@ export class ArtistController {
     @UseGuards(AuthGuard("jwt"), RolesGuard)
     @Roles("admin", "operator")
     @Get("claims/pending")
+    @AdminAudit("artist_claims.viewed")
     listPendingClaims(@Request() req: any) {
         return this.artistService.listPendingClaims(req.user.role);
     }
@@ -170,6 +172,7 @@ export class ArtistController {
     @UseGuards(AuthGuard("jwt"), RolesGuard)
     @Roles("admin", "operator")
     @Patch("claims/:claimId")
+    @AdminAudit("artist_claim.reviewed", (c) => ({ detail: { claimId: auditRef(c.params.claimId), decision: auditCode(auditBody(c).decision, ["approve", "reject", "revoke"] as const) } }))
     reviewClaim(
         @Request() req: any,
         @Param("claimId") claimId: string,

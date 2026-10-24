@@ -66,7 +66,10 @@ exit 1 as needing a person, not a retry.
 
 An operator holding an admin token can drive the same work over HTTP at
 `POST /admin/retention/cleanup`; the response carries the same status and the
-per-tier warehouse outcomes.
+per-tier warehouse outcomes. The route deletes data, so it needs a fresh step-up
+proof in the `X-Admin-Step-Up` header (#2362; see the account erasure runbook for
+how to obtain one) and each call is recorded in the admin audit log as
+`maintenance.retention_cleanup_run`.
 
 How the scheduled job is defined, invoked and configured is deployment
 configuration and lives in the infrastructure repository.

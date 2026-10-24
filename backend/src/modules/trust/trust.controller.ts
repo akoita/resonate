@@ -13,6 +13,7 @@ import { Roles } from "../auth/roles.decorator";
 import { TrustService } from "./trust.service";
 import { PayoutEligibilityService } from "./payout-eligibility.service";
 import { deriveCreatorVerificationStates } from "./verification-semantics";
+import { AdminAudit, auditRef } from "../admin_audit/admin_audit.interceptor";
 
 @Controller("api/trust")
 export class TrustController {
@@ -86,6 +87,7 @@ export class TrustController {
   @Post(":artistId/verify")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
+  @AdminAudit("trust.artist_verified", (c) => ({ detail: { artistId: auditRef(c.params.artistId) } }))
   async setVerified(@Param("artistId") artistId: string) {
     const trust = await this.trustService.setVerified(artistId);
     const verification = deriveCreatorVerificationStates({

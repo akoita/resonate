@@ -32,10 +32,31 @@ function protectedHandlers(): string[] {
 }
 
 describe("@RequireStepUp routes", () => {
-  it("are exactly suspend, close and broadcast", () => {
+  it("are exactly the destructive admin actions (#2173, #2362)", () => {
     expect(protectedHandlers()).toEqual([
+      // Account closure and suspension (#2147).
       "accounts/accounts.controller.ts:close",
       "accounts/accounts.controller.ts:suspend",
+      // Indexer reset and manual reindex.
+      "contracts/metadata.controller.ts:reindexTransaction",
+      "contracts/metadata.controller.ts:resetIndexer",
+      // Credit grants.
+      "credits/credits.controller.ts:grant",
+      "credits/credits.controller.ts:grantRequest",
+      // Takedowns.
+      "dmca/dmca.controller.ts:resolveReport",
+      // Wallet recovery.
+      "identity/wallet.controller.ts:approveRecovery",
+      "identity/wallet.controller.ts:requestRecovery",
+      "identity/wallet.controller.ts:setGuardians",
+      // Maintenance deletes and resets; community moderation removals and bans.
+      "maintenance/maintenance.controller.ts:cleanup",
+      "maintenance/maintenance.controller.ts:resolveCommunityModerationReport",
+      "maintenance/maintenance.controller.ts:runDueAccountErasures",
+      "maintenance/maintenance.controller.ts:wipeReleases",
+      // Management transfer recovery.
+      "management/management.controller.ts:reviewTransferRecoveryRequest",
+      // A broadcast cannot be recalled.
       "notifications/notice.controller.ts:broadcast",
     ]);
   });
@@ -44,7 +65,9 @@ describe("@RequireStepUp routes", () => {
     for (const entry of protectedHandlers()) {
       const [file, handler] = entry.split(":");
       const source = readFileSync(join(MODULES, file), "utf8");
-      const at = source.indexOf(`  ${handler}(`);
+      const definition = new RegExp(`^ +(?:async )?${handler}\\(`, "m").exec(source);
+      expect(definition).not.toBeNull();
+      const at = definition!.index;
       const decorators = source.slice(Math.max(0, source.lastIndexOf("\n\n", at)), at);
       expect(decorators).toContain("@Roles(");
     }

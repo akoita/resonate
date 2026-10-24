@@ -33,6 +33,7 @@ import {
   DiscoveryPopularityService,
   PopularityWindow,
 } from "./discovery-popularity.service";
+import { AdminAudit, auditBody, auditRef } from "../admin_audit/admin_audit.interceptor";
 
 function parsePopularityWindow(value?: string): PopularityWindow | undefined {
   if (value === undefined || value === "") return undefined;
@@ -50,6 +51,7 @@ export class CatalogController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Patch("credits/:creditId/identity")
+  @AdminAudit("catalog_credit.identity_reviewed", (c) => ({ detail: { creditId: auditRef(c.params.creditId), artistId: auditRef(auditBody(c).artistId) } }))
   reviewCreditIdentity(
     @Param("creditId") creditId: string,
     @Body() body: { artistId?: unknown; note?: unknown },

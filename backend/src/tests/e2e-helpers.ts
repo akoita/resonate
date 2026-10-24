@@ -115,3 +115,40 @@ export function stepUpProof(userId: string, now: number = Date.now()): string {
   const config = { get: (key: string) => (key === 'JWT_SECRET' ? TEST_JWT_SECRET : undefined) };
   return new AdminStepUpTokenService(config as any).issueProof(userId, now).proof;
 }
+
+/**
+ * Headers for a signed-in `userId` with a fresh step-up proof (#2362), for a
+ * `@RequireStepUp()` route.
+ */
+export function confirmedBearer(userId: string, role: string): Record<string, string> {
+  return { Authorization: `Bearer ${authToken(userId, role)}`, 'X-Admin-Step-Up': stepUpProof(userId) };
+}
+
+/**
+ * Asserts a `@RequireStepUp()` route refuses a request without a proof
+ * (`403 step_up_required`), with a stale one (`403 step_up_expired`) and with a
+ * proof minted for someone else (`403 step_up_invalid`). The caller asserts the
+ * service behind the route was not reached.
+ */
+export async function expectStepUpRequired(
+  app: INestApplication,
+  method: 'get' | 'post' | 'patch' | 'put' | 'delete',
+  path: string,
+  session: { userId: string; role: string },
+  body: Record<string, unknown> = {},
+): Promise<void> {
+  // Loaded here so specs that never call this do not pay for supertest.
+  const request = require('supertest');
+  const bearer = { Authorization: `Bearer ${authToken(session.userId, session.role)}` };
+  const call = (headers: Record<string, string>) =>
+    request(app.getHttpServer())[method](path).set({ ...bearer, ...headers }).send(body);
+
+  const missing = await call({});
+  expect([missing.status, missing.body.code]).toEqual([403, 'step_up_required']);
+
+  const stale = await call({ 'X-Admin-Step-Up': stepUpProof(session.userId, Date.now() - 60 * 60 * 1000) });
+  expect([stale.status, stale.body.code]).toEqual([403, 'step_up_expired']);
+
+  const someoneElses = await call({ 'X-Admin-Step-Up': stepUpProof(`${session.userId}-other`) });
+  expect([someoneElses.status, someoneElses.body.code]).toEqual([403, 'step_up_invalid']);
+}

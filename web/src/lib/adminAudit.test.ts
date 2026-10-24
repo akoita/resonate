@@ -19,7 +19,8 @@ describe("admin audit helpers (#2173)", () => {
       expect(adminAuditActionLabel(option.value)).toBe(option.label);
       expect(isAdminAuditAction(option.value)).toBe(true);
     }
-    expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(9);
+    expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(71);
+    expect(new Set(ADMIN_AUDIT_ACTION_OPTIONS.map((option) => option.value)).size).toBe(71);
     expect(adminAuditActionLabel("something.new")).toBe("something.new");
     expect(isAdminAuditAction("something.new")).toBe(false);
     expect(adminAuditOutcomeLabel("success")).toBe("Done");
@@ -37,6 +38,14 @@ describe("admin audit helpers (#2173)", () => {
       .toBe("policy · to all · notice 12345678");
     expect(adminAuditDetailSummary({ action: "agent_session.events_viewed", detail: { sessionId: "s-1", eventCount: 12 } }))
       .toBe("12 events · session s-1");
+    expect(adminAuditDetailSummary({ action: "credit_request.granted", detail: { requestId: "r-1", amountCents: 750 } }))
+      .toBe("$7.50");
+    expect(adminAuditDetailSummary({ action: "dmca.report_resolved", detail: { reportId: "r-1", outcome: "upheld" } }))
+      .toBe("upheld");
+    expect(adminAuditDetailSummary({ action: "management_recovery.reviewed", detail: { recoveryId: "x", decision: "approve" } }))
+      .toBe("approve");
+    expect(adminAuditDetailSummary({ action: "community_moderation.report_resolved", detail: { action: "ban_member" } }))
+      .toBe("ban member");
     expect(adminAuditDetailSummary({ action: "user.detail_viewed", detail: null })).toBeNull();
   });
 

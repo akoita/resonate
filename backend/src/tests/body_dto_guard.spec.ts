@@ -20,16 +20,13 @@ import * as path from "path";
 import { METHOD_METADATA, PATH_METADATA, ROUTE_ARGS_METADATA } from "@nestjs/common/constants";
 import { RouteParamtypes } from "@nestjs/common/enums/route-paramtypes.enum";
 
-type Category = "service-validated" | "inline-auth" | "deferred-admin";
+type Category = "service-validated" | "inline-auth";
 
 /** `Controller.handler` -> why this body is not a class DTO. */
 const ALLOWED: Record<string, { category: Category; reason: string }> = {};
 
 function sv(keys: string[], reason: string) {
   for (const key of keys) ALLOWED[key] = { category: "service-validated", reason };
-}
-function deferred(keys: string[], reason: string) {
-  for (const key of keys) ALLOWED[key] = { category: "deferred-admin", reason };
 }
 
 // --- Authenticates (or gates) inside the handler: a DTO would answer 400 first. ---
@@ -46,23 +43,6 @@ const INLINE_AUTH: Record<string, string> = {
 for (const [key, reason] of Object.entries(INLINE_AUTH)) {
   ALLOWED[key] = { category: "inline-auth", reason };
 }
-
-// --- Admin routes owned by the step-up work (#2173): not touched here. ---
-deferred(
-  [
-    "MaintenanceController.backfillStemAudioFeatures",
-    "MaintenanceController.backfillTrackEmbeddings",
-    "MaintenanceController.runDueAccountErasures",
-    "MaintenanceController.loadAnalyticsWarehouse",
-    "MaintenanceController.backfillAnalyticsWarehouse",
-    "MaintenanceController.generateCommunityCohorts",
-    "MaintenanceController.resolveCommunityModerationReport",
-    "X402RefundReconciliationController.markRefunded",
-    "NoticeController.broadcast",
-    "NoticeController.targeted",
-  ],
-  "Admin controller: deferred until the admin step-up work (#2173) lands, to avoid conflicting edits. Convert in a follow-up.",
-);
 
 // --- Every field is checked by the service or the handler itself. ---
 sv(

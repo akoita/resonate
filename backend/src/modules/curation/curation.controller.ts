@@ -5,6 +5,7 @@ import { seconds } from "../shared/rate_limits";
 import { Roles } from "../auth/roles.decorator";
 import { CurationService } from "./curation.service";
 import { CuratorReportDto, CuratorStakeDto } from "./curation.dto";
+import { AdminAudit } from "../admin_audit/admin_audit.interceptor";
 
 @Controller("curation")
 export class CurationController {
@@ -36,6 +37,7 @@ export class CurationController {
   @UseGuards(AuthGuard("jwt"))
   @Get("reports")
   @Roles("admin")
+  @AdminAudit("curation.reports_viewed")
   listReports() {
     return { reports: this.curationService.listReports() };
   }
