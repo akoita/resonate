@@ -61,6 +61,11 @@ import {
   publishCommerceSettled,
 } from "../analytics/analytics_commerce_settled";
 import {
+  finalizeMarketplaceSaleSplit,
+  finalizePendingMarketplaceSplits,
+  type MarketplaceSplitChainReader,
+} from "./marketplace_sale_split";
+import {
   dedupeFlags,
   getUploadRightsActions,
   type UploadRightsFlag,
@@ -87,6 +92,33 @@ const MARKETPLACE_ABI = [
         { name: "expiry", type: "uint40" },
       ],
     }],
+  },
+] as const;
+
+// #2172: the reads that finalise a sale's split (fee rate and ERC-2981 royalty).
+const MARKETPLACE_PROTOCOL_FEE_ABI = [
+  {
+    name: "protocolFeeBps",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+const STEM_NFT_ROYALTY_INFO_ABI = [
+  {
+    name: "royaltyInfo",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "salePrice", type: "uint256" },
+    ],
+    outputs: [
+      { name: "", type: "address" },
+      { name: "", type: "uint256" },
+    ],
   },
 ] as const;
 
@@ -191,11 +223,62 @@ export class ContractsService implements OnModuleInit {
   private readonly logger = new Logger(ContractsService.name);
   private readonly curatorReputationService = new CuratorReputationService();
 
+  /**
+   * Chain reads for a sale's split (#2172), pinned to the Sold block. Replaceable
+   * so a spec can point it at its own node.
+   */
+  splitChainReader: MarketplaceSplitChainReader = {
+    protocolFeeBpsAt: async ({ chainId, marketplaceAddress, blockNumber }) => {
+      const config = CHAIN_CONFIGS[chainId];
+      if (!config) throw new Error(`No chain configuration for ${chainId}`);
+      const client = createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+      return client.readContract({
+        address: marketplaceAddress as Address,
+        abi: MARKETPLACE_PROTOCOL_FEE_ABI,
+        functionName: "protocolFeeBps",
+        blockNumber,
+      });
+    },
+    royaltyAmountAt: async ({ chainId, stemNftAddress, tokenId, salePrice, blockNumber }) => {
+      const config = CHAIN_CONFIGS[chainId];
+      if (!config) throw new Error(`No chain configuration for ${chainId}`);
+      const client = createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+      const [, amount] = await client.readContract({
+        address: stemNftAddress as Address,
+        abi: STEM_NFT_ROYALTY_INFO_ABI,
+        functionName: "royaltyInfo",
+        args: [tokenId, salePrice],
+        blockNumber,
+      });
+      return amount;
+    },
+  };
+
   constructor(
     private readonly eventBus: EventBus,
     private readonly trustService: TrustService,
     private readonly notificationService?: NotificationService,
   ) {}
+
+  /**
+   * Finalises the real split of marketplace sales still pending (#2172): those of
+   * one transaction, or the most recent pending ones. Safe to repeat.
+   */
+  finalizePendingSaleSplits(options: { transactionHash?: string; limit?: number } = {}) {
+    return finalizePendingMarketplaceSplits(this.splitChainReader, this.logger, options);
+  }
+
+  /** Never fails the indexing path: an unreadable split just stays pending. */
+  private async tryFinalizeSaleSplit(purchaseId: string) {
+    try {
+      const result = await finalizeMarketplaceSaleSplit(purchaseId, this.splitChainReader, this.logger);
+      if (result.state === "pending") {
+        this.logger.log(`Sale split pending for purchase ${purchaseId}: ${result.reason}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Sale split not finalized for purchase ${purchaseId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   private readonly releaseRightsUpgradeOpenStatuses = [
     "submitted",
@@ -420,6 +503,12 @@ export class ContractsService implements OnModuleInit {
     // Fix orphan listings (no stemId) on startup (non-blocking)
     this.reconcileOrphanListings().catch(err =>
       this.logger.error(`Orphan listing reconciliation failed: ${err}`)
+    );
+
+    // #2172: retry the most recent sales whose split was still pending (bounded,
+    // non-blocking; one that cannot be read from the chain just stays pending).
+    this.finalizePendingSaleSplits({ limit: 50 }).catch(err =>
+      this.logger.error(`Sale split reconciliation failed: ${err}`)
     );
   }
 
@@ -834,6 +923,8 @@ export class ContractsService implements OnModuleInit {
           this.logger.log(
             `StemPurchase already recorded for tx ${event.transactionHash} log ${event.logIndex}, skipping`,
           );
+          // A replay is also the retry for a split that was still pending (#2172).
+          await this.tryFinalizeSaleSplit(existingPurchase.id);
           return;
         }
 
@@ -847,12 +938,13 @@ export class ContractsService implements OnModuleInit {
           amountUnits: event.totalPaid,
         });
         const soldAt = new Date(event.occurredAt);
+        const createdPurchase: { id?: string } = {};
         try {
           // The purchase and the listing decrement commit together, and the
           // decrement is atomic so two Sold logs for one listing row in the same
           // transaction cannot lose an update.
           await prisma.$transaction(async (tx) => {
-            await tx.stemPurchase.create({
+            const created = await tx.stemPurchase.create({
               data: {
                 listingId: listing.id,
                 buyerAddress: event.buyerAddress.toLowerCase(),
@@ -865,7 +957,8 @@ export class ContractsService implements OnModuleInit {
                 settlementAmount: purchasePayment.settlementAmount,
                 settlementAmountUnits: purchasePayment.settlementAmountUnits,
                 canonicalAmountUsd: purchasePayment.canonicalAmountUsd,
-                royaltyPaid: "0", // Will be updated from RoyaltyPaid event
+                // "0" here means "not known yet" until splitFinalizedAt is set (#2172).
+                royaltyPaid: "0",
                 protocolFeePaid: "0",
                 sellerReceived: "0",
                 licenseType: listing.licenseType,
@@ -875,6 +968,7 @@ export class ContractsService implements OnModuleInit {
                 purchasedAt: soldAt,
               },
             });
+            createdPurchase.id = created.id;
             const updated = await tx.stemListing.update({
               where: { id: listing.id },
               data: { amount: { decrement: BigInt(event.amount) } },
@@ -901,6 +995,11 @@ export class ContractsService implements OnModuleInit {
         }
 
         this.logger.log(`Stored StemPurchase: listingId=${event.listingId}`);
+
+        // #2172: royalty/fee/seller start pending ("0" is not a split); derive the
+        // real split from the RoyaltyPaid log before this Sold log. Stays pending
+        // (never zero) if any part cannot be established yet.
+        if (createdPurchase.id) await this.tryFinalizeSaleSplit(createdPurchase.id);
 
         // #1894: one settled-commerce fact per NEW purchase (the replay paths
         // above return before this point). Never fails the indexing path.
@@ -957,6 +1056,10 @@ export class ContractsService implements OnModuleInit {
         });
 
         this.logger.log(`Stored RoyaltyPayment: tokenId=${event.tokenId}, amount=${event.amount}`);
+
+        // #2172: a sale of this transaction whose Sold log was handled first is
+        // still pending; its split can be derived now.
+        await this.finalizePendingSaleSplits({ transactionHash: event.transactionHash, limit: 10 });
       } catch (error) {
         this.logger.error(`Failed to process RoyaltyPaid: ${error}`);
       }

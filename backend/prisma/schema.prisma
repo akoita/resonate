@@ -1212,9 +1212,20 @@ model StemPurchase {
   settlementAmount      String?
   settlementAmountUnits String?
   canonicalAmountUsd    String?
+  /// The three amounts below are "0" until the split is final: "0" means
+  /// "not known yet" unless `splitFinalizedAt` is set (#2172). The Sold log
+  /// carries only the gross, so the split is derived from the RoyaltyPaid log
+  /// that precedes it in the same transaction and the marketplace's
+  /// `protocolFeeBps` at the Sold block.
   royaltyPaid           String
   protocolFeePaid       String
   sellerReceived        String
+  /// Marketplace `protocolFeeBps` at the Sold block, set with the split (#2172).
+  protocolFeeBps        Int?
+  /// Who the royalty was paid to (RoyaltyPaid.recipient); null when the sale paid none (#2172).
+  royaltyRecipient      String?
+  /// Set once royaltyPaid, protocolFeePaid and sellerReceived are the real on-chain split. Null = pending (#2172).
+  splitFinalizedAt      DateTime?
   licenseType           LicenseType @default(personal)
   /// One transaction can carry several purchases (a batched user operation buys
   /// many listings at once), so the hash alone is not unique; a purchase is the

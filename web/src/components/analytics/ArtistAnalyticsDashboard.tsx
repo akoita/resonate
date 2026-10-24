@@ -4,6 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ArtistActionCard, ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
 import { grossSalesExplainer } from "../../lib/marketplaceProceeds";
+import {
+  PENDING_NET_LABEL,
+  isNetReceivedReady,
+  netReceivedDetail,
+  netReceivedHeadline,
+  netReceivedNote,
+  saleGrossLabel,
+  saleNetLabel,
+  salePlatformFeeLabel,
+} from "../../lib/artistNetReceived";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 type DashboardState =
@@ -113,6 +123,14 @@ function ReadyDashboard({
           detail={primarySettledAsset(data.summary.payoutsByAsset)}
           note={grossSalesExplainer(platformFeeBps)}
         />
+        {data.netReceived ? (
+          <Kpi
+            label="Net received"
+            value={netReceivedHeadline(data.netReceived) ?? ""}
+            detail={netReceivedDetail(data.netReceived)}
+            note={netReceivedNote(data.netReceived)}
+          />
+        ) : null}
         <Kpi label="Top track" value={topTrack?.title ?? "No track yet"} detail={topTrack ? `${formatNumber(topTrack.plays)} plays` : "Waiting for play events"} />
         <Kpi
           label="Protected releases"
@@ -164,6 +182,8 @@ function ReadyDashboard({
           </div>
         </div>
       </div>
+
+      <MarketplaceSalesNet report={data.netReceived} />
 
       <div className="premium-table-wrapper">
         <h2>Track Performance</h2>
@@ -395,7 +415,7 @@ function Kpi({ label, value, detail, note }: { label: string; value: string; det
   const isAgent = label.toLowerCase().includes("top track");
   const icon = label.toLowerCase().includes("plays")
     ? "▶"
-    : label.toLowerCase().includes("sales")
+    : label.toLowerCase().includes("sales") || label.toLowerCase().includes("received")
     ? "$"
     : label.toLowerCase().includes("track")
     ? "★"
@@ -613,6 +633,59 @@ function PlaysChart({ points }: { points: ArtistAnalyticsDashboardData["playsOve
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+/** #2172: each recent marketplace sale, gross beside what the artist received; a sale whose split is not final reads Pending. */
+function MarketplaceSalesNet({ report }: { report: ArtistAnalyticsDashboardData["netReceived"] }) {
+  if (!isNetReceivedReady(report) || report.recentSales.length === 0) {
+    return null;
+  }
+  return (
+    <div className="premium-table-wrapper" data-testid="marketplace-sales-net">
+      <h2>Marketplace sales: gross and net</h2>
+      <table className="premium-table">
+        <thead>
+          <tr>
+            <th>Sale</th>
+            <th>Track</th>
+            <th>Gross</th>
+            <th>Platform fee</th>
+            <th>Net received</th>
+          </tr>
+        </thead>
+        <tbody>
+          {report.recentSales.map((sale) => (
+            <tr key={sale.settlementKey}>
+              <td className="premium-table-cell-mono">{shortDate(sale.occurredAt)}</td>
+              <td style={{ fontWeight: 600 }}>{sale.trackTitle ?? "Unknown track"}</td>
+              <td className="premium-table-cell-mono">{saleGrossLabel(sale)}</td>
+              <td className="premium-table-cell-mono">{salePlatformFeeLabel(sale) ?? "—"}</td>
+              <td className="premium-table-cell-mono">
+                {sale.status === "pending" ? (
+                  <span
+                    className="status-capsule-badge inactive"
+                    style={{ fontSize: "10px", padding: "2px 8px" }}
+                    title="The royalty split for this sale is not final yet, so its net is not counted."
+                  >
+                    {PENDING_NET_LABEL}
+                  </span>
+                ) : (
+                  saleNetLabel(sale)
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="analytics-muted" style={{ margin: "12px 0 0", lineHeight: 1.4 }}>
+        {report.truncated
+          ? "The newest sales are counted; older ones in this window are not. "
+          : ""}
+        Net received is what reached your own addresses after the platform fee and any share paid to someone else.
+        {report.coverage.x402 ? "" : " x402 sales are not included."}
+      </p>
     </div>
   );
 }

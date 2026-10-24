@@ -852,6 +852,63 @@ export type ArtistAnalyticsMeta = {
 /** What the analytics "payout" amounts measure: gross settled sales before the platform fee and splits. */
 export type ArtistAnalyticsPayoutBasis = "gross_settled";
 
+/**
+ * #2172: one marketplace sale, gross beside what the artist received. A sale whose
+ * split is not final yet is `pending` and carries no net: it is never zero or the gross.
+ */
+export type ArtistNetReceivedSale = {
+  settlementKey: string;
+  occurredAt: string;
+  trackId: string | null;
+  trackTitle: string | null;
+  symbol: string;
+  decimals: number;
+  grossAmountUnits: string;
+  grossAmount: string;
+  grossUsd: number | null;
+  status: "final" | "pending";
+  platformFeeUnits?: string;
+  otherPartiesUnits?: string;
+  netAmountUnits?: string;
+  netAmount?: string;
+  netUsd?: number | null;
+};
+
+export type ArtistNetReceivedAsset = {
+  paymentToken: string;
+  assetId: string | null;
+  symbol: string;
+  decimals: number;
+  sales: number;
+  finalizedSales: number;
+  pendingSales: number;
+  grossFinalizedUnits: string;
+  grossFinalizedAmount: string;
+  platformFeeUnits: string;
+  otherPartiesUnits: string;
+  netAmountUnits: string;
+  netAmount: string;
+  grossFinalizedUsd: number | null;
+  netUsd: number | null;
+  pendingGrossUnits: string;
+  pendingGrossAmount: string;
+};
+
+export type ArtistNetReceivedReport =
+  | {
+      status: "ready";
+      basis: "net_after_fee_and_split";
+      coverage: { marketplace: true; x402: false; x402Reason: string };
+      saleCount: number;
+      finalizedSales: number;
+      pendingSales: number;
+      totals: { grossFinalizedUsd: number; netUsd: number; pendingGrossUsd: number };
+      byAsset: ArtistNetReceivedAsset[];
+      recentSales: ArtistNetReceivedSale[];
+      truncated: boolean;
+    }
+  | { status: "unavailable"; reason: string };
+
 export type ArtistAnalyticsDashboard = {
   summary: {
     artistId: string;
@@ -862,6 +919,8 @@ export type ArtistAnalyticsDashboard = {
     payoutBasis?: ArtistAnalyticsPayoutBasis;
     payoutsByAsset: ArtistAnalyticsPayout[];
   };
+  /** Net received beside the gross figure (#2172); absent on a backend that does not report it. */
+  netReceived?: ArtistNetReceivedReport;
   tracks: ArtistAnalyticsTrack[];
   topTracks: ArtistAnalyticsTrack[];
   sessions: Array<{

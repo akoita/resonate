@@ -383,7 +383,12 @@ payout breakdown, but adds nothing to USD sums, because no USD price is
 invented. `payoutUsd` is therefore the gross settled stablecoin amount. The
 artist's net share is not derived at emission time, because the marketplace
 protocol fee is read on-chain and royalty and seller amounts arrive in later
-events. `payment.settled` stays accepted as a legacy alias in every aggregate,
+events. The fact is never rewritten: the net is joined at read time from the
+indexed settlement record (`StemPurchase`) and reported beside the gross by the
+artist dashboard (#2172, see
+[analytics_dashboard.md](analytics_dashboard.md#net-received-2172)), so the
+ledger stays an immutable gross history and no warehouse mapping changes.
+`payment.settled` stays accepted as a legacy alias in every aggregate,
 so historic rows still count, but no live request path emits it.
 
 ## Listening habit context (#2062)
