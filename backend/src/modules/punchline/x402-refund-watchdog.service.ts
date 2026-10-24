@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { writeStructuredLog } from "../shared/structured_logging";
@@ -40,6 +41,8 @@ export class X402RefundWatchdogService implements OnModuleInit, OnModuleDestroy 
     if (process.env.NODE_ENV === "test") {
       return;
     }
+
+    if (!shouldRunBackgroundLoop("x402RefundWatchdog", this.logger)) return;
 
     const intervalMs = this.getIntervalMs();
     const thresholdHours = this.getThresholdHours();

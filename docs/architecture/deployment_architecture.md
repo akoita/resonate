@@ -153,8 +153,11 @@ enforcement.
 NestJS modules for auth, catalog, storefront, x402, MCP, storage, generation,
 remix, contracts, rights, payments, notifications, and indexing. Runs on Cloud
 Run with Secret Manager-backed configuration. The contract indexer and the Shows
-escrow indexer run inside the backend process behind enable flags and a
-distributed lease, not as separate services. The frontend's server-side calls
+escrow indexer run inside the backend process by default (`BACKEND_RUNTIME_MODE`
+`combined`), behind enable flags and, for Shows, a distributed lease. The same
+image can instead run as a request-serving `api` process with no background
+loops or as a `worker` that runs them (#1608; see
+[Backend runtime modes](../features/backend_runtime_modes.md)). The frontend's server-side calls
 reach the backend directly; the agent runtime runs in-process unless
 `AGENT_RUNTIME_WORKER_URL` points at the separate worker.
 

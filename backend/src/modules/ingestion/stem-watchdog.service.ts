@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 
@@ -37,6 +38,8 @@ export class StemWatchdogService implements OnModuleInit, OnModuleDestroy {
       this.logger.log("Stem processing watchdog disabled in sync mode");
       return;
     }
+
+    if (!shouldRunBackgroundLoop("stemWatchdog", this.logger)) return;
 
     const intervalMs = this.getIntervalMs();
     const timeoutMs = this.getTimeoutMs();

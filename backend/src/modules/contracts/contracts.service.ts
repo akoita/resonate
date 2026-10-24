@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { createPublicClient, http, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
 import { LicenseType, Prisma } from "@prisma/client";
@@ -489,7 +490,12 @@ export class ContractsService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    // Event handlers react to events published in this process (the indexer's
+    // when it runs here, request paths' otherwise), so they register in every mode.
     this.subscribeToContractEvents();
+
+    // The startup reconcilers are background work: not in an `api` process (#1608).
+    if (!shouldRunBackgroundLoop("contractsStartupReconcile", this.logger)) return;
 
     // Reconcile stale listings on startup (non-blocking)
     this.reconcileListings().catch(err =>

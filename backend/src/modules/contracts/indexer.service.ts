@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from "@nestjs/common";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { EventBus } from "../shared/event_bus";
 import { AdaptiveBlockWindow, fetchWithAdaptiveWindow } from "../shared/adaptive_block_window";
 import { prisma } from "../../db/prisma";
@@ -260,6 +261,8 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       this.logger.log("Contract indexer disabled (set ENABLE_CONTRACT_INDEXER=true to enable)");
       return;
     }
+
+    if (!shouldRunBackgroundLoop("contractIndexer", this.logger)) return;
 
     this.logger.log(
       `Starting contract indexer (poll=${this.pollIntervalMs}ms, blocksPerBatch=${this.blocksPerBatch} (upper bound), maxBatchesPerCycle=${this.maxBatchesPerCycle}, progressLogLevel=${this.progressLogLevel})`,

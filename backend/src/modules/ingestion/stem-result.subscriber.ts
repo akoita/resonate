@@ -5,6 +5,7 @@ import { StorageProvider } from "../storage/storage_provider";
 import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
 import { prisma } from "../../db/prisma";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import type {
   StemAnalysisResultMessage,
   StemResultMessage,
@@ -45,6 +46,8 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       this.logger.log("STEM_PROCESSING_MODE=sync — skipping Pub/Sub result subscriber");
       return;
     }
+
+    if (!shouldRunBackgroundLoop("stemResultSubscriber", this.logger)) return;
 
     const runtime = await resolvePubSubRuntimeConfig();
     if (!runtime.enabled) {
