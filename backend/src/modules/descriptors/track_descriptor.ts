@@ -412,13 +412,101 @@ export function descriptorEmbeddingLines(
 }
 
 // ---------------------------------------------------------------------------
+// Artist corrections (#2292)
+// ---------------------------------------------------------------------------
+
+/**
+ * The controlled vocabulary an artist can tag from: the genre families and the
+ * sub-genre labels the platform itself recognises (every member of every genre
+ * family plus the place lexicon). Free text is never added through a
+ * correction. Sorted, sanitized with `sanitizeSubGenre`.
+ */
+export const SUB_GENRE_VOCABULARY: readonly string[] = (() => {
+  const labels = new Set<string>();
+  const add = (value: string) => {
+    const label = sanitizeSubGenre(value);
+    if (label) labels.add(label);
+  };
+  for (const family of GENRE_FAMILIES) family.members.forEach(add);
+  for (const group of PLACE_LEXICON) group.terms.forEach(add);
+  return [...labels].sort();
+})();
+const SUB_GENRE_VOCABULARY_SET: ReadonlySet<string> = new Set(SUB_GENRE_VOCABULARY);
+
+export interface TrackDescriptorVocabulary {
+  families: Array<{ id: string; label: string }>;
+  subGenres: string[];
+}
+
+/** What the release editor offers when an artist corrects tags. */
+export function trackDescriptorVocabulary(): TrackDescriptorVocabulary {
+  return {
+    families: GENRE_FAMILIES.map((family) => ({ id: family.id, label: family.label })),
+    subGenres: [...SUB_GENRE_VOCABULARY],
+  };
+}
+
+export interface DescriptorCorrection {
+  families: string[];
+  subGenres: string[];
+}
+
+export type DescriptorCorrectionResult =
+  | { ok: true; value: DescriptorCorrection }
+  | { ok: false; errors: string[] };
+
+/**
+ * Validates an artist correction against the controlled vocabulary. The
+ * correction is the COMPLETE new set of families and sub-genres (removals are
+ * just absences). Families must be ids of `GENRE_FAMILIES`. A sub-genre must be
+ * in `SUB_GENRE_VOCABULARY`, or already be on the stored descriptor (a
+ * generated free label the artist is keeping rather than adding). Bands and
+ * `vocal` are measured and not part of a correction. Never throws.
+ */
+export function validateDescriptorCorrection(
+  raw: { families?: unknown; subGenres?: unknown },
+  currentSubGenres: readonly string[] = [],
+): DescriptorCorrectionResult {
+  const errors: string[] = [];
+  const families = new Set<string>();
+  const subGenres = new Set<string>();
+  const kept = new Set(currentSubGenres);
+
+  if (!Array.isArray(raw.families)) errors.push("families must be a list of genre family ids");
+  else {
+    for (const value of raw.families) {
+      if (typeof value === "string" && FAMILY_ID_SET.has(value)) families.add(value);
+      else errors.push("families must only contain genre family ids from the vocabulary");
+    }
+  }
+  if (!Array.isArray(raw.subGenres)) errors.push("subGenres must be a list of sub-genre labels");
+  else {
+    for (const value of raw.subGenres) {
+      const label = sanitizeSubGenre(value);
+      if (label && (SUB_GENRE_VOCABULARY_SET.has(label) || kept.has(label))) subGenres.add(label);
+      else errors.push("subGenres must only contain labels from the vocabulary or already on the track");
+    }
+    if (subGenres.size > MAX_SUB_GENRES) errors.push(`at most ${MAX_SUB_GENRES} sub-genres`);
+  }
+  if (errors.length > 0) return { ok: false, errors: [...new Set(errors)] };
+  return { ok: true, value: { families: sortedUnique(families), subGenres: [...subGenres].sort() } };
+}
+
+/** Content hash of an artist-written descriptor (it only identifies the correction). */
+export function artistDescriptorContentHash(value: DescriptorCorrection): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ v: TRACK_DESCRIPTOR_VERSION, source: "artist", ...value }))
+    .digest("hex");
+}
+
+// ---------------------------------------------------------------------------
 // Owner view
 // ---------------------------------------------------------------------------
 
 /**
- * The descriptor as the release editor shows it (#2240): read-only, owner-only.
- * Family ids come with their display labels; `source` says who wrote it
- * (corrections arrive in #2292).
+ * The descriptor as the release editor shows it (#2240): owner and credited
+ * managers only. Family ids come with their display labels; `source` says who
+ * wrote it (`artist` once corrected, #2292).
  */
 export interface OwnerTrackDescriptorView {
   families: string[];

@@ -36,7 +36,8 @@ import {
  *  - a track whose model descriptor is younger than `MODEL_RETAG_COOLDOWN_MS`
  *    keeps it even if its inputs changed, so repeated metadata edits cannot
  *    drive unbounded model calls;
- *  - an `artist` descriptor (corrections, #2292) is never overwritten.
+ *  - an `artist` descriptor (corrections, #2292) is never overwritten, not
+ *    even by a write racing a correction (the update is conditional).
  *
  * It writes `TrackDescriptor` rows and nothing else: no track, release or
  * disclosure column is ever updated here.
@@ -408,11 +409,29 @@ export class TrackDescriptorTagger {
       contentHash,
     };
     try {
-      await prisma.trackDescriptor.upsert({
-        where: { trackId: row.id },
-        create: { trackId: row.id, ...data },
-        update: data,
+      // An artist correction (#2292) can land between the read of this row and
+      // this write: the update is conditional, and a create that loses to an
+      // artist row is dropped, so a correction is never overwritten.
+      const updated = await prisma.trackDescriptor.updateMany({
+        where: { trackId: row.id, source: { not: "artist" } },
+        data,
       });
+      if (updated.count === 0) {
+        try {
+          await prisma.trackDescriptor.create({ data: { trackId: row.id, ...data } });
+        } catch (error) {
+          if ((error as { code?: string }).code !== "P2002") throw error;
+          // The row appeared meanwhile: update it unless it is an artist's.
+          const retried = await prisma.trackDescriptor.updateMany({
+            where: { trackId: row.id, source: { not: "artist" } },
+            data,
+          });
+          if (retried.count === 0) {
+            result.skippedArtistOwned += 1;
+            return;
+          }
+        }
+      }
       countOutcome();
       result.changedTrackIds.push(row.id);
     } catch {

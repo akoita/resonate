@@ -18,6 +18,9 @@ import {
   type ReleaseRightsUpgradeRequestRecord,
   updateRelease,
   updateTrackMetadata,
+  updateTrackDescriptor,
+  getTrackDescriptorVocabulary,
+  type TrackDescriptorVocabulary,
   updateReleaseArtwork,
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
@@ -74,7 +77,7 @@ import { FollowArtistButton } from "../../../components/artist/FollowArtistButto
 import { summarizeProcessingFailure } from "../../../components/release/processingFailure";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
-import { TrackDescriptorTags } from "../../../components/content/TrackDescriptorTags";
+import { TrackDescriptorEditor, type DescriptorDraft } from "../../../components/content/TrackDescriptorEditor";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
 import { DEFAULT_MARKETPLACE_LISTING_PRICE_WEI } from "../../../lib/stakeSafeListingPrice";
@@ -429,6 +432,7 @@ function ReleaseDetailsContent() {
   const [trackTitleDraft, setTrackTitleDraft] = useState("");
   const [trackExplicitDraft, setTrackExplicitDraft] = useState(false);
   const [isSavingTrack, setIsSavingTrack] = useState(false);
+  const [descriptorVocabulary, setDescriptorVocabulary] = useState<TrackDescriptorVocabulary | null>(null);
   const [isReleaseSaved, setIsReleaseSaved] = useState(false);
   // Release-level Punchline summary reported up by the collect module, driving
   // the above-the-fold discovery affordances (hero CTA + overview-strip cell).
@@ -526,6 +530,15 @@ function ReleaseDetailsContent() {
       .catch(() => { if (active) setCatalogAccess(null); });
     return () => { active = false; };
   }, [token, release?.id]);
+  // #2292: the tag vocabulary is only needed by people who can correct tags.
+  useEffect(() => {
+    if (!canEditTrackMetadata || descriptorVocabulary) return;
+    let active = true;
+    getTrackDescriptorVocabulary()
+      .then((vocabulary) => { if (active) setDescriptorVocabulary(vocabulary); })
+      .catch(() => { /* No vocabulary: the tags stay read-only. */ });
+    return () => { active = false; };
+  }, [canEditTrackMetadata, descriptorVocabulary]);
   useEffect(() => {
     for (const track of release?.tracks ?? []) {
       audioReplacementStatusesRef.current.set(track.id, track.audioReplacementStatus ?? null);
@@ -1638,6 +1651,16 @@ function ReleaseDetailsContent() {
     }
   };
 
+  const handleSaveTrackDescriptor = async (trackId: string, draft: DescriptorDraft) => {
+    if (!release || !token || !canEditTrackMetadata) return;
+    const descriptor = await updateTrackDescriptor(token, release.id, trackId, draft);
+    setRelease((previous) => previous ? {
+      ...previous,
+      tracks: previous.tracks?.map((track) => track.id === trackId ? { ...track, descriptor } : track),
+    } : previous);
+    addToast({ type: "success", title: "Track tags updated" });
+  };
+
   const handleArtworkChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !release || !token || !canEditArtwork) return;
@@ -2633,8 +2656,16 @@ function ReleaseDetailsContent() {
                         </div>
                       )}
 
-                      {/* #2240: tags Resonate suggested for this track. Read-only; only the owner-scoped release response carries them. */}
-                      {canReadCatalog && <TrackDescriptorTags descriptor={track.descriptor} />}
+                      {/* #2240/#2292: the track's tags. Only the owner-scoped release response carries them; the owner and managers with track-metadata rights can correct them. */}
+                      {canReadCatalog && (
+                        <TrackDescriptorEditor
+                          trackTitle={track.title}
+                          descriptor={track.descriptor}
+                          canEdit={Boolean(canEditTrackMetadata)}
+                          vocabulary={descriptorVocabulary}
+                          onSave={(draft) => handleSaveTrackDescriptor(track.id, draft)}
+                        />
+                      )}
 
                       {(track.audioReplacementStatus || (canReplaceTrackAudio && release.status === "ready")) && <div
                         style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 5 }}

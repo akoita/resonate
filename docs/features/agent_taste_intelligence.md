@@ -657,7 +657,7 @@ measured **tempo** and **energy** bands (from the full-mix features, #1959,
 same confidence gates and thresholds as the AI DJ audio features) and a
 **vocal / instrumental** value (only from an explicit word such as
 "instrumental"; no vocal measurement exists yet). `source` is `deterministic`,
-`model`, or (later, #2292) `artist`.
+`model`, or `artist` (a correction by the release team, #2292).
 
 - **Strategy** (`TRACK_DESCRIPTOR_STRATEGY`). `deterministic` (default): the
   shared family matcher over the genre and its `/ , ;` parts, plus a small
@@ -700,18 +700,48 @@ same confidence gates and thresholds as the AI DJ audio features) and a
   (`genreOrDescriptorMatchesRequest`), so "World" reaches a track whose genre
   says "Senegal". My Mix lane membership still reads the release genre only
   (follow-up).
-- **Artists.** The release page shows each track's tags read-only to people who
-  manage the release (owner route `GET /catalog/me/releases/:releaseId` returns
+- **Artists.** The release page shows each track's tags to people who manage
+  the release (owner route `GET /catalog/me/releases/:releaseId` returns
   `tracks[].descriptor`; public responses never do), with the line "Suggested by
-  Resonate from your track's details and sound". Correction is a follow-up
-  (#2292); `source = artist` rows are already never overwritten.
+  Resonate from your track's details and sound". Corrections are below (#2292).
+- **Artist corrections (#2292).** The release owner, or a manager holding the
+  track-metadata scope (the same authority that edits a track's title), can
+  correct a track's **genre families** and **sub-genres** from the release page
+  ("Edit tags"). `PUT /catalog/releases/:releaseId/tracks/:trackId/descriptor`
+  with `{ families: string[], subGenres: string[] }` replaces both lists
+  (removals are absences; an empty list is allowed). Rules:
+  - *Controlled vocabulary only.* Families must be ids from the genre families.
+    A sub-genre must be a label of the vocabulary (every genre-family member
+    plus the place lexicon, served by the public
+    `GET /catalog/descriptor-vocabulary`), or a label already on the track, so a
+    generated free label can be kept or removed but no new free text is added.
+    At most 8 sub-genres. Anything else is a `400`, a non-manager is a `403`,
+    a track not on the release is a `404`.
+  - *Bands stay measured.* Tempo, energy and vocal are not part of the body and
+    are copied from the existing descriptor (or computed from the measured
+    features when the track was never tagged). They are shown in the editor as
+    plain text with "measured from the audio and cannot be edited".
+  - *Stored as `source: "artist"`.* The tagger skips such rows (counted as
+    `skippedArtistOwned`; the backfill prints `kept (artist-written)`), and its
+    write is conditional (`source != artist`), so a tagging run that read the
+    generated row before the correction cannot overwrite it either.
+  - *Re-embeds the track.* The service publishes `catalog.updated`, which
+    `TrackEmbeddingService` already handles; the descriptor is part of the
+    embedding text, so the content hash changes and the vector is rebuilt.
+  - *Known gap.* An artist-written row is never re-tagged, so its measured bands
+    do not refresh after an audio replacement (families and styles are the
+    artist's; the bands are copied at correction time).
 - **Inputs not available.** The schema has no release description and no artist
   country or region, so those are not inputs yet.
 - **Tests.** `track_descriptor.spec.ts` (mapping, validation, injection, hash,
   embedding text), `track_descriptor.integration.spec.ts` (dry run, idempotent
   apply, hash change, limit, fake-provider model path with fallback, budget and
   cooldown, protected columns, ingest hook, embedding, retrieval), the golden
-  set above, and `TrackDescriptorTags.test.tsx`.
+  set above, and `TrackDescriptorTags.test.tsx`. Corrections:
+  `track_descriptor_correction.integration.spec.ts` (owner, credited manager,
+  `401`/`403`/`404`/`400`, survives re-tag and backfill and a racing tagger
+  write, re-embeds), `catalog.controller.http.spec.ts` (DTO `400`s) and
+  `TrackDescriptorEditor.test.tsx`.
 
 ## Reading the listener's sentence for meaning (#2241)
 
