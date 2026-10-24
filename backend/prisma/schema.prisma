@@ -1454,11 +1454,21 @@ model RemixProjectStem {
   @@index([stemId])
 }
 
+// Per-chain block cursor for the contract indexer. Also carries the fenced,
+// database-clock lease (#2360, same pattern as ShowEscrowIndexerState #1567):
+// only the holder polls and advances the cursor, and every write is fenced by
+// leaseEpoch so a stale holder cannot mutate state after a takeover.
 model IndexerState {
-  id              String   @id @default(uuid())
-  chainId         Int      @unique
-  lastBlockNumber BigInt   @default(0)
-  updatedAt       DateTime @updatedAt
+  id               String    @id @default(uuid())
+  chainId          Int       @unique
+  lastBlockNumber  BigInt    @default(0)
+  leaseOwnerId     String?
+  leaseExpiresAt   DateTime?
+  leaseHeartbeatAt DateTime?
+  leaseEpoch       BigInt    @default(0)
+  updatedAt        DateTime  @updatedAt
+
+  @@index([leaseExpiresAt])
 }
 
 // Per-chain block cursor for the ShowCampaignEscrow indexer (#948). Kept

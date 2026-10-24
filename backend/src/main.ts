@@ -15,6 +15,7 @@ import {
   servesPublicApi,
   shouldRunBackgroundLoop,
 } from "./config/runtime_mode";
+import { fastForwardStaleIndexerCursor } from "./modules/contracts/indexer_cursor_self_heal";
 import { workerHealthOnlyMiddleware } from "./modules/health/worker_health_only.middleware";
 
 /**
@@ -27,20 +28,7 @@ async function runStartupSelfHealing() {
   try {
     const { prisma } = require("./db/prisma");
     const chainId = parseInt(process.env.AA_CHAIN_ID || "11155111");
-    if (chainId === 11155111) {
-      const state = await prisma.indexerState.findUnique({ where: { chainId } });
-      const currentSepoliaBlock = 10295000n; // Recent safe cutoff
-      // If the indexer is millions of blocks behind, fast-forward it automatically
-      if (!state || (state.lastBlockNumber < 10290000n && state.lastBlockNumber > 0n)) {
-        console.log(`[Self-Healing] Detected stale indexer state (Block ${state?.lastBlockNumber}). Fast-forwarding to ${currentSepoliaBlock}...`);
-        await prisma.indexerState.upsert({
-          where: { chainId },
-          update: { lastBlockNumber: currentSepoliaBlock },
-          create: { chainId, lastBlockNumber: currentSepoliaBlock },
-        });
-        console.log(`[Self-Healing] Indexer fast-forward complete.`);
-      }
-    }
+    await fastForwardStaleIndexerCursor(chainId);
 
     // Self-Healing: Convert any absolute URLs in stem URIs and release artwork to relative paths
     // This ensures the frontend can prepend its own API_BASE for browser access

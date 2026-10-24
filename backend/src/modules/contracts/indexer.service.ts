@@ -1,5 +1,8 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
+import { writeStructuredLog } from "../shared/structured_logging";
 import { EventBus } from "../shared/event_bus";
 import { AdaptiveBlockWindow, fetchWithAdaptiveWindow } from "../shared/adaptive_block_window";
 import { prisma } from "../../db/prisma";
@@ -224,11 +227,39 @@ function parseIndexerProgressLogLevel(): IndexerProgressLogLevel {
   return "silent";
 }
 
+class IndexerLeaseLostError extends Error {
+  constructor() {
+    super("Contract indexer lease lost");
+    this.name = "IndexerLeaseLostError";
+  }
+}
+
+/** A held lease on one chain's cursor row (`IndexerState`), fenced by epoch. */
+type IndexerLease = {
+  stateId: string;
+  epoch: bigint;
+  chainId: number;
+};
+
+/**
+ * Contract indexer (#2360 adds the lease). A database-backed, fenced lease per
+ * chain elects exactly one poller: only the holder reads the cursor, fetches
+ * logs and advances it. The database clock is authoritative for expiry, and the
+ * monotonically increasing `leaseEpoch` rejects writes from a holder that lost
+ * the lease (for example after a GC pause or a slow RPC call), so an overlap
+ * during a cut-over, or an autoscaled second instance, cannot index the same
+ * range twice. This is the Shows escrow indexer pattern (#1567).
+ */
 @Injectable()
 export class IndexerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IndexerService.name);
   private indexingInterval: NodeJS.Timeout | null = null;
   private isIndexing = false;
+  private activeCycle: Promise<void> | null = null;
+  // Set once this process has held a lease, so shutdown only touches the
+  // database when there is something to release.
+  private leaseEverAcquired = false;
+  private readonly leaseOwnerId = randomUUID();
   private readonly pollIntervalMs = parsePositiveIntegerEnv("INDEXER_POLL_INTERVAL_MS", 5000);
   private readonly blocksPerBatch = parsePositiveIntegerEnv("INDEXER_BLOCKS_PER_BATCH", 1000);
   // Shrinks when the RPC provider rejects a getLogs range as too large (#2218).
@@ -239,9 +270,23 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   });
   private readonly maxBatchesPerCycle = parsePositiveIntegerEnv("INDEXER_MAX_BATCHES_PER_CYCLE", 20);
   private readonly progressLogLevel = parseIndexerProgressLogLevel();
+  private readonly leaseTtlMs = this.resolveLeaseTtlMs();
   private clientCache = new Map<number, any>();
 
   constructor(private readonly eventBus: EventBus) { }
+
+  private resolveLeaseTtlMs(): number {
+    const fallback = Math.max(30_000, this.pollIntervalMs * 3);
+    const raw = process.env.INDEXER_LEASE_TTL_MS;
+    const value = raw ? Number(raw) : fallback;
+    if (!Number.isInteger(value) || value < 5_000 || value > 300_000) {
+      throw new Error("INDEXER_LEASE_TTL_MS must be an integer from 5000 to 300000");
+    }
+    if (raw && value <= this.pollIntervalMs * 2) {
+      throw new Error("INDEXER_LEASE_TTL_MS must be greater than twice the poll interval");
+    }
+    return value;
+  }
 
   private getClient(chainId: number) {
     let client = this.clientCache.get(chainId);
@@ -270,8 +315,128 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     await this.startIndexing();
   }
 
-  onModuleDestroy() {
+  async onModuleDestroy() {
     this.stopIndexing();
+    await this.activeCycle;
+    await this.releaseOwnedLeases();
+  }
+
+  /** Graceful shutdown: release only leases this process still owns. */
+  private async releaseOwnedLeases() {
+    if (!this.leaseEverAcquired) return;
+    const owned = await prisma.indexerState.findMany({
+      where: { leaseOwnerId: this.leaseOwnerId },
+      select: { id: true, chainId: true, leaseEpoch: true },
+    });
+    for (const lease of owned) {
+      const released = await prisma.indexerState.updateMany({
+        where: { id: lease.id, leaseOwnerId: this.leaseOwnerId, leaseEpoch: lease.leaseEpoch },
+        data: { leaseOwnerId: null, leaseExpiresAt: null, leaseHeartbeatAt: null },
+      });
+      if (released.count === 1) {
+        writeStructuredLog({
+          level: "info",
+          event: "contract_indexer.lease_released",
+          message: "Contract indexer lease released",
+          chainId: lease.chainId,
+          ownerId: this.leaseOwnerId,
+          leaseEpoch: lease.leaseEpoch.toString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Claim (or renew) the chain's lease on the database clock. Returns null when
+   * another live holder owns it. The epoch increments on every change of owner
+   * and survives release, which is what fences a stale holder.
+   */
+  private async acquireLease(stateId: string, chainId: number): Promise<IndexerLease | null> {
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        leaseEpoch: bigint;
+        leaseExpiresAt: Date;
+        previousOwner: string | null;
+        previousExpiry: Date | null;
+        previousEpoch: bigint;
+      }>
+    >(Prisma.sql`
+      WITH previous AS (
+        SELECT id, "leaseOwnerId", "leaseExpiresAt", "leaseEpoch" FROM "IndexerState"
+        WHERE id = ${stateId} FOR UPDATE
+      )
+      UPDATE "IndexerState" AS state
+      SET "leaseOwnerId" = ${this.leaseOwnerId},
+          "leaseEpoch" = CASE WHEN state."leaseOwnerId" = ${this.leaseOwnerId} THEN state."leaseEpoch" ELSE state."leaseEpoch" + 1 END,
+          "leaseHeartbeatAt" = NOW(),
+          "leaseExpiresAt" = NOW() + (${this.leaseTtlMs} * INTERVAL '1 millisecond'),
+          "updatedAt" = NOW()
+      FROM previous
+      WHERE state.id = previous.id
+        AND (state."leaseOwnerId" IS NULL OR state."leaseOwnerId" = ${this.leaseOwnerId} OR state."leaseExpiresAt" <= NOW())
+      RETURNING state.id, state."leaseEpoch", state."leaseExpiresAt", previous."leaseOwnerId" AS "previousOwner",
+        previous."leaseExpiresAt" AS "previousExpiry", previous."leaseEpoch" AS "previousEpoch"
+    `);
+    const row = rows[0];
+    if (!row) return null;
+    this.leaseEverAcquired = true;
+    const takeover = row.previousOwner !== null && row.previousOwner !== this.leaseOwnerId;
+    if (row.previousOwner !== this.leaseOwnerId) {
+      writeStructuredLog({
+        level: takeover ? "warn" : "info",
+        event: takeover ? "contract_indexer.lease_takeover" : "contract_indexer.lease_acquired",
+        message: takeover
+          ? "Contract indexer lease taken over after expiry"
+          : "Contract indexer lease acquired",
+        chainId,
+        ownerId: this.leaseOwnerId,
+        previousOwnerId: row.previousOwner,
+        previousLeaseExpiredAt: row.previousExpiry?.toISOString() ?? null,
+        previousLeaseEpoch: takeover ? row.previousEpoch.toString() : null,
+        leaseEpoch: row.leaseEpoch.toString(),
+        leaseExpiresAt: row.leaseExpiresAt.toISOString(),
+        leaseTtlMs: this.leaseTtlMs,
+      });
+    }
+    return { stateId: row.id, epoch: row.leaseEpoch, chainId };
+  }
+
+  private emitLeaseLost(lease: IndexerLease, phase: "cursor" | "lease" | "reconciliation", reason: string) {
+    writeStructuredLog({
+      level: "error",
+      event: "contract_indexer.lease_lost",
+      message: "Contract indexer lease lost",
+      chainId: lease.chainId,
+      ownerId: this.leaseOwnerId,
+      leaseEpoch: lease.epoch.toString(),
+      leaseTtlMs: this.leaseTtlMs,
+      phase,
+      reason,
+    });
+  }
+
+  /**
+   * Renew the lease, rejecting when the owner, the epoch or the database-time
+   * expiry no longer match. Optionally moves the cursor in the same statement.
+   */
+  private async fenceCursor(
+    lease: IndexerLease,
+    lastBlockNumber: bigint | null,
+    phase: "cursor" | "lease" = "cursor",
+  ): Promise<void> {
+    const count = await prisma.$executeRaw(Prisma.sql`
+      UPDATE "IndexerState"
+      SET "lastBlockNumber" = COALESCE(${lastBlockNumber}::bigint, "lastBlockNumber"),
+          "leaseHeartbeatAt" = NOW(),
+          "leaseExpiresAt" = NOW() + (${this.leaseTtlMs} * INTERVAL '1 millisecond'), "updatedAt" = NOW()
+      WHERE id = ${lease.stateId} AND "leaseOwnerId" = ${this.leaseOwnerId}
+        AND "leaseEpoch" = ${lease.epoch} AND "leaseExpiresAt" > NOW()
+    `);
+    if (count !== 1) {
+      this.emitLeaseLost(lease, phase, "owner, epoch, or database-time expiry fence rejected");
+      throw new IndexerLeaseLostError();
+    }
   }
 
   private async startIndexing() {
@@ -293,7 +458,9 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async purgeEphemeralChainState(chainId: number) {
+  private async purgeEphemeralChainState(chainId: number, lease?: IndexerLease) {
+    // The purge is destructive, so only the current lease holder may start it.
+    if (lease) await this.fenceCursor(lease, null, "lease");
     this.logger.warn(`Purging stale contract state for ephemeral local chain ${chainId}`);
 
     const affectedStemIds = new Set<string>();
@@ -346,9 +513,20 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async runIndexCycle() {
+  /** One poll cycle; concurrent callers in this process share the active one. */
+  private runIndexCycle(): Promise<void> {
+    if (this.activeCycle) return this.activeCycle;
     this.isIndexing = true;
+    const cycle = this.runIndexCycleInner();
+    const tracked = cycle.finally(() => {
+      if (this.activeCycle === tracked) this.activeCycle = null;
+      this.isIndexing = false;
+    });
+    this.activeCycle = tracked;
+    return tracked;
+  }
 
+  private async runIndexCycleInner(): Promise<void> {
     try {
       const chainId = resolveIndexerChainId();
       const config = CHAIN_CONFIGS[chainId];
@@ -371,22 +549,35 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
+      const currentBlock = await client.getBlockNumber();
+
       // Get last indexed block
       let indexerState = await prisma.indexerState.findUnique({
         where: { chainId },
       });
-
-      const currentBlock = await client.getBlockNumber();
 
       if (!indexerState) {
         // Start from near-current block rather than 0 to avoid scanning millions
         // of blocks on forked chains (e.g., Sepolia fork starts at block ~10M)
         const startBlock = currentBlock > 100n ? currentBlock - 100n : 0n;
         this.logger.log(`First run: starting indexer at block ${startBlock} (current: ${currentBlock})`);
-        indexerState = await prisma.indexerState.create({
-          data: { chainId, lastBlockNumber: startBlock },
+        // Upsert: two processes can race to create the first cursor row.
+        indexerState = await prisma.indexerState.upsert({
+          where: { chainId },
+          create: { chainId, lastBlockNumber: startBlock },
+          update: {},
         });
       }
+
+      // Only the lease holder polls and advances the cursor (#2360).
+      const lease = await this.acquireLease(indexerState.id, chainId);
+      if (!lease) {
+        this.logIndexProgress(`Contract indexer lease for chain ${chainId} is held by another process; skipping cycle`);
+        return;
+      }
+      // Read the cursor only after winning the lease: a previous holder may
+      // have advanced it between the first read and the acquisition.
+      indexerState = await prisma.indexerState.findUniqueOrThrow({ where: { chainId } });
 
       let fromBlock = indexerState.lastBlockNumber + 1n;
 
@@ -403,21 +594,15 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           // Jump to near chain tip rather than re-scanning from 0.
           const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
           if (isEphemeralLocalRpc(config.rpcUrl)) {
-            await this.purgeEphemeralChainState(chainId);
+            await this.purgeEphemeralChainState(chainId, lease);
           }
           this.logger.warn(`Chain reset detected: last indexed ${indexerState.lastBlockNumber} >> current ${currentBlock}. Resetting to ${safeBlock}`);
-          await prisma.indexerState.update({
-            where: { chainId },
-            data: { lastBlockNumber: safeBlock },
-          });
+          await this.fenceCursor(lease, safeBlock);
         } else {
           // Caught up, just waiting for new blocks. Heartbeat (@updatedAt bumps
           // on any update) so /metadata/indexer/status can distinguish
           // "caught up and idle" from "poller dead".
-          await prisma.indexerState.update({
-            where: { chainId },
-            data: { lastBlockNumber: indexerState.lastBlockNumber },
-          });
+          await this.fenceCursor(lease, indexerState.lastBlockNumber);
         }
         return;
       }
@@ -428,6 +613,8 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       let totalEvents = 0;
 
       while (fromBlock <= currentBlock && batchCount < this.maxBatchesPerCycle) {
+        // Renew and re-check ownership before each (possibly slow) batch.
+        await this.fenceCursor(lease, null, "lease");
         // Fetch every contract's logs for one range. The range-limit retry lives
         // here so all contracts in a batch share the same fromBlock/toBlock and the
         // cursor only advances over fully fetched blocks (#2218).
@@ -486,14 +673,11 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
 
         // Process all logs
         for (const log of [...stemNftLogs, ...marketplaceLogs, ...contentProtectionLogs, ...disputeResolutionLogs, ...curationRewardsLogs]) {
-          await this.processLog(log, chainId);
+          await this.processLog(log, chainId, { lease });
         }
 
-        // Update last indexed block
-        await prisma.indexerState.update({
-          where: { chainId },
-          data: { lastBlockNumber: effectiveToBlock },
-        });
+        // Update last indexed block (fenced: rejected if the lease moved on)
+        await this.fenceCursor(lease, effectiveToBlock);
 
         totalEvents += stemNftLogs.length + marketplaceLogs.length + contentProtectionLogs.length + disputeResolutionLogs.length + curationRewardsLogs.length;
         fromBlock = effectiveToBlock + 1n;
@@ -506,13 +690,15 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         );
       }
     } catch (error) {
-      this.logger.error(`Indexing error: ${error}`);
-    } finally {
-      this.isIndexing = false;
+      if (error instanceof IndexerLeaseLostError) {
+        this.logger.warn("Contract indexer lease lost mid-cycle; abandoning it so the current holder continues");
+      } else {
+        this.logger.error(`Indexing error: ${error}`);
+      }
     }
   }
 
-  private async processLog(log: Log, chainId: number, options?: { force?: boolean }) {
+  private async processLog(log: Log, chainId: number, options?: { force?: boolean; lease?: IndexerLease }) {
     const { transactionHash, logIndex, blockNumber, blockHash, address, topics, data } = log;
 
     // Check if already processed
@@ -554,18 +740,37 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (!existing) {
-        await prisma.contractEvent.create({
-          data: {
-            eventName: eventName || "Unknown",
-            chainId,
-            contractAddress: address,
-            transactionHash: transactionHash!,
-            logIndex: logIndex!,
-            blockNumber: blockNumber!,
-            blockHash: blockHash!,
-            args: safeArgs,
-          },
-        });
+        const data = {
+          eventName: eventName || "Unknown",
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          logIndex: logIndex!,
+          blockNumber: blockNumber!,
+          blockHash: blockHash!,
+          args: safeArgs,
+        };
+        const lease = options?.lease;
+        if (lease) {
+          // The fence and the event row commit together: a holder that lost
+          // the lease records nothing, and the row's creator is the only
+          // process that publishes the typed event.
+          await prisma.$transaction(async (tx) => {
+            const count = await tx.$executeRaw(Prisma.sql`
+              UPDATE "IndexerState"
+              SET "leaseHeartbeatAt" = NOW(),
+                  "leaseExpiresAt" = NOW() + (${this.leaseTtlMs} * INTERVAL '1 millisecond'), "updatedAt" = NOW()
+              WHERE id = ${lease.stateId} AND "leaseOwnerId" = ${this.leaseOwnerId}
+                AND "leaseEpoch" = ${lease.epoch} AND "leaseExpiresAt" > NOW()
+            `);
+            if (count !== 1) throw new IndexerLeaseLostError();
+            await tx.contractEvent.create({ data });
+          });
+        } else {
+          await prisma.contractEvent.create({ data });
+        }
+      } else if (options?.lease) {
+        await this.fenceCursor(options.lease, null, "lease");
       }
 
       // Publish typed event
@@ -573,6 +778,10 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         await this.publishTypedEvent(eventName, decodedArgs, log, chainId);
       }
     } catch (error) {
+      if (error instanceof IndexerLeaseLostError) {
+        if (options?.lease) this.emitLeaseLost(options.lease, "reconciliation", "owner, epoch, or database-time expiry fence rejected");
+        throw error;
+      }
       this.logger.error(`Failed to process log: ${error}`);
     }
   }
@@ -1060,9 +1269,12 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
    * Reset indexer to reprocess from a specific block
    */
   async resetIndexer(chainId: number, fromBlock: bigint) {
+    // Bumping the epoch fences a poller that is mid-batch (in any process), so
+    // it cannot overwrite this reset with its own progress. Its next cycle
+    // re-acquires the lease and reads the reset cursor.
     await prisma.indexerState.update({
       where: { chainId },
-      data: { lastBlockNumber: fromBlock - 1n },
+      data: { lastBlockNumber: fromBlock - 1n, leaseEpoch: { increment: 1 } },
     });
 
     this.logger.log(`Reset indexer for chain ${chainId} to block ${fromBlock}`);
@@ -1091,6 +1303,9 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         updatedAt: s.updatedAt,
         staleSeconds,
         stale: staleSeconds > staleThresholdSeconds,
+        leaseEpoch: s.leaseEpoch.toString(),
+        leaseHeld: s.leaseOwnerId !== null && s.leaseExpiresAt !== null && s.leaseExpiresAt.getTime() > now,
+        leaseExpiresAt: s.leaseExpiresAt,
       };
     });
 
