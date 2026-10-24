@@ -4001,6 +4001,16 @@ export type ListeningLane = {
 };
 
 /**
+ * Why a listener has no listening lanes (#2270). Absent on older servers and
+ * whenever there is at least one lane.
+ */
+export type ListeningLanesEmptyReason =
+  | "no_signals"
+  | "unknown_genres"
+  | "too_few_sessions"
+  | "evidence_decayed";
+
+/**
  * Declared boosts that no longer match what the listener plays (#2101). Absent
  * on older servers; treat `undefined` as `null`.
  */
@@ -4026,6 +4036,8 @@ export type TasteMemoryResponse = {
     favoredTempoBands?: string[];
     contexts?: TasteMemoryContextSummary[];
     listeningLanes?: ListeningLane[];
+    /** Why `listeningLanes` is empty; null when it is not (#2270). */
+    listeningLanesEmptyReason?: ListeningLanesEmptyReason | null;
     tasteDrift?: TasteDrift | null;
     recentIntents: string[];
     noveltyPattern: string;

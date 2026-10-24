@@ -18,6 +18,9 @@ const releaseIds = genres.map((_, i) => `${PREFIX}release${i}`);
 const freeTextGenres = ["African", "Mandingue", "Highlife"];
 const freeTextTrackIds = freeTextGenres.map((_, i) => `${PREFIX}ft_track${i}`);
 const freeTextReleaseIds = freeTextGenres.map((_, i) => `${PREFIX}ft_release${i}`);
+// A genre no vocabulary or family names (#2270 unknown_genres).
+const unknownTrackId = `${PREFIX}unknown_track`;
+const unknownReleaseId = `${PREFIX}unknown_release`;
 
 async function seedHabits() {
   const createdAt = new Date(Date.now() - 60_000);
@@ -47,6 +50,10 @@ describe("Listening lanes lifecycle (real DB)", () => {
       await prisma.track.create({ data: { id: freeTextTrackIds[i], releaseId: freeTextReleaseIds[i], title: `Free text ${i}`, artist: "Lane Artist" } });
     }
   });
+  beforeAll(async () => {
+    await prisma.release.create({ data: { id: unknownReleaseId, artistId, title: "Unknown", genre: "Senegal", status: "published" } });
+    await prisma.track.create({ data: { id: unknownTrackId, releaseId: unknownReleaseId, title: "Unknown genre", artist: "Lane Artist" } });
+  });
   beforeEach(async () => {
     jest.restoreAllMocks();
     await prisma.agentSignal.deleteMany({ where: { userId } });
@@ -58,8 +65,8 @@ describe("Listening lanes lifecycle (real DB)", () => {
     await prisma.agentSignal.deleteMany({ where: { userId } });
     await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: { in: [userId, otherUserId] } } });
     await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: { in: [userId, otherUserId] } } });
-    await prisma.track.deleteMany({ where: { id: { in: [...trackIds, ...freeTextTrackIds] } } });
-    await prisma.release.deleteMany({ where: { id: { in: [...releaseIds, ...freeTextReleaseIds] } } });
+    await prisma.track.deleteMany({ where: { id: { in: [...trackIds, ...freeTextTrackIds, unknownTrackId] } } });
+    await prisma.release.deleteMany({ where: { id: { in: [...releaseIds, ...freeTextReleaseIds, unknownReleaseId] } } });
     await prisma.artist.delete({ where: { id: artistId } });
     await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
   });
@@ -67,7 +74,7 @@ describe("Listening lanes lifecycle (real DB)", () => {
   it("returns two governed lanes, caches by profile version, and never reveals raw history", async () => {
     await seedHabits();
     const now = new Date();
-    const compute = jest.spyOn(computation, "computeListeningLanes");
+    const compute = jest.spyOn(computation, "analyzeListeningLanes");
     const lanes = await getListeningLaneSummary(userId, { now });
     expect(lanes).toHaveLength(2);
     expect(lanes.map((lane) => Object.keys(lane.genreWeights)[0]).sort()).toEqual(genres.slice().sort());
@@ -178,5 +185,92 @@ describe("Listening lanes lifecycle (real DB)", () => {
     expect(await resolveListeningLanes(userId)).toEqual([]);
     await service.removeSignalControl(userId, control.id);
     expect(await resolveListeningLanes(userId)).toHaveLength(1);
+  });
+
+  describe("Why a listener has no lanes (#2270, real DB)", () => {
+    const reasonUser = `${PREFIX}reason`;
+    const reasonService = new TasteMemoryService(new EventBus());
+
+    const save = (trackId: string, session: number, ageDays = 0) =>
+      prisma.agentSignal.create({ data: {
+        userId: reasonUser, trackId, action: "save", weight: 3,
+        createdAt: new Date(Date.now() - 60_000 - ageDays * 24 * 60 * 60 * 1000),
+        metadata: { playbackSessionId: `playback_${String(5000 + session).padStart(32, "0")}`,
+          localHourBucket: "evening", weekdayKind: "weekday" },
+      } });
+    const summary = async () => (await reasonService.getTasteMemory(reasonUser)).summary;
+
+    beforeAll(async () => {
+      await prisma.user.create({ data: { id: reasonUser, email: `${reasonUser}@test.resonate` } });
+    });
+    beforeEach(async () => {
+      await prisma.agentSignal.deleteMany({ where: { userId: reasonUser } });
+      await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: reasonUser } });
+      await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: reasonUser } });
+    });
+    afterAll(async () => {
+      await prisma.agentSignal.deleteMany({ where: { userId: reasonUser } });
+      await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: reasonUser } });
+      await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: reasonUser } });
+      await prisma.user.delete({ where: { id: reasonUser } });
+    });
+
+    it("no_signals: a listener with no history, and again after a taste reset", async () => {
+      expect(await summary()).toEqual(expect.objectContaining({ listeningLanes: [], listeningLanesEmptyReason: "no_signals" }));
+      await save(trackIds[0], 1);
+      await save(trackIds[0], 2);
+      expect((await summary()).listeningLanesEmptyReason).toBeNull();
+      await reasonService.resetTasteMemory(reasonUser);
+      expect(await summary()).toEqual(expect.objectContaining({ listeningLanes: [], listeningLanesEmptyReason: "no_signals" }));
+    });
+
+    it("no_signals: signals with no playback session key", async () => {
+      for (let i = 0; i < 3; i++) {
+        await prisma.agentSignal.create({ data: { userId: reasonUser, trackId: trackIds[0], action: "save", weight: 3 } });
+      }
+      expect((await summary()).listeningLanesEmptyReason).toBe("no_signals");
+    });
+
+    it("unknown_genres: sessions whose genre no vocabulary or family names", async () => {
+      await save(unknownTrackId, 1);
+      await save(unknownTrackId, 2);
+      expect(await summary()).toEqual(expect.objectContaining({ listeningLanes: [], listeningLanesEmptyReason: "unknown_genres" }));
+    });
+
+    it("too_few_sessions: a single session, however many signals", async () => {
+      await save(trackIds[0], 1);
+      await save(trackIds[0], 1);
+      await save(trackIds[0], 1);
+      expect(await summary()).toEqual(expect.objectContaining({ listeningLanes: [], listeningLanesEmptyReason: "too_few_sessions" }));
+    });
+
+    it("evidence_decayed: enough sessions, but the evidence has faded", async () => {
+      await save(trackIds[0], 1, 500);
+      await save(trackIds[0], 2, 500);
+      expect(await summary()).toEqual(expect.objectContaining({ listeningLanes: [], listeningLanesEmptyReason: "evidence_decayed" }));
+    });
+
+    it("has no reason once a lane exists, even when the listener hides it", async () => {
+      await save(trackIds[0], 1);
+      await save(trackIds[0], 2);
+      const lane = (await summary()).listeningLanes[0];
+      expect(lane).toBeDefined();
+      await reasonService.upsertSignalControl(reasonUser, { signalType: "lane", value: lane.id, action: "hidden" });
+      const hidden = await summary();
+      expect(hidden.listeningLanes).toEqual([expect.objectContaining({ id: lane.id, hidden: true })]);
+      expect(hidden.listeningLanesEmptyReason).toBeNull();
+    });
+
+    it("stores a boosted family-keyed lane edit as the family label, so it reads well and matches members", async () => {
+      await reasonService.applyTasteEdits(reasonUser, [
+        { signalType: "genre", value: "ambient-lofi", action: "boosted" },
+        { signalType: "genre", value: "Soul", action: "boosted" },
+      ]);
+      const values = (await reasonService.getTasteMemory(reasonUser)).controls
+        .filter((control) => control.action === "boosted")
+        .map((control) => control.value)
+        .sort();
+      expect(values).toEqual(["Ambient / Lo-fi", "Soul"]);
+    });
   });
 });

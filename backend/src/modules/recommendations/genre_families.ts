@@ -401,3 +401,33 @@ export function primaryGenreFamily(releaseGenre: string | null | undefined): Gen
 export function genreFamilyById(id: string): GenreFamily | undefined {
   return GENRE_FAMILIES.find((family) => family.id === id);
 }
+
+/**
+ * The family a declared genre value NAMES by id, label or alias, or undefined.
+ * Unlike `genreFamiliesFor`, a narrow phrase inside the value ("French Rap")
+ * does not count: a declared boost reaches a whole family only when the
+ * listener (or a family-keyed My Mix lane, #2270) named the family itself.
+ */
+export function genreFamilyNamed(value: string | null | undefined): GenreFamily | undefined {
+  const normalized = normalizeGenreTerm(value ?? "");
+  if (!normalized) return undefined;
+  return INDEXED_FAMILIES.find((entry) => entry.names.has(normalized))?.family;
+}
+
+/**
+ * Whether a release genre satisfies a declared "more of this" genre (#1961,
+ * #2270). The value always matches the same label modulo case. When it names a
+ * genre family (a family-keyed lane's id such as "ambient-lofi", or the label
+ * "Ambient / Lo-fi"), the family's members match too, through the shared
+ * matcher; any other value stays an exact label match.
+ */
+export function declaredGenreMatchesRelease(
+  declaredValue: string | null | undefined,
+  releaseGenre: string | null | undefined,
+): boolean {
+  const declared = (declaredValue ?? "").trim().toLowerCase();
+  const release = (releaseGenre ?? "").trim().toLowerCase();
+  if (!declared || !release) return false;
+  if (declared === release) return true;
+  return genreFamilyNamed(declaredValue) !== undefined && genreMatchesRequest(releaseGenre, declaredValue);
+}

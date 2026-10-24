@@ -26,8 +26,10 @@ import {
   TASTE_EDIT_MOOD_ALIASES,
 } from "./taste_edit_vocabulary";
 import {
+  declaredGenreMatchesRelease,
   descriptorMatchesRequest,
   firstMatchingGenreTerm,
+  genreFamilyNamed,
   genreMatchesRequest,
 } from "./genre_families";
 
@@ -621,6 +623,14 @@ function declaredBoostMatch(
   if (!policy || policy.boosted.size === 0) return null;
   const genre = candidate.release?.genre;
   if (genre && hasSignal(policy.boosted, "genre", genre)) return genre;
+  // A boost on a genre family (a family-keyed My Mix lane stores its id, #2270)
+  // reaches the family's members through the shared genre matcher.
+  if (genre) {
+    for (const boosted of policy.boosted.get("genre") ?? []) {
+      const family = genreFamilyNamed(boosted);
+      if (family && declaredGenreMatchesRelease(boosted, genre)) return family.label;
+    }
+  }
   const mood = (candidate.release?.moods ?? []).find((value) =>
     hasSignal(policy.boosted, "mood", value),
   );

@@ -75,7 +75,9 @@ const myMixLane: ListeningLane = {
   energyBand: "medium",
   hidden: false,
 };
-const getTasteMemory = vi.fn(async (): Promise<{ summary: { listeningLanes?: ListeningLane[] } }> => ({
+const getTasteMemory = vi.fn(async (): Promise<{
+  summary: { listeningLanes?: ListeningLane[]; listeningLanesEmptyReason?: string | null };
+}> => ({
   summary: { listeningLanes: [myMixLane] },
 }));
 const getAgentMixVocabulary = vi.fn(async () => ({ genres: ["Dancehall", "Soul"], moods: ["Warm", "Zen"] }));
@@ -321,6 +323,39 @@ describe("AgentSessionPanel", () => {
     render();
     effects.forEach((run) => run());
   }
+
+  describe("why My Mix has no lanes (#2270)", () => {
+    it("passes the server's reason when the listener has no lanes", async () => {
+      hookState.config = config({ isActive: false });
+      getTasteMemory.mockResolvedValueOnce({ summary: { listeningLanes: [], listeningLanesEmptyReason: "evidence_decayed" } });
+      await loadMyMixCatalog();
+      expect(captured.prompt?.myMix?.lanes).toEqual([]);
+      expect(captured.prompt?.myMix?.lanesStatus).toEqual({ state: "none", reason: "evidence_decayed" });
+    });
+
+    it("is a no-lanes state with no reason on an older server", async () => {
+      hookState.config = config({ isActive: false });
+      getTasteMemory.mockResolvedValueOnce({ summary: { listeningLanes: [] } });
+      await loadMyMixCatalog();
+      expect(captured.prompt?.myMix?.lanesStatus).toEqual({ state: "none", reason: null });
+    });
+
+    it("keeps a failed taste-memory call distinct from having no lanes", async () => {
+      hookState.config = config({ isActive: false });
+      getTasteMemory.mockRejectedValueOnce(new Error("offline"));
+      await loadMyMixCatalog();
+      expect(captured.prompt?.myMix?.lanes).toEqual([]);
+      expect(captured.prompt?.myMix?.lanesStatus).toEqual({ state: "unavailable" });
+    });
+
+    it("is ready when lanes load, and a failed vocabulary does not touch the lanes state", async () => {
+      hookState.config = config({ isActive: false });
+      getAgentMixVocabulary.mockRejectedValueOnce(new Error("offline"));
+      await loadMyMixCatalog();
+      expect(captured.prompt?.myMix?.lanes).toEqual([myMixLane]);
+      expect(captured.prompt?.myMix?.lanesStatus).toEqual({ state: "ready" });
+    });
+  });
 
   describe("seeded sessions (#2244)", () => {
     const playlistSeed = { kind: "playlist", id: "pl-1", label: "Late night" } as const;

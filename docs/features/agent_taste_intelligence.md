@@ -1215,7 +1215,9 @@ keys written before the change keep matching.
   family label ("African"). No field was added or removed and lane ids for
   vocabulary-only listeners are unchanged. A consumer must treat a genre key as
   a request for the matcher, not as a vocabulary entry. A boosted lane still
-  saves its genre keys as taste edits; a family id is stored as written.
+  saves its genre keys as taste edits; since #2270 a family id is stored as the
+  family label and the declared-boost ranking resolves family names through the
+  shared matcher (see below).
 - **Why an active account may not be offered My Mix.** The web offers the My Mix
   preset only when the taste memory summary holds at least one visible lane
   (`AgentSessionPrompt`; a failed taste memory call also shows none). A lane
@@ -1233,12 +1235,71 @@ keys written before the change keep matching.
      interaction decays below the floor);
   5. hidden genres or artists drop signals, negatives cancel evidence, and
      hidden lanes are not offered.
-  Which of these applies to a given account needs its signal rows (counts by
-  action, genre and session key); that diagnostic has not been run. Causes 1, 2
-  and 4 are not matcher problems and are not fixed here.
+  Causes 1, 2 and 4 are not matcher problems; since #2270 the summary names
+  which rule applies (see below) instead of showing nothing.
 - Tests: `genre_matcher_lanes.spec.ts`, `genre_families.spec.ts`,
   `listening_lanes.integration.spec.ts` (free-text history yields a lane),
   `habit_ordering.integration.spec.ts`; the #2235 golden set did not change.
+
+## Why a listener has no lanes; boosting a family-keyed lane (#2270)
+
+Vision-neutral quality (ADR-BM-6). Two gaps left after #2236.
+
+**Reason codes.** When the listener has no lanes the taste memory summary
+(`GET /recommendations/taste-memory`) carries `summary.listeningLanesEmptyReason`,
+and `null` whenever there is at least one lane (hidden lanes count: the cards
+stay so they can be restored). The lane derivation (`analyzeListeningLanes` in
+`listening_lanes.ts`; `computeListeningLanes` is its lanes-only wrapper, and
+`getListeningLaneReport` caches both) names the first rule that left the
+listener without:
+
+| Code | Rule | Web sentence |
+| --- | --- | --- |
+| `no_signals` | No usable signal: none yet, none with a session key, none inside the 730-day window or after a taste reset (a session that only logged picks leaves none until the listener accepts, completes, saves or skips) | "Play some music and save, finish or skip a few tracks to start building My Mix." |
+| `unknown_genres` | Signals exist but none has a genre the taste-edit vocabulary or a genre family names | "Your recent plays have no genre My Mix can group yet. Play tracks that name a genre to unlock it." |
+| `too_few_sessions` | Positive evidence comes from fewer than 2 distinct sessions for any one habit (a history of only skips has no positive session at all) | "Play and keep a few more sessions to unlock My Mix. A habit has to show up in more than one session." |
+| `evidence_decayed` | A habit spans 2+ sessions, but its net decayed positive evidence is under the 2.0 floor (behavioural half-life 60 days) | "Your listening has gone quiet lately. Play and save a few more tracks to bring My Mix back." |
+
+The codes are a closed set (`LISTENING_LANES_EMPTY_REASONS`); the payload is the
+code only, never counts, session keys or dates. An older server sends no field
+and the web falls back to "Play and keep a few more sessions to unlock My Mix."
+
+**Web.** The AI DJ page (`AgentSessionPanel` -> `AgentSessionPrompt`) and
+Settings -> Taste Memory (`ListeningLaneSection`) show the sentence where My Mix
+would be. A failed taste-memory call is a different state
+(`MyMixLanesStatus` `unavailable`): the AI DJ page says "My Mix could not load
+right now. Reload the page to try again." and never claims the listener has no
+lanes. Lanes the listener hid are their own choice and show no note. The
+vocabulary call is independent, so its failure no longer reads as either state.
+"Right now" (#2245) is unchanged: it consumes the same visible lanes through
+`resolveMyMixPlan` and keeps its own `no_history` / `no_context_history` cold
+start reasons, which are about the time-of-day bucket and not the lane
+derivation.
+
+**Boosting a family-keyed lane.** A boosted My Mix lane saves its genre keys as
+boosted taste edits (`buildMyMixTasteEdits`). A lane keyed by a family id (for
+example `ambient-lofi`) therefore saved an edit the declared-boost ranking
+matched exactly against release genres, so it boosted nothing. Now:
+
+- `declaredBoostMatch` (ranking core) also accepts a boosted genre that NAMES a
+  genre family, by id, label or alias (`genreFamilyNamed`), and matches release
+  genres through the shared matcher (`declaredGenreMatchesRelease` ->
+  `genreMatchesRequest`). Only a named family widens: a boost on "French Rap"
+  or "Jazz" stays an exact label match, so ordinary declared boosts do not
+  change. The reason reads "you asked for more Ambient / Lo-fi".
+- `applyTasteEdits` stores a boosted genre edit whose value is a family id as the
+  family label, so the controls list reads "Ambient / Lo-fi", not
+  "ambient-lofi", and it dedupes with a label boost. Rows already stored as an id
+  keep working through the ranking rule above.
+- Home and session retrieval already matched family terms (the boosted genre
+  rides in as a preference term), and session-level lane boost was unaffected.
+
+**Tests.** `my_mix_empty_reason.spec.ts` (each code, the not-reported cases,
+and the family boost in the ranking core), `listening_lanes.integration.spec.ts`
+(each code through the real taste memory summary, reset, hidden lanes, and the
+stored label), web `agentMyMix.test.ts`, `AgentSessionPrompt.test.tsx`,
+`AgentSessionPanel.test.tsx` (no-lanes versus failed call) and
+`TasteMemorySettingsPanel.test.tsx`.
 
 ## Diversity cap counts the credited artist (#2092)
 
