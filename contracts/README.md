@@ -176,6 +176,7 @@ forge script script/DeployProtocol.s.sol \
 | `SmokeContentProtection.s.sol` | Read-only ContentProtection implementation and authority-graph validation |
 | `BackfillContentProtectionStakeEscrow.s.sol` | Owner backfill of self-claim deadlines for pre-V7 stakes (#1759) |
 | `ConfigureContentProtectionStakeLock.s.sol` | Authorise DisputeResolution as stake-lock authority, then turn dispute stake locking on (#1759) |
+| `DeployDisputeStack.s.sol` | Replace DisputeResolution + CurationRewards next to an existing ContentProtection, continuing the previous dispute ids and replicating its juror pool, counter-stake bps, treasury and owners (#1759) |
 | `DeployRevenueEscrow.s.sol` | Revenue escrow only — deploy UUPS implementation, timelock, and proxy |
 | `UpgradeRevenueEscrow.s.sol` | Timelocked RevenueEscrow UUPS upgrade: `UPGRADE_ACTION=schedule` then `execute` |
 | `SetRevenueEscrowPaused.s.sol` | Owner-controlled global custody pause/unpause |

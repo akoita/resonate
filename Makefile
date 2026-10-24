@@ -200,6 +200,9 @@ verify-revenue-escrow-sourcify:
 verify-content-protection-sourcify:
 	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployContentProtection.s.sol/84532/run-latest.json}" VERIFY_ONLY= ./contracts/scripts/verify-base-sepolia-sourcify.sh
 
+verify-dispute-stack-sourcify:
+	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployDisputeStack.s.sol/84532/run-latest.json}" VERIFY_ONLY= ./contracts/scripts/verify-base-sepolia-sourcify.sh
+
 summary-revenue-escrow-artifacts:
 	@record="contracts/deployments/revenue-escrow.$${DEPLOYMENT_NETWORK:-base-sepolia}.json"; \
 	if [ ! -f "$$record" ]; then echo "RevenueEscrow deployment record not found: $$record"; exit 1; fi; \
@@ -539,6 +542,21 @@ configure-content-protection-stake-lock:
 	@: "$${DISPUTE_RESOLUTION_ADDRESS:?DISPUTE_RESOLUTION_ADDRESS is required}"
 	@: "$${CURATION_REWARDS_ADDRESS:?CURATION_REWARDS_ADDRESS is required}"
 	cd contracts && forge script script/ConfigureContentProtectionStakeLock.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+# Replace the dispute stack next to a V7 ContentProtection (#1759): a lock-capable
+# DisputeResolution and its CurationRewards. PREVIOUS_DISPUTE_RESOLUTION_ADDRESS
+# continues the dispute ids of the stack being replaced; see the operations runbook.
+deploy-dispute-stack:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ] || [ -z "$${EXPECTED_CHAIN_ID:-}" ]; then \
+		echo "PRIVATE_KEY, RPC_URL, and EXPECTED_CHAIN_ID are required"; exit 1; \
+	fi
+	@actual_chain_id="$$(cast chain-id --rpc-url "$${RPC_URL}")"; \
+	if [ "$$actual_chain_id" != "$${EXPECTED_CHAIN_ID}" ]; then echo "RPC resolved chain $$actual_chain_id; expected $${EXPECTED_CHAIN_ID}"; exit 1; fi; \
+	if [ -z "$${CONTENT_PROTECTION_ADDRESS:-$${CONTENT_PROTECTION_PROXY:-}}" ]; then echo "CONTENT_PROTECTION_ADDRESS or CONTENT_PROTECTION_PROXY is required"; exit 1; fi
+	@cd contracts && forge script script/DeployDisputeStack.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+	@CHAIN_ID="$${EXPECTED_CHAIN_ID}" RPC_URL="$${RPC_URL}" \
+		BROADCAST_FILE="contracts/broadcast/DeployDisputeStack.s.sol/$${EXPECTED_CHAIN_ID}/run-latest.json" \
+		./contracts/scripts/write-dispute-stack-handoff.sh
 
 payments-dev-up: dev-up local-aa-up
 	$(MAKE) local-aa-deploy

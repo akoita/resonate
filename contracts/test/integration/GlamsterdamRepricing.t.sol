@@ -344,7 +344,7 @@ contract GlamsterdamRepricingTest is Test {
         emit log_named_uint("paymentAssetRegistry.configure.repeat", gasBefore - gasleft());
         assertTrue(registry.isTokenEnabled(address(paymentToken)));
 
-        DisputeResolution disputes = new DisputeResolution(address(this));
+        DisputeResolution disputes = new DisputeResolution(address(this), 0);
         gasBefore = gasleft();
         uint256 firstDispute = disputes.fileDispute(1, REPORTER, ARTIST, "ipfs://evidence-1");
         emit log_named_uint("disputeResolution.file.cold", gasBefore - gasleft());
@@ -365,7 +365,7 @@ contract GlamsterdamRepricingTest is Test {
         protection.stake{value: STAKE_AMOUNT}(2);
 
         CurationRewards curation = new CurationRewards(
-            address(this), address(protection), address(new DisputeResolution(address(this))), BENEFICIARY
+            address(this), address(protection), address(new DisputeResolution(address(this), 0)), BENEFICIARY
         );
         vm.deal(REPORTER, 1 ether);
         vm.prank(REPORTER);

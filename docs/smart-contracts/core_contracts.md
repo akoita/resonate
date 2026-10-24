@@ -230,6 +230,14 @@ one root clear the lock only together. While locking is on, only
 `CurationRewards` can file or appeal, so no one can lock a deposit without a
 counter-stake.
 
+`DisputeResolution` is not upgradeable. A chain replaces it (with a new
+`CurationRewards`, which binds it in its constructor) through
+`DeployDisputeStack.s.sol`. The constructor's `firstDisputeIdAfter` continues
+the previous contract's numbering: `disputeIdOffset()` records it, the first new
+dispute gets `disputeIdOffset + 1`, and `disputeCount()` reports the highest id
+issued on the chain. Ids at or below the offset do not exist on the new
+contract (`DisputeNotFound`).
+
 Hierarchy model:
 
 - releases are the canonical protected roots that publish flow attests and stakes
