@@ -447,6 +447,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason: "A collectible edition the person paid for; the purchase and the edition number stay consistent with the retained payment record.",
   },
   {
+    model: "PurchaseConsent",
+    disposition: "retain",
+    reason:
+      "The evidence that a buyer asked for immediate delivery and acknowledged losing the withdrawal right (#1776): "
+      + "the proof a refund claim against the retained purchase is answered with, kept as long as that purchase record.",
+    note:
+      "Follows `StemPurchase` / `PunchlineCollectible`. Names the person only through `userId`, which rotates with the "
+      + "cascade; holds no wallet address, no free text from the person, and a server-resolved item label.",
+  },
+  {
     model: "PunchlineUnlockGrant",
     disposition: "retain",
     reason: "The entitlement earned by a retained collectible; deleting it would leave the collectible without the reward it bought.",
@@ -1248,6 +1258,9 @@ export const REVIEWED_NON_PERSON_ID_COLUMNS: Readonly<Record<string, Readonly<Re
   },
   RightsRouteReassessment: {
     evidenceSubjectId: "Copied from the evidence bundle's subject, so it carries the same enum-constrained work or case id.",
+  },
+  PurchaseConsent: {
+    subjectId: "The item bought (a stem, a punchline moment or a credit pack, named by `surface`), never a person; the buyer is `userId`, which has a User relation.",
   },
 };
 

@@ -15,6 +15,11 @@ import { EventBus } from "../shared/event_bus";
 import { PUNCHLINE_RIGHTS_SUMMARY } from "./punchline-rights";
 import { PunchlineUnlockService } from "./punchline-unlock.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import {
+  evaluatePurchaseDelivery,
+  linkConsentToPurchase,
+  type DeliveryDecision,
+} from "../purchase_consent/purchase_consent_delivery";
 
 /**
  * Collect / ownership grant for Punchline collectibles (#485).
@@ -146,6 +151,7 @@ export class PunchlineCollectService {
       status: string;
       paymentRail: string;
       pricePaidCents: number;
+      paymentRef?: string | null;
       acquiredAt: Date | null;
     },
   ) {
@@ -164,43 +170,16 @@ export class PunchlineCollectService {
     };
     this.eventBus.publish(collectedEvent);
 
-    // Unlock hook (#488): detect set completion now; reward granting is the
-    // follow-up slice. The event is the durable signal it will consume.
-    const setCompleted = await this.evaluateSetCompletion(
-      userId,
-      moment.drop.id,
-    );
-    let unlock: Awaited<
-      ReturnType<PunchlineUnlockService["grantForCompletedSet"]>
-    > = null;
-    if (setCompleted) {
-      const setEvent: PunchlineSetCompletedEvent = {
-        eventName: "punchline.set_completed",
-        eventVersion: 1,
-        occurredAt: new Date().toISOString(),
-        dropId: moment.drop.id,
-        trackId: moment.drop.trackId,
-        artistId: moment.drop.artistId,
-        collectorUserId: userId,
-      };
-      this.eventBus.publish(setEvent);
-
-      // #488: grant the drop's complete-set reward exactly once (DB-unique).
-      // A grant failure must never fail the collect itself.
-      try {
-        unlock =
-          (await this.unlockService?.grantForCompletedSet(
-            userId,
-            moment.drop.id,
-          )) ?? null;
-      } catch (error) {
-        this.logger.error(
-          `Unlock grant failed for drop ${moment.drop.id}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
+    // #1776: a collectible whose delivery is held (paid, no immediate-delivery
+    // consent, withdrawal period running) is recorded but not yet delivered, so
+    // it does not complete a set or earn the reward until it is released.
+    const held = collectible.status === "pending";
+    const { setCompleted, unlock } = held
+      ? { setCompleted: false, unlock: null }
+      : await this.completeSetIfReady(userId, moment.drop);
+    const delivery = held
+      ? await this.describeDelivery(userId, moment.id, collectible)
+      : ({ state: "released" } as const);
 
     return {
       collectible: {
@@ -214,10 +193,115 @@ export class PunchlineCollectService {
         pricePaidCents: collectible.pricePaidCents,
         acquiredAt: collectible.acquiredAt,
       },
+      delivery,
       setCompleted,
       unlock,
       rightsSummary: PUNCHLINE_RIGHTS_SUMMARY,
     };
+  }
+
+  /**
+   * Detect set completion and grant the drop's complete-set reward exactly once
+   * (#488). Shared by a collect that is delivered immediately and by the release
+   * of a held collectible. A grant failure must never fail the caller.
+   */
+  private async completeSetIfReady(
+    userId: string,
+    drop: { id: string; trackId: string; artistId: string },
+  ) {
+    const setCompleted = await this.evaluateSetCompletion(userId, drop.id);
+    let unlock: Awaited<
+      ReturnType<PunchlineUnlockService["grantForCompletedSet"]>
+    > = null;
+    if (setCompleted) {
+      const setEvent: PunchlineSetCompletedEvent = {
+        eventName: "punchline.set_completed",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        dropId: drop.id,
+        trackId: drop.trackId,
+        artistId: drop.artistId,
+        collectorUserId: userId,
+      };
+      this.eventBus.publish(setEvent);
+
+      try {
+        unlock =
+          (await this.unlockService?.grantForCompletedSet(userId, drop.id)) ??
+          null;
+      } catch (error) {
+        this.logger.error(
+          `Unlock grant failed for drop ${drop.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return { setCompleted, unlock };
+  }
+
+  /** The delivery state of a collectible: released, or held with the release date (#1776). */
+  private async describeDelivery(
+    userId: string,
+    momentId: string,
+    collectible: { id: string; status: string; paymentRef?: string | null; acquiredAt: Date | null; createdAt?: Date },
+  ): Promise<
+    { state: "released" } | { state: "held"; availableAt: string }
+  > {
+    if (collectible.status !== "pending") return { state: "released" };
+    const decision = await this.decideDelivery(userId, momentId, collectible);
+    return decision.state === "held"
+      ? { state: "held", availableAt: decision.availableAt.toISOString() }
+      : { state: "released" };
+  }
+
+  private decideDelivery(
+    userId: string,
+    momentId: string,
+    collectible: { id: string; paymentRef?: string | null; acquiredAt: Date | null; createdAt?: Date },
+  ): Promise<DeliveryDecision> {
+    return evaluatePurchaseDelivery(userId, {
+      surface: "punchline_collect",
+      subjectId: momentId,
+      purchasedAt: collectible.acquiredAt ?? collectible.createdAt ?? new Date(),
+      refs: [collectible.paymentRef, collectible.id],
+    });
+  }
+
+  /**
+   * Release this fan's held paid collectibles whose consent was recorded or
+   * whose withdrawal period has ended (#1776). Lazy by design: it runs when the
+   * fan reads their collection, so no scheduled job is needed. A release can
+   * complete a set, which grants the complete-set reward then.
+   */
+  async releaseHeldCollectibles(userId: string): Promise<number> {
+    const pending = await prisma.punchlineCollectible.findMany({
+      where: { collectorUserId: userId, status: "pending" },
+      include: {
+        moment: {
+          select: {
+            id: true,
+            drop: { select: { id: true, trackId: true, artistId: true } },
+          },
+        },
+      },
+    });
+    let released = 0;
+    for (const collectible of pending) {
+      const decision = await this.decideDelivery(userId, collectible.momentId, collectible);
+      if (decision.state !== "released") continue;
+      const updated = await prisma.punchlineCollectible.updateMany({
+        where: { id: collectible.id, status: "pending" },
+        data: { status: "owned" },
+      });
+      if (updated.count === 0) continue;
+      released += 1;
+      if (decision.basis === "consent") {
+        await linkConsentToPurchase(decision.consentId, { purchaseRef: collectible.id });
+      }
+      await this.completeSetIfReady(userId, collectible.moment.drop);
+    }
+    return released;
   }
 
   /**
@@ -226,6 +310,8 @@ export class PunchlineCollectService {
    * fan holds no edition of the moment.
    */
   async describeExistingCollect(userId: string, momentId: string) {
+    // A replay after the consent was recorded or the hold elapsed delivers it (#1776).
+    await this.releaseHeldCollectibles(userId);
     const collectible = await prisma.punchlineCollectible.findUnique({
       where: {
         momentId_collectorUserId: { momentId, collectorUserId: userId },
@@ -259,6 +345,7 @@ export class PunchlineCollectService {
         pricePaidCents: collectible.pricePaidCents,
         acquiredAt: collectible.acquiredAt,
       },
+      delivery: await this.describeDelivery(userId, momentId, collectible),
       setCompleted,
       unlock: null,
       rightsSummary: PUNCHLINE_RIGHTS_SUMMARY,
@@ -270,8 +357,10 @@ export class PunchlineCollectService {
    * surface (#485 acceptance) the inventory view (#487) renders.
    */
   async listMyCollectibles(userId: string) {
+    // Lazy release of held paid collectibles (#1776), then list owned and held.
+    await this.releaseHeldCollectibles(userId);
     const rows = await prisma.punchlineCollectible.findMany({
-      where: { collectorUserId: userId, status: "owned" },
+      where: { collectorUserId: userId, status: { in: ["owned", "pending"] } },
       orderBy: { createdAt: "desc" },
       take: 200,
       include: {
@@ -305,9 +394,15 @@ export class PunchlineCollectService {
       },
     });
 
+    const holds = await Promise.all(
+      rows.map((row) => this.describeDelivery(userId, row.momentId, row)),
+    );
+
     return {
-      items: rows.map((row) => ({
+      items: rows.map((row, index) => ({
         id: row.id,
+        status: row.status,
+        delivery: holds[index],
         editionNumber: row.editionNumber,
         editionSize: row.moment.editionSize,
         acquiredAt: row.acquiredAt,
@@ -448,6 +543,8 @@ export class PunchlineCollectService {
       collectorWallet: string | null;
       pricePaidCents: number;
       paymentRef: string;
+      /** "pending" holds the delivery until consent or the end of the withdrawal period (#1776). */
+      status?: "owned" | "pending";
     },
     settlementData: Prisma.X402SettlementUncheckedCreateInput,
   ) {
@@ -484,7 +581,7 @@ export class PunchlineCollectService {
               collectorUserId: userId,
               collectorWallet: input.collectorWallet,
               editionNumber: taken + 1,
-              status: "owned",
+              status: input.status ?? "owned",
               paymentRail: PAID_RAIL,
               pricePaidCents: input.pricePaidCents,
               paymentRef: input.paymentRef,

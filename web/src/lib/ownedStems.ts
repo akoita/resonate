@@ -52,7 +52,20 @@ export type CollectionStemLicenseFields = {
   licenseType?: string | null;
   holding?: StemHolding | null;
   activeListingId?: string | null;
+  /** Released, or held until the withdrawal period ends (#1776). Null for a stem that is only listed. */
+  delivery?: { state: "released" } | { state: "held"; availableAt: string } | null;
 };
+
+/** Merging two views of one stem: delivered if either is, else the earlier release date. */
+export function mergeStemDelivery(
+  a: CollectionStemLicenseFields["delivery"],
+  b: CollectionStemLicenseFields["delivery"],
+): CollectionStemLicenseFields["delivery"] {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  if (a.state === "released" || b.state === "released") return { state: "released" };
+  return a.availableAt <= b.availableAt ? a : b;
+}
 
 /**
  * Merges the same stem returned for two of the user's addresses (the sign-in
@@ -75,6 +88,7 @@ export function mergeCollectionStem<T extends CollectionStemLicenseFields>(
     ...incoming,
     licenseType: higherLicenseTier(existingTier, incomingTier),
     holding,
+    delivery: mergeStemDelivery(existing.delivery, incoming.delivery),
     activeListingId: incoming.activeListingId ?? existing.activeListingId,
   };
 }

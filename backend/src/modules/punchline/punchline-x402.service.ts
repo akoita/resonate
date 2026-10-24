@@ -26,6 +26,7 @@ import {
   findVerifiedUsdcTransfer,
 } from "../x402/x402.smart-account";
 import { assertPaymentBoundToBuyer } from "../x402/x402.payer-binding";
+import { evaluatePurchaseDelivery, linkConsentToPurchase } from "../purchase_consent/purchase_consent_delivery";
 import {
   PunchlineCollectException,
   PunchlineCollectService,
@@ -264,6 +265,17 @@ export class PunchlineX402Service {
       status: "collected",
     });
 
+    // #1776: the payment is verified, so the edition is secured for this fan
+    // either way. It is delivered now only against the immediate-delivery
+    // consent recorded at checkout; otherwise it waits (status "pending") for
+    // the end of the withdrawal period, and the fan is told when.
+    const delivery = await evaluatePurchaseDelivery(userId, {
+      surface: "punchline_collect",
+      subjectId: moment.id,
+      purchasedAt: settlementData.purchasedAt as Date,
+      refs: [txHash],
+    });
+
     try {
       const collectible =
         await this.collectService.allocatePaidEditionWithSettlement(
@@ -274,9 +286,14 @@ export class PunchlineX402Service {
             collectorWallet: this.normalizeWallet(body.collectorWallet ?? body.payer),
             pricePaidCents: moment.priceCents,
             paymentRef: txHash,
+            status: delivery.state === "held" ? "pending" : "owned",
           },
           settlementData,
         );
+
+      // The consent that released (or, if the buyer chose to wait, governs) this
+      // payment names it from now on.
+      await linkConsentToPurchase(delivery.consentId, { transactionHash: txHash });
 
       this.eventBus.publish({
         eventName: "x402.purchase",

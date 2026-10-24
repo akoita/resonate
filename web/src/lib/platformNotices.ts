@@ -50,7 +50,7 @@ export function resetPlatformNotices() {
 }
 
 const NOTICE_KINDS: readonly string[] = ["broadcast", "targeted"];
-const NOTICE_CATEGORIES: readonly string[] = ["policy", "terms", "incident", "moderation", "account", "refund"];
+const NOTICE_CATEGORIES: readonly string[] = ["policy", "terms", "incident", "moderation", "account", "refund", "purchase"];
 
 function asNotice(value: unknown): PlatformNotice | null {
   if (!value || typeof value !== "object") return null;
@@ -149,6 +149,7 @@ export const NOTICE_CATEGORY_LABELS: Record<PlatformNoticeCategory, string> = {
   moderation: "Moderation",
   account: "Account",
   refund: "Refund",
+  purchase: "Purchase",
 };
 
 /** "Takes effect 1 Nov 2026", or null without a valid effective date. */

@@ -152,6 +152,45 @@ describe("PurchaseSuccessPanel (#2042)", () => {
     expect(html).not.toContain("Pay ");
   });
 
+  it("says the download is held when the buyer chose to wait (#1776)", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{ method: "onchain", licenseType: "personal", txHash: "0xabc", waited: true }}
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("buy-modal-held-note");
+    expect(html).toContain("held until 14 days after your purchase");
+  });
+
+  it("shows the release date and no download link for a held x402 purchase (#1776)", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{
+          method: "x402",
+          licenseType: "personal",
+          result: {
+            audio: new Blob([]),
+            filename: "stem",
+            mimeType: "audio/mpeg",
+            receiptId: "r-held",
+            receiptHeader: null,
+            receipt: null,
+            licenseKey: null,
+            transactionHash: null,
+            held: { availableAt: "2026-11-07T10:00:00.000Z" },
+          },
+        }}
+        x402DownloadUrl="blob:should-not-render"
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("buy-modal-held-note");
+    expect(html).toContain("withdrawal period ends");
+    expect(html).not.toContain("Download stem");
+    expect(html).not.toContain("blob:should-not-render");
+  });
+
   it("offers only the library after a personal wallet purchase", () => {
     const html = renderToStaticMarkup(
       <PurchaseSuccessPanel

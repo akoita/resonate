@@ -34,6 +34,7 @@ import { PunchlineDropService } from "../modules/punchline/punchline-drop.servic
 import { PunchlineX402Service } from "../modules/punchline/punchline-x402.service";
 import type { X402Config } from "../modules/x402/x402.config";
 import type { ResonateEvent } from "../events/event_types";
+import { useClockAfterConsentCutover } from "./purchase_consent_clock";
 
 const TEST_PREFIX = `punchline_paid_${Date.now()}_`;
 
@@ -48,6 +49,7 @@ const MOMENT_PAID = `${TEST_PREFIX}m_paid`;
 const MOMENT_FREE = `${TEST_PREFIX}m_free`;
 const MOMENT_SOLDOUT = `${TEST_PREFIX}m_soldout`;
 const MOMENT_DRAFT = `${TEST_PREFIX}m_draft`;
+const MOMENT_HELD = `${TEST_PREFIX}m_held`;
 
 const FAN_A = `${TEST_PREFIX}fan_a`;
 const FAN_B = `${TEST_PREFIX}fan_b`;
@@ -63,6 +65,7 @@ const TX_A = `0x${"a".repeat(64)}` as const;
 const TX_SOLDOUT = `0x${"d".repeat(64)}` as const;
 const TX_BADVERIFY = `0x${"e".repeat(64)}` as const;
 const TX_STRANGER = `0x${"f".repeat(64)}` as const;
+const TX_HELD = `0x${"1".repeat(64)}` as const;
 
 function fakeX402Config(): X402Config {
   return {
@@ -112,6 +115,22 @@ function receiptWithTransfer(value: bigint) {
       },
     ],
   };
+}
+
+/** #1776: the buyer asked for immediate delivery at checkout, before paying. */
+async function consentToImmediateDelivery(userId: string, momentId: string) {
+  await prisma.purchaseConsent.create({
+    data: {
+      userId,
+      surface: "punchline_collect",
+      subjectId: momentId,
+      subjectLabel: `Collectible: ${momentId}`,
+      deliveryKind: "off_chain",
+      consented: true,
+      acknowledgedWaiver: true,
+      textVersion: "test",
+    },
+  });
 }
 
 function momentData(id: string, overrides: object = {}) {
@@ -200,6 +219,7 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
             momentData(MOMENT_PAID, { priceCents: 150 }),
             momentData(MOMENT_FREE),
             momentData(MOMENT_SOLDOUT, { priceCents: 200, editionSize: 1 }),
+            momentData(MOMENT_HELD, { priceCents: 100 }),
           ],
         },
       },
@@ -228,6 +248,7 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
   });
 
   afterAll(async () => {
+    await prisma.purchaseConsent.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.x402Settlement.deleteMany({
       where: { momentId: { startsWith: TEST_PREFIX } },
     });
@@ -251,6 +272,7 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   // (a) Quote --------------------------------------------------------------
@@ -285,6 +307,8 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
 
   // (b) Happy path ---------------------------------------------------------
   it("(b) grants the edition and records the settlement in one transaction", async () => {
+    useClockAfterConsentCutover();
+    await consentToImmediateDelivery(FAN_A, MOMENT_PAID);
     stubVerified(BigInt(1_500_000));
     const result = await x402.collectWithSmartAccount(FAN_A, MOMENT_PAID, {
       txHash: TX_A,
@@ -361,6 +385,7 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
 
   // (d) Post-payment race → refund_due ------------------------------------
   it("(d) records refund_due and returns paid_but_unfulfilled when sold out post-payment", async () => {
+    await consentToImmediateDelivery(FAN_B, MOMENT_SOLDOUT);
     stubVerified(BigInt(2_000_000));
     await expect(
       x402.collectWithSmartAccount(FAN_B, MOMENT_SOLDOUT, {
@@ -451,6 +476,37 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
         payer: OTHER_PAYER,
       }),
     ).rejects.toMatchObject({ response: { code: "payment_redeemed_elsewhere" } });
+  });
+
+  // (g) Held delivery (#1776) ------------------------------------------------
+  it("(g) records the payment but holds the edition without a delivery consent, then releases it", async () => {
+    // The consent step only applies to purchases after the cutover (#1776).
+    useClockAfterConsentCutover();
+    stubVerified(BigInt(1_000_000));
+    const result = await x402.collectWithSmartAccount(FAN_B, MOMENT_HELD, {
+      txHash: TX_HELD,
+      payer: PAYER,
+    });
+    expect(result.collectible.status).toBe("pending");
+    expect(result.delivery).toMatchObject({ state: "held" });
+    expect(Date.parse((result.delivery as { availableAt: string }).availableAt)).toBeGreaterThan(
+      Date.now() + 13 * 24 * 60 * 60 * 1000,
+    );
+    expect(result.setCompleted).toBe(false);
+    // The payment is settled and the edition is secured for this fan.
+    expect(await prisma.x402Settlement.count({ where: { paymentTransactionHash: TX_HELD } })).toBe(1);
+
+    const held = await collectService.listMyCollectibles(FAN_B);
+    const heldItem = held.items.find((item) => item.moment.id === MOMENT_HELD);
+    expect(heldItem).toMatchObject({ status: "pending", delivery: { state: "held" } });
+
+    // A later immediate-delivery consent (delivery has not begun) releases it on the next read.
+    await consentToImmediateDelivery(FAN_B, MOMENT_HELD);
+    const released = await collectService.listMyCollectibles(FAN_B);
+    expect(released.items.find((item) => item.moment.id === MOMENT_HELD)).toMatchObject({
+      status: "owned",
+      delivery: { state: "released" },
+    });
   });
 
   // (f) Price band ---------------------------------------------------------

@@ -536,7 +536,16 @@ export class MetadataController {
     @Param("walletAddress") walletAddress: string,
   ) {
     await this.assertCanAccessCollection(req?.user, walletAddress);
-    const stems = await this.contractsService.getStemsByOwner(walletAddress);
+    // #1776: delivery state is the holder's own; a support read of another wallet carries none.
+    const callerId = typeof req?.user?.userId === "string" ? req.user.userId : "";
+    const isSupportRead = req?.user?.role === "admin" || req?.user?.role === "operator";
+    const ownAddresses =
+      callerId && !isSupportRead
+        ? await this.contractsService.getCallerWalletAddresses(callerId)
+        : new Set<string>();
+    const stems = await this.contractsService.getStemsByOwner(walletAddress, {
+      deliveryUserId: ownAddresses.has(walletAddress.toLowerCase()) ? callerId : undefined,
+    });
 
     return {
       total: stems.length,
@@ -576,6 +585,8 @@ export class MetadataController {
           // stem; `holding` says which (#2042).
           licenseType: stem.licenseType ?? null,
           holding: stem.holding,
+          // Released, or held until the end of the withdrawal period (#1776).
+          delivery: stem.delivery ?? null,
         };
       }),
     };

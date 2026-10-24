@@ -23,7 +23,9 @@ out (disputes, credits, listings).
 - **Read state**: stored per person in `NoticeRead (noticeId, userId, readAt)`.
   Dismissing a banner marks the notice read.
 - **Categories**: `policy`, `terms`, `incident`, `moderation`, `account`,
-  `refund`.
+  `refund`, `purchase`. `terms`, `account` and `purchase` (the confirmation of an
+  immediate-delivery consent, [#1776](purchase_consent.md)) are always emailed to
+  a confirmed address and cannot be switched off.
 - **Expiry**: an optional `expiresAt` hides a broadcast after that time.
   `effectiveAt` is for display only ("Takes effect ...") and does not filter
   anything.
