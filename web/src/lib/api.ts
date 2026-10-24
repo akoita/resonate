@@ -6704,6 +6704,8 @@ export type UsageLimit = {
  */
 export type UsageBreakdownItem = {
   kind: "lyria" | "remix_draft";
+  /** Sub-line within the kind (#1933), e.g. "part_take"; equals `kind` if unsplit. */
+  lineId: string;
   label: string;
   unitSeconds: number;
   unitCostCents: number;

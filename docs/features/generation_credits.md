@@ -164,7 +164,12 @@ deliberately separate sections plus the plan tier:
   `percentLeft`, `windowSeconds`, `resetsAt`. Hitting one means waiting for the
   reset; it is never solved by topping up.
 - `breakdown` -- credit spend per metered kind over the last 30 days: unit size
-  and live unit cost, number of charges, spent, refunded and net cents.
+  and live unit cost, number of charges, spent, refunded and net cents. A kind
+  can be split into registry `lines` by ledger reason (#1933): `remix_draft`
+  shows "AI remix draft" and "AI part takes" (reason `remix_part`) as separate
+  rows (`kind` + `lineId`). It is presentation only: the lines sum to the
+  kind's former total, refunds follow the debit they return, and the price is
+  unchanged.
 
 **Metered-action registry**
 ([`backend/src/modules/credits/metered-actions.ts`](../../backend/src/modules/credits/metered-actions.ts))

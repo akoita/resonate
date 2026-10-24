@@ -61,6 +61,7 @@ function summary(overrides: Partial<UsageSummary> = {}): UsageSummary {
       items: [
         {
           kind: "lyria",
+          lineId: "lyria",
           label: "Track generation",
           unitSeconds: 30,
           unitCostCents: 10,
@@ -71,6 +72,7 @@ function summary(overrides: Partial<UsageSummary> = {}): UsageSummary {
         },
         {
           kind: "remix_draft",
+          lineId: "draft",
           label: "AI remix draft",
           unitSeconds: 30,
           unitCostCents: 10,
@@ -78,6 +80,17 @@ function summary(overrides: Partial<UsageSummary> = {}): UsageSummary {
           spentCents: 0,
           refundedCents: 0,
           netCents: 0,
+        },
+        {
+          kind: "remix_draft",
+          lineId: "part_take",
+          label: "AI part takes",
+          unitSeconds: 30,
+          unitCostCents: 10,
+          charges: 2,
+          spentCents: 20,
+          refundedCents: 0,
+          netCents: 20,
         },
       ],
     },
@@ -131,6 +144,7 @@ describe("UsageBillingView", () => {
     expect(html).toContain("48 / 50 per hour");
     expect(html).toContain("resets in 42 min");
     expect(html).toContain("AI remix draft");
+    expect(html).toContain("AI part takes");
     expect(html).toContain("100% left");
     expect(html).toContain("10 / 10 per hour");
     // remix_draft has a null resetsAt → em dash.
@@ -218,6 +232,7 @@ describe("UsageBillingView", () => {
     expect(html).toContain("No credits spent in the last 30 days.");
     expect(html).toContain("Track generation: $0.10 per 30s");
     expect(html).toContain("AI remix draft: $0.10 per 30s");
+    expect(html).toContain("AI part takes: $0.10 per 30s");
   });
 });
 

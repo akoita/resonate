@@ -179,7 +179,7 @@ export function UsageBillingView({
               </thead>
               <tbody>
                 {breakdown.items.map((item) => (
-                  <tr key={item.kind}>
+                  <tr key={`${item.kind}:${item.lineId}`}>
                     <td>{item.label}</td>
                     <td className="usage-num">
                       {formatCents(item.unitCostCents)} / {item.unitSeconds}s

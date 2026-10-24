@@ -75,7 +75,7 @@ interface MeteredAction {
 GET /usage/summary  → {
   credits: { balanceCents, priceCentsPer30s, recentTransactions[] },
   limits: [ { kind, label, remaining, limit, percentLeft, windowSeconds, resetsAt } ],
-  breakdown: { periodDays, since, items: [ { kind, label, unitSeconds, unitCostCents, charges, spentCents, refundedCents, netCents } ] },
+  breakdown: { periodDays, since, items: [ { kind, lineId, label, unitSeconds, unitCostCents, charges, spentCents, refundedCents, netCents } ] },
   plan:   { tier: "free", monthlyAllowanceCents?: number }    // Free today; Artist Pro later (ADR-BM-3)
 }
 ```

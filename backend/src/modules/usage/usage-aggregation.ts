@@ -24,6 +24,8 @@ export interface UsageLimitSummary {
 /** Credit spend attributed to one metered kind over the breakdown period. */
 export interface UsageBreakdownItem {
   kind: MeteredActionKind;
+  /** Sub-line id within the kind (#1933); equals `kind` for an unsplit kind. */
+  lineId: string;
   label: string;
   /** Registry unit size: one charge covers this many seconds of audio. */
   unitSeconds: number;
@@ -98,7 +100,7 @@ export interface RefundRow {
 }
 
 /**
- * Per-kind spend breakdown. Every registered kind gets a row (zeros when unused)
+ * Per-line spend breakdown (a line is a kind, or a registry sub-line of it). Every registered line gets a row (zeros when unused)
  * so the UI shows what is metered, not just what was used. Debits are attributed
  * to a kind by `ledgerReasons`; refunds by the reason of the debit they undo.
  * Ledger rows whose reason matches no registered kind are ignored here — they
@@ -111,40 +113,43 @@ export function buildUsageBreakdown(input: {
   since: Date;
   periodDays?: number;
 }): UsageBreakdown {
-  const kindByReason = new Map<string, MeteredActionKind>();
+  // One line per registry sub-line (#1933), or one per kind when unsplit.
+  const lineByReason = new Map<string, string>();
+  const items = new Map<string, UsageBreakdownItem>();
+  const order: string[] = [];
   for (const kind of METERED_ACTION_KINDS) {
-    for (const reason of METERED_ACTIONS[kind].ledgerReasons) {
-      kindByReason.set(reason, kind);
+    const action = METERED_ACTIONS[kind];
+    const lines = action.lines ?? [
+      { id: kind, label: action.label, ledgerReasons: action.ledgerReasons },
+    ];
+    for (const line of lines) {
+      const key = `${kind}:${line.id}`;
+      order.push(key);
+      for (const reason of line.ledgerReasons) lineByReason.set(reason, key);
+      items.set(key, {
+        kind,
+        lineId: line.id,
+        label: line.label,
+        unitSeconds: action.cost.unitSeconds,
+        unitCostCents: unitCostCents(kind, input.priceCentsPer30s),
+        charges: 0,
+        spentCents: 0,
+        refundedCents: 0,
+        netCents: 0,
+      });
     }
   }
 
-  const items = new Map<MeteredActionKind, UsageBreakdownItem>();
-  for (const kind of METERED_ACTION_KINDS) {
-    const action = METERED_ACTIONS[kind];
-    items.set(kind, {
-      kind,
-      label: action.label,
-      unitSeconds: action.cost.unitSeconds,
-      unitCostCents: unitCostCents(kind, input.priceCentsPer30s),
-      charges: 0,
-      spentCents: 0,
-      refundedCents: 0,
-      netCents: 0,
-    });
-  }
-
   for (const group of input.debits) {
-    const kind = kindByReason.get(group.reason);
-    const item = kind ? items.get(kind) : undefined;
+    const item = items.get(lineByReason.get(group.reason) ?? "");
     if (!item) continue;
     item.charges += group.count;
     item.spentCents += group.amountCents;
   }
   for (const refund of input.refunds) {
-    const kind = refund.debitReason
-      ? kindByReason.get(refund.debitReason)
-      : undefined;
-    const item = kind ? items.get(kind) : undefined;
+    const item = items.get(
+      (refund.debitReason && lineByReason.get(refund.debitReason)) || "",
+    );
     if (!item) continue;
     item.refundedCents += refund.amountCents;
   }
@@ -155,6 +160,6 @@ export function buildUsageBreakdown(input: {
   return {
     periodDays: input.periodDays ?? USAGE_BREAKDOWN_PERIOD_DAYS,
     since: input.since.toISOString(),
-    items: METERED_ACTION_KINDS.map((kind) => items.get(kind)!),
+    items: order.map((key) => items.get(key)!),
   };
 }

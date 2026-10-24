@@ -1864,7 +1864,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Credits are your prepaid balance. Each AI action spends some of it, and the page shows the price per 30 seconds of audio for each kind of action.",
               "Usage limits are fair-use quotas, such as a number of generations per hour. They show how much is left as a percentage and when they reset. Reaching a limit just means waiting for the reset; it is not a credit problem and more credits will not change it.",
-              "Spend by action shows what each kind of action cost you over the last 30 days, minus refunds for runs that failed.",
+              "Spend by action shows what each kind of action cost you over the last 30 days, minus refunds for runs that failed. AI part takes in Remix Studio have their own line, separate from AI remix drafts.",
             ],
           },
           {
