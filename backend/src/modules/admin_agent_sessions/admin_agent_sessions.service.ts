@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
-import { writeAdminAuditEvent } from "../accounts/admin_audit_event";
+import { writeAdminAuditEvent } from "../admin_audit/admin_audit_event";
 import { AnalyticsGovernanceService } from "../analytics/analytics_governance.service";
 
 /** Most events one view returns; a session produces far fewer in practice. */

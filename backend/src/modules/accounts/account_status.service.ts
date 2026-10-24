@@ -12,7 +12,7 @@ import { AuditService } from "../audit/audit.service";
 import { NoticeService } from "../notifications/notice.service";
 import { AccountClosureService } from "../privacy/account_closure.service";
 import { AccountStandingService, EffectiveAccountStatus } from "./account_standing.service";
-import { AdminAuditAction, writeAdminAuditEvent } from "./admin_audit_event";
+import { AdminAuditAction, writeAdminAuditEvent } from "../admin_audit/admin_audit_event";
 
 export { ACCOUNT_STATUS_CACHE_TTL_MS } from "./account_standing.service";
 export type { EffectiveAccountStatus } from "./account_standing.service";

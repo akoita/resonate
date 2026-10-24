@@ -805,8 +805,9 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     disposition: "retain",
     reason:
       "Durable record that an operator viewed or acted on an account (#2166), kept as audit history under the "
-      + "platform's interest in accountability for operator access. It holds no free text: `detail` is a "
-      + "reason category and dates, never an operator note.",
+      + "platform's interest in accountability for operator access. Since #2173 it is the one admin audit log: it "
+      + "also records notices an operator sent and each step-up confirmation, with an `outcome`. It holds no free "
+      + "text: `detail` is a reason category, identifiers, counts and dates, never an operator note or a notice's text.",
     note:
       "`actorUserId` (the operator) and `targetUserId` (the viewed or restricted account) have no User relation "
       + "and are both listed in `DANGLING_PERSON_COLUMNS`, so either person's erasure rewrites their id and the "

@@ -7807,10 +7807,10 @@ export function markPlatformNoticeRead(token: string, noticeId: string) {
   );
 }
 
-export function sendBroadcastNotice(token: string, input: BroadcastNoticeInput) {
+export function sendBroadcastNotice(token: string, input: BroadcastNoticeInput, stepUpProof?: string) {
   return apiRequest<SentBroadcastNotice>(
     "/notices/broadcast",
-    { method: "POST", body: JSON.stringify(input) },
+    { method: "POST", body: JSON.stringify(input), headers: stepUpHeaders(stepUpProof) },
     token,
   );
 }
@@ -7939,10 +7939,11 @@ export function suspendAccount(
   token: string,
   idOrAddress: string,
   input: { reason: AccountStatusReason; until?: string; note?: string },
+  stepUpProof?: string,
 ) {
   return apiRequest<AdminAccountStatus>(
     `/admin/accounts/${encodeURIComponent(idOrAddress)}/suspend`,
-    { method: "POST", body: JSON.stringify(input) },
+    { method: "POST", body: JSON.stringify(input), headers: stepUpHeaders(stepUpProof) },
     token,
   );
 }
@@ -7959,10 +7960,106 @@ export function closeAccount(
   token: string,
   idOrAddress: string,
   input: { reason: AccountStatusReason; note?: string; scheduleErasure?: boolean },
+  stepUpProof?: string,
 ) {
   return apiRequest<AdminAccountStatus>(
     `/admin/accounts/${encodeURIComponent(idOrAddress)}/close`,
+    { method: "POST", body: JSON.stringify(input), headers: stepUpHeaders(stepUpProof) },
+    token,
+  );
+}
+
+// ============ Admin step-up and audit log (#2173) ============
+
+/** The header a destructive admin request carries its step-up proof in. */
+export const ADMIN_STEP_UP_HEADER = "X-Admin-Step-Up";
+
+function stepUpHeaders(proof: string | undefined): HeadersInit | undefined {
+  return proof ? { [ADMIN_STEP_UP_HEADER]: proof } : undefined;
+}
+
+/** The server's words to sign, and the opaque token that goes back with the signature. */
+export type AdminStepUpChallenge = {
+  address: string;
+  message: string;
+  challengeToken: string;
+  expiresAt: string;
+};
+
+export type AdminStepUpProof = {
+  proof: string;
+  expiresAt: string;
+  ttlSeconds: number;
+};
+
+export function requestAdminStepUpChallenge(token: string) {
+  return apiRequest<AdminStepUpChallenge>("/admin/step-up/challenge", { method: "POST" }, token);
+}
+
+export function verifyAdminStepUp(
+  token: string,
+  input: { address: string; signature: string; challengeToken: string },
+) {
+  return apiRequest<AdminStepUpProof>(
+    "/admin/step-up/verify",
     { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export type AdminAuditAction =
+  | "user.detail_viewed"
+  | "account.suspended"
+  | "account.unsuspended"
+  | "account.closed"
+  | "agent_session.events_viewed"
+  | "notice.broadcast_sent"
+  | "notice.targeted_sent"
+  | "admin.step_up_verified"
+  | "admin.step_up_refused";
+
+export type AdminAuditOutcome = "success" | "denied";
+
+export type AdminAuditEvent = {
+  id: string;
+  createdAt: string;
+  actorUserId: string;
+  action: string;
+  targetUserId: string | null;
+  outcome: string;
+  detail: unknown;
+};
+
+export type AdminAuditEventsPage = {
+  items: AdminAuditEvent[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+export type AdminAuditEventsQuery = {
+  action?: AdminAuditAction;
+  outcome?: AdminAuditOutcome;
+  actor?: string;
+  target?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export function buildAdminAuditQueryString(query: AdminAuditEventsQuery): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+export function listAdminAuditEvents(token: string, query: AdminAuditEventsQuery = {}) {
+  return apiRequest<AdminAuditEventsPage>(
+    `/admin/audit-events${buildAdminAuditQueryString(query)}`,
+    { cache: "no-store" },
     token,
   );
 }

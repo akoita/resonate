@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { AccountStatusService } from "./account_status.service";
@@ -23,6 +24,10 @@ export class AccountController {
 /**
  * Operator account suspension and closure (#2147). Admin only: an operator can
  * read the platform's queues but does not hold the power to restrict a person.
+ *
+ * Suspending and closing also need a fresh step-up proof (#2173,
+ * `@RequireStepUp()`): `403 { code: "step_up_required" }` without one. Lifting
+ * a suspension only restores access, so it does not.
  */
 @Controller("admin/accounts")
 export class AdminAccountsController {
@@ -41,6 +46,7 @@ export class AdminAccountsController {
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
+  @RequireStepUp()
   @HttpCode(200)
   @Post(":userId/suspend")
   suspend(@Req() req: any, @Param("userId") userId: string, @Body() body: SuspendAccountDto) {
@@ -57,6 +63,7 @@ export class AdminAccountsController {
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
+  @RequireStepUp()
   @HttpCode(200)
   @Post(":userId/close")
   close(@Req() req: any, @Param("userId") userId: string, @Body() body: CloseAccountDto) {

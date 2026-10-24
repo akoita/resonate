@@ -528,7 +528,8 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "targetUserId" }],
     note:
       "Added by #2166. Records of an operator viewing or acting on this person's account (what, when, reason "
-      + "category). The operator's id is redacted.",
+      + "category), and, since #2173, a notice an operator sent to them alone (category and count only, never its "
+      + "text). The operator's id is redacted.",
   },
   {
     model: "CuratorReputation",

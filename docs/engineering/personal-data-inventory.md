@@ -358,16 +358,27 @@ makes erasure a feature rather than a `DELETE`.
 `ShowEscrowReconciliationAcknowledgement` (`acknowledgedByUserId`,
 `revokedByUserId`).
 
-`AdminAuditEvent` (#2166) holds two dangling account ids: `actorUserId` (the
-operator who viewed or acted on an account) and `targetUserId` (the account
-viewed or restricted). It records `user.detail_viewed` and the account
-suspension, unsuspension and closure actions with a `detail` of reason category
-and dates, and `agent_session.events_viewed` (#2259: an admin opened a session's
-raw agent events; `detail` is the session id and an event count, never the
-events themselves); **an operator's free-text note is never stored in it.** Erasure
-disposition: `retain` as audit history, with both columns rewritten to the new
-id (an erased operator and an erased subject both stop being named). Export:
-rows where `targetUserId` is the person, with `actorUserId` redacted.
+`AdminAuditEvent` (#2166, extended by #2173 into the one admin audit log) holds
+two dangling account ids: `actorUserId` (the operator who viewed or acted on an
+account) and `targetUserId` (the account viewed or restricted, null for an
+action that is not about one person). It records `user.detail_viewed` and the
+account suspension, unsuspension and closure actions with a `detail` of reason
+category and dates, `agent_session.events_viewed` (#2259: an admin opened a
+session's raw agent events; `detail` is the session id and an event count, never
+the events themselves), and, since #2173, `notice.broadcast_sent` (notice id,
+category, audience) and `notice.targeted_sent` (category and counts; the
+recipient is `targetUserId` only when there is exactly one), plus
+`admin.step_up_verified` and `admin.step_up_refused` (the mode that proved the
+confirmation, or the refusal reason; never the signature). Each row has an
+`outcome` (`success` or `denied`). **An operator's free-text note and the text of
+a notice are never stored in it.** Erasure disposition: `retain` as audit
+history, with both columns rewritten to the new id (an erased operator and an
+erased subject both stop being named). Export: rows where `targetUserId` is the
+person, with `actorUserId` redacted. Retention: the log is append-only and has
+no deletion job; it is kept as audit history for the lifetime of the deployment,
+as the privacy policy states ("Kept as audit history; it names you only by an
+identifier that is replaced when your account is erased"). A numeric retention
+period is a deployment decision for the operator, not something the code sets.
 
 `ReleaseArtistCredit.identityReviewerUserId` is another dangling account id.
 The model has an `Artist` relation, but the reviewer field has no `User`

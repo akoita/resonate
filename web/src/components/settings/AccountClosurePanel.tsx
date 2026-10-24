@@ -9,6 +9,7 @@ import {
   requestAccountClosureChallenge,
   type AccountClosureRequest,
 } from "../../lib/api";
+import { isPasskeyDismissal } from "../../lib/passkeyDismissal";
 import {
   getAccountClosureState,
   loadAccountClosure,
@@ -16,6 +17,9 @@ import {
   subscribeToAccountClosure,
   type AccountClosureState,
 } from "./accountClosureState";
+
+// Kept importable from here: the closure tests and the panel have always read it from this file.
+export { isPasskeyDismissal };
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
@@ -225,23 +229,6 @@ export async function cancelScheduledAccountClosure(
       message: "We could not cancel it just now. Please try again — and remember that simply signing in also cancels it.",
     });
   }
-}
-
-/**
- * True when the passkey prompt ended because the person dismissed it (or let
- * it time out), rather than because something failed. WebAuthn reports both as
- * `NotAllowedError`, and in both cases nothing was signed and nothing was
- * requested, so both are ordinary outcomes rather than errors.
- */
-export function isPasskeyDismissal(error: unknown): boolean {
-  const name = error instanceof Error ? error.name : "";
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = `${name} ${message}`.toLowerCase();
-  return (
-    name === "AbortError" ||
-    normalized.includes("notallowederror") ||
-    normalized.includes("timed out or was not allowed")
-  );
 }
 
 /** The day the deletion runs, in the reader's own locale. */

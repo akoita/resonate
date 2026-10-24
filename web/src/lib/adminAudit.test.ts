@@ -1,0 +1,59 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ADMIN_AUDIT_ACTION_OPTIONS,
+  adminAuditActionLabel,
+  adminAuditDetailSummary,
+  adminAuditOutcomeLabel,
+  isAdminAuditAction,
+} from "./adminAudit";
+import { API_BASE, buildAdminAuditQueryString, listAdminAuditEvents } from "./api";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("admin audit helpers (#2173)", () => {
+  it("labels every action the server writes and shows unknown ones as recorded", () => {
+    for (const option of ADMIN_AUDIT_ACTION_OPTIONS) {
+      expect(adminAuditActionLabel(option.value)).toBe(option.label);
+      expect(isAdminAuditAction(option.value)).toBe(true);
+    }
+    expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(9);
+    expect(adminAuditActionLabel("something.new")).toBe("something.new");
+    expect(isAdminAuditAction("something.new")).toBe(false);
+    expect(adminAuditOutcomeLabel("success")).toBe("Done");
+    expect(adminAuditOutcomeLabel("denied")).toBe("Refused");
+  });
+
+  it("summarises detail from known keys only", () => {
+    expect(adminAuditDetailSummary({ action: "account.closed", detail: { reason: "fraud", note: "never", scheduleErasure: true } }))
+      .toBe("Fraud");
+    expect(adminAuditDetailSummary({ action: "admin.step_up_refused", detail: { reason: "signature_mismatch" } }))
+      .toBe("the signature did not match");
+    expect(adminAuditDetailSummary({ action: "notice.targeted_sent", detail: { category: "account", recipientCount: 1 } }))
+      .toBe("account · 1 person");
+    expect(adminAuditDetailSummary({ action: "notice.broadcast_sent", detail: { noticeId: "12345678-aaaa", category: "policy", audience: "all" } }))
+      .toBe("policy · to all · notice 12345678");
+    expect(adminAuditDetailSummary({ action: "agent_session.events_viewed", detail: { sessionId: "s-1", eventCount: 12 } }))
+      .toBe("12 events · session s-1");
+    expect(adminAuditDetailSummary({ action: "user.detail_viewed", detail: null })).toBeNull();
+  });
+
+  it("builds the query without empty filters and calls the admin-only route", async () => {
+    expect(buildAdminAuditQueryString({})).toBe("");
+    expect(buildAdminAuditQueryString({ action: "account.closed", outcome: "denied", page: 2, pageSize: 50 }))
+      .toBe("?action=account.closed&outcome=denied&page=2&pageSize=50");
+
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], page: 1, pageSize: 50, total: 0 }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await listAdminAuditEvents("session-token", { outcome: "denied" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API_BASE}/admin/audit-events?outcome=denied`);
+    expect(init.cache).toBe("no-store");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer session-token");
+  });
+});

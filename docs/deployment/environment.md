@@ -42,6 +42,7 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_PASSKEY_RP_ID` | Frontend | Optional WebAuthn relying-party ID override. Leave unset for normal hostname-based passkeys; set only to recover or intentionally share passkeys across subdomains |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `ADMIN_ADDRESSES` | Backend | Optional comma-separated wallet addresses that are promoted to `admin` when authenticated through wallet auth or dev login. Store deployment-specific values in environment configuration, not source. |
+| `ADMIN_STEP_UP_TTL_SECONDS` | Backend | Optional lifetime in seconds of the admin step-up proof required for suspend, close and broadcast (#2173). Default `300`; values are clamped to 30-300, so a deployment can shorten the window but never exceed five minutes. The proof is signed with a key derived from `JWT_SECRET`. |
 | `AGENT_ADDRESSES` | Backend | Optional comma-separated wallet addresses allowed to receive the `agent` JWT role. Wallets that request `agent` without being listed are downgraded to `listener`; admin promotion still wins. |
 | `OPERATOR_ADDRESSES` | Backend | Optional deployment-managed comma-separated allowlist of wallet addresses that may authenticate with the `operator` role; used by the staging lifecycle smoke #1392. |
 | `AUTH_DEV_LOGIN_ENABLED` | Backend | Local/test-only switch for `POST /auth/login`. The endpoint returns 403 unless this is exactly `true`; leave unset/false in shared and production environments. |

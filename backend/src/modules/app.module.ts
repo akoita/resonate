@@ -53,6 +53,9 @@ import { UserActivityInterceptor } from "./accounts/user_activity.interceptor";
 import { UserActivityModule } from "./accounts/user_activity.module";
 import { AdminUsersModule } from "./admin_users/admin_users.module";
 import { AdminAgentSessionsModule } from "./admin_agent_sessions/admin_agent_sessions.module";
+import { AdminAuditModule } from "./admin_audit/admin_audit.module";
+import { AdminStepUpGuard } from "./admin_step_up/admin_step_up.guard";
+import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
 
 @Module({
   imports: [
@@ -112,10 +115,14 @@ import { AdminAgentSessionsModule } from "./admin_agent_sessions/admin_agent_ses
     UserActivityModule,
     AdminUsersModule,
     AdminAgentSessionsModule,
+    AdminAuditModule,
+    AdminStepUpModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // After RolesGuard: enforces @RequireStepUp() on destructive admin routes (#2173).
+    { provide: APP_GUARD, useClass: AdminStepUpGuard },
     // #2147: refuses mutating requests from suspended/closed accounts. An
     // interceptor, not a guard, so it runs after the route's AuthGuard has set req.user.
     { provide: APP_INTERCEPTOR, useClass: AccountStatusInterceptor },

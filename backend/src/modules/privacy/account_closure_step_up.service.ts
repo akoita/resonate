@@ -4,21 +4,15 @@ import {
   Inject,
   Injectable,
 } from "@nestjs/common";
-import { recoverMessageAddress, type PublicClient } from "viem";
+import type { PublicClient } from "viem";
 import { AuthService } from "../auth/auth.service";
 import { AuthNonceService } from "../auth/auth_nonce.service";
 import { accountClosureNonceKey, buildAccountClosureMessage } from "./account_closure_message";
 import { writeStructuredLog } from "../shared/structured_logging";
-import { LOCAL_CHAIN_ID, LOCAL_UNIVERSAL_SIG_VALIDATOR } from "../shared/local_signature_validator";
+import { checkWalletSignature, type WalletSignatureMode } from "../auth/wallet_signature_check";
 
 /** What actually convinced us the signature was real. */
-export type AccountClosureStepUpMode =
-  /** The claimed address recovered directly from the signature (plain EOA). */
-  | "eoa"
-  /** ERC-1271/ERC-6492 said yes — a deployed smart account. */
-  | "erc1271"
-  /** The signature recovered to another address this same person owns. */
-  | "recovered_eoa";
+export type AccountClosureStepUpMode = WalletSignatureMode;
 
 export interface AccountClosureChallenge {
   address: string;
@@ -164,78 +158,18 @@ export class AccountClosureStepUpService {
     return mode;
   }
 
-  private async checkSignature(input: {
+  private checkSignature(input: {
     userId: string;
     address: `0x${string}`;
     message: string;
     signature: `0x${string}`;
   }): Promise<AccountClosureStepUpMode | null> {
-    // Offline recovery first. It costs no RPC call and settles the plain-EOA
-    // case, which an on-chain check alone would miss: an EOA has no code, and a
-    // bytecode check cannot tell one apart from a counterfactual smart account.
-    const recovered = await this.recoverSigner(input.message, input.signature);
-    if (recovered && recovered.toLowerCase() === input.address.toLowerCase()) {
-      return "eoa";
-    }
-
-    const chainId = await this.chainId();
-
-    // Deliberately NOT gated on the account having code. ERC-6492 exists for
-    // exactly the account that has none yet: viem validates a wrapped signature
-    // through a deployless call that runs the factory from the wrapper and then
-    // asks ERC-1271. Requiring bytecode first would skip that path for every
-    // counterfactual smart account — which is most passkey accounts that have
-    // never transacted — and drop them into the unverified fallback below. The
-    // extra call costs nothing for an EOA, because a plain signature has
-    // already returned above.
-    {
-      const verifyOptions: Parameters<PublicClient["verifyMessage"]>[0] & {
-        universalSignatureValidatorAddress?: `0x${string}`;
-      } = {
-        address: input.address,
-        message: input.message,
-        signature: input.signature,
-      };
-      if (chainId === LOCAL_CHAIN_ID) {
-        verifyOptions.universalSignatureValidatorAddress = LOCAL_UNIVERSAL_SIG_VALIDATOR;
-      }
-      try {
-        if (await this.publicClient.verifyMessage(verifyOptions)) {
-          return "erc1271";
-        }
-      } catch {
-        // A validator that reverts is a "no", not an outage: fall through.
-      }
-    }
-
-    // A smart account whose owner EOA signed on its behalf. Accepted only when
-    // the recovered signer is itself an address of this same person, so this
-    // stays a proof about *this account* rather than about any wallet.
-    if (recovered && (await this.authService.isAddressForUser(input.userId, recovered))) {
-      return "recovered_eoa";
-    }
-
-    // A recoverable signature that names a stranger is a definite refusal. An
-    // opaque signature that neither ERC-6492/ERC-1271 nor EOA recovery can
-    // prove is also a refusal: the nonce prevents replay, but is not proof that
-    // the account holder approved deletion.
-    return null;
+    // An opaque signature that neither ERC-6492/ERC-1271 nor EOA recovery can
+    // prove is a refusal: the nonce prevents replay, but is not proof that the
+    // account holder approved deletion.
+    return checkWalletSignature(
+      { publicClient: this.publicClient, authService: this.authService },
+      input,
+    );
   }
-
-  private async recoverSigner(message: string, signature: `0x${string}`) {
-    try {
-      return await recoverMessageAddress({ message, signature });
-    } catch {
-      return null;
-    }
-  }
-
-  private async chainId() {
-    try {
-      return await this.publicClient.getChainId();
-    } catch {
-      return null;
-    }
-  }
-
 }
