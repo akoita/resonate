@@ -6,7 +6,7 @@ vi.mock("../../lib/api", () => ({
   recordPurchaseConsent: vi.fn(),
 }));
 
-import { DeliveryConsentStep } from "./DeliveryConsentStep";
+import { DeliveryConsentStep, isConsentWording } from "./DeliveryConsentStep";
 import { INITIAL_DELIVERY_CONSENT } from "./deliveryConsent";
 
 const wording = {
@@ -68,4 +68,28 @@ describe("DeliveryConsentStep (#1776)", () => {
     expect(html).toContain("We could not load the delivery terms.");
     expect(html).toContain('role="alert"');
   });
+});
+
+describe("isConsentWording", () => {
+  const wording = {
+    version: "v1",
+    reviewStatus: "draft",
+    heading: "Delivery",
+    intro: "Intro",
+    deliverNow: { label: "Deliver now", description: "Now", acknowledgement: "I understand" },
+    wait: { label: "Wait 14 days", description: "Later" },
+    mint: { explanation: "Mints cannot be undone" },
+    confirmation: "We record your choice",
+  };
+
+  it("accepts the wording the backend serves", () => {
+    expect(isConsentWording(wording)).toBe(true);
+  });
+
+  it.each([[[]], [null], ["text"], [{}], [{ ...wording, deliverNow: null }], [{ ...wording, wait: {} }]])(
+    "rejects a response of any other shape (%p)",
+    (value) => {
+      expect(isConsentWording(value)).toBe(false);
+    },
+  );
 });

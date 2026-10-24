@@ -10,6 +10,29 @@ import {
   type DeliveryConsentState,
 } from "./deliveryConsent";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** The checkout renders every field, so a response of any other shape is a load error. */
+export function isConsentWording(value: unknown): value is PurchaseConsentWording {
+  if (!isRecord(value)) return false;
+  const { deliverNow, wait, mint } = value;
+  return (
+    typeof value.version === "string" &&
+    typeof value.heading === "string" &&
+    typeof value.intro === "string" &&
+    typeof value.confirmation === "string" &&
+    isRecord(deliverNow) &&
+    typeof deliverNow.label === "string" &&
+    typeof deliverNow.acknowledgement === "string" &&
+    isRecord(wait) &&
+    typeof wait.label === "string" &&
+    isRecord(mint) &&
+    typeof mint.explanation === "string"
+  );
+}
+
 /** Loads the checkout wording from the backend once the checkout is open. */
 export function useConsentWording(enabled: boolean) {
   const [wording, setWording] = useState<PurchaseConsentWording | null>(null);
@@ -19,7 +42,9 @@ export function useConsentWording(enabled: boolean) {
     let cancelled = false;
     getPurchaseConsentWording()
       .then((value) => {
-        if (!cancelled) setWording(value);
+        if (cancelled) return;
+        if (isConsentWording(value)) setWording(value);
+        else setError("We could not load the delivery terms. Reload and try again.");
       })
       .catch(() => {
         if (!cancelled) setError("We could not load the delivery terms. Reload and try again.");
