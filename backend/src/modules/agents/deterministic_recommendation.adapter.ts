@@ -11,6 +11,7 @@ import type { ResolvedMyMixPlan } from "./agent_my_mix";
 import { relatedGenreLabels } from "../recommendations/genre_families";
 import { requestScopeFor, SESSION_REQUEST_TEXT_MAX_LENGTH } from "./agent_session_request";
 import { selectorSeedsFor } from "./agent_session_seed";
+import { isDiscoveryLevel } from "../recommendations/discovery-policy";
 
 /**
  * The catalog queries of a session. A session whose request names a catalog
@@ -153,6 +154,7 @@ export function deterministicSelectorInput(
     ...(requestScope ? { requestScope } : {}),
     ...(tasteQueries.length > 0 ? { tasteQueries } : {}),
     ...(input.preferences.newArtists === true ? { newArtistsOnly: true } : {}),
+    ...(isDiscoveryLevel(input.preferences.discovery) ? { discovery: input.preferences.discovery } : {}),
     recentTrackIds: input.recentTrackIds,
     allowExplicit: input.preferences.allowExplicit,
     useEmbeddings: queries.length > 0,

@@ -6,6 +6,8 @@ import {
   applyDiscoveryPolicy,
   DISCOVERY_POLICY_DEFAULTS,
   discoveryArtistKey,
+  explorationShareFor,
+  isDiscoveryLevel,
 } from "../recommendations/discovery-policy";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import {
@@ -305,6 +307,7 @@ export class AgentRuntimePolicyService {
       );
 
     const exploration = await this.loadExplorationContext(input, known, candidatesById);
+    const explorationShare = explorationShareFor(input.preferences.discovery);
     const policyOptions = {
       limit: inModelOrder.length,
       tastePolicy: taste,
@@ -316,6 +319,8 @@ export class AgentRuntimePolicyService {
         : exploration.verifiedHumanArtistIds,
       playedArtistIds: exploration.playedArtistIds,
       priorExplorationCount: exploration.priorExplorationCount,
+      // The Discovery control (#2327): Familiar reserves nothing, New reserves more.
+      explorationShare,
       // A discovery label needs a pick that belongs to the request (#2316).
       ...(scope
         ? {
@@ -375,7 +380,7 @@ export class AgentRuntimePolicyService {
     if (
       surviving.length > 0 &&
       served < reserved &&
-      canSwapForDiscovery(surviving.length, exploration.priorExplorationCount)
+      canSwapForDiscovery(surviving.length, exploration.priorExplorationCount, explorationShare)
     ) {
       const swapped = await this.swapInDiscoveryPick(input, scope, surviving, [
         ...sessionWindowKeys,
@@ -581,6 +586,8 @@ export class AgentRuntimePolicyService {
         // The runtime reserves only the final replacement, after all selector
         // constraints identify the one track that will actually be returned.
         reserveFirstListenerPlacements: false,
+        // The same Discovery level, so the replacement is chosen under the same share (#2327).
+        ...(isDiscoveryLevel(input.preferences.discovery) ? { discovery: input.preferences.discovery } : {}),
         // The discovery pick belongs to the request too (#2316).
         ...(scope
           ? {
@@ -886,9 +893,14 @@ function creditedNameOf(track: any): string {
  * one in five session tracks). A one-track call with an unknown count only
  * reaches the "at least one" floor and must not always be a discovery pick.
  */
-function canSwapForDiscovery(pageSize: number, priorExplorationCount?: number) {
+function canSwapForDiscovery(
+  pageSize: number,
+  priorExplorationCount?: number,
+  share: number = DISCOVERY_POLICY_DEFAULTS.explorationShare,
+) {
+  if (share <= 0) return false;
   if (priorExplorationCount !== undefined) return true;
-  return Math.round(pageSize * DISCOVERY_POLICY_DEFAULTS.explorationShare) >= 1;
+  return Math.round(pageSize * share) >= 1;
 }
 
 /**

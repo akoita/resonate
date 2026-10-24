@@ -161,6 +161,11 @@ describe('SessionsController (e2e)', () => {
     // "New artists" is a boolean too (#2249).
     await post('/sessions/agent/next', { sessionId: 's1', preferences: { newArtists: 'yes' } }).expect(400);
     await post('/sessions/start', { budgetCapUsd: 10, preferences: { newArtists: 1 } }).expect(400);
+    // Discovery (#2327) takes one of three steps, nothing else.
+    for (const discovery of ['wild', 'NEW', '', 1, true, ['new']]) {
+      await post('/sessions/agent/next', { sessionId: 's1', preferences: { discovery } }).expect(400);
+      await post('/sessions/start', { budgetCapUsd: 10, preferences: { discovery } }).expect(400);
+    }
     // "Right now" (#2245) takes one of the eight coarse buckets, never a timezone or a timestamp.
     for (const listeningContext of ['Europe/Paris', 'lunch:weekday', '2026-10-24T18:00:00Z', 7]) {
       await post('/sessions/agent/next', { sessionId: 's1', preferences: { listeningContext } }).expect(400);

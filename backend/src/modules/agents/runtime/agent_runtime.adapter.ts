@@ -1,6 +1,7 @@
 import type { AgentRequestCoverage, AgentSessionRequest, AgentSessionTempoRange } from "../agent_session_request";
 import type { MyMixContext, MyMixPreferences } from "../agent_my_mix";
 import type { SessionSeed } from "../agent_session_seed";
+import type { DiscoveryLevel } from "../../recommendations/discovery-policy";
 
 export interface AgentRuntimeInput {
   sessionId: string;
@@ -75,6 +76,8 @@ export interface AgentRuntimeInput {
      * selector, which owns the played-artist lookup.
      */
     newArtists?: boolean;
+    /** The Discovery control (#2327): Familiar, Mixed (default) or New; sets the exploration share. */
+    discovery?: DiscoveryLevel;
   };
 }
 

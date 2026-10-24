@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import type {
+    AgentDiscoveryLevel,
     AgentMixCoverage,
     AgentMixVocabulary,
     AgentMyMixPreferences,
@@ -21,6 +22,9 @@ import {
     seedChips,
     coverageLine,
     ignoredKeyLabels,
+    readTempoDraft,
+    SESSION_TEMPO_MAX_BPM,
+    SESSION_TEMPO_MIN_BPM,
 } from "../../lib/agentSessionRequest";
 import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, soundCountLabel, type SessionPreset } from "./sessionPresetData";
 import AgentMyMixEditor from "./AgentMyMixEditor";
@@ -61,6 +65,28 @@ const PRESET_ROWS: Array<{ key: SessionPreset["group"]; label: string }> = [
 
 const ENERGY_OPTIONS: AgentSessionEnergy[] = ["low", "medium", "high"];
 
+/**
+ * The Discovery control's three steps (#2327), with what each one does in plain words. Mixed is
+ * today's behaviour and the default; the hint under the control follows the chosen step.
+ */
+const DISCOVERY_STEPS: Array<{ level: AgentDiscoveryLevel; label: string; hint: string }> = [
+    {
+        level: "familiar",
+        label: "Familiar",
+        hint: "Familiar: the DJ plays what fits your taste and your request. No picks are kept for artists you haven't played.",
+    },
+    {
+        level: "mixed",
+        label: "Mixed",
+        hint: "Mixed (the default): a few picks are verified artists you haven't played yet, ranked by how well they fit.",
+    },
+    {
+        level: "new",
+        label: "New",
+        hint: "New: about two in five picks are verified artists you haven't played yet. They still have to match your request.",
+    },
+];
+
 /** Plain-words summary of a preset, for screen readers and the visible note. */
 function presetSummary(preset: SessionPreset): string {
     return `${preset.description} You'll hear: ${preset.output}.`;
@@ -86,6 +112,28 @@ type Props = {
     onRemoveChip: (chipKey: string) => void;
     /** Sets the Energy filter; null clears it back to "the DJ decides". */
     onEnergyChange: (band: AgentSessionEnergy | null) => void;
+    /**
+     * Sets the Tempo filter (a BPM range, #2327); null clears it. The control is offered only
+     * when this is given, so it is never a dead one.
+     */
+    onTempoChange?: (bpm: NonNullable<AgentSessionRequest["bpm"]> | null) => void;
+    /**
+     * The Discovery control (#2327): Familiar, Mixed or New. Mixed is the default and today's
+     * behaviour. Absent while it does not apply (My Mix), which hides it.
+     */
+    discovery?: {
+        value: AgentDiscoveryLevel;
+        onChange: (next: AgentDiscoveryLevel) => void;
+    };
+    /**
+     * The one-time hint after the first finished session (#2327): an example sentence the
+     * listener can try, and a way to dismiss it for good. Absent when it should not show.
+     */
+    tip?: {
+        example: string;
+        onTry: () => void;
+        onDismiss: () => void;
+    };
     /** Phrases the DJ could not turn into a filter. */
     unparsed?: string[];
     /** Filters the sentence set that a listening session does not use. */
@@ -180,6 +228,9 @@ export default function AgentSessionPrompt({
     seed = null,
     onRemoveChip,
     onEnergyChange,
+    onTempoChange,
+    discovery,
+    tip,
     unparsed = [],
     ignored = [],
     coverage = null,
@@ -202,6 +253,7 @@ export default function AgentSessionPrompt({
     const explicitId = `${id}-explicit`;
     const fillSimilarId = `${id}-fill-similar`;
     const energyId = `${id}-energy`;
+    const discoveryId = `${id}-discovery`;
     // The selected starter's description is always visible: nothing relies on hover (touch).
     const describedPreset = presets.find((preset) => preset.intent === activePresetIntent) ?? null;
     // The placeholder cycles through real examples while the box is empty.
@@ -253,6 +305,25 @@ export default function AgentSessionPrompt({
             <p className="aid-prompt-hint">
                 Your sentence sets the filters below and helps the DJ find music for this session. It is not saved.
             </p>
+
+            {tip ? (
+                <p className="aid-prompt-tip" data-testid="agent-first-session-tip">
+                    <span>
+                        Tip: you can combine. Try{" "}
+                        <button type="button" className="aid-prompt-tip-try" onClick={tip.onTry}>
+                            {tip.example}
+                        </button>
+                    </span>
+                    <button
+                        type="button"
+                        className="aid-prompt-chip-remove"
+                        aria-label="Dismiss this tip"
+                        onClick={tip.onDismiss}
+                    >
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </p>
+            ) : null}
 
             <div className="aid-prompt-preset-groups">
                 {/* For you: only what works today (Right now, and My Mix once there are lanes to blend). */}
@@ -481,6 +552,9 @@ export default function AgentSessionPrompt({
                             </select>
                         </div>
                     )}
+                    {onTempoChange && !myMix?.preferences ? (
+                        <TempoFilter bpm={request?.bpm ?? null} onChange={onTempoChange} />
+                    ) : null}
                     {explicit ? (
                         <div className="aid-prompt-explicit">
                             <label className="aid-prompt-explicit-label" htmlFor={explicitId}>
@@ -525,6 +599,30 @@ export default function AgentSessionPrompt({
                         </div>
                     ) : null}
                 </div>
+                {discovery ? (
+                    <div className="aid-prompt-discovery" data-testid="agent-session-discovery">
+                        <span id={discoveryId} className="aid-prompt-chip-label">
+                            Discovery
+                        </span>
+                        <div className="aid-prompt-presets" role="group" aria-labelledby={discoveryId}>
+                            {DISCOVERY_STEPS.map((step) => (
+                                <button
+                                    key={step.level}
+                                    type="button"
+                                    className={`aid-prompt-preset ${discovery.value === step.level ? "active" : ""}`}
+                                    aria-pressed={discovery.value === step.level}
+                                    aria-describedby={`${discoveryId}-hint`}
+                                    onClick={() => discovery.onChange(step.level)}
+                                >
+                                    {step.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p id={`${discoveryId}-hint`} className="aid-prompt-hint">
+                            {DISCOVERY_STEPS.find((step) => step.level === discovery.value)?.hint}
+                        </p>
+                    </div>
+                ) : null}
             </div>
 
             <div className="aid-prompt-actions">
@@ -533,5 +631,105 @@ export default function AgentSessionPrompt({
                 </button>
             </div>
         </section>
+    );
+}
+
+const TEMPO_MESSAGE_NOTE =
+    "Only tracks with a measured tempo can match. A track without one never counts as a match; it comes after the matches.";
+
+/**
+ * The Tempo filter (#2327): a BPM range in the Adjust row. It edits the request's own tempo, the
+ * same one a sentence like "around 122 BPM" sets, so it combines with any starter or sentence and
+ * the BPM chip removes it. A half-typed or out-of-range number is not applied.
+ */
+function TempoFilter({
+    bpm,
+    onChange,
+}: {
+    bpm: NonNullable<AgentSessionRequest["bpm"]> | null;
+    onChange: (next: NonNullable<AgentSessionRequest["bpm"]> | null) => void;
+}) {
+    const id = useId();
+    const propMin = bpm?.min ?? null;
+    const propMax = bpm?.max ?? null;
+    const [draft, setDraft] = useState({
+        min: propMin === null ? "" : String(propMin),
+        max: propMax === null ? "" : String(propMax),
+    });
+    const reading = readTempoDraft(draft.min, draft.max);
+
+    // A change made elsewhere (the BPM chip, a new sentence, a starter) replaces what is typed here.
+    // Adjusted during render, from the props last seen, so no effect or ref is needed.
+    const [seen, setSeen] = useState({ min: propMin, max: propMax });
+    if (seen.min !== propMin || seen.max !== propMax) {
+        setSeen({ min: propMin, max: propMax });
+        const typed = reading.kind === "range" ? reading.bpm : reading.kind === "clear" ? { min: null, max: null } : null;
+        if (!typed || typed.min !== propMin || typed.max !== propMax) {
+            setDraft({
+                min: propMin === null ? "" : String(propMin),
+                max: propMax === null ? "" : String(propMax),
+            });
+        }
+    }
+
+    const edit = (next: { min: string; max: string }) => {
+        setDraft(next);
+        const read = readTempoDraft(next.min, next.max);
+        if (read.kind === "range") onChange(read.bpm);
+        else if (read.kind === "clear") onChange(null);
+    };
+    const hasValue = draft.min !== "" || draft.max !== "";
+
+    return (
+        <div className="aid-prompt-adjust-tempo" data-testid="agent-session-tempo" role="group" aria-labelledby={`${id}-label`}>
+            <div className="aid-prompt-adjust-tempo-fields">
+                <span id={`${id}-label`} className="aid-prompt-chip-label">
+                    Tempo (BPM)
+                </span>
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    className="aid-prompt-tempo-input"
+                    aria-label="Lowest tempo in BPM"
+                    aria-describedby={`${id}-note`}
+                    placeholder={`${SESSION_TEMPO_MIN_BPM}+`}
+                    maxLength={6}
+                    value={draft.min}
+                    onChange={(event) => edit({ ...draft, min: event.target.value })}
+                />
+                <span aria-hidden="true">to</span>
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    className="aid-prompt-tempo-input"
+                    aria-label="Highest tempo in BPM"
+                    aria-describedby={`${id}-note`}
+                    placeholder={`up to ${SESSION_TEMPO_MAX_BPM}`}
+                    maxLength={6}
+                    value={draft.max}
+                    onChange={(event) => edit({ ...draft, max: event.target.value })}
+                />
+                {hasValue ? (
+                    <button
+                        type="button"
+                        className="aid-prompt-tempo-clear"
+                        onClick={() => {
+                            setDraft({ min: "", max: "" });
+                            onChange(null);
+                        }}
+                    >
+                        Clear tempo
+                    </button>
+                ) : null}
+            </div>
+            {reading.kind === "invalid" ? (
+                <p className="aid-prompt-note aid-prompt-note--error" role="status">
+                    {reading.message}
+                </p>
+            ) : null}
+            <p id={`${id}-note`} className="aid-prompt-hint">
+                {TEMPO_MESSAGE_NOTE}
+            </p>
+        </div>
     );
 }

@@ -8,6 +8,7 @@ import type { MixCoverage, MyMixPreferences, ResolvedMyMixPlan } from "./agent_m
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import type { AgentRuntimeFallback } from "./agent_runtime.types";
 import type { SessionSeed } from "./agent_session_seed";
+import type { DiscoveryLevel } from "../recommendations/discovery-policy";
 import {
   requestCoverageFor,
   requestCoverageForScope,
@@ -58,6 +59,8 @@ export interface AgentOrchestratorInput {
     fillSimilar?: boolean;
     /** "New artists" (#2249): only artists the listener has never interacted with. */
     newArtists?: boolean;
+    /** The Discovery control (#2327): Familiar, Mixed (default) or New; sets the exploration share. */
+    discovery?: DiscoveryLevel;
     /** The session's own genres (#2059), before learned favourites and saved vibes join `genres`. */
     sessionGenres?: string[];
     myMix?: MyMixPreferences | null;

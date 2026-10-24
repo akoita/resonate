@@ -207,3 +207,52 @@ describe("New artists only (#2249)", () => {
       .toMatchObject({ genres: SAVED_VIBES, newArtists: false });
   });
 });
+
+describe("Discovery (#2327)", () => {
+  const rap = request({ genres: ["Rap"] });
+
+  it("is sent to a start only when it is not the default, so an untouched session is what it was", () => {
+    expect(buildSessionPreferences({ activePreset: null, request: rap })).not.toHaveProperty("discovery");
+    expect(buildSessionPreferences({ activePreset: null, request: rap, discovery: "mixed" })).not.toHaveProperty("discovery");
+    expect(buildSessionPreferences({ activePreset: null, request: rap, discovery: "new" })).toMatchObject({
+      discovery: "new",
+      genres: ["Rap"],
+    });
+    expect(buildSessionPreferences({ activePreset: null, request: rap, discovery: "familiar" })).toMatchObject({ discovery: "familiar" });
+    expect(buildSessionPreferences({ activePreset: null, request: null, discovery: "mixed" })).toBeUndefined();
+    // A session with nothing else still carries the choice.
+    expect(buildSessionPreferences({ activePreset: null, request: null, discovery: "new" })).toEqual({ discovery: "new" });
+  });
+
+  it("is stated either way on a pick, because the server keeps the last value when the key is omitted", () => {
+    for (const discovery of ["familiar", "mixed", "new"] as const) {
+      expect(buildPickPreferences({ activePreset: null, request: rap, savedVibes: SAVED_VIBES, discovery })).toMatchObject({ discovery });
+      expect(buildPickPreferences({ activePreset: null, request: null, savedVibes: SAVED_VIBES, discovery })).toMatchObject({ discovery });
+    }
+    expect(buildPickPreferences({ activePreset: null, request: rap, savedVibes: SAVED_VIBES })).not.toHaveProperty("discovery");
+  });
+
+  it("rides along with a starter and with New artists", () => {
+    const jazz = SESSION_PRESETS.find((preset) => preset.group === "genre")!;
+    expect(buildSessionPreferences({ activePreset: jazz, request: null, newArtists: true, discovery: "new" })).toMatchObject({
+      sessionIntent: jazz.intent,
+      newArtists: true,
+      discovery: "new",
+    });
+  });
+});
+
+describe("Tempo (#2327)", () => {
+  it("a tempo alone steers the session through the request, with no genres", () => {
+    const preferences = buildSessionPreferences({ activePreset: null, request: request({ bpm: { min: 120, max: 128 } }) });
+    expect(preferences?.request?.bpm).toEqual({ min: 120, max: 128 });
+    expect(preferences?.genres).toEqual([]);
+  });
+
+  it("combines with a starter into one request", () => {
+    const jazz = SESSION_PRESETS.find((preset) => preset.group === "genre")!;
+    const adjusted = { ...requestFromPreset(jazz), bpm: { min: 80, max: 100 } };
+    const preferences = buildSessionPreferences({ activePreset: jazz, request: adjusted });
+    expect(preferences).toMatchObject({ sessionIntent: jazz.intent, request: { bpm: { min: 80, max: 100 } } });
+  });
+});

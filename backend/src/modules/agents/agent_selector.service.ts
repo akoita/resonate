@@ -9,6 +9,8 @@ import {
   applyDiscoveryPolicy,
   DISCOVERY_POLICY_DEFAULTS,
   discoveryArtistKey,
+  explorationShareFor,
+  type DiscoveryLevel,
 } from "../recommendations/discovery-policy";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import { DiscoveryRankingService } from "../recommendations/discovery-ranking.service";
@@ -165,6 +167,12 @@ export interface AgentSelectorInput {
    * (the failure is logged as a degraded fallback) rather than going silent.
    */
   newArtistsOnly?: boolean;
+  /**
+   * The Discovery control (#2327): Familiar reserves no exploration slot, Mixed
+   * (the default when absent) the usual share, New a larger one. Exploration
+   * slots still draw only from tracks that match the request (tiers A and B).
+   */
+  discovery?: DiscoveryLevel;
   /**
    * Overrides the retrieval variant that otherwise comes from the listener's
    * ranker-variant assignment (#2005). Used by offline evaluation; production
@@ -813,6 +821,7 @@ export class AgentSelectorService {
         ? policyContext.verifiedHumanArtistIds
         : new Set<string>(),
       playedArtistIds: policyContext.playedArtistIds,
+      ...(input.discovery ? { explorationShare: explorationShareFor(input.discovery) } : {}),
       ...(input.newArtistsOnly && policyContext.playedArtistsKnown ? { excludePlayedArtists: true } : {}),
       // Relaxed and widened passes keep two per artist per pick but drop the session window.
       priorSessionArtistKeys: pass === "strict" ? policyContext.priorSessionArtistKeys : undefined,

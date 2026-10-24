@@ -1,5 +1,5 @@
 import { hasFilters } from "../../lib/agentSessionRequest";
-import type { AgentNextPreferences, AgentSessionRequest } from "../../lib/api";
+import type { AgentDiscoveryLevel, AgentNextPreferences, AgentSessionRequest } from "../../lib/api";
 import type { DjSeed } from "../../lib/djSeed";
 import type { SessionPreset } from "./sessionPresetData";
 
@@ -32,6 +32,7 @@ export function buildSessionPreferences({
     seed = null,
     fillSimilar,
     newArtists,
+    discovery,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
@@ -51,11 +52,17 @@ export function buildSessionPreferences({
      * It rides with whatever else the session carries (a Sounds starter, a sentence).
      */
     newArtists?: boolean;
+    /**
+     * The Discovery control (#2327). A start sends it only when it is not the default: "mixed"
+     * is the server's default, so a session that never touched it is exactly what it was.
+     */
+    discovery?: AgentDiscoveryLevel;
 }): AgentNextPreferences | undefined {
     const built = buildSessionPreferencesBase({ activePreset, request, sentence, artists, seed });
     const withFill = built && fillSimilar === true ? { ...built, fillSimilar: true } : built;
-    if (newArtists !== true) return withFill;
-    return { ...(withFill ?? {}), newArtists: true };
+    const withNew = newArtists === true ? { ...(withFill ?? {}), newArtists: true } : withFill;
+    if (discovery === undefined || discovery === "mixed") return withNew;
+    return { ...(withNew ?? {}), discovery };
 }
 
 function buildSessionPreferencesBase({
@@ -122,6 +129,7 @@ export function buildPickPreferences({
     seed = null,
     fillSimilar,
     newArtists,
+    discovery,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
@@ -140,11 +148,18 @@ export function buildPickPreferences({
      * reason as `fillSimilar`: the server remembers the earlier value when the key is omitted.
      */
     newArtists?: boolean;
+    /**
+     * The Discovery control (#2327). Stated either way when the caller knows it (including
+     * "mixed"), for the same reason as `fillSimilar`: the server remembers the earlier value
+     * when the key is omitted.
+     */
+    discovery?: AgentDiscoveryLevel;
 }): AgentNextPreferences {
     const built = buildSessionPreferences({ activePreset, request, sentence, artists, seed });
     const fillField = {
         ...(fillSimilar === undefined ? {} : { fillSimilar }),
         ...(newArtists === undefined ? {} : { newArtists }),
+        ...(discovery === undefined ? {} : { discovery }),
     };
     // The server remembers a live session's earlier preferences when a key is omitted, so a sentence
     // or artists the listener has since dropped are cleared explicitly (empty values).

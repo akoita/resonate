@@ -118,6 +118,48 @@ export function setEnergy(
   return { ...request, energy: band };
 }
 
+/** The request with the tempo range replaced (or cleared with null). */
+export function setBpm(
+  request: AgentSessionRequest,
+  bpm: NonNullable<AgentSessionRequest["bpm"]> | null,
+): AgentSessionRequest {
+  return { ...request, bpm };
+}
+
+/** The tempo range the server accepts, in BPM (mirrors the backend's request limits). */
+export const SESSION_TEMPO_MIN_BPM = 40;
+export const SESSION_TEMPO_MAX_BPM = 220;
+
+export type TempoDraft =
+  | { kind: "clear" }
+  | { kind: "range"; bpm: NonNullable<AgentSessionRequest["bpm"]> }
+  | { kind: "invalid"; message: string };
+
+/**
+ * Reads the two Tempo inputs. Both empty clears the filter; one bound alone is an open range
+ * ("over 120", "under 100"); a typed value outside the supported range, or a minimum above the
+ * maximum, is invalid and is not applied, so a half-typed number never changes the session.
+ */
+export function readTempoDraft(minText: string, maxText: string): TempoDraft {
+  const bound = (text: string): number | null | "invalid" => {
+    const trimmed = text.trim();
+    if (trimmed === "") return null;
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(trimmed)) return "invalid";
+    const value = Number(trimmed);
+    return value >= SESSION_TEMPO_MIN_BPM && value <= SESSION_TEMPO_MAX_BPM ? value : "invalid";
+  };
+  const min = bound(minText);
+  const max = bound(maxText);
+  if (min === "invalid" || max === "invalid") {
+    return { kind: "invalid", message: `Enter a tempo from ${SESSION_TEMPO_MIN_BPM} to ${SESSION_TEMPO_MAX_BPM} BPM.` };
+  }
+  if (min === null && max === null) return { kind: "clear" };
+  if (min !== null && max !== null && min > max) {
+    return { kind: "invalid", message: "The lowest tempo is above the highest." };
+  }
+  return { kind: "range", bpm: { min, max } };
+}
+
 /** An empty request, the starting point for a sentence that yields nothing. */
 export function emptyRequest(): AgentSessionRequest {
   return { genres: [], moods: [], energy: null, bpm: null };

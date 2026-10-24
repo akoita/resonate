@@ -13,6 +13,7 @@ import { getAgentTrackLimit } from "../agents/agent_runtime.config";
 import { resolveListeningLanes } from "../agents/listening_lanes.service";
 import { resolveMyMixPlan } from "../agents/agent_my_mix";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
+import { isDiscoveryLevel, type DiscoveryLevel } from "../recommendations/discovery-policy";
 import { mergeSessionGenres } from "../agents/agent_session_genres";
 import { pickCurator, pickNoteColumns, shapePickNote } from "../agents/agent_pick_notes";
 import type { PickNote } from "../agents/agent_pick_notes";
@@ -73,6 +74,11 @@ export interface AgentPreferences {
    * live session; only `true` turns it on, so a pick that sends `false` turns it off.
    */
   newArtists?: boolean;
+  /**
+   * The Discovery control (#2327): "familiar" reserves no exploration slot, "mixed" is the
+   * default share, "new" a larger one. Remembered for the live session; anything else is dropped.
+   */
+  discovery?: DiscoveryLevel;
   /** "More like this" (#2243): one request's seed track; never remembered or published. */
   seedTrackId?: string;
   /**
@@ -800,6 +806,8 @@ function sanitizeIncomingRequest(preferences?: AgentPreferences): AgentPreferenc
   // Only an explicit `true` allows padding (#2316); anything else is off.
   if ("fillSimilar" in preferences) sanitized.fillSimilar = preferences.fillSimilar === true;
   if ("newArtists" in preferences) sanitized.newArtists = preferences.newArtists === true;
+  // Only a known level counts; an unknown value falls back to Mixed (#2327).
+  if ("discovery" in preferences) sanitized.discovery = isDiscoveryLevel(preferences.discovery) ? preferences.discovery : undefined;
   return sanitized;
 }
 

@@ -31,6 +31,8 @@ import type { RequestTier } from "../agents/agent_session_request";
  *     played, chosen by taste fit (highest ranked score). With no eligible
  *     candidate the slots fall back to normal ranked order; ineligible items
  *     are never labeled as discovery.
+ *     An AI DJ session's Discovery control (#2327) sets the share: Familiar 0
+ *     (nothing reserved), Mixed the default, New a larger share.
  *  4. Diversity cap: at most two tracks per credited artist per page, or per 10
  *     session tracks when the caller passes the artists of the prior session
  *     tracks.
@@ -50,6 +52,31 @@ export const DISCOVERY_POLICY_DEFAULTS = {
   /** Session window for the diversity cap: prior tracks considered + 1. */
   sessionWindow: 10,
 } as const;
+
+/**
+ * The Discovery control of an AI DJ session (#2327): how much of a session is
+ * reserved for verified human artists the listener has never played.
+ *  - `familiar`: no slot is reserved; the batch is the best fit for the request and taste.
+ *  - `mixed`: today's share (`DISCOVERY_POLICY_DEFAULTS.explorationShare`); what a session without
+ *    the control gets.
+ *  - `new`: a larger share. Still drawn only from tracks that match the request (tiers A and B, #2316).
+ */
+export const DISCOVERY_LEVELS = ["familiar", "mixed", "new"] as const;
+export type DiscoveryLevel = (typeof DISCOVERY_LEVELS)[number];
+
+/** Share of `New` sessions reserved for exploration (12 picks: 5 slots, against 2 for Mixed). */
+export const NEW_EXPLORATION_SHARE = 0.4;
+
+export function isDiscoveryLevel(value: unknown): value is DiscoveryLevel {
+  return typeof value === "string" && (DISCOVERY_LEVELS as readonly string[]).includes(value);
+}
+
+/** The exploration share of a Discovery level; absent or unknown means Mixed. */
+export function explorationShareFor(level?: unknown): number {
+  if (level === "familiar") return 0;
+  if (level === "new") return NEW_EXPLORATION_SHARE;
+  return DISCOVERY_POLICY_DEFAULTS.explorationShare;
+}
 
 const FIRST_LISTENER_TASTE_SIGNALS = new Set([
   "taste_match",
@@ -243,14 +270,15 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
   const knownPriorExploration =
     sessionMode && options.priorExplorationCount !== undefined;
   const windowSize = knownPriorExploration ? priorKeys.length + limit : limit;
-  const target = Math.max(1, Math.round(windowSize * share));
+  // A share of 0 (Familiar, #2327) reserves nothing; any other share reserves at least one slot.
+  const target = share > 0 ? Math.max(1, Math.round(windowSize * share)) : 0;
   const alreadyExplored = knownPriorExploration
     ? Math.max(0, Math.floor(options.priorExplorationCount ?? 0))
     : 0;
   // Never catch up in a burst: one call reserves at most its own page share,
   // so a session that fell behind on discovery stays near "one in five"
   // instead of turning a whole page into discovery picks.
-  const pageShare = Math.max(1, Math.round(limit * share));
+  const pageShare = share > 0 ? Math.max(1, Math.round(limit * share)) : 0;
   const reserved = Math.min(limit, pageShare, Math.max(0, target - alreadyExplored));
 
   const chosen = new Set<T>();
