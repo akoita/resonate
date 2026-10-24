@@ -57,7 +57,7 @@ contract CurationRewardsTest is Test, ICurationRewards {
         cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
 
         // Deploy DisputeResolution
-        dr = new DisputeResolution(admin);
+        dr = new DisputeResolution(admin, 0);
 
         // Deploy CurationRewards
         cr = new CurationRewards(admin, address(cp), address(dr), treasury);

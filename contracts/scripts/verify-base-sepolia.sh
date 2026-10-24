@@ -290,7 +290,7 @@ constructor_args_for() {
             cast abi-encode "constructor(address,bytes)" "${args[0]}" "${args[1]}" | sed 's/^0x//'
             ;;
         DisputeResolution)
-            cast abi-encode "constructor(address)" "${args[0]}" | sed 's/^0x//'
+            cast abi-encode "constructor(address,uint256)" "${args[0]}" "${args[1]}" | sed 's/^0x//'
             ;;
         CurationRewards)
             cast abi-encode "constructor(address,address,address,address)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" | sed 's/^0x//'

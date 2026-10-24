@@ -40,6 +40,7 @@ on:
           - set-content-protection-stake
           - backfill-content-protection-stake-escrow
           - configure-content-protection-stake-lock
+          - deploy-dispute-stack
           - set-marketplace-protocol-fee
           - set-show-campaign-fee-config
           - set-show-campaign-confirmer
@@ -184,6 +185,11 @@ jobs:
           INPUT_CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY: ${{ vars.CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY }}
           INPUT_DISPUTE_RESOLUTION_ADDRESS: ${{ vars.DISPUTE_RESOLUTION_ADDRESS }}
           INPUT_CURATION_REWARDS_ADDRESS: ${{ vars.CURATION_REWARDS_ADDRESS }}
+          INPUT_PREVIOUS_DISPUTE_RESOLUTION_ADDRESS: ${{ vars.PREVIOUS_DISPUTE_RESOLUTION_ADDRESS }}
+          INPUT_PREVIOUS_CURATION_REWARDS_ADDRESS: ${{ vars.PREVIOUS_CURATION_REWARDS_ADDRESS }}
+          INPUT_DISPUTE_ID_HEADROOM: ${{ vars.DISPUTE_ID_HEADROOM }}
+          INPUT_DISPUTE_RESOLUTION_OWNER: ${{ vars.DISPUTE_RESOLUTION_OWNER }}
+          INPUT_CURATION_REWARDS_OWNER: ${{ vars.CURATION_REWARDS_OWNER }}
           INPUT_STAKE_ESCROW_BATCH_SIZE: ${{ vars.STAKE_ESCROW_BATCH_SIZE }}
           INPUT_STAKE_ESCROW_TOKEN_IDS: ${{ inputs.token_ids }}
           INPUT_MINT_AUTHORIZER_ADDRESS: ${{ vars.MINT_AUTHORIZER_ADDRESS }}
@@ -282,6 +288,11 @@ jobs:
             CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY
             DISPUTE_RESOLUTION_ADDRESS
             CURATION_REWARDS_ADDRESS
+            PREVIOUS_DISPUTE_RESOLUTION_ADDRESS
+            PREVIOUS_CURATION_REWARDS_ADDRESS
+            DISPUTE_ID_HEADROOM
+            DISPUTE_RESOLUTION_OWNER
+            CURATION_REWARDS_OWNER
             STAKE_ESCROW_BATCH_SIZE
             STAKE_ESCROW_TOKEN_IDS
             MINT_AUTHORIZER_ADDRESS
@@ -519,6 +530,34 @@ jobs:
               for name in CONTENT_PROTECTION_PROXY DISPUTE_RESOLUTION_ADDRESS CURATION_REWARDS_ADDRESS; do
                 if [[ -z "${!name:-}" ]]; then echo "::error::configure-content-protection-stake-lock requires ${name}."; exit 1; fi
               done
+              ;;
+            deploy-dispute-stack)
+              if [[ -z "${CONTENT_PROTECTION_ADDRESS:-}" && -z "${CONTENT_PROTECTION_PROXY:-}" ]]; then
+                echo "::error::deploy-dispute-stack requires CONTENT_PROTECTION_ADDRESS or CONTENT_PROTECTION_PROXY."
+                exit 1
+              fi
+              # The stack being replaced defaults to the environment's current dispute
+              # stack, so dispute ids continue from it (#1759).
+              if [[ -z "${PREVIOUS_DISPUTE_RESOLUTION_ADDRESS:-}" && -n "${DISPUTE_RESOLUTION_ADDRESS:-}" ]]; then
+                PREVIOUS_DISPUTE_RESOLUTION_ADDRESS="${DISPUTE_RESOLUTION_ADDRESS}"
+                echo "PREVIOUS_DISPUTE_RESOLUTION_ADDRESS=${PREVIOUS_DISPUTE_RESOLUTION_ADDRESS}" >> "${GITHUB_ENV}"
+              fi
+              if [[ -z "${PREVIOUS_CURATION_REWARDS_ADDRESS:-}" && -n "${CURATION_REWARDS_ADDRESS:-}" ]]; then
+                PREVIOUS_CURATION_REWARDS_ADDRESS="${CURATION_REWARDS_ADDRESS}"
+                echo "PREVIOUS_CURATION_REWARDS_ADDRESS=${PREVIOUS_CURATION_REWARDS_ADDRESS}" >> "${GITHUB_ENV}"
+              fi
+              if [[ -z "${PREVIOUS_DISPUTE_RESOLUTION_ADDRESS:-}" ]]; then
+                echo "::error::deploy-dispute-stack requires PREVIOUS_DISPUTE_RESOLUTION_ADDRESS (or DISPUTE_RESOLUTION_ADDRESS) so dispute ids continue on shared networks."
+                exit 1
+              fi
+              if [[ -z "${FEE_RECIPIENT:-}" && -z "${PREVIOUS_CURATION_REWARDS_ADDRESS:-}" ]]; then
+                echo "::error::deploy-dispute-stack requires FEE_RECIPIENT or PREVIOUS_CURATION_REWARDS_ADDRESS for the CurationRewards treasury."
+                exit 1
+              fi
+              if [[ -n "${DISPUTE_ID_HEADROOM:-}" && ! "${DISPUTE_ID_HEADROOM}" =~ ^[0-9]+$ ]]; then
+                echo "::error::DISPUTE_ID_HEADROOM must be a non-negative integer."
+                exit 1
+              fi
               ;;
             pause-content-protection)
               if [[ -z "${CONTENT_PROTECTION_PROXY:-}" || -z "${CONTENT_PROTECTION_PAUSED:-}" ]]; then
@@ -1006,6 +1045,40 @@ jobs:
         if: inputs.operation == 'configure-content-protection-stake-lock'
         run: make configure-content-protection-stake-lock
 
+      - name: Deploy replacement dispute stack
+        if: inputs.operation == 'deploy-dispute-stack'
+        run: make deploy-dispute-stack
+
+      - name: Summarise dispute stack deployment
+        if: inputs.operation == 'deploy-dispute-stack'
+        shell: bash
+        run: |
+          set -euo pipefail
+          record="contracts/deployments/dispute-stack.${{ inputs.target_network }}.json"
+          {
+            echo "### Dispute stack deployment (#1759)"
+            echo ""
+            echo "- DisputeResolution: \`$(jq -r '.contracts.DisputeResolution' "${record}")\`"
+            echo "- CurationRewards: \`$(jq -r '.contracts.CurationRewards' "${record}")\`"
+            echo "- ContentProtection: \`$(jq -r '.contracts.ContentProtection' "${record}")\`"
+            echo "- replaces DisputeResolution: \`$(jq -r '.replaces.DisputeResolution' "${record}")\`"
+            echo "- dispute id offset: \`$(jq -r '.config.disputeIdOffset' "${record}")\` (first new dispute id \`$(jq -r '.config.firstDisputeId' "${record}")\`)"
+            echo "- deployment block: \`$(jq -r '.deployment.blockNumber' "${record}")\`"
+            echo "- owners: DisputeResolution \`$(jq -r '.owners.DisputeResolution' "${record}")\`, CurationRewards \`$(jq -r '.owners.CurationRewards' "${record}")\`"
+            if [[ "$(jq -r '.stakeLock.authoritySet' "${record}")" == "true" ]]; then
+              echo "- stake lock authority: set to the new DisputeResolution"
+            else
+              echo "- PENDING: run \`configure-content-protection-stake-lock\` with the ContentProtection owner signer; reports on the new stack revert until then"
+            fi
+            echo "- next: promote the addresses in \`contracts/deployments/dispute-stack.${{ inputs.target_network }}.remote.env\` to the backend and web deployment config (see the operations runbook)"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Verify deployed dispute stack on Sourcify
+        if: inputs.operation == 'deploy-dispute-stack' && inputs.target_network == 'base-sepolia' && inputs.verify_contracts != 'false'
+        env:
+          BROADCAST_FILE: contracts/broadcast/DeployDisputeStack.s.sol/84532/run-latest.json
+        run: make verify-dispute-stack-sourcify
+
       - name: Summarise ContentProtection self-claim operation
         if: inputs.operation == 'backfill-content-protection-stake-escrow' || inputs.operation == 'configure-content-protection-stake-lock'
         shell: bash
@@ -1270,6 +1343,15 @@ jobs:
             fi
             if [[ -f contracts/deployments/content-protection.abi.json ]]; then
               echo "- ContentProtection ABI handoff: \`contracts/deployments/content-protection.abi.json\`"
+            fi
+            if [[ -f "contracts/deployments/dispute-stack.${{ inputs.target_network }}.json" ]]; then
+              echo "- Dispute stack deployment record: \`contracts/deployments/dispute-stack.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/dispute-stack.${{ inputs.target_network }}.remote.env" ]]; then
+              echo "- Dispute stack environment handoff: \`contracts/deployments/dispute-stack.${{ inputs.target_network }}.remote.env\`"
+            fi
+            if [[ -f contracts/deployments/dispute-resolution.abi.json ]]; then
+              echo "- Dispute stack ABI handoffs: \`contracts/deployments/dispute-resolution.abi.json\`, \`contracts/deployments/curation-rewards.abi.json\`"
             fi
             if [[ -f "contracts/deployments/content-protection-v6-migration.${{ inputs.target_network }}.json" ]]; then
               echo "- ContentProtection V6 migration candidate: \`contracts/deployments/content-protection-v6-migration.${{ inputs.target_network }}.json\`"

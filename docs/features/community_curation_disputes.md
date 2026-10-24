@@ -75,6 +75,11 @@ Key constraints:
 - Admin resolves directly, or escalates to DAO jury for decentralized arbitration
 - Jury uses pseudo-random selection from staked juror pool (`prevrandao`)
 - Supermajority voting (⌊n/2⌋ + 1) with 7-day deadline
+- Not upgradeable: an environment replaces the dispute stack with
+  `deploy-dispute-stack` (#1759), and the new contract continues the previous
+  dispute ids (`disputeIdOffset`) so stored disputes keep unique ids. Disputes
+  filed on the replaced contracts stay there and keep their last indexed status
+  in the app (see the operations runbook)
 
 ### CurationRewards.sol
 

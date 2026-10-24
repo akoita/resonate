@@ -24,6 +24,10 @@ import {IContentProtection} from "../interfaces/IContentProtection.sol";
  *     ContentProtection caps any hold with its own fail-safe. While locking is on,
  *     only the configured filer (CurationRewards) may file or appeal, so a free
  *     direct call cannot lock someone else's deposit.
+ *   - Dispute id continuity (#1759): the contract is not upgradeable, so a chain
+ *     moves to a new version by deploying a replacement. The constructor's
+ *     `firstDisputeIdAfter` continues the numbering of the contract it replaces, so
+ *     dispute ids stay unique per chain for indexers and off-chain records.
  *
  * @custom:version 2.1.0
  */
@@ -38,6 +42,11 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     // ============ State ============
 
     uint256 private _disputeCount;
+
+    /// @notice Dispute ids already issued on this chain by the DisputeResolution this
+    /// contract replaces (0 for a first deployment). The first dispute filed here gets
+    /// id `disputeIdOffset + 1`; ids at or below the offset never exist on this contract.
+    uint256 public immutable disputeIdOffset;
 
     /// @notice disputeId → Dispute
     mapping(uint256 => Dispute) public disputes;
@@ -104,7 +113,15 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
     // ============ Constructor ============
 
-    constructor(address _owner) Ownable(_owner) {}
+    /**
+     * @param _owner The operational owner (resolves disputes, manages jurors).
+     * @param firstDisputeIdAfter The last dispute id issued by the DisputeResolution
+     *        this contract replaces on the same chain (its `disputeCount()`), or 0.
+     */
+    constructor(address _owner, uint256 firstDisputeIdAfter) Ownable(_owner) {
+        disputeIdOffset = firstDisputeIdAfter;
+        _disputeCount = firstDisputeIdAfter;
+    }
 
     // ============ File Dispute ============
 
@@ -464,6 +481,8 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         return evidences[disputeId][index];
     }
 
+    /// @notice The highest dispute id issued on this chain, including the ids of the
+    /// replaced contract (`disputeIdOffset`). Equals the latest dispute's id.
     function disputeCount() external view returns (uint256) {
         return _disputeCount;
     }
