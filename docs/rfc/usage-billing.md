@@ -1,6 +1,6 @@
 ---
 title: "Usage & Billing surface + metered-action registry"
-status: proposed
+status: implemented (buy credits / auto-reload deferred)
 issues:
   - "https://github.com/akoita/resonate/issues/1422"
 related:
@@ -53,8 +53,9 @@ type MeteredActionKind = "lyria" | "remix_draft"; // extend here
 interface MeteredAction {
   kind: MeteredActionKind;
   label: string;                 // "Track generation", "AI remix draft"
-  cost: { model: "per_seconds_block"; unitSeconds: 30 }; // → costForDurationCents
-  rateLimit?: { limit: number; windowMs: number; env: string };
+  ledgerReasons: string[];       // debit-ledger reasons attributed to this kind
+  cost: { unitSeconds: 30; defaultDurationSeconds: number }; // price = unitCostCents(kind, livePrice)
+  rateLimit?: { limit: number; windowMs: number; envKey: string }; // optional usage-limit window
 }
 ```
 
@@ -73,7 +74,8 @@ interface MeteredAction {
 ```
 GET /usage/summary  → {
   credits: { balanceCents, priceCentsPer30s, recentTransactions[] },
-  limits: [ { kind, label, remaining, limit, resetsAt } ],   // remix made queryable
+  limits: [ { kind, label, remaining, limit, percentLeft, windowSeconds, resetsAt } ],
+  breakdown: { periodDays, since, items: [ { kind, label, unitSeconds, unitCostCents, charges, spentCents, refundedCents, netCents } ] },
   plan:   { tier: "free", monthlyAllowanceCents?: number }    // Free today; Artist Pro later (ADR-BM-3)
 }
 ```
@@ -115,4 +117,10 @@ Implementing Stripe; changing staging billing behavior; merging the crypto
 1. **PR 1** — RFC + `CreditBalanceMeter` + Remix parity (reuse `GET /credits/balance`).
 2. **PR 2** — metered-action registry + `GET /usage/summary` (remix queryable) +
    dedicated Usage & Billing page (read-only).
+   **Sprint 40 slice** — the registry becomes the enforcers' source of truth (limits,
+   windows, env keys, ledger reasons, parity-tested unit cost), the summary gains
+   `percentLeft` and the 30-day per-kind `breakdown`, a reusable `UsageLimitMeter`
+   joins `CreditBalanceMeter` in Remix Studio, and the dead "auto-reload coming soon"
+   control is removed (the page states how credits are granted today instead).
+   Revenue line ADR-BM-6 Line 2, Phase 2 groundwork; nothing is charged.
 3. **Later** — Stripe buy/auto-reload once #1421 + #1193 land.

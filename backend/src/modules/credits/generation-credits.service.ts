@@ -13,6 +13,7 @@ import type { GenerationCreditRequest, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import type { ResonateEvent } from "../../events/event_types";
+import type { MeteredActionKind } from "./metered-actions";
 
 /**
  * Default sell price for AI generation, in USD cents per 30 seconds (#1334,
@@ -65,7 +66,7 @@ export interface GenerationCreditRequestView {
 }
 
 /** kind discriminator carried on debit/insufficient analytics events. */
-export type GenerationCreditKind = "lyria" | "remix_draft";
+export type GenerationCreditKind = MeteredActionKind;
 
 /**
  * Raised when a user has too few credits to cover a generation. Maps to HTTP

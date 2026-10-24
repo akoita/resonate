@@ -1831,7 +1831,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Generating uses credits",
-            text: "AI generation runs on prepaid credits — longer tracks cost more. The Credits meter above the Generate button shows roughly how much generation you have left (in minutes and tracks) and updates after each track. New accounts start with a small free allowance so you can try it right away. Once that runs out, generation is blocked with a message; ask an operator for a credit grant to top up. Refined-away or failed generations are not charged.",
+            text: "AI generation runs on prepaid credits — longer tracks cost more. The Credits meter above the Generate button shows roughly how much generation you have left (in minutes and tracks) and updates after each track. New accounts start with a small free allowance so you can try it right away. Once that runs out, generation is blocked with a message; ask an operator for a credit grant to top up. Refined-away or failed generations are not charged. Open Settings, then Usage & Billing, to see your balance, your usage limits and what each kind of AI action has cost you.",
           },
           {
             kind: "callout",
@@ -1844,6 +1844,30 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "For operators: processing credit requests",
             text: "Operators and administrators get an in-app notification for each request; it opens Credit Requests in the admin navigation. The Pending tab shows each requester's note and current balance. Grant a quick amount ($1, $5, or $10) or a custom one with an optional reason, or dismiss the request with a note. Every grant asks you to confirm, is recorded in the credit ledger, and notifies the requester. A request can only be resolved once, and you can't resolve your own request; another operator has to. The Resolved tab keeps the history.",
+          },
+        ],
+      },
+      {
+        id: "usage-and-billing",
+        heading: "Usage & Billing: credits and limits",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Open Settings and choose Usage & Billing to see everything AI generation uses, in one place. It keeps two different things apart so you always know what to do next.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Credits are your prepaid balance. Each AI action spends some of it, and the page shows the price per 30 seconds of audio for each kind of action.",
+              "Usage limits are fair-use quotas, such as a number of generations per hour. They show how much is left as a percentage and when they reset. Reaching a limit just means waiting for the reset; it is not a credit problem and more credits will not change it.",
+              "Spend by action shows what each kind of action cost you over the last 30 days, minus refunds for runs that failed.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "How you get credits today",
+            text: "You cannot buy credits yet, and nothing is charged in real money. New accounts can start with a free allowance when it is turned on, and an operator can grant more; use Request credits when you run low. Failed generations are refunded automatically. The same credit and limit meters appear where you generate: on Create, and in Remix Studio next to the Generate button.",
           },
         ],
       },
@@ -1866,6 +1890,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Create", href: "/create", description: "Generate music with AI." },
+      { label: "Usage & Billing", href: "/settings", description: "Settings, then Usage & Billing: credits, limits and spend." },
       { label: "Your catalog", href: "/artist/catalog", description: "Where published tracks appear." },
     ],
     related: ["upload-music", "remix-studio", "rights-protection"],
@@ -1997,7 +2022,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Free: vibes, effects, arranging, changing the song's length, tempo and key, the beat maker, Pro mode, and \"Render mix\". Rendering a mix that includes AI parts you already made is free too.",
-              "Uses credits: anything the AI makes for you, meaning AI parts (\"Add a part\") and the experimental whole-track AI options. The panel always shows the price and your balance before you spend anything.",
+              "Uses credits: anything the AI makes for you, meaning AI parts (\"Add a part\") and the experimental whole-track AI options. The panel always shows the price and your balance before you spend anything, and the remix draft limit (how many AI drafts you can make per hour) appears right under your balance. Settings, then Usage & Billing, shows the full picture.",
             ],
           },
         ],

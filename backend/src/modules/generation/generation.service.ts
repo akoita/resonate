@@ -17,9 +17,18 @@ import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
 import type { Prisma } from '@prisma/client';
 import { AI_DISCLOSURE_VERSION } from '../catalog/ai-disclosure.policy';
 import { hasArtistManagementAccess } from '../management/management-access';
+import {
+  DEFAULT_LYRIA_RATE_LIMIT,
+  LEDGER_REASON,
+  METERED_ACTIONS,
+  METERED_WINDOW_HOUR_MS,
+  resolveRateLimit,
+} from '../credits/metered-actions';
 
-const DEFAULT_RATE_LIMIT = 50; // max generations per hour per user
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+// Default limit, window and env override key live in the metered-action registry
+// (#1422) so the Usage & Billing surface and this enforcer cannot drift.
+const RATE_LIMIT_WINDOW_MS =
+  resolveRateLimit('lyria')?.windowMs ?? METERED_WINDOW_HOUR_MS;
 const AI_GENERATION_RIGHTS_SOURCE = 'ai_generation';
 const AI_GENERATION_RIGHTS_ACTOR = 'system:ai-generation';
 const AI_GENERATION_RIGHTS_REASON =
@@ -170,9 +179,12 @@ export class GenerationService {
     @InjectQueue('generation') private readonly generationQueue: Queue,
     private readonly credits: GenerationCreditsService,
   ) {
-    // Try STRIKE_RATE_LIMIT first (parsed as number), fallback to DEFAULT_RATE_LIMIT
-    const limit = this.configService.get<string | number>('STRIKE_RATE_LIMIT', DEFAULT_RATE_LIMIT);
-    this.maxPerHour = typeof limit === 'string' ? parseInt(limit, 10) : limit;
+    // STRIKE_RATE_LIMIT (registry `envKey`) overrides the registry default (50/hr).
+    const lyriaLimit = METERED_ACTIONS.lyria.rateLimit;
+    const configured = lyriaLimit
+      ? this.configService.get<string | number>(lyriaLimit.envKey)
+      : undefined;
+    this.maxPerHour = resolveRateLimit('lyria', configured)?.limit ?? DEFAULT_LYRIA_RATE_LIMIT;
   }
 
   /**
@@ -211,7 +223,8 @@ export class GenerationService {
     this.enforceRateLimit(userId);
 
     const jobId = randomUUID();
-    const durationSeconds = dto.durationSeconds ?? 30;
+    const durationSeconds =
+      dto.durationSeconds ?? METERED_ACTIONS.lyria.cost.defaultDurationSeconds;
 
     // #1334 generation-credit meter: charge the user's prepaid balance before
     // the job is enqueued. A zero/insufficient balance throws
@@ -219,7 +232,7 @@ export class GenerationService {
     // starts. The debit runs after the rate-limit check so an over-limit
     // request is never charged.
     const costCents = this.credits.costForDurationCents(durationSeconds);
-    await this.credits.debit(userId, costCents, 'lyria_generation', jobId, 'lyria');
+    await this.credits.debit(userId, costCents, LEDGER_REASON.lyriaGeneration, jobId, 'lyria');
 
     try {
       await this.generationQueue.add('generate', {

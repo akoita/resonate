@@ -1,4 +1,6 @@
 import { Test } from "@nestjs/testing";
+import request from "supertest";
+import { sign } from "jsonwebtoken";
 import { INestApplication } from "@nestjs/common";
 import { AppModule } from "../modules/app.module";
 import { UsageService } from "../modules/usage/usage.service";
@@ -22,6 +24,7 @@ describe("Usage summary (integration)", () => {
 
   const TEST_PREFIX = `usage_summary_${Date.now()}_`;
   const userId = `${TEST_PREFIX}user`;
+  const otherUserId = `${TEST_PREFIX}other`;
   const grantedCents = 250;
 
   beforeAll(async () => {
@@ -48,15 +51,30 @@ describe("Usage summary (integration)", () => {
         email: `${TEST_PREFIX}@test.resonate`,
       },
     });
+    await prisma.user.create({
+      data: {
+        id: otherUserId,
+        email: `${TEST_PREFIX}other@test.resonate`,
+      },
+    });
     await credits.grant(userId, grantedCents, "test_grant");
   });
 
   afterAll(async () => {
-    await prisma.generationCreditTransaction.deleteMany({ where: { userId } });
-    await prisma.generationCreditAccount.deleteMany({ where: { userId } });
-    await prisma.user.deleteMany({ where: { id: userId } });
+    const ids = [userId, otherUserId];
+    await prisma.generationCreditTransaction.deleteMany({
+      where: { userId: { in: ids } },
+    });
+    await prisma.generationCreditAccount.deleteMany({
+      where: { userId: { in: ids } },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: ids } } });
     await app.close();
   });
+
+  function bearer(sub: string) {
+    return `Bearer ${sign({ sub, role: "listener" }, process.env.JWT_SECRET!)}`;
+  }
 
   it("aggregates credits balance, per-kind limits, and the free plan tier", async () => {
     const summary = await usageService.getSummary(userId);
@@ -73,14 +91,14 @@ describe("Usage summary (integration)", () => {
     expect(Object.keys(byKind).sort()).toEqual(["lyria", "remix_draft"]);
 
     const lyria = byKind.lyria;
-    expect(lyria.limit).toBe(METERED_ACTIONS.lyria.rateLimit.limit); // 50
+    expect(lyria.limit).toBe(METERED_ACTIONS.lyria.rateLimit!.limit); // 50
     expect(lyria.label).toBe(METERED_ACTIONS.lyria.label);
     expect(lyria.windowSeconds).toBe(3600);
     expect(lyria.remaining).toBeLessThanOrEqual(lyria.limit);
     expect(lyria.remaining).toBeGreaterThanOrEqual(0);
 
     const remix = byKind.remix_draft;
-    expect(remix.limit).toBe(METERED_ACTIONS.remix_draft.rateLimit.limit); // 10
+    expect(remix.limit).toBe(METERED_ACTIONS.remix_draft.rateLimit!.limit); // 10
     expect(remix.label).toBe(METERED_ACTIONS.remix_draft.label);
     expect(remix.windowSeconds).toBe(3600);
     expect(remix.remaining).toBeLessThanOrEqual(remix.limit);
@@ -95,5 +113,78 @@ describe("Usage summary (integration)", () => {
     // Plan: Free today, no live-money allowance yet (ADR-BM-3).
     expect(summary.plan.tier).toBe("free");
     expect(summary.plan.monthlyAllowanceCents).toBeNull();
+  });
+  it("breaks credit spend down per metered kind from the real ledger", async () => {
+    // The debit's `kind` argument only decides whether a catalog job-outcome
+    // row is created; the breakdown attributes by ledger reason, so a
+    // "remix_draft"-kind debit with the lyria reason exercises the lyria row
+    // without needing a queued generation job.
+    await credits.debit(userId, 10, "lyria_generation", `${TEST_PREFIX}j1`, "remix_draft");
+    await credits.debit(userId, 20, "lyria_generation", `${TEST_PREFIX}j2`, "remix_draft");
+    await credits.refund(userId, 20, "job_failed_refund", `${TEST_PREFIX}j2`);
+    await credits.debit(userId, 10, "remix_draft", `${TEST_PREFIX}j3`, "remix_draft");
+    await credits.debit(userId, 5, "remix_part", `${TEST_PREFIX}j4`, "remix_draft");
+    // A debit for another user must never leak into this user's breakdown.
+    await credits.grant(otherUserId, 100, "test_grant");
+    await credits.debit(otherUserId, 40, "lyria_generation", `${TEST_PREFIX}o1`, "remix_draft");
+
+    const summary = await usageService.getSummary(userId);
+    const byKind = Object.fromEntries(
+      summary.breakdown.items.map((i) => [i.kind, i]),
+    );
+
+    expect(summary.breakdown.periodDays).toBe(30);
+    expect(byKind.lyria).toMatchObject({
+      charges: 2,
+      spentCents: 30,
+      refundedCents: 20,
+      netCents: 10,
+      unitSeconds: 30,
+      unitCostCents: summary.credits.priceCentsPer30s,
+    });
+    expect(byKind.remix_draft).toMatchObject({
+      charges: 2,
+      spentCents: 15,
+      refundedCents: 0,
+      netCents: 15,
+    });
+    // credits, limits and breakdown are separate sections of one payload.
+    expect(summary.credits.balanceCents).toBe(grantedCents - 30 + 20 - 15);
+    expect(summary.limits.map((l) => l.kind)).toEqual(["lyria", "remix_draft"]);
+    expect(summary.limits.every((l) => l.percentLeft === 100)).toBe(true);
+  });
+
+  describe("GET /usage/summary (HTTP)", () => {
+    it("rejects an unauthenticated request with 401", async () => {
+      await request(app.getHttpServer()).get("/usage/summary").expect(401);
+    });
+
+    it("returns the caller's own usage and ignores a spoofed userId", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/usage/summary")
+        .query({ userId: otherUserId })
+        .set("Authorization", bearer(otherUserId))
+        .expect(200);
+
+      // otherUserId's own ledger: granted 100, debited 40 (see breakdown test).
+      expect(res.body.credits.balanceCents).toBe(60);
+      const lyria = res.body.breakdown.items.find(
+        (i: { kind: string }) => i.kind === "lyria",
+      );
+      expect(lyria.spentCents).toBe(40);
+
+      const mine = await request(app.getHttpServer())
+        .get("/usage/summary")
+        .query({ userId: otherUserId })
+        .set("Authorization", bearer(userId))
+        .expect(200);
+      expect(mine.body.credits.balanceCents).not.toBe(60);
+      expect(Object.keys(mine.body).sort()).toEqual([
+        "breakdown",
+        "credits",
+        "limits",
+        "plan",
+      ]);
+    });
   });
 });

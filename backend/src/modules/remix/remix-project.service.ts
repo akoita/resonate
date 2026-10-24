@@ -47,6 +47,13 @@ import {
   InsufficientCreditsException,
 } from "../credits/generation-credits.service";
 import {
+  DEFAULT_REMIX_GENERATION_RATE_LIMIT,
+  LEDGER_REASON,
+  METERED_ACTIONS,
+  METERED_WINDOW_HOUR_MS,
+  resolveRateLimit,
+} from "../credits/metered-actions";
+import {
   REMIX_STEM_MIX_RENDERER,
   type StemMixRenderer,
 } from "./remix-stem-mix.renderer";
@@ -483,7 +490,10 @@ function loadProject(projectId: string) {
   });
 }
 
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+// The remix generation limit's default, window and env key come from the
+// metered-action registry (#1422); project drafting keeps its own limit.
+const RATE_LIMIT_WINDOW_MS =
+  resolveRateLimit("remix_draft")?.windowMs ?? METERED_WINDOW_HOUR_MS;
 
 function rateLimitFromEnv(name: string, fallback: number): number {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
@@ -500,10 +510,11 @@ export class RemixProjectService {
     "REMIX_PROJECT_RATE_LIMIT",
     20,
   );
-  private readonly maxGenerationsPerHour = rateLimitFromEnv(
-    "REMIX_GENERATION_RATE_LIMIT",
-    10,
-  );
+  private readonly maxGenerationsPerHour =
+    resolveRateLimit(
+      "remix_draft",
+      process.env[METERED_ACTIONS.remix_draft.rateLimit?.envKey ?? ""],
+    )?.limit ?? DEFAULT_REMIX_GENERATION_RATE_LIMIT;
   // A pending/processing job whose worker died (deploy, OOM, lost Redis
   // job) has no in-band path back to a terminal state — the in-process
   // worker is the only writer. After this window an explicit retry may
@@ -1778,7 +1789,7 @@ export class RemixProjectService {
         await this.credits.debit(
           data.userId,
           costCents,
-          "remix_draft",
+          LEDGER_REASON.remixDraft,
           data.jobId,
           "remix_draft",
         );
@@ -2253,7 +2264,7 @@ export class RemixProjectService {
           await this.credits.debit(
             data.userId,
             take.costCents,
-            "remix_part",
+            LEDGER_REASON.remixPart,
             take.id,
             "remix_draft",
           );

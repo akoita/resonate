@@ -11,12 +11,14 @@ import {
   generateRemixDraft,
   generateRemixParts,
   getCreditsBalance,
+  getUsageSummary,
   getRemixEligibility,
   getRemixProject,
   publishRemixProject,
   requestGenerationCredits,
   updateRemixProject,
   type GenerationCreditBalance,
+  type UsageLimit,
   type RemixEligibilityResponse,
   type RemixGenerationAttribution,
   type RemixGenerationMetadata,
@@ -30,6 +32,7 @@ import {
 } from "../../lib/api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
+import { UsageLimitMeter } from "../credits/UsageLimitMeter";
 import { canAffordGeneration } from "../../lib/credits";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
@@ -1798,6 +1801,9 @@ export function RemixStudioEditor({
   // synchronous 402 reaches the studio — we surface the balance proactively and
   // gate Generate when it can't fund even one 30s block.
   const [credits, setCredits] = useState<GenerationCreditBalance | null>(null);
+  // The remix-draft fair-use window (#1422), read with the balance from the
+  // unified usage summary. Null until known; the meter simply stays hidden.
+  const [draftLimit, setDraftLimit] = useState<UsageLimit | null>(null);
   const [creditRequestState, setCreditRequestState] = useState<
     "idle" | "sending" | "sent"
   >("idle");
@@ -2577,10 +2583,21 @@ export function RemixStudioEditor({
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    getCreditsBalance(token)
-      .then((balance) => {
-        if (!cancelled) setCredits(balance);
+    getUsageSummary(token)
+      .then((summary) => {
+        if (cancelled) return;
+        setCredits(summary.credits);
+        setDraftLimit(
+          summary.limits.find((limit) => limit.kind === "remix_draft") ?? null,
+        );
       })
+      .catch(() =>
+        // The unified summary is the preferred read; fall back to the balance
+        // alone so a limits hiccup never hides the credit meter.
+        getCreditsBalance(token).then((balance) => {
+          if (!cancelled) setCredits(balance);
+        }),
+      )
       .catch(() => {
         /* a failed balance probe just leaves the panel empty */
       });
@@ -3572,13 +3589,16 @@ export function RemixStudioEditor({
                 onClick: () => void handleGenerate(),
               }}
               creditMeter={
-                <CreditBalanceMeter
-                  variant="inline"
-                  balance={credits}
-                  priceCentsPer30s={credits?.priceCentsPer30s ?? null}
-                  onRequestCredits={handleRequestCredits}
-                  requesting={creditRequestState === "sending"}
-                />
+                <>
+                  <CreditBalanceMeter
+                    variant="inline"
+                    balance={credits}
+                    priceCentsPer30s={credits?.priceCentsPer30s ?? null}
+                    onRequestCredits={handleRequestCredits}
+                    requesting={creditRequestState === "sending"}
+                  />
+                  <UsageLimitMeter variant="inline" limit={draftLimit} />
+                </>
               }
               attribution={
                 // Stability AI Community License §IV(a) attribution (#1342):

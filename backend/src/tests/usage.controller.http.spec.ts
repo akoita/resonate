@@ -26,6 +26,7 @@ describe("UsageController (HTTP)", () => {
     usageService.getSummary.mockResolvedValue({
       credits: { balanceCents: 0, priceCentsPer30s: 10, recentTransactions: [] },
       limits: [],
+      breakdown: { periodDays: 30, since: "2026-09-24T00:00:00.000Z", items: [] },
       plan: { tier: "free", monthlyAllowanceCents: null },
     });
   });
@@ -42,5 +43,41 @@ describe("UsageController (HTTP)", () => {
       .expect(200);
 
     expect(usageService.getSummary).toHaveBeenCalledWith("user-1");
+  });
+
+  it("rejects an invalid bearer token with 401", async () => {
+    await request(app.getHttpServer())
+      .get("/usage/summary")
+      .set("Authorization", "Bearer not-a-real-token")
+      .expect(401);
+    expect(usageService.getSummary).not.toHaveBeenCalled();
+  });
+
+  it("scopes the summary to the caller and ignores a client-supplied userId", async () => {
+    await request(app.getHttpServer())
+      .get("/usage/summary")
+      .query({ userId: "user-2" })
+      .set("Authorization", `Bearer ${authToken("user-1")}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get("/usage/summary")
+      .set("Authorization", `Bearer ${authToken("user-2")}`)
+      .expect(200);
+
+    expect(usageService.getSummary.mock.calls).toEqual([["user-1"], ["user-2"]]);
+  });
+
+  it("returns the service payload with credits, limits and breakdown kept separate", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/usage/summary")
+      .set("Authorization", `Bearer ${authToken("user-1")}`)
+      .expect(200);
+
+    expect(Object.keys(res.body).sort()).toEqual([
+      "breakdown",
+      "credits",
+      "limits",
+      "plan",
+    ]);
   });
 });
