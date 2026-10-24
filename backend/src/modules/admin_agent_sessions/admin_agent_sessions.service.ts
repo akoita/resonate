@@ -177,8 +177,12 @@ export function toAgentSessionEventView(event: StoredEvent): AgentSessionEventVi
   if (typeof fallback.from === "string" && CODE.test(fallback.from) && typeof fallback.reason === "string" && CODE.test(fallback.reason)) {
     view.runtimeFallback = { from: fallback.from, reason: fallback.reason };
   }
-  const unmet = asRecord(payload.unmetIntent);
-  const unmetKeys = UNMET_INTENT_KEYS.filter((key) => unmet[key] !== undefined && unmet[key] !== null);
+  // Stored as a list of keys (#2337); events recorded before that hold an object.
+  const unmetRaw = payload.unmetIntent;
+  const unmet = asRecord(unmetRaw);
+  const unmetKeys = UNMET_INTENT_KEYS.filter((key) =>
+    Array.isArray(unmetRaw) ? unmetRaw.includes(key) : unmet[key] !== undefined && unmet[key] !== null,
+  );
   if (unmetKeys.length > 0) view.unmetIntent = [...unmetKeys];
   const coverage = coverageOf(payload.coverage);
   if (coverage) view.coverage = coverage;
