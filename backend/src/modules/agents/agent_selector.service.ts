@@ -12,6 +12,7 @@ import {
 } from "../recommendations/discovery-policy";
 import { DiscoveryPolicyContextService } from "../recommendations/discovery-policy-context.service";
 import { DiscoveryRankingService } from "../recommendations/discovery-ranking.service";
+import { relatedGenreLabels } from "../recommendations/genre_families";
 import { RecommendationsService } from "../recommendations/recommendations.service";
 import { FirstListenerDiscoveryService } from "../recommendations/first_listener_discovery.service";
 import { FIRST_LISTENER_CANDIDATE_LIMIT } from "../recommendations/first_listener.contracts";
@@ -22,7 +23,7 @@ import {
 } from "../recommendations/taste_memory.service";
 import type { DiscoveryReasonCode } from "../recommendations/discovery-explanations";
 import { logDegradedFallback } from "../shared/degraded_fallback";
-import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import { resolveCreditedArtistName, resolveCreditedArtistNames } from "../shared/artist_attribution";
 import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
 import { AgentLearningService } from "./agent_learning.service";
 import { discoveryVariantForUser } from "../recommendations/discovery_experiment";
@@ -38,6 +39,15 @@ import {
   RetrievalSource,
   runSource,
 } from "./agent_hybrid_retrieval";
+import {
+  requestTierOf,
+  REQUEST_TIER_ORDER,
+  type AgentRequestCapRelaxed,
+  type AgentRequestCoveragePick,
+  type AgentRequestScope,
+  type AgentRequestShortfallReason,
+  type RequestTier,
+} from "./agent_session_request";
 import {
   buildMixCoverage,
   matchingMyMixLaneIds,
@@ -126,6 +136,29 @@ export interface AgentSelectorInput {
    */
   requestedGenres?: string[];
   /**
+   * Request-first selection (#2316). Present when the session carries a request
+   * of its own (see `requestScopeFor`): the request decides which tracks are
+   * eligible, taste only orders them. Absent (My Mix, a plain session), the
+   * taste-driven path below is exactly what it was.
+   *
+   * With a scope:
+   *  - `queries` are the request's own terms; learned favourites, saved vibes
+   *    (`tasteQueries`) and cohort hints are not retrieval queries (unless the
+   *    listener allowed similar sounds to fill the batch);
+   *  - candidates are tiered A, B or C against the request and chosen tier
+   *    first, score second (see `requestTierOf`);
+   *  - this session's own tracks are left out of keyword search, Home
+   *    impressions no longer demote anything, and a recently PLAYED track only
+   *    steps down inside its tier.
+   */
+  requestScope?: AgentRequestScope;
+  /**
+   * Learned favourites and saved vibes the caller kept out of `queries` because
+   * the session has a request (#2316). They search only as padding, when the
+   * listener allowed similar sounds to fill a short batch.
+   */
+  tasteQueries?: string[];
+  /**
    * Overrides the retrieval variant that otherwise comes from the listener's
    * ranker-variant assignment (#2005). Used by offline evaluation; production
    * callers leave it unset so the assignment decides.
@@ -164,6 +197,25 @@ function resolveSeeds(input: AgentSelectorInput): { artists: string[]; trackIds:
 }
 
 /**
+ * How retrieval treats the session's own tracks and the newest-tracks query for
+ * a request-first session (#2316). Without a scope both are exactly as before.
+ */
+function requestRetrieval(input: AgentSelectorInput, pass: SelectionPass) {
+  const scope = input.requestScope;
+  return {
+    /** Passed to keyword search, so the per-query budget is spent after exclusion. */
+    excludeTrackIds: scope ? input.recentTrackIds : [],
+    /**
+     * A request that gates the catalog does not search "the newest tracks" for
+     * lack of queries: they would all be off-request. Padding and the widened
+     * pass keep it.
+     */
+    newestWhenNoQueries: !(scope?.gated && !scope.fillSimilar),
+    widened: pass === "widened",
+  };
+}
+
+/**
  * Keeps a playlist-seeded session from replaying the playlist (#2244): the
  * playlist's tracks, except the few the playlist source chose to offer
  * (`PLAYLIST_SEED_OWN_TRACKS`), are dropped from the candidate pool, whichever
@@ -187,6 +239,9 @@ function playlistGuardFrom(result: { items?: unknown; playlistTrackIds?: unknown
 
 /** Extra lane terms (beyond the plan's search terms) the lane source searches per lane. */
 const LANE_EXTRA_TERMS = 4;
+
+/** Related styles per requested genre that pad a short batch when similar sounds are allowed (#2316). */
+const PAD_RELATED_STYLES_PER_GENRE = 4;
 
 /** Candidates the artist-seed source may add per pass. */
 const SEED_ARTIST_CANDIDATES = 20;
@@ -222,6 +277,10 @@ export interface AgentCandidateTrack {
   mixLaneId?: string;
   /** Internal marker used by runtime injection before returning a fresh pick. */
   firstListenerEligible?: boolean;
+  /** Request-first selection (#2316): how the track stands against the session's request. */
+  requestTier?: RequestTier;
+  /** Request-first selection (#2316): the per-artist cap was relaxed to include this track. */
+  capRelaxed?: true;
   agentRecommendation?: {
     score: number;
     matchedQueries: string[];
@@ -251,6 +310,23 @@ export interface AgentSelectionResult {
    * listener's explicit preference). Absent when nothing was held back.
    */
   heldBack?: HeldBack;
+  /**
+   * Request-first selection (#2316): the per-artist cap was relaxed because the
+   * catalog had no other matching track left for the batch.
+   */
+  capRelaxed?: AgentRequestCapRelaxed;
+  /**
+   * Request-first selection (#2316): the batch is shorter than the limit
+   * because the catalog has no more tracks that match the request, and the
+   * listener did not allow similar sounds to fill it. Never silent padding.
+   */
+  shortfallReason?: AgentRequestShortfallReason;
+  /**
+   * Request-first selection (#2316): the session's own tracks that match the
+   * request were left out of the search, so an empty answer means "everything
+   * matching was played", not "nothing matches" (internal; drives fallback).
+   */
+  sessionMatchesUsed?: boolean;
   policy?: {
     dropped: { hidden: number; aiGenerated: number; diversity: number };
     exploration: { reserved: number; served: number };
@@ -303,9 +379,20 @@ export class AgentSelectorService {
   async select(input: AgentSelectorInput): Promise<AgentSelectionResult> {
     const strict = await this.selectPass(input, "strict");
     // Nothing matched at all: no relaxation can help, and widening would hide the gap.
-    if (!input.fallback || strict.selected.length > 0 || strict.candidates.length === 0) return strict;
+    // (Request-first sessions leave their own tracks out of the search, so
+    // "matching tracks were all played" is told apart by `sessionMatchesUsed`.)
+    if (
+      !input.fallback ||
+      strict.selected.length > 0 ||
+      (strict.candidates.length === 0 && !strict.sessionMatchesUsed)
+    ) {
+      return strict;
+    }
     const relaxed = await this.selectPass(input, "relaxed");
     if (relaxed.selected.length > 0) return { ...relaxed, fallback: "relaxed_artist_window" as const };
+    // A request that gates the catalog never widens to off-request tracks unless
+    // the listener allowed similar sounds (#2316): the widened tracks would all be tier C.
+    if (input.requestScope?.gated && !input.requestScope.fillSimilar) return strict;
     if (input.recentTrackIds.length === 0) return strict;
     const widened = await this.selectPass(input, "widened");
     if (widened.selected.length > 0) return { ...widened, fallback: "widened" as const };
@@ -314,14 +401,29 @@ export class AgentSelectorService {
 
   private async selectPass(input: AgentSelectorInput, pass: SelectionPass): Promise<AgentSelectionResult> {
     const policy = input.userId ? await this.tasteMemoryService?.getPolicy(input.userId) : undefined;
+    const scope = input.requestScope;
     const originalQueries = (input.queries ?? [])
       .filter(Boolean)
       .filter((query) => !isHiddenTasteQuery(policy, query));
     const cohortContext = input.userId
       ? await this.communityCohortService?.getDiscoveryContextForUser(input.userId) ?? []
       : [];
-    const cohortQueries = cohortContext.flatMap((cohort) => cohort.queryHints);
-    const queries = expandAgentTasteQueries(uniqueCaseInsensitive([...originalQueries, ...cohortQueries]));
+    // A session that names a catalog constraint (#2316) is answered from the
+    // request: cohort hints and the learned or saved taste stay ranking signals
+    // and are not searched, except as marked padding when the listener allows it.
+    const cohortQueries = scope?.gated ? [] : cohortContext.flatMap((cohort) => cohort.queryHints);
+    const padQueries =
+      scope?.gated && scope.fillSimilar
+        ? [
+            ...scope.request.genres.flatMap((genre) => relatedGenreLabels(genre, PAD_RELATED_STYLES_PER_GENRE)),
+            ...(input.tasteQueries ?? []),
+          ]
+            .filter(Boolean)
+            .filter((query) => !isHiddenTasteQuery(policy, query))
+        : [];
+    const queries = expandAgentTasteQueries(
+      uniqueCaseInsensitive([...originalQueries, ...cohortQueries, ...padQueries]),
+    );
     const limit = input.limit ?? 5;
 
     // Candidate retrieval. The default path is the established union of keyword,
@@ -336,6 +438,8 @@ export class AgentSelectorService {
     const { byId, semanticScores } = gathered;
     const retrievedBy = gathered.retrievedBy;
     const retrieval = gathered.retrieval;
+    const seedHitIds = gathered.seedHitIds;
+    const sessionMatchesUsed = (gathered.excludedMatches ?? 0) > 0;
 
     const firstListenerCandidates = input.userId && this.firstListenerDiscovery
       ? await this.firstListenerDiscovery
@@ -417,7 +521,12 @@ export class AgentSelectorService {
         candidates: [],
         selected: [],
         rejected: [],
-        reason: queries.length ? "no_matching_taste_candidates" : "empty_catalog",
+        // Everything that matched is this session's own tracks: used up, not unmet.
+        reason: sessionMatchesUsed
+          ? "all_candidates_recently_played"
+          : queries.length ? "no_matching_taste_candidates" : "empty_catalog",
+        ...(sessionMatchesUsed ? { sessionMatchesUsed } : {}),
+        ...(scope?.gated && !scope.fillSimilar ? { shortfallReason: "catalog_short" as const } : {}),
         ...(retrieval ? { retrieval } : {}),
         ...(input.myMixPlan ? { mixCoverage: buildMixCoverage(input.myMixPlan, new Map()) } : {}),
       };
@@ -493,7 +602,12 @@ export class AgentSelectorService {
       input,
       policy,
     );
-    const servedHistory = await this.resolveServedHistory(input.userId);
+    // A request-first session (#2316) does not read Home impressions: being shown
+    // a track on Home is not hearing it, so it is no reason to bury a track the
+    // request asks for. What the listener PLAYED recently steps down gently inside
+    // its tier instead.
+    const servedHistory = scope ? [] : await this.resolveServedHistory(input.userId);
+    const playedTrackIds = scope ? await this.resolvePlayedHistory(input.userId) : [];
     const sessionIntent = buildSessionIntent(input);
 
     const rankingCandidates = allCandidates.map((track: any) => ({
@@ -525,6 +639,17 @@ export class AgentSelectorService {
             primaryArtist: track.release?.primaryArtist ?? null,
             accountDisplayName: track.release?.artist?.displayName ?? null,
           }),
+          // The cap keys on the performer only (#2316); no credit means the
+          // track stands alone, never the uploader account.
+          ...(scope
+            ? {
+                creditedArtistName:
+                  resolveCreditedArtistNames({
+                    trackArtist: track.artist ?? null,
+                    primaryArtist: track.release?.primaryArtist ?? null,
+                  })[0] ?? null,
+              }
+            : {}),
         },
         matchedQueries: track.matchedQueries ?? [],
       }));
@@ -539,6 +664,7 @@ export class AgentSelectorService {
         // demoted like recent plays, but only this session's own tracks are
         // hard-excluded below.
         recentTrackIds: [...new Set([...input.recentTrackIds, ...servedHistory])],
+        ...(scope ? { playedTrackIds } : {}),
         energy: input.energy,
         tempoBpm: input.tempoBpm,
         sessionIntent,
@@ -546,7 +672,40 @@ export class AgentSelectorService {
         tastePolicy: policy,
         audioFeaturesByTrack,
       };
-    const ranked = await this.rankingService.rank(rankingCandidates, rankingContext);
+    let ranked = await this.rankingService.rank(rankingCandidates, rankingContext);
+
+    // Request-first selection (#2316): one shared predicate tiers every
+    // candidate, and selection order is tier first, then score. A tier never
+    // moves with taste; taste only orders tracks inside it.
+    const tierById = new Map<string, RequestTier>();
+    if (scope) {
+      const factsById = new Map(
+        rankingCandidates.map((candidate) => {
+          const features = audioFeaturesByTrack.get(candidate.id);
+          const facts: AgentRequestCoveragePick = {
+            genre: candidate.release.genre,
+            descriptorFamilies: candidate.descriptorFamilies,
+            moods: candidate.release.moods ?? [],
+            energyBand: features?.energyBand,
+            tempoBpm: features?.tempoBpm,
+            tempoMeasured: features?.featureSources?.tempo === "measured",
+            seedMatched: seedHitIds?.has(candidate.id) ?? false,
+          };
+          return [candidate.id, facts] as const;
+        }),
+      );
+      for (const entry of ranked) {
+        tierById.set(entry.id, requestTierOf(scope, factsById.get(entry.id) as AgentRequestCoveragePick));
+      }
+      ranked = ranked
+        .map((entry, index) => ({ entry, index }))
+        .sort(
+          (a, b) =>
+            REQUEST_TIER_ORDER[tierById.get(a.entry.id) ?? "A"] - REQUEST_TIER_ORDER[tierById.get(b.entry.id) ?? "A"] ||
+            a.index - b.index,
+        )
+        .map(({ entry }) => entry);
+    }
     const laneCandidateOrderByLaneId = new Map<string, string[]>();
     if (input.myMixPlan) {
       for (const lane of input.myMixPlan.lanes) {
@@ -598,8 +757,11 @@ export class AgentSelectorService {
       const lane = mixLaneId
         ? input.myMixPlan?.lanes.find((candidate) => candidate.id === mixLaneId)
         : undefined;
+      const requestTier = tierById.get(entry.id);
       return {
         ...track,
+        ...(requestTier ? { requestTier } : {}),
+        ...(policyResult.capRelaxedIds?.has(entry.id) ? { capRelaxed: true as const } : {}),
         ...(mixLaneId ? { mixLaneId } : {}),
         ...(input.reserveFirstListenerPlacements === false
           ? { firstListenerEligible: Boolean(entry.firstListenerEligible) }
@@ -647,6 +809,9 @@ export class AgentSelectorService {
       // Relaxed and widened passes keep two per artist per pick but drop the session window.
       priorSessionArtistKeys: pass === "strict" ? policyContext.priorSessionArtistKeys : undefined,
       priorExplorationCount: policyContext.priorExplorationCount,
+      ...(scope
+        ? { requestFirst: { tierById, allowOffRequest: scope.gated && scope.fillSimilar } }
+        : {}),
       ...(input.myMixPlan
         ? {
             laneQuotas: input.myMixPlan.lanes.map((lane) => ({
@@ -694,6 +859,24 @@ export class AgentSelectorService {
     const selected = policyResult.items.map(toAgentTrack);
     const scored = ranked.map(toAgentTrack);
     const heldBack = await this.heldBackFor(input, fresh, policyResult.heldBackForVariety);
+    const capRelaxed = this.describeCapRelaxed(policyResult.capRelaxed, rankingCandidates);
+    // The batch is shorter than the limit and the listener did not allow similar
+    // sounds: say why, never pad silently.
+    const shortfallReason: AgentRequestShortfallReason | undefined =
+      scope?.gated && !scope.fillSimilar && selected.length < limit ? "catalog_short" : undefined;
+    // Why nothing came back, told apart for a request that gates the catalog:
+    // no track matches it at all (unmet demand), or every match is already this
+    // session's or held back.
+    const onRequestRanked = ranked.filter((entry) => tierById.get(entry.id) !== "C").length;
+    const onRequestFresh = fresh.filter((entry) => tierById.get(entry.id) !== "C").length;
+    const gatedReason =
+      scope?.gated && !scope.fillSimilar && selected.length === 0
+        ? onRequestFresh > 0
+          ? "no_policy_eligible_candidates"
+          : onRequestRanked > 0 || sessionMatchesUsed
+            ? "all_candidates_recently_played"
+            : "no_matching_taste_candidates"
+        : undefined;
     const mixCoverage = input.myMixPlan
       ? buildMixCoverage(
           input.myMixPlan,
@@ -712,12 +895,14 @@ export class AgentSelectorService {
       reason:
         selected.length > 0
           ? "ranked_shortlist"
-          : fresh.length > 0
-            ? "no_policy_eligible_candidates"
-            : "all_candidates_recently_played",
+          : gatedReason ??
+            (fresh.length > 0 ? "no_policy_eligible_candidates" : "all_candidates_recently_played"),
       ...(mixCoverage ? { mixCoverage } : {}),
       ...(retrieval ? { retrieval } : {}),
       ...(heldBack ? { heldBack } : {}),
+      ...(capRelaxed ? { capRelaxed } : {}),
+      ...(shortfallReason ? { shortfallReason } : {}),
+      ...(sessionMatchesUsed ? { sessionMatchesUsed } : {}),
       policy: {
         dropped: policyResult.dropped,
         exploration: policyResult.exploration,
@@ -737,19 +922,30 @@ export class AgentSelectorService {
     retrievedBy?: undefined;
     retrieval?: undefined;
     playlistGuard?: PlaylistGuard;
+    seedHitIds: Set<string>;
+    excludedMatches: number;
   }> {
     // Gather candidates from all vibes/queries
     const byId = new Map<string, AgentCandidateTrack & { matchedQueries: string[] }>();
+    const retrievalRules = requestRetrieval(input, pass);
+    // Tracks a seed source (artist, track, playlist) found; the request tiers read them (#2316).
+    const seedHitIds = new Set<string>();
+    let excludedMatches = 0;
 
     // A widened pass also searches the whole catalog ("" = newest tracks).
-    const searchQueries = queries.length === 0 || pass === "widened" ? [...queries, ""] : queries;
+    const searchQueries =
+      (queries.length === 0 && retrievalRules.newestWhenNoQueries) || pass === "widened"
+        ? [...queries, ""]
+        : queries;
     for (const query of searchQueries) {
       const tool = this.tools.get("catalog.search");
       const result = await tool.run({
         query,
         limit: query === "" && pass === "widened" ? CATALOG_WIDE_CANDIDATES : 20,
         allowExplicit: input.allowExplicit ?? false,
+        ...(retrievalRules.excludeTrackIds.length > 0 ? { excludeTrackIds: retrievalRules.excludeTrackIds } : {}),
       });
+      if (typeof result.excludedMatches === "number") excludedMatches += result.excludedMatches;
       const items = (result.items as any[]) ?? [];
       for (const item of items) {
         // Defense in depth for alternate/mock catalog tools: ADR-BM-5 keeps
@@ -785,6 +981,7 @@ export class AgentSelectorService {
       ...resolveSeeds(input).trackIds.map((seedTrackId) => ({ seedTrackId })),
     ];
     for (const source of semanticSources) {
+      const isSeed = typeof source.seedTrackId === "string";
       // Fails open: semantic retrieval only adds candidates, so a tool error
       // leaves the keyword candidates as they were.
       const result = await this.tools
@@ -805,6 +1002,7 @@ export class AgentSelectorService {
         if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
           continue;
         }
+        if (isSeed) seedHitIds.add(item.id);
         if (typeof item.semanticScore === "number") {
           semanticScores.set(item.id, Math.max(semanticScores.get(item.id) ?? 0, item.semanticScore));
         }
@@ -836,6 +1034,7 @@ export class AgentSelectorService {
         if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
           continue;
         }
+        seedHitIds.add(item.id);
         // An artist's own track scores as a perfect semantic match; a neighbour
         // keeps its centroid cosine. Either never lowers a score already set.
         const score = item.artistSeed === "own" ? 1 : item.semanticScore;
@@ -880,6 +1079,7 @@ export class AgentSelectorService {
         if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
           continue;
         }
+        seedHitIds.add(item.id);
         if (typeof item.semanticScore === "number") {
           semanticScores.set(item.id, Math.max(item.semanticScore, semanticScores.get(item.id) ?? 0));
         }
@@ -887,7 +1087,7 @@ export class AgentSelectorService {
       }
     }
 
-    return { byId, semanticScores, ...(playlistGuard ? { playlistGuard } : {}) };
+    return { byId, semanticScores, seedHitIds, excludedMatches, ...(playlistGuard ? { playlistGuard } : {}) };
   }
 
   /**
@@ -951,8 +1151,12 @@ export class AgentSelectorService {
     retrievedBy: Map<string, RetrievalSource[]>;
     retrieval: RetrievalReport;
     playlistGuard?: PlaylistGuard;
+    seedHitIds: Set<string>;
+    excludedMatches: number;
   }> {
     const config = hybridRetrievalConfig();
+    const retrievalRules = requestRetrieval(input, pass);
+    let excludedMatches = 0;
     const allowExplicit = input.allowExplicit ?? false;
     const deadlineAt = Date.now() + config.timeoutMs;
 
@@ -974,11 +1178,22 @@ export class AgentSelectorService {
       }
       return { lists, hits };
     };
-    const search = (query: string, limit: number) =>
-      this.tools.get("catalog.search").run({ query, limit, allowExplicit });
+    const search = async (query: string, limit: number) => {
+      const result = await this.tools.get("catalog.search").run({
+        query,
+        limit,
+        allowExplicit,
+        ...(retrievalRules.excludeTrackIds.length > 0 ? { excludeTrackIds: retrievalRules.excludeTrackIds } : {}),
+      });
+      if (typeof result.excludedMatches === "number") excludedMatches += result.excludedMatches;
+      return result;
+    };
 
     const keyword = async (): Promise<SourceYield> => {
-      const searchQueries = queries.length === 0 || pass === "widened" ? [...queries, ""] : queries;
+      const searchQueries =
+        (queries.length === 0 && retrievalRules.newestWhenNoQueries) || pass === "widened"
+          ? [...queries, ""]
+          : queries;
       const groups = await Promise.all(
         searchQueries.map(async (query) => {
           // The widened pass's catalog-wide newest tracks keep their own, larger bound.
@@ -1171,10 +1386,15 @@ export class AgentSelectorService {
       retrievedBy.set(entry.id, entry.sources);
       if (entry.sources.length === 1) onlyFrom[entry.sources[0]] = (onlyFrom[entry.sources[0]] ?? 0) + 1;
     }
+    const seedHitIds = new Set(
+      [...retrievedBy].flatMap(([id, sources]) => (sources.includes("seed") ? [id] : [])),
+    );
     return {
       byId,
       semanticScores,
       retrievedBy,
+      seedHitIds,
+      excludedMatches,
       ...(playlistGuard ? { playlistGuard } : {}),
       retrieval: {
         variant: HYBRID_RETRIEVAL_VARIANT,
@@ -1200,13 +1420,16 @@ export class AgentSelectorService {
     capped: readonly string[] | undefined,
   ): Promise<HeldBack | undefined> {
     const terms = (input.requestedTerms ?? []).filter(Boolean);
-    if (terms.length === 0) return undefined;
+    if (terms.length === 0 && !input.requestScope) return undefined;
     const cappedIds = new Set(capped ?? []);
-    const variety = fresh.filter(
-      (entry) => cappedIds.has(entry.id) && (entry.signals ?? []).some((signal) => signal.label === "session_request"),
-    ).length;
+    // A request-first policy reports only matches of the request as capped.
+    const variety = input.requestScope
+      ? fresh.filter((entry) => cappedIds.has(entry.id)).length
+      : fresh.filter(
+          (entry) => cappedIds.has(entry.id) && (entry.signals ?? []).some((signal) => signal.label === "session_request"),
+        ).length;
     let explicit = 0;
-    if (!input.allowExplicit) {
+    if (!input.allowExplicit && terms.length > 0) {
       try {
         const result = await this.tools.get("catalog.explicit_matches").run({
           terms,
@@ -1248,6 +1471,32 @@ export class AgentSelectorService {
     return input.learnedGenreWeights ?? {};
   }
 
+  /** The relaxed-cap report with the largest holder named by its credited performer (#2316). */
+  private describeCapRelaxed(
+    relaxed: { artists: number; top?: { tracks: number; candidateId: string } } | undefined,
+    candidates: ReadonlyArray<{ id: string; artist?: string | null; release: { artistDisplayName?: string | null; creditedArtistName?: string | null } }>,
+  ): AgentRequestCapRelaxed | undefined {
+    if (!relaxed || relaxed.artists <= 0) return undefined;
+    const holder = relaxed.top ? candidates.find((candidate) => candidate.id === relaxed.top?.candidateId) : undefined;
+    const name = (holder?.release.creditedArtistName ?? holder?.artist ?? "").trim();
+    return {
+      artists: relaxed.artists,
+      ...(relaxed.top && name ? { top: { artist: name, tracks: relaxed.top.tracks } } : {}),
+    };
+  }
+
+  /** The tracks the listener recently played, for the gentle within-tier step (#2316). Fails open. */
+  private async resolvePlayedHistory(userId?: string): Promise<string[]> {
+    if (!userId || !this.policyContext) return [];
+    try {
+      return await this.policyContext.recentPlayedTrackIds(userId);
+    } catch (error) {
+      logDegradedFallback({ component: "played_history", reason: "unavailable", error });
+      this.logger.warn(`Played history unavailable: ${String(error)}`);
+      return [];
+    }
+  }
+
   /** Home's served-history (`RecommendationProfile.servedTrackIds`). */
   private async resolveServedHistory(userId?: string): Promise<string[]> {
     if (!userId || !this.recommendations) return [];
@@ -1283,7 +1532,9 @@ export class AgentSelectorService {
           .filter((id): id is string => !!id);
         const [context, keysByTrack] = await Promise.all([
           this.policyContext.loadContext(input.userId, artistIds),
-          this.policyContext.artistKeysForTracks(input.recentTrackIds),
+          input.requestScope
+            ? this.policyContext.artistKeysForTracks(input.recentTrackIds, true)
+            : this.policyContext.artistKeysForTracks(input.recentTrackIds),
         ]);
         verifiedHumanArtistIds = context.verifiedHumanArtistIds;
         playedArtistIds = context.playedArtistIds;

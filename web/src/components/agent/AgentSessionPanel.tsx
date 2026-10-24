@@ -126,6 +126,10 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     // "Start a DJ session from this" button. It stays for the whole session until removed.
     const [seed, setSeed] = useState<DjSeed | null>(null);
     const [request, setRequest] = useState<AgentSessionRequest | null>(null);
+    // "Fill with similar sounds" (#2316): off unless the listener turns it on. It travels with
+    // every start and pick (the server keeps the last value for the live session), and a live
+    // set's own value is picked up again after a reload.
+    const [fillSimilar, setFillSimilar] = useState<boolean>(() => getDjSet()?.preferences?.fillSimilar === true);
     const [unparsed, setUnparsed] = useState<string[]>([]);
     const [ignored, setIgnored] = useState<AgentSessionRequestIgnoredKey[]>([]);
     const [activePreset, setActivePreset] = useState<SessionPreset | null>(null);
@@ -169,6 +173,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const awaitingAutoplayRef = useRef<string | null>(null);
 
     myMixPreferencesRef.current = myMixPreferences;
+
+    // "Fill with similar sounds" only does something when the request names a genre, an
+    // artist or a seed (#2316), so the switch is offered only then: no dead control.
+    const offersFillSimilar =
+        !myMixPreferences && ((request?.genres.length ?? 0) > 0 || artists.length > 0 || seed !== null);
 
     const invalidateMyMixCoverage = () => {
         myMixEditVersionRef.current += 1;
@@ -261,11 +270,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             sentence: parsedSentence,
             artists,
             seed,
+            fillSimilar,
         });
         return myMixWasSelectedRef.current
             ? { ...regularPreferences, myMix: null }
             : regularPreferences;
-    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed]);
+    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed, fillSimilar]);
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
@@ -600,6 +610,15 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         scheduleReplan();
     };
 
+    /**
+     * The "Fill with similar sounds" switch (#2316). It applies from the next pick; a live
+     * set is re-planned so the upcoming tracks follow it, like any other filter edit.
+     */
+    const handleFillSimilarChange = (next: boolean) => {
+        setFillSimilar(next);
+        scheduleReplan();
+    };
+
     const handleSelectMyMix = () => {
         cancelParse();
         energyAdjustedRef.current = false;
@@ -810,6 +829,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             const optionalFilters = [
                 ...(energyAdjustedRef.current && !myMixPreferences && request?.energy ? ["energy"] : []),
                 ...((explicitPending ?? config?.allowExplicit ?? false) ? ["explicit"] : []),
+                ...(fillSimilar && offersFillSimilar ? ["fill_similar"] : []),
             ];
             const startedFrom: SessionStartedFrom = myMixPreferences
                 ? "my_mix"
@@ -818,7 +838,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             // session preferences and never overwrites the vibes saved in Settings.
             const preferences = myMixPreferences
                 ? { myMix: { ...myMixPreferences, context: getMyMixLocalContext() } }
-                : buildSessionPreferences({ activePreset: preset, request, sentence: parsedSentence, artists, seed });
+                : buildSessionPreferences({
+                    activePreset: preset,
+                    request,
+                    sentence: parsedSentence,
+                    artists,
+                    seed,
+                    fillSimilar: fillSimilar && offersFillSimilar,
+                });
             try {
                 setIsStarting(true);
                 const result = await startSession(preferences ? { preferences } : undefined);
@@ -977,6 +1004,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         savedVibes={config.vibes}
                         isLive={config.isActive}
                         isBusy={isStarting || isReplanning}
+                        fillSimilar={
+                            offersFillSimilar ? { enabled: fillSimilar, onChange: handleFillSimilarChange } : undefined
+                        }
                         explicit={{
                             enabled: explicitPending ?? config.allowExplicit ?? false,
                             isSaving: explicitPending !== null,

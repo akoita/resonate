@@ -167,6 +167,57 @@ describe("coverageLine", () => {
     });
   });
 
+  describe("request-first notes (#2316)", () => {
+    it("says how many tracks match when the catalog could not fill the set", () => {
+      expect(coverageLine({ picks: 8, gaps: [], shortfallReason: "catalog_short" }, request)).toEqual({
+        kind: "full",
+        text: "8 new tracks match your request",
+      });
+      expect(coverageLine({ picks: 1, gaps: [], shortfallReason: "catalog_short" }, request)).toEqual({
+        kind: "full",
+        text: "1 new track matches your request",
+      });
+    });
+
+    it("keeps the filter gaps and adds the short set after them", () => {
+      expect(
+        coverageLine({ picks: 5, gaps: [{ filter: "bpm", matched: 1 }], shortfallReason: "catalog_short" }, request)?.text,
+      ).toBe("Only 1 of 5 picks matched 120–125 BPM \u00B7 5 new tracks match your request");
+    });
+
+    it("names the artist the DJ let repeat because nothing else matched", () => {
+      expect(
+        coverageLine({ picks: 8, gaps: [], capRelaxed: { artists: 1, top: { artist: "Fabolous", tracks: 3 } } }, request)?.text,
+      ).toBe("All picks matched your request \u00B7 3 from Fabolous: the catalog has few matches");
+      expect(coverageLine({ picks: 8, gaps: [], capRelaxed: { artists: 2 } }, request)?.text).toBe(
+        "All picks matched your request \u00B7 Some artists repeat: the catalog has few matches",
+      );
+    });
+
+    it("puts the short set, the cap note and what was held back on one line, in that order", () => {
+      expect(
+        coverageLine(
+          {
+            picks: 8,
+            gaps: [],
+            shortfallReason: "catalog_short",
+            capRelaxed: { artists: 1, top: { artist: "Fabolous", tracks: 3 } },
+            heldBack: { variety: 0, explicit: 1 },
+          },
+          request,
+        )?.text,
+      ).toBe("8 new tracks match your request \u00B7 3 from Fabolous: the catalog has few matches \u00B7 1 more held back: 1 explicit");
+    });
+
+    it("also speaks for a seeded session whose request has no filter chips, and stays silent otherwise", () => {
+      const empty: AgentSessionRequest = { genres: [], moods: [], energy: null, bpm: null };
+      expect(coverageLine({ picks: 4, gaps: [], shortfallReason: "catalog_short" }, empty)?.text).toBe(
+        "4 new tracks match your request",
+      );
+      expect(coverageLine({ picks: 4, gaps: [] }, empty)).toBeNull();
+    });
+  });
+
   it("adds what was held back, by reason, to the same single line", () => {
     expect(coverageLine({ picks: 7, gaps: [], heldBack: { variety: 1, explicit: 1 } }, request)).toEqual({
       kind: "full",

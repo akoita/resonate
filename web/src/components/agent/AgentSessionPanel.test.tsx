@@ -332,6 +332,34 @@ describe("AgentSessionPanel", () => {
       expect(captured.upNext?.buildPreferences()).toMatchObject({ seed: null });
     });
 
+    it("offers Fill with similar sounds only when the request names something to match, off by default (#2316)", async () => {
+      hookState.config = config({ isActive: false });
+      adoptSeed(null);
+      // Nothing to match, so the switch would do nothing: it is not offered.
+      expect(captured.prompt?.fillSimilar).toBeUndefined();
+
+      adoptSeed(playlistSeed);
+      expect(captured.prompt?.fillSimilar).toMatchObject({ enabled: false });
+      await captured.prompt?.onSubmit();
+      expect((startSession.mock.calls.at(-1) as unknown as [{ preferences: object }])[0].preferences).not.toHaveProperty("fillSimilar");
+    });
+
+    it("sends the choice with the start and with every pick, and states 'off' on picks (#2316)", async () => {
+      hookState.config = config({ isActive: true });
+      adoptSeed(playlistSeed);
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ fillSimilar: false });
+
+      captured.prompt?.fillSimilar?.onChange(true);
+      render();
+      expect(captured.prompt?.fillSimilar?.enabled).toBe(true);
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ fillSimilar: true });
+
+      hookState.config = config({ isActive: false });
+      render();
+      await captured.prompt?.onSubmit();
+      expect((startSession.mock.calls.at(-1) as unknown as [{ preferences: object }])[0].preferences).toMatchObject({ fillSimilar: true });
+    });
+
     it("starts without a seed when none was queued", async () => {
       hookState.config = config({ isActive: false });
       adoptSeed(null);

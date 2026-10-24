@@ -83,6 +83,14 @@ export interface DiscoveryCandidate {
     title?: string | null;
     moods?: string[] | null;
     artistDisplayName?: string | null;
+    /**
+     * The performer the track is credited to, never the uploader account's
+     * label (#2316). The diversity cap keys on it when a caller sets it: a
+     * string is the credit, `null` says the track has none (then the cap falls
+     * back to a per-track key); left undefined (Home), the cap keeps its
+     * established `artistDisplayName` key.
+     */
+    creditedArtistName?: string | null;
   };
   /**
    * Genre family ids of the track's stored descriptor (#2240). A second source
@@ -130,6 +138,12 @@ export interface DiscoveryRankingContext {
   bigQueryTasteScores?: Map<string, AgentTasteScore>;
   cohortContext?: CommunityCohortDiscoveryContext[];
   recentTrackIds?: string[];
+  /**
+   * Request-first sessions (#2316): tracks the listener recently PLAYED. A small
+   * step down instead of the duplicate penalty above, so a played track stays
+   * eligible and only sorts below unplayed tracks of its tier. Home never sets it.
+   */
+  playedTrackIds?: string[];
   energy?: "low" | "medium" | "high";
   /**
    * Requested tempo range in BPM (#2037, DJ). Boosts a candidate whose tempo
@@ -177,6 +191,13 @@ export const DECLARED_PREFERENCE_WEIGHT = 20;
  */
 export const EMBEDDING_SIMILARITY_WEIGHT = 8;
 
+/**
+ * Request-first sessions (#2316): the step a recently PLAYED track loses inside
+ * its tier. One signal-sized step (the energy-match weight), nowhere near the
+ * duplicate penalty of -100.
+ */
+export const PLAYED_TRACK_DEMOTION = 10;
+
 /** Weight of the session-intent signal: a tilt, below any taste match. */
 export const SESSION_INTENT_FIT_WEIGHT = 12;
 
@@ -212,9 +233,15 @@ export class DiscoveryRankingService {
     context: DiscoveryRankingContext,
   ): Promise<RankedDiscoveryCandidate[]> {
     const recent = context.recentTrackIds ?? [];
+    const played = new Set(context.playedTrackIds ?? []);
     const scored = await Promise.all(
       candidates.map((candidate) =>
-        this.scoreCandidate(candidate, context, recent.includes(candidate.id)),
+        this.scoreCandidate(
+          candidate,
+          context,
+          recent.includes(candidate.id),
+          played.has(candidate.id),
+        ),
       ),
     );
     const learnedGenreWeights = context.learnedGenreWeights ?? {};
@@ -235,6 +262,7 @@ export class DiscoveryRankingService {
     candidate: DiscoveryCandidate,
     context: DiscoveryRankingContext,
     recentlyPlayed: boolean,
+    playedRecently = false,
   ): Promise<RankedDiscoveryCandidate> {
     const signals: DiscoverySignal[] = [];
     const explanation: string[] = [];
@@ -414,6 +442,12 @@ export class DiscoveryRankingService {
         weight: -100,
         reason: "recent session duplicate",
       });
+    } else if (playedRecently) {
+      signals.push({
+        label: "recently_played",
+        weight: -PLAYED_TRACK_DEMOTION,
+        reason: "played recently",
+      });
     }
 
     const score = Math.max(
@@ -430,7 +464,8 @@ export class DiscoveryRankingService {
         ? [...new Set(explanation)]
         : [DISCOVERY_EXPLANATIONS.catalog],
       reasonCode: primaryReasonFor(signals),
-      recentlyPlayed,
+      // A played track is not "new" for the exploration slots either.
+      recentlyPlayed: recentlyPlayed || playedRecently,
       ...(audioFeatures ? { audioFeatures } : {}),
       ...(tasteScore ? { trace: { bigQueryTasteScore: tasteScore } } : {}),
     };

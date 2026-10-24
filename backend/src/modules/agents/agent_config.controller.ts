@@ -342,6 +342,11 @@ export class AgentConfigController {
                  * Resolved here: a playlist the caller neither owns nor may see is refused (403).
                  */
                 seed?: unknown;
+                /**
+                 * Request-first selection (#2316): allow marked off-request tracks to
+                 * fill a batch the catalog cannot fill with matches. Only `true` counts.
+                 */
+                fillSimilar?: unknown;
                 myMix?: MyMixPreferences | null;
             };
         }
@@ -491,6 +496,8 @@ export class AgentConfigController {
                     ...(requested.artists.length > 0 ? { artists: requested.artists } : {}),
                     // What the session started from (#2244), resolved above; in memory for this run only.
                     ...(seed ? { seed } : {}),
+                    // "Fill with similar sounds" (#2316): off unless the listener turned it on.
+                    ...(body?.preferences?.fillSimilar === true ? { fillSimilar: true } : {}),
                     // The described session (#2037); absent without a request.
                     ...(requested.request
                         ? {

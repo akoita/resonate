@@ -270,10 +270,12 @@ describe("AgentOrchestratorService (listening picks)", () => {
     });
 
     it("flags each pick with requestMatch by the coverage predicates (#2312)", async () => {
+      // The selector tiers the picks (#2316): A matches every filter, B misses a soft
+      // one (the mood), C is outside the request. Only C is "outside your request".
       const { orchestrator } = build([
-        track(1, { genre: "Deep House", moods: ["Dark"] }, measured(122)),
-        track(2, { genre: "Deep House", moods: ["Bright"] }, measured(122)),
-        track(3, { genre: "Techno", moods: ["Dark"] }, measured(122)),
+        { ...track(1, { genre: "Deep House", moods: ["Dark"] }, measured(122)), requestTier: "A" },
+        { ...track(2, { genre: "Deep House", moods: ["Bright"] }, measured(122)), requestTier: "B" },
+        { ...track(3, { genre: "Techno", moods: ["Dark"] }, measured(122)), requestTier: "C" },
       ] as any);
 
       const result = await orchestrator.orchestrate({
@@ -284,7 +286,7 @@ describe("AgentOrchestratorService (listening picks)", () => {
       });
 
       const flags = Object.fromEntries(result.tracks.map((entry) => [entry.trackId, entry.pick.requestMatch]));
-      expect(flags).toEqual({ "track-1": true, "track-2": false, "track-3": false });
+      expect(flags).toEqual({ "track-1": true, "track-2": true, "track-3": false });
     });
 
     it("matches a genre through the track descriptor's families, like coverage", async () => {

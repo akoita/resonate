@@ -6,9 +6,11 @@ import { AgentRunnerService } from "../modules/agents/agent_runner.service";
 import { EventBus } from "../modules/shared/event_bus";
 import { HYBRID_RETRIEVAL_VARIANT } from "../modules/agents/agent_hybrid_retrieval";
 import {
+  CAP_IDENTITY_CATALOG,
   GOLDEN_CASES,
   GOLDEN_CATALOG,
   HELD_BACK_CATALOG,
+  REQUEST_FIRST_CATALOG,
   HELD_BACK_EXPECTED_FIRST_BATCH,
   HELD_BACK_REQUEST,
 } from "./dj_retrieval_golden/fixtures";
@@ -21,10 +23,13 @@ import {
   expectNoHybridRegression,
   goldenReportMarkdown,
   InMemoryGoldenTools,
+  buildScenarioSelector,
   runGoldenCases,
   runHeldBackScenario,
+  runRequestFirstScenario,
   writeGoldenReport,
 } from "./dj_retrieval_golden/harness";
+import { registerRequestFirstCases } from "./dj_retrieval_golden/request_first_cases";
 
 describe("agent golden evals", () => {
   const artifactPath = resolve(process.cwd(), "eval-results/agent-golden-results.json");
@@ -185,14 +190,16 @@ describe("AI DJ retrieval golden set", () => {
       const tools = new InMemoryGoldenTools(HELD_BACK_CATALOG);
       const selector = buildGoldenSelector(tools, new FixtureAudioFeatureService(tools.tracksById));
 
-      const { firstBatch, heldBack } = await runHeldBackScenario(selector, "", HELD_BACK_REQUEST, variant);
+      const { firstBatch, heldBack, capRelaxed, shortfallReason } = await runHeldBackScenario(selector, "", HELD_BACK_REQUEST, variant);
 
-      // Nine eligible tracks; one is explicit (preference) and one is the first
-      // artist's third (per-artist cap of 2): seven (more than the old target of
-      // five) are heard, the rest is reported.
+      // Nine eligible tracks; one is explicit (preference), so eight are heard. The
+      // first artist's third track is over the per-artist cap (2), but the catalog
+      // has nothing else on the request, so the cap relaxes for it (#2316).
       expect([...firstBatch].sort()).toEqual([...HELD_BACK_EXPECTED_FIRST_BATCH].sort());
       expect(firstBatch).not.toContain("hb_b3_explicit");
-      expect(heldBack).toEqual({ variety: 1, explicit: 1 });
+      expect(heldBack).toEqual({ variety: 0, explicit: 1 });
+      expect(capRelaxed).toEqual({ artists: 1, top: { artist: "Marlo Vance", tracks: 3 } });
+      expect(shortfallReason).toBe("catalog_short");
     },
   );
 
@@ -216,5 +223,18 @@ describe("AI DJ retrieval golden set", () => {
         "unmet-gregorian-chant",
       ]),
     );
+  });
+});
+
+/**
+ * Request-first selection (#2316) over the Docker-free catalog twin. The
+ * Postgres runner registers the same cases (agent_dj_retrieval_golden.integration.spec.ts).
+ */
+describe("AI DJ request-first selection (in-memory twin)", () => {
+  registerRequestFirstCases(() => async (catalogKind, request, options = {}) => {
+    const catalog = catalogKind === "request_first" ? REQUEST_FIRST_CATALOG : CAP_IDENTITY_CATALOG;
+    const tools = new InMemoryGoldenTools(catalog);
+    const selector = buildScenarioSelector(tools, new FixtureAudioFeatureService(tools.tracksById), "", options);
+    return runRequestFirstScenario(selector, "", catalog, request, options);
   });
 });

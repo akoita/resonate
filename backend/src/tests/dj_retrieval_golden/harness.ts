@@ -111,7 +111,7 @@ type SessionPreferences = AgentRecommendationInput["preferences"];
  * `AgentSessionArtistResolver`, which reads the same names from Postgres.
  */
 export function fixtureArtistResolver(catalog: readonly GoldenTrack[] = GOLDEN_CATALOG): SessionArtistResolver {
-  const index = buildArtistNameIndex(catalog.map((track) => track.artist));
+  const index = buildArtistNameIndex(catalog.filter((track) => !track.uncredited).map((track) => track.artist));
   return {
     mentionsIn: async (text) => findArtistMentions(text, index),
     resolveNames: async (names) =>
@@ -148,8 +148,14 @@ export async function preferencesFor(
         });
   const requested = requestRankingPreferences({ request: rawRequest });
   const sessionGenres = requested.sessionGenres;
+  const learnedGenres = request.kind === "structured" ? request.learnedGenres ?? [] : [];
   return {
-    genres: mergeSessionGenres({ sessionGenres }),
+    // As production merges them (learned favourites first, then the session's own genres).
+    genres: mergeSessionGenres({ learnedGenres, sessionGenres }),
+    ...(learnedGenres.length
+      ? { learnedGenreWeights: Object.fromEntries(learnedGenres.map((genre) => [genre, 5])) }
+      : {}),
+    ...(request.kind === "structured" && request.fillSimilar ? { fillSimilar: true } : {}),
     ...(sessionGenres.length ? { sessionGenres } : {}),
     mood: requested.mood,
     energy: requested.energy,
@@ -305,7 +311,7 @@ export class InMemoryGoldenTools {
     return {
       id: `${this.idPrefix}${track.key}`,
       title: track.title,
-      artist: track.artist,
+      artist: track.uncredited ? null : track.artist,
       explicit: Boolean(track.explicit),
       hasListing: false,
       descriptor: goldenDescriptor(track),
@@ -315,7 +321,7 @@ export class InMemoryGoldenTools {
         genre: track.genre,
         moods: track.moods ?? [],
         artistId: `${this.idPrefix}uploader`,
-        primaryArtist: track.artist,
+        primaryArtist: track.uncredited ? null : track.artist,
         artist: { displayName: "Fixture uploader" },
       },
     };
@@ -325,9 +331,10 @@ export class InMemoryGoldenTools {
     const query = String(input.query ?? "").trim();
     const take = Math.min(Math.max(Number(input.limit ?? 20), 1), 50);
     const explicitAllowed = Boolean(input.allowExplicit ?? false);
+    const excluded = new Set(Array.isArray(input.excludeTrackIds) ? (input.excludeTrackIds as string[]) : []);
     const terms = query ? expandGenreSearchTerms(query).map((term) => term.toLowerCase()) : [];
     const familyIds = query ? genreFamiliesFor(query).map((family) => family.id) : [];
-    const items = this.catalog
+    const matching = this.catalog
       .filter((track) => explicitAllowed || !track.explicit)
       .filter((track) => {
         if (!query) return true;
@@ -337,10 +344,15 @@ export class InMemoryGoldenTools {
           goldenDescriptor(track).families.some((id) => familyIds.includes(id)) ||
           track.title.toLowerCase().includes(query.toLowerCase())
         );
-      })
+      });
+    const items = matching
+      .filter((track) => !excluded.has(`${this.idPrefix}${track.key}`))
       .slice(0, take)
       .map((track) => this.toItem(track));
-    return { items };
+    // Like the real tool: with ids to exclude, how many of them the query matches.
+    return excluded.size > 0
+      ? { items, excludedMatches: matching.filter((track) => excluded.has(`${this.idPrefix}${track.key}`)).length }
+      : { items };
   }
 }
 
@@ -374,12 +386,39 @@ export function scopeToIdPrefix(
 export function buildGoldenSelector(
   tools: unknown,
   audioFeatures: AgentAudioFeatureService,
+  collaborators: {
+    policyContext?: unknown;
+    recommendations?: unknown;
+  } = {},
 ): AgentSelectorService {
   return new AgentSelectorService(
     tools as never,
     new DiscoveryRankingService(),
     audioFeatures,
+    undefined,
+    undefined,
+    undefined,
+    collaborators.policyContext as never,
+    undefined,
+    collaborators.recommendations as never,
   );
+}
+
+/**
+ * The policy-stage lookups of a request-first scenario, as plain data: which
+ * artist profiles are verified humans (all fixture tracks share one uploader
+ * profile) and which tracks the listener recently played. Shared by both runners.
+ */
+export function goldenPolicyContext(options: { verifiedArtistIds?: string[]; playedTrackIds?: string[] } = {}) {
+  return {
+    loadContext: async () => ({
+      verifiedHumanArtistIds: new Set(options.verifiedArtistIds ?? []),
+      playedArtistIds: new Set<string>(),
+    }),
+    artistKeysForTracks: async () => new Map<string, string>(),
+    countDiscoveryPicks: async () => 0,
+    recentPlayedTrackIds: async () => options.playedTrackIds ?? [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -684,5 +723,88 @@ export async function runHeldBackScenario(
   return {
     firstBatch: result.selected.map((track) => toKey(track.id)),
     heldBack: result.heldBack,
+    capRelaxed: result.capRelaxed,
+    shortfallReason: result.shortfallReason,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Request-first scenarios (#2316)
+// ---------------------------------------------------------------------------
+
+export interface RequestFirstScenarioOptions {
+  /** Track keys the session already holds (kept out of the search, never repeated). */
+  sessionTracks?: readonly string[];
+  /** Track keys Home has shown the listener (impressions); a request-first session ignores them. */
+  servedOnHome?: readonly string[];
+  /** Track keys the listener recently played (a gentle step down inside the tier). */
+  playedRecently?: readonly string[];
+  /** Make the fixture uploader profile a verified human, so exploration slots exist. */
+  verifiedUploader?: boolean;
+  /** Batch size; default is the DJ's own target. */
+  limit?: number;
+  retrievalVariant?: string;
+}
+
+/**
+ * Runs one request over a request-first catalog and returns what the first
+ * batch holds, with the tier and reason of each pick and what the batch says
+ * about itself (cap relaxation, a short batch).
+ */
+export async function runRequestFirstScenario(
+  selector: AgentSelectorService,
+  idPrefix: string,
+  catalog: readonly GoldenTrack[],
+  request: GoldenRequest,
+  options: RequestFirstScenarioOptions = {},
+) {
+  const withPrefix = (key: string) => `${idPrefix}${key}`;
+  const result = await selector.select({
+    ...deterministicSelectorInput({
+      userId: `${idPrefix}user`,
+      recentTrackIds: (options.sessionTracks ?? []).map(withPrefix),
+      preferences: await preferencesFor(request, fixtureArtistResolver(catalog)),
+      limit: options.limit ?? getAgentTrackLimit(),
+    }),
+    ...(options.retrievalVariant ? { retrievalVariant: options.retrievalVariant } : {}),
+  });
+  const toKey = (id: string) => (id.startsWith(idPrefix) ? id.slice(idPrefix.length) : id);
+  return {
+    selected: result.selected.map((track) => toKey(track.id)),
+    tiers: Object.fromEntries(result.selected.map((track) => [toKey(track.id), track.requestTier])),
+    /** Picks that carry the gentle "played recently" step (not the -100 duplicate penalty). */
+    playedStep: result.selected
+      .filter((track) =>
+        (track.agentRecommendation?.signals ?? []).some(
+          (signal) => signal.label === "recently_played" && signal.weight === -10,
+        ),
+      )
+      .map((track) => toKey(track.id)),
+    discoveryPicks: result.selected
+      .filter((track) => track.agentRecommendation?.reasonCode === "discovery_pick")
+      .map((track) => toKey(track.id)),
+    candidates: result.candidates.map(toKey),
+    reason: result.reason,
+    capRelaxed: result.capRelaxed,
+    shortfallReason: result.shortfallReason,
+    heldBack: result.heldBack,
+  };
+}
+
+/** The selector for a request-first scenario, with its Home, played-history and policy lookups as data. */
+export function buildScenarioSelector(
+  tools: unknown,
+  audioFeatures: AgentAudioFeatureService,
+  idPrefix: string,
+  options: RequestFirstScenarioOptions = {},
+) {
+  return buildGoldenSelector(tools, audioFeatures, {
+    policyContext: goldenPolicyContext({
+      verifiedArtistIds: options.verifiedUploader ? [`${idPrefix}uploader`] : [],
+      playedTrackIds: (options.playedRecently ?? []).map((key) => `${idPrefix}${key}`),
+    }),
+    recommendations: {
+      getServedHistory: async () => (options.servedOnHome ?? []).map((key) => `${idPrefix}${key}`),
+    },
+  });
 }

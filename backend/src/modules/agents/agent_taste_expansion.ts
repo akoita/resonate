@@ -25,6 +25,19 @@ function normalizeTaste(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/**
+ * The expansion key of a query: like `normalizeTaste`, with hyphens read as
+ * spaces so "Hip-Hop" and "Deep-House" find the "hip hop" and "deep house"
+ * entries (#2316). Entries that keep their hyphen on purpose ("lo-fi", "r&b")
+ * are matched as typed first.
+ */
+function expansionKey(value: string) {
+  const key = normalizeTaste(value);
+  if (TASTE_EXPANSIONS[key]) return key;
+  const spaced = key.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+  return TASTE_EXPANSIONS[spaced] ? spaced : key;
+}
+
 export function expandAgentTasteQueries(queries: string[], maxPerQuery = 6) {
   const expanded: string[] = [];
   const seen = new Set<string>();
@@ -35,7 +48,7 @@ export function expandAgentTasteQueries(queries: string[], maxPerQuery = 6) {
 
     const candidates = [
       query,
-      ...(TASTE_EXPANSIONS[normalizeTaste(query)] ?? []),
+      ...(TASTE_EXPANSIONS[expansionKey(query)] ?? []),
     ].slice(0, maxPerQuery);
 
     for (const candidate of candidates) {

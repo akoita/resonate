@@ -27,9 +27,11 @@ import { EmbeddingStore } from "../modules/embeddings/embedding.store";
 import { TrackDescriptorTagger } from "../modules/descriptors/track_descriptor_tagger";
 import { HYBRID_RETRIEVAL_VARIANT } from "../modules/agents/agent_hybrid_retrieval";
 import {
+  CAP_IDENTITY_CATALOG,
   GOLDEN_CASES,
   GOLDEN_CATALOG,
   HELD_BACK_CATALOG,
+  REQUEST_FIRST_CATALOG,
   HELD_BACK_EXPECTED_FIRST_BATCH,
   HELD_BACK_REQUEST,
 } from "./dj_retrieval_golden/fixtures";
@@ -44,11 +46,14 @@ import {
   goldenReportMarkdown,
   GoldenCaseResult,
   InMemoryGoldenTools,
+  buildScenarioSelector,
   runGoldenCases,
   runHeldBackScenario,
+  runRequestFirstScenario,
   scopeToIdPrefix,
   writeGoldenReport,
 } from "./dj_retrieval_golden/harness";
+import { registerRequestFirstCases } from "./dj_retrieval_golden/request_first_cases";
 
 const TEST_PREFIX = `djgold_${Date.now()}_`;
 
@@ -185,11 +190,56 @@ describe("AI DJ held-back scenario (integration, real SQL)", () => {
       const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
       const selector = buildGoldenSelector(scopeToIdPrefix(tools, prefix), new AgentAudioFeatureService());
 
-      const { firstBatch, heldBack } = await runHeldBackScenario(selector, prefix, HELD_BACK_REQUEST, variant);
+      const { firstBatch, heldBack, capRelaxed, shortfallReason } = await runHeldBackScenario(selector, prefix, HELD_BACK_REQUEST, variant);
 
       expect([...firstBatch].sort()).toEqual([...HELD_BACK_EXPECTED_FIRST_BATCH].sort());
       expect(firstBatch).not.toContain("hb_b3_explicit");
-      expect(heldBack).toEqual({ variety: 1, explicit: 1 });
+      expect(heldBack).toEqual({ variety: 0, explicit: 1 });
+      expect(capRelaxed).toEqual({ artists: 1, top: { artist: "Marlo Vance", tracks: 3 } });
+      expect(shortfallReason).toBe("catalog_short");
     },
   );
+});
+
+/**
+ * Request-first selection (#2316) against real Postgres: the same cases as the
+ * Docker-free twin, over the real `catalog.search` SQL (including the
+ * `excludeTrackIds` filter and the excluded-match count) and the real tagger.
+ */
+describe("AI DJ request-first selection (integration, real SQL)", () => {
+  const prefixes = {
+    request_first: `djrf_${Date.now()}_`,
+    cap_identity: `djci_${Date.now()}_`,
+  } as const;
+  const catalogs = { request_first: REQUEST_FIRST_CATALOG, cap_identity: CAP_IDENTITY_CATALOG } as const;
+  const originalProvider = process.env.TRACK_EMBEDDING_PROVIDER;
+
+  beforeAll(async () => {
+    process.env.TRACK_EMBEDDING_PROVIDER = "disabled";
+    for (const kind of ["request_first", "cap_identity"] as const) {
+      await seedGoldenCatalog(prefixes[kind], catalogs[kind]);
+      await new TrackDescriptorTagger({ env: {} }).tagTracks(
+        catalogs[kind].map((track) => `${prefixes[kind]}${track.key}`),
+        { apply: true },
+      );
+    }
+  });
+
+  afterAll(async () => {
+    if (originalProvider === undefined) delete process.env.TRACK_EMBEDDING_PROVIDER;
+    else process.env.TRACK_EMBEDDING_PROVIDER = originalProvider;
+    for (const kind of ["request_first", "cap_identity"] as const) await cleanGoldenCatalog(prefixes[kind]);
+  });
+
+  registerRequestFirstCases(() => async (catalogKind, request, options = {}) => {
+    const prefix = prefixes[catalogKind];
+    const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    const selector = buildScenarioSelector(
+      scopeToIdPrefix(tools, prefix),
+      new AgentAudioFeatureService(),
+      prefix,
+      options,
+    );
+    return runRequestFirstScenario(selector, prefix, catalogs[catalogKind], request, options);
+  });
 });

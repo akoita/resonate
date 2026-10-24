@@ -205,33 +205,47 @@ export type CoverageLine = { kind: "full" | "partial" | "none"; text: string };
  *
  * Gaps for filters the listener has since removed are dropped. When strong
  * matches were left out (per-artist variety cap, explicit preference) the same
- * line ends with "2 more held back: 1 for variety, 1 explicit"; the cap and the
- * preference themselves are never overridden.
+ * line ends with "2 more held back: 1 for variety, 1 explicit"; the explicit
+ * preference itself is never overridden.
+ *
+ * Request-first selection (#2316) adds two honest notes to the same line:
+ * - a short set: "8 new tracks match your request", when the catalog has no more
+ *   matches and "Fill with similar sounds" is off;
+ * - a relaxed variety cap: "3 from Fabolous: the catalog has few matches", when
+ *   the DJ let one artist repeat because nothing else matched.
+ * Both show even for a seeded session whose request has no filter chips.
  */
 export function coverageLine(
   coverage: AgentRequestCoverage | null | undefined,
   request: AgentSessionRequest | null | undefined,
 ): CoverageLine | null {
-  if (!coverage || coverage.picks <= 0 || !hasFilters(request)) return null;
+  if (!coverage || coverage.picks <= 0) return null;
+  const shortSet = coverage.shortfallReason === "catalog_short" ? shortSetText(coverage.picks) : null;
+  const capNote = capRelaxedText(coverage.capRelaxed);
+  if (!hasFilters(request) && !shortSet && !capNote) return null;
   const heldBack = heldBackText(coverage.heldBack);
-  const withHeldBack = (text: string) => (heldBack ? `${text} \u00B7 ${heldBack}` : text);
+  const withNotes = (text: string, { leadsWithShortSet = false } = {}) =>
+    [leadsWithShortSet && shortSet ? shortSet : text, ...(!leadsWithShortSet && shortSet ? [shortSet] : []), ...(capNote ? [capNote] : []), ...(heldBack ? [heldBack] : [])].join(" \u00B7 ");
   const gaps = coverage.gaps.flatMap((gap) => {
     if (gap.matched >= coverage.picks) return [];
     const subject = coverageSubject(gap.filter, request);
     return subject ? [{ matched: gap.matched, subject }] : [];
   });
-  if (gaps.length === 0) return { kind: "full", text: withHeldBack("All picks matched your request") };
+  // A short set is not "all picks matched": the line says how many tracks do.
+  if (gaps.length === 0) {
+    return { kind: "full", text: withNotes("All picks matched your request", { leadsWithShortSet: true }) };
+  }
   if (gaps.length >= requestFilterKeys(request).length && gaps.every((gap) => gap.matched <= 0)) {
     return {
       kind: "none",
-      text: withHeldBack(
+      text: withNotes(
         `Nothing in the catalog matched ${gaps.map((gap) => gap.subject).join(" and ")} yet \u2014 playing the closest picks`,
       ),
     };
   }
   return {
     kind: "partial",
-    text: withHeldBack(
+    text: withNotes(
       gaps
         .map((gap) =>
           gap.matched <= 0
@@ -241,6 +255,18 @@ export function coverageLine(
         .join(" \u00B7 "),
     ),
   };
+}
+
+function shortSetText(picks: number): string {
+  return `${picks === 1 ? "1 new track matches" : `${picks} new tracks match`} your request`;
+}
+
+/** `3 from Fabolous: the catalog has few matches`: the DJ let an artist repeat because nothing else matched (#2316). */
+function capRelaxedText(relaxed: AgentRequestCoverage["capRelaxed"]): string | null {
+  if (!relaxed || relaxed.artists <= 0) return null;
+  return relaxed.top
+    ? `${relaxed.top.tracks} from ${relaxed.top.artist}: the catalog has few matches`
+    : "Some artists repeat: the catalog has few matches";
 }
 
 /** `2 more held back: 1 for variety, 1 explicit`; undefined when nothing was held back. */

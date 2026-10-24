@@ -98,6 +98,16 @@ type Props = {
         error?: string | null;
         onChange: (next: boolean) => void;
     };
+    /**
+     * "Fill with similar sounds" (#2316). Off by default: the DJ plays only what matches
+     * the request and says so when the catalog has fewer matches than the set needs. On,
+     * it adds similar tracks and marks them. Offered only while the request names a
+     * genre, an artist or a seed, because it changes nothing otherwise.
+     */
+    fillSimilar?: {
+        enabled: boolean;
+        onChange: (next: boolean) => void;
+    };
     myMix?: {
         lanes: readonly ListeningLane[];
         vocabulary: AgentMixVocabulary;
@@ -138,12 +148,14 @@ export default function AgentSessionPrompt({
     isLive = false,
     isBusy = false,
     explicit,
+    fillSimilar,
     myMix,
     onSubmit,
 }: Props) {
     const id = useId();
     const textId = `${id}-text`;
     const explicitId = `${id}-explicit`;
+    const fillSimilarId = `${id}-fill-similar`;
     const energyId = `${id}-energy`;
     // The selected starter's description is always visible: nothing relies on hover (touch).
     const describedPreset = presets.find((preset) => preset.intent === activePresetIntent) ?? null;
@@ -387,6 +399,26 @@ export default function AgentSessionPrompt({
                                     {explicit.error}
                                 </p>
                             ) : null}
+                        </div>
+                    ) : null}
+                    {fillSimilar && !myMix?.preferences ? (
+                        <div className="aid-prompt-explicit" data-testid="agent-session-fill-similar">
+                            <label className="aid-prompt-explicit-label" htmlFor={fillSimilarId}>
+                                <input
+                                    id={fillSimilarId}
+                                    type="checkbox"
+                                    role="switch"
+                                    checked={fillSimilar.enabled}
+                                    aria-describedby={`${fillSimilarId}-hint`}
+                                    onChange={(event) => fillSimilar.onChange(event.target.checked)}
+                                />
+                                <span>Fill with similar sounds</span>
+                            </label>
+                            <p id={`${fillSimilarId}-hint`} className="aid-prompt-hint">
+                                {fillSimilar.enabled
+                                    ? "When the catalog runs short, the DJ adds similar tracks and marks them as outside your request."
+                                    : "Off: the DJ plays only what matches your request, even if that means a shorter set."}
+                            </p>
                         </div>
                     ) : null}
                 </div>

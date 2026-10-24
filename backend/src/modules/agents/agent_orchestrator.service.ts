@@ -10,7 +10,10 @@ import type { AgentRuntimeFallback } from "./agent_runtime.types";
 import type { SessionSeed } from "./agent_session_seed";
 import {
   requestCoverageFor,
+  requestCoverageForScope,
   requestMatchesFor,
+  requestScopeFor,
+  tierMatchesRequest,
   type AgentRequestCoveragePick,
   type AgentRequestCoverage,
   type AgentRequestHeldBack,
@@ -51,6 +54,10 @@ export interface AgentOrchestratorInput {
     artists?: string[];
     /** The session's seed (#2244); see AgentRuntimeInput. */
     seed?: SessionSeed;
+    /** Request-first selection (#2316): allow marked off-request tracks to fill a short batch. */
+    fillSimilar?: boolean;
+    /** The session's own genres (#2059), before learned favourites and saved vibes join `genres`. */
+    sessionGenres?: string[];
     myMix?: MyMixPreferences | null;
   };
   /** Trusted server-resolved lane plan. */
@@ -188,10 +195,15 @@ export class AgentOrchestratorService {
     // Per pick, by the same predicates as the coverage below (#2312); absent
     // when the request has no filters.
     const selectedForMatch = selection.selected ?? [];
-    const matchFlags = requestMatchesFor(
-      input.preferences.request,
-      selectedForMatch.map(coverageFactsOf),
-    );
+    // A request-first session (#2316) is judged against its effective request
+    // (preset and picker genres included), and a pick belongs to it unless it is
+    // a marked off-request pick the listener allowed.
+    const scope = input.myMixPlan ? undefined : requestScopeFor(input.preferences);
+    const matchFlags = scope
+      ? selectedForMatch.map((track: { requestTier?: "A" | "B" | "C" }) =>
+          track.requestTier ? tierMatchesRequest(track.requestTier) : true,
+        )
+      : requestMatchesFor(input.preferences.request, selectedForMatch.map(coverageFactsOf));
     const requestMatchById = new Map<string, boolean>(
       matchFlags ? selectedForMatch.map((track: { id: string }, index: number) => [track.id, matchFlags[index]]) : [],
     );
@@ -235,7 +247,17 @@ export class AgentOrchestratorService {
     // explicit shortfall; audio is never generated to fill it.
     const shortfall = Math.max(0, requestedLimit - tracks.length);
     const status = tracks.length > 0 ? "approved" : "all_rejected";
-    const coverage = buildRequestCoverage(input.preferences.request, selection.selected ?? [], selection.heldBack);
+    const coverage = scope
+      ? requestCoverageForScope(
+          scope,
+          (selection.selected ?? []).map((track: CoverageSource) => coverageFactsOf(track)),
+          selection.heldBack,
+          {
+            ...(selection.capRelaxed ? { capRelaxed: selection.capRelaxed } : {}),
+            ...(shortfall > 0 && selection.shortfallReason ? { shortfallReason: selection.shortfallReason } : {}),
+          },
+        )
+      : buildRequestCoverage(input.preferences.request, selection.selected ?? [], selection.heldBack);
     this.eventBus.publish({
       eventName: "agent.decision_made",
       eventVersion: 1,

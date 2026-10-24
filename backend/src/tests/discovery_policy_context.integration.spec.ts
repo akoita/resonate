@@ -147,6 +147,41 @@ describe("DiscoveryPolicyContextService (ADR-TE-2)", () => {
     expect(anonymous.playedArtistIds.size).toBe(0);
   });
 
+  describe("recentPlayedTrackIds (request-first repeat avoidance, #2316)", () => {
+    const T_PLAYED = trackOf(A_VERIFIED);
+    const T_COMPLETED = trackOf(A_UNVERIFIED);
+    const T_SKIPPED = trackOf(A_PENDING);
+    const T_OLD = trackOf(A_NO_USER);
+
+    // A listener of their own, so these signals cannot move the played-artist checks above.
+    const PLAYER = `${TEST_PREFIX}player`;
+
+    beforeAll(async () => {
+      const long = 30 * 24 * 60 * 60 * 1000;
+      await prisma.user.create({ data: { id: PLAYER, email: `${PLAYER}@test.resonate` } });
+      await prisma.agentSignal.createMany({
+        data: [
+          { userId: PLAYER, trackId: T_PLAYED, action: "accept", weight: 1 },
+          { userId: PLAYER, trackId: T_COMPLETED, action: "complete", weight: 1.5 },
+          // A skip and a save are not plays; an old play is outside the window.
+          { userId: PLAYER, trackId: T_SKIPPED, action: "skip", weight: -1 },
+          { userId: PLAYER, trackId: T_OLD, action: "accept", weight: 1, createdAt: new Date(Date.now() - long) },
+        ],
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.agentSignal.deleteMany({ where: { userId: PLAYER } });
+    });
+
+    it("lists the tracks the listener played within the window, and nothing for an unknown listener", async () => {
+      const played = await service.recentPlayedTrackIds(PLAYER);
+      expect(new Set(played)).toEqual(new Set([T_PLAYED, T_COMPLETED]));
+      expect(await service.recentPlayedTrackIds(`${TEST_PREFIX}nobody`)).toEqual([]);
+      expect(await service.recentPlayedTrackIds(undefined)).toEqual([]);
+    });
+  });
+
   it("is bounded to the requested artists and tolerates empty or duplicate input", async () => {
     const scoped = await service.loadContext(LISTENER, [A_VERIFIED]);
     expect([...scoped.verifiedHumanArtistIds]).toEqual([A_VERIFIED]);

@@ -54,6 +54,12 @@ export interface AgentPreferences {
   artists?: string[];
   /** Session-only preference; explicit null clears it on the next request. */
   myMix?: MyMixPreferences | null;
+  /**
+   * Request-first selection (#2316): "Fill with similar sounds". When true, a
+   * batch the catalog cannot fill with matches of the request is padded with
+   * marked off-request tracks. Off by default; remembered for the live session.
+   */
+  fillSimilar?: boolean;
   /** "More like this" (#2243): one request's seed track; never remembered or published. */
   seedTrackId?: string;
   /**
@@ -333,6 +339,18 @@ export class SessionsService {
     // sent its own; the config-derived value is not remembered, so a later
     // toggle takes effect on the next pick (#2088).
     const allowExplicit = await this.resolveAllowExplicit(session.userId, preferences.allowExplicit);
+    // A pick request with no chosen filters falls back to the saved vibes as its
+    // genres. Those are the listener's taste, not a request (#2316): they stay
+    // searched as taste but do not turn the session into a request-first one.
+    const ownSessionGenres = await this.ownGenres(session.userId, {
+      sessionGenres,
+      sessionIntentName: preferences.sessionIntentName,
+      mood: requested.mood,
+      moods: requested.moods,
+      energy: requested.energy,
+      tempoBpm: requested.tempoBpm,
+      allowExplicit,
+    });
     if (input.preferences) {
       await this.refreshSessionFilters(session.id, session.userId, session.filters, {
         sessionIntentName: preferences.sessionIntentName,
@@ -369,7 +387,7 @@ export class SessionsService {
         allowExplicit,
         genres: await this.withLearnedGenres(session.userId, sessionGenres),
         // What this session asked for itself, so it outranks learned taste (#2059).
-        ...(sessionGenres?.length ? { sessionGenres } : {}),
+        ...(ownSessionGenres.length ? { sessionGenres: ownSessionGenres } : {}),
         ...(seedTrackId ? { seedTrackId } : {}),
         ...(requested.request
           ? {
@@ -766,6 +784,8 @@ function sanitizeIncomingRequest(preferences?: AgentPreferences): AgentPreferenc
   // The sentence and its artists are replaced as sent (an empty sentence clears them).
   if ("requestText" in preferences) sanitized.requestText = sanitizeRequestText(preferences.requestText);
   if ("artists" in preferences) sanitized.artists = sanitizeArtistNames(preferences.artists);
+  // Only an explicit `true` allows padding (#2316); anything else is off.
+  if ("fillSimilar" in preferences) sanitized.fillSimilar = preferences.fillSimilar === true;
   return sanitized;
 }
 

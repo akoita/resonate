@@ -9,14 +9,28 @@ import type { AgentSelectorInput } from "./agent_selector.service";
 import { myMixSearchTerms } from "./agent_my_mix";
 import type { ResolvedMyMixPlan } from "./agent_my_mix";
 import { relatedGenreLabels } from "../recommendations/genre_families";
-import { SESSION_REQUEST_TEXT_MAX_LENGTH } from "./agent_session_request";
+import { requestScopeFor, SESSION_REQUEST_TEXT_MAX_LENGTH } from "./agent_session_request";
 import { selectorSeedsFor } from "./agent_session_seed";
 
+/**
+ * The catalog queries of a session. A session whose request names a catalog
+ * constraint (a genre or a seed, #2316) searches for the request itself: its own
+ * genres and moods. The learned favourites and saved vibes merged into
+ * `preferences.genres` are NOT searched then (see {@link tasteQueriesFor}); they
+ * stay ranking signals. Every other session searches its `genres` as before.
+ */
 export function buildAgentRecommendationQueries(
   preferences: AgentRecommendationInput["preferences"],
   myMixPlan?: ResolvedMyMixPlan,
 ): string[] {
   const queries: string[] = [];
+  const scope = myMixPlan ? undefined : requestScopeFor(preferences);
+  if (scope?.gated) {
+    for (const term of [...scope.request.genres, ...scope.request.moods]) {
+      if (!queries.some((query) => query.toLowerCase() === term.toLowerCase())) queries.push(term);
+    }
+    return queries;
+  }
   if (preferences.genres?.length) {
     queries.push(...preferences.genres);
   }
@@ -34,6 +48,21 @@ export function buildAgentRecommendationQueries(
     if (!queries.some((query) => query.toLowerCase() === term.toLowerCase())) queries.push(term);
   }
   return queries;
+}
+
+/**
+ * The learned favourites and saved vibes a request-first session does not search
+ * (#2316): `preferences.genres` without the session's own genres. Empty for a
+ * session without a gating request, whose `genres` are all queries.
+ */
+export function tasteQueriesFor(
+  preferences: AgentRecommendationInput["preferences"],
+  myMixPlan?: ResolvedMyMixPlan,
+): string[] {
+  const scope = myMixPlan ? undefined : requestScopeFor(preferences);
+  if (!scope?.gated) return [];
+  const own = new Set(scope.request.genres.map((genre) => genre.toLowerCase()));
+  return (preferences.genres ?? []).filter((genre) => genre && !own.has(genre.toLowerCase()));
 }
 
 /**
@@ -116,9 +145,13 @@ export function deterministicSelectorInput(
   input: Pick<AgentRecommendationInput, "userId" | "recentTrackIds" | "preferences" | "limit" | "myMixPlan">,
 ): AgentSelectorInput {
   const queries = buildAgentRecommendationQueries(input.preferences, input.myMixPlan);
+  const requestScope = input.myMixPlan ? undefined : requestScopeFor(input.preferences);
+  const tasteQueries = tasteQueriesFor(input.preferences, input.myMixPlan);
   return {
     userId: input.userId,
     queries,
+    ...(requestScope ? { requestScope } : {}),
+    ...(tasteQueries.length > 0 ? { tasteQueries } : {}),
     recentTrackIds: input.recentTrackIds,
     allowExplicit: input.preferences.allowExplicit,
     useEmbeddings: queries.length > 0,
@@ -160,6 +193,8 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
       reason: selection.reason,
       ...(selection.mixCoverage ? { mixCoverage: selection.mixCoverage } : {}),
       ...(selection.heldBack ? { heldBack: selection.heldBack } : {}),
+      ...(selection.capRelaxed ? { capRelaxed: selection.capRelaxed } : {}),
+      ...(selection.shortfallReason ? { shortfallReason: selection.shortfallReason } : {}),
     };
   }
 }

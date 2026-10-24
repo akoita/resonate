@@ -10,7 +10,8 @@ import { z } from "zod";
 import { ToolRegistry } from "../tools/tool_registry";
 import type { AgentRuntimeInput } from "./agent_runtime.adapter";
 import { getAgentTrackLimit } from "../agent_runtime.config";
-import { describeTempoRange } from "../agent_session_request";
+import { describeTempoRange, keepItemsOnRequest, requestScopeFor, type AgentRequestScope } from "../agent_session_request";
+import { requestGuidelines } from "./request_guidelines";
 
 // ---------------------------------------------------------------------------
 // Tool definitions — each delegates to the existing ToolRegistry
@@ -27,6 +28,13 @@ export interface CurationAgentOptions {
   recentTrackIds?: string[];
   /** "More like this" (#2243): added to every semantic search, never model-chosen. */
   seedTrackId?: string;
+  /**
+   * Request-first selection (#2316): the session's request. Forced like the
+   * explicit choice: the model sees only catalog results that match a requested
+   * genre (unless similar sounds are allowed), and the session's own tracks are
+   * left out of keyword search.
+   */
+  requestScope?: AgentRequestScope;
 }
 
 function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): FunctionTool[] {
@@ -50,8 +58,15 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         .describe("Maximum number of results to return (1-50, default 20)"),
     }),
     execute: async (args) => {
-      const result = await tools.get("catalog.search").run({ ...args, allowExplicit });
-      return result;
+      const scope = options.requestScope;
+      const result = await tools.get("catalog.search").run({
+        ...args,
+        allowExplicit,
+        ...(scope ? { excludeTrackIds: options.recentTrackIds ?? [] } : {}),
+      });
+      return scope && Array.isArray(result.items)
+        ? { ...result, items: keepItemsOnRequest(result.items as any[], scope) }
+        : result;
     },
   });
 
@@ -81,7 +96,10 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         excludeTrackIds: options.recentTrackIds ?? [],
         ...(options.seedTrackId ? { seedTrackId: options.seedTrackId } : {}),
       });
-      return result;
+      // Neighbours of a "More like this" seed are the request; a described session's are filtered.
+      return options.requestScope && !options.seedTrackId && Array.isArray(result.items)
+        ? { ...result, items: keepItemsOnRequest(result.items as any[], options.requestScope) }
+        : result;
     },
   });
 
@@ -154,7 +172,7 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
 // System prompt
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(scope?: AgentRequestScope): string {
   return [
     "You are a creative music curation DJ agent for the Resonate platform.",
     "Your job is to find the best possible music session for the user from the existing catalog.",
@@ -171,7 +189,7 @@ function buildSystemPrompt(): string {
     "- Aim to return the full selection target when enough tracks fit the request; return fewer only when the tracks you found genuinely do not fit. Choose by fit and never dump the whole catalog.",
     "- If a genre search returns no tracks, treat that as no match for that genre.",
     "- Avoid recommending tracks the user has recently listened to.",
-    "- Requested genres, Mood/Moods, Energy and Tempo are what the listener asked for in this session: rank tracks that match them above tracks that only match the broader Genres list (their saved vibes and learned taste). Use the broader genres to fill the remaining slots.",
+    ...requestGuidelines(scope),
     "",
     "- Never generate audio; if the catalog cannot fill the request, return fewer tracks.",
     "",
@@ -213,9 +231,13 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
       `Requested genres (this session): ${input.preferences.sessionGenres.join(", ")}`
     );
   }
-  if (input.preferences.genres?.length) {
+  const scope = requestScopeFor(input.preferences);
+  // A request-first session does not offer the saved vibes and learned taste as a
+  // search list (#2316); they only order tracks inside the request.
+  if (input.preferences.genres?.length && !scope?.gated) {
     parts.push(`Genres: ${input.preferences.genres.join(", ")}`);
   }
+  if (scope?.gated) parts.push(`Widening: ${scope.fillSimilar ? "on" : "off"}`);
   if (input.preferences.licenseType) {
     parts.push(`License type: ${input.preferences.licenseType}`);
   }
@@ -244,7 +266,7 @@ export function createCurationAgent(
     name: "resonate_curation_agent",
     model: modelName,
     description: "AI DJ agent that curates catalog tracks based on user preferences and catalog availability.",
-    instruction: buildSystemPrompt(),
+    instruction: buildSystemPrompt(options.requestScope),
     tools: buildTools(toolRegistry, options),
   });
 }

@@ -63,14 +63,25 @@ describe.each([
     expect(message).toContain("Mood: Chill");
   });
 
-  it("names the genres this session asked for ahead of the broader Genres (#2075)", () => {
+  it("names the genres this session asked for and does not offer the broader Genres as a search list (#2075, #2316)", () => {
     const message = build(
       input({ genres: ["Soul", "Jazz", "Funk"], sessionGenres: ["Soul", "Jazz"] }),
     );
     expect(message).toContain("Requested genres (this session): Soul, Jazz");
-    expect(message.indexOf("Requested genres (this session):")).toBeLessThan(
-      message.indexOf("Genres: Soul, Jazz, Funk"),
-    );
+    // The saved vibes and learned taste only order tracks inside the request.
+    expect(message).not.toContain("Genres: Soul, Jazz, Funk");
+    expect(message).toContain("Widening: off");
+  });
+
+  it("says when the listener allowed similar sounds (#2316)", () => {
+    const message = build(input({ genres: ["Soul"], sessionGenres: ["Soul"], fillSimilar: true }));
+    expect(message).toContain("Widening: on");
+  });
+
+  it("keeps the broader Genres list for a session without a genre request (#2075)", () => {
+    const message = build(input({ genres: ["Soul", "Jazz", "Funk"], mood: "Chill" }));
+    expect(message).toContain("Genres: Soul, Jazz, Funk");
+    expect(message).not.toContain("Widening:");
   });
 
   it("has no Requested genres line without session genres", () => {

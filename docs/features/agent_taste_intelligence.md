@@ -907,8 +907,134 @@ own request) left out by the per-artist cap and by the explicit preference
 appends it to the same single line, for example "All picks matched your request
 · 2 more held back: 1 for variety, 1 explicit". A held-back-only golden case
 (nine hip-hop-family tracks: two artists with three tracks each, one explicit,
-three singles) asserts that all seven playable matches are in the first batch and
-that coverage reports 1 for variety and 1 explicit.
+three singles) asserts that all playable matches are in the first batch and that
+coverage reports what was held back. Since request-first selection (#2316) the
+first artist's third track no longer waits behind the cap: the cap relaxes when
+the catalog has nothing else on the request, so the first batch holds all eight
+playable matches, the coverage reports the relaxed cap, and only the one explicit
+match is reported as held back.
+
+## Request-first selection (#2316)
+
+Vision-neutral quality (ADR-BM-6): no fee, split, price or payout change, and
+popularity stays out of payouts (ADR-BM-4). Owner testing showed a "Hip-Hop &
+Rap" and a "World Music" session returning mostly off-request tracks, with the
+empty slots filled by Pop and New Age under "Selected vibe match · Boosted by
+learned taste". Classification was not the cause: the matching tracks were
+retrieved, then lost in ranking and batch filling. The request is now a gate,
+taste only orders inside it, and padding is an explicit choice.
+
+**What counts as a request.** A session has a request when it sets its own
+genres (a starter, the picker or a described session; saved vibes sent back as
+genres are not its own), a mood, an energy, a tempo, a seed (artist, track,
+playlist), a named artist or a sentence (`requestScopeFor`,
+`agent_session_request.ts`). A session with none (My Mix, a plain "surprise me")
+keeps the taste-driven path exactly as it was. A request **gates the catalog**
+when it names a genre or a seed; a request that names only mood, energy or
+tempo asks for every genre (Moments starters), so it keeps the taste pool and
+nothing is left out.
+
+**Request versus taste.** For a gating request the retrieval queries are the
+request's own genres and moods. Learned favourites, saved vibes and cohort hints
+are not searched (`tasteQueries` on the selector input); they stay ranking
+signals (learned preference, warehouse taste, cohort context) and only order
+tracks inside a tier. Hyphens read as spaces in taste expansion, so "Hip-Hop"
+expands like "hip hop" (it never did before).
+
+**Three tiers, one predicate.** `requestTierOf` classifies a track with the same
+per-filter predicates the coverage line counts, with descriptor families on every
+path (the LLM path's `loadTrackCandidates` now loads them too):
+
+| Tier | Meaning |
+| --- | --- |
+| A | matches every filter the request sets |
+| B | matches the genre or family (or is found by the seed) but misses a soft filter: mood, energy or tempo |
+| C | outside the request |
+
+Selection is tier first, score second (`applyDiscoveryPolicy` with
+`requestFirst`); a tier never moves with taste. The tiering lives in the agent
+selection path only: Home and the plain DJ call the ranking core and policy
+without it, and a test pins a Home-style ranking call to its established scores.
+
+**Repeat avoidance.** Only the session's own tracks are hard-excluded (they are
+also left out of keyword search, so the per-query budget of 20 goes to tracks the
+session can still play; the answer says whether everything matching was played
+(`all_candidates_recently_played`) or nothing matches (`no_matching_taste_candidates`,
+the unmet-demand case)). Home impressions (`servedTrackIds`) no longer demote a
+track inside a request session: being shown a track is not hearing it. A track the
+listener recently **played** (their own `accept`, `complete`, `replay` or `loop`
+signals in the last 14 days, at most 50 tracks; `recentPlayedTrackIds`) steps down
+by one signal-sized step (10 points) inside its tier instead of the duplicate
+penalty of -100. A listener who switched off playback learning has no such
+signals, so nothing is demoted. Home keeps its served-history demotion.
+
+**A cap that yields, keyed on the performer.** The two-per-artist cap applies
+first. When tiers A and B are exhausted while capped matches remain, the cap is
+relaxed for them (one more track per artist at a time) before any tier C track
+and before a short batch. The coverage reports it as `capRelaxed: { artists,
+top: { artist, tracks } }` and the web says "3 from Fabolous: the catalog has few
+matches". In a request session the cap key is the credited performer
+(`Track.artist`, then `primaryArtist`) and never the uploader account's label or
+id: a track with no credit gets its own key. (Other callers keep the key
+described in "Diversity cap counts the credited artist".)
+
+**Exploration** (rule 3) draws only from tiers A and B. With no unexplored
+on-request artist the slot falls back to normal tier order.
+
+**Padding is explicit.** With "Fill with similar sounds" off (the default) a
+batch the catalog cannot fill with matches is returned short, with
+`shortfallReason: "catalog_short"` on the request coverage; the web line reads
+"8 new tracks match your request". With it on (`fillSimilar`, a boolean on the
+session preferences: the `POST /agents/config/session` body, the
+`POST /sessions/agent/next` DTO with a 400 for a non-boolean, and the web
+`AgentNextPreferences`), the batch is padded after every A and B track with
+tier C tracks, searched from the requested genres' related styles and the
+listener's taste, and each carries `requestMatch: false` so the player shows
+"Outside your request". `requestMatch` is now true for every tier A or B pick
+(the pick belongs to the request; a missed soft filter shows in the coverage
+gaps) and false only for a marked pad. The switch is offered only while the
+request names a genre, an artist or a seed, and not in My Mix.
+
+**The LLM curator and its top-up obey the tiers.** The model's tools show it only
+catalog results that match a requested genre (unless padding is on) and leave out
+the session's own tracks; its user message no longer carries the saved-vibes
+"Genres:" list for a gating request; the prompt dropped "use the broader genres
+to fill the remaining slots" and says to stop when matching tracks run out unless
+`Widening: on`. A model pick outside the request is dropped when padding is off
+(`policy.dropped.offRequest`, logged as a count). The rule-based top-up follows
+the selector's tier order in three passes: A and B under the cap, A and B with the
+cap relaxed, then (padding only) tier C. The discovery swap and any exploration
+label stay on tiers A and B. A seed-only request cannot be verified for a model
+pick (it has no seed evidence), so only a requested genre gates a model pick; the
+top-up carries the seed.
+
+**Interpretation and limits.** A sentence the parser read nothing from, with no
+seed, does not gate (its semantic similarity stays a ranking signal): gating it
+would empty a session whenever embeddings are unavailable. Mood, energy and
+tempo never gate. The widened fallback pass is skipped for a gating request
+without padding (its tracks would all be tier C).
+
+**Golden set.** Two small catalogs of their own (so the 21 cases above keep their
+numbers; none improved, none regressed) add nine scenarios, registered once and
+run by both runners and both retrieval variants
+(`dj_retrieval_golden/request_first_cases.ts`): a Home-shown on-request track is
+still picked; nine Rap tracks (three by one performer, one explicit) are all
+heard before any off-request track, with the cap relaxed; a shorter batch with
+the shortfall reason, and padding only when allowed; learned Pop plays no Pop
+track for a Rap request while Rap remains; exploration never takes an
+off-request track; different performers (and uncredited tracks) uploaded by one
+account are not capped together; the session's own tracks are kept out and
+"everything matching was played" is told apart from "nothing matches"; and a
+recently played track keeps its place with the gentle step. Without the feature
+eight of the nine fail. Tests: `agent_request_first.spec.ts` (pure),
+`agent_golden_eval.spec.ts`, `agent_dj_retrieval_golden.integration.spec.ts`,
+`agent_runtime_policy.spec.ts`, `discovery_policy_context.integration.spec.ts`,
+`sessions.controller.http.spec.ts`.
+
+**Not in this slice.** "Fill with similar sounds" lives in the session
+(the panel state, sent with every start and pick, remembered by the server for
+the live session); a saved listener setting would need a schema change and is
+open. Hybrid retrieval and the default path both follow the same rules.
 
 ## One genre matcher for sessions and My Mix lanes (#2236)
 
@@ -1434,7 +1560,9 @@ then pass the result through `applyDiscoveryPolicy` (ADR-TE-2,
   `RecommendationsService.getServedHistory`) and demotes those tracks like a
   recent play. They stay available at the tail, so a small catalog never runs
   dry. Only the session's own tracks (`recentTrackIds`) are excluded outright,
-  as before. The DJ does not write to the served history.
+  as before. The DJ does not write to the served history. A session with a
+  request of its own no longer reads it at all (#2316, "Request-first
+  selection"): it demotes recently played tracks gently instead.
 - **Policy on both surfaces.** Hidden taste, fully AI-generated tracks, the 20%
   exploration share for verified human artists the listener has never played,
   and the two-per-artist cap (per page on Home, per 10 session tracks in the DJ)
@@ -2442,7 +2570,10 @@ data the DJ already produces.
   session's request sets (genres, including genre-family and stored descriptor
   family matches such as "African" for a "World" request; moods; energy band;
   measured tempo only), false when it misses at least one, and **absent when
-  the request has no filters**. The predicates are the ones request coverage
+  the request has no filters**. Since #2316 (see "Request-first selection") the
+  flag means "the pick belongs to the request": true for tier A and B picks, false
+  only for a marked pad the listener allowed with "Fill with similar sounds"; the
+  coverage gaps still report a missed soft filter. The predicates are the ones request coverage
   counts: `pickMatchesRequest` and `computeRequestCoverage` in
   `agent_session_request.ts` share one per-filter predicate set, so the flag and
   the coverage line cannot disagree (a parity test checks the counts). It is
@@ -2455,8 +2586,9 @@ data the DJ already produces.
   (`DjPickNote.matched`, sessionStorage-mirrored with the other notes); a row
   with `matched === false` shows a muted "Outside your request" mark ("Your AI
   DJ added this to fill the set; it doesn't match your request's filters."),
-  making the padding visible when the catalog has fewer matches than the batch
-  size. No flag, no mark.
+  making the padding visible. Since #2316 it appears only when the listener turned
+  on "Fill with similar sounds" (otherwise the DJ returns a shorter set); the hint
+  now says so. No flag, no mark.
 - **Help and screenshot.** The User Guide's "Playing music & the Now Playing
   console" article has a "When your queue is an AI DJ set" section and the AI
   DJ article points to it; `player.png` is captured with a mock DJ set

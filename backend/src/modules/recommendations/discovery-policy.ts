@@ -9,6 +9,7 @@ import type {
   RankedDiscoveryCandidate,
 } from "./discovery-ranking.service";
 import { hasSignal, TasteMemoryPolicy } from "./taste_memory.service";
+import type { RequestTier } from "../agents/agent_session_request";
 
 /**
  * The discovery policy stage (ADR-TE-2, docs/rfc/taste-engine.md §3.4).
@@ -99,6 +100,27 @@ export interface DiscoveryPolicyOptions {
   laneMatchesByCandidateId?: ReadonlyMap<string, readonly string[]>;
   /** Per-lane score order computed from the already-loaded shared candidate facts. */
   laneCandidateOrderByLaneId?: ReadonlyMap<string, readonly string[]>;
+  /**
+   * Request-first selection (#2316), AI DJ sessions that carry a request. The
+   * batch is chosen tier first (A, then B), score second:
+   *  - exploration slots draw from tiers A and B only;
+   *  - when A and B are exhausted while the per-artist cap still holds
+   *    matching tracks back, the cap is relaxed for them (one more track per
+   *    artist at a time) before any tier C track is considered;
+   *  - tier C tracks join only when `allowOffRequest` is set, last, under the
+   *    ordinary cap.
+   * The returned items are in tier order, then score order. Absent, the policy
+   * is exactly what Home and the plain DJ use.
+   */
+  requestFirst?: {
+    tierById: ReadonlyMap<string, RequestTier>;
+    allowOffRequest: boolean;
+  };
+  /**
+   * Only these candidates may take an exploration slot (#2316). The LLM path
+   * keeps the model's order, so it passes this instead of `requestFirst`.
+   */
+  explorationAllowedIds?: ReadonlySet<string>;
 }
 
 export interface DiscoveryPolicyResult<T extends RankedDiscoveryCandidate> {
@@ -113,6 +135,14 @@ export interface DiscoveryPolicyResult<T extends RankedDiscoveryCandidate> {
    * this only reports what it held back so a surface can say so.
    */
   heldBackForVariety?: string[];
+  /**
+   * Request-first selection (#2316): the per-artist cap was relaxed for
+   * matching tracks because nothing else on the request was left. Reports the
+   * artists that now hold more tracks than the cap and the largest holder.
+   */
+  capRelaxed?: { artists: number; top?: { key: string; tracks: number; candidateId: string } };
+  /** Request-first selection (#2316): the candidates taken only because the cap was relaxed. */
+  capRelaxedIds?: ReadonlySet<string>;
 }
 
 /**
@@ -128,6 +158,13 @@ export interface DiscoveryPolicyResult<T extends RankedDiscoveryCandidate> {
 export function discoveryArtistKey(
   candidate: Pick<DiscoveryCandidate, "id" | "artistId" | "artist" | "release">,
 ): string {
+  // The AI DJ names the credited performer itself (#2316): a track with no
+  // credit gets its own key, never the uploader account's label or id.
+  const credited = candidate.release?.creditedArtistName;
+  if (credited !== undefined) {
+    const creditedKey = creditedArtistKey(credited);
+    return creditedKey ? `name:${creditedKey}` : `track:${candidate.id}`;
+  }
   const name = creditedArtistKey(candidate.release?.artistDisplayName ?? candidate.artist);
   if (name) return `name:${name}`;
   if (candidate.artistId) return `id:${candidate.artistId}`;
@@ -166,6 +203,21 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
     }
     eligible.push(candidate);
   }
+
+  // Request-first selection (#2316): tier order first, score order inside a
+  // tier (the input is score-sorted and the sort is stable). Tier C leaves the
+  // pool unless the listener allowed similar sounds to fill the batch.
+  const requestFirst = options.requestFirst;
+  const tierOf = (candidate: T): RequestTier => requestFirst?.tierById.get(candidate.id) ?? "A";
+  const tierRank = (candidate: T) => (tierOf(candidate) === "A" ? 0 : tierOf(candidate) === "B" ? 1 : 2);
+  const pool: T[] = requestFirst
+    ? eligible
+        .map((candidate, index) => ({ candidate, index }))
+        .sort((a, b) => tierRank(a.candidate) - tierRank(b.candidate) || a.index - b.index)
+        .map(({ candidate }) => candidate)
+        .filter((candidate) => requestFirst.allowOffRequest || tierOf(candidate) !== "C")
+    : eligible;
+  const onRequestPool = requestFirst ? pool.filter((candidate) => tierOf(candidate) !== "C") : pool;
 
   // Session mode seeds the diversity counts and the exploration window.
   const priorKeys = (options.priorSessionArtistKeys ?? []).slice(
@@ -245,9 +297,10 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
   // positive total score; they receive priority only inside these reserved
   // exploration positions.
   if (reserved > 0) {
-    const explorationPool = eligible
+    const explorationPool = (requestFirst ? onRequestPool : eligible)
       .filter(
         (candidate) =>
+          (!options.explorationAllowedIds || options.explorationAllowedIds.has(candidate.id)) &&
           !!candidate.artistId &&
           candidate.aiDisclosureLevel !== "ALL" &&
           !candidate.recentlyPlayed &&
@@ -260,6 +313,7 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
       .map((candidate, index) => ({ candidate, index }))
       .sort(
         (a, b) =>
+          (requestFirst ? tierRank(a.candidate) - tierRank(b.candidate) : 0) ||
           Number(Boolean(b.candidate.firstListenerEligible)) -
             Number(Boolean(a.candidate.firstListenerEligible)) ||
           b.candidate.score - a.candidate.score ||
@@ -300,22 +354,62 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
   }
 
   // Remaining slots (including any exploration slots nobody could fill) in
-  // normal ranked order, under the diversity cap.
-  for (const candidate of eligible) {
+  // normal ranked order, under the diversity cap. Request-first sessions fill
+  // from tiers A and B first, relax the cap for what is left of them, and only
+  // then (when allowed) pad with tier C under the ordinary cap.
+  let capRelaxed: DiscoveryPolicyResult<T>["capRelaxed"];
+  let capRelaxedIds: ReadonlySet<string> | undefined;
+  for (const candidate of requestFirst ? onRequestPool : eligible) {
     if (chosen.size >= limit) break;
     if (chosen.has(candidate)) continue;
     if (!withinCap(candidate)) {
-      dropped.diversity += 1;
+      if (!requestFirst) dropped.diversity += 1;
       continue;
     }
     take(candidate);
+  }
+  if (requestFirst) {
+    const batchCounts = new Map<string, { tracks: number; candidateId: string }>();
+    for (const candidate of chosen) {
+      const key = discoveryArtistKey(candidate);
+      batchCounts.set(key, { tracks: (batchCounts.get(key)?.tracks ?? 0) + 1, candidateId: candidate.id });
+    }
+    const relaxedKeys = new Set<string>();
+    const relaxedIds = new Set<string>();
+    for (let level = maxPerArtist + 1; chosen.size < limit && onRequestPool.some((entry) => !chosen.has(entry)); level += 1) {
+      for (const candidate of onRequestPool) {
+        if (chosen.size >= limit) break;
+        if (chosen.has(candidate)) continue;
+        const key = discoveryArtistKey(candidate);
+        if ((counts.get(key) ?? 0) >= level) continue;
+        take(candidate);
+        relaxedKeys.add(key);
+        relaxedIds.add(candidate.id);
+        const held = batchCounts.get(key);
+        batchCounts.set(key, { tracks: (held?.tracks ?? 0) + 1, candidateId: held?.candidateId ?? candidate.id });
+      }
+    }
+    if (relaxedKeys.size > 0) {
+      const top = [...relaxedKeys]
+        .map((key) => ({ key, ...(batchCounts.get(key) as { tracks: number; candidateId: string }) }))
+        .sort((a, b) => b.tracks - a.tracks)[0];
+      capRelaxed = { artists: relaxedKeys.size, top };
+      capRelaxedIds = relaxedIds;
+    }
+    if (requestFirst.allowOffRequest) {
+      for (const candidate of pool) {
+        if (chosen.size >= limit) break;
+        if (chosen.has(candidate) || tierOf(candidate) !== "C" || !withinCap(candidate)) continue;
+        take(candidate);
+      }
+    }
   }
 
   // Final order is the ranked order of the chosen set. Exploration picks keep
   // their score position instead of being pinned to the top or bottom, so the
   // page reads as one ranked list and a discovery pick surfaces wherever its
   // taste fit puts it.
-  const items = eligible
+  const items = pool
     .filter((candidate) => chosen.has(candidate))
     .map((candidate) =>
       explorationPicks.has(candidate)
@@ -323,9 +417,11 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
         : withGuaranteedReason(candidate),
     );
 
-  const heldBackForVariety = eligible
+  // Only matches of the request count as held back for variety (#2316).
+  const heldBackForVariety = (requestFirst ? onRequestPool : eligible)
     .filter((candidate) => !chosen.has(candidate) && !withinCap(candidate))
     .map((candidate) => candidate.id);
+  if (requestFirst) dropped.diversity = heldBackForVariety.length;
 
   return {
     items,
@@ -333,6 +429,7 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
     exploration: { reserved, served: explorationPicks.size },
     ...(laneQuotas.length ? { laneAssignments } : {}),
     ...(heldBackForVariety.length > 0 ? { heldBackForVariety } : {}),
+    ...(capRelaxed ? { capRelaxed, capRelaxedIds } : {}),
   };
 }
 
