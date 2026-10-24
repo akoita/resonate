@@ -22,6 +22,7 @@ import { PersonalDataExportService } from "./personal_data_export.service";
 import { hours } from "../shared/rate_limits";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
+import { AccountClosureRequestDto } from "./privacy.dto";
 
 type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
 
@@ -181,7 +182,7 @@ export class PrivacyController {
   @Post("account/closure")
   async requestAccountClosure(
     @Request() req: AuthenticatedRequest,
-    @Body() body: { address?: string; signature?: string; reason?: string },
+    @Body() body: AccountClosureRequestDto,
   ) {
     const userId = requireUserId(req);
 

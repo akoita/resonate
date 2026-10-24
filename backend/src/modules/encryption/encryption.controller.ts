@@ -15,6 +15,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { EncryptionService } from './encryption.service';
 import { AuthService } from '../auth/auth.service';
+import { DecryptRequestDto, DownloadRequestDto } from './encryption.dto';
 
 @Controller('encryption')
 export class EncryptionController {
@@ -60,13 +61,7 @@ export class EncryptionController {
     @Post('decrypt')
     @UseGuards(AuthGuard('jwt'))
     async decrypt(
-        @Body() body: {
-            uri: string;
-            metadata?: string;
-            dataToEncryptHash?: string;
-            accessControlConditions?: any[];
-            authSig: any;
-        },
+        @Body() body: DecryptRequestDto,
         @Req() req: any,
         @Res({ passthrough: true }) res: Response,
     ) {
@@ -131,10 +126,7 @@ export class EncryptionController {
     @Post('download')
     @UseGuards(AuthGuard('jwt'))
     async download(
-        @Body() body: {
-            stemId: string;
-            walletAddress: string;
-        },
+        @Body() body: DownloadRequestDto,
         @Req() req: any,
         @Res({ passthrough: true }) res: Response,
     ) {

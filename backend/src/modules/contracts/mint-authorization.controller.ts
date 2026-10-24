@@ -10,6 +10,7 @@ import {
   MintAuthorizationResponse,
   MintAuthorizationService,
 } from "./mint-authorization.service";
+import { MintAuthorizationBatchDto } from "./mint-authorization.dto";
 
 type MintAuthorizationBody = {
   stemId: string;
@@ -51,7 +52,7 @@ export class MintAuthorizationController {
   @Post("batch")
   @UseGuards(AuthGuard("jwt"))
   async createBatchAuthorizations(
-    @Body() body: { authorizations: MintAuthorizationBody[] },
+    @Body() body: MintAuthorizationBatchDto,
     @Req() req: {
       protocol?: string;
       headers: Record<string, string | string[] | undefined>;

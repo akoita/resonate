@@ -1,3 +1,4 @@
+import { CreateArtistProfileDto } from "./artist.dto";
 import {
     Body,
     Controller,
@@ -207,7 +208,7 @@ export class ArtistController {
     @Post()
     create(
         @Request() req: any,
-        @Body() body: { displayName: string; payoutAddress: string },
+        @Body() body: CreateArtistProfileDto,
     ) {
         return this.artistService.createProfile(req.user.userId, body);
     }

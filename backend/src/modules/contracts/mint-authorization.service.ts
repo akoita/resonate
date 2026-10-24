@@ -124,7 +124,7 @@ function getReleaseMetadataUriCandidates(title: string): string[] {
   );
 }
 
-type MintAuthorizationInput = {
+export type MintAuthorizationInput = {
   stemId: string;
   chainId: number;
   minterAddress: string;

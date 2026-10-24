@@ -2,7 +2,8 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req, Query 
 import { Request } from "express";
 import { AuthGuard } from "@nestjs/passport";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
-import { PlaylistService, CreatePlaylistInput } from "./playlist.service";
+import { PlaylistService } from "./playlist.service";
+import { CreatePlaylistDto, FolderNameDto, SavePlaylistDto, UpdatePlaylistDto } from "./playlist.dto";
 
 @Controller("playlists")
 @UseGuards(AuthGuard("jwt"))
@@ -12,7 +13,7 @@ export class PlaylistController {
     // Saved (followed) public playlists — declared before ":id" routes so the
     // "saved" segment is not captured as a playlist id.
     @Post("saved")
-    savePlaylist(@Req() req: Request, @Body() body: { sourcePlaylistId: string }) {
+    savePlaylist(@Req() req: Request, @Body() body: SavePlaylistDto) {
         return this.playlistService.savePlaylist((req as any).user.userId, body.sourcePlaylistId);
     }
 
@@ -28,8 +29,8 @@ export class PlaylistController {
 
     // Folders
     @Post("folders")
-    createFolder(@Req() req: Request, @Body("name") name: string) {
-        return this.playlistService.createFolder((req as any).user.userId, name);
+    createFolder(@Req() req: Request, @Body() body: FolderNameDto) {
+        return this.playlistService.createFolder((req as any).user.userId, body.name);
     }
 
     @Get("folders")
@@ -38,8 +39,8 @@ export class PlaylistController {
     }
 
     @Put("folders/:id")
-    updateFolder(@Req() req: Request, @Param("id") id: string, @Body("name") name: string) {
-        return this.playlistService.updateFolder((req as any).user.userId, id, name);
+    updateFolder(@Req() req: Request, @Param("id") id: string, @Body() body: FolderNameDto) {
+        return this.playlistService.updateFolder((req as any).user.userId, id, body.name);
     }
 
     @Delete("folders/:id")
@@ -49,7 +50,7 @@ export class PlaylistController {
 
     // Playlists
     @Post()
-    createPlaylist(@Req() req: Request, @Body() body: CreatePlaylistInput) {
+    createPlaylist(@Req() req: Request, @Body() body: CreatePlaylistDto) {
         return this.playlistService.createPlaylist((req as any).user.userId, body);
     }
 
@@ -64,7 +65,7 @@ export class PlaylistController {
     }
 
     @Put(":id")
-    updatePlaylist(@Req() req: Request, @Param("id") id: string, @Body() body: { name?: string; folderId?: string | null; trackIds?: string[]; visibility?: string }) {
+    updatePlaylist(@Req() req: Request, @Param("id") id: string, @Body() body: UpdatePlaylistDto) {
         return this.playlistService.updatePlaylist((req as any).user.userId, id, body);
     }
 

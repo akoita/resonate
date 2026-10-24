@@ -31,7 +31,7 @@ describe('PlaylistController', () => {
   describe('userId extraction', () => {
     it('createFolder passes userId', () => {
       const ctrl = makeController();
-      ctrl.createFolder(req, 'My Folder');
+      ctrl.createFolder(req, { name: 'My Folder' });
       expect(mockPlaylistService.createFolder).toHaveBeenCalledWith('user-42', 'My Folder');
     });
 

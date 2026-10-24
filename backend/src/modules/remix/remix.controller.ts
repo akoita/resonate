@@ -18,6 +18,7 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { Response } from "express";
 import { RemixService } from "./remix.service";
+import { CreateLegacyRemixDto } from "./remix-legacy.dto";
 import { RemixEligibilityService } from "./remix-eligibility.service";
 import {
   RemixProjectService,
@@ -314,8 +315,7 @@ export class RemixController {
   @Post("create")
   create(
     @Req() req: any,
-    @Body()
-    body: { sourceTrackId: string; stemIds: string[]; title: string },
+    @Body() body: CreateLegacyRemixDto,
   ) {
     return this.remixService.createRemix({
       // Creator identity always comes from the JWT, never the request body.

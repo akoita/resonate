@@ -85,6 +85,9 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    skipped. A route that authenticates inside the handler (an internal-key
    header, for example) validates its body inline after that check, because a
    DTO would answer `400` before the caller is authenticated.
+   `src/tests/body_dto_guard.spec.ts` fails when a whole-body `@Body()` is not a
+   class and not allowlisted with a reason; the decision and the module-by-module
+   inventory are in `docs/engineering/request-body-validation.md` (#2197).
 
 8. **Controller HTTP apps mirror production guards.** `createControllerTestApp`
    in `src/tests/e2e-helpers.ts` registers the global `RolesGuard` exactly as
