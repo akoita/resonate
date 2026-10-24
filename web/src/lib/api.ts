@@ -2243,7 +2243,14 @@ export type ReleaseContentProtectionData = {
   tokenId?: string | null;
   staked: boolean;
   attested: boolean;
+  /** Base units of `stakeAssetSymbol` (e.g. 5000000 for 5 USDC, wei for ETH). */
   stakeAmount: string;
+  /** Asset the stake was paid in; ETH/18 when no stake is recorded yet. */
+  stakeAssetSymbol?: string;
+  stakeAssetDecimals?: number;
+  stakeAssetToken?: string;
+  /** Canonical USD value of the stake (or of the policy requirement when unstaked). */
+  stakeAmountUsd?: string | null;
   depositedAt: string;
   active: boolean;
   escrowDays: number;

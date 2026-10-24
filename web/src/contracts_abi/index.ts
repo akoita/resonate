@@ -529,6 +529,14 @@ export const ContentProtectionABI = [
     ],
   },
   {
+    // Currency of a stake (address(0) means native ETH, otherwise an ERC-20 such as USDC).
+    name: "stakeTokens",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
     name: "getReleaseTracks",
     type: "function",
     stateMutability: "view",

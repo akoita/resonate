@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import {
-  formatEth,
+  formatStakeAmount,
   formatOptionalDate,
   parseDateToEpochSeconds,
   deriveStakeStatus,
@@ -19,7 +19,10 @@ import {
 interface StakeRecord {
   tokenId: string;
   releaseTitle?: string;
-  amount: string;       // wei string
+  amount: string;       // base units of the stake asset
+  assetSymbol?: string;
+  assetDecimals?: number;
+  amountUsd?: string | null;
   depositedAt: string;  // ISO timestamp from backend
   active: boolean;
   escrowDays: number;
@@ -147,7 +150,11 @@ export default function MyStakesCard() {
                   </td>
                   <td style={tdStyle}>
                     <span style={{ fontWeight: 500 }}>
-                      {formatEth(stake.amount)}
+                      {formatStakeAmount(stake.amount, {
+                        symbol: stake.assetSymbol,
+                        decimals: stake.assetDecimals,
+                        usd: stake.amountUsd,
+                      })}
                     </span>
                   </td>
                   <td style={tdStyle}>

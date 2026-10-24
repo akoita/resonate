@@ -2,12 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { formatEth, formatOptionalDate } from "../../lib/stakeConstants";
+import {
+  formatStakeAmount,
+  formatStakeTotals,
+  formatOptionalDate,
+  type AssetAmountTotal,
+} from "../../lib/stakeConstants";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 interface StakeAnalytics {
+  /** Native-ETH subtotal only; use the per-asset lists for display. */
   totalStaked: string;
   totalSlashed: string;
+  totalStakedByAsset?: AssetAmountTotal[];
+  totalSlashedByAsset?: AssetAmountTotal[];
   counts: {
     total: number;
     active: number;
@@ -17,6 +25,9 @@ interface StakeAnalytics {
   stakes: Array<{
     releaseTitle: string | null;
     amount: string;
+    assetSymbol?: string;
+    assetDecimals?: number;
+    amountUsd?: string | null;
     active: boolean;
     depositedAt: string;
     slashedAt: string | null;
@@ -48,7 +59,7 @@ export default function StakingOverview() {
     {
       icon: "🛡️",
       label: "Total Staked",
-      value: formatEth(data.totalStaked),
+      value: formatStakeTotals(data.totalStakedByAsset, data.totalStaked),
       sub: `${data.counts.active} active stake${data.counts.active !== 1 ? "s" : ""}`,
     },
     {
@@ -61,7 +72,7 @@ export default function StakingOverview() {
       icon: "⚠️",
       label: "Slashed",
       value: data.counts.slashed.toString(),
-      sub: data.counts.slashed > 0 ? formatEth(data.totalSlashed) + " lost" : "No violations",
+      sub: data.counts.slashed > 0 ? formatStakeTotals(data.totalSlashedByAsset, data.totalSlashed) + " lost" : "No violations",
       alert: data.counts.slashed > 0,
     },
     {
@@ -144,7 +155,11 @@ export default function StakingOverview() {
                           {s.releaseTitle || "Unknown Release"}
                         </span>
                       </td>
-                      <td className="premium-table-cell-mono">{formatEth(s.amount)}</td>
+                      <td className="premium-table-cell-mono">{formatStakeAmount(s.amount, {
+                        symbol: s.assetSymbol,
+                        decimals: s.assetDecimals,
+                        usd: s.amountUsd,
+                      })}</td>
                       <td className="premium-table-cell-mono" style={{ opacity: 0.7 }}>
                         {formatOptionalDate(s.depositedAt)}
                       </td>

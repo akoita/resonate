@@ -893,6 +893,46 @@ describe('MetadataController (integration)', () => {
       expect(result!.staked).toBe(true);
       expect(result!.stakeAmount).toBe('10000000000000000');
     });
+
+    it('returns the recorded native stake asset with its decimals', async () => {
+      const result = await contractsService.getContentProtectionByRelease(`${TEST_PREFIX}release`);
+      expect(result!.stakeAssetSymbol).toBe('ETH');
+      expect(result!.stakeAssetDecimals).toBe(18);
+    });
+
+    it('returns the stablecoin asset, decimals and USD value of a stablecoin stake', async () => {
+      const usdc = '0x' + '5'.repeat(40);
+      await prisma.contentProtectionStake.updateMany({
+        where: { tokenId: `${TEST_PREFIX}token` },
+        data: {
+          amount: '5000000',
+          paymentToken: usdc,
+          paymentAssetSymbol: 'USDC',
+          paymentAssetDecimals: 6,
+          canonicalAmountUsd: '5',
+        },
+      });
+      try {
+        const result = await contractsService.getContentProtectionByRelease(`${TEST_PREFIX}release`);
+        expect(result!.staked).toBe(true);
+        expect(result!.stakeAmount).toBe('5000000');
+        expect(result!.stakeAssetSymbol).toBe('USDC');
+        expect(result!.stakeAssetDecimals).toBe(6);
+        expect(result!.stakeAssetToken).toBe(usdc);
+        expect(result!.stakeAmountUsd).toBe('5');
+      } finally {
+        await prisma.contentProtectionStake.updateMany({
+          where: { tokenId: `${TEST_PREFIX}token` },
+          data: {
+            amount: '10000000000000000',
+            paymentToken: '0x0000000000000000000000000000000000000000',
+            paymentAssetSymbol: 'ETH',
+            paymentAssetDecimals: 18,
+            canonicalAmountUsd: null,
+          },
+        });
+      }
+    });
   });
 
   describe('typed rights evidence', () => {

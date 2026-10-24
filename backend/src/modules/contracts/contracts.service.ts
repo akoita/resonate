@@ -2370,7 +2370,15 @@ export class ContractsService implements OnModuleInit {
       tokenId: currentAttestation?.tokenId || null,
       staked: !!stake,
       attested: !!currentAttestation,
+      // `stakeAmount` is in base units of `stakeAssetSymbol` / `stakeAssetDecimals`.
+      // A recorded stake carries its own payment asset (usually a stablecoin with
+      // 6 decimals). Without one, the amount is the native-ETH policy requirement
+      // (18 decimals), so the pair never mixes units.
       stakeAmount: stake?.amount || stakeAmountWei,
+      stakeAssetSymbol: stake ? stake.paymentAssetSymbol : "ETH",
+      stakeAssetDecimals: stake ? stake.paymentAssetDecimals : 18,
+      stakeAssetToken: stake ? stake.paymentToken : "0x0000000000000000000000000000000000000000",
+      stakeAmountUsd: stake ? (stake.canonicalAmountUsd ?? null) : (trust.stakeAmountUsd ?? null),
       depositedAt: stake?.depositedAt?.toISOString() || "",
       active: stake?.active ?? false,
       escrowDays,
