@@ -33,6 +33,14 @@ describe("metered-action registry (#1422)", () => {
     }
   });
 
+  it("partitions a split kind's ledger reasons across its lines", () => {
+    const lines = METERED_ACTIONS.remix_draft.lines!;
+    expect(lines.map((l) => l.label)).toEqual(["AI remix draft", "AI part takes"]);
+    expect(lines.flatMap((l) => [...l.ledgerReasons]).sort()).toEqual(
+      [...METERED_ACTIONS.remix_draft.ledgerReasons].sort(),
+    );
+  });
+
   it("attributes every debit-site ledger reason to exactly one kind", () => {
     const owners = new Map<string, string>();
     for (const kind of METERED_ACTION_KINDS) {

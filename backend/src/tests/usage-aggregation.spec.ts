@@ -79,7 +79,12 @@ describe("buildUsageBreakdown", () => {
     });
     expect(breakdown.periodDays).toBe(30);
     expect(breakdown.since).toBe("2026-09-24T00:00:00.000Z");
-    expect(breakdown.items.map((i) => i.kind)).toEqual(["lyria", "remix_draft"]);
+    expect(breakdown.items.map((i) => i.kind)).toEqual(["lyria", "remix_draft", "remix_draft"]);
+    expect(breakdown.items.map((i) => i.label)).toEqual([
+      "Track generation",
+      "AI remix draft",
+      "AI part takes",
+    ]);
     for (const item of breakdown.items) {
       expect(item).toMatchObject({
         charges: 0,
@@ -117,19 +122,34 @@ describe("buildUsageBreakdown", () => {
       priceCentsPer30s: 10,
       since,
     });
-    const byKind = Object.fromEntries(breakdown.items.map((i) => [i.kind, i]));
-    expect(byKind.lyria).toMatchObject({
+    const byLine = Object.fromEntries(
+      breakdown.items.map((i) => [i.lineId, i]),
+    );
+    expect(byLine.lyria).toMatchObject({
       charges: 3,
       spentCents: 30,
       refundedCents: 10,
       netCents: 20,
     });
-    expect(byKind.remix_draft).toMatchObject({
-      charges: 3,
-      spentCents: 25,
-      refundedCents: 5,
+    expect(byLine.draft).toMatchObject({
+      charges: 2,
+      spentCents: 20,
+      refundedCents: 0,
       netCents: 20,
     });
+    expect(byLine.part_take).toMatchObject({
+      label: "AI part takes",
+      charges: 1,
+      spentCents: 5,
+      refundedCents: 5,
+      netCents: 0,
+    });
+    // Presentation split only: the lines sum to the previous kind total.
+    const remix = breakdown.items.filter((i) => i.kind === "remix_draft");
+    expect(remix.reduce((n, i) => n + i.charges, 0)).toBe(3);
+    expect(remix.reduce((n, i) => n + i.spentCents, 0)).toBe(25);
+    expect(remix.reduce((n, i) => n + i.refundedCents, 0)).toBe(5);
+    expect(remix.reduce((n, i) => n + i.netCents, 0)).toBe(20);
   });
 
   it("ignores ledger rows that match no registered kind", () => {

@@ -54,6 +54,12 @@ export interface MeteredAction {
   label: string;
   /** Debit-ledger `reason` values that count as this kind's spend. */
   ledgerReasons: readonly string[];
+  /**
+   * Optional presentation split of the kind's spend into separate lines on the
+   * Usage & Billing breakdown (#1933), by ledger reason. Totals are unchanged:
+   * the lines' reasons must partition `ledgerReasons`. Omit for a single line.
+   */
+  lines?: readonly { id: string; label: string; ledgerReasons: readonly string[] }[];
   cost: {
     /** One billable unit is this many seconds of generated audio. */
     unitSeconds: number;
@@ -88,6 +94,10 @@ export const METERED_ACTIONS: Record<MeteredActionKind, MeteredAction> = {
     label: "AI remix draft",
     // Part takes (#1901) are debited under kind `remix_draft` too.
     ledgerReasons: [LEDGER_REASON.remixDraft, LEDGER_REASON.remixPart],
+    lines: [
+      { id: "draft", label: "AI remix draft", ledgerReasons: [LEDGER_REASON.remixDraft] },
+      { id: "part_take", label: "AI part takes", ledgerReasons: [LEDGER_REASON.remixPart] },
+    ],
     cost: { unitSeconds: PRICE_UNIT_SECONDS, defaultDurationSeconds: 30 },
     rateLimit: {
       limit: DEFAULT_REMIX_GENERATION_RATE_LIMIT,
