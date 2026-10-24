@@ -884,7 +884,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "track",
     subjectIdKeys: ["trackId"],
     sessionIdKeys: ["sessionId"],
-    payloadKeys: ["sessionId", "trackId", "trackTitle", "transition"],
+    payloadKeys: ["sessionId", "trackId", "transition"],
     sourceRefKeys: ["sessionId", "trackId", "transition"],
   },
   {
@@ -893,7 +893,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "track",
     subjectIdKeys: ["trackId"],
     sessionIdKeys: ["sessionId"],
-    payloadKeys: ["sessionId", "trackId", "trackTitle", "licenseType", "priceUsd", "reason"],
+    payloadKeys: ["sessionId", "trackId", "licenseType", "priceUsd", "reason"],
     sourceRefKeys: ["sessionId", "trackId", "licenseType"],
   },
   {
@@ -1879,7 +1879,10 @@ function analyticsValue(value: unknown, key?: string): unknown {
   if (key === "runtimeFallback") {
     return sanitizeRuntimeFallback(value);
   }
-  if ((key === "preferences" || key === "unmetIntent") && typeof value === "object") {
+  if (key === "unmetIntent") {
+    return sanitizeUnmetIntentKeys(value);
+  }
+  if (key === "preferences" && typeof value === "object") {
     return compactAnalyticsObject(value as Record<string, unknown>);
   }
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -1920,6 +1923,15 @@ function sanitizeAgentCoverage(value: unknown): Record<string, unknown> | undefi
   if (relaxed !== undefined) output.capRelaxed = { artists: relaxed };
   if (source.shortfallReason === "catalog_short") output.shortfallReason = "catalog_short";
   return output;
+}
+
+const UNMET_INTENT_KEYS = new Set(["genres", "mood", "energy"]);
+
+/** Which filters went unfilled, never the listener-typed values (#2337). */
+function sanitizeUnmetIntentKeys(value: unknown): string[] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const keys = Object.keys(value).filter((key) => UNMET_INTENT_KEYS.has(key)).sort();
+  return keys.length ? keys : undefined;
 }
 
 const RUNTIME_FALLBACK_FROM = new Set(["adk", "vertex", "langgraph"]);

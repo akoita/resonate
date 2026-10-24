@@ -199,7 +199,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
       expect.objectContaining({
         reason: "no_tracks",
         shortfall: 5,
-        unmetIntent: { genres: ["Drill"], mood: "Dark", energy: "high" },
+        unmetIntent: ["energy", "genres", "mood"],
       }),
     );
   });
@@ -260,6 +260,40 @@ describe("AnalyticsDomainEventBridgeService", () => {
     });
   });
 
+  it("stores no free text for any agent.* event, only identifiers, codes and counts (#2337)", async () => {
+    const ingest = new AnalyticsIngestService();
+    eventBus = new EventBus();
+    bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+    bridge.onModuleInit();
+    const SENTENCE = "play something like my dead grandmother's lullaby, call me on +33 6 12 34 56 78";
+    const base = { eventVersion: 1, occurredAt: "2026-10-24T12:00:00.000Z", sessionId: "session-hostile", trackId: "track-h" };
+    const hostile = {
+      trackTitle: SENTENCE,
+      reasoning: SENTENCE,
+      coverageSummary: SENTENCE,
+      unmetIntent: { genres: [SENTENCE], mood: SENTENCE, energy: SENTENCE, [SENTENCE]: SENTENCE, free: SENTENCE },
+    };
+    const names = [
+      "agent.decision_made", "agent.track_selected", "agent.selection", "agent.evaluated", "agent.mix_planned",
+      "agent.negotiated", "agent.evaluation_completed", "agent.purchase_completed", "agent.purchase_failed",
+      "agent.wallet_enabled", "agent.wallet_disabled", "agent.budget_alert",
+    ];
+    names.forEach((eventName, i) =>
+      eventBus.publish({ ...base, ...hostile, occurredAt: `2026-10-24T12:00:${String(i).padStart(2, "0")}.000Z`, eventName } as any),
+    );
+
+    await waitForExpect(async () => expect((await ingest.listEvents()).length).toBeGreaterThanOrEqual(names.length - 4));
+    const events = await ingest.listEvents();
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) {
+      expect(JSON.stringify(event.payload)).not.toContain("grandmother");
+      expect(JSON.stringify(event.payload)).not.toContain("33 6");
+      expect(event.payload).not.toHaveProperty("trackTitle");
+    }
+    const decision = events.find((event) => event.eventName === "agent.decision_made");
+    expect(decision?.payload).toMatchObject({ unmetIntent: ["energy", "genres", "mood"] });
+  });
+
   // #2317: the envelope caps subjectId at 200 characters, so an event whose
   // subject key carries a comma-joined list of a 12-track batch is rejected and
   // the bridge only logs a warning. Every agent.* event must therefore be
@@ -274,8 +308,8 @@ describe("AnalyticsDomainEventBridgeService", () => {
       (trackId) => ({ ...base, eventName: "agent.track_selected", trackId, strategy: "llm", preferences: {} }),
       (trackId) => ({ ...base, eventName: "agent.selection", trackId, candidates: trackIds, count: 12, strategy: "recent-first" }),
       (trackId) => ({ ...base, eventName: "agent.evaluated", trackId, licenseType: "personal", priceUsd: 0, reason: "ok" }),
-      (trackId) => ({ ...base, eventName: "agent.mix_planned", trackId, trackTitle: "Title", transition: "crossfade" }),
-      (trackId) => ({ ...base, eventName: "agent.negotiated", trackId, trackTitle: "Title", licenseType: "personal", priceUsd: 0, reason: "ok" }),
+      (trackId) => ({ ...base, eventName: "agent.mix_planned", trackId, transition: "crossfade" }),
+      (trackId) => ({ ...base, eventName: "agent.negotiated", trackId, licenseType: "personal", priceUsd: 0, reason: "ok" }),
     ];
 
     it.each(perTrackEvents.map((make, index) => [make(trackIds[0], 0).eventName, index] as const))(

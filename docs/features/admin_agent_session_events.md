@@ -68,7 +68,10 @@ records `trackCount`, `pickIndex`, `pickCount`, `curatedBy`, `latencyMs`, a
 sanitized `coverage` (filter keys and counts only) and `runtimeFallback` for
 `agent.decision_made` (see the
 [taxonomy](../architecture/analytics_event_taxonomy_v1.md)). It does **not**
-record `reasoning` or `coverageSummary`. Events recorded before this change have
+record `reasoning` or `coverageSummary`. Since #2337 the bridge stores only the
+keys of `unmetIntent` (never the values) and no longer records `trackTitle` on
+`agent.mix_planned` and `agent.negotiated`; the view reads both the new key list
+and the older object form. Events recorded before this change have
 no coverage or pick position; the view shows what they have.
 
 ## Surfaces
