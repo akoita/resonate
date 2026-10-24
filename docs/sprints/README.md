@@ -47,10 +47,10 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest closed: [Vision Sprint 37 — A DJ that understands what you mean](2026-10-23-vision-sprint-37-dj-understands-meaning.md)
-on 2026-10-23. #2249 slice 3 carries over; the descriptor backfill has run on
-staging (27 tracks).
-Current: [Vision Sprint 38 — A DJ that plays what you asked for](2026-10-24-vision-sprint-38-dj-plays-what-you-asked.md).
+Latest closed: [Vision Sprint 38 — A DJ that plays what you asked for](2026-10-24-vision-sprint-38-dj-plays-what-you-asked.md)
+on 2026-10-24. The rest of #2249's spec is #2327; `hybrid_rrf_v1` stays an
+experiment variant until production traffic.
+Current: none selected.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -92,4 +92,4 @@ Current: [Vision Sprint 38 — A DJ that plays what you asked for](2026-10-24-vi
 | [2026-10-16](2026-10-16-vision-sprint-35-who-is-here.md) | Vision Sprint 35 — Seeing who's here, and reaching them (admin users directory, email notices) | ✅ Closed 2026-10-23 — all six issues closed (#2166, #2169, #2144 parts 2–3, #1890, #2180, #2177); real staging email delivery waits on resonate-iac#284; [milestone-37 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-37-vision-sprint-35-who-is-here) |
 | [2026-10-22](2026-10-22-vision-sprint-36-dj-and-catalog-trust.md) | Vision Sprint 36 — A DJ you can understand, a catalog you can trust (AI DJ Phase 1, human-made attestation) | ✅ Closed 2026-10-23 — 10 of 11 issues closed; #2249 shipped slice 1 of 3; verified on staging at `13a88eea`; attestation run is resonate-iac#316; [milestone-38 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-38-vision-sprint-36-dj-and-catalog-trust) |
 | [2026-10-23](2026-10-23-vision-sprint-37-dj-understands-meaning.md) | Vision Sprint 37 — A DJ that understands what you mean (AI DJ Phase 2: descriptors, sentence meaning, hybrid retrieval, Up next) | ✅ Closed 2026-10-23 — 9 of 10 issues closed (#2240–#2244, #2290, #2230, #2231, #2257); #2249 shipped slice 2 of 3; golden World and Rap cases in the top 20, mean recall@10/@20 82% / 90% (hybrid variant 87% / 95%); verified on staging at `e8214124`; descriptor backfill run on staging (27 tracks, 0 model calls); [milestone-39 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-39-vision-sprint-37-dj-understands-meaning) |
-| [2026-10-24](2026-10-24-vision-sprint-38-dj-plays-what-you-asked.md) | Vision Sprint 38 — A DJ that plays what you asked for (request-first selection, honest analytics and pick notes, Right now start) | ◐ In progress — owner-approved 2026-10-24; milestone 40 |
+| [2026-10-24](2026-10-24-vision-sprint-38-dj-plays-what-you-asked.md) | Vision Sprint 38 — A DJ that plays what you asked for (request-first selection, honest analytics and pick notes, Right now start) | ✅ Closed 2026-10-24 — all 7 issues closed (#2317, #2316, #2299, #2245, #2249 slice 3, #2313, #2248 spike); request-first selection verified in the owner's Hip-Hop and World tests on staging at `105077ca` (every matching track, cap relaxed where needed, no padding); `hybrid_rrf_v1` kept as an experiment; [milestone-40 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-40-vision-sprint-38-dj-plays-what-you-asked) |
