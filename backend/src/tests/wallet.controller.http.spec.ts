@@ -16,7 +16,14 @@ import { SocialRecoveryService } from '../modules/identity/social_recovery.servi
 import { AgentWalletService } from '../modules/agents/agent_wallet.service';
 import { AgentPurchaseService } from '../modules/agents/agent_purchase.service';
 
-import { createControllerTestApp, authToken } from './e2e-helpers';
+import { writeAdminAuditEvent } from '../modules/admin_audit/admin_audit_event';
+import { createControllerTestApp, authToken, confirmedBearer, expectStepUpRequired } from './e2e-helpers';
+
+jest.mock('../modules/admin_audit/admin_audit_event', () => ({
+  ...jest.requireActual('../modules/admin_audit/admin_audit_event'),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const mockWalletService = {
   fundWallet: jest.fn().mockResolvedValue({ ok: true }),
@@ -265,6 +272,87 @@ describe('WalletController (e2e)', () => {
         .send({ userId: 'user-1', amountUsd: -5 })
         .expect(400);
       expect(JSON.stringify(res.body)).toContain('amountUsd must be greater than 0');
+    });
+  });
+
+  // ----- Admin step-up and audit (#2362) -----
+
+  describe('admin wallet routes: step-up and audit (#2362)', () => {
+    const recoveryRoutes: Array<[string, Record<string, unknown>, () => jest.Mock]> = [
+      ['/wallet/guardians', { userId: 'u1', guardians: ['0xg1', '0xg2'], required: 2 }, () => mockRecoveryService.setGuardians],
+      ['/wallet/recovery/request', { userId: 'u1', newOwner: '0xnew', required: 2 }, () => mockRecoveryService.requestRecovery],
+      ['/wallet/recovery/approve', { requestId: 'r1', guardian: '0xg1' }, () => mockRecoveryService.approveRecovery],
+    ];
+
+    beforeEach(() => jest.clearAllMocks());
+
+    it.each(recoveryRoutes)('POST %s needs a fresh step-up proof', async (path, body, service) => {
+      await expectStepUpRequired(app, 'post', path, { userId: 'admin-1', role: 'admin' }, body);
+      expect(service()).not.toHaveBeenCalled();
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it('records guardians set as a count, never the addresses', async () => {
+      await request(app.getHttpServer())
+        .post('/wallet/guardians')
+        .set(confirmedBearer('admin-1', 'admin'))
+        .send({ userId: 'u1', guardians: ['0xg1', '0xg2'], required: 2 })
+        .expect(201);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: 'admin-1',
+        action: 'wallet.guardians_set',
+        targetUserId: 'u1',
+        detail: { guardianCount: 2, required: 2 },
+      });
+    });
+
+    it('records a recovery request for the account and an approval by its request id', async () => {
+      await request(app.getHttpServer())
+        .post('/wallet/recovery/request')
+        .set(confirmedBearer('admin-1', 'admin'))
+        .send({ userId: 'u1', newOwner: '0xnew', required: 2 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post('/wallet/recovery/approve')
+        .set(confirmedBearer('admin-1', 'admin'))
+        .send({ requestId: 'r1', guardian: '0xg1' })
+        .expect(201);
+      expect(mockAudit).toHaveBeenNthCalledWith(1, {
+        actorUserId: 'admin-1',
+        action: 'wallet.recovery_requested',
+        targetUserId: 'u1',
+        detail: { newOwner: '0xnew', required: 2 },
+      });
+      expect(mockAudit).toHaveBeenNthCalledWith(2, {
+        actorUserId: 'admin-1',
+        action: 'wallet.recovery_approved',
+        targetUserId: null,
+        detail: { requestId: 'r1' },
+      });
+    });
+
+    it('records provider, session key and paymaster changes without step-up', async () => {
+      const auth = { Authorization: `Bearer ${adminToken}` };
+      await request(app.getHttpServer()).post('/wallet/provider').set(auth).send({ userId: 'u1', provider: 'erc4337' }).expect(201);
+      await request(app.getHttpServer()).post('/wallet/refresh').set(auth).send({ userId: 'u1' }).expect(201);
+      await request(app.getHttpServer()).post('/wallet/session-key').set(auth).send({ userId: 'u1', scope: 'purchase', ttlSeconds: 60 }).expect(201);
+      await request(app.getHttpServer()).post('/wallet/paymaster/reset').set(auth).send({ userId: 'u1' }).expect(201);
+      await request(app.getHttpServer()).post('/wallet/paymaster').set(auth).send({ sponsorMaxUsd: 5, paymasterAddress: '0xpm' }).expect(201);
+      expect(mockAudit.mock.calls.map(([event]) => [event.action, event.targetUserId, event.detail])).toEqual([
+        ['wallet.provider_set', 'u1', { provider: 'erc4337' }],
+        ['wallet.refreshed', 'u1', undefined],
+        ['wallet.session_key_issued', 'u1', { scope: 'purchase', ttlSeconds: 60 }],
+        ['wallet.paymaster_reset', 'u1', undefined],
+        ['wallet.paymaster_configured', null, { sponsorMaxUsd: 5, paymasterAddress: '0xpm' }],
+      ]);
+    });
+
+    it('does not record the read-only paymaster status, a validation, or a refused caller', async () => {
+      const auth = { Authorization: `Bearer ${adminToken}` };
+      await request(app.getHttpServer()).get('/wallet/paymaster').set(auth).expect(200);
+      await request(app.getHttpServer()).post('/wallet/session-key/validate').set(auth).send({ token: 't', scope: 'purchase' }).expect(201);
+      await request(app.getHttpServer()).post('/wallet/provider').set('Authorization', `Bearer ${listenerToken}`).send({ userId: 'u1', provider: 'local' }).expect(403);
+      expect(mockAudit).not.toHaveBeenCalled();
     });
   });
 });

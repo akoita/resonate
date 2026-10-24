@@ -105,9 +105,15 @@ Beyond the starter, credits enter through the operator/promo grant path — the
 only way to add credits until live top-up ships. Two equivalent routes:
 
 ```http
-POST /credits/grant            # @Roles('admin','operator')
+POST /credits/grant            # @Roles('admin','operator'), @RequireStepUp()
 { "userId": "...", "amountCents": 500, "reason": "promo_grant" }
 ```
+
+Both HTTP grants (this one and `POST /credits/requests/:id/grant`) need a fresh
+admin step-up proof in `X-Admin-Step-Up` and are recorded in the admin audit log
+(`credits.granted`, `credit_request.granted`; amount and recipient only, never the
+reason text) — see [admin step-up and audit](admin_step_up_audit.md) (#2362).
+`make grant-credits` writes through the service directly and is not a route.
 
 ```bash
 # One-command operator top-up against whatever DATABASE_URL is in the env.

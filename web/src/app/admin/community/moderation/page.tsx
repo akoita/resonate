@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import AuthGate from "../../../../components/auth/AuthGate";
 import { useAuth } from "../../../../components/auth/AuthProvider";
 import CommunityModerationDashboard from "../../../../components/admin/CommunityModerationDashboard";
+import { useToast } from "../../../../components/ui/Toast";
+import { AdminStepUpCancelledError, withAdminStepUp } from "../../../../lib/adminStepUp";
 import {
   getCommunityModerationQueue,
   resolveCommunityModerationReport,
@@ -18,7 +20,8 @@ type LoadState =
   | { status: "error"; message: string };
 
 export default function CommunityModerationAdminPage() {
-  const { token, role } = useAuth();
+  const { token, role, signMessage } = useAuth();
+  const { addToast } = useToast();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [resolvingReportId, setResolvingReportId] = useState<string | null>(null);
   const canRead = role === "admin";
@@ -79,10 +82,28 @@ export default function CommunityModerationAdminPage() {
     }
     setResolvingReportId(reportId);
     try {
-      await resolveCommunityModerationReport(token, reportId, { action });
+      // Removing a message or a member is destructive: it needs a fresh passkey confirmation (#2362).
+      await withAdminStepUp(
+        {
+          token,
+          signMessage,
+          onPrompt: () =>
+            addToast({
+              type: "info",
+              title: "Confirm it is you",
+              message: "Your passkey will ask you to confirm this moderation action.",
+            }),
+        },
+        (proof) => resolveCommunityModerationReport(token, reportId, { action }, proof),
+      );
       const data = await getCommunityModerationQueue(token, { status: "open", limit: 50 });
       setState({ status: "ready", data });
     } catch (error) {
+      if (error instanceof AdminStepUpCancelledError) {
+        // The passkey prompt was dismissed: nothing was sent, so the queue stays as it was.
+        addToast({ type: "info", title: "Nothing changed", message: error.message });
+        return;
+      }
       setState({
         status: "error",
         message: error instanceof Error ? error.message : "Unable to resolve moderation report.",
@@ -90,7 +111,7 @@ export default function CommunityModerationAdminPage() {
     } finally {
       setResolvingReportId(null);
     }
-  }, [canRead, token]);
+  }, [addToast, canRead, signMessage, token]);
 
   return (
     <AuthGate title="Connect your wallet to manage community moderation.">

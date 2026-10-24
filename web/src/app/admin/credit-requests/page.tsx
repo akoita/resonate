@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
+import { AdminStepUpCancelledError, withAdminStepUp } from "../../../lib/adminStepUp";
 import { useToast } from "../../../components/ui/Toast";
 import {
   ApiRequestError,
@@ -68,7 +69,7 @@ function isSelfReviewForbidden(reason: unknown) {
 }
 
 export default function CreditRequestsAdminPage() {
-  const { token, role, userId } = useAuth();
+  const { token, role, userId, signMessage } = useAuth();
   const sessionScope = useMemo(
     () => token ? Symbol(userId ?? role ?? "credit-requests-session") : null,
     [role, token, userId],
@@ -183,6 +184,11 @@ export default function CreditRequestsAdminPage() {
 
   /** Shared failure handling for grant and dismiss. */
   const handleActionError = (request: CreditRequest, reason: unknown, title: string, fallback: string) => {
+    if (reason instanceof AdminStepUpCancelledError) {
+      // The passkey prompt was dismissed: nothing was sent, so nothing changed.
+      addToast({ type: "info", title: "Nothing changed", message: reason.message });
+      return;
+    }
     if (isConflict(reason)) {
       handleConflict(request);
       return;
@@ -227,7 +233,20 @@ export default function CreditRequestsAdminPage() {
     const { request, amountCents, reason } = grant;
     setInFlight({ requestId: request.id, action: "grant" });
     try {
-      await grantCreditRequest(token, request.id, { amountCents, reason });
+      // A grant adds to someone's balance, so it needs a fresh passkey confirmation (#2362).
+      await withAdminStepUp(
+        {
+          token,
+          signMessage,
+          onPrompt: () =>
+            addToast({
+              type: "info",
+              title: "Confirm it is you",
+              message: "Your passkey will ask you to confirm this grant.",
+            }),
+        },
+        (proof) => grantCreditRequest(token, request.id, { amountCents, reason }, proof),
+      );
       if (currentScopeRef.current !== requestScope) return;
       setPendingGrant(null);
       removeRequest(request.id);

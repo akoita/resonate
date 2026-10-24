@@ -2,17 +2,19 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuard
 import { AuthGuard } from "@nestjs/passport";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
-import { AnalyticsWarehouseLoadRequest } from "../analytics/analytics_warehouse_loader";
-import { CommunityCohortGenerationRequest } from "../community/community_cohort_generation.service";
+import { StemFeatureBackfillService } from "../ingestion/stem-feature-backfill.service";
+import { TrackEmbeddingService } from "../embeddings/track_embedding.service";
 import {
-  StemFeatureBackfillRequest,
-  StemFeatureBackfillService,
-} from "../ingestion/stem-feature-backfill.service";
-import {
-  EmbeddingBackfillRequest,
-  TrackEmbeddingService,
-} from "../embeddings/track_embedding.service";
+  AnalyticsWarehouseLoadDto,
+  CommunityCohortGenerationDto,
+  EmbeddingBackfillDto,
+  ResolveCommunityModerationReportDto,
+  RunDueErasuresDto,
+  StemFeatureBackfillDto,
+} from "./maintenance.dto";
 import { MaintenanceService } from "./maintenance.service";
+import { AdminAudit, auditBody, auditBoolean, auditCode, auditNumber, auditRef } from "../admin_audit/admin_audit.interceptor";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 
 @Controller("admin")
 export class MaintenanceController {
@@ -37,7 +39,8 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("stems/backfill-audio-features")
-  async backfillStemAudioFeatures(@Body() body: StemFeatureBackfillRequest) {
+  @AdminAudit("maintenance.stem_features_backfill_run", (c) => ({ detail: { limit: auditNumber(auditBody(c).limit), refresh: auditBoolean(auditBody(c).refresh), retryFailed: auditBoolean(auditBody(c).retryFailed) } }))
+  async backfillStemAudioFeatures(@Body() body: StemFeatureBackfillDto) {
     return this.stemFeatureBackfillService.backfill(body ?? {});
   }
 
@@ -69,13 +72,16 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("embeddings/backfill")
-  async backfillTrackEmbeddings(@Body() body: EmbeddingBackfillRequest) {
+  @AdminAudit("maintenance.track_embeddings_backfill_run", (c) => ({ detail: { limit: auditNumber(auditBody(c).limit) } }))
+  async backfillTrackEmbeddings(@Body() body: EmbeddingBackfillDto) {
     return this.trackEmbeddingService.backfill(body ?? {});
   }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("retention/cleanup")
+  @RequireStepUp()
+  @AdminAudit("maintenance.retention_cleanup_run")
   async cleanup() {
     return this.maintenanceService.runRetentionCleanup();
   }
@@ -91,21 +97,25 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("erasure/run-due")
-  async runDueAccountErasures(@Body() body: { limit?: number }) {
+  @RequireStepUp()
+  @AdminAudit("maintenance.erasures_run", (c) => ({ detail: { limit: auditNumber(auditBody(c).limit) } }))
+  async runDueAccountErasures(@Body() body: RunDueErasuresDto) {
     return this.maintenanceService.runDueAccountErasures(body ?? {});
   }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("analytics/warehouse/load")
-  async loadAnalyticsWarehouse(@Body() body: AnalyticsWarehouseLoadRequest) {
+  @AdminAudit("maintenance.analytics_warehouse_loaded", (c) => ({ detail: { eventFamily: auditRef(auditBody(c).eventFamily), runId: auditRef(auditBody(c).runId), dryRun: auditBoolean(auditBody(c).dryRun) } }))
+  async loadAnalyticsWarehouse(@Body() body: AnalyticsWarehouseLoadDto) {
     return this.maintenanceService.loadAnalyticsWarehouse(body ?? {});
   }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("analytics/warehouse/backfill")
-  async backfillAnalyticsWarehouse(@Body() body: AnalyticsWarehouseLoadRequest) {
+  @AdminAudit("maintenance.analytics_warehouse_backfilled", (c) => ({ detail: { eventFamily: auditRef(auditBody(c).eventFamily), runId: auditRef(auditBody(c).runId), dryRun: auditBoolean(auditBody(c).dryRun) } }))
+  async backfillAnalyticsWarehouse(@Body() body: AnalyticsWarehouseLoadDto) {
     return this.maintenanceService.backfillAnalyticsWarehouse(body ?? {});
   }
 
@@ -119,7 +129,8 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("community/cohorts/generate")
-  async generateCommunityCohorts(@Body() body: CommunityCohortGenerationRequest) {
+  @AdminAudit("maintenance.community_cohorts_generated", (c) => ({ detail: { minimumSize: auditNumber(auditBody(c).minimumSize) } }))
+  async generateCommunityCohorts(@Body() body: CommunityCohortGenerationDto) {
     return this.maintenanceService.generateCommunityCohorts(body ?? {});
   }
 
@@ -133,6 +144,7 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Get("community/moderation/reports")
+  @AdminAudit("community_moderation.queue_viewed", (c) => ({ detail: { status: auditCode(c.query.status, ["open", "resolved", "dismissed"] as const) } }))
   async getCommunityModerationQueue(@Query("status") status?: string, @Query("limit") limit?: string) {
     return this.maintenanceService.getCommunityModerationQueue({ status, limit });
   }
@@ -140,10 +152,17 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Patch("community/moderation/reports/:reportId")
+  @RequireStepUp()
+  @AdminAudit("community_moderation.report_resolved", (c) => ({
+    detail: {
+      reportId: auditRef(c.params.reportId),
+      action: auditCode(auditBody(c).action, ["no_action", "delete_message", "remove_member", "ban_member", "pause_room", "archive_room"] as const),
+    },
+  }))
   async resolveCommunityModerationReport(
     @Req() req: any,
     @Param("reportId") reportId: string,
-    @Body() body: Parameters<MaintenanceService["resolveCommunityModerationReport"]>[2],
+    @Body() body: ResolveCommunityModerationReportDto,
   ) {
     return this.maintenanceService.resolveCommunityModerationReport(
       { userId: req.user.userId, role: req.user.role },
@@ -155,6 +174,8 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Delete("wipe-releases")
+  @RequireStepUp()
+  @AdminAudit("maintenance.releases_wiped")
   wipeReleases() {
     return this.maintenanceService.wipeReleases();
   }

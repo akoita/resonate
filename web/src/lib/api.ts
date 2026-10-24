@@ -4747,10 +4747,11 @@ export async function resolveCommunityModerationReport(
   token: string,
   reportId: string,
   input: { action: CommunityModerationAction; note?: string },
+  stepUpProof?: string,
 ): Promise<CommunityModerationResolutionResponse> {
   return apiRequest<CommunityModerationResolutionResponse>(
     `/admin/community/moderation/reports/${encodeURIComponent(reportId)}`,
-    { method: "PATCH", body: JSON.stringify(input) },
+    { method: "PATCH", body: JSON.stringify(input), headers: stepUpHeaders(stepUpProof) },
     token,
   );
 }
@@ -6715,6 +6716,7 @@ export function grantCreditRequest(
   token: string,
   requestId: string,
   input: { amountCents: number; reason?: string },
+  stepUpProof?: string,
 ) {
   const reason = input.reason?.trim();
   return apiRequest<CreditRequest>(
@@ -6722,6 +6724,7 @@ export function grantCreditRequest(
     {
       method: "POST",
       body: JSON.stringify(reason ? { amountCents: input.amountCents, reason } : { amountCents: input.amountCents }),
+      headers: stepUpHeaders(stepUpProof),
     },
     token,
   );
@@ -7725,10 +7728,11 @@ export function reviewManagementRecovery(
   token: string,
   recoveryId: string,
   input: { decision: ManagementRecoveryDecision; note: string },
+  stepUpProof?: string,
 ) {
   return apiRequest<unknown>(
     `/management/recoveries/${encodeURIComponent(recoveryId)}`,
-    { method: "PATCH", body: JSON.stringify(input) },
+    { method: "PATCH", body: JSON.stringify(input), headers: stepUpHeaders(stepUpProof) },
     token,
   ).then(() => undefined);
 }
@@ -8075,7 +8079,69 @@ export type AdminAuditAction =
   | "notice.broadcast_sent"
   | "notice.targeted_sent"
   | "admin.step_up_verified"
-  | "admin.step_up_refused";
+  | "admin.step_up_refused"
+  | "credits.granted"
+  | "credit_requests.viewed"
+  | "credit_request.granted"
+  | "credit_request.dismissed"
+  | "dmca.reports_viewed"
+  | "dmca.report_resolved"
+  | "trust.artist_verified"
+  | "curation.reports_viewed"
+  | "catalog_credit.identity_reviewed"
+  | "artist_claims.viewed"
+  | "artist_claim.reviewed"
+  | "management_recovery.queue_viewed"
+  | "management_recovery.reviewed"
+  | "show_authority.approved"
+  | "show_authority.rejected"
+  | "show_authority.revoked"
+  | "show_authority.expired"
+  | "show_campaign.chain_resynced"
+  | "show_campaign.onchain_discovered"
+  | "show_campaign.booking_confirmed"
+  | "show_campaign.fulfillment_confirmed"
+  | "show_reconciliation.acknowledged"
+  | "show_reconciliation.acknowledgement_removed"
+  | "show_dispute.opened"
+  | "show_dispute.resolved"
+  | "x402_refunds.viewed"
+  | "x402_refund.marked_refunded"
+  | "rights_reassessments.viewed"
+  | "rights_reassessment.created"
+  | "rights_reassessment.audit_sampled"
+  | "rights_reassessment.reviewed"
+  | "trusted_source_link_requests.viewed"
+  | "trusted_source_link.reviewed"
+  | "trusted_source_link.revoked"
+  | "release_rights_requests.viewed"
+  | "release_rights_request.viewed"
+  | "release_rights_request.reviewed"
+  | "indexer.reset"
+  | "indexer.tx_reindexed"
+  | "maintenance.stem_features_backfill_run"
+  | "maintenance.track_embeddings_backfill_run"
+  | "maintenance.retention_cleanup_run"
+  | "maintenance.erasures_run"
+  | "maintenance.analytics_warehouse_loaded"
+  | "maintenance.analytics_warehouse_backfilled"
+  | "maintenance.community_cohorts_generated"
+  | "maintenance.releases_wiped"
+  | "community_moderation.queue_viewed"
+  | "community_moderation.report_resolved"
+  | "wallet.provider_set"
+  | "wallet.refreshed"
+  | "wallet.paymaster_configured"
+  | "wallet.paymaster_reset"
+  | "wallet.session_key_issued"
+  | "wallet.guardians_set"
+  | "wallet.recovery_requested"
+  | "wallet.recovery_approved"
+  | "agents.run_invoked"
+  | "agents.orchestrated"
+  | "agents.evaluated"
+  | "agents.golden_eval_run"
+  | "agents.runtime_run";
 
 export type AdminAuditOutcome = "success" | "denied";
 

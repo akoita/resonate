@@ -3,7 +3,14 @@ import { INestApplication } from "@nestjs/common";
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { X402RefundReconciliationController } from "../modules/punchline/x402-refund-reconciliation.controller";
 import { X402RefundReconciliationService } from "../modules/punchline/x402-refund-reconciliation.service";
+import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
+
+jest.mock("../modules/admin_audit/admin_audit_event", () => ({
+  ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const mockService = {
   listRefundDue: jest.fn().mockResolvedValue([
@@ -67,6 +74,7 @@ describe("X402RefundReconciliationController (http)", () => {
           expect(res.body[0]).toMatchObject({ id: "settlement-1", ageHours: 3.5 });
         });
       expect(mockService.listRefundDue).toHaveBeenCalledTimes(1);
+      expect(mockAudit).toHaveBeenCalledWith({ actorUserId: "operator-1", action: "x402_refunds.viewed", targetUserId: null });
     });
 
     it("lets an admin list refund_due settlements", async () => {
@@ -111,6 +119,40 @@ describe("X402RefundReconciliationController (http)", () => {
         REFUND_TX,
         "operator-9",
       );
+    });
+
+    it("records the settlement and the refund hash, never anything else from the body (#2362)", async () => {
+      await request(app.getHttpServer())
+        .post("/admin/x402-refunds/settlement-1/mark-refunded")
+        .set("Authorization", `Bearer ${authToken("operator-9", "operator")}`)
+        .send({ ...body, note: "free text" })
+        .expect(201);
+      expect(mockAudit).toHaveBeenCalledTimes(1);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: "operator-9",
+        action: "x402_refund.marked_refunded",
+        targetUserId: null,
+        detail: { settlementId: "settlement-1", refundTxHash: REFUND_TX },
+      });
+    });
+
+    it("class DTO: rejects a non-string hash with 400 and records nothing (#2362)", async () => {
+      await request(app.getHttpServer())
+        .post("/admin/x402-refunds/settlement-1/mark-refunded")
+        .set("Authorization", `Bearer ${authToken("operator-9", "operator")}`)
+        .send({ refundTxHash: 5 })
+        .expect(400);
+      expect(mockService.markRefunded).not.toHaveBeenCalled();
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it("class DTO: a missing hash still reaches the service, which answers with its own message", async () => {
+      await request(app.getHttpServer())
+        .post("/admin/x402-refunds/settlement-1/mark-refunded")
+        .set("Authorization", `Bearer ${authToken("operator-9", "operator")}`)
+        .send({})
+        .expect(201);
+      expect(mockService.markRefunded).toHaveBeenCalledWith("settlement-1", "", "operator-9");
     });
   });
 });

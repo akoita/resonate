@@ -7,6 +7,7 @@ import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentRunnerService } from "./agent_runner.service";
 import { EvaluateAgentDto, OrchestrateAgentDto, RunAgentDto, RuntimeRunAgentDto } from "./agents.dto";
+import { AdminAudit } from "../admin_audit/admin_audit.interceptor";
 
 @Controller("agents")
 export class AgentsController {
@@ -21,6 +22,7 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("run")
+  @AdminAudit("agents.run_invoked")
   run(@Body() body: RunAgentDto) {
     return this.agentRunner.run(body);
   }
@@ -28,6 +30,7 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("evaluate/golden")
+  @AdminAudit("agents.golden_eval_run")
   evaluateGolden() {
     return this.goldenEval.run();
   }
@@ -35,6 +38,7 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("orchestrate")
+  @AdminAudit("agents.orchestrated")
   orchestrate(@Body() body: OrchestrateAgentDto) {
     return this.orchestrator.orchestrate(body);
   }
@@ -42,6 +46,7 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("evaluate")
+  @AdminAudit("agents.evaluated")
   evaluate(@Body() body: EvaluateAgentDto) {
     return this.evaluator.evaluate(body.sessions, { runtime: body.runtime });
   }
@@ -49,6 +54,7 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("runtime")
+  @AdminAudit("agents.runtime_run")
   runtimeRun(@Body() body: RuntimeRunAgentDto) {
     return this.runtime.run(body);
   }

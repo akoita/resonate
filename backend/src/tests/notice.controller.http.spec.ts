@@ -145,5 +145,41 @@ describe("NoticeController (http)", () => {
       await request(server()).post("/notices/targeted").set(bearer("op-1", "admin")).send(body).expect(400);
       expect(mockNoticeService.sendTargeted).not.toHaveBeenCalled();
     });
+
+    it.each([
+      ["a numeric title", { ...BROADCAST, title: 5 }],
+      ["an array category", { ...BROADCAST, category: ["policy"] }],
+      ["an object audience", { ...BROADCAST, audience: { role: "all" } }],
+      ["a numeric body", { ...BROADCAST, body: 5 }],
+      ["a numeric link", { ...BROADCAST, link: 5 }],
+      ["a numeric expiry", { ...BROADCAST, expiresAt: 4102444800000 }],
+    ])("class DTO: rejects a broadcast with %s before the parser (#2362)", async (_label, body) => {
+      const res = await request(server()).post("/notices/broadcast").set(confirmed("op-1", "operator")).send(body).expect(400);
+      expect(Array.isArray(res.body.message)).toBe(true);
+      expect(mockNoticeService.sendBroadcast).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an object recipient list", { ...TARGETED, userIds: { 0: "u" } }],
+      ["a numeric title", { ...TARGETED, title: 5 }],
+      ["a boolean category", { ...TARGETED, category: true }],
+      ["a numeric link", { ...TARGETED, link: 5 }],
+    ])("class DTO: rejects a targeted send with %s before the parser (#2362)", async (_label, body) => {
+      const res = await request(server()).post("/notices/targeted").set(bearer("op-1", "admin")).send(body).expect(400);
+      expect(Array.isArray(res.body.message)).toBe(true);
+      expect(mockNoticeService.sendTargeted).not.toHaveBeenCalled();
+    });
+
+    it("class DTO: still hands a valid body to the parser and the service unchanged", async () => {
+      await request(server())
+        .post("/notices/broadcast")
+        .set(confirmed("op-1", "operator"))
+        .send({ ...BROADCAST, link: null, effectiveAt: null, expiresAt: "2999-01-01T00:00:00.000Z" })
+        .expect(201);
+      expect(mockNoticeService.sendBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({ audience: "all", link: null }),
+        { userId: "op-1", role: "operator" },
+      );
+    });
   });
 });

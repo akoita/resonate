@@ -3,6 +3,8 @@ import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { ManagementService } from "./management.service";
+import { AdminAudit, auditBody, auditCode, auditRef } from "../admin_audit/admin_audit.interceptor";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 
 @Controller("management")
 @UseGuards(AuthGuard("jwt"))
@@ -109,6 +111,7 @@ export class ManagementController {
   @Get("recoveries/pending")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
+  @AdminAudit("management_recovery.queue_viewed")
   getPendingTransferRecoveries(@Req() req: any) {
     return this.managementService.getPendingTransferRecoveries(req.user.userId, req.user.role ?? "listener");
   }
@@ -116,6 +119,8 @@ export class ManagementController {
   @Patch("recoveries/:id")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
+  @RequireStepUp()
+  @AdminAudit("management_recovery.reviewed", (c) => ({ detail: { recoveryId: auditRef(c.params.id), decision: auditCode(auditBody(c).decision, ["approve", "reject"] as const) } }))
   reviewTransferRecoveryRequest(
     @Req() req: any,
     @Param("id") requestId: string,

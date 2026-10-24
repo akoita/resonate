@@ -3383,6 +3383,7 @@ model AdminAuditEvent {
   actorUserId  String
   /// user.detail_viewed | account.suspended | account.unsuspended | account.closed | agent_session.events_viewed
   /// | notice.broadcast_sent | notice.targeted_sent | admin.step_up_verified | admin.step_up_refused
+  /// | the other admin and operator actions listed in ADMIN_AUDIT_ACTIONS (#2362)
   action       String
   targetUserId String?
   /// success | denied (a refused step-up is recorded as denied)

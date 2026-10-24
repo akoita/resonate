@@ -369,7 +369,17 @@ the events themselves), and, since #2173, `notice.broadcast_sent` (notice id,
 category, audience) and `notice.targeted_sent` (category and counts; the
 recipient is `targetUserId` only when there is exactly one), plus
 `admin.step_up_verified` and `admin.step_up_refused` (the mode that proved the
-confirmation, or the refusal reason; never the signature). Each row has an
+confirmation, or the refusal reason; never the signature). Since #2362 every other
+admin and operator route writes one row too (the list is `ADMIN_AUDIT_ACTIONS`,
+the table is on `docs/features/admin_step_up_audit.md`). Their `detail` is ids
+and codes only (a report, request, campaign, settlement or credit id; an outcome,
+decision or action code; an amount in cents; a count), and `targetUserId` is set
+only where the action is about one account (`credits.granted`,
+`credit_request.granted` and `.dismissed`, and the `wallet.*` actions that name
+a user). Wallet addresses that appear in `detail` (`wallet.recovery_requested`'s
+new owner, `x402_refund.marked_refunded`'s refund hash, `indexer.tx_reindexed`'s
+transaction hash) are on-chain identifiers, not free text. Nothing an operator
+types (credit reasons, review notes, dispute notes, moderation notes) is stored. Each row has an
 `outcome` (`success` or `denied`). **An operator's free-text note and the text of
 a notice are never stored in it.** Erasure disposition: `retain` as audit
 history, with both columns rewritten to the new id (an erased operator and an

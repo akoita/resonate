@@ -3,7 +3,14 @@ import request from "supertest";
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { ManagementController } from "../modules/management/management.controller";
 import { ManagementService } from "../modules/management/management.service";
-import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
+import { authToken, confirmedBearer as confirmed, createControllerTestApp, expectStepUpRequired } from "./e2e-helpers";
+
+jest.mock("../modules/admin_audit/admin_audit_event", () => ({
+  ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const mockService = {
   getMe: jest.fn().mockResolvedValue({ ownedArtists: [], pendingGrants: [] }),
@@ -125,7 +132,7 @@ describe("ManagementController HTTP contract", () => {
       .expect(200);
     await request(app.getHttpServer())
       .patch("/management/recoveries/recovery-1")
-      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .set(confirmed("operator-1", "operator"))
       .send(review)
       .expect(200);
 
@@ -137,5 +144,40 @@ describe("ManagementController HTTP contract", () => {
       "reject",
       "Evidence does not support recovery.",
     );
+  });
+
+  it("needs a fresh step-up proof to decide a recovery (#2362)", async () => {
+    await expectStepUpRequired(
+      app,
+      "patch",
+      "/management/recoveries/recovery-1",
+      { userId: "operator-1", role: "operator" },
+      { decision: "approve", note: "Evidence reviewed." },
+    );
+    expect(mockService.reviewTransferRecoveryRequest).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it("records the decision and the recovery id, never the note", async () => {
+    await request(app.getHttpServer())
+      .get("/management/recoveries/pending")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch("/management/recoveries/recovery-1")
+      .set(confirmed("admin-1", "admin"))
+      .send({ decision: "approve", note: "Evidence reviewed, free text." })
+      .expect(200);
+    expect(mockAudit).toHaveBeenNthCalledWith(1, {
+      actorUserId: "operator-1",
+      action: "management_recovery.queue_viewed",
+      targetUserId: null,
+    });
+    expect(mockAudit).toHaveBeenNthCalledWith(2, {
+      actorUserId: "admin-1",
+      action: "management_recovery.reviewed",
+      targetUserId: null,
+      detail: { recoveryId: "recovery-1", decision: "approve" },
+    });
   });
 });

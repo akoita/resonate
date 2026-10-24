@@ -16,7 +16,14 @@ import {
 } from "@nestjs/common";
 import { DmcaController } from "../modules/dmca/dmca.controller";
 import { DmcaService } from "../modules/dmca/dmca.service";
-import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
+import { authToken, confirmedBearer as confirmed, createControllerTestApp, expectStepUpRequired } from "./e2e-helpers";
+
+jest.mock("../modules/admin_audit/admin_audit_event", () => ({
+  ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const mockDmcaService = {
   fileReport: jest.fn(),
@@ -172,7 +179,7 @@ describe("DmcaController (http)", () => {
     it("200 for an admin, taking the resolver from the JWT", async () => {
       await request(app.getHttpServer())
         .patch("/api/dmca/report-1/resolve")
-        .set("Authorization", `Bearer ${admin}`)
+        .set(confirmed("admin-1", "admin"))
         .send({ ...body, resolvedBy: "someone-else" })
         .expect(200);
       expect(mockDmcaService.resolveReport).toHaveBeenCalledWith("report-1", "upheld", {
@@ -184,13 +191,55 @@ describe("DmcaController (http)", () => {
     it("200 for an operator", async () => {
       await request(app.getHttpServer())
         .patch("/api/dmca/report-1/resolve")
-        .set("Authorization", `Bearer ${operator}`)
+        .set(confirmed("operator-1", "operator"))
         .send(body)
         .expect(200);
       expect(mockDmcaService.resolveReport).toHaveBeenCalledWith("report-1", "upheld", {
         userId: "operator-1",
         role: "operator",
       });
+    });
+  
+    it("needs a fresh step-up proof: a takedown is destructive (#2362)", async () => {
+      await expectStepUpRequired(app, "patch", "/api/dmca/report-1/resolve", { userId: "operator-1", role: "operator" }, body);
+      expect(mockDmcaService.resolveReport).not.toHaveBeenCalled();
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it("records the report and the outcome, nothing else", async () => {
+      await request(app.getHttpServer())
+        .patch("/api/dmca/report-1/resolve")
+        .set(confirmed("admin-1", "admin"))
+        .send({ outcome: "rejected", counterNotice: "free text" })
+        .expect(200);
+      expect(mockAudit).toHaveBeenCalledTimes(1);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: "admin-1",
+        action: "dmca.report_resolved",
+        targetUserId: null,
+        detail: { reportId: "report-1", outcome: "rejected" },
+      });
+    });
+
+    it("drops an outcome that is not a known code instead of recording it", async () => {
+      await request(app.getHttpServer())
+        .patch("/api/dmca/report-1/resolve")
+        .set(confirmed("admin-1", "admin"))
+        .send({ outcome: "some free text typed by mistake" })
+        .expect(200);
+      expect(mockAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "dmca.report_resolved", detail: { reportId: "report-1" } }),
+      );
+    });
+
+    it("records nothing when the service refuses", async () => {
+      mockDmcaService.resolveReport.mockRejectedValueOnce(new BadRequestException("outcome must be upheld or rejected"));
+      await request(app.getHttpServer())
+        .patch("/api/dmca/report-1/resolve")
+        .set(confirmed("admin-1", "admin"))
+        .send({ outcome: "x" })
+        .expect(400);
+      expect(mockAudit).not.toHaveBeenCalled();
     });
   });
 
@@ -226,6 +275,16 @@ describe("DmcaController (http)", () => {
         .set("Authorization", `Bearer ${operator}`)
         .expect(200);
       expect(mockDmcaService.listReports).toHaveBeenCalledTimes(1);
+    });
+
+    it("records that the claimant contact details were opened", async () => {
+      await request(app.getHttpServer()).get("/api/dmca?status=pending").set("Authorization", `Bearer ${admin}`).expect(200);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: "admin-1",
+        action: "dmca.reports_viewed",
+        targetUserId: null,
+        detail: { status: "pending" },
+      });
     });
   });
 });

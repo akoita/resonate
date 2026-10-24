@@ -57,9 +57,16 @@ An operator holding an admin token can drive the same work over HTTP:
 ```bash
 curl -X POST "<backend-base-url>/admin/erasure/run-due" \
   -H "Authorization: Bearer <admin-jwt>" \
+  -H "X-Admin-Step-Up: <step-up-proof>" \
   -H "Content-Type: application/json" \
   -d '{"limit": 1}'
 ```
+
+An erasure is irreversible, so this route also needs a fresh step-up proof
+(#2362): `POST /admin/step-up/challenge`, sign the returned message with the
+admin's own passkey or wallet, then `POST /admin/step-up/verify`. The proof lasts
+at most five minutes. Without it the route answers `403 step_up_required`. Each
+run is recorded in the admin audit log as `maintenance.erasures_run`.
 
 Environment URLs and how to obtain an admin token are in the infrastructure
 repository.
