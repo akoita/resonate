@@ -908,7 +908,14 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "track",
     subjectIdKeys: ["trackId"],
     sessionIdKeys: ["sessionId"],
-    payloadKeys: ["sessionId", "trackId", "artistId", "releaseId", "licenseType", "priceUsd", "reason", "shortfall", "unmetIntent"],
+    // #2259: the operator view of a session's agent events reads these. Counts,
+    // codes and the sanitized coverage only; the LLM's `reasoning` and the
+    // pre-rendered `coverageSummary` (which names the listener's own filters) are
+    // free text and are deliberately not recorded.
+    payloadKeys: [
+      "sessionId", "trackId", "artistId", "releaseId", "licenseType", "priceUsd", "reason", "shortfall", "unmetIntent",
+      "trackCount", "pickIndex", "pickCount", "curatedBy", "latencyMs", "coverage", "runtimeFallback",
+    ],
     sourceRefKeys: ["sessionId", "trackId", "artistId", "releaseId"],
   },
   {
@@ -1866,6 +1873,12 @@ function analyticsValue(value: unknown, key?: string): unknown {
       .filter((entry): entry is string | number | boolean => entry !== undefined);
     return values.length ? values : undefined;
   }
+  if (key === "coverage") {
+    return sanitizeAgentCoverage(value);
+  }
+  if (key === "runtimeFallback") {
+    return sanitizeRuntimeFallback(value);
+  }
   if ((key === "preferences" || key === "unmetIntent") && typeof value === "object") {
     return compactAnalyticsObject(value as Record<string, unknown>);
   }
@@ -1873,6 +1886,54 @@ function analyticsValue(value: unknown, key?: string): unknown {
     return value;
   }
   return undefined;
+}
+
+const COVERAGE_FILTERS = new Set(["genres", "moods", "energy", "bpm"]);
+
+function countOf(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+}
+
+/**
+ * How well a session start matched the listener's request (#2037, #2316), kept
+ * as filter keys and counts only (#2259). The artist named in `capRelaxed.top`
+ * and anything else the runtime adds is dropped.
+ */
+function sanitizeAgentCoverage(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const picks = countOf(source.picks);
+  if (picks === undefined) return undefined;
+  const gaps = (Array.isArray(source.gaps) ? source.gaps : []).flatMap((gap) => {
+    const entry = gap as { filter?: unknown; matched?: unknown } | null;
+    const matched = countOf(entry?.matched);
+    return typeof entry?.filter === "string" && COVERAGE_FILTERS.has(entry.filter) && matched !== undefined
+      ? [{ filter: entry.filter, matched }]
+      : [];
+  });
+  const output: Record<string, unknown> = { picks, gaps };
+  const held = source.heldBack as { variety?: unknown; explicit?: unknown } | undefined;
+  if (held && typeof held === "object") {
+    output.heldBack = { variety: countOf(held.variety) ?? 0, explicit: countOf(held.explicit) ?? 0 };
+  }
+  const relaxed = countOf((source.capRelaxed as { artists?: unknown } | undefined)?.artists);
+  if (relaxed !== undefined) output.capRelaxed = { artists: relaxed };
+  if (source.shortfallReason === "catalog_short") output.shortfallReason = "catalog_short";
+  return output;
+}
+
+const RUNTIME_FALLBACK_FROM = new Set(["adk", "vertex", "langgraph"]);
+const RUNTIME_FALLBACK_REASONS = new Set(["not_configured", "timeout", "error"]);
+
+function sanitizeRuntimeFallback(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { from, reason } = value as { from?: unknown; reason?: unknown };
+  return typeof from === "string" &&
+    RUNTIME_FALLBACK_FROM.has(from) &&
+    typeof reason === "string" &&
+    RUNTIME_FALLBACK_REASONS.has(reason)
+    ? { from, reason }
+    : undefined;
 }
 
 function compactAnalyticsObject(value: Record<string, unknown>) {

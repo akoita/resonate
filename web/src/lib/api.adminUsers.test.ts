@@ -3,6 +3,7 @@ import {
   API_BASE,
   ApiRequestError,
   buildAdminUsersQueryString,
+  getAdminAgentSessionEvents,
   getAdminUser,
   getAdminUsersOverview,
   listAdminUsers,
@@ -88,5 +89,20 @@ describe("admin users API (#2166)", () => {
     const error = await getAdminUser("t", "missing").catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(ApiRequestError);
     expect((error as ApiRequestError).status).toBe(404);
+  });
+});
+
+describe("admin agent session events API (#2259)", () => {
+  it("reads one session's events with the session token, no caching and an encoded id", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ sessionId: "a/b", events: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getAdminAgentSessionEvents("session-token", "a/b");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API_BASE}/admin/agent-sessions/a%2Fb/events`);
+    expect(init.cache).toBe("no-store");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer session-token");
   });
 });

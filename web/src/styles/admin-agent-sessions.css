@@ -1,0 +1,16 @@
+/*
+ * Operator view of a session's raw agent events (#2259).
+ * `src/app/admin/agent-sessions/**`. Class prefix: `admin-agent-`. Reuses the
+ * `admin-users-*` page chrome (sections, facts, table, field) and adds only
+ * what the event list needs.
+ */
+
+.admin-agent-lookup { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.admin-agent-lookup .admin-users-field { flex: 1 1 320px; }
+.admin-agent-detail { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.admin-agent-detail li { overflow-wrap: anywhere; }
+.admin-agent-detail__coverage { color: var(--r-on-surface-variant); }
+.admin-agent-ids { display: grid; gap: 2px; font-size: 12px; overflow-wrap: anywhere; }
+.admin-agent-ids code { font-size: 12px; }
+.admin-agent-redacted { font-size: 12px; color: var(--r-warning); }
+.admin-agent-events td { vertical-align: top; }

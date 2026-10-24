@@ -34,6 +34,9 @@ boundary: every route is `@Roles("admin", "operator")` behind `AuthGuard("jwt")`
   controls: the separate `/admin/accounts` lookup page folded into Users (its
   user id / wallet address lookup is the directory search) and its URL now
   redirects to `/admin/users`.
+- An admin opening a session's raw agent events ([#2259](admin_agent_session_events.md))
+  is also listed in the owner's operator activity ("Opened the agent events of
+  one of their AI DJ sessions").
 - The sidebar shows a **Users** link to admins and operators; the top bar
   titles the page "Users".
 - `/help` article `admin-users` (audience operator, status `partial`).

@@ -7956,3 +7956,67 @@ export function listAdminUsers(token: string, params: AdminUsersQuery = {}) {
 export function getAdminUser(token: string, id: string) {
   return apiRequest<AdminUserDetail>(`/admin/users/${encodeURIComponent(id)}`, { cache: "no-store" }, token);
 }
+
+/** #2259: one agent event of a session, as an operator sees it. Codes, identifiers and counts only. */
+export type AdminAgentCoverage = {
+  picks: number;
+  gaps: Array<{ filter: "genres" | "moods" | "energy" | "bpm"; matched: number }>;
+  heldBack?: { variety: number; explicit: number };
+  capRelaxed?: { artists: number };
+  shortfallReason?: "catalog_short";
+};
+
+export type AdminAgentSessionEvent = {
+  id: string;
+  eventName: string;
+  occurredAt: string;
+  producer: string;
+  trackId?: string;
+  artistId?: string;
+  releaseId?: string;
+  listingId?: string;
+  tokenId?: string;
+  reason?: string;
+  strategy?: string;
+  source?: string;
+  transition?: string;
+  licenseType?: string;
+  curatedBy?: string;
+  status?: string;
+  runtimeStatus?: string;
+  action?: string;
+  seedKind?: string;
+  mode?: string;
+  pickIndex?: number;
+  pickCount?: number;
+  trackCount?: number;
+  shortfall?: number;
+  count?: number;
+  candidateCount?: number;
+  latencyMs?: number;
+  amount?: number;
+  priceUsd?: number;
+  runtimeFallback?: { from: string; reason: string };
+  unmetIntent?: string[];
+  coverage?: AdminAgentCoverage;
+  redactedFields?: string[];
+};
+
+export type AdminAgentSessionEvents = {
+  sessionId: string;
+  userId: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  events: AdminAgentSessionEvent[];
+  eventCount: number;
+  truncated: boolean;
+  retentionDays: number;
+};
+
+export function getAdminAgentSessionEvents(token: string, sessionId: string) {
+  return apiRequest<AdminAgentSessionEvents>(
+    `/admin/agent-sessions/${encodeURIComponent(sessionId)}/events`,
+    { cache: "no-store" },
+    token,
+  );
+}

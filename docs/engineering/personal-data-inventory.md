@@ -354,7 +354,9 @@ makes erasure a feature rather than a `DELETE`.
 operator who viewed or acted on an account) and `targetUserId` (the account
 viewed or restricted). It records `user.detail_viewed` and the account
 suspension, unsuspension and closure actions with a `detail` of reason category
-and dates; **an operator's free-text note is never stored in it.** Erasure
+and dates, and `agent_session.events_viewed` (#2259: an admin opened a session's
+raw agent events; `detail` is the session id and an event count, never the
+events themselves); **an operator's free-text note is never stored in it.** Erasure
 disposition: `retain` as audit history, with both columns rewritten to the new
 id (an erased operator and an erased subject both stop being named). Export:
 rows where `targetUserId` is the person, with `actorUserId` redacted.

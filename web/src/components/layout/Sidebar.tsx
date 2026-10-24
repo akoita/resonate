@@ -410,6 +410,19 @@ export default function Sidebar() {
               </span>
               <span className="link-text">Moderation</span>
             </Link>
+            <Link
+              href="/admin/agent-sessions"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/admin/agent-sessions" || pathname?.startsWith("/admin/agent-sessions/") ? 'active' : ''}`}
+              aria-current={pathname === "/admin/agent-sessions" || pathname?.startsWith("/admin/agent-sessions/") ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12h3l2-6 4 12 3-9 2 3h4" />
+                </svg>
+              </span>
+              <span className="link-text">DJ Session Events</span>
+            </Link>
           </>
         ) : null}
         {showManagementRecoveryLink ? (
