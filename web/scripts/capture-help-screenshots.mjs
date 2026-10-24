@@ -267,6 +267,8 @@ const AUTH_TARGETS = [
   ["/#ai-dj", "ai-dj.png", {
     mockTasteMemory: true,
     mockMyMix: true,
+    // #2249 slice 3: the journal's newest find feeds "More like…".
+    mockDiscoveries: true,
     viewportHeight: 1200,
     prepare: async (page) => {
       await page.clock.setFixedTime(new Date("2026-10-03T19:00:00.000Z"));
@@ -576,6 +578,21 @@ async function capture(page, targets, passName) {
       await page.route("**/agents/config/session/mix-vocabulary", (request) => request.fulfill({ json: {
         genres: ["Soul", "Ambient", "Jazz", "Dancehall"],
         moods: ["Warm", "Zen", "Focus", "Hype"],
+      } }));
+      // The For you row (#2245, #2249): Right now and New artists in… need their summaries.
+      await page.route("**/agents/config/session/right-now**", (request) => request.fulfill({ json: {
+        status: "ready", context: "evening:weekend", highlights: ["Soul", "Ambient"],
+      } }));
+      await page.route("**/agents/config/session/sounds**", (request) => request.fulfill({ json: {
+        families: [
+          { id: "hip-hop", label: "Hip-Hop & Rap", count: 9 },
+          { id: "r&b-soul", label: "R&B & Soul", count: 6 },
+          { id: "pop", label: "Pop Hits", count: 8 },
+          { id: "afrobeats", label: "Afrobeats & Amapiano", count: 4 },
+          { id: "world", label: "World Music", count: 4 },
+        ],
+        minTracks: 3,
+        topFamilyId: "r&b-soul",
       } }));
     }
     if (ready?.mockDiscoveries) {
