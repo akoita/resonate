@@ -31,6 +31,7 @@ import { AgentLearningService } from "./agent_learning.service";
 import { discoveryVariantForUser } from "../recommendations/discovery_experiment";
 import { writeStructuredLog } from "../shared/structured_logging";
 import {
+  capSourceShare,
   HYBRID_RETRIEVAL_VARIANT,
   hasAudioRangeRequest,
   hybridRetrievalConfig,
@@ -50,6 +51,8 @@ import {
   type AgentRequestShortfallReason,
   type RequestTier,
 } from "./agent_session_request";
+import { admitTrendingTrack, trendingFamiliesFor } from "./agent_trending_source";
+import { DISCOVERY_EXPLANATIONS, trendingExplanation } from "../recommendations/discovery-explanations";
 import {
   buildMixCoverage,
   matchingMyMixLaneIds,
@@ -448,12 +451,13 @@ export class AgentSelectorService {
     const semanticQuery = input.semanticQuery?.trim();
     const retrievalVariant = input.retrievalVariant ?? discoveryVariantForUser(input.userId).rankerVariant;
     const gathered = retrievalVariant === HYBRID_RETRIEVAL_VARIANT
-      ? await this.gatherHybridOrDefault(input, pass, queries, semanticQuery)
+      ? await this.gatherHybridOrDefault(input, pass, queries, semanticQuery, policy)
       : await this.gatherLegacy(input, pass, queries, semanticQuery);
     const { byId, semanticScores } = gathered;
     const retrievedBy = gathered.retrievedBy;
     const retrieval = gathered.retrieval;
     const seedHitIds = gathered.seedHitIds;
+    const trendingFamilyById = gathered.trendingFamilyById;
     const sessionMatchesUsed = (gathered.excludedMatches ?? 0) > 0;
 
     const firstListenerCandidates = input.userId && this.firstListenerDiscovery
@@ -773,6 +777,7 @@ export class AgentSelectorService {
         ? input.myMixPlan?.lanes.find((candidate) => candidate.id === mixLaneId)
         : undefined;
       const requestTier = tierById.get(entry.id);
+      const trendingFamily = sources?.includes("trending") ? trendingFamilyById?.get(track.id) : undefined;
       return {
         ...track,
         ...(requestTier ? { requestTier } : {}),
@@ -787,12 +792,15 @@ export class AgentSelectorService {
           signals: entry.signals,
           explanation: [
             ...(lane ? [`Selected for your ${lane.label} mix.`] : []),
-            ...entry.explanation,
+            // "Catalog candidate" explains nothing once the trending sentence does.
+            ...(trendingFamily ? entry.explanation.filter((line) => line !== DISCOVERY_EXPLANATIONS.catalog) : entry.explanation),
             // A track only the audio-range source found is named as such, so
             // retrieval by measured sound is never silent.
             ...(sources?.length === 1 && sources[0] === "audio_range"
               ? ["Found by its measured energy or tempo, not by a tag."]
               : []),
+            // A track the trending source found says so, in the shared vocabulary (#2246).
+            ...(trendingFamily ? [trendingExplanation(trendingFamily)] : []),
           ],
           reasonCode: entry.reasonCode,
           ...(entry.audioFeatures ? { audioFeatures: entry.audioFeatures } : {}),
@@ -938,6 +946,7 @@ export class AgentSelectorService {
     semanticScores: Map<string, number>;
     retrievedBy?: undefined;
     retrieval?: undefined;
+    trendingFamilyById?: undefined;
     playlistGuard?: PlaylistGuard;
     seedHitIds: Set<string>;
     excludedMatches: number;
@@ -1119,9 +1128,10 @@ export class AgentSelectorService {
     pass: SelectionPass,
     queries: string[],
     semanticQuery: string | undefined,
+    policy?: TasteMemoryPolicy,
   ) {
     try {
-      return await this.gatherHybrid(input, pass, queries, semanticQuery);
+      return await this.gatherHybrid(input, pass, queries, semanticQuery, policy);
     } catch (error) {
       writeStructuredLog({
         level: "warn",
@@ -1162,11 +1172,14 @@ export class AgentSelectorService {
     pass: SelectionPass,
     queries: string[],
     semanticQuery: string | undefined,
+    policy?: TasteMemoryPolicy,
   ): Promise<{
     byId: Map<string, AgentCandidateTrack & { matchedQueries: string[] }>;
     semanticScores: Map<string, number>;
     retrievedBy: Map<string, RetrievalSource[]>;
     retrieval: RetrievalReport;
+    /** Track id -> the genre family label the trending source found it under (#2246). */
+    trendingFamilyById: Map<string, string>;
     playlistGuard?: PlaylistGuard;
     seedHitIds: Set<string>;
     excludedMatches: number;
@@ -1339,12 +1352,42 @@ export class AgentSelectorService {
       return groups.length === 0 ? "skipped" : toYield(groups, config.budgets.seed);
     };
 
+    // Trending (#2246): popular tracks in the genre families the request names
+    // (or, with no request, the listener's top families), read from the popularity
+    // serving tables. Capped to a share of the fused list below; a session that
+    // asked for something only gets tracks that already match it.
+    const trendingFamilyById = new Map<string, string>();
+    const trending = async (): Promise<SourceYield> => {
+      if (config.trendingMaxSharePercent <= 0) return "skipped";
+      const scope = input.requestScope;
+      const needsTaste = !scope || scope.request.genres.length === 0;
+      const families = trendingFamiliesFor({
+        scope,
+        genreWeights: needsTaste && !scope?.gated ? await this.resolveLearnedGenreWeights(input, policy) : undefined,
+        isHidden: (label) => isHiddenTasteQuery(policy, label),
+      });
+      if (families.length === 0) return "skipped";
+      const result = await this.tools.get("catalog.trending").run({
+        families: families.map((family) => family.label),
+        limit: config.budgets.trending,
+        allowExplicit,
+        excludeTrackIds: input.recentTrackIds,
+      });
+      if (result.status === "unavailable") return "skipped";
+      const items = ((result.items as any[]) ?? []).filter((item) => admitTrendingTrack(scope, item));
+      for (const item of items) {
+        if (typeof item.trendingFamily === "string") trendingFamilyById.set(item.id, item.trendingFamily);
+      }
+      return toYield([{ items }], config.budgets.trending);
+    };
+
     const outcomes = await Promise.all([
       runSource("keyword", keyword, deadlineAt),
       runSource("semantic", semantic, deadlineAt),
       runSource("audio_range", audioRange, deadlineAt),
       runSource("lane", lane, deadlineAt),
       runSource("seed", seed, deadlineAt),
+      runSource("trending", trending, deadlineAt),
     ]);
 
     const lists: RankedList[] = [];
@@ -1385,7 +1428,8 @@ export class AgentSelectorService {
     });
 
     const fused = reciprocalRankFusion(lists);
-    const kept = fused.slice(0, config.maxCandidates);
+    // Trending-only finds fill at most a capped share of the list (#2246).
+    const { kept, capped } = capSourceShare(fused, "trending", config.trendingMaxSharePercent, config.maxCandidates);
     const byId = new Map<string, AgentCandidateTrack & { matchedQueries: string[] }>();
     const semanticScores = new Map<string, number>();
     const retrievedBy = new Map<string, RetrievalSource[]>();
@@ -1412,13 +1456,15 @@ export class AgentSelectorService {
       retrievedBy,
       seedHitIds,
       excludedMatches,
+      trendingFamilyById,
       ...(playlistGuard ? { playlistGuard } : {}),
       retrieval: {
         variant: HYBRID_RETRIEVAL_VARIANT,
         sources: report,
         onlyFrom,
         fused: kept.length,
-        truncated: fused.length - kept.length,
+        truncated: fused.length - kept.length - capped,
+        ...(capped > 0 ? { capped: { trending: capped } } : {}),
       },
     };
   }

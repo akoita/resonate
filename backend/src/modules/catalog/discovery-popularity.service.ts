@@ -6,6 +6,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { genreMatchesRequest } from "../recommendations/genre_families";
 import { RedisCacheService } from "../shared/redis_cache.service";
 import {
   resolveCreditedArtistIds,
@@ -50,6 +51,11 @@ export type { PopularityWindow } from "./discovery-popularity.math";
  *
  * Aggregates are engagement analytics, not payout inputs (ADR-BM-4).
  */
+
+/** Bounds on the AI DJ's trending read (#2246): genre keys listed, terms per call, genres read per term. */
+const TRENDING_GENRE_KEY_LIMIT = 200;
+const TRENDING_TERMS_MAX = 3;
+const TRENDING_GENRES_PER_TERM = 6;
 
 interface TrackAccumulator {
   trackId: string;
@@ -465,6 +471,77 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
         };
       },
     );
+  }
+
+  /**
+   * The genre keys that have at least one servable trending row: fresh, and at or
+   * above the minimum audience. Reads the serving table only (Redis-fronted).
+   */
+  private async servableTrendingGenres(window: PopularityWindow): Promise<string[]> {
+    const config = discoveryPopularityConfigFromEnv();
+    const { minimumAudience, snapshotMaxAgeMinutes } = config;
+    return this.readGenerationSnapshot(
+      "trending_genres",
+      window,
+      "",
+      TRENDING_GENRE_KEY_LIMIT,
+      minimumAudience,
+      snapshotMaxAgeMinutes,
+      async () => {
+        const now = new Date();
+        const rows = await prisma.trackPopularity.findMany({
+          where: {
+            window,
+            genre: { not: "" },
+            uniqueListeners: { gte: minimumAudience },
+            computedAt: { gte: new Date(now.getTime() - snapshotMaxAgeMinutes * 60_000), lte: now },
+          },
+          distinct: ["genre"],
+          select: { genre: true },
+          take: TRENDING_GENRE_KEY_LIMIT,
+        });
+        return rows.map((row) => row.genre);
+      },
+    );
+  }
+
+  /**
+   * Trending tracks across the catalog genres a set of genre-family terms covers
+   * (#2246): the AI DJ's trending source. The serving table is keyed by the
+   * free-text release genre, so a family ("World") is read as the genre keys it
+   * matches ("African", "Afrobeats"), each served by the same per-genre read as
+   * Home's rail, merged by score. Same honesty rules as `getTrendingTracks`: the
+   * minimum audience applies per row, and no data means an empty list (recency
+   * is never a fallback). Each item carries the term whose genre it came from.
+   */
+  async getTrendingForGenreTerms(options: {
+    terms: readonly string[];
+    window?: PopularityWindow;
+    limit?: number;
+  }): Promise<Array<{ trackId: string; score: number; term: string }>> {
+    const window: PopularityWindow = options.window ?? "7d";
+    const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
+    const terms = options.terms.map((term) => term.trim()).filter(Boolean).slice(0, TRENDING_TERMS_MAX);
+    if (terms.length === 0) return [];
+    const keys = await this.servableTrendingGenres(window);
+    const wanted: Array<{ genre: string; term: string }> = [];
+    for (const term of terms) {
+      const matching = keys.filter((genre) => genreMatchesRequest(genre, term)).slice(0, TRENDING_GENRES_PER_TERM);
+      for (const genre of matching) {
+        if (!wanted.some((entry) => entry.genre === genre)) wanted.push({ genre, term });
+      }
+    }
+    const merged = new Map<string, { trackId: string; score: number; term: string }>();
+    for (const { genre, term } of wanted) {
+      const result = (await this.getTrendingTracks({ window, genre, limit })) as {
+        items: Array<{ trackId: string; score: number }>;
+      };
+      for (const item of result.items) {
+        const existing = merged.get(item.trackId);
+        if (!existing || item.score > existing.score) merged.set(item.trackId, { trackId: item.trackId, score: item.score, term });
+      }
+    }
+    return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
   /** Engagement-ranked artists; per-genre when `genre` is set. */

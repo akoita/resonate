@@ -236,6 +236,9 @@ export class InMemoryGoldenTools {
         return { run: async (input: Record<string, unknown>) => this.explicitMatches(input) };
       case "catalog.artist_seed":
         return { run: async (input: Record<string, unknown>) => this.artistSeed(input) };
+      // No popularity serving tables in the twin: the trending source (#2246) reports it is unavailable.
+      case "catalog.trending":
+        return { run: async () => ({ items: [], status: "unavailable" }) };
       case "embeddings.similarity":
         return { run: async () => ({ ranked: [], status: "unavailable" }) };
       default:

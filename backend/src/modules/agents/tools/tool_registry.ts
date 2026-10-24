@@ -11,6 +11,7 @@ import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
   toAiDisclosureRecord,
 } from "../../catalog/ai-disclosure.policy";
+import { DiscoveryPopularityService } from "../../catalog/discovery-popularity.service";
 import { AgentObservabilityService } from "../agent_observability.service";
 import { calibratedSemanticFloor, getAgentSemanticMinSimilarity } from "../agent_runtime.config";
 import { MEASURED_TEMPO_MIN_CONFIDENCE } from "../measured_track_features";
@@ -95,6 +96,10 @@ export class ToolRegistry {
     private readonly observability?: AgentObservabilityService,
     @Optional()
     trackEmbeddings?: TrackEmbeddingService,
+    // The WS-4 popularity serving tables (#2246): the trending retrieval source
+    // reads them and nothing else. Absent, the source reports it is unavailable.
+    @Optional()
+    private readonly popularity?: DiscoveryPopularityService,
   ) {
     const trackEmbeddingService =
       trackEmbeddings ??
@@ -531,6 +536,49 @@ export class ToolRegistry {
           extraWhere: { AND: and },
         });
         return { items, status: "ok" };
+      },
+    });
+
+    // Trending retrieval (#2246): the tracks the serving tables rank highest in
+    // the given genre families this week. Reads `TrackPopularity` through the
+    // service that feeds Home's Trending rail (minimum audience and freshness
+    // enforced there, no warehouse scan), then loads the tracks the way every
+    // other retrieval does, so the explicit preference and the AI-promotion
+    // filter apply. Ranking order is NOT carried over: the selector's ranking
+    // core decides; this only says which tracks may enter the pool.
+    this.register({
+      name: "catalog.trending",
+      run: async (input) => {
+        if (!this.popularity) return { items: [], status: "unavailable" };
+        const limit = Math.min(Math.max(Math.floor(Number(input.limit ?? 20)) || 20, 1), 50);
+        const explicitAllowed = Boolean(input.allowExplicit ?? false);
+        const terms = Array.isArray(input.families)
+          ? (input.families as unknown[]).filter((term): term is string => typeof term === "string")
+          : [];
+        const excludeTrackIds = new Set(
+          Array.isArray(input.excludeTrackIds)
+            ? (input.excludeTrackIds as unknown[]).filter((id): id is string => typeof id === "string")
+            : [],
+        );
+        if (terms.length === 0) return { items: [], status: "ok" };
+        const trending = (
+          await this.popularity.getTrendingForGenreTerms({ terms, window: "7d", limit: limit + excludeTrackIds.size })
+        ).filter((row) => !excludeTrackIds.has(row.trackId));
+        if (trending.length === 0) return { items: [], status: "ok" };
+        const rows = trending.slice(0, limit);
+        const loaded = await this.loadCandidateTracks({
+          explicitAllowed,
+          take: rows.length,
+          extraWhere: { id: { in: rows.map((row) => row.trackId) } },
+        });
+        const byId = new Map(loaded.map((item) => [item.id, item]));
+        return {
+          status: "ok",
+          items: rows.flatMap((row) => {
+            const item = byId.get(row.trackId);
+            return item ? [{ ...item, trendingFamily: row.term }] : [];
+          }),
+        };
       },
     });
 

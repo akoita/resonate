@@ -806,7 +806,8 @@ Before this, the DJ unioned keyword candidates (20 per query), semantic
 candidates above one fixed similarity floor and artist-seed candidates, and
 measured tempo/energy only re-ranked tracks that were already retrieved. Under
 `hybrid_rrf_v1` the selector (`AgentSelectorService`, before the shared ranking
-core) gathers candidates from five sources in parallel and fuses them.
+core) gathers candidates from six sources in parallel and fuses them (the sixth,
+`trending`, is #2246; see its section below).
 
 **Sources, each with its own candidate budget** (`AGENT_RETRIEVAL_BUDGETS`,
 default 20 each, 1..50):
@@ -818,6 +819,7 @@ default 20 each, 1..50):
 | `audio_range` | `catalog.audio_range`: tracks whose **measured** energy band (stored descriptor) or measured BPM window fits the request | Reads stored values only; tempo needs the extractor's confidence gate; inferred values never retrieve. Runs only when the request names energy or tempo **and no genre**, so a genre request is never answered with unrelated tracks of that energy. |
 | `lane` | My Mix lane terms (genres and moods) the keyword source did not already search, per lane | Only when lanes are active; the existing lane filter and quotas still decide membership. |
 | `seed` | The listener's seeds by kind. Artist names today (`catalog.artist_seed`: own tracks plus vector neighbours) | `AgentSelectorInput.seeds = { artists?, trackIds? }` (`seedArtists` still works and merges). A new kind (`trackIds`: a current track or playlist, #2243) is one more field and one more runner in the seed source; fusion and budgets are unchanged. |
+| `trending` | `catalog.trending`: this week's popular tracks in the listener's top genre families, or in the families the request names (#2246) | Reads the popularity serving tables only; capped at a share of the fused list; request sessions only get tracks that match the request. See "Trending as a source (#2246)". |
 
 **Fail open and latency.** Every source runs under one deadline
 (`AGENT_RETRIEVAL_TIMEOUT_MS`, default 5000; it was 1500, which keyword and
@@ -2636,7 +2638,8 @@ Useful next warehouse jobs:
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Maximum score rows returned per selector call. Defaults to `100`. |
 | `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Optional BigQuery API base URL override for tests or private endpoints. |
 | `DISCOVERY_RANKER_EXPERIMENT` | Optional ranker variant / holdout experiment, `<key>:<variant>=<pct>,...` (#1455). Unset means everyone is `baseline`. `hybrid_rrf_v1` enables hybrid retrieval for its bucket (#2242). |
-| `AGENT_RETRIEVAL_BUDGETS` | Hybrid retrieval candidate budgets, `keyword=20,semantic=20,audio_range=20,lane=20,seed=20` (#2242). |
+| `AGENT_RETRIEVAL_BUDGETS` | Hybrid retrieval candidate budgets, `keyword=20,semantic=20,audio_range=20,lane=20,seed=20,trending=20` (#2242, #2246). |
+| `AGENT_RETRIEVAL_TRENDING_MAX_SHARE_PERCENT` | Share of the fused candidates that only the trending source may fill; default `20`, `0` = off (#2246). |
 | `AGENT_RETRIEVAL_TIMEOUT_MS` | Latency budget of the hybrid retrieval step; default `5000` (#2242). When every source overruns it or errors, the pick falls back to the default retrieval. |
 | `AGENT_RETRIEVAL_MAX_CANDIDATES` | Cap on the fused candidate list; default `150` (#2242). |
 
@@ -2822,6 +2825,74 @@ retrieval (#2242) and the "More like this" seed (#2243).
   session is still seeded); entry points on a public playlist page and on the
   player's action panel; a real-embedding measurement of how close the
   neighbours are.
+
+## Trending as a source (#2246)
+
+Vision-neutral quality (ADR-BM-6): no money, fee or payout change. Popularity is
+an engagement signal and never a payout input (ADR-BM-4); ranking is never for
+sale (ADR-TE-2): `hasListing` is not read by this source and trending adds no
+ranking score. Phase 2 of `docs/roadmap/2026-10-ai-dj-quality-and-experience.md`.
+Sprint 39 decision (delegated authority, overridable): trending is a capped
+retrieval source, not a ranking boost.
+
+- **What it is.** The sixth `hybrid_rrf_v1` retrieval source (`trending`), so
+  it exists only on the hybrid path. The default retrieval path is unchanged:
+  making it apply there too would mean a second fusion/cap mechanism, which this
+  slice deliberately does not add. Under the variant it runs in parallel with
+  the other sources, under the same deadline, and fails open (an error or
+  timeout removes only its own candidates).
+- **Which families.** With no request, the listener's top genre families by
+  positive learned taste (`familyTasteWeights`, the same weights Sounds uses; at
+  most 2). No positive taste, no families, no trending: catalog popularity alone
+  is not the listener's taste. A family the listener hid is skipped. With a
+  request that names genres, the families those genres name (so "World" asks for
+  World). A seed-only request has none: the seed steers it. A mood- or
+  energy-only request uses the listener's top families.
+- **Where the data comes from.** `DiscoveryPopularityService.getTrendingForGenreTerms`
+  (`catalog.trending` tool): the same per-genre `getTrendingTracks` read that
+  feeds Home's "Trending in <genre>" rail, over the serving tables
+  (`TrackPopularity`) only, Redis-fronted. No warehouse scan. The serving table
+  is keyed by free-text release genre, so a family is read as the genre keys it
+  matches (World reads "African", "Afrobeats", ...), at most 6 keys per family,
+  merged by score. The 7-day window is used.
+- **Minimum audience, low data.** Rows below `DISCOVERY_MIN_AUDIENCE` unique
+  listeners, or older than `DISCOVERY_POPULARITY_SNAPSHOT_MAX_AGE_MINUTES`, are
+  never served. When nothing qualifies the source contributes nothing (status
+  `ok`, 0 candidates in `retrieval.sources[]`). Recency is never a fallback.
+- **The cap.** Tracks only trending found fill at most
+  `AGENT_RETRIEVAL_TRENDING_MAX_SHARE_PERCENT` (default **20**, `0` = off, max 50)
+  of the kept candidate list (`capSourceShare`): with 8 other candidates, 2; with
+  none, 0. A track another source also found is that source's own find and is
+  neither counted nor cut. What the cap cut is reported as
+  `retrieval.capped.trending`; what trending added is `retrieval.onlyFrom.trending`.
+  The candidate budget (`trending=` in `AGENT_RETRIEVAL_BUDGETS`, default 20)
+  bounds the read before fusion.
+- **A request is never displaced.** For a session that asked for something, the
+  source only contributes tracks the shared request predicate puts in tier A or B
+  (`admitTrendingTrack`, built on `requestTierOf` from #2316), so an off-request
+  popular track never enters, not even with "Fill with similar sounds" on:
+  padding is the keyword path's job. Tiers still sort A before B before C and
+  taste only orders inside a tier, so an on-request trending track adds to the
+  matches and cannot push one out of the candidate list. The explicit
+  preference, hidden taste and the AI-promotion filter apply as for every
+  source (`loadCandidateTracks`).
+- **Explanation.** A track trending found says "Trending in <family> this week"
+  (`trendingExplanation`, `discovery-explanations.ts`: a closed family label,
+  never free text), added to the pick's explanation and whitelisted in the pick
+  note vocabulary (`agent_pick_notes.ts`) so Session History and Up next show
+  it. No new reason code: ranking still decides why a pick fits, and the
+  generic "Catalog candidate" line is dropped when trending explains the pick.
+- **Evidence.** `agent_trending_source.spec.ts` (the cap, family choice, tier A/B
+  gate, low data, hybrid-only, vocabulary) and
+  `agent_trending_source.integration.spec.ts` (Postgres: serving rows through the
+  real tools; an off-request chart-topper never enters a World session, with or
+  without padding; request matches all stay; the cap; minimum audience; stale
+  rows). The golden recall tables are unchanged: the golden catalog has no
+  popularity rows, so the source is unavailable there, and the Docker-free twin
+  reports it unavailable too.
+- **Not in this slice.** Trending on the default (non-hybrid) path; a
+  per-listener tuning of the share; a trending reason code with its own
+  localized copy; promoting the variant.
 
 ## Player queue identity (#2312)
 

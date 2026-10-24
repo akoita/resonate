@@ -23,13 +23,13 @@ export const HYBRID_RETRIEVAL_VARIANT = "hybrid_rrf_v1";
  */
 export const RRF_K = 60;
 
-export const RETRIEVAL_SOURCES = ["keyword", "semantic", "audio_range", "lane", "seed"] as const;
+export const RETRIEVAL_SOURCES = ["keyword", "semantic", "audio_range", "lane", "seed", "trending"] as const;
 export type RetrievalSource = (typeof RETRIEVAL_SOURCES)[number];
 
 /**
  * Default candidate budgets. `keyword` is per query and `lane` per lane (the
- * same 20 the keyword path always used); `semantic`, `audio_range` and `seed`
- * are per request.
+ * same 20 the keyword path always used); `semantic`, `audio_range`, `seed` and
+ * `trending` are per request.
  */
 export const DEFAULT_SOURCE_BUDGETS: Readonly<Record<RetrievalSource, number>> = {
   keyword: 20,
@@ -37,7 +37,15 @@ export const DEFAULT_SOURCE_BUDGETS: Readonly<Record<RetrievalSource, number>> =
   audio_range: 20,
   lane: 20,
   seed: 20,
+  trending: 20,
 };
+/**
+ * The most a "capped" source may add of the fused candidate list, in percent
+ * (#2246): trending tracks only fill up to this share of the list, whatever
+ * its budget. `AGENT_RETRIEVAL_TRENDING_MAX_SHARE_PERCENT`; 0 turns trending off.
+ */
+export const DEFAULT_TRENDING_MAX_SHARE_PERCENT = 20;
+const MAX_TRENDING_SHARE_PERCENT = 50;
 /**
  * Latency budget of the whole retrieval step; a source still running at the
  * deadline is cut off. 1500 ms proved too tight on a small staging database,
@@ -52,6 +60,8 @@ export interface HybridRetrievalConfig {
   budgets: Record<RetrievalSource, number>;
   timeoutMs: number;
   maxCandidates: number;
+  /** Trending's cap as a share of the fused candidates, in percent (0 = off). */
+  trendingMaxSharePercent: number;
 }
 
 function positiveInt(raw: string | undefined, fallback: number, max: number): number {
@@ -63,7 +73,7 @@ function positiveInt(raw: string | undefined, fallback: number, max: number): nu
 
 /**
  * Config from the environment:
- *  - `AGENT_RETRIEVAL_BUDGETS` = `keyword=20,semantic=20,audio_range=20,lane=20,seed=20`
+ *  - `AGENT_RETRIEVAL_BUDGETS` = `keyword=20,semantic=20,audio_range=20,lane=20,seed=20,trending=20`
  *    (any subset; unknown names and invalid values are ignored; each 1..50);
  *  - `AGENT_RETRIEVAL_TIMEOUT_MS` (default 1500);
  *  - `AGENT_RETRIEVAL_MAX_CANDIDATES` (default 150).
@@ -82,7 +92,19 @@ export function hybridRetrievalConfig(
     budgets,
     timeoutMs: positiveInt(env.AGENT_RETRIEVAL_TIMEOUT_MS, DEFAULT_RETRIEVAL_TIMEOUT_MS, 30_000),
     maxCandidates: positiveInt(env.AGENT_RETRIEVAL_MAX_CANDIDATES, DEFAULT_MAX_FUSED_CANDIDATES, 500),
+    trendingMaxSharePercent: sharePercent(
+      env.AGENT_RETRIEVAL_TRENDING_MAX_SHARE_PERCENT,
+      DEFAULT_TRENDING_MAX_SHARE_PERCENT,
+    ),
   };
+}
+
+/** A whole percent 0..50; unset or invalid falls back to the default (0 is a valid "off"). */
+function sharePercent(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Math.floor(Number(raw));
+  if (!Number.isFinite(value) || value < 0) return fallback;
+  return Math.min(value, MAX_TRENDING_SHARE_PERCENT);
 }
 
 export interface RankedList {
@@ -124,6 +146,32 @@ export function reciprocalRankFusion(lists: readonly RankedList[], k: number = R
     .map((entry, index) => ({ entry, index }))
     .sort((a, b) => (b.entry.score !== a.entry.score ? b.entry.score - a.entry.score : a.index - b.index))
     .map(({ entry }) => entry);
+}
+
+/**
+ * Caps what one source may add on its own (#2246). Entries that ONLY that source
+ * returned fill at most `maxSharePercent` of the kept list; an entry another
+ * source also returned is that source's own find and is never counted or cut.
+ * Entries keep their fused order, and the result is at most `maxCandidates`.
+ * Pure and deterministic.
+ */
+export function capSourceShare(
+  fused: readonly FusedEntry[],
+  source: RetrievalSource,
+  maxSharePercent: number,
+  maxCandidates: number,
+): { kept: FusedEntry[]; capped: number } {
+  const onlyThisSource = (entry: FusedEntry) => entry.sources.length === 1 && entry.sources[0] === source;
+  const others = fused.filter((entry) => !onlyThisSource(entry));
+  const solo = fused.filter(onlyThisSource);
+  const share = Math.min(Math.max(maxSharePercent, 0), 99) / 100;
+  // solo / (solo + others) <= share, and solo + others <= maxCandidates.
+  const allowedByOthers = Math.floor((share / (1 - share)) * Math.min(others.length, maxCandidates));
+  const allowed = Math.min(solo.length, allowedByOthers, Math.floor(share * maxCandidates));
+  const keptOthers = new Set(others.slice(0, Math.max(0, maxCandidates - allowed)));
+  const keptSolo = new Set(solo.slice(0, allowed));
+  const kept = fused.filter((entry) => keptOthers.has(entry) || keptSolo.has(entry));
+  return { kept, capped: solo.length - keptSolo.size };
 }
 
 /** Why a source contributed nothing; the reason codes are the only thing logged. */
@@ -202,4 +250,6 @@ export interface RetrievalReport {
   onlyFrom: Partial<Record<RetrievalSource, number>>;
   fused: number;
   truncated: number;
+  /** Candidates only a capped source (trending, #2246) found that its share cap left out. */
+  capped?: Partial<Record<RetrievalSource, number>>;
 }
