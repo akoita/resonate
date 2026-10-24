@@ -76,12 +76,12 @@ describe("AI DJ session history limit", () => {
     await prisma.user.deleteMany({ where: { id: { in: [USER_ID, OTHER_USER_ID] } } });
   });
 
-  it("returns the 10 most recent sessions by default, newest first", async () => {
+  it("returns the 5 most recent sessions by default, newest first", async () => {
     delete process.env[ENV_KEY];
     const sessions = await makeController().getHistory(req(USER_ID));
 
     expect(sessions.map((session) => session.id)).toEqual(
-      Array.from({ length: 10 }, (_, offset) => sessionId(SESSION_COUNT - 1 - offset)),
+      Array.from({ length: 5 }, (_, offset) => sessionId(SESSION_COUNT - 1 - offset)),
     );
   });
 
@@ -100,7 +100,7 @@ describe("AI DJ session history limit", () => {
       sessionCount: SESSION_COUNT,
       sessionsWithTracks: 2,
       trackCount: 3,
-      historyLimit: 10,
+      historyLimit: 5,
     });
   });
 });
@@ -112,11 +112,11 @@ describe("getAgentSessionHistoryLimit", () => {
   });
 
   it.each([
-    [undefined, 10],
-    ["", 10],
-    ["abc", 10],
-    ["0", 10],
-    ["-4", 10],
+    [undefined, 5],
+    ["", 5],
+    ["abc", 5],
+    ["0", 5],
+    ["-4", 5],
     ["25", 25],
     ["500", 50],
   ])("maps %p to %p", (value, expected) => {

@@ -15,7 +15,7 @@ export function getAgentTrackLimit() {
   return Math.min(configured, 50);
 }
 
-const DEFAULT_AGENT_SESSION_HISTORY_LIMIT = 10;
+const DEFAULT_AGENT_SESSION_HISTORY_LIMIT = 5;
 const MAX_AGENT_SESSION_HISTORY_LIMIT = 50;
 
 /** Most recent AI DJ sessions returned by `GET /agents/config/history`. */
