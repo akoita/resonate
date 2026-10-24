@@ -78,7 +78,7 @@ Variable reference: [Environment variables](../deployment/environment.md).
 
 ### Session history
 
-- `GET /agents/config/history` returns the listener's most recent AI DJ sessions, newest first, capped by `AGENT_SESSION_HISTORY_LIMIT` (default 10, maximum 50; invalid or non-positive values fall back to 10).
+- `GET /agents/config/history` returns the listener's most recent AI DJ sessions, newest first, capped by `AGENT_SESSION_HISTORY_LIMIT` (default 5, maximum 50; invalid or non-positive values fall back to 10).
 - `GET /agents/config/history/summary` returns lifetime counts across every session (`sessionCount`, `sessionsWithTracks`, `trackCount`) plus the active `historyLimit`. The Your AI DJ section's Sessions/Tracks stats and the Session History count badge read these counts (the Sonic Radar line is session-scoped since #2313 and reads the discovery journal instead), so they stay correct when older sessions fall outside the list. The list shows "Showing your N most recent of M sessions" when it is truncated.
 
 ## No Generation From Agents (ADR-TE-4)
