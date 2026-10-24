@@ -130,7 +130,7 @@ describe("Usage summary (integration)", () => {
 
     const summary = await usageService.getSummary(userId);
     const byKind = Object.fromEntries(
-      summary.breakdown.items.map((i) => [i.kind, i]),
+      summary.breakdown.items.map((i) => [i.lineId, i]),
     );
 
     expect(summary.breakdown.periodDays).toBe(30);
@@ -142,11 +142,18 @@ describe("Usage summary (integration)", () => {
       unitSeconds: 30,
       unitCostCents: summary.credits.priceCentsPer30s,
     });
-    expect(byKind.remix_draft).toMatchObject({
-      charges: 2,
-      spentCents: 15,
+    expect(byKind.draft).toMatchObject({
+      charges: 1,
+      spentCents: 10,
       refundedCents: 0,
-      netCents: 15,
+      netCents: 10,
+    });
+    expect(byKind.part_take).toMatchObject({
+      label: "AI part takes",
+      charges: 1,
+      spentCents: 5,
+      refundedCents: 0,
+      netCents: 5,
     });
     // credits, limits and breakdown are separate sections of one payload.
     expect(summary.credits.balanceCents).toBe(grantedCents - 30 + 20 - 15);
