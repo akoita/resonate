@@ -88,12 +88,13 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
 ## Screenshots
 
 Illustrations live in `web/public/help/screenshots/` and are captured with
-`web/scripts/capture-help-screenshots.mjs` in four passes:
+`web/scripts/capture-help-screenshots.mjs` in several passes:
 
 - **Public pass** (normally from staging; a local public preview is acceptable
-  before a new route is first deployed): Discover, Catalog, Shows, a Shows
-  campaign, Browse stems (`/crates?tab=stems`), the Drops gallery (`/drops` → `drops.png`), the
-  Player, the Wallet, and the connect wall. Discover is captured at 1440x1200
+  before a new route is first deployed): Discover, Catalog, the Drops gallery
+  (`/drops` → `drops.png`), the Player, the Wallet, and the connect wall. Shows,
+  a Shows campaign and Browse stems come from the seeded public pass below, not
+  from staging. Discover is captured at 1440x1200
   with reduced motion so the Recently Added covers show and the hero stops
   rotating; the script features the first campaign whose title doesn't look
   like QA data (`TEST …`, `QA …`). Review every public shot before committing:
@@ -149,6 +150,30 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
   ```
 
+- **Seeded public pass** (#1846, `CAPTURE_SEEDED=true`, off by default): the
+  Shows page (`shows.png`), a live pledgeable campaign page
+  (`show-campaign.png`) and Browse stems (`marketplace.png`: listings with
+  cover art, a mix of license tiers and the Official and Separated (AI) source
+  badges). These pages read their data on the Next.js server or through its
+  proxy, so browser route mocks cannot reach them; the script instead starts a
+  tiny sample backend (`web/tests/fixtures/guide-seed-mock.mjs`) on the port of
+  `API_BASE_URL` (default 3000) with invented artists, six live campaigns and
+  six stems, plus generated abstract art (no photos of real people, no real
+  artist names). Dates are relative to the run, so a campaign never shows as
+  expired. The local app must use the default API URL and nothing else may be
+  listening on port 3000 (set `CAPTURE_SEEDED_START_API=false` to point at an
+  already running sample backend). From `web/`, with `next dev -p 3001`
+  running:
+
+  ```sh
+  CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_SEEDED=true \
+    BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+  ```
+
+  The figures' `height` values in `content.ts` follow each target's
+  `viewportHeight`; update both together and look at every image before
+  committing.
+
 ## Surfaces
 
 - **UI routes:** `/help`, `/help/[slug]`
@@ -157,6 +182,7 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
   it does not publish maintainer identity or exact build provenance.
 - **Code:** `web/src/app/help/`, `web/src/components/help/`,
   `web/tests/fixtures/remix-studio-mock.mjs` (shared studio mock),
+  `web/tests/fixtures/guide-seed-mock.mjs` (sample Shows and Marketplace backend),
   `web/src/lib/help/`, `web/src/styles/help.css`
 - **Assets:** `web/public/help/screenshots/`
 - **Tests:** `web/src/lib/help/help.test.ts`,
