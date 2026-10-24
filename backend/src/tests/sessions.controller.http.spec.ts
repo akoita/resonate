@@ -155,6 +155,9 @@ describe('SessionsController (e2e)', () => {
     await post('/sessions/play', { sessionId: 's1', trackId: 't1', priceUsd: -1 }).expect(400);
     await post('/sessions/agent/next', { sessionId: ['s1'] }).expect(400);
     await post('/sessions/agent/next', { sessionId: 's1', preferences: 'chill' }).expect(400);
+    // "Fill with similar sounds" is a boolean (#2316).
+    await post('/sessions/agent/next', { sessionId: 's1', preferences: { fillSimilar: 'yes' } }).expect(400);
+    await post('/sessions/start', { budgetCapUsd: 10, preferences: { fillSimilar: 1 } }).expect(400);
 
     expect(mockSessionsService.startSession).not.toHaveBeenCalled();
     expect(mockSessionsService.stopSession).not.toHaveBeenCalled();

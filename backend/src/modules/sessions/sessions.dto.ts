@@ -121,6 +121,14 @@ export class SessionPreferencesDto {
   @Type(() => SessionSeedDto)
   seed?: SessionSeedDto | null;
 
+  /**
+   * "Fill with similar sounds" (#2316): allow marked off-request tracks to fill
+   * a batch the catalog cannot fill with matches. Off unless `true`.
+   */
+  @IsOptional()
+  @IsBoolean()
+  fillSimilar?: boolean;
+
   /** Session-only taste lanes (#2065); validated by the service. `null` clears them. */
   myMix?: MyMixPreferences | null;
 }

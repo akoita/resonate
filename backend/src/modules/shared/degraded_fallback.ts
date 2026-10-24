@@ -13,6 +13,7 @@ export type DegradedFallbackComponent =
   | "embeddings.provider"
   | "taste_profile"
   | "served_history"
+  | "played_history"
   | "discovery_policy_context";
 
 export const DEGRADED_FALLBACK_EVENT = "degraded.fallback";

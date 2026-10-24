@@ -2,6 +2,7 @@ import type { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
 import type { AgentCandidateTrack, HeldBack } from "./agent_selector.service";
 import type { ResolvedMyMixPlan } from "./agent_my_mix";
 import type { MixCoverage } from "./agent_my_mix";
+import type { AgentRequestCapRelaxed, AgentRequestShortfallReason } from "./agent_session_request";
 
 export type AgentRecommendationStrategy = "deterministic" | "model-assisted";
 
@@ -30,6 +31,10 @@ export interface AgentRecommendationResult {
   mixCoverage?: MixCoverage;
   /** Strong matches this batch left out (per-artist cap, explicit preference); feeds the request coverage. */
   heldBack?: HeldBack;
+  /** Request-first selection (#2316): the per-artist cap was relaxed for matching tracks. */
+  capRelaxed?: AgentRequestCapRelaxed;
+  /** Request-first selection (#2316): the batch is short because the catalog has no more matches. */
+  shortfallReason?: AgentRequestShortfallReason;
   trace?: {
     strategy: AgentRecommendationStrategy;
     fallbackReason?: string;

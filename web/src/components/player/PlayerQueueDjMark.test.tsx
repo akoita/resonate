@@ -20,7 +20,8 @@ describe("PlayerQueueDjMark (#2312)", () => {
     it("shows the muted outside-your-request mark only for matched === false", () => {
         const outside = renderToStaticMarkup(<PlayerQueueDjMark note={{ reason: "Filler", matched: false }} />);
         expect(outside).toContain(OUTSIDE_REQUEST_LABEL);
-        expect(outside).toContain("doesn&#x27;t match your request&#x27;s filters");
+        expect(outside).toContain("Fill with similar sounds");
+        expect(outside).toContain("doesn&#x27;t match your request.");
         for (const note of [{ matched: true }, { reason: "No flag" }, undefined]) {
             expect(renderToStaticMarkup(<PlayerQueueDjMark note={note} />)).not.toContain(OUTSIDE_REQUEST_LABEL);
         }

@@ -1,6 +1,7 @@
 import type { CrateFilters, CrateParseResult } from "../crates/crate.types";
 import { genreMatchesRequest, genreOrDescriptorMatchesRequest } from "../recommendations/genre_families";
 import { sanitizeArtistNames } from "./agent_session_artists";
+import { rememberedSessionSeed, selectorSeedsFor } from "./agent_session_seed";
 
 /**
  * A listener describes an AI DJ session in their own words (#2037). The text is
@@ -55,9 +56,35 @@ export type AgentRequestCoverage = {
    * preference. Reported, never overridden.
    */
   heldBack?: AgentRequestHeldBack;
+  /**
+   * Request-first selection (#2316): the per-artist cap was relaxed because the
+   * catalog had no other matching tracks left for this batch. `top` names the
+   * credited artist with the most tracks in the batch.
+   */
+  capRelaxed?: AgentRequestCapRelaxed;
+  /**
+   * Request-first selection (#2316): the batch is shorter than the target
+   * because the catalog has no more tracks that match the request (and the
+   * listener did not allow similar sounds to fill it).
+   */
+  shortfallReason?: AgentRequestShortfallReason;
 };
 
 export type AgentRequestHeldBack = { variety: number; explicit: number };
+
+export type AgentRequestShortfallReason = "catalog_short";
+
+export type AgentRequestCapRelaxed = {
+  /** How many credited artists hold more tracks in this batch than the cap. */
+  artists: number;
+  top?: { artist: string; tracks: number };
+};
+
+/** What request-first selection reports next to the coverage (#2316). */
+export type AgentRequestCoverageNotes = {
+  capRelaxed?: AgentRequestCapRelaxed;
+  shortfallReason?: AgentRequestShortfallReason;
+};
 
 export type AgentSessionParseResponse = {
   request: AgentSessionRequest;
@@ -288,6 +315,8 @@ export type AgentRequestCoveragePick = {
   tempoBpm?: number;
   /** Only a measured tempo counts toward a BPM filter; inferred tempo is a hash. */
   tempoMeasured: boolean;
+  /** Request-first selection (#2316): a seed source (artist, track, playlist) retrieved this pick. */
+  seedMatched?: boolean;
 };
 
 const COVERAGE_FILTER_ORDER: AgentRequestCoverageFilter[] = ["genres", "moods", "energy", "bpm"];
@@ -368,9 +397,18 @@ export function computeRequestCoverage(
   request: AgentSessionRequest,
   picks: readonly AgentRequestCoveragePick[],
   heldBack?: AgentRequestHeldBack,
+  notes?: AgentRequestCoverageNotes,
 ): AgentRequestCoverage | undefined {
   if (picks.length === 0 || !hasRequestFilters(request)) return undefined;
+  return buildCoverage(request, picks, heldBack, notes);
+}
 
+function buildCoverage(
+  request: AgentSessionRequest,
+  picks: readonly AgentRequestCoveragePick[],
+  heldBack?: AgentRequestHeldBack,
+  notes?: AgentRequestCoverageNotes,
+): AgentRequestCoverage {
   const predicates = requestPredicates(request);
   const counts: Partial<Record<AgentRequestCoverageFilter, number>> = {};
   for (const filter of COVERAGE_FILTER_ORDER) {
@@ -390,6 +428,8 @@ export function computeRequestCoverage(
     picks: picks.length,
     gaps,
     ...(heldBack && heldBack.variety + heldBack.explicit > 0 ? { heldBack } : {}),
+    ...(notes?.capRelaxed && notes.capRelaxed.artists > 0 ? { capRelaxed: notes.capRelaxed } : {}),
+    ...(notes?.shortfallReason ? { shortfallReason: notes.shortfallReason } : {}),
   };
 }
 
@@ -406,12 +446,29 @@ export function requestCoverageFor(
   rawRequest: unknown,
   picks: readonly AgentRequestCoveragePick[],
   heldBack?: AgentRequestHeldBack,
+  notes?: AgentRequestCoverageNotes,
 ): { coverage: AgentRequestCoverage; summary: string } | undefined {
   const request = sanitizeSessionRequest(rawRequest);
   if (!request || !hasRequestFilters(request)) return undefined;
-  const coverage = computeRequestCoverage(request, picks, heldBack);
+  const coverage = computeRequestCoverage(request, picks, heldBack, notes);
   if (!coverage) return undefined;
   return { coverage, summary: describeCoverageGaps(request, coverage) };
+}
+
+/**
+ * Coverage for a request-first session (#2316): measured against the session's
+ * effective request, which includes preset and picker genres and may carry no
+ * filter at all (a seeded session). Undefined without picks.
+ */
+export function requestCoverageForScope(
+  scope: AgentRequestScope,
+  picks: readonly AgentRequestCoveragePick[],
+  heldBack?: AgentRequestHeldBack,
+  notes?: AgentRequestCoverageNotes,
+): { coverage: AgentRequestCoverage; summary: string } | undefined {
+  if (picks.length === 0) return undefined;
+  const coverage = buildCoverage(scope.request, picks, heldBack, notes);
+  return { coverage, summary: describeCoverageGaps(scope.request, coverage) };
 }
 
 /**
@@ -458,4 +515,148 @@ export function describeTempoRange(range: AgentSessionTempoRange): string {
 
 function formatBpm(value: number): string {
   return String(Math.round(value));
+}
+
+// ---------------------------------------------------------------------------
+// Request-first selection (#2316)
+// ---------------------------------------------------------------------------
+
+/**
+ * How a track stands against the session's request:
+ *  - A: matches every filter the request sets;
+ *  - B: matches the catalog constraint (a requested genre or family, or a seed)
+ *    but misses a soft filter (mood, energy, tempo);
+ *  - C: outside the request. C tracks only join a batch when the listener
+ *    allowed similar sounds to fill it, and are then marked.
+ */
+export type RequestTier = "A" | "B" | "C";
+
+/** Display order and selection order of the tiers: A first, C last. */
+export const REQUEST_TIER_ORDER: Record<RequestTier, number> = { A: 0, B: 1, C: 2 };
+
+/**
+ * The request a session carries into selection. `request` is the EFFECTIVE
+ * request: the described session's filters plus preset and picker genres and
+ * the mood and energy the session sent, so every path reads one definition.
+ */
+export interface AgentRequestScope {
+  request: AgentSessionRequest;
+  /** A seed (an artist the sentence named, a seed track, a session seed) steers retrieval. */
+  seeded: boolean;
+  /**
+   * The request names a catalog constraint (a genre or a seed). Only a gated
+   * request makes an off-request track a tier C track; a request that names
+   * only mood, energy or tempo asks for every genre (ranked by taste), so its
+   * tracks are A or B and nothing is left out.
+   */
+  gated: boolean;
+  /** The listener allowed marked off-request tracks to fill a short batch. */
+  fillSimilar: boolean;
+}
+
+/** The session preferences a request scope is read from (a subset of the runtime input). */
+export interface AgentRequestScopePreferences {
+  sessionGenres?: readonly string[] | null;
+  request?: unknown;
+  mood?: string | null;
+  moods?: readonly string[] | null;
+  energy?: AgentSessionEnergy | null;
+  tempoBpm?: AgentSessionTempoRange | null;
+  requestText?: string | null;
+  artists?: readonly string[] | null;
+  seed?: unknown;
+  seedTrackId?: string | null;
+  fillSimilar?: unknown;
+  myMix?: unknown;
+}
+
+/**
+ * The request scope of a session, or undefined when the session has no request
+ * (My Mix and a plain "surprise me" keep their taste-driven path unchanged).
+ * A session has a request when it sets any genre, mood, energy, tempo, seed,
+ * named artist or sentence of its own. Pure: the caller decides what counts as
+ * the session's OWN genres (saved vibes sent back as genres do not).
+ */
+export function requestScopeFor(preferences: AgentRequestScopePreferences | undefined | null): AgentRequestScope | undefined {
+  if (!preferences) return undefined;
+  if (preferences.myMix != null) return undefined;
+  const described = sanitizeSessionRequest(preferences.request);
+  const request: AgentSessionRequest = {
+    genres: cleanTerms([...(preferences.sessionGenres ?? []), ...(described?.genres ?? [])]),
+    moods: cleanTerms([
+      ...(preferences.mood ? [preferences.mood] : []),
+      ...(preferences.moods ?? []),
+      ...(described?.moods ?? []),
+    ]),
+    energy: described?.energy ?? sanitizeEnergy(preferences.energy),
+    bpm: described?.bpm ?? cleanBpm(preferences.tempoBpm),
+  };
+  const sessionSeed = rememberedSessionSeed(preferences.seed);
+  const seeded =
+    selectorSeedsFor(sessionSeed) !== undefined ||
+    (typeof preferences.seedTrackId === "string" && preferences.seedTrackId.trim().length > 0) ||
+    sanitizeArtistNames(preferences.artists).length > 0;
+  const sentence = sanitizeRequestText(preferences.requestText) !== undefined;
+  if (!hasRequestFilters(request) && !seeded && !sentence) return undefined;
+  return {
+    request,
+    seeded,
+    gated: request.genres.length > 0 || seeded,
+    fillSimilar: preferences.fillSimilar === true,
+  };
+}
+
+function sanitizeEnergy(value: unknown): AgentSessionEnergy | null {
+  return value === "low" || value === "medium" || value === "high" ? value : null;
+}
+
+/**
+ * The tier of one pick (#2316), by the same per-filter predicates the coverage
+ * counts, so selection, display and the LLM path can never disagree about what
+ * "matches" means. A request that is not gated never produces tier C.
+ */
+export function requestTierOf(scope: AgentRequestScope, pick: AgentRequestCoveragePick): RequestTier {
+  const { genres: genrePredicate, ...soft } = requestPredicates(scope.request);
+  if (scope.gated) {
+    const onGenre = genrePredicate ? genrePredicate(pick) : false;
+    const onSeed = scope.seeded && pick.seedMatched === true;
+    if (!onGenre && !onSeed) return "C";
+  }
+  return Object.values(soft).every((matches) => matches(pick)) ? "A" : "B";
+}
+
+/**
+ * The scope as a path can verify it when it has no seed evidence for a pick
+ * (an LLM pick): only a requested genre can gate. A seed-only request cannot be
+ * checked there, so its picks pass (the rule-based top-up carries the seed).
+ */
+export function withoutSeedEvidence(scope: AgentRequestScope): AgentRequestScope {
+  return { ...scope, seeded: false, gated: scope.request.genres.length > 0 };
+}
+
+/** Whether a pick belongs to the request: any tier but C. This is what the player's "Outside your request" mark reads. */
+export function tierMatchesRequest(tier: RequestTier): boolean {
+  return tier !== "C";
+}
+
+/**
+ * Keeps the catalog items a model may see: with a gated genre request and no
+ * padding, only items that match a requested genre or family (#2316). Anything
+ * else passes through untouched.
+ */
+export function keepItemsOnRequest<T extends { release?: { genre?: string | null } | null; descriptor?: { families?: string[] | null } | null }>(
+  items: readonly T[],
+  scope: AgentRequestScope | undefined,
+): T[] {
+  if (!scope || !scope.gated || scope.fillSimilar || scope.request.genres.length === 0) return [...items];
+  const genrePredicate = requestPredicates(scope.request).genres;
+  if (!genrePredicate) return [...items];
+  return items.filter((item) =>
+    genrePredicate({
+      genre: item.release?.genre ?? null,
+      descriptorFamilies: item.descriptor?.families ?? [],
+      moods: [],
+      tempoMeasured: false,
+    }),
+  );
 }

@@ -20,6 +20,7 @@ import {
 import { ToolRegistry } from "../tools/tool_registry";
 import { getAgentTrackLimit } from "../agent_runtime.config";
 import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
+import { requestScopeFor } from "../agent_session_request";
 import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
 
 const TIMEOUT_MS = 30_000;
@@ -59,6 +60,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       allowExplicit: input.preferences.allowExplicit ?? false,
       recentTrackIds: input.recentTrackIds,
       seedTrackId: input.preferences.seedTrackId,
+      requestScope: requestScopeFor(input.preferences),
     });
     return new InMemoryRunner({ agent, appName: APP_NAME });
   }

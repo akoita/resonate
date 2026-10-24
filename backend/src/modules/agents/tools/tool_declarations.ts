@@ -4,6 +4,7 @@
  */
 import { type FunctionDeclaration, SchemaType } from "@google/generative-ai";
 import { ToolRegistry } from "./tool_registry";
+import { keepItemsOnRequest, type AgentRequestScope } from "../agent_session_request";
 
 /**
  * Returns Gemini-compatible function declarations for all agent tools.
@@ -162,6 +163,8 @@ export async function executeTool(
     recentTrackIds?: string[];
     /** "More like this" (#2243): session-owned, added to semantic search only. */
     seedTrackId?: string;
+    /** Request-first selection (#2316): session-owned, filters what the model sees. */
+    requestScope?: AgentRequestScope;
   }
 ): Promise<Record<string, unknown>> {
   const registryName = toRegistryName(functionCall.name);
@@ -178,6 +181,17 @@ export async function executeTool(
     sessionOwned.excludeTrackIds = context.recentTrackIds ?? [];
     if (context.seedTrackId) sessionOwned.seedTrackId = context.seedTrackId;
   }
+  if (registryName === "catalog.search" && context.requestScope) {
+    sessionOwned.excludeTrackIds = context.recentTrackIds ?? [];
+  }
   const result = await tool.run({ ...args, ...sessionOwned, userId: context.userId });
-  return result;
+  // A described session shows the model only what matches it (#2316); a seed's
+  // neighbours are the request, so semantic search with a seed is left alone.
+  const filtered =
+    context.requestScope &&
+    Array.isArray(result.items) &&
+    (registryName === "catalog.search" || (registryName === "catalog.semantic_search" && !context.seedTrackId));
+  return filtered
+    ? { ...result, items: keepItemsOnRequest(result.items as any[], context.requestScope) }
+    : result;
 }

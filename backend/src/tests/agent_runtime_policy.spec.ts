@@ -87,6 +87,8 @@ function serviceFor(
     /** Diversity-cap key per prior session track (`discoveryArtistKey` shape). */
     sessionArtistKeys?: Record<string, string>;
     profileWeights?: Record<string, number>;
+    /** Tracks the listener recently played (request-first sessions, #2316). */
+    playedTrackIds?: string[];
     verifiedArtists?: string[];
     playedArtists?: string[];
     /** Prior discovery picks in the session; an Error makes the count unknown. */
@@ -102,6 +104,9 @@ function serviceFor(
       firstListenerEligible?: boolean;
       genre?: string;
       audioFeatures?: Record<string, unknown>;
+      /** The selector's request tier for the pick (request-first sessions, #2316). */
+      requestTier?: "A" | "B" | "C";
+      capRelaxed?: true;
     }>;
     /** Which relaxation pass the deterministic selector reports having served. */
     selectorFallback?: "relaxed_artist_window" | "widened";
@@ -136,6 +141,7 @@ function serviceFor(
       verifiedHumanArtistIds: new Set(options.verifiedArtists ?? []),
       playedArtistIds: new Set(options.playedArtists ?? []),
     }),
+    recentPlayedTrackIds: jest.fn().mockResolvedValue(options.playedTrackIds ?? []),
     countDiscoveryPicks:
       options.priorDiscoveryPicks instanceof Error
         ? jest.fn().mockRejectedValue(options.priorDiscoveryPicks)
@@ -150,6 +156,8 @@ function serviceFor(
         releaseId: entry.releaseId,
         firstListenerEligible: entry.firstListenerEligible ?? false,
         release: { artistId: entry.artistId, genre: entry.genre, moods: [] },
+        ...(entry.requestTier ? { requestTier: entry.requestTier } : {}),
+        ...(entry.capRelaxed ? { capRelaxed: entry.capRelaxed } : {}),
         agentRecommendation: {
           audioFeatures: entry.audioFeatures,
           score: 30,
@@ -886,6 +894,8 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
           sessionGenres: ["Soul"],
           tempoBpm: { min: 120, max: 125 },
           request: soulRequest,
+          // Similar sounds allowed: the off-request pick stays (padding is explicit, #2316).
+          fillSimilar: true,
         },
       }),
       { status: "approved", picks: [pick("house"), pick("soul")] },
@@ -903,7 +913,9 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
   it("returns request coverage over the final picks", async () => {
     const { service } = serviceFor([track("house", { genre: "House" }), track("soul", { genre: "Soul" })]);
     const result = await service.apply(
-      baseInput({ preferences: { genres: ["House"], sessionGenres: ["Soul"], request: soulRequest } }),
+      baseInput({
+        preferences: { genres: ["House"], sessionGenres: ["Soul"], request: soulRequest, fillSimilar: true },
+      }),
       { status: "approved", picks: [pick("house"), pick("soul")] },
     );
 
@@ -913,10 +925,91 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
     });
   });
 
-  it("flags each final pick with requestMatch when the request has filters (#2312)", async () => {
+  it("drops a model pick outside the request unless similar sounds are allowed, and says the batch is short (#2316)", async () => {
     const { service } = serviceFor([track("house", { genre: "House" }), track("soul", { genre: "Soul" })]);
     const result = await service.apply(
       baseInput({ preferences: { genres: ["House"], sessionGenres: ["Soul"], request: soulRequest } }),
+      { status: "approved", picks: [pick("house"), pick("soul")] },
+    );
+
+    expect(ids(result)).toEqual(["soul"]);
+    expect(result.policy?.dropped.offRequest).toBe(1);
+    expect(result.picks?.[0].requestMatch).toBe(true);
+    expect(result.requestCoverage).toEqual({ picks: 1, gaps: [], shortfallReason: "catalog_short" });
+  });
+
+  it("does not report a short batch when the listener allowed similar sounds (#2316)", async () => {
+    const { service } = serviceFor([track("house", { genre: "House" }), track("soul", { genre: "Soul" })]);
+    const result = await service.apply(
+      baseInput({
+        preferences: { sessionGenres: ["Soul"], request: soulRequest, fillSimilar: true },
+      }),
+      { status: "approved", picks: [pick("house"), pick("soul")] },
+    );
+
+    expect(result.requestCoverage).not.toHaveProperty("shortfallReason");
+  });
+
+  it("judges a pick by its descriptor families, not only the free-text genre (#2316)", async () => {
+    const african = { ...track("african", { genre: "African" }), descriptorFamilies: ["world"] };
+    const { service } = serviceFor([african]);
+    const result = await service.apply(
+      baseInput({
+        preferences: { sessionGenres: ["World"], request: { genres: ["World"], moods: [], energy: null, bpm: null } },
+      }),
+      { status: "approved", picks: [pick("african")] },
+    );
+
+    expect(ids(result)).toEqual(["african"]);
+    expect(result.picks?.[0].requestMatch).toBe(true);
+  });
+
+  it("tops up from the selector in tier order, matching tracks before a marked off-request one (#2316)", async () => {
+    const { service } = serviceFor([track("soul-1", { genre: "Soul" })], {
+      selectorPicks: [
+        { id: "off", artistId: "x", reasonCode: "taste_match", genre: "Polka", requestTier: "C" },
+        { id: "on-b", artistId: "y", reasonCode: "taste_match", genre: "Soul", requestTier: "B" },
+        { id: "on-a", artistId: "z", reasonCode: "taste_match", genre: "Soul", requestTier: "A" },
+      ],
+    });
+    const result = await service.apply(
+      baseInput({
+        preferences: { sessionGenres: ["Soul"], request: soulRequest, fillSimilar: true },
+      }),
+      { status: "approved", picks: [pick("soul-1")] },
+    );
+
+    expect(ids(result)).toEqual(["soul-1", "on-b", "on-a", "off"]);
+    expect(result.picks?.map((entry) => entry.requestMatch)).toEqual([true, true, true, false]);
+  });
+
+  it("relaxes the artist cap for matching top-up tracks before settling for a short batch (#2316)", async () => {
+    const same = (id: string, tier: "A" | "B") => ({
+      id,
+      artistId: "uploader",
+      artist: "Fabolous",
+      reasonCode: "taste_match",
+      genre: "Soul",
+      requestTier: tier,
+    });
+    const { service } = serviceFor([track("soul-1", { genre: "Soul" })], {
+      selectorPicks: [same("f1", "A"), same("f2", "A"), same("f3", "B"), same("f4", "B")],
+    });
+    const result = await service.apply(
+      baseInput({ preferences: { sessionGenres: ["Soul"], request: soulRequest } }),
+      { status: "approved", picks: [pick("soul-1")] },
+    );
+
+    expect(ids(result)).toEqual(["soul-1", "f1", "f2", "f3", "f4"]);
+    expect(result.requestCoverage?.capRelaxed).toEqual({ artists: 1, top: { artist: "Fabolous", tracks: 4 } });
+  });
+
+  it("flags each final pick with requestMatch when the request has filters (#2312)", async () => {
+    const { service } = serviceFor([track("house", { genre: "House" }), track("soul", { genre: "Soul" })]);
+    const result = await service.apply(
+      baseInput({
+        preferences: { genres: ["House"], sessionGenres: ["Soul"], request: soulRequest, fillSimilar: true },
+      }),
       { status: "approved", picks: [pick("house"), pick("soul")] },
     );
 
@@ -975,7 +1068,12 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
     );
 
     expect(ids(result)).toEqual(["first", "discover"]);
-    expect(result.requestCoverage).toEqual({ picks: 2, gaps: [{ filter: "genres", matched: 1 }] });
+    expect(result.requestCoverage).toEqual({
+      picks: 2,
+      gaps: [{ filter: "genres", matched: 1 }],
+      // Two picks of a five-track target, and no padding allowed: said out loud (#2316).
+      shortfallReason: "catalog_short",
+    });
   });
 
   it("omits a track whose audio features fail instead of failing the step", async () => {

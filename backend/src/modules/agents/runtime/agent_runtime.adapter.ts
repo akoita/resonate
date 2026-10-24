@@ -56,6 +56,12 @@ export interface AgentRuntimeInput {
      * by the server before it gets here; never published.
      */
     seed?: SessionSeed;
+    /**
+     * Request-first selection (#2316): the listener allows marked off-request
+     * tracks ("Fill with similar sounds") to fill a batch the catalog cannot
+     * fill with matches. Off by default: a short batch is returned and said so.
+     */
+    fillSimilar?: boolean;
   };
 }
 
@@ -73,8 +79,9 @@ export interface LlmTrackPick {
   reasonCode?: string;
   signals?: Array<{ label: string; weight: number; reason: string }>;
   /**
-   * Set by the runtime policy step (#2312): whether the pick satisfies every
-   * filter of the listener's described session. Absent without filters.
+   * Set by the runtime policy step (#2312, #2316): whether the pick belongs to
+   * the listener's request (tier A or B); false only for a marked off-request
+   * pick the listener allowed. Absent without a request.
    */
   requestMatch?: boolean;
 }
@@ -93,7 +100,7 @@ export interface AgentRuntimeResult {
   picks?: LlmTrackPick[];
   /** Runtime policy step accounting (rules 1 to 4), when it ran. */
   policy?: {
-    dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number };
+    dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number; offRequest?: number };
     /** Rule 3; `injected` when the selector's discovery pick replaced the last model pick. */
     exploration?: { reserved: number; served: number; injected: boolean };
     /** Picks the selector added so the page reaches the selection target. */

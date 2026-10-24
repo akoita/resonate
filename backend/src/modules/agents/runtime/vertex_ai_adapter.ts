@@ -14,7 +14,8 @@ import {
 import { ToolRegistry } from "../tools/tool_registry";
 import { getToolDeclarations, executeTool } from "../tools/tool_declarations";
 import { getAgentTrackLimit } from "../agent_runtime.config";
-import { describeTempoRange } from "../agent_session_request";
+import { describeTempoRange, requestScopeFor } from "../agent_session_request";
+import { requestGuidelines } from "./request_guidelines";
 import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
 
 const MAX_TOOL_ROUNDS = 6;
@@ -90,6 +91,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
             allowExplicit: input.preferences.allowExplicit ?? false,
             recentTrackIds: input.recentTrackIds,
             seedTrackId: input.preferences.seedTrackId,
+            requestScope: requestScopeFor(input.preferences),
           }
         );
         functionResponses.push({
@@ -132,7 +134,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       "- Aim to return the full selection target when enough tracks fit the request; return fewer only when the tracks you found genuinely do not fit. Choose by fit and never dump the whole catalog.",
       "- If a genre search returns no tracks, treat that as no match for that genre.",
       "- Avoid recommending tracks the user has recently listened to.",
-      "- Requested genres, Mood/Moods, Energy and Tempo are what the listener asked for in this session: rank tracks that match them above tracks that only match the broader Genres list (their saved vibes and learned taste). Use the broader genres to fill the remaining slots.",
+      ...requestGuidelines(requestScopeFor(input.preferences)),
       "",
       "After using tools, respond with a concise ranked shortlist of matching tracks.",
       "List each track on its own line using this exact format:",
@@ -169,9 +171,12 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
         `Requested genres (this session): ${input.preferences.sessionGenres.join(", ")}`
       );
     }
-    if (input.preferences.genres?.length) {
+    const scope = requestScopeFor(input.preferences);
+    // Saved vibes and learned taste are not a search list for a request-first session (#2316).
+    if (input.preferences.genres?.length && !scope?.gated) {
       parts.push(`Genres: ${input.preferences.genres.join(", ")}`);
     }
+    if (scope?.gated) parts.push(`Widening: ${scope.fillSimilar ? "on" : "off"}`);
     if (input.preferences.licenseType) {
       parts.push(`License type: ${input.preferences.licenseType}`);
     }

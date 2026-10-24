@@ -2,7 +2,7 @@ import type { DjPickNote } from "../../lib/agentDjSet";
 
 export const OUTSIDE_REQUEST_LABEL = "Outside your request";
 export const OUTSIDE_REQUEST_HINT =
-    "Your AI DJ added this to fill the set; it doesn't match your request's filters.";
+    "You turned on Fill with similar sounds, so your AI DJ added this to fill the set; it doesn't match your request.";
 
 /** The accessible name and hover text of the DJ glyph: the pick's reason when there is one. */
 export function djPickLabel(note?: DjPickNote): string {
@@ -18,8 +18,10 @@ type Props = {
 /**
  * The marks on a queue row the AI DJ picked (#2312): a small DJ glyph carrying
  * the pick's reason (hover, focus and accessible name), and a muted "Outside
- * your request" mark only when the server said the pick missed the session's
- * filters (`matched === false`). A row with no flag shows no such mark.
+ * your request" mark only when the server said the pick is outside the request
+ * (`matched === false`). Since request-first selection (#2316) that is a pick the
+ * listener allowed with "Fill with similar sounds"; with it off the DJ returns a
+ * shorter set instead. A row with no flag shows no such mark.
  */
 export function PlayerQueueDjMark({ note }: Props) {
     const label = djPickLabel(note);

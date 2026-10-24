@@ -38,6 +38,12 @@ export interface GoldenTrack {
   releaseTitle?: string;
   /** Credited artist. */
   artist: string;
+  /**
+   * The track and release carry no credited performer at all (both fields
+   * null), as an uploader who skipped the credit leaves them. Only the
+   * uploader account names it (#2316).
+   */
+  uncredited?: true;
   /** Free-text release genre, as an artist would type it. `null` = none. */
   genre: string | null;
   moods?: string[];
@@ -188,6 +194,10 @@ export type GoldenRequest =
       moods?: string[];
       energy?: "low" | "medium" | "high";
       allowExplicit?: boolean;
+      /** "Fill with similar sounds" (#2316): marked off-request tracks may pad a short batch. */
+      fillSimilar?: boolean;
+      /** Genres the listener's learned taste favours; production merges them into the session's genres. */
+      learnedGenres?: string[];
     };
 
 export type GoldenGroup = "world" | "rap" | "sentence" | "artist" | "calm" | "unmet";
@@ -426,11 +436,12 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
 /**
  * A small hip-hop catalog of its own (so the cases above keep their numbers):
  * nine eligible hip-hop-family tracks, two artists with three tracks each (one
- * of those tracks explicit) and three singles. With explicit off and the
- * per-artist cap (2) in force, eight are playable and seven fit the first
- * batch, which is more than the old target of five: the session must hear all
- * seven, and its coverage must say what was held back: one for variety (the
- * first artist's third track) and one explicit.
+ * of those tracks explicit) and three singles. With explicit off, eight are
+ * playable. The per-artist cap (2) would leave the first artist's third track
+ * out; since the catalog has no other match to fill the batch with, the cap
+ * relaxes for it (#2316) before the batch is allowed to end short. The session
+ * hears all eight, its coverage says the cap was relaxed for one artist, and it
+ * still reports the one explicit match the listener's preference excluded.
  */
 export const HELD_BACK_CATALOG: readonly GoldenTrack[] = [
   { key: "hb_a1", title: "Block Report", artist: "Marlo Vance", genre: "Hip-Hop" },
@@ -449,5 +460,75 @@ export const HELD_BACK_REQUEST: GoldenRequest = {
   genres: ["Hip-Hop"],
   allowExplicit: false,
 };
-/** The tracks the first batch must hold: every playable match the per-artist cap allows. */
-export const HELD_BACK_EXPECTED_FIRST_BATCH = ["hb_a1", "hb_a2", "hb_b1", "hb_b2", "hb_c1", "hb_d1", "hb_e1"] as const;
+/** The tracks the first batch must hold: every playable match (the cap relaxes for the first artist's third). */
+export const HELD_BACK_EXPECTED_FIRST_BATCH = [
+  "hb_a1", "hb_a2", "hb_a3", "hb_b1", "hb_b2", "hb_c1", "hb_d1", "hb_e1",
+] as const;
+
+// ---------------------------------------------------------------------------
+// Request-first scenarios (#2316)
+// ---------------------------------------------------------------------------
+
+/**
+ * A catalog of its own for the request-first scenarios (so the cases above keep
+ * their numbers). A "Rap" request has nine on-request tracks here: three by one
+ * performer (Marlo Vance), one explicit, five by distinct performers. Three
+ * off-request tracks reach the keyword search through their titles ("Rapture",
+ * "Trapeze", "Wrapped") and four Pop tracks stand for what the listener's
+ * learned taste favours. Every track is uploaded by the same account.
+ */
+export const REQUEST_FIRST_CATALOG: readonly GoldenTrack[] = [
+  // Off-request tracks the keyword search still finds (title contains "rap" / "trap").
+  { key: "rf_off_title_1", title: "Rapture Hearts", artist: "Mila Ortega", genre: "Pop" },
+  { key: "rf_off_title_2", title: "Trapeze Lights", artist: "June Hollis", genre: "Dance Pop" },
+  { key: "rf_off_title_3", title: "Wrapped in Neon", artist: "Sky Meridian", genre: "New Age" },
+  // What learned taste favours.
+  { key: "rf_pop_1", title: "Glass Heart Two", artist: "Mila Ortega", genre: "Pop" },
+  { key: "rf_pop_2", title: "Saturday Light Two", artist: "June Hollis", genre: "Pop" },
+  { key: "rf_pop_3", title: "Candy Static", artist: "Pia Lund", genre: "Pop" },
+  { key: "rf_pop_4", title: "Bright Rooms", artist: "Noor Haddad", genre: "Pop" },
+  // On-request: three tracks by one performer.
+  { key: "rf_rap_marlo_1", title: "Block Report Two", artist: "Marlo Vance", genre: "Rap" },
+  { key: "rf_rap_marlo_2", title: "Late Rent Two", artist: "Marlo Vance", genre: "Rap" },
+  { key: "rf_rap_marlo_3", title: "Corner Light Two", artist: "Marlo Vance", genre: "Hip Hop" },
+  // On-request: one explicit track.
+  { key: "rf_rap_explicit", title: "No Brakes Two", artist: "Kito Raines", genre: "Rap", explicit: true },
+  // On-request: five distinct performers.
+  { key: "rf_rap_a", title: "Open Mic Wednesday", artist: "Denzel Moore", genre: "Hip Hop" },
+  { key: "rf_rap_b", title: "Paper Chase", artist: "Yanis Berrada", genre: "French Rap" },
+  { key: "rf_rap_c", title: "Gold Chains Fast", artist: "Kwame Lux", genre: "Trap" },
+  { key: "rf_rap_d", title: "Cold Block Two", artist: "Jaylen Sparks", genre: "Drill" },
+  { key: "rf_rap_e", title: "Dusty Crates Two", artist: "Nia Solomon", genre: "Boom Bap" },
+];
+
+/** The non-explicit on-request tracks of {@link REQUEST_FIRST_CATALOG}: what a Rap request must hear first. */
+export const REQUEST_FIRST_ON_REQUEST = [
+  "rf_rap_marlo_1", "rf_rap_marlo_2", "rf_rap_marlo_3",
+  "rf_rap_a", "rf_rap_b", "rf_rap_c", "rf_rap_d", "rf_rap_e",
+] as const;
+
+/** Tracks no Rap request may hear unless similar sounds are allowed. */
+export const REQUEST_FIRST_OFF_REQUEST = [
+  "rf_off_title_1", "rf_off_title_2", "rf_off_title_3",
+  "rf_pop_1", "rf_pop_2", "rf_pop_3", "rf_pop_4",
+] as const;
+
+/**
+ * Nine Rap tracks that are uploaded by one account and credited to different
+ * performers, and five that carry no credit at all: none of them shares a
+ * performer, so the per-artist cap must hold none back (#2316). A cap keyed on
+ * the uploader account would collapse them into one "artist".
+ */
+export const CAP_IDENTITY_CATALOG: readonly GoldenTrack[] = [
+  { key: "ci_a", title: "Ledger One", artist: "Performer Alpha", genre: "Rap" },
+  { key: "ci_b", title: "Ledger Two", artist: "Performer Bravo", genre: "Rap" },
+  { key: "ci_c", title: "Ledger Three", artist: "Performer Charlie", genre: "Rap" },
+  { key: "ci_d", title: "Ledger Four", artist: "Performer Delta", genre: "Rap" },
+  { key: "ci_u1", title: "Untitled Tape 1", artist: "(uncredited)", uncredited: true, genre: "Rap" },
+  { key: "ci_u2", title: "Untitled Tape 2", artist: "(uncredited)", uncredited: true, genre: "Rap" },
+  { key: "ci_u3", title: "Untitled Tape 3", artist: "(uncredited)", uncredited: true, genre: "Rap" },
+  { key: "ci_u4", title: "Untitled Tape 4", artist: "(uncredited)", uncredited: true, genre: "Rap" },
+  { key: "ci_u5", title: "Untitled Tape 5", artist: "(uncredited)", uncredited: true, genre: "Rap" },
+];
+
+export const RAP_REQUEST = { kind: "structured" as const, genres: ["Rap"], allowExplicit: false };

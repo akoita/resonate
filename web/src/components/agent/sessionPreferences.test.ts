@@ -150,3 +150,36 @@ describe("the typed sentence and its artists (#2241)", () => {
     });
   });
 });
+
+describe("Fill with similar sounds (#2316)", () => {
+  const rap = request({ genres: ["Rap"] });
+
+  it("is sent to a session start only when on, so an untouched session is exactly what it was", () => {
+    expect(buildSessionPreferences({ activePreset: null, request: rap })).not.toHaveProperty("fillSimilar");
+    expect(buildSessionPreferences({ activePreset: null, request: rap, fillSimilar: false })).not.toHaveProperty("fillSimilar");
+    expect(buildSessionPreferences({ activePreset: null, request: rap, fillSimilar: true })).toMatchObject({
+      fillSimilar: true,
+      genres: ["Rap"],
+    });
+    expect(buildSessionPreferences({ activePreset: null, request: null, fillSimilar: true })).toBeUndefined();
+  });
+
+  it("is stated either way on a pick, because the server keeps the last value when the key is omitted", () => {
+    expect(buildPickPreferences({ activePreset: null, request: rap, savedVibes: SAVED_VIBES, fillSimilar: true })).toMatchObject({
+      fillSimilar: true,
+    });
+    expect(buildPickPreferences({ activePreset: null, request: rap, savedVibes: SAVED_VIBES, fillSimilar: false })).toMatchObject({
+      fillSimilar: false,
+    });
+    expect(buildPickPreferences({ activePreset: null, request: null, savedVibes: SAVED_VIBES, fillSimilar: false })).toMatchObject({
+      fillSimilar: false,
+    });
+    expect(buildPickPreferences({ activePreset: null, request: rap, savedVibes: SAVED_VIBES })).not.toHaveProperty("fillSimilar");
+  });
+
+  it("rides along with a starter", () => {
+    expect(
+      buildPickPreferences({ activePreset: SESSION_PRESETS[SESSION_PRESETS.length - 1], request: null, fillSimilar: true }),
+    ).toMatchObject({ fillSimilar: true });
+  });
+});

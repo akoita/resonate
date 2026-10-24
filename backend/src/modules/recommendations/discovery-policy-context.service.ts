@@ -1,11 +1,23 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
-import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import { resolveCreditedArtistName, resolveCreditedArtistNames } from "../shared/artist_attribution";
 import { deriveCreatorVerificationStates } from "../trust/verification-semantics";
 import { discoveryArtistKey } from "./discovery-policy";
 import type { DiscoveryCandidate } from "./discovery-ranking.service";
 
 const DISCOVERY_PICK_REASON = "discovery_pick";
+
+/**
+ * Which listener signals say a track was PLAYED (#2316): the player records
+ * `accept` when a DJ track starts, and `complete`, `replay` and `loop` as it is
+ * heard. A skip, a save or a Home impression is not a play.
+ */
+const PLAYED_SIGNAL_ACTIONS = ["accept", "complete", "replay", "loop"];
+/** Request-first sessions demote tracks played within this many days. */
+export const RECENT_PLAY_WINDOW_DAYS = 14;
+/** At most this many distinct recently played tracks are read. */
+export const RECENT_PLAY_LIMIT = 50;
+const RECENT_PLAY_READ_CAP = 300;
 
 function reasonCodeOf(metadata: unknown): unknown {
   if (!metadata || typeof metadata !== "object") return undefined;
@@ -54,9 +66,13 @@ export class DiscoveryPolicyContextService {
    * prior session tracks (diversity cap per 10 session tracks); it reuses
    * `loadTrackCandidates`, so the session window and the page resolve the
    * credited artist identically. Unknown track ids are simply absent.
+   * `performerCap` keys on the credited performer alone (request-first, #2316).
    */
-  async artistKeysForTracks(trackIds: string[]): Promise<Map<string, string>> {
-    const candidates = await this.loadTrackCandidates(trackIds);
+  async artistKeysForTracks(
+    trackIds: string[],
+    performerCap = false,
+  ): Promise<Map<string, string>> {
+    const candidates = await this.loadTrackCandidates(trackIds, { performerCap });
     return new Map(
       [...candidates].map(([id, candidate]) => [id, discoveryArtistKey(candidate)]),
     );
@@ -93,6 +109,25 @@ export class DiscoveryPolicyContextService {
   }
 
   /**
+   * The tracks this listener recently PLAYED, newest first (#2316), from their
+   * own play signals. Home impressions (`servedTrackIds`) are deliberately not
+   * included: being shown a track is not hearing it. One bounded query; errors
+   * propagate and callers treat a failure as "no history". A listener who
+   * switched off playback learning has no signals, so nothing is demoted.
+   */
+  async recentPlayedTrackIds(userId: string | undefined, now: Date = new Date()): Promise<string[]> {
+    if (!userId) return [];
+    const since = new Date(now.getTime() - RECENT_PLAY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const rows = await prisma.agentSignal.findMany({
+      where: { userId, action: { in: PLAYED_SIGNAL_ACTIONS }, createdAt: { gte: since } },
+      orderBy: { createdAt: "desc" },
+      take: RECENT_PLAY_READ_CAP,
+      select: { trackId: true },
+    });
+    return [...new Set(rows.map((row) => row.trackId))].slice(0, RECENT_PLAY_LIMIT);
+  }
+
+  /**
    * Ranking candidates for arbitrary track ids (picks made outside the
    * candidate pipeline, such as LLM runtime picks), in one batched query.
    * Same fields the Home and DJ candidate mappers use: genre, moods, titles,
@@ -101,6 +136,7 @@ export class DiscoveryPolicyContextService {
    */
   async loadTrackCandidates(
     trackIds: string[],
+    options: { performerCap?: boolean } = {},
   ): Promise<Map<string, DiscoveryCandidate>> {
     const ids = [...new Set(trackIds.filter(Boolean))];
     if (ids.length === 0) return new Map();
@@ -111,6 +147,9 @@ export class DiscoveryPolicyContextService {
         title: true,
         artist: true,
         aiDisclosureLevel: true,
+        // Stored descriptor families (#2240): a second source for genre requests,
+        // so an LLM pick is judged against the request like a ranked candidate.
+        descriptor: { select: { families: true } },
         release: {
           select: {
             title: true,
@@ -124,26 +163,38 @@ export class DiscoveryPolicyContextService {
       },
     });
     return new Map(
-      tracks.map((track) => [
-        track.id,
-        {
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          artistId: track.release.artistId,
-          aiDisclosureLevel: track.aiDisclosureLevel,
-          release: {
-            genre: track.release.genre,
-            title: track.release.title,
-            moods: track.release.moods,
-            artistDisplayName: resolveCreditedArtistName({
-              trackArtist: track.artist,
-              primaryArtist: track.release.primaryArtist,
-              accountDisplayName: track.release.artist?.displayName,
-            }),
+      tracks.map((track) => {
+        const credited = resolveCreditedArtistNames({
+          trackArtist: track.artist,
+          primaryArtist: track.release.primaryArtist,
+        });
+        return [
+          track.id,
+          {
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            artistId: track.release.artistId,
+            aiDisclosureLevel: track.aiDisclosureLevel,
+            descriptorFamilies: track.descriptor?.families ?? [],
+            release: {
+              genre: track.release.genre,
+              title: track.release.title,
+              moods: track.release.moods,
+              // Display and hidden-artist matching keep the established order
+              // (credit, then the uploader label as a last resort).
+              artistDisplayName: resolveCreditedArtistName({
+                trackArtist: track.artist,
+                primaryArtist: track.release.primaryArtist,
+                accountDisplayName: track.release.artist?.displayName,
+              }),
+              // Request-first sessions key the diversity cap on the performer
+              // only (#2316); other callers keep the established key.
+              ...(options.performerCap ? { creditedArtistName: credited[0] ?? null } : {}),
+            },
           },
-        },
-      ]),
+        ];
+      }),
     );
   }
 

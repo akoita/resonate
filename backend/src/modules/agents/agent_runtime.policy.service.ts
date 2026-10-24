@@ -17,13 +17,14 @@ import { RecommendationsService } from "../recommendations/recommendations.servi
 import { TasteMemoryService } from "../recommendations/taste_memory.service";
 import { FirstListenerDiscoveryService } from "../recommendations/first_listener_discovery.service";
 import { FIRST_LISTENER_CANDIDATE_LIMIT } from "../recommendations/first_listener.contracts";
-import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import { resolveCreditedArtistName, resolveCreditedArtistNames } from "../shared/artist_attribution";
 import { AgentLearningService } from "./agent_learning.service";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import {
   buildAgentRecommendationQueries,
   deterministicSelectorInput,
   requestedTermsFor,
+  tasteQueriesFor,
 } from "./deterministic_recommendation.adapter";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import type {
@@ -32,8 +33,17 @@ import type {
 } from "./agent_audio_feature.service";
 import {
   requestCoverageFor,
+  requestCoverageForScope,
   requestMatchesFor,
+  requestScopeFor,
+  requestTierOf,
+  tierMatchesRequest,
+  withoutSeedEvidence,
+  type AgentRequestCapRelaxed,
+  type AgentRequestCoverageNotes,
   type AgentRequestCoveragePick,
+  type AgentRequestScope,
+  type RequestTier,
 } from "./agent_session_request";
 import { AgentSelectorService, HeldBack, isHiddenTasteQuery } from "./agent_selector.service";
 import type {
@@ -77,6 +87,14 @@ import type {
  *     Next Pick and unmet-demand records see it on this path too. The requested
  *     terms, tempo and audio features also reach the ranking in step 2, so each
  *     pick's score and explanation reflect the request.
+ *
+ *  7. request-first selection (#2316), when the session carries a request: a
+ *     model pick outside the request (tier C) is dropped unless the listener
+ *     allowed similar sounds (counted in `policy.dropped.offRequest` and
+ *     logged); the top-up follows the selector's tier order and the same
+ *     padding rule, relaxing the per-artist cap for matching tracks before it
+ *     settles for a shorter batch; Home impressions no longer demote picks and
+ *     only exploration from tiers A and B is labelled discovery.
  *
  * It never reorders the model's picks; fill-ins follow them. A model pick that qualifies as a
  * discovery pick (verified human artist the listener never played) is
@@ -141,6 +159,8 @@ export class AgentRuntimePolicyService {
     const ranking = this.ranking!;
     const policyContext = this.policyContext!;
     const userId = input.userId;
+    // Request-first selection (#2316): undefined without a request of its own.
+    const scope = requestScopeFor(input.preferences);
 
     // One pick per track, in the model's order.
     const seen = new Set<string>();
@@ -152,8 +172,12 @@ export class AgentRuntimePolicyService {
 
     const [taste, candidatesById, sessionArtistKeys] = await Promise.all([
       this.tasteMemory?.getPolicy(userId),
-      policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId)),
-      policyContext.artistKeysForTracks(input.recentTrackIds),
+      scope
+        ? policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId), { performerCap: true })
+        : policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId)),
+      scope
+        ? policyContext.artistKeysForTracks(input.recentTrackIds, true)
+        : policyContext.artistKeysForTracks(input.recentTrackIds),
     ]);
 
     const originalQueries = buildAgentRecommendationQueries(input.preferences)
@@ -164,7 +188,10 @@ export class AgentRuntimePolicyService {
       input,
       taste,
     );
-    const servedHistory = await this.resolveServedHistory(userId);
+    // A request-first session does not read Home impressions; what the listener
+    // PLAYED recently steps down gently inside its tier instead (#2316).
+    const servedHistory = scope ? [] : await this.resolveServedHistory(userId);
+    const playedTrackIds = scope ? await this.resolvePlayedHistory(userId) : [];
     const cohortContext = userId
       ? (await this.cohorts?.getDiscoveryContextForUser(userId)) ?? []
       : [];
@@ -225,6 +252,7 @@ export class AgentRuntimePolicyService {
       bigQueryTasteScores,
       cohortContext,
       recentTrackIds: [...new Set([...input.recentTrackIds, ...servedHistory])],
+      ...(scope ? { playedTrackIds } : {}),
       energy: input.preferences.energy,
       tempoBpm: input.preferences.tempoBpm,
       ...requestedTermsFor(input.preferences),
@@ -239,9 +267,34 @@ export class AgentRuntimePolicyService {
 
     // `rank` sorts by score; the policy must see the model's order.
     const rankedById = new Map(scored.map((entry) => [entry.id, entry]));
-    const inModelOrder = known.map(
+    let inModelOrder = known.map(
       (pick) => rankedById.get(pick.trackId)!,
     ) as RankedDiscoveryCandidate[];
+
+    // Request-first selection (#2316): the same predicate that tiers the
+    // selector's candidates tiers the model's picks, descriptor families
+    // included. A pick outside the request is dropped unless the listener
+    // allowed similar sounds; the rule-based top-up below then fills the batch
+    // from the matching tracks, in tier order.
+    const tierByTrackId = new Map<string, RequestTier>();
+    let offRequestDropped = 0;
+    if (scope) {
+      const verifiable = withoutSeedEvidence(scope);
+      for (const entry of inModelOrder) {
+        tierByTrackId.set(
+          entry.id,
+          requestTierOf(verifiable, coverageFactsFor(candidatesById.get(entry.id), audioFeaturesByTrack.get(entry.id))),
+        );
+      }
+      if (!scope.fillSimilar) {
+        const onRequest = inModelOrder.filter((entry) => tierByTrackId.get(entry.id) !== "C");
+        offRequestDropped = inModelOrder.length - onRequest.length;
+        if (offRequestDropped > 0) {
+          this.logger.log(`Dropped ${offRequestDropped} model pick(s) outside the request`);
+          inModelOrder = onRequest;
+        }
+      }
+    }
 
     // recentTrackIds is newest-first; the policy wants chronological order.
     const priorSessionArtistKeys = [...input.recentTrackIds]
@@ -263,6 +316,14 @@ export class AgentRuntimePolicyService {
         : exploration.verifiedHumanArtistIds,
       playedArtistIds: exploration.playedArtistIds,
       priorExplorationCount: exploration.priorExplorationCount,
+      // A discovery label needs a pick that belongs to the request (#2316).
+      ...(scope
+        ? {
+            explorationAllowedIds: new Set(
+              inModelOrder.filter((entry) => tierByTrackId.get(entry.id) !== "C").map((entry) => entry.id),
+            ),
+          }
+        : {}),
     };
     let policyResult = applyDiscoveryPolicy(inModelOrder, policyOptions);
 
@@ -316,7 +377,7 @@ export class AgentRuntimePolicyService {
       served < reserved &&
       canSwapForDiscovery(surviving.length, exploration.priorExplorationCount)
     ) {
-      const swapped = await this.swapInDiscoveryPick(input, surviving, [
+      const swapped = await this.swapInDiscoveryPick(input, scope, surviving, [
         ...sessionWindowKeys,
         ...surviving.slice(0, -1).map((entry) => artistKeyOf(entry.trackId)),
       ]);
@@ -324,6 +385,7 @@ export class AgentRuntimePolicyService {
         surviving = swapped.picks;
         discoveryFacts = swapped.discoveryFacts;
         discoveryTrackId = swapped.picks[swapped.picks.length - 1].trackId;
+        if (swapped.discoveryTier) tierByTrackId.set(discoveryTrackId, swapped.discoveryTier);
         extraArtistKeys.set(discoveryTrackId, swapped.discoveryArtistKey);
         injected = true;
       }
@@ -337,10 +399,12 @@ export class AgentRuntimePolicyService {
       priorSessionArtistKeys,
     );
     surviving = [...surviving, ...topUp.picks];
+    for (const [trackId, tier] of topUp.tiers) tierByTrackId.set(trackId, tier);
 
     const dropped = {
       ...policyResult.dropped,
       unknown: ordered.length - known.length,
+      ...(scope ? { offRequest: offRequestDropped } : {}),
     };
     const explorationAccounting = {
       reserved,
@@ -376,9 +440,23 @@ export class AgentRuntimePolicyService {
             audioFeaturesByTrack.get(pick.trackId),
           ),
     );
-    const coverage = requestCoverageFor(input.preferences.request, facts, topUp.heldBack);
+    // A request-first session reports against its effective request, the cap
+    // relaxation and a short batch (#2316); otherwise the described request only.
+    const targetCount = getAgentTrackLimit();
+    const notes: AgentRequestCoverageNotes = {
+      ...(topUp.capRelaxed ? { capRelaxed: topUp.capRelaxed } : {}),
+      ...(scope?.gated && !scope.fillSimilar && surviving.length < targetCount
+        ? { shortfallReason: "catalog_short" as const }
+        : {}),
+    };
+    const coverage = scope
+      ? requestCoverageForScope(scope, facts, topUp.heldBack, notes)
+      : requestCoverageFor(input.preferences.request, facts, topUp.heldBack);
     // Per pick, by the same predicates (#2312); absent when the request has no filters.
-    const requestMatches = requestMatchesFor(input.preferences.request, facts);
+    // A request-first pick belongs to the request unless it is a marked off-request pick (#2316).
+    const requestMatches = scope
+      ? surviving.map((pick) => tierMatchesRequest(tierByTrackId.get(pick.trackId) ?? "A"))
+      : requestMatchesFor(input.preferences.request, facts);
     const finalPicks = requestMatches
       ? surviving.map((pick, index) => ({ ...pick, requestMatch: requestMatches[index] }))
       : surviving;
@@ -471,6 +549,7 @@ export class AgentRuntimePolicyService {
    */
   private async swapInDiscoveryPick(
     input: AgentRuntimeInput,
+    scope: AgentRequestScope | undefined,
     surviving: LlmTrackPick[],
     otherArtistKeys: string[],
   ): Promise<
@@ -478,6 +557,7 @@ export class AgentRuntimePolicyService {
         picks: LlmTrackPick[];
         discoveryFacts: AgentRequestCoveragePick;
         discoveryArtistKey: string;
+        discoveryTier?: RequestTier;
       }
     | undefined
   > {
@@ -501,6 +581,15 @@ export class AgentRuntimePolicyService {
         // The runtime reserves only the final replacement, after all selector
         // constraints identify the one track that will actually be returned.
         reserveFirstListenerPlacements: false,
+        // The discovery pick belongs to the request too (#2316).
+        ...(scope
+          ? {
+              requestScope: scope,
+              ...(tasteQueriesFor(input.preferences).length > 0
+                ? { tasteQueries: tasteQueriesFor(input.preferences) }
+                : {}),
+            }
+          : {}),
       });
       const pickedIds = new Set(surviving.map((entry) => entry.trackId));
       const artistCounts = new Map<string, number>();
@@ -510,7 +599,8 @@ export class AgentRuntimePolicyService {
       const discovery = selection.selected.find((track: any) => {
         if (track.agentRecommendation?.reasonCode !== "discovery_pick") return false;
         if (pickedIds.has(track.id)) return false;
-        const key = selectorTrackArtistKey(track);
+        if (track.requestTier === "C") return false;
+        const key = selectorTrackArtistKey(track, Boolean(scope));
         return (artistCounts.get(key) ?? 0) < DISCOVERY_POLICY_DEFAULTS.maxPerArtist;
       });
       if (!discovery) return undefined;
@@ -558,7 +648,8 @@ export class AgentRuntimePolicyService {
           discovery,
           recommendation.audioFeatures as AgentAudioFeatures | undefined,
         ),
-        discoveryArtistKey: selectorTrackArtistKey(discovery),
+        discoveryArtistKey: selectorTrackArtistKey(discovery, Boolean(scope)),
+        ...(discovery.requestTier ? { discoveryTier: discovery.requestTier as RequestTier } : {}),
       };
     } catch (error) {
       this.logger.warn(`Discovery pick unavailable for LLM picks: ${String(error)}`);
@@ -584,10 +675,18 @@ export class AgentRuntimePolicyService {
   ): Promise<{
     picks: LlmTrackPick[];
     facts: Map<string, AgentRequestCoveragePick>;
+    /** Request-first selection (#2316): the tier of each fill-in. */
+    tiers: Map<string, RequestTier>;
     /** Strong matches the selector left out (artist cap, explicit preference). */
     heldBack?: HeldBack;
+    /** Request-first selection (#2316): the artist cap was relaxed for matching fill-ins. */
+    capRelaxed?: AgentRequestCapRelaxed;
   }> {
-    const none = { picks: [], facts: new Map<string, AgentRequestCoveragePick>() };
+    const none = {
+      picks: [],
+      facts: new Map<string, AgentRequestCoveragePick>(),
+      tiers: new Map<string, RequestTier>(),
+    };
     const target = getAgentTrackLimit();
     const need = target - picks.length;
     if (need <= 0 || !this.selector) return none;
@@ -602,6 +701,7 @@ export class AgentRuntimePolicyService {
         // A fresh placement needs a reservation; fill-ins never take one.
         reserveFirstListenerPlacements: false,
       });
+      const scope = requestScopeFor(input.preferences);
       const pickedIds = new Set(picks.map((entry) => entry.trackId));
       const artistCounts = new Map<string, number>();
       const count = (key: string) =>
@@ -617,16 +717,15 @@ export class AgentRuntimePolicyService {
 
       const added: LlmTrackPick[] = [];
       const facts = new Map<string, AgentRequestCoveragePick>();
-      for (const track of selection.selected) {
-        if (added.length >= need) break;
+      const tiers = new Map<string, RequestTier>();
+      const relaxedKeys = new Map<string, { tracks: number; artist: string }>();
+      const eligible = (selection.selected as any[]).filter((track) => {
         const recommendation = track.agentRecommendation;
-        if (!recommendation || pickedIds.has(track.id) || track.firstListenerEligible) {
-          continue;
-        }
-        const key = selectorTrackArtistKey(track);
-        if ((artistCounts.get(key) ?? 0) >= DISCOVERY_POLICY_DEFAULTS.maxPerArtist) {
-          continue;
-        }
+        return Boolean(recommendation) && !track.firstListenerEligible;
+      });
+      const take = (track: any, relaxed: boolean) => {
+        const recommendation = track.agentRecommendation;
+        const key = selectorTrackArtistKey(track, Boolean(scope));
         count(key);
         pickedIds.add(track.id);
         added.push({
@@ -643,13 +742,67 @@ export class AgentRuntimePolicyService {
           track.id,
           coverageFactsFor(track, recommendation.audioFeatures as AgentAudioFeatures | undefined),
         );
+        if (track.requestTier) tiers.set(track.id, track.requestTier);
+        if (relaxed) {
+          const held = relaxedKeys.get(key);
+          relaxedKeys.set(key, {
+            tracks: artistCounts.get(key) ?? 0,
+            artist: held?.artist ?? creditedNameOf(track),
+          });
+        }
+      };
+      const withinCap = (track: any) =>
+        (artistCounts.get(selectorTrackArtistKey(track, Boolean(scope))) ?? 0) < DISCOVERY_POLICY_DEFAULTS.maxPerArtist;
+
+      // Pass 1: the selector's order, under the artist cap. Request-first sessions
+      // leave tier C for the end, so a matching track is never behind an off-request one.
+      for (const track of eligible) {
+        if (added.length >= need) break;
+        if (pickedIds.has(track.id)) continue;
+        if (track.requestTier === "C") continue;
+        if (!withinCap(track)) continue;
+        take(track, false);
+      }
+      // Pass 2 (request-first only, #2316): matching tracks the cap held back
+      // come before a short batch, one more per artist at a time, and well before any tier C.
+      if (scope) {
+        for (
+          let level = DISCOVERY_POLICY_DEFAULTS.maxPerArtist + 1;
+          added.length < need && eligible.some((track) => !pickedIds.has(track.id) && track.requestTier !== "C");
+          level += 1
+        ) {
+          for (const track of eligible) {
+            if (added.length >= need) break;
+            if (pickedIds.has(track.id) || track.requestTier === "C") continue;
+            if ((artistCounts.get(selectorTrackArtistKey(track, Boolean(scope))) ?? 0) >= level) continue;
+            take(track, true);
+          }
+        }
+      }
+      // Pass 3: marked off-request tracks, only when the selector offered them (padding allowed).
+      for (const track of eligible) {
+        if (added.length >= need) break;
+        if (pickedIds.has(track.id) || track.requestTier !== "C") continue;
+        if (!withinCap(track)) continue;
+        take(track, false);
       }
       if (added.length > 0) {
         this.logger.log(
           `Topped up ${added.length} LLM pick(s) to reach target ${target} from the ranked selector`,
         );
       }
-      return { picks: added, facts, ...(selection.heldBack ? { heldBack: selection.heldBack } : {}) };
+      const top = [...relaxedKeys.values()].sort((a, b) => b.tracks - a.tracks)[0];
+      const capRelaxed: AgentRequestCapRelaxed | undefined =
+        relaxedKeys.size > 0
+          ? { artists: relaxedKeys.size, ...(top?.artist ? { top: { artist: top.artist, tracks: top.tracks } } : {}) }
+          : undefined;
+      return {
+        picks: added,
+        facts,
+        tiers,
+        ...(selection.heldBack ? { heldBack: selection.heldBack } : {}),
+        ...(capRelaxed ? { capRelaxed } : {}),
+      };
     } catch (error) {
       this.logger.warn(`Top-up unavailable for LLM picks: ${String(error)}`);
       return none;
@@ -678,6 +831,17 @@ export class AgentRuntimePolicyService {
     return input.preferences.learnedGenreWeights ?? {};
   }
 
+  /** The tracks the listener recently played (#2316); fails open to none. */
+  private async resolvePlayedHistory(userId?: string): Promise<string[]> {
+    if (!userId || !this.policyContext) return [];
+    try {
+      return await this.policyContext.recentPlayedTrackIds(userId);
+    } catch (error) {
+      this.logger.warn(`Played history unavailable: ${String(error)}`);
+      return [];
+    }
+  }
+
   private async resolveServedHistory(userId?: string): Promise<string[]> {
     if (!userId || !this.recommendations) return [];
     try {
@@ -689,7 +853,7 @@ export class AgentRuntimePolicyService {
 }
 
 /** The diversity-cap key of a track the selector returned, by credited artist (#2092). */
-function selectorTrackArtistKey(track: any): string {
+function selectorTrackArtistKey(track: any, performerCap = false): string {
   return discoveryArtistKey({
     id: track.id,
     artistId: track.release?.artistId ?? null,
@@ -700,8 +864,20 @@ function selectorTrackArtistKey(track: any): string {
         primaryArtist: track.release?.primaryArtist ?? null,
         accountDisplayName: track.release?.artist?.displayName ?? null,
       }),
+      // Request-first: the cap keys on the performer, never the uploader account (#2316).
+      ...(performerCap ? { creditedArtistName: creditedNameOf(track) || null } : {}),
     },
   });
+}
+
+/** The performer a selector track is credited to, or "" when it has no credit (#2316). */
+function creditedNameOf(track: any): string {
+  return (
+    resolveCreditedArtistNames({
+      trackArtist: track.artist ?? null,
+      primaryArtist: track.release?.primaryArtist ?? null,
+    })[0] ?? ""
+  );
 }
 
 /**
@@ -725,13 +901,15 @@ function coverageFactsFor(
     | {
         release?: { genre?: string | null; moods?: string[] | null } | null;
         descriptor?: { families?: string[] | null } | null;
+        /** A ranking candidate (`loadTrackCandidates`) carries the families directly. */
+        descriptorFamilies?: readonly string[] | null;
       }
     | undefined,
   features: AgentAudioFeatures | undefined,
 ): AgentRequestCoveragePick {
   return {
     genre: track?.release?.genre ?? null,
-    descriptorFamilies: track?.descriptor?.families ?? [],
+    descriptorFamilies: track?.descriptor?.families ?? track?.descriptorFamilies ?? [],
     moods: track?.release?.moods ?? [],
     energyBand: features?.energyBand,
     tempoBpm: features?.tempoBpm,

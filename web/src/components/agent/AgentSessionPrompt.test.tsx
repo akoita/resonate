@@ -90,6 +90,31 @@ describe("AgentSessionPrompt", () => {
     expect(on).toMatch(/<input[^>]*checked=""/);
   });
 
+  it("offers an accessible Fill with similar sounds switch that is off by default (#2316)", () => {
+    expect(render({ request })).not.toContain("Fill with similar sounds");
+
+    const off = render({ request, fillSimilar: { enabled: false, onChange: vi.fn() } });
+    expect(off).toContain("Fill with similar sounds");
+    expect(off).toContain("Off: the DJ plays only what matches your request");
+    expect(off).toMatch(/<input[^>]*role="switch"/);
+    expect(off).not.toMatch(/<input[^>]*checked=""/);
+    expect(off).toMatch(/<label[^>]*for="[^"]*-fill-similar"/);
+    // It sits in the Adjust row, next to Energy and the explicit choice.
+    expect(off.indexOf("Fill with similar sounds")).toBeGreaterThan(off.indexOf('data-testid="agent-session-adjust"'));
+
+    const on = render({ request, fillSimilar: { enabled: true, onChange: vi.fn() } });
+    expect(on).toMatch(/<input[^>]*checked=""/);
+    expect(on).toContain("marks them as outside your request");
+  });
+
+  it("does not offer Fill with similar sounds inside My Mix, which has its own lanes (#2316)", () => {
+    const html = render({
+      fillSimilar: { enabled: false, onChange: vi.fn() },
+      myMix: { lanes: [], vocabulary: { genres: [], moods: [] }, preferences: { lanes: [] } as never, onSelect: vi.fn(), onChange: vi.fn(), onSave: vi.fn() },
+    });
+    expect(html).not.toContain("Fill with similar sounds");
+  });
+
   it("disables the toggle while saving and shows a save error inline (#2088)", () => {
     const html = render({ explicit: { enabled: true, isSaving: true, error: "Couldn't save this setting.", onChange: vi.fn() } });
     expect(html).toMatch(/<input[^>]*disabled=""/);

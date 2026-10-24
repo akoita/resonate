@@ -30,6 +30,7 @@ export function buildSessionPreferences({
     sentence,
     artists = [],
     seed = null,
+    fillSimilar,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
@@ -38,6 +39,28 @@ export function buildSessionPreferences({
     /** Catalog artists named in that sentence and not removed (#2241). */
     artists?: readonly string[];
     /** What the session starts from (#2244); it rides along with any filters and stays for the session. */
+    seed?: DjSeed | null;
+    /**
+     * "Fill with similar sounds" (#2316). Sent only when on: off is the server's
+     * default, so a session that never touched it is exactly what it was.
+     */
+    fillSimilar?: boolean;
+}): AgentNextPreferences | undefined {
+    const built = buildSessionPreferencesBase({ activePreset, request, sentence, artists, seed });
+    return built && fillSimilar === true ? { ...built, fillSimilar: true } : built;
+}
+
+function buildSessionPreferencesBase({
+    activePreset,
+    request,
+    sentence,
+    artists = [],
+    seed = null,
+}: {
+    activePreset: SessionPreset | null;
+    request: AgentSessionRequest | null;
+    sentence?: string | null;
+    artists?: readonly string[];
     seed?: DjSeed | null;
 }): AgentNextPreferences | undefined {
     const seedField = seed ? { seed: { kind: seed.kind, id: seed.id, label: seed.label } } : {};
@@ -89,6 +112,7 @@ export function buildPickPreferences({
     sentence,
     artists,
     seed = null,
+    fillSimilar,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
@@ -96,18 +120,26 @@ export function buildPickPreferences({
     sentence?: string | null;
     artists?: readonly string[];
     seed?: DjSeed | null;
+    /**
+     * "Fill with similar sounds" (#2316). A pick request states it either way when
+     * the caller knows it, because the server remembers the earlier value when the
+     * key is omitted; `false` turns padding back off.
+     */
+    fillSimilar?: boolean;
 }): AgentNextPreferences {
     const built = buildSessionPreferences({ activePreset, request, sentence, artists, seed });
+    const fillField = fillSimilar === undefined ? {} : { fillSimilar };
     // The server remembers a live session's earlier preferences when a key is omitted, so a sentence
     // or artists the listener has since dropped are cleared explicitly (empty values).
     // A seed the listener removed is cleared the same way (`null`), because omitting it keeps it.
     const sentenceReset = { requestText: "", artists: [] as string[], seed: null as AgentNextPreferences["seed"] };
-    if (built && (built.request || built.sessionIntent)) return { ...sentenceReset, ...built };
+    if (built && (built.request || built.sessionIntent)) return { ...sentenceReset, ...built, ...fillField };
     // No chips: the saved vibes are where the session starts, plus any sentence.
     return {
         genres: savedVibes,
         ...(request ? { request } : {}),
         ...sentenceReset,
         ...(built ?? {}),
+        ...fillField,
     };
 }

@@ -106,14 +106,34 @@ export class ToolRegistry {
         const limit = Number(input.limit ?? 20);
         const explicitAllowed = Boolean(input.allowExplicit ?? false);
         const take = Math.min(Math.max(limit, 1), 50);
+        // Request-first sessions pass the session's own tracks (#2316): they are
+        // left out in the query itself, so the per-query budget goes to tracks
+        // the session can still play.
+        const excludeTrackIds = Array.isArray(input.excludeTrackIds)
+          ? (input.excludeTrackIds as unknown[]).filter((id): id is string => typeof id === "string" && id.length > 0)
+          : [];
+        const searchWhere: Prisma.TrackWhereInput = query ? searchTermWhere(query) : {};
 
         const items = await this.loadCandidateTracks({
           explicitAllowed,
           take,
-          extraWhere: query ? searchTermWhere(query) : {},
+          extraWhere: excludeTrackIds.length > 0
+            ? { AND: [searchWhere, { id: { notIn: excludeTrackIds } }] }
+            : searchWhere,
         });
+        if (excludeTrackIds.length === 0) return { items };
 
-        return { items };
+        // How many of the session's own tracks the query matches, so the caller
+        // can tell "everything matching was played" from "nothing matches" (a
+        // count only; the ids are the caller's own).
+        const excludedMatches = await prisma.track.count({
+          where: {
+            ...(explicitAllowed ? {} : { explicit: false }),
+            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+            AND: [searchWhere, { id: { in: excludeTrackIds } }],
+          },
+        });
+        return { items, excludedMatches };
       },
     });
 

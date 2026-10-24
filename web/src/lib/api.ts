@@ -5820,6 +5820,16 @@ export type AgentRequestCoverage = {
   gaps: Array<{ filter: AgentRequestCoverageFilter; matched: number }>;
   /** Strong matches left out of these picks: `variety` = the per-artist cap, `explicit` = the explicit preference. */
   heldBack?: { variety: number; explicit: number };
+  /**
+   * #2316: the catalog had no other matching tracks left, so the per-artist cap was
+   * relaxed. `top` names the credited artist with the most tracks in these picks.
+   */
+  capRelaxed?: { artists: number; top?: { artist: string; tracks: number } };
+  /**
+   * #2316: these picks are fewer than the set needs because the catalog has no more
+   * tracks that match the request (and similar sounds were not allowed).
+   */
+  shortfallReason?: "catalog_short";
 };
 
 export type AgentMixCoverageLane = {
@@ -5901,6 +5911,12 @@ export type AgentNextPreferences = {
    * and uses the catalog's own label.
    */
   seed?: { kind: "track" | "artist" | "playlist"; id: string; label: string } | null;
+  /**
+   * #2316 "Fill with similar sounds": when the catalog has fewer tracks matching the
+   * request than the set needs, the DJ may add similar tracks, each marked as outside
+   * the request. Off (absent or false) by default: the DJ returns a shorter set and says so.
+   */
+  fillSimilar?: boolean;
 };
 
 /** #2075: why the AI curator could not pick; categorical, never an error message. */
@@ -5944,9 +5960,9 @@ export type AgentNextPickResponse = {
     reasonCode?: string;
     signals?: AgentRecommendationSignal[];
     /**
-     * #2312: true when the pick satisfies every filter of the described
-     * session, false when the DJ added it to fill the set. Absent when the
-     * session has no filters.
+     * #2312, #2316: true when the pick belongs to the request, false when the DJ
+     * added it to fill the set because "Fill with similar sounds" is on. Absent
+     * when the session has no request.
      */
     requestMatch?: boolean;
   }>;
