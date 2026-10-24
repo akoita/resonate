@@ -11,9 +11,11 @@ import {
   NEW_ARTISTS_CHIP_KEY,
   newArtistsChips,
   removeArtistChip,
+  readTempoDraft,
   removeChip,
   requestFilterKeys,
   requestFromPreset,
+  setBpm,
   setEnergy,
   trackIdsAt,
   upcomingDjIndices,
@@ -306,5 +308,32 @@ describe("newArtistsChips (#2249)", () => {
     expect(newArtistsChips(true)).toEqual([{ key: NEW_ARTISTS_CHIP_KEY, kind: "new-artists", label: "New artists only" }]);
     expect(newArtistsChips(false)).toEqual([]);
     expect(newArtistsChips(undefined)).toEqual([]);
+  });
+});
+
+describe("Tempo filter (#2327)", () => {
+  it("sets and clears the request's own tempo, leaving every other filter alone", () => {
+    const next = setBpm(request, { min: 90, max: 100 });
+    expect(next).toEqual({ ...request, bpm: { min: 90, max: 100 } });
+    expect(setBpm(next, null)).toEqual({ ...request, bpm: null });
+    expect(chipsFromRequest(next).find((chip) => chip.kind === "bpm")?.label).toBe("90–100 BPM");
+    // Removing the BPM chip clears only the tempo.
+    expect(removeChip(next, "bpm")).toEqual({ ...request, bpm: null });
+  });
+
+  it("reads a range, an open range, or nothing", () => {
+    expect(readTempoDraft("120", "128")).toEqual({ kind: "range", bpm: { min: 120, max: 128 } });
+    expect(readTempoDraft(" 120 ", "")).toEqual({ kind: "range", bpm: { min: 120, max: null } });
+    expect(readTempoDraft("", "100")).toEqual({ kind: "range", bpm: { min: null, max: 100 } });
+    expect(readTempoDraft("", "  ")).toEqual({ kind: "clear" });
+  });
+
+  it("does not apply a half-typed or unsupported number", () => {
+    for (const [min, max] of [["1", ""], ["12", "128"], ["", "300"], ["abc", ""], ["-5", ""], ["120", "1x"]]) {
+      expect([min, max, readTempoDraft(min, max).kind]).toEqual([min, max, "invalid"]);
+    }
+    expect(readTempoDraft("130", "120")).toEqual({ kind: "invalid", message: "The lowest tempo is above the highest." });
+    expect(readTempoDraft("40", "220").kind).toBe("range");
+    expect(readTempoDraft("122.5", "").kind).toBe("range");
   });
 });

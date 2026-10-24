@@ -12,6 +12,7 @@ import {
   Min,
   ValidateNested,
 } from "class-validator";
+import { DISCOVERY_LEVELS, type DiscoveryLevel } from "../recommendations/discovery-policy";
 import {
   SESSION_SEED_ID_MAX_LENGTH,
   SESSION_SEED_KINDS,
@@ -133,6 +134,14 @@ export class SessionPreferencesDto {
   @IsOptional()
   @IsBoolean()
   newArtists?: boolean;
+
+  /**
+   * The Discovery control (#2327): how much of the session is reserved for artists the
+   * listener has not played. Absent means Mixed (today's share); remembered for the live session.
+   */
+  @IsOptional()
+  @IsIn([...DISCOVERY_LEVELS])
+  discovery?: DiscoveryLevel;
 
   /** Session-only taste lanes (#2065); validated by the service. `null` clears them. */
   myMix?: MyMixPreferences | null;

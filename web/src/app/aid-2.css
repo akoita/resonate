@@ -910,3 +910,59 @@
 .aid-prompt-adjust-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 24px; min-width: 0; }
 .aid-prompt-adjust-energy { display: inline-flex; align-items: center; gap: 8px; }
 .aid-prompt-adjust-energy .aid-prompt-chip-select { min-height: 32px; padding: 4px 8px; border: 1px solid rgba(255,255,255,0.14); }
+
+/* #2327: Tempo and Discovery in the Adjust row, and the one-time tip after the first session. */
+.aid-prompt-adjust-tempo { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
+.aid-prompt-adjust-tempo-fields { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #f0eaff; font-size: 0.85rem; }
+.aid-prompt-tempo-input {
+  width: 6.5em;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  background: rgba(8,8,15,0.6);
+  color: inherit;
+  font: inherit;
+}
+.aid-prompt-tempo-input:focus-visible,
+.aid-prompt-tempo-clear:focus-visible,
+.aid-prompt-tip-try:focus-visible {
+  outline: 2px solid var(--r-agent, #8b5cf6);
+  outline-offset: 2px;
+}
+.aid-prompt-tempo-clear {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(240,234,255,0.8);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.aid-prompt-discovery { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; min-width: 0; }
+.aid-prompt-tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid rgba(167,139,250,0.4);
+  border-radius: 12px;
+  background: rgba(124,92,255,0.14);
+  color: #f0eaff;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.aid-prompt-tip-try {
+  border: 0;
+  background: transparent;
+  color: #c4b5fd;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}

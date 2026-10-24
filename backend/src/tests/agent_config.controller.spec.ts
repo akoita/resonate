@@ -119,6 +119,26 @@ describe("AgentConfigController", () => {
     });
   });
 
+  describe("Discovery on session start (#2327)", () => {
+    const req = { user: { userId: "user_1" } };
+
+    it("hands the runtime a known level only, and nothing for any other value", async () => {
+      const ctrl = makeController();
+      await ctrl.startSession(req, { preferences: { discovery: "new", genres: ["Jazz"] } });
+      await ctrl.startSession(req, { preferences: { discovery: "familiar", genres: ["Jazz"] } });
+      await ctrl.startSession(req, { preferences: { discovery: "mixed", genres: ["Jazz"] } });
+      await ctrl.startSession(req, { preferences: { discovery: "wild" as unknown, genres: ["Jazz"] } as any });
+      await ctrl.startSession(req, { preferences: { genres: ["Jazz"] } });
+      await jest.advanceTimersByTimeAsync(500);
+      const runs = (ctrl as any).runtimeService.run.mock.calls;
+      expect(runs[0][0].preferences.discovery).toBe("new");
+      expect(runs[1][0].preferences.discovery).toBe("familiar");
+      expect(runs[2][0].preferences.discovery).toBe("mixed");
+      expect(runs[3][0].preferences).not.toHaveProperty("discovery");
+      expect(runs[4][0].preferences).not.toHaveProperty("discovery");
+    });
+  });
+
   describe("the time-of-day bucket on session start (#2245)", () => {
     const req = { user: { userId: "user_1" } };
 
