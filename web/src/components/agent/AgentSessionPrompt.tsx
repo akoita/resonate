@@ -28,7 +28,12 @@ import {
 } from "../../lib/agentSessionRequest";
 import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, soundCountLabel, type SessionPreset } from "./sessionPresetData";
 import AgentMyMixEditor from "./AgentMyMixEditor";
-import { selectedMyMixLanes } from "../../lib/agentMyMix";
+import {
+    MY_MIX_UNAVAILABLE_MESSAGE,
+    myMixNoLanesMessage,
+    selectedMyMixLanes,
+    type MyMixLanesStatus,
+} from "../../lib/agentMyMix";
 import { rightNowPhrase, rightNowReason } from "../../lib/agentRightNow";
 
 /** Where the DJ's saved vibes are edited. */
@@ -199,6 +204,8 @@ type Props = {
     newArtistsOnly?: boolean;
     myMix?: {
         lanes: readonly ListeningLane[];
+        /** Whether the lanes loaded, are empty (and why), or could not be loaded (#2270). */
+        lanesStatus?: MyMixLanesStatus;
         vocabulary: AgentMixVocabulary;
         preferences: AgentMyMixPreferences | null;
         coverage?: AgentMixCoverage | null;
@@ -281,6 +288,16 @@ export default function AgentSessionPrompt({
         ? selectedMyMixLanes(myMix.preferences, myMix.lanes).length > 0 || (myMix.preferences.additions?.length ?? 0) > 0
         : false;
     const hasMyMixLanes = Boolean(myMix && myMix.lanes.some((lane) => !lane.hidden));
+    // Why My Mix is not offered: an empty set of lanes says what to do next; a failed call says
+    // only that it could not load. Lanes that are all hidden are the listener's own choice (#2270).
+    const myMixNote =
+        myMix && !hasMyMixLanes && myMix.lanes.length === 0
+            ? myMix.lanesStatus?.state === "unavailable"
+                ? { kind: "unavailable", text: MY_MIX_UNAVAILABLE_MESSAGE }
+                : myMix.lanesStatus?.state === "none"
+                    ? { kind: "none", text: myMixNoLanesMessage(myMix.lanesStatus.reason) }
+                    : null
+            : null;
     const submitDisabled = isParsing || isBusy;
     const submitLabel = isBusy
         ? isLive ? "Updating…" : "Starting…"
@@ -327,7 +344,7 @@ export default function AgentSessionPrompt({
 
             <div className="aid-prompt-preset-groups">
                 {/* For you: only what works today (Right now, and My Mix once there are lanes to blend). */}
-                {rightNow || moreLike || newArtists || hasMyMixLanes ? (
+                {rightNow || moreLike || newArtists || hasMyMixLanes || myMixNote ? (
                     <div className="aid-prompt-preset-group aid-my-mix-choice">
                         <span id={`${id}-presets-for-you`} className="aid-prompt-preset-group-label">
                             For you
@@ -385,6 +402,15 @@ export default function AgentSessionPrompt({
                                 data-testid="agent-right-now-reason"
                             >
                                 {rightNowReason(rightNow.summary)}
+                            </p>
+                        ) : null}
+                        {myMixNote ? (
+                            <p
+                                className="aid-prompt-hint"
+                                data-testid="agent-my-mix-unavailable-reason"
+                                data-kind={myMixNote.kind}
+                            >
+                                {myMixNote.text}
                             </p>
                         ) : null}
                         {hasMyMixLanes && myMix?.preferences ? (

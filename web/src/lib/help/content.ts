@@ -963,7 +963,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Once repeated listening has revealed different sides of your taste, My Mix appears in a For you row above the other starters. It blends your visible listening lanes, giving more room to stronger habits and the ones that fit the broad time of day. If it is not there yet, keep listening or choose any of the other starters.",
+            text: "Once repeated listening has revealed different sides of your taste, My Mix appears in a For you row above the other starters. It blends your visible listening lanes, giving more room to stronger habits and the ones that fit the broad time of day. If it is not there yet, the For you row tells you why in one sentence, for example to play and keep a few more sessions, or that your listening has gone quiet lately. If My Mix could not load at all, it says so instead, and you can reload the page. Meanwhile choose any of the other starters. The same sentence shows under Your listening lanes in Settings, Taste Memory.",
           },
           {
             kind: "list",

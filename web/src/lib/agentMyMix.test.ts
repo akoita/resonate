@@ -9,7 +9,9 @@ import {
   getMyMixLocalContext,
   isListenerProEnabled,
   myMixAdditionOptions,
+  MY_MIX_UNAVAILABLE_MESSAGE,
   myMixCoverageNotes,
+  myMixNoLanesMessage,
   removeMyMixAddition,
   selectedMyMixLanes,
   setMyMixLaneBoost,
@@ -170,5 +172,44 @@ describe("My Mix helpers", () => {
 
   it("keeps Listener Pro disabled behind one central seam", () => {
     expect(isListenerProEnabled()).toBe(false);
+  });
+});
+
+describe("My Mix empty-lane copy (#2270)", () => {
+  const reasons = ["no_signals", "too_few_sessions", "evidence_decayed", "unknown_genres"] as const;
+
+  it("has a distinct plain sentence for each reason", () => {
+    const sentences = reasons.map((reason) => myMixNoLanesMessage(reason));
+    expect(new Set(sentences).size).toBe(reasons.length);
+    for (const sentence of sentences) {
+      expect(sentence).toMatch(/My Mix/);
+      expect(sentence).not.toMatch(/lane_|session key|half-life|730|500/i);
+    }
+    expect(myMixNoLanesMessage("too_few_sessions")).toContain("Play and keep a few more sessions to unlock My Mix");
+  });
+
+  it("falls back to a generic sentence without a reason", () => {
+    expect(myMixNoLanesMessage(null)).toBe("Play and keep a few more sessions to unlock My Mix.");
+    expect(myMixNoLanesMessage(undefined)).toBe(myMixNoLanesMessage(null));
+  });
+
+  it("keeps the failed-call sentence apart from every no-lanes sentence", () => {
+    for (const reason of [...reasons, null]) {
+      expect(myMixNoLanesMessage(reason)).not.toBe(MY_MIX_UNAVAILABLE_MESSAGE);
+    }
+    expect(MY_MIX_UNAVAILABLE_MESSAGE).toMatch(/could not load/);
+  });
+
+  it("sends a boosted family-keyed lane's family id as the genre edit, for the server to resolve", () => {
+    const familyLane = lane("lane-family", {
+      label: "Ambient / Lo-fi · Chill",
+      genreWeights: { "ambient-lofi": 1 },
+      moodWeights: { Chill: 0.5 },
+    });
+    const edits = buildMyMixTasteEdits({ lanes: [{ id: "lane-family", boost: true }] }, [familyLane]);
+    expect(edits).toEqual([
+      { signalType: "genre", value: "ambient-lofi", action: "boosted" },
+      { signalType: "mood", value: "Chill", action: "boosted" },
+    ]);
   });
 });

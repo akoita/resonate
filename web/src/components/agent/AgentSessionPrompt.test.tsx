@@ -155,6 +155,59 @@ describe("AgentSessionPrompt", () => {
     }
   });
 
+  describe("when My Mix has no lanes (#2270)", () => {
+    const empty = (lanesStatus: NonNullable<React.ComponentProps<typeof AgentSessionPrompt>["myMix"]>["lanesStatus"]) => ({
+      lanes: [] as ListeningLane[],
+      lanesStatus,
+      vocabulary,
+      preferences: null,
+      onSelect: vi.fn(),
+      onChange: vi.fn(),
+      onSave: vi.fn(),
+    });
+
+    it.each([
+      ["no_signals", "Play some music and save, finish or skip a few tracks to start building My Mix."],
+      ["too_few_sessions", "Play and keep a few more sessions to unlock My Mix."],
+      ["evidence_decayed", "Your listening has gone quiet lately."],
+      ["unknown_genres", "Your recent plays have no genre My Mix can group yet."],
+    ] as const)("explains %s, with no My Mix button", (reason, copy) => {
+      const html = render({ myMix: empty({ state: "none", reason }) });
+      expect(html).toContain('data-testid="agent-my-mix-unavailable-reason"');
+      expect(html).toContain('data-kind="none"');
+      expect(html).toContain(copy);
+      expect(html).not.toContain(">My Mix</button>");
+      expect(html).not.toContain("could not load");
+    });
+
+    it("says only that My Mix could not load when the call failed", () => {
+      const html = render({ myMix: empty({ state: "unavailable" }) });
+      expect(html).toContain('data-kind="unavailable"');
+      expect(html).toContain("My Mix could not load right now.");
+      expect(html).not.toContain("unlock My Mix");
+      expect(html).not.toContain(">My Mix</button>");
+    });
+
+    it("stays silent while the lanes are loaded, or all hidden by the listener", () => {
+      expect(render({ myMix: empty({ state: "ready" }) })).not.toContain("agent-my-mix-unavailable-reason");
+      const hidden = render({
+        myMix: { ...empty({ state: "ready" }), lanes: [{ ...myMixLane, hidden: true }] },
+      });
+      expect(hidden).not.toContain("agent-my-mix-unavailable-reason");
+      expect(render({ myMix: { ...empty({ state: "none", reason: "no_signals" }), lanes: [{ ...myMixLane, hidden: true }] } }))
+        .not.toContain("agent-my-mix-unavailable-reason");
+    });
+
+    it("sits beside Right now in the For you row", () => {
+      const html = render({
+        rightNow: { summary: { status: "cold_start", context: "evening:weekday", reason: "no_history" }, selected: false, onSelect: vi.fn() },
+        myMix: empty({ state: "none", reason: "too_few_sessions" }),
+      });
+      expect(html).toContain(">Right now</button>");
+      expect(html).toContain("unlock My Mix");
+    });
+  });
+
   it("puts My Mix before ordinary presets only when a visible lane is available", () => {
     const myMix = {
       lanes: [myMixLane],

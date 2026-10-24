@@ -33,6 +33,7 @@ import {
     buildMyMixTasteEdits,
     createMyMixPreferences,
     getMyMixLocalContext,
+    type MyMixLanesStatus,
 } from "../../lib/agentMyMix";
 import { withRightNowContext } from "../../lib/agentRightNow";
 import { resolveDjQueue } from "../../lib/agentDjPlayback";
@@ -152,6 +153,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const [ignored, setIgnored] = useState<AgentSessionRequestIgnoredKey[]>([]);
     const [activePreset, setActivePreset] = useState<SessionPreset | null>(null);
     const [myMixLanes, setMyMixLanes] = useState<ListeningLane[]>([]);
+    // Why there are no lanes, or that the call failed: the two read differently (#2270).
+    const [myMixLanesStatus, setMyMixLanesStatus] = useState<MyMixLanesStatus>({ state: "ready" });
     const [myMixVocabulary, setMyMixVocabulary] = useState<AgentMixVocabulary>({ genres: [], moods: [] });
     const [myMixPreferences, setMyMixPreferences] = useState<AgentMyMixPreferences | null>(null);
     const [myMixCoverage, setMyMixCoverage] = useState<AgentMixCoverage | null>(null);
@@ -251,20 +254,35 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     useEffect(() => {
         if (!token) {
             setMyMixLanes([]);
+            setMyMixLanesStatus({ state: "ready" });
             setMyMixVocabulary({ genres: [], moods: [] });
             return;
         }
         let current = true;
-        void Promise.all([getTasteMemory(token), getAgentMixVocabulary(token)])
-            .then(([memory, vocabulary]) => {
+        // Independent calls: a failed vocabulary must not read as "no lanes", nor a failed
+        // taste memory as a listener who has none (#2270).
+        void getTasteMemory(token)
+            .then((memory) => {
                 if (!current) return;
-                setMyMixLanes(memory.summary.listeningLanes ?? []);
-                setMyMixVocabulary(vocabulary);
+                const lanes = memory.summary.listeningLanes ?? [];
+                setMyMixLanes(lanes);
+                setMyMixLanesStatus(
+                    lanes.length === 0
+                        ? { state: "none", reason: memory.summary.listeningLanesEmptyReason ?? null }
+                        : { state: "ready" },
+                );
             })
             .catch(() => {
                 if (!current) return;
                 setMyMixLanes([]);
-                setMyMixVocabulary({ genres: [], moods: [] });
+                setMyMixLanesStatus({ state: "unavailable" });
+            });
+        void getAgentMixVocabulary(token)
+            .then((vocabulary) => {
+                if (current) setMyMixVocabulary(vocabulary);
+            })
+            .catch(() => {
+                if (current) setMyMixVocabulary({ genres: [], moods: [] });
             });
         return () => { current = false; };
     }, [token]);
@@ -1261,6 +1279,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         rightNow={rightNow ? { summary: rightNow, selected: rightNowActive, onSelect: handleSelectRightNow } : undefined}
                         myMix={{
                             lanes: myMixLanes,
+                            lanesStatus: myMixLanesStatus,
                             vocabulary: myMixVocabulary,
                             preferences: myMixPreferences,
                             coverage: myMixCoverage,

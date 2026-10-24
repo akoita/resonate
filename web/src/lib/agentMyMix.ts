@@ -7,6 +7,7 @@ import type {
   ConfirmedTasteEdit,
   ListeningLane,
   ListeningLaneContextKey,
+  ListeningLanesEmptyReason,
 } from "./api";
 import { getPlaybackLocalContext } from "./playbackAnalytics";
 
@@ -24,6 +25,34 @@ const CONTEXT_LABELS: Record<ListeningLaneContextKey, string> = {
   "evening:weekday": "Evening · weekdays",
   "evening:weekend": "Evening · weekends",
 };
+
+/**
+ * What the AI DJ page knows about the listener's lanes: loaded with lanes,
+ * loaded with none (and why), or not loaded at all. A failed taste-memory call
+ * is `unavailable`, never "no lanes": the listener may well have lanes (#2270).
+ */
+export type MyMixLanesStatus =
+  | { state: "ready" }
+  | { state: "none"; reason: ListeningLanesEmptyReason | null }
+  | { state: "unavailable" };
+
+const NO_LANES_COPY: Record<ListeningLanesEmptyReason, string> = {
+  no_signals: "Play some music and save, finish or skip a few tracks to start building My Mix.",
+  too_few_sessions: "Play and keep a few more sessions to unlock My Mix. A habit has to show up in more than one session.",
+  evidence_decayed: "Your listening has gone quiet lately. Play and save a few more tracks to bring My Mix back.",
+  unknown_genres: "Your recent plays have no genre My Mix can group yet. Play tracks that name a genre to unlock it.",
+};
+
+/** Fallback for a server that sends no reason (older than #2270). */
+const NO_LANES_FALLBACK = "Play and keep a few more sessions to unlock My Mix.";
+
+/** The plain sentence for a listener with no lanes. */
+export function myMixNoLanesMessage(reason: ListeningLanesEmptyReason | null | undefined): string {
+  return (reason && NO_LANES_COPY[reason]) || NO_LANES_FALLBACK;
+}
+
+/** The sentence for a taste-memory call that failed; it says nothing about the listener's lanes. */
+export const MY_MIX_UNAVAILABLE_MESSAGE = "My Mix could not load right now. Reload the page to try again.";
 
 /** One centralized entitlement seam; Listener Pro controls stay off until entitlement policy exists. */
 export function isListenerProEnabled(): boolean {
@@ -195,6 +224,8 @@ export function buildMyMixTasteEdits(
     if (!selection.boost) continue;
     const lane = laneById.get(selection.id);
     if (!lane) continue;
+    // A family-keyed lane (#2236) lists a genre family id such as "ambient-lofi";
+    // the server resolves it to the family's members, so it is sent as is.
     for (const [genre] of positiveRankedTerms(lane.genreWeights).slice(0, MAX_SAVED_LANE_TERMS_PER_KIND)) {
       add("genre", genre);
     }
