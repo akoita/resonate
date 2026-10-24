@@ -202,7 +202,21 @@ existing state. The upgrade and its follow-through are, in order:
    anchors each deadline on the original deposit time, and never moves a
    recorded deadline. Until it runs, a pre-V7 stake cannot be self-claimed
    (`StakeEscrowNotRecorded`); the owner `refundStake` path is unaffected.
-4. `configure-content-protection-stake-lock` once a lock-capable
+4. `deploy-dispute-stack` when the environment's `DisputeResolution` predates
+   v2.1.0. It is not upgradeable and `CurationRewards` binds it in its
+   constructor, so both are deployed again next to the existing ContentProtection
+   proxy (`script/DeployDisputeStack.s.sol`). The new `DisputeResolution` takes
+   `firstDisputeIdAfter` = the old contract's `disputeCount()` (plus optional
+   `DISPUTE_ID_HEADROOM`), so its first dispute is that number + 1 and dispute
+   ids stay unique per chain (`disputeIdOffset()` records it). The run replicates
+   the old juror pool, counter-stake bps, treasury and owners, turns stake
+   locking on, and authorises itself on ContentProtection only when the signer
+   owns ContentProtection and no other authority is set. The handoff writer
+   (`contracts/scripts/write-dispute-stack-handoff.sh`) checks the live wiring and
+   writes `dispute-stack.<network>.json`, `dispute-stack.<network>.remote.env`,
+   `dispute-resolution.abi.json` and `curation-rewards.abi.json`. It fails if the
+   old stack has already issued an id past the new offset.
+5. `configure-content-protection-stake-lock` once a lock-capable
    `DisputeResolution` (v2.1.0+) and its `CurationRewards` exist. It sets
    `ContentProtection.setStakeLockAuthority(DisputeResolution)` (CP owner) and
    then `DisputeResolution.configureStakeLocking(ContentProtection,
@@ -442,6 +456,7 @@ Deployment operations:
 | `schedule-content-protection-upgrade` / `execute-content-protection-upgrade` | Delayed post-V6 implementation change | Schedule deploys a candidate and queues exact UUPS calldata; execute uses `NEW_IMPLEMENTATION` after the timelock delay | Signer must hold the matching timelock proposer/executor role; proxy/app address stays stable |
 | `pause-content-protection` | Content-protection incident containment | Operational owner immediately pauses or resumes risk-creating writes | Existing failed-payment claims, revocations, blacklist controls, dispute stake locks, reads, governance, and recovery remain available; creator self-claims stop |
 | `backfill-content-protection-stake-escrow` | After the V7 self-claim upgrade (#1759) | No redeploy; owner calls `backfillStakeEscrow` in batches for the `token_ids` input | Idempotent; skips inactive and already-recorded stakes; fails before broadcasting if a listed active stake would stay unrecorded |
+| `deploy-dispute-stack` | Replace a pre-v2.1.0 dispute stack (#1759) | Deploys `DisputeResolution` (continuing the previous dispute ids) and `CurationRewards` against the existing ContentProtection, replicates juror pool / counter-stake bps / treasury / owners, turns stake locking on; writes JSON, `.remote.env`, and ABI handoffs | Requires `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY` and a previous `DisputeResolution` (`PREVIOUS_DISPUTE_RESOLUTION_ADDRESS`, default `DISPUTE_RESOLUTION_ADDRESS`); reports revert until `configure-content-protection-stake-lock` authorises the new contract; promote both addresses together |
 | `configure-content-protection-stake-lock` | Let disputes hold stakes (#1759) | No redeploy; CP owner authorises `DisputeResolution` as stake-lock authority, then the DR owner turns locking on with `CurationRewards` as the only filer | Requires `CONTENT_PROTECTION_PROXY`, `DISPUTE_RESOLUTION_ADDRESS`, `CURATION_REWARDS_ADDRESS`; refuses a `CurationRewards` wired to other contracts |
 | `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
 | `set-marketplace-protocol-fee` | Marketplace fee config update | No redeploy; calls `StemMarketplaceV2.setProtocolFee` and optionally `setFeeRecipient` | Requires `MARKETPLACE_ADDRESS` and `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`; signer must be marketplace owner |
@@ -490,7 +505,9 @@ Optional GitHub environment variables:
 | `STEM_NFT_ADDRESS`, `MARKETPLACE_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`, `EXISTING_ADMIN` | Required/optional inputs for `deploy-content-protection`. `MARKETPLACE_ADDRESS` should be set when an existing marketplace must register protected content. `EXISTING_ADMIN` is only for local/fork impersonation-style workflows; real testnet runs must be signed by the admin. |
 | `CONTENT_PROTECTION_PROXY` | Required for `upgrade-content-protection`. |
 | `CONTENT_PROTECTION_UPGRADE_CALLDATA` | Optional `upgradeToAndCall` data for ContentProtection schedule/execute, e.g. `cast calldata "reinitializeV7()"` for the V7 self-claim upgrade. Must be identical for both phases. |
-| `DISPUTE_RESOLUTION_ADDRESS`, `CURATION_REWARDS_ADDRESS` | Inputs for `configure-content-protection-stake-lock`. |
+| `DISPUTE_RESOLUTION_ADDRESS`, `CURATION_REWARDS_ADDRESS` | Inputs for `configure-content-protection-stake-lock`; default previous stack for `deploy-dispute-stack`. |
+| `PREVIOUS_DISPUTE_RESOLUTION_ADDRESS`, `PREVIOUS_CURATION_REWARDS_ADDRESS`, `DISPUTE_ID_HEADROOM` | `deploy-dispute-stack`: the stack being replaced (its `disputeCount()` becomes the new id offset) and optional extra ids to skip. |
+| `DISPUTE_RESOLUTION_OWNER`, `CURATION_REWARDS_OWNER` | Optional `deploy-dispute-stack` owners; default to the previous contracts' owners, then the deployer. `FEE_RECIPIENT` overrides the replicated `CurationRewards` treasury. |
 | `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` | Optional expected `stakeLockAuthority` checked by `smoke-content-protection` once V7 is live. |
 | `STAKE_ESCROW_BATCH_SIZE` | Optional batch size for `backfill-content-protection-stake-escrow` (default 100). The token ids come from the workflow's `token_ids` input. |
 | `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL` | Inputs for `set-content-protection-stake`. |

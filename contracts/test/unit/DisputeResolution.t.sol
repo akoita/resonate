@@ -22,7 +22,7 @@ contract DisputeResolutionTest is Test, IDisputeResolutionEvents {
     address public juror4 = makeAddr("juror4");
 
     function setUp() public {
-        dr = new DisputeResolution(admin);
+        dr = new DisputeResolution(admin, 0);
 
         vm.startPrank(admin);
         dr.registerJuror(juror1);

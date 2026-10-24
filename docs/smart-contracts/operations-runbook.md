@@ -68,6 +68,7 @@ Core GitHub environment variables:
 | `pause-content-protection` | Toggle the fast custody/protection pause. | Vars: `CONTENT_PROTECTION_PROXY`, `CONTENT_PROTECTION_PAUSED`. Secret: operational owner signer. | Pause event and broadcast. | Failed-payment claims and protective blacklist/revocation intentionally remain available while paused. |
 | `backfill-content-protection-stake-escrow` | After the V7 self-claim upgrade (#1759): record the claim deadline of stakes deposited before V7. | Workflow: `operation=backfill-content-protection-stake-escrow`, `token_ids=<id,id,...>`. Vars: `CONTENT_PROTECTION_PROXY`; optional `STAKE_ESCROW_BATCH_SIZE` (100). Secret: ContentProtection owner signer. | `StakeEscrowRecorded` events, Forge counts (supplied, needing a deadline, recorded), step summary. | Over-inclusion and reruns are safe. The script refuses to broadcast if any listed active stake would stay unrecorded. Afterwards each creator sees "Claim" or "Claimable on <date>" in My Stakes. |
 | `configure-content-protection-stake-lock` | Let open disputes hold stakes (#1759): authorise `DisputeResolution` on ContentProtection, then turn locking on. | Workflow: `operation=configure-content-protection-stake-lock`. Vars: `CONTENT_PROTECTION_PROXY`, `DISPUTE_RESOLUTION_ADDRESS`, `CURATION_REWARDS_ADDRESS`. Secret: the ContentProtection owner for step 1, the DisputeResolution owner for step 2 (one run if they are the same key). | Broadcast, Forge log of both steps (and `PENDING` if step 2 needs the other signer), step summary. | Run `smoke-content-protection` with `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` set. From then on only `CurationRewards` can file or appeal disputes. |
+| `deploy-dispute-stack` | Replace a `DisputeResolution` older than v2.1.0 (not upgradeable) and its `CurationRewards` so disputes can hold stakes (#1759). | Workflow: `operation=deploy-dispute-stack`. Vars: `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`; `PREVIOUS_DISPUTE_RESOLUTION_ADDRESS` / `PREVIOUS_CURATION_REWARDS_ADDRESS` (default: `DISPUTE_RESOLUTION_ADDRESS` / `CURATION_REWARDS_ADDRESS`); optional `DISPUTE_ID_HEADROOM` (0), `FEE_RECIPIENT`, `DISPUTE_RESOLUTION_OWNER`, `CURATION_REWARDS_OWNER`. Secret: deployer key (the ContentProtection owner key also authorises the new contract in the same run). | `dispute-stack.<network>.json`, `.remote.env`, DR/CR ABI handoffs, broadcast, a `DISPUTE_STACK_DEPLOYED` Forge log line, step summary with the deployment block and any `PENDING` authority step, Sourcify verification. | Follow "Replacing the dispute stack" below: promote both addresses to backend and web together, then `configure-content-protection-stake-lock`. Old disputes stay on the old contracts. |
 | `set-content-protection-stake` | Change the ERC-20 stake amount required by ContentProtection. | Workflow: `operation=set-content-protection-stake`. Vars: `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; optional `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL`. Secret: owner signer. | Console summary and broadcast file. No deployment handoff. | Update docs/product copy if the visible stake policy changed. |
 | `set-marketplace-protocol-fee` | Change marketplace protocol fee and optionally rotate the fee recipient. | Workflow: `operation=set-marketplace-protocol-fee`. Vars: `MARKETPLACE_ADDRESS`, `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`. Secret: `StemMarketplaceV2` owner signer. | Console summary, workflow summary, broadcast file. | If fee economics changed beyond accepted ADR values, update the business-model RFC first. No address promotion. |
 | `set-show-campaign-fee-config` | Change Shows campaign fee rate for future campaigns or rotate the charge-time fee recipient. | Workflow: `operation=set-show-campaign-fee-config`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEW_FEE_BPS`, `NEW_FEE_RECIPIENT`. Secret: `ShowCampaignEscrow` owner signer. | Console summary, workflow summary, broadcast file. | Fee rate affects future campaigns only; recipient rotation applies when fees are charged. Update public/operator docs if terms changed. |
@@ -228,6 +229,8 @@ one workflow run:
    `configure-content-protection-stake-lock`. If the Forge log prints `PENDING`,
    rerun with the DisputeResolution owner key. Smoke again with
    `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` set to the DisputeResolution address.
+   An environment whose `DisputeResolution` predates v2.1.0 first replaces its
+   dispute stack; see "Replacing the dispute stack" below.
 6. **Promote ABIs/app.** Deploy the backend and web builds that read
    `getStakeClaimState` and call `claimStakeRefund`. Until step 3 is live the
    wallet shows "Claim date pending" rather than a button.
@@ -235,12 +238,107 @@ one workflow run:
 Order matters in step 5. If `DisputeResolution` locking is turned on before
 ContentProtection lists it as `stakeLockAuthority`, every report reverts with
 `NotStakeLockAuthority`. The script enforces the order. An environment whose
-`DisputeResolution` predates v2.1.0 cannot run step 5: the contract is not
-upgradeable, so it needs a replacement dispute stack first. Until then the
-operational owner can hold a disputed stake by hand with
-`setStakeLock(tokenId, true)` on the stake root
+`DisputeResolution` predates v2.1.0 cannot run step 5 until it replaces the
+dispute stack. Until then the operational owner can hold a disputed stake by
+hand with `setStakeLock(tokenId, true)` on the stake root
 (`resolveStakeRoot(disputedTokenId)`). Release it after the outcome. The owner
 `refundStake` path stays available for exceptional cases throughout.
+
+### Replacing the dispute stack
+
+`DisputeResolution` is not upgradeable and `CurationRewards` binds it in its
+constructor, so a pre-v2.1.0 environment deploys both again next to its
+existing ContentProtection proxy. Run in this order, one workflow run per step:
+
+1. **V7 executed.** Steps 1–4 above are done and `smoke-content-protection`
+   passes. `deploy-dispute-stack` refuses a ContentProtection without V7's
+   `stakeLockAuthority()`.
+2. **`deploy-dispute-stack`.** Inputs: `CONTENT_PROTECTION_ADDRESS` (or
+   `CONTENT_PROTECTION_PROXY`) and the stack being replaced in
+   `PREVIOUS_DISPUTE_RESOLUTION_ADDRESS` / `PREVIOUS_CURATION_REWARDS_ADDRESS`.
+   When those are unset the workflow uses the environment's current
+   `DISPUTE_RESOLUTION_ADDRESS` / `CURATION_REWARDS_ADDRESS`, which is what you
+   want before step 3. The run:
+   - reads the old `disputeCount()` and deploys the new `DisputeResolution` with
+     it as `disputeIdOffset`, so the first new dispute is that number + 1. The
+     backend stores disputes by on-chain id per chain, so restarting at 1 would
+     overwrite existing dispute rows;
+   - copies the old juror pool, `counterStakeBps`, treasury (`FEE_RECIPIENT`
+     overrides it) and owners (`DISPUTE_RESOLUTION_OWNER` /
+     `CURATION_REWARDS_OWNER` override them);
+   - turns stake locking on, so only the new `CurationRewards` can file;
+   - authorises the new contract on ContentProtection only when the signer owns
+     ContentProtection and no other authority is set. Otherwise the log and the
+     step summary print `PENDING`. Every report on the new stack reverts with
+     `NotStakeLockAuthority` until step 4 runs, so it never files a dispute that
+     does not hold the stake.
+   Record the addresses and the deployment block from the step summary or
+   `dispute-stack.<network>.json`.
+3. **Promote the addresses.** Update the backend `DISPUTE_RESOLUTION_ADDRESS` /
+   `CURATION_REWARDS_ADDRESS` and their chain-specific variants
+   (`BASE_SEPOLIA_*`, `SEPOLIA_*`), and the web build's
+   `NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS` / `NEXT_PUBLIC_CURATION_REWARDS_ADDRESS`
+   and their `NEXT_PUBLIC_BASE_SEPOLIA_*` / `NEXT_PUBLIC_SEPOLIA_*` variants, using
+   `dispute-stack.<network>.remote.env`. Update the contracts environment's
+   `DISPUTE_RESOLUTION_ADDRESS` / `CURATION_REWARDS_ADDRESS` too. Roll the backend
+   out no later than the web build (see the indexer note below). The values and
+   the rollout live in `resonate-iac`.
+4. **`configure-content-protection-stake-lock`** with the ContentProtection owner
+   signer and the new addresses. It sets the authority and skips the locking step
+   that step 2 already did. If step 2 already set the authority, the run is a
+   no-op. This step does not depend on step 3, so it can run first: reports then
+   succeed on the new stack before the app points at it, which only matters if
+   someone calls it directly.
+5. **Smoke.** Run `smoke-content-protection` with
+   `CONTENT_PROTECTION_STAKE_LOCK_AUTHORITY` set to the new `DisputeResolution`.
+   Confirm the old stack did not issue past the new offset:
+   `cast call <old DisputeResolution> "disputeCount()(uint256)"` must not exceed
+   `cast call <new DisputeResolution> "disputeIdOffset()(uint256)"`. If it does, a
+   report reached the old stack between steps 2 and 3. Redeploy with a larger
+   `DISPUTE_ID_HEADROOM` before any report lands on the new stack. Set the
+   headroom up front (for example 100) when reports may still arrive during the
+   switch.
+6. **Old disputes.** The old contracts are not touched and keep their disputes,
+   counter-stakes and appeal stakes:
+   - Open disputes are resolved on the old `DisputeResolution` by its owner
+     (`resolve`, or the jury flow). The parties then settle on the old
+     `CurationRewards`: the reporter calls `claimBounty`, or anyone calls
+     `processRejection` / `processInconclusive`. An Upheld outcome still needs the
+     ContentProtection owner's `slash`. On a test network you may leave them
+     unresolved instead; the counter-stakes stay locked in the old
+     `CurationRewards`.
+   - Old disputes never held a stake (the old contract cannot lock). Release any
+     hold you set by hand with `setStakeLock(root, false)`.
+   - After step 3 the indexer follows only the new addresses. In the app, old
+     disputes keep the status last indexed before the switch. Reporter, creator,
+     and admin queue views still list them. The admin queue's review, resolve,
+     and jury actions update only the database, as before. Changes made on the
+     old contracts after the switch are not indexed. Settle on the old contracts
+     and update the admin record to match, or reindex individual old
+     transactions with `POST /metadata/indexer/reindex-tx`.
+   - The web app has no claim or appeal actions for any stack: it only files
+     reports, on the new `CurationRewards`. Its "active dispute" check reads the
+     new `DisputeResolution`. A token whose dispute is still open on the old
+     stack can therefore be reported again on the new one.
+   - If the old stack were a lock-capable v2.1.0 contract, moving the authority
+     would stop it releasing its holds: its `resolve` would revert. Before step 4
+     the old owner calls `configureStakeLocking(address(0), address(0))` on it and
+     clears its holds by hand. `deploy-dispute-stack` never replaces an existing
+     authority.
+
+**Indexer.** The backend reads dispute addresses once, at startup, and keeps
+one block cursor per chain for every contract it watches. The new contracts
+are deployed at the chain head, below the cursor. The indexer handles only
+dispute and report events (`DisputeFiled`, `DisputeResolved`,
+`DisputeAppealed`, `ContentReported*`, `BountyClaimed*`,
+`AppealStakeDeposited*`), and the deployment emits none of them. Nothing is
+missed as long as no report lands on the new `CurationRewards` before the
+backend restarts with the new addresses. Reports revert until step 4, and the
+web app files on the new stack only after its own rollout. A report that does
+land earlier (step 4 already done, web ahead of backend) is skipped by the
+cursor. Recover it with `POST /metadata/indexer/reindex-tx` (admin, step-up)
+for that transaction. `POST /metadata/indexer/reset` to the deployment block
+replays every watched contract and is a heavier fallback.
 
 Deployment-specific wiring (which environment runs which step, and the
 addresses involved) lives in `resonate-iac`.

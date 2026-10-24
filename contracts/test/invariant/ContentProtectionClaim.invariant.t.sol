@@ -49,7 +49,7 @@ contract StakeClaimHandler is Test {
             ContentProtection.initializeFresh, (admin, treasury, STAKE_AMOUNT, makeAddr("claim_upgrade"))
         );
         cp = ContentProtection(address(new ERC1967Proxy(address(impl), initData)));
-        dr = new DisputeResolution(admin);
+        dr = new DisputeResolution(admin, 0);
         cr = new CurationRewards(admin, address(cp), address(dr), treasury);
 
         vm.startPrank(admin);

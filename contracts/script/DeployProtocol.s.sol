@@ -83,7 +83,7 @@ contract DeployProtocol is ContentProtectionDeployment, RevenueEscrowDeployment,
         console.log("ContentProtection (proxy):", address(contentProtection));
 
         // 3. Deploy DisputeResolution
-        DisputeResolution disputeResolution = new DisputeResolution(deployer);
+        DisputeResolution disputeResolution = new DisputeResolution(deployer, 0);
         console.log("DisputeResolution:", address(disputeResolution));
 
         // 4. Deploy CurationRewards
