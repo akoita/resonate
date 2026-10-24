@@ -330,6 +330,54 @@ address, separate from the account's own email. It reads and writes
   `components/email/EmailLinkPages.test.tsx`, `app/settings/page.test.tsx`.
 - **User Guide:** the "Get notices by email" section of `/help/platform-notices`.
 
+## Optional email prompts (web)
+
+Status: `implemented` for the four prompts below
+([#2182](https://github.com/akoita/resonate/issues/2182), follow-up to #2169).
+
+Revenue line: vision-neutral readiness infrastructure (ADR-BM-6). No fee,
+split, price or payout change.
+
+Email stays **optional**: Resonate is wallet-first, so no role is ever required
+to add one. Instead a small card offers it where it clearly helps
+(`components/email/EmailPromptCard.tsx`, rules and words in `lib/emailPrompt.ts`).
+It is a dismissible card, never a modal or a gate.
+
+| Moment | Where | Card |
+| --- | --- | --- |
+| `onboarding` | Home, right under the hero | "Want important notices by email too? Refunds owed, account decisions, terms changes." **Add an email** opens the address form in place (with the wallet-link disclosure); **Skip** is one tap. |
+| `pledge` | Shows campaign page, after a pledge is confirmed | "Get an email if a refund is ever owed to you." Links to Settings → Email notices. |
+| `artist_listing` | Listing Manager, once the seller has a first listing (any state, sold included) | Account notices by email. Links to Settings. |
+| `stale_notices` | Top of the notification bell, when an unread `account` or `refund` notice is at least 3 days old (`STALE_NOTICE_DAYS`) | "Missed a notice? Get these by email too." Links to Settings. |
+
+- **When it shows.** Only for a signed-in person, only when email is configured
+  on the deployment (`available`), only while they have no address on file (a
+  pending, confirmed or stopped address is never prompted again), and only if
+  they have not dismissed that moment. Nothing blocks, and nothing is requested
+  once a prompt was dismissed.
+- **Dismissal** is stored in this browser's `localStorage`, per account and per
+  moment (`resonate.emailPrompt.dismissed.<userId>.<context>`), because the
+  server has no preference field for it. If storage cannot be read the prompt
+  stays hidden. A person who clears site data, or uses another browser, may be
+  asked once more.
+- **Onboarding reuses the Settings flow.** The inline form calls the same
+  `/me/contact-email` endpoint, so it is the same double opt-in (nothing is
+  emailed until the link is opened) and the same errors.
+- **Measurement** (counts only, never the address, and only with analytics
+  consent, through the existing `recordProductAnalytics` gate) reuses the
+  `onboarding.step_viewed` (prompted), `onboarding.step_completed`
+  (`action: address_added` or `opened_settings`) and `onboarding.abandoned`
+  (dismissed) events with `flow: "email_notices"` and `step: <moment>`. Confirmed
+  addresses are counted from the server's own `ContactEmail` records, because the
+  confirmation link has no session.
+- **Tests:** `lib/emailPrompt.test.ts` (show/hide/dismiss rules, onboarding skip,
+  stale-notice selection), `components/email/EmailPromptCard.test.tsx` (each
+  state).
+- **User Guide:** the "Get notices by email" section of `/help/platform-notices`.
+- **Not done:** a prompt when an account-status decision banner is shown (the
+  bell prompt covers unread account notices after 3 days), and a server-side
+  dismissal field (which would need a schema change).
+
 ## Remaining
 
 - Email delivery is implemented in the backend (above); the provider, secrets
