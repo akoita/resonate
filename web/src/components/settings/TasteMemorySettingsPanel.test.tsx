@@ -160,13 +160,50 @@ describe("TasteMemorySettingsPanel", () => {
     expect(html).not.toContain(laneId);
   });
 
-  it("shows repeated-session guidance when no lanes have been learned", () => {
+  it("falls back to generic guidance when an older server sends no reason", () => {
     const html = renderToStaticMarkup(
       <ListeningLaneSection lanes={[]} controls={[]} saving={false} onHide={vi.fn()} onRestore={vi.fn()} />,
     );
 
-    expect(html).toContain("Repeated listening sessions are needed");
-    expect(html).toContain("listening lanes and My Mix appear");
+    expect(html).toContain("Play and keep a few more sessions to unlock My Mix.");
+    expect(html).toContain('data-reason="unknown"');
+  });
+
+  it.each([
+    ["no_signals", "Play some music and save, finish or skip a few tracks to start building My Mix."],
+    ["too_few_sessions", "Play and keep a few more sessions to unlock My Mix."],
+    ["evidence_decayed", "Your listening has gone quiet lately."],
+    ["unknown_genres", "Your recent plays have no genre My Mix can group yet."],
+  ] as const)("says why there are no lanes for %s (#2270)", (reason, copy) => {
+    const html = renderToStaticMarkup(
+      <ListeningLaneSection
+        lanes={[]}
+        emptyReason={reason}
+        controls={[]}
+        saving={false}
+        onHide={vi.fn()}
+        onRestore={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain(copy);
+    expect(html).toContain(`data-reason="${reason}"`);
+    expect(html).not.toContain("could not load");
+  });
+
+  it("does not show the empty sentence once there are lanes", () => {
+    const html = renderToStaticMarkup(
+      <ListeningLaneSection
+        lanes={[listeningLane]}
+        emptyReason="too_few_sessions"
+        controls={[]}
+        saving={false}
+        onHide={vi.fn()}
+        onRestore={vi.fn()}
+      />,
+    );
+
+    expect(html).not.toContain("listening-lanes-empty");
   });
 
   it("keeps lane controls out of the generic editor and gives orphan hides a safe restore row", () => {
@@ -224,6 +261,7 @@ describe("TasteMemorySettingsPanel", () => {
       favoredTempoBands: [],
       contexts: [],
       listeningLanes: [],
+      listeningLanesEmptyReason: "no_signals",
       recentIntents: [],
       noveltyPattern: "Balanced discovery",
       commercePreference: "Listening first",

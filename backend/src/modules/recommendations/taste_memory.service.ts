@@ -7,6 +7,7 @@ import { TasteNoteEmbeddingService } from "../embeddings/taste_note_embedding.se
 import { EventBus } from "../shared/event_bus";
 import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 import type { UserPreferences } from "./recommendations.service";
+import { genreFamilyById } from "./genre_families";
 import { computeTasteDrift, type TasteDrift } from "./taste_drift";
 import { TASTE_EDIT_PARSER } from "./model_taste_edit_parser";
 import {
@@ -165,11 +166,12 @@ export class TasteMemoryService {
     const policy = buildPolicy(settingsDto(settings), controls.map(controlDto));
     // Resolve lazily to avoid a module cycle: learning also reads taste controls.
     const { computeTasteProfileFromHistory } = await import("../agents/agent_learning.service");
-    const { getListeningLaneSummary } = await import("../agents/listening_lanes.service");
-    const [profile, listeningLanes] = await Promise.all([
+    const { getListeningLaneReport } = await import("../agents/listening_lanes.service");
+    const [profile, laneReport] = await Promise.all([
       computeTasteProfileFromHistory(userId, { policy }),
-      getListeningLaneSummary(userId, { policy }),
+      getListeningLaneReport(userId, { policy }),
     ]);
+    const listeningLanes = laneReport.lanes;
     const controlDtos = controls.map(controlDto);
     // Declared boosts never fade; a stale one is only reported (#2101).
     const tasteDrift: TasteDrift | null = computeTasteDrift({
@@ -220,6 +222,8 @@ export class TasteMemoryService {
         favoredTempoBands: labels(profile.tempoBandWeights),
         contexts,
         listeningLanes,
+        // Why there are no lanes (#2270); null whenever there is at least one.
+        listeningLanesEmptyReason: laneReport.emptyReason,
         recentIntents: rankedLabels(intentWeights, policy, "intent"),
         noveltyPattern: noveltyPattern(replayWeight, skipWeight),
         commercePreference: commercePreference(commerceWeight, libraryWeight),
@@ -429,6 +433,11 @@ export class TasteMemoryService {
       let value = normalizeSignalValue(item.value);
       if (!signalType || !action || !value) {
         throw new BadRequestException("Invalid taste edit value");
+      }
+      // A family-keyed My Mix lane boosts by family id (#2270); store the label
+      // the listener reads. The ranking also resolves ids already stored.
+      if (signalType === "genre" && action === "boosted") {
+        value = genreFamilyById(value.trim().toLowerCase())?.label ?? value;
       }
       if (signalType === "energy") {
         value = value.toLowerCase();

@@ -12,11 +12,13 @@ import {
   type TasteDrift,
   type ListeningLane,
   type ListeningLaneContextKey,
+  type ListeningLanesEmptyReason,
   type TasteMemoryContextSummary,
   type TasteMemoryResponse,
   type TasteMemorySettings,
   type TasteSignalControl,
 } from "../../lib/api";
+import { myMixNoLanesMessage } from "../../lib/agentMyMix";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -119,6 +121,7 @@ export function clearTasteMemorySummary(summary: TasteMemorySummaryData): TasteM
     favoredTempoBands: [],
     contexts: [],
     listeningLanes: [],
+    listeningLanesEmptyReason: "no_signals",
     tasteDrift: null,
     recentIntents: [],
     noveltyPattern: "Balanced discovery",
@@ -168,12 +171,15 @@ export function buildListeningLaneContextLabels(lane: ListeningLane): string[] {
 
 export function ListeningLaneSection({
   lanes,
+  emptyReason,
   controls,
   saving,
   onHide,
   onRestore,
 }: {
   lanes: ListeningLane[];
+  /** Why there are no lanes (#2270); absent on an older server. */
+  emptyReason?: ListeningLanesEmptyReason | null;
   controls: TasteSignalControl[];
   saving: boolean;
   onHide: (lane: ListeningLane) => void;
@@ -213,7 +219,9 @@ export function ListeningLaneSection({
           </div>
         </>
       ) : (
-        <p>No lanes yet. Repeated listening sessions are needed before listening lanes and My Mix appear.</p>
+        <p data-testid="listening-lanes-empty" data-reason={emptyReason ?? "unknown"}>
+          {myMixNoLanesMessage(emptyReason)}
+        </p>
       )}
     </section>
   );
@@ -452,6 +460,7 @@ export default function TasteMemorySettingsPanel({ token, addToast }: Props) {
       {memory ? (
         <ListeningLaneSection
           lanes={listeningLanes}
+          emptyReason={memory.summary.listeningLanesEmptyReason}
           controls={memory.controls}
           saving={savingKey === "lane"}
           onHide={hideLane}

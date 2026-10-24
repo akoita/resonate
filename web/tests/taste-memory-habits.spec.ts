@@ -90,7 +90,7 @@ test("habit summaries render and reset clears learned dimensions while keeping d
   }
   await expect(stat("Evenings · weekdays")).toHaveCount(0);
   await expect(page.getByTestId("listening-lane-card")).toHaveCount(0);
-  await expect(page.getByTestId("listening-lanes")).toContainText("Repeated listening sessions are needed");
+  await expect(page.getByTestId("listening-lanes")).toContainText("Play some music and save, finish or skip a few tracks to start building My Mix.");
   await expect(page.locator(".taste-memory-signal-list")).toContainText("Jazz");
   await expect(page.locator(".taste-memory-signal-list")).not.toContainText("Hidden listening lane");
   expect(resetRequests).toBe(1);

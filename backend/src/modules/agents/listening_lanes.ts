@@ -33,6 +33,35 @@ export type ListeningLane = {
   energyBand: "low" | "medium" | "high" | null;
 };
 
+/**
+ * Why a listener has no listening lanes (#2270). Each code names one rule of
+ * the derivation, so the web can say what to do next instead of staying silent.
+ *
+ * - `no_signals`: no usable listener signal in the history window (none yet,
+ *   none with a session key, none after a taste reset, or training is off). A
+ *   session that only logged picks leaves none until the listener acts on one.
+ * - `unknown_genres`: signals exist but none carries a genre the catalog
+ *   vocabulary or a genre family names, so none can anchor a lane.
+ * - `too_few_sessions`: the positive evidence comes from fewer than
+ *   `AGENT_LISTENING_LANE_MIN_SESSIONS` sessions for any one habit.
+ * - `evidence_decayed`: a habit spans enough sessions, but its net decayed
+ *   positive evidence is below `AGENT_LISTENING_LANE_MIN_WEIGHT`.
+ */
+export const LISTENING_LANES_EMPTY_REASONS = [
+  "no_signals",
+  "unknown_genres",
+  "too_few_sessions",
+  "evidence_decayed",
+] as const;
+
+export type ListeningLanesEmptyReason = (typeof LISTENING_LANES_EMPTY_REASONS)[number];
+
+export interface ListeningLanesAnalysis {
+  lanes: ListeningLane[];
+  /** Set exactly when `lanes` is empty. */
+  emptyReason: ListeningLanesEmptyReason | null;
+}
+
 type SignalWithTime = {
   signal: AgentTasteSignalInput;
   createdAt: Date;
@@ -82,7 +111,16 @@ export function computeListeningLanes(
   now: Date,
   policy?: TasteMemoryPolicy,
 ): ListeningLane[] {
-  if (!Number.isFinite(now.getTime())) return [];
+  return analyzeListeningLanes(signals, now, policy).lanes;
+}
+
+/** The lanes, and (when there are none) the rule that left the listener without. */
+export function analyzeListeningLanes(
+  signals: AgentTasteSignalInput[],
+  now: Date,
+  policy?: TasteMemoryPolicy,
+): ListeningLanesAnalysis {
+  if (!Number.isFinite(now.getTime())) return { lanes: [], emptyReason: "no_signals" };
 
   const cutoff = now.getTime() - AGENT_TASTE_HISTORY_WINDOW_DAYS * DAY_MS;
   const boundedSignals = signals
@@ -103,6 +141,7 @@ export function computeListeningLanes(
     })
     .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.sortKey.localeCompare(right.sortKey))
     .slice(0, AGENT_TASTE_HISTORY_LIMIT);
+  if (boundedSignals.length === 0) return { lanes: [], emptyReason: "no_signals" };
 
   const normalizedPolicy = policyForCatalogSpellings(policy);
   const vectors = new Map<string, MutableVector>();
@@ -155,8 +194,10 @@ export function computeListeningLanes(
       positiveEvidence: positiveWeight(vector.genres),
     }))
     .sort((left, right) => left.sortKey.localeCompare(right.sortKey));
+  if (allVectors.length === 0) return { lanes: [], emptyReason: "unknown_genres" };
   const positiveVectors = allVectors.filter((vector) => vector.positiveEvidence > 0);
-  if (positiveVectors.length === 0) return [];
+  // Only skips and unsaves: no positive session at all.
+  if (positiveVectors.length === 0) return { lanes: [], emptyReason: "too_few_sessions" };
 
   const clusters: LaneCluster[] = [];
   for (const vector of positiveVectors) {
@@ -204,15 +245,22 @@ export function computeListeningLanes(
     .map((cluster) => toLane(cluster))
     .filter((lane): lane is ListeningLane => Boolean(lane));
   const eligibleEvidence = clusters.reduce((sum, cluster) => sum + positiveWeight(cluster.genreWeights), 0);
-  if (eligibleEvidence <= 0) return [];
+  if (eligibleEvidence <= 0) return { lanes: [], emptyReason: "evidence_decayed" };
 
-  return finalLanes
+  const lanes = finalLanes
     .map((lane) => ({
       ...lane,
       strength: clamp01(roundWeight(lane.strength / eligibleEvidence)),
     }))
     .sort((left, right) => right.strength - left.strength || left.id.localeCompare(right.id))
     .slice(0, AGENT_LISTENING_LANE_MAX);
+  if (lanes.length > 0) return { lanes, emptyReason: null };
+  // Habits exist but none qualified. One that spans enough sessions failed on
+  // evidence; otherwise the sessions themselves are too few.
+  const enoughSessions = clusters.some(
+    (cluster) => cluster.positiveSessions.size >= AGENT_LISTENING_LANE_MIN_SESSIONS,
+  );
+  return { lanes: [], emptyReason: enoughSessions ? "evidence_decayed" : "too_few_sessions" };
 }
 
 function startCluster(vector: SessionContextVector): LaneCluster {
