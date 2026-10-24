@@ -25,7 +25,8 @@ reflected in the affected feature pages and, where it changes a feature pitch
 decisions changes a fee, a split or a price.
 
 ADR-TE-1…6 were accepted as written by the owner on 2026-09-30 and recorded on
-[#1953](https://github.com/akoita/resonate/issues/1953). ADR-TE-7 is proposed in
+[#1953](https://github.com/akoita/resonate/issues/1953). ADR-TE-7 was accepted as
+proposed by the owner on 2026-10-24 and recorded on
 [#1976](https://github.com/akoita/resonate/issues/1976).
 
 Context: the autonomous stem-buying AI DJ and the agent-commerce showcase around
@@ -199,7 +200,7 @@ These decisions sit under the accepted business-model decisions
 
 ## ADR-TE-7 — A stem purchase sells a license, and artists can supply official stems
 
-> **Status: proposed — 2026-09-30.** Extends ADR-TE-3.
+> **Status: accepted — 2026-10-24** (proposed 2026-09-30; recorded on #1976). Extends ADR-TE-3.
 
 - **Decision:**
   1. What a stem listing sells is a **license** (personal, remix or commercial
