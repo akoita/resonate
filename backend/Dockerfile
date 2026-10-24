@@ -32,10 +32,12 @@ FROM deps AS build
 COPY prisma ./prisma
 RUN ./node_modules/.bin/prisma generate
 
-# Copy source and build
+# Copy source and build. The type check needs about 2.7 GB of heap, above
+# Node's default on the image builder's machine, so the limit is set here (the
+# build stage only; the runtime image is unaffected).
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
 # ---- Stage 3: Production Dependencies ----
 FROM build AS prod-deps
