@@ -1841,10 +1841,12 @@ export class MetadataController {
   }
 
   /**
-   * POST /metadata/indexer/reset
+   * POST /metadata/indexer/reset (admin only)
    * Reset indexer to reprocess from a specific block
    * Body: { chainId: number, fromBlock: number }
    */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
   @Post("indexer/reset")
   async resetIndexer(@Body() body: { chainId: number; fromBlock: number }) {
     const { chainId, fromBlock } = body;
@@ -1854,10 +1856,12 @@ export class MetadataController {
   }
 
   /**
-   * POST /metadata/indexer/reindex-tx
+   * POST /metadata/indexer/reindex-tx (admin only)
    * Manually index a specific transaction
    * Body: { txHash: string, chainId: number, force?: boolean }
    */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
   @Post("indexer/reindex-tx")
   async reindexTransaction(@Body() body: { txHash: string; chainId: number; force?: boolean }) {
     const { txHash, chainId, force } = body;
