@@ -215,4 +215,56 @@ describe('WalletController (e2e)', () => {
       .set('Authorization', `Bearer ${listenerToken}`)
       .expect(200);
   });
+
+  // ----- Value rules (#2361): the real service rejects before touching the DB -----
+
+  describe('amount value rules', () => {
+    let rulesApp: INestApplication;
+
+    beforeAll(async () => {
+      const realWallet = new WalletService(
+        { publish: jest.fn() } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      );
+      rulesApp = await createControllerTestApp(WalletController, [
+        { provide: WalletService, useValue: realWallet },
+        { provide: SessionKeyService, useValue: mockSessionKeyService },
+        { provide: SocialRecoveryService, useValue: mockRecoveryService },
+        { provide: AgentWalletService, useValue: mockAgentWalletService },
+        { provide: AgentPurchaseService, useValue: mockAgentPurchaseService },
+      ]);
+    });
+
+    afterAll(async () => {
+      await rulesApp.close();
+    });
+
+    it.each([0, -5, 10_001])('POST /wallet/fund → 400 for amountUsd %p', async (amountUsd) => {
+      await request(rulesApp.getHttpServer())
+        .post('/wallet/fund')
+        .set('Authorization', `Bearer ${listenerToken}`)
+        .send({ userId: 'user-1', amountUsd })
+        .expect(400);
+    });
+
+    it.each([-1, 10_001])('POST /wallet/budget → 400 for monthlyCapUsd %p', async (monthlyCapUsd) => {
+      await request(rulesApp.getHttpServer())
+        .post('/wallet/budget')
+        .set('Authorization', `Bearer ${listenerToken}`)
+        .send({ userId: 'user-1', monthlyCapUsd })
+        .expect(400);
+    });
+
+    it('answers with a clear message', async () => {
+      const res = await request(rulesApp.getHttpServer())
+        .post('/wallet/fund')
+        .set('Authorization', `Bearer ${listenerToken}`)
+        .send({ userId: 'user-1', amountUsd: -5 })
+        .expect(400);
+      expect(JSON.stringify(res.body)).toContain('amountUsd must be greater than 0');
+    });
+  });
 });
