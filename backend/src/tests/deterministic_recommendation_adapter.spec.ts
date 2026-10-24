@@ -26,8 +26,16 @@ describe("deterministicSelectorInput (#2094)", () => {
     const selectorInput = deterministicSelectorInput(input);
     expect(selectorInput).toEqual({
       userId: "u1",
-      queries: ["House", "Soul", "Calm", "Dreamy"],
+      // #2316: the learned "House" orders tracks but is not searched for a session that asks for Soul.
+      queries: ["Soul", "Calm", "Dreamy"],
+      tasteQueries: ["House"],
       recentTrackIds: ["t1", "t2"],
+      requestScope: {
+        gated: true,
+        seeded: false,
+        fillSimilar: false,
+        request: { genres: ["Soul"], moods: ["Calm", "Dreamy"], energy: "low", bpm: { min: 90, max: 110 } },
+      },
       allowExplicit: false,
       useEmbeddings: true,
       limit: 7,
