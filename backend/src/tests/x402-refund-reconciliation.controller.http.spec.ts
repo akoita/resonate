@@ -4,7 +4,7 @@ import { RolesGuard } from "../modules/auth/roles.guard";
 import { X402RefundReconciliationController } from "../modules/punchline/x402-refund-reconciliation.controller";
 import { X402RefundReconciliationService } from "../modules/punchline/x402-refund-reconciliation.service";
 import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
-import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { authToken, confirmedBearer as confirmed, createControllerTestApp, expectStepUpRequired } from "./e2e-helpers";
 
 jest.mock("../modules/admin_audit/admin_audit_event", () => ({
   ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
@@ -96,6 +96,13 @@ describe("X402RefundReconciliationController (http)", () => {
         .expect(401);
     });
 
+    it("needs a fresh step-up proof: none, stale or someone else's is a 403 and nothing is recorded (#2380)", async () => {
+      await expectStepUpRequired(app, "post", "/admin/x402-refunds/settlement-1/mark-refunded", { userId: "operator-9", role: "operator" }, body);
+      await expectStepUpRequired(app, "post", "/admin/x402-refunds/settlement-1/mark-refunded", { userId: "admin-1", role: "admin" }, body);
+      expect(mockService.markRefunded).not.toHaveBeenCalled();
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
     it("rejects a non-operator (artist) with 403", async () => {
       await request(app.getHttpServer())
         .post("/admin/x402-refunds/settlement-1/mark-refunded")
@@ -108,7 +115,7 @@ describe("X402RefundReconciliationController (http)", () => {
     it("lets an operator mark a settlement refunded, passing the actor from the JWT", async () => {
       await request(app.getHttpServer())
         .post("/admin/x402-refunds/settlement-1/mark-refunded")
-        .set("Authorization", `Bearer ${authToken("operator-9", "operator")}`)
+        .set(confirmed("operator-9", "operator"))
         .send(body)
         .expect(201)
         .expect((res) => {
@@ -124,7 +131,7 @@ describe("X402RefundReconciliationController (http)", () => {
     it("records the settlement and the refund hash, never anything else from the body (#2362)", async () => {
       await request(app.getHttpServer())
         .post("/admin/x402-refunds/settlement-1/mark-refunded")
-        .set("Authorization", `Bearer ${authToken("operator-9", "operator")}`)
+        .set(confirmed("operator-9", "operator"))
         .send({ ...body, note: "free text" })
         .expect(201);
       expect(mockAudit).toHaveBeenCalledTimes(1);
@@ -139,7 +146,7 @@ describe("X402RefundReconciliationController (http)", () => {
     it("class DTO: rejects a non-string hash with 400 and records nothing (#2362)", async () => {
       await request(app.getHttpServer())
         .post("/admin/x402-refunds/settlement-1/mark-refunded")
-        .set("Authorization", `Bearer ${authToken("operator-9", "operator")}`)
+        .set(confirmed("operator-9", "operator"))
         .send({ refundTxHash: 5 })
         .expect(400);
       expect(mockService.markRefunded).not.toHaveBeenCalled();
@@ -149,7 +156,7 @@ describe("X402RefundReconciliationController (http)", () => {
     it("class DTO: a missing hash still reaches the service, which answers with its own message", async () => {
       await request(app.getHttpServer())
         .post("/admin/x402-refunds/settlement-1/mark-refunded")
-        .set("Authorization", `Bearer ${authToken("operator-9", "operator")}`)
+        .set(confirmed("operator-9", "operator"))
         .send({})
         .expect(201);
       expect(mockService.markRefunded).toHaveBeenCalledWith("settlement-1", "", "operator-9");

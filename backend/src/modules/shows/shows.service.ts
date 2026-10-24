@@ -13,6 +13,8 @@ import type {
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
+import { auditRef } from "../admin_audit/admin_audit.interceptor";
 import { AnalyticsGeoDimension } from "../analytics/analytics_event";
 import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
 import { AnalyticsInstrumentationService } from "../analytics/analytics_instrumentation.service";
@@ -625,6 +627,17 @@ function campaignTitle(input: Pick<CampaignBaseInput, "title">, artistDisplayNam
   return optionalText(input.title) ?? `${artistDisplayName} in ${city}`;
 }
 
+/** Which route an operator reached a campaign through (#2380). A closed set: the audit detail never takes free text. */
+type OperatorCampaignAccess =
+  | "update_draft"
+  | "upload_visuals"
+  | "replace_visual"
+  | "delete_visual"
+  | "reorder_visuals"
+  | "request_authority"
+  | "activate"
+  | "cancel";
+
 function isPrivilegedActor(actor: Actor) {
   return ["admin", "operator"].includes(actor.role ?? "");
 }
@@ -1101,7 +1114,7 @@ export class ShowsService {
    * and resolve a dispute by id, unblocking the #950 operator controls).
    */
   async getManagedCampaign(actor: Actor, campaignId: string) {
-    const base = await this.getCampaignForMutation(actor, campaignId);
+    const base = await this.getCampaignForMutation(actor, campaignId, null);
     const campaign = await prisma.showCampaign.findUnique({
       where: { id: base.id },
       include: {
@@ -1280,7 +1293,7 @@ export class ShowsService {
   }
 
   async updateDraftCampaign(actor: Actor, campaignId: string, input: CreateCampaignInput) {
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "update_draft");
     if (campaign.status !== "draft") {
       throw new BadRequestException("Only draft campaigns can be edited");
     }
@@ -1397,7 +1410,7 @@ export class ShowsService {
     if (!this.storageProvider) {
       throw new BadRequestException("Campaign visual storage is not configured");
     }
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "upload_visuals");
     if (campaign.status !== "draft") {
       throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
     }
@@ -1523,7 +1536,7 @@ export class ShowsService {
     if (!file) {
       throw new BadRequestException("Provide a campaign visual file");
     }
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "replace_visual");
     if (campaign.status !== "draft") {
       throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
     }
@@ -1588,7 +1601,7 @@ export class ShowsService {
   }
 
   async deleteCampaignVisual(actor: Actor, campaignId: string, visualRef: string) {
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "delete_visual");
     if (campaign.status !== "draft") {
       throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
     }
@@ -1643,7 +1656,7 @@ export class ShowsService {
   }
 
   async reorderCampaignVisuals(actor: Actor, campaignId: string, input: CampaignVisualOrderInput) {
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "reorder_visuals");
     if (campaign.status !== "draft") {
       throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
     }
@@ -1753,7 +1766,7 @@ export class ShowsService {
   }
 
   async requestAuthority(actor: Actor, campaignId: string, input: AuthorityRequestInput) {
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "request_authority");
     if (campaign.status !== "draft") {
       throw new BadRequestException("Artist authority can only be requested before campaign activation");
     }
@@ -1999,7 +2012,7 @@ export class ShowsService {
   }
 
   async activateCampaign(actor: Actor, campaignId: string, input: ActivateCampaignInput = {}) {
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "activate");
     if (campaign.campaignLevel !== "active_escrow_campaign") {
       throw new BadRequestException("Only active escrow campaigns can be activated");
     }
@@ -2733,6 +2746,8 @@ export class ShowsService {
     if (pledge.userId && pledge.userId !== actor.userId && !isPrivilegedActor(actor)) {
       throw new ForbiddenException("Only the pledge owner or an operator can confirm this pledge");
     }
+    // #2380: an operator confirming someone else's pledge is recorded; the pledger's own confirmation is not.
+    await this.recordOperatorPledgeAction(actor, pledge, "confirm");
 
     const transactionHash = validateTransactionHash(input.transactionHash);
     const duplicate = await prisma.showPledge.findFirst({
@@ -2846,6 +2861,7 @@ export class ShowsService {
     if (pledge.userId && pledge.userId !== actor.userId && !isPrivilegedActor(actor)) {
       throw new ForbiddenException("Only the pledge owner or an operator can confirm this refund");
     }
+    await this.recordOperatorPledgeAction(actor, pledge, "refund_confirm");
     if (!["submitted", "confirmed", "refund_available"].includes(pledge.status)) {
       throw new BadRequestException("Only submitted or confirmed pledges can be refunded");
     }
@@ -2900,7 +2916,7 @@ export class ShowsService {
   }
 
   async cancelCampaign(actor: Actor, campaignId: string, input: CampaignLifecycleInput = {}) {
-    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await this.getCampaignForMutation(actor, campaignId, "cancel");
     if (!["draft", "active", "funded", "booking_confirmed"].includes(campaign.status)) {
       throw new BadRequestException("Campaign cannot be cancelled from its current status");
     }
@@ -3736,9 +3752,27 @@ export class ShowsService {
     return paymentTokenAddress;
   }
 
-  private async getCampaignForMutation(actor: Actor, campaignId: string) {
+  /**
+   * The campaign for a route its artist and the operators both use. An operator
+   * or admin who is not the campaign's own artist is recorded (#2380); `via` is a
+   * closed code for which route it was, never free text. `null` is the operator
+   * console's management read, which is not recorded: it loads on every campaign
+   * page an operator opens and every action taken from it is recorded on its own
+   * route.
+   */
+  private async getCampaignForMutation(actor: Actor, campaignId: string, via: OperatorCampaignAccess | null) {
     const campaign = await this.findCampaignOrThrow(campaignId);
-    if (isPrivilegedActor(actor)) return campaign;
+    if (isPrivilegedActor(actor)) {
+      if (via === null) return campaign;
+      const artist = campaign.artistId
+        ? await prisma.artist.findUnique({ where: { id: campaign.artistId }, select: { userId: true } })
+        : null;
+      await auditAdminBranch(actor, "show_campaign.operator_accessed", {
+        targetUserId: artist?.userId ?? null,
+        detail: { campaignId: auditRef(campaign.id), via },
+      });
+      return campaign;
+    }
     if (!campaign.artistId) {
       throw new ForbiddenException("Artist-owned campaign is required");
     }
@@ -3748,6 +3782,18 @@ export class ShowsService {
     }
     await this.assertActorCanManageCampaignArtist(actor, artist);
     return campaign;
+  }
+
+  private async recordOperatorPledgeAction(
+    actor: Actor,
+    pledge: { id: string; userId: string | null; campaignId: string },
+    via: "confirm" | "refund_confirm",
+  ) {
+    if (!isPrivilegedActor(actor) || !pledge.userId || pledge.userId === actor.userId) return;
+    await auditAdminBranch(actor, "show_pledge.operator_acted", {
+      targetUserId: pledge.userId,
+      detail: { pledgeId: auditRef(pledge.id), campaignId: auditRef(pledge.campaignId), via },
+    });
   }
 
   private async findCampaignOrThrow(campaignId: string) {

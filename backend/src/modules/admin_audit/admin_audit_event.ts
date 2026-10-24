@@ -90,6 +90,27 @@ export const ADMIN_AUDIT_ACTIONS = [
   "agents.evaluated",
   "agents.golden_eval_run",
   "agents.runtime_run",
+  /**
+   * #2380: an admin or operator took the broader branch of a route that people use
+   * for their own data (reading any wallet, support access to a collection,
+   * managing an artist's campaign). Written by `auditAdminBranch`
+   * (`admin_branch_audit.ts`) only when the branch is taken for someone else's
+   * data; the owner's own access writes nothing.
+   */
+  "wallet.support_viewed",
+  "wallet.support_changed",
+  "collection.support_viewed",
+  "notifications.support_viewed",
+  "seller_listings.support_viewed",
+  "listing_intent.support_recorded",
+  "rights_evidence.privileged_submitted",
+  "release_rights_request.support_viewed",
+  "rights_reassessment_history.support_viewed",
+  "artist_analytics.support_viewed",
+  "show_campaign.operator_accessed",
+  "show_pledge.operator_acted",
+  "community_campaign_update.operator_posted",
+  "community_benefit_rule.operator_managed",
 ] as const;
 
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];

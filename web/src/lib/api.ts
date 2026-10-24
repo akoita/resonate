@@ -8208,7 +8208,21 @@ export type AdminAuditAction =
   | "agents.orchestrated"
   | "agents.evaluated"
   | "agents.golden_eval_run"
-  | "agents.runtime_run";
+  | "agents.runtime_run"
+  | "wallet.support_viewed"
+  | "wallet.support_changed"
+  | "collection.support_viewed"
+  | "notifications.support_viewed"
+  | "seller_listings.support_viewed"
+  | "listing_intent.support_recorded"
+  | "rights_evidence.privileged_submitted"
+  | "release_rights_request.support_viewed"
+  | "rights_reassessment_history.support_viewed"
+  | "artist_analytics.support_viewed"
+  | "show_campaign.operator_accessed"
+  | "show_pledge.operator_acted"
+  | "community_campaign_update.operator_posted"
+  | "community_benefit_rule.operator_managed";
 
 export type AdminAuditOutcome = "success" | "denied";
 

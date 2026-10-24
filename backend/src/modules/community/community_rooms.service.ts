@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { CommunityCohort, CommunityCohortMembership, CommunityRoom, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
+import { auditRef } from "../admin_audit/admin_audit.interceptor";
 import { normalizeUserId } from "../identity/user_id";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { EventBus } from "../shared/event_bus";
@@ -733,8 +735,17 @@ export class CommunityRoomsService {
     return Boolean(artist && canOperateArtist(userId, artist));
   }
 
-  private async requireCampaignOperator(actor: Actor, campaign: { artistId: string | null }) {
+  private async requireCampaignOperator(actor: Actor, campaign: { id: string; artistId: string | null }) {
     if (isPrivilegedCommunityActor(actor)) {
+      // #2380: an operator posting a campaign update for someone else's campaign is recorded;
+      // the campaign artist's own post (even if they hold the role) is not.
+      const artist = campaign.artistId
+        ? await prisma.artist.findUnique({ where: { id: campaign.artistId }, select: { userId: true } })
+        : null;
+      await auditAdminBranch(actor, "community_campaign_update.operator_posted", {
+        targetUserId: artist?.userId ?? null,
+        detail: { campaignId: auditRef(campaign.id) },
+      });
       return;
     }
     if (!campaign.artistId) {

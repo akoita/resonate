@@ -22,6 +22,13 @@ import { EventBus } from '../modules/shared/event_bus';
 import { RightsRouteReassessmentService } from '../modules/rights/rights-route-reassessment.service';
 import { TrustedSourceService } from '../modules/rights/trusted-source.service';
 import { authToken, createControllerTestApp } from './e2e-helpers';
+import { writeAdminAuditEvent } from '../modules/admin_audit/admin_audit_event';
+
+jest.mock('../modules/admin_audit/admin_audit_event', () => ({
+  ...jest.requireActual('../modules/admin_audit/admin_audit_event'),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const SMART_ACCOUNT = `0x${'a1'.repeat(20)}`;
 const OWNER_EOA = `0x${'b2'.repeat(20)}`;
@@ -115,8 +122,23 @@ describe('MetadataController notify-listing (HTTP)', () => {
 
   it.each(['admin', 'operator'])('201 for %s support access', async (role) => {
     await post(sellerBody({ sellerAddress: OTHER_WALLET }), authToken('support-user', role)).expect(201);
-    expect(contractsService.getCallerWalletAddresses).not.toHaveBeenCalled();
     expect(eventBus.publish).toHaveBeenCalledTimes(2);
+    // #2380: recording a listing for someone else's address is one audit row.
+    expect(mockAudit).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith({
+      actorUserId: 'support-user',
+      action: 'listing_intent.support_recorded',
+      targetUserId: null,
+      detail: { sellerAddress: OTHER_WALLET },
+    });
+  });
+
+  it('writes no audit row for the seller or a refused caller (#2380)', async () => {
+    await post(sellerBody(), authToken(SMART_ACCOUNT)).expect(201);
+    await post(sellerBody({ sellerAddress: OTHER_WALLET }), authToken(SMART_ACCOUNT)).expect(403);
+    contractsService.getCallerWalletAddresses.mockResolvedValueOnce(new Set([OTHER_WALLET]));
+    await post(sellerBody({ sellerAddress: OTHER_WALLET }), authToken('admin-1', 'admin')).expect(201);
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 
   it.each([

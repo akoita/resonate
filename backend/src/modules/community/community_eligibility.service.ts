@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, ShowCampaignStatus, ShowPledgeStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
+import { auditRef } from "../admin_audit/admin_audit.interceptor";
 import { normalizeUserId } from "../identity/user_id";
 import { EventBus } from "../shared/event_bus";
 
@@ -168,7 +170,7 @@ export class CommunityEligibilityService {
   }
 
   async listArtistBenefitRules(actor: CommunityManagementActor, artistId: string) {
-    await this.requireArtistOperator(actor, artistId);
+    await this.requireArtistOperator(actor, artistId, "list");
     const rules = await prisma.communityBenefitRule.findMany({
       where: { artistId },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
@@ -183,7 +185,7 @@ export class CommunityEligibilityService {
   }
 
   async createArtistBenefitRule(actor: CommunityManagementActor, artistId: string, input: ManagedRuleInput) {
-    await this.requireArtistOperator(actor, artistId);
+    await this.requireArtistOperator(actor, artistId, "create");
     const normalized = await normalizeManagedRuleInput(artistId, input);
 
     const rule = await prisma.communityBenefitRule.create({
@@ -211,7 +213,7 @@ export class CommunityEligibilityService {
   }
 
   async pauseArtistBenefitRule(actor: CommunityManagementActor, artistId: string, ruleId: string) {
-    await this.requireArtistOperator(actor, artistId);
+    await this.requireArtistOperator(actor, artistId, "pause");
     const existing = await prisma.communityBenefitRule.findFirst({ where: { id: ruleId, artistId } });
     if (!existing) throw new NotFoundException("Community benefit rule not found");
     if (existing.status === "expired") {
@@ -233,7 +235,7 @@ export class CommunityEligibilityService {
   }
 
   async expireArtistBenefitRule(actor: CommunityManagementActor, artistId: string, ruleId: string) {
-    await this.requireArtistOperator(actor, artistId);
+    await this.requireArtistOperator(actor, artistId, "expire");
     const existing = await prisma.communityBenefitRule.findFirst({ where: { id: ruleId, artistId } });
     if (!existing) throw new NotFoundException("Community benefit rule not found");
 
@@ -597,12 +599,25 @@ export class CommunityEligibilityService {
     });
   }
 
-  private async requireArtistOperator(actor: CommunityManagementActor, artistId: string) {
+  /**
+   * The artist owner, or an operator/admin. An operator who is not the owner is
+   * recorded (#2380); `via` is a closed code for which action it was.
+   */
+  private async requireArtistOperator(
+    actor: CommunityManagementActor,
+    artistId: string,
+    via: "list" | "create" | "pause" | "expire",
+  ) {
     const artist = await prisma.artist.findUnique({ where: { id: artistId } });
     if (!artist) throw new NotFoundException("Artist not found");
-    if (!(artist.userId === actor.userId || actor.role === "operator" || actor.role === "admin")) {
+    if (artist.userId === actor.userId) return artist;
+    if (!(actor.role === "operator" || actor.role === "admin")) {
       throw new ForbiddenException("Community benefit rule management is restricted to the artist owner or operators");
     }
+    await auditAdminBranch(actor, "community_benefit_rule.operator_managed", {
+      targetUserId: artist.userId,
+      detail: { artistId: auditRef(artist.id), via },
+    });
     return artist;
   }
 

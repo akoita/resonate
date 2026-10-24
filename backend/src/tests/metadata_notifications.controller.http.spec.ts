@@ -25,6 +25,13 @@ import { EventBus } from '../modules/shared/event_bus';
 import { RightsRouteReassessmentService } from '../modules/rights/rights-route-reassessment.service';
 import { TrustedSourceService } from '../modules/rights/trusted-source.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
+import { writeAdminAuditEvent } from '../modules/admin_audit/admin_audit_event';
+
+jest.mock('../modules/admin_audit/admin_audit_event', () => ({
+  ...jest.requireActual('../modules/admin_audit/admin_audit_event'),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const SMART_ACCOUNT = `0x${'a1'.repeat(20)}`;
 const OWNER_EOA = `0x${'b2'.repeat(20)}`;
@@ -246,6 +253,20 @@ describe('MetadataController notification routes (HTTP)', () => {
         .expect(200);
       expect(mockNotificationService.getNotifications).toHaveBeenCalledWith(OTHER_WALLET, 20, 0);
       expect(mockNotificationService.getPreferences).toHaveBeenCalledWith(OTHER_WALLET);
+      // #2380: each support read is one audit row (address only); the owner's own reads write none.
+      expect(mockAudit).toHaveBeenCalledTimes(2);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: `${role}-1`,
+        action: 'notifications.support_viewed',
+        targetUserId: null,
+        detail: { address: OTHER_WALLET },
+      });
+    });
+
+    it('the owner reading their own notifications writes no audit row (#2380)', async () => {
+      await request(server()).get(`/metadata/notifications/${SMART_ACCOUNT}`).set('Authorization', ownToken()).expect(200);
+      await request(server()).get(`/metadata/notifications/${OWNER_EOA}/preferences`).set('Authorization', ownToken()).expect(200);
+      expect(mockAudit).not.toHaveBeenCalled();
     });
 
     it.each(['admin', 'operator'])('%s cannot modify another address', async (role) => {
@@ -261,6 +282,7 @@ describe('MetadataController notification routes (HTTP)', () => {
         .expect(403);
       expect(mockNotificationService.markAllAsRead).not.toHaveBeenCalled();
       expect(mockNotificationService.updatePreferences).not.toHaveBeenCalled();
+      expect(mockAudit).not.toHaveBeenCalled();
     });
   });
 });
