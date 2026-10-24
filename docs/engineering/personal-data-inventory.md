@@ -293,6 +293,14 @@ preferences; they are not written to `Session.filters`. It is excluded from the
 `session.started` and `agent.track_selected` events, analytics, and
 `sessionStorage`. Nothing about it needs export or erasure handling.
 
+Analytics bridge of AI DJ events (#2337): `agent.decision_made` records only the
+keys of `unmetIntent` (which filters went unfilled, such as `["genres","mood"]`),
+never the values the listener typed, and `agent.mix_planned` and
+`agent.negotiated` do not record `trackTitle` (`trackId` identifies the track).
+No `agent.*` mapping stores free text; a bridge test enforces it. Events
+recorded before this change may still hold the old values until analytics
+retention removes them.
+
 First-listener discovery (#1970) adds `FirstListenerExposure`, keyed by the
 listener's `userId`. It records the release and time of a placement, so export
 includes only that person's rows and erasure deletes them before rotating the
