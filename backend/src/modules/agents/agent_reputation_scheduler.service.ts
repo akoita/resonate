@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
@@ -113,6 +114,8 @@ export class AgentReputationSchedulerService implements OnModuleInit, OnModuleDe
       );
       return;
     }
+
+    if (!shouldRunBackgroundLoop("agentReputationScheduler", this.logger)) return;
 
     this.logger.log(
       `Starting ERC-8004 reputation scheduler (interval=${settings.intervalMs}ms, freshness=${settings.freshnessMs}ms, batch=${settings.batchSize})`,

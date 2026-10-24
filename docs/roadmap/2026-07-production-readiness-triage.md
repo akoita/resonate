@@ -45,8 +45,11 @@ Two boundaries intentionally remain open:
 The distributed Shows indexer lease
 [#1567](https://github.com/akoita/resonate/issues/1567) is complete. Background
 indexers still keep staging API instances warm, so separating those schedulers
-from the API runtime remains independently tracked in
-[#1608](https://github.com/akoita/resonate/issues/1608).
+from the API runtime is tracked in
+[#1608](https://github.com/akoita/resonate/issues/1608). The application half
+(`BACKEND_RUNTIME_MODE`: `combined`, `api`, `worker`) is described in
+[Backend runtime modes](../features/backend_runtime_modes.md); running the worker
+as its own service is deployment work.
 
 ## Why this document exists
 

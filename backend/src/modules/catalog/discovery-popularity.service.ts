@@ -6,6 +6,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { genreMatchesRequest } from "../recommendations/genre_families";
 import { RedisCacheService } from "../shared/redis_cache.service";
 import {
@@ -85,6 +86,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
     if (!interval || process.env.NODE_ENV === "test") {
       return;
     }
+    if (!shouldRunBackgroundLoop("discoveryPopularityRefresh", this.logger)) return;
     void this.refreshAll().catch((error) =>
       this.logger.warn(`Initial popularity refresh failed: ${error?.message}`),
     );
