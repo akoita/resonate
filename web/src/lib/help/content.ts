@@ -2901,7 +2901,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["analytics", "dashboard", "plays", "payouts", "gross sales", "net received", "pending", "platform fee", "royalty", "sales", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
+    keywords: ["analytics", "dashboard", "plays", "payouts", "gross sales", "net received", "entitled net", "x402", "pending", "platform fee", "royalty", "sales", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
     sections: [
       {
         id: "dashboard",
@@ -2943,7 +2943,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Net received covers marketplace sales only. Sales paid through x402 are in Gross sales, but they are not in Net received: no per-sale split is recorded for them yet. Sales paid in a native token are shown in that token, not converted to US dollars. This is reporting only; it does not change any fee or split, and artists keep at least 85% of each transaction.",
+            text: "Net received covers marketplace sales only. A sale paid in a native token is shown in that token, not converted to US dollars. This is reporting only; it does not change any fee or split, and artists keep at least 85% of each transaction.",
+          },
+          {
+            kind: "paragraph",
+            text: "Sales paid through x402 (a stem download bought by an agent or a tool, or a collectible moment) are in Gross sales too, but they are paid to Resonate, not to your own addresses, so they are never counted as received. When you have such sales, a separate Entitled net card and an x402 sales table show what each one entitles you to: the price minus the platform fee quoted when it was sold, labelled Entitled, owed to you. It is what you are owed, not a payment that has arrived, and it is never added to Net received. Resonate does not yet record each payout to you, so there is no received figure for these sales. A sale from before the quote was recorded reads Not recorded: it is not counted and it is not shown as zero or as the full price.",
           },
         ],
       },

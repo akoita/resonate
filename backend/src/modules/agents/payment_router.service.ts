@@ -281,6 +281,7 @@ export class PaymentRouterService {
       eventTransactionHash: transactionHash,
       paymentHeader: input.paymentProof,
       purchasedAt,
+      feeBps: this.x402Config.licensePricing[input.licenseType].feeBps,
     });
 
     await prisma.contractEvent.create({
@@ -315,6 +316,8 @@ export class PaymentRouterService {
           paymentAssetSymbol: receipt.payment.asset.symbol,
           paymentAssetDecimals: receipt.payment.asset.decimals,
           paymentProofSha256: receipt.payment.paymentProofSha256,
+          // The quoted net to the seller (#2344): an entitlement, recorded at the time of sale.
+          quote: receipt.payment.quote,
         },
         processedAt: purchasedAt,
       },

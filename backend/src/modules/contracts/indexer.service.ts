@@ -785,6 +785,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
+          logIndex: logIndex!,
           blockNumber: blockNumber!.toString(),
         });
         break;

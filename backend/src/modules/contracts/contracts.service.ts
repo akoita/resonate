@@ -66,6 +66,7 @@ import {
   finalizePendingMarketplaceSplits,
   type MarketplaceSplitChainReader,
 } from "./marketplace_sale_split";
+import { recordRoyaltyPayment } from "./royalty_payment_record";
 import {
   dedupeFlags,
   getUploadRightsActions,
@@ -219,16 +220,13 @@ function getReleaseMetadataUriCandidates(title: string): string[] {
   );
 }
 
-@Injectable()
-export class ContractsService implements OnModuleInit {
-  private readonly logger = new Logger(ContractsService.name);
-  private readonly curatorReputationService = new CuratorReputationService();
-
-  /**
-   * Chain reads for a sale's split (#2172), pinned to the Sold block. Replaceable
-   * so a spec can point it at its own node.
-   */
-  splitChainReader: MarketplaceSplitChainReader = {
+/**
+ * The production reader for a sale's split (#2172): `protocolFeeBps` and ERC-2981
+ * `royaltyInfo`, read at the Sold block over the chain's configured RPC. Shared
+ * by the service and the `backfill_sale_splits` script (#2344).
+ */
+export function createMarketplaceSplitChainReader(): MarketplaceSplitChainReader {
+  return {
     protocolFeeBpsAt: async ({ chainId, marketplaceAddress, blockNumber }) => {
       const config = CHAIN_CONFIGS[chainId];
       if (!config) throw new Error(`No chain configuration for ${chainId}`);
@@ -254,6 +252,18 @@ export class ContractsService implements OnModuleInit {
       return amount;
     },
   };
+}
+
+@Injectable()
+export class ContractsService implements OnModuleInit {
+  private readonly logger = new Logger(ContractsService.name);
+  private readonly curatorReputationService = new CuratorReputationService();
+
+  /**
+   * Chain reads for a sale's split (#2172), pinned to the Sold block. Replaceable
+   * so a spec can point it at its own node.
+   */
+  splitChainReader: MarketplaceSplitChainReader = createMarketplaceSplitChainReader();
 
   constructor(
     private readonly eventBus: EventBus,
@@ -1034,31 +1044,24 @@ export class ContractsService implements OnModuleInit {
           paymentToken,
           amountUnits: event.amount,
         });
-        // Use upsert to prevent duplicates on reindex (keyed on tx + tokenId)
-        await prisma.royaltyPayment.upsert({
-          where: {
-            transactionHash_tokenId: {
-              transactionHash: event.transactionHash,
-              tokenId: BigInt(event.tokenId),
-            },
-          },
-          create: {
-            tokenId: BigInt(event.tokenId),
-            chainId: event.chainId,
-            recipientAddress: event.recipientAddress,
-            amount: event.amount,
-            paymentToken: royaltyPayment.paymentToken,
-            paymentAssetId: royaltyPayment.paymentAssetId,
-            paymentAssetSymbol: royaltyPayment.paymentAssetSymbol,
-            paymentAssetDecimals: royaltyPayment.paymentAssetDecimals,
-            settlementAmount: royaltyPayment.settlementAmount,
-            settlementAmountUnits: royaltyPayment.settlementAmountUnits,
-            canonicalAmountUsd: royaltyPayment.canonicalAmountUsd,
-            transactionHash: event.transactionHash,
-            blockNumber: BigInt(event.blockNumber),
-            paidAt: new Date(event.occurredAt),
-          },
-          update: {},
+        // Keyed on the RoyaltyPaid log (tx + log index), not on the token: a batched
+        // transaction can carry several sales of one token (#2344). A replay is a no-op.
+        await recordRoyaltyPayment({
+          tokenId: BigInt(event.tokenId),
+          chainId: event.chainId,
+          recipientAddress: event.recipientAddress,
+          amount: event.amount,
+          paymentToken: royaltyPayment.paymentToken,
+          paymentAssetId: royaltyPayment.paymentAssetId,
+          paymentAssetSymbol: royaltyPayment.paymentAssetSymbol,
+          paymentAssetDecimals: royaltyPayment.paymentAssetDecimals,
+          settlementAmount: royaltyPayment.settlementAmount,
+          settlementAmountUnits: royaltyPayment.settlementAmountUnits,
+          canonicalAmountUsd: royaltyPayment.canonicalAmountUsd,
+          transactionHash: event.transactionHash,
+          logIndex: event.logIndex,
+          blockNumber: BigInt(event.blockNumber),
+          paidAt: new Date(event.occurredAt),
         });
 
         this.logger.log(`Stored RoyaltyPayment: tokenId=${event.tokenId}, amount=${event.amount}`);

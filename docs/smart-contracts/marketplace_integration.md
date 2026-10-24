@@ -21,7 +21,7 @@ Polls blockchain for contract events and stores in database:
 - `StemMinted` → Creates `StemNftMint` record
 - `Listed` / `Cancelled` → Updates `StemListing`
 - `Sold` → Creates `StemPurchase`
-- `RoyaltyPaid` → Creates `RoyaltyPayment`
+- `RoyaltyPaid` → Creates `RoyaltyPayment`, one per log: identified by (`transactionHash`, `logIndex`), so a batched transaction with several sales of one token keeps every royalty (#2344)
 
 ### Metadata API
 

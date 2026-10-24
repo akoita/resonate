@@ -130,6 +130,10 @@ export async function finalizeMarketplaceSaleSplit(
   purchaseId: string,
   reader: MarketplaceSplitChainReader,
   logger: Logger,
+  options: {
+    /** Work out the outcome (including the chain reads) without writing it. */
+    dryRun?: boolean;
+  } = {},
 ): Promise<SplitFinalizationResult> {
   const purchase = await prisma.stemPurchase.findUnique({
     where: { id: purchaseId },
@@ -215,6 +219,8 @@ export async function finalizeMarketplaceSaleSplit(
   const split = computeSaleSplit({ totalPaid, protocolFeeBps: feeBps, royaltyAmount });
   if (!split) return { state: "pending", reason: "split_inconsistent" };
 
+  if (options.dryRun) return { state: "final", split, protocolFeeBps: Number(feeBps), royaltyRecipient };
+
   await prisma.stemPurchase.updateMany({
     // Guarded so two concurrent finalisations of one sale write once.
     where: { id: purchase.id, splitFinalizedAt: null },
@@ -259,4 +265,105 @@ export async function finalizePendingMarketplaceSplits(
     }
   }
   return { attempted: pending.length, finalized };
+}
+
+export const SPLIT_BACKFILL_DEFAULT_LIMIT = 200;
+
+export type SaleSplitBackfillReport = {
+  dryRun: boolean;
+  limit: number;
+  /** Only sales purchased at or before this instant were considered; null when unbounded. */
+  before: string | null;
+  /** Pending sales (with a recorded Sold log position) examined in this run. */
+  scanned: number;
+  /** Dry run: sales that --apply would finalise. Apply: sales finalised by this run. */
+  finalizable: number;
+  /**
+   * Sales that stay pending, by the reason the split could not be proven.
+   * `no_log_index` counts the sales indexed before the Sold log position was
+   * kept: they cannot be matched to their RoyaltyPaid log and are never
+   * finalised by guessing (they are not part of `scanned`).
+   */
+  stillPending: Record<SplitPendingReason, number>;
+  /** Sales that vanished or errored while being examined. */
+  failed: number;
+  /** Pending sales left for another run because of the limit. */
+  deferred: number;
+  /** Pass as `before` to continue with the sales this run did not reach; null when none remain. */
+  nextBefore: string | null;
+};
+
+function emptyReasonCounts(): Record<SplitPendingReason, number> {
+  return {
+    no_log_index: 0,
+    royalty_not_indexed: 0,
+    stem_nft_unknown: 0,
+    fee_unreadable: 0,
+    royalty_unreadable: 0,
+    split_inconsistent: 0,
+  };
+}
+
+/**
+ * #2344: one-off backfill of sales still pending (#2172), for sales indexed
+ * before the split was derived. It reuses the exact finalisation logic of the
+ * live path, so a sale is finalised only when the royalty and the fee rate are
+ * both proven, and a final split is never rewritten: running it twice is safe.
+ *
+ * Dry run (the default) performs the same reads, including the chain reads, but
+ * writes nothing. The newest sales are examined first; `before` (inclusive)
+ * resumes from a previous run's `nextBefore`.
+ */
+export async function backfillPendingMarketplaceSplits(
+  reader: MarketplaceSplitChainReader,
+  logger: Logger,
+  options: { apply?: boolean; limit?: number; before?: Date } = {},
+): Promise<SaleSplitBackfillReport> {
+  const apply = options.apply === true;
+  const limit = options.limit ?? SPLIT_BACKFILL_DEFAULT_LIMIT;
+  const scope = {
+    splitFinalizedAt: null,
+    ...(options.before ? { purchasedAt: { lte: options.before } } : {}),
+  };
+  const stillPending = emptyReasonCounts();
+  stillPending.no_log_index = await prisma.stemPurchase.count({ where: { ...scope, logIndex: null } });
+
+  const rows = await prisma.stemPurchase.findMany({
+    where: { ...scope, logIndex: { not: null } },
+    orderBy: [{ purchasedAt: "desc" }, { id: "asc" }],
+    take: limit + 1,
+    select: { id: true, purchasedAt: true },
+  });
+  const batch = rows.slice(0, limit);
+  const hasMore = rows.length > limit;
+
+  let finalizable = 0;
+  let failed = 0;
+  for (const row of batch) {
+    try {
+      const result = await finalizeMarketplaceSaleSplit(row.id, reader, logger, { dryRun: !apply });
+      if (result.state === "final") finalizable += 1;
+      else if (result.state === "pending") stillPending[result.reason] += 1;
+      else failed += 1;
+    } catch (error) {
+      failed += 1;
+      logger.warn(`[Split] backfill could not examine purchase ${row.id}: ${errorMessage(error)}`);
+    }
+  }
+
+  const oldest = batch.at(-1)?.purchasedAt;
+  const deferred = hasMore
+    ? (await prisma.stemPurchase.count({ where: { ...scope, logIndex: { not: null } } })) - batch.length
+    : 0;
+  return {
+    dryRun: !apply,
+    limit,
+    before: options.before ? options.before.toISOString() : null,
+    scanned: batch.length,
+    finalizable,
+    stillPending,
+    failed,
+    deferred,
+    nextBefore: hasMore && oldest ? oldest.toISOString() : null,
+  };
 }

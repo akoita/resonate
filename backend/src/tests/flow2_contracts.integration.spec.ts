@@ -429,6 +429,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
       chainId,
       contractAddress: contractAddr,
       transactionHash: `0x${P}royalty_tx`,
+      logIndex: 0,
       blockNumber: '6',
     };
     eventBus.publish(royaltyEvent);
