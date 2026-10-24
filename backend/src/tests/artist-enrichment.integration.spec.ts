@@ -98,5 +98,155 @@ describe("Artist enrichment profile authorization (integration)", () => {
 
         expect(mockEnrichmentService.findCandidates).not.toHaveBeenCalled();
         expect(mockEnrichmentService.buildSuggestions).not.toHaveBeenCalled();
+        await expectNoStoredIds();
+    });
+
+    describe("stored external ids (#2258)", () => {
+        const MBID = "5b11f4ce-a62d-471e-81fc-a69a8278c7da";
+        const OTHER_MBID = "9c9f1380-2016-4671-bd33-b42a0d4a8c80";
+
+        function resolve(candidate: { id: string; name: string } | null, wikidataId: string | null) {
+            mockEnrichmentService.buildSuggestions.mockResolvedValueOnce({
+                candidate,
+                wikidataId,
+                suggestions: [],
+                warnings: [],
+            });
+        }
+
+        function suggest(userId: string = OWNER_ID) {
+            return request(app.getHttpServer())
+                .post(`/artists/${ARTIST_ID}/enrichment/suggestions`)
+                .set("Authorization", `Bearer ${authToken(userId)}`)
+                .send({ candidateId: MBID });
+        }
+
+        beforeEach(async () => {
+            await clearStoredIds();
+        });
+
+        it("writes the ids, confidence and match time when enrichment resolves the artist", async () => {
+            resolve({ id: MBID, name: "Integration Artist" }, "Q42");
+            const before = Date.now();
+
+            await suggest().expect(200);
+
+            const stored = await storedIds();
+            expect(stored).toMatchObject({
+                musicbrainzArtistId: MBID,
+                wikidataQid: "Q42",
+                externalIdMatchConfidence: "high",
+            });
+            expect(stored.externalIdMatchedAt?.getTime()).toBeGreaterThanOrEqual(before);
+            expect(stored.externalIdMatchedAt?.getTime()).toBeLessThanOrEqual(Date.now());
+        });
+
+        it("lets a PROFILE_EDIT grantee store ids and stores a null QID when there is none", async () => {
+            resolve({ id: MBID, name: "Integration Artist Band" }, null);
+
+            await suggest(PROFILE_EDITOR_ID).expect(200);
+
+            expect(await storedIds()).toMatchObject({
+                musicbrainzArtistId: MBID,
+                wikidataQid: null,
+                externalIdMatchConfidence: "medium",
+            });
+        });
+
+        it("records a differently named record as a low-confidence match", async () => {
+            resolve({ id: MBID, name: "Somebody Else" }, "Q7");
+
+            await suggest().expect(200);
+
+            expect(await storedIds()).toMatchObject({
+                musicbrainzArtistId: MBID,
+                externalIdMatchConfidence: "low",
+            });
+        });
+
+        it("replaces the previous match as a unit when a different record is resolved", async () => {
+            resolve({ id: MBID, name: "Integration Artist" }, "Q42");
+            await suggest().expect(200);
+            resolve({ id: OTHER_MBID, name: "Integration Artist" }, null);
+
+            await suggest().expect(200);
+
+            expect(await storedIds()).toMatchObject({
+                musicbrainzArtistId: OTHER_MBID,
+                wikidataQid: null,
+                externalIdMatchConfidence: "high",
+            });
+        });
+
+        it("writes nothing for an unusable resolution", async () => {
+            resolve(null, "Q42");
+            await suggest().expect(200);
+            resolve({ id: "not-a-uuid", name: "Integration Artist" }, "Q42");
+            await suggest().expect(200);
+            resolve({ id: MBID, name: "   " }, "Q42");
+            await suggest().expect(200);
+
+            await expectNoStoredIds();
+        });
+
+        it("drops a malformed QID but keeps the MusicBrainz id", async () => {
+            resolve({ id: MBID.toUpperCase(), name: "Integration Artist" }, "42");
+
+            await suggest().expect(200);
+
+            expect(await storedIds()).toMatchObject({ musicbrainzArtistId: MBID, wikidataQid: null });
+        });
+
+        it("writes nothing when the caller is not authorised", async () => {
+            resolve({ id: MBID, name: "Integration Artist" }, "Q42");
+
+            await suggest(NON_MANAGER_ID).expect(403);
+
+            await expectNoStoredIds();
+        });
+
+        it("recordEnrichmentMatch reports false for an unknown artist", async () => {
+            const artistService = new ArtistService(eventBus);
+
+            await expect(
+                artistService.recordEnrichmentMatch(`${TEST_PREFIX}missing`, {
+                    candidate: { id: MBID, name: "Integration Artist" },
+                    wikidataId: "Q42",
+                }),
+            ).resolves.toBe(false);
+        });
     });
 });
+
+function storedIds() {
+    return prisma.artist.findUniqueOrThrow({
+        where: { id: ARTIST_ID },
+        select: {
+            musicbrainzArtistId: true,
+            wikidataQid: true,
+            externalIdMatchConfidence: true,
+            externalIdMatchedAt: true,
+        },
+    });
+}
+
+function clearStoredIds() {
+    return prisma.artist.update({
+        where: { id: ARTIST_ID },
+        data: {
+            musicbrainzArtistId: null,
+            wikidataQid: null,
+            externalIdMatchConfidence: null,
+            externalIdMatchedAt: null,
+        },
+    });
+}
+
+async function expectNoStoredIds() {
+    expect(await storedIds()).toEqual({
+        musicbrainzArtistId: null,
+        wikidataQid: null,
+        externalIdMatchConfidence: null,
+        externalIdMatchedAt: null,
+    });
+}

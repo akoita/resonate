@@ -28,6 +28,7 @@ import { buildAnalyticsEmitter } from "../scripts/apply_ai_disclosure_attestatio
 const TEST_PREFIX = `attest_${Date.now()}_`;
 const id = (name: string) => `${TEST_PREFIX}${name}`;
 const COMMONS_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Known.jpg";
+const MBID = "5b11f4ce-a62d-471e-81fc-a69a8278c7da";
 const LEGACY = { aiDisclosureLevel: "UNDECLARED" as const, aiDisclosureSource: "migration" };
 
 async function seedRelease(input: {
@@ -96,6 +97,40 @@ describe("catalog AI disclosure attestation (integration)", () => {
       data: [
         { id: id("artist_plain"), displayName: `${TEST_PREFIX}Plain Artist`, userId: id("user") },
         { id: id("artist_commons"), displayName: `${TEST_PREFIX}Commons Artist`, imageUrl: COMMONS_IMAGE },
+        // #2258: stored enrichment ids, no URL traces at all.
+        {
+          id: id("artist_ids_high"),
+          displayName: `${TEST_PREFIX}Matched Artist`,
+          musicbrainzArtistId: MBID,
+          wikidataQid: "Q42",
+          externalIdMatchConfidence: "high",
+          externalIdMatchedAt: new Date("2026-10-20T10:00:00.000Z"),
+        },
+        // A weak match with no URL traces: not provenance.
+        {
+          id: id("artist_ids_low"),
+          displayName: `${TEST_PREFIX}Weak Artist`,
+          musicbrainzArtistId: MBID,
+          externalIdMatchConfidence: "low",
+          externalIdMatchedAt: new Date("2026-10-20T10:00:00.000Z"),
+        },
+        // A weak stored match still falls back to the URL-host inference.
+        {
+          id: id("artist_ids_low_url"),
+          displayName: `${TEST_PREFIX}Weak But Linked Artist`,
+          imageUrl: COMMONS_IMAGE,
+          musicbrainzArtistId: MBID,
+          externalIdMatchConfidence: "low",
+        },
+        // Stored ids win over URL traces: one signal, not two.
+        {
+          id: id("artist_ids_and_url"),
+          displayName: `${TEST_PREFIX}Both Artist`,
+          imageUrl: COMMONS_IMAGE,
+          musicbrainzArtistId: MBID,
+          externalIdMatchConfidence: "medium",
+          externalIdMatchedAt: new Date("2026-10-20T10:00:00.000Z"),
+        },
       ],
     });
 
@@ -111,6 +146,29 @@ describe("catalog AI disclosure attestation (integration)", () => {
       name: "isrc_artist",
       artistId: id("artist_commons"),
       tracks: [{ name: "isrc_artist_t1", isrc: "USRC11900001" }],
+    });
+    // Proposed: ISRC years + stored enrichment ids (#2258), no URL traces.
+    await seedRelease({
+      name: "ids_high",
+      artistId: id("artist_ids_high"),
+      tracks: [{ name: "ids_high_t1", isrc: "USRC11900002" }],
+    });
+    // Needs review: the stored match is low confidence and nothing else backs it.
+    await seedRelease({
+      name: "ids_low",
+      artistId: id("artist_ids_low"),
+      tracks: [{ name: "ids_low_t1", isrc: "USRC11900003" }],
+    });
+    // Proposed through the URL-host fallback despite a low stored match.
+    await seedRelease({
+      name: "ids_low_url",
+      artistId: id("artist_ids_low_url"),
+      tracks: [{ name: "ids_low_url_t1", isrc: "USRC11900004" }],
+    });
+    await seedRelease({
+      name: "ids_and_url",
+      artistId: id("artist_ids_and_url"),
+      tracks: [{ name: "ids_and_url_t1", isrc: "USRC11900005" }],
     });
     // Needs review: a date alone.
     await seedRelease({
@@ -191,6 +249,7 @@ describe("catalog AI disclosure attestation (integration)", () => {
         [
           "known", "isrc_artist", "date_only", "no_signal", "ai_release",
           "remix_release", "genmeta", "not_listed", "mixed",
+          "ids_high", "ids_low", "ids_low_url", "ids_and_url",
         ].map(id).sort(),
       );
       expect(new Set(ours.map((entry) => entry.releaseId)).size).toBe(ours.length);
@@ -206,6 +265,29 @@ describe("catalog AI disclosure attestation (integration)", () => {
         "artist_external_reference",
       ]);
       expect(bucketOf("not_listed")?.bucket).toBe("proposed");
+
+      // #2258: the stored ids are the artist signal; URL hosts are the fallback.
+      expect(bucketOf("ids_high")?.bucket).toBe("proposed");
+      expect(bucketOf("ids_high")?.signals.map((signal) => signal.code)).toEqual([
+        "isrc_year_before_cutoff",
+        "artist_external_id",
+      ]);
+      expect(bucketOf("ids_high")?.signals.at(-1)?.detail).toContain(`MusicBrainz ${MBID}, Wikidata Q42`);
+      expect(bucketOf("ids_high")?.signals.at(-1)?.detail).toContain("high confidence, matched 2026-10-20");
+      expect(bucketOf("ids_low")).toMatchObject({
+        bucket: "needs_review",
+        reasons: ["missing_provenance_evidence"],
+      });
+      expect(bucketOf("ids_low_url")?.bucket).toBe("proposed");
+      expect(bucketOf("ids_low_url")?.signals.map((signal) => signal.code)).toEqual([
+        "isrc_year_before_cutoff",
+        "artist_external_reference",
+      ]);
+      expect(bucketOf("ids_and_url")?.bucket).toBe("proposed");
+      expect(bucketOf("ids_and_url")?.signals.map((signal) => signal.code)).toEqual([
+        "isrc_year_before_cutoff",
+        "artist_external_id",
+      ]);
       expect(bucketOf("date_only")).toMatchObject({
         bucket: "needs_review",
         reasons: ["missing_provenance_evidence"],
@@ -232,8 +314,8 @@ describe("catalog AI disclosure attestation (integration)", () => {
       });
 
       const draft = new Set(report.manifestDraft.releaseIds);
-      for (const name of ["known", "isrc_artist", "not_listed"]) expect(draft.has(id(name))).toBe(true);
-      for (const name of ["date_only", "mixed", "no_signal", "ai_release", "remix_release", "genmeta"]) {
+      for (const name of ["known", "isrc_artist", "not_listed", "ids_high", "ids_low_url", "ids_and_url"]) expect(draft.has(id(name))).toBe(true);
+      for (const name of ["ids_low", "date_only", "mixed", "no_signal", "ai_release", "remix_release", "genmeta"]) {
         expect(draft.has(id(name))).toBe(false);
       }
     });

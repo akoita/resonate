@@ -73,6 +73,11 @@ export type ArtistEnrichmentSuggestion = {
 
 export type ArtistEnrichmentResult = {
     candidate: ArtistEnrichmentCandidate;
+    /**
+     * The Wikidata QID from the MusicBrainz relationships, or null (#2258).
+     * Reported even when the Wikidata details themselves could not be loaded.
+     */
+    wikidataId: string | null;
     suggestions: ArtistEnrichmentSuggestion[];
     warnings: string[];
 };
@@ -234,7 +239,7 @@ export class ArtistEnrichmentService {
             }
         }
 
-        return { candidate, suggestions, warnings: unique(warnings) };
+        return { candidate, wikidataId, suggestions, warnings: unique(warnings) };
     }
 }
 

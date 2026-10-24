@@ -10,6 +10,11 @@ import { prisma } from "../../db/prisma";
 import { normalizeUserId } from "../identity/user_id";
 import { hasArtistManagementAccess } from "../management/management-access";
 import { EventBus } from "../shared/event_bus";
+import {
+    MUSICBRAINZ_ID_PATTERN,
+    WIKIDATA_QID_PATTERN,
+    externalIdMatchConfidence,
+} from "./artist-external-ids";
 
 export const ARTIST_REMIX_CONSENTS = ["allowed", "disabled"] as const;
 export type ArtistRemixConsent = (typeof ARTIST_REMIX_CONSENTS)[number];
@@ -694,6 +699,44 @@ export class ArtistService {
             where: { id: artist.id },
             data,
         });
+    }
+
+    /**
+     * #2258: persist the identifiers enrichment resolved for this artist, with
+     * the match confidence (display name vs matched name) and the match time.
+     * The write replaces the previous match as a unit, so a different
+     * MusicBrainz record never keeps the old record's Wikidata id. Returns
+     * false, writing nothing, when the resolution is not usable.
+     */
+    async recordEnrichmentMatch(
+        artistId: string,
+        match: { candidate?: { id?: unknown; name?: unknown } | null; wikidataId?: unknown },
+        now: Date = new Date(),
+    ): Promise<boolean> {
+        const musicbrainzArtistId = typeof match.candidate?.id === "string"
+            ? match.candidate.id.trim().toLowerCase()
+            : "";
+        const matchedName = typeof match.candidate?.name === "string" ? match.candidate.name : "";
+        if (!MUSICBRAINZ_ID_PATTERN.test(musicbrainzArtistId) || !matchedName.trim()) return false;
+        const wikidataQid = typeof match.wikidataId === "string" && WIKIDATA_QID_PATTERN.test(match.wikidataId)
+            ? match.wikidataId
+            : null;
+
+        const artist = await prisma.artist.findUnique({
+            where: { id: artistId },
+            select: { displayName: true },
+        });
+        if (!artist) return false;
+        await prisma.artist.update({
+            where: { id: artistId },
+            data: {
+                musicbrainzArtistId,
+                wikidataQid,
+                externalIdMatchConfidence: externalIdMatchConfidence(artist.displayName, matchedName),
+                externalIdMatchedAt: now,
+            },
+        });
+        return true;
     }
 
     /** Reuses the profile_edit boundary for profile suggestions without writing artist data. */
