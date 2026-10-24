@@ -248,6 +248,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Pick a category (Policy, Terms or Incident) and an audience: everyone, or listeners, artists, operators or admins.",
               "Write a title and message. Add the date a change takes effect if there is one.",
               "Preview the bar people will see, then choose Review and send and confirm.",
+              "If your passkey asks you to confirm, do so. Sending a broadcast needs a fresh confirmation, valid for a few minutes, so you may be asked only once for several actions.",
             ],
           },
           {
@@ -332,7 +333,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Open Users in the sidebar, search for the person by user id, wallet address or artist name, and open their record. Only admins see the controls.",
               "Pick a reason category. For a suspension, optionally set an end date; leave it empty for no end date.",
               "Add an internal note if useful. It is kept in the audit record only and is never shown to the person.",
-              "Choose Suspend, Lift suspension or Close account, and confirm. The person is sent a notice at once.",
+              "Choose Suspend, Lift suspension or Close account, and confirm. Suspending and closing also ask you to confirm with your passkey; lifting a suspension does not. The person is sent a notice at once.",
             ],
           },
           {
@@ -358,7 +359,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "account",
     audiences: ["operator"],
     status: "partial",
-    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record"],
+    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up"],
     sections: [
       {
         id: "who-can-use-it",
@@ -443,6 +444,42 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "confirming-with-your-passkey",
+        heading: "Confirming with your passkey (admins and operators)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Suspending an account, closing it and sending a broadcast notice cannot easily be undone, so Resonate asks you to prove it is really you at that moment. Your passkey (or wallet) opens a prompt and you approve it. You are asked only when needed: once you have confirmed, further suspensions, closures and broadcasts work without another prompt for about five minutes, and then you are asked again.",
+          },
+          {
+            kind: "list",
+            items: [
+              "If you dismiss the prompt, nothing is changed and nothing is sent.",
+              "The confirmation only works for the account that gave it, for these actions, for a few minutes. It does not extend how long you stay signed in.",
+              "Each accepted or refused confirmation appears in the audit log.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "audit-log",
+        heading: "The admin audit log (admins)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Open Audit Log in the sidebar to see one list, newest first, of what operators did: opening a person's record, suspending, lifting or closing an account, opening a session's agent events, sending a notice, and each passkey confirmation. You can filter by what happened and by outcome (done or refused). Nothing in it can be edited or removed from this page.",
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "What it holds",
+            text: "Each entry names who acted, what they did, who it was about and when. It holds reason categories, counts and identifiers, never internal notes or the text of a notice. Entries are kept as audit history; when a person's account is erased, they remain only under a replaced identifier. Operators who are not admins cannot open the audit log.",
+          },
+        ],
+      },
+      {
         id: "agent-session-events",
         heading: "What the AI DJ decided in a session (admins)",
         audience: "operator",
@@ -463,6 +500,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Users (operators)", href: "/admin/users", description: "The overview, search and filters, and each person's record." },
       { label: "DJ Session Events (admins)", href: "/admin/agent-sessions", description: "Look up one AI DJ session and see what it decided.", audience: "operator" },
+      { label: "Audit Log (admins)", href: "/admin/audit", description: "See what operators did, newest first.", audience: "operator" },
     ],
     related: ["account-suspension", "platform-notices", "settings-privacy"],
   },

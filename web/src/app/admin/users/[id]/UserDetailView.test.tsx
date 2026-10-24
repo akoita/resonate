@@ -2,6 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../../components/auth/AuthProvider", () => ({ useAuth: () => ({ signMessage: vi.fn() }) }));
 vi.mock("../../../../components/ui/Toast", () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 import UserDetailView, { type UserDetailViewProps } from "./UserDetailView";

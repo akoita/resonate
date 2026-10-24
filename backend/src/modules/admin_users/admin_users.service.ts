@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { getAddress } from "viem";
 import { prisma } from "../../db/prisma";
-import { writeAdminAuditEvent } from "../accounts/admin_audit_event";
+import { writeAdminAuditEvent } from "../admin_audit/admin_audit_event";
 import { AuthService } from "../auth/auth.service";
 import {
   ADMIN_USERS_DEFAULT_PAGE_SIZE,

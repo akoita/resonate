@@ -84,8 +84,10 @@ an hour per person.
 
 ## Privacy and audit
 
-Opening a record is logged server-side (`AdminAuditEvent`), as is every
-suspension, lift and closure; internal notes are never stored in that log. The
+Opening a record is logged server-side (`AdminAuditEvent`, listed on
+`/admin/audit`, see [Admin step-up and audit log](admin_step_up_audit.md)), as is
+every suspension, lift and closure (suspending and closing also need a passkey
+confirmation); internal notes are never stored in that log. The
 help article and the page tell operators this. The collection of last sign-in and
 last activity, its legal basis and its retention are covered by the backend half
 (privacy policy and personal-data inventory).
@@ -105,8 +107,8 @@ half of #2166.
   the help article from `partial` to `available`.
 - A confirmed contact address on the record (#2169) and an export of the
   directory.
-- Extending the audit log to every admin action with step-up confirmation
-  (#2173).
+- Audit coverage for admin routes outside this feature (see the "Not in this
+  slice" list in [Admin step-up and audit log](admin_step_up_audit.md)).
 - A screenshot for the help article, once the screen can be captured against a
   seeded backend.
 

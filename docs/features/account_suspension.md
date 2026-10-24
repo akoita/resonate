@@ -86,8 +86,10 @@ Purchases, uploads, listings, pledges and posting stay blocked.
   wallet never reaches the backend, so this is a platform-level restriction, not
   an on-chain one.
 - WebSocket events are not covered.
-- The audit service is in-memory plus structured logs, as for every other
-  audited action; the durable record is `accountStatusChangedBy` and the notice.
+- The platform `AuditService` is in-memory plus structured logs; the durable
+  operator trail is the `AdminAuditEvent` log (#2166, consolidated by #2173, see
+  [Admin step-up and audit log](admin_step_up_audit.md)).
+- Suspending and closing (not lifting) need a fresh step-up proof (#2173).
 
 ## API
 
@@ -147,4 +149,3 @@ the two privacy manifest specs,
 
 - Operator reopen of a closed account and a suspension queue/list view.
 - An in-app appeal flow.
-- Durable (database) audit log for operator actions.

@@ -5,6 +5,7 @@ import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useToast } from "../../../components/ui/Toast";
+import { AdminStepUpCancelledError, withAdminStepUp } from "../../../lib/adminStepUp";
 import { getAdminUsersOverview, getSentBroadcastNotices, sendBroadcastNotice } from "../../../lib/api";
 import { loadPlatformNotices } from "../../../lib/platformNotices";
 import {
@@ -23,7 +24,7 @@ import type { SentNoticesState } from "./SentNoticesList";
  * a live preview and a confirmation, and see what has already been sent.
  */
 export default function AdminNoticesPage() {
-  const { token, role } = useAuth();
+  const { token, role, signMessage } = useAuth();
   const { addToast } = useToast();
   const canSend = role === "admin" || role === "operator";
   const [draft, setDraft] = useState<NoticeDraft>(EMPTY_DRAFT);
@@ -74,7 +75,20 @@ export default function AdminNoticesPage() {
     if (!token || sending) return;
     setSending(true);
     try {
-      await sendBroadcastNotice(token, toBroadcastInput(draft));
+      // A broadcast cannot be recalled, so it needs a fresh passkey confirmation (#2173).
+      await withAdminStepUp(
+        {
+          token,
+          signMessage,
+          onPrompt: () =>
+            addToast({
+              type: "info",
+              title: "Confirm it is you",
+              message: "Your passkey will ask you to confirm sending this notice.",
+            }),
+        },
+        (proof) => sendBroadcastNotice(token, toBroadcastInput(draft), proof),
+      );
       setConfirming(false);
       setDraft(EMPTY_DRAFT);
       addToast({ type: "success", title: "Notice sent", message: "It now appears in people's notifications." });
@@ -82,6 +96,10 @@ export default function AdminNoticesPage() {
       void loadPlatformNotices(token);
     } catch (error) {
       setConfirming(false);
+      if (error instanceof AdminStepUpCancelledError) {
+        addToast({ type: "info", title: "Nothing sent", message: error.message });
+        return;
+      }
       addToast({
         type: "error",
         title: "Notice not sent",

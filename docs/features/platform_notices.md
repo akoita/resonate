@@ -50,7 +50,11 @@ by `NotificationModule`):
 
 Every send writes a `notice.sent` audit record through `AuditService`. It holds
 the actor, kind, category, and either the audience (broadcast) or the recipient
-count (targeted). Targeted titles and bodies are never logged.
+count (targeted). Targeted titles and bodies are never logged. Since #2173 an
+operator-sent notice also writes a durable `AdminAuditEvent`
+(`notice.broadcast_sent` / `notice.targeted_sent`; notices the platform sends
+itself under a `system:` actor are not logged there), and a broadcast needs a
+fresh step-up proof (see [Admin step-up and audit log](admin_step_up_audit.md)).
 
 ## HTTP routes
 

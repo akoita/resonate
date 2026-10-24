@@ -27,6 +27,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/community/cohorts", "Community Cohorts"],
   ["/admin/users", "Users"],
   ["/admin/agent-sessions", "AI DJ Session Events"],
+  ["/admin/audit", "Admin Audit Log"],
   ["/admin/artist-claims", "Artist Claims"],
   ["/admin/credit-requests", "Credit Requests"],
   ["/admin/notices", "Platform Notices"],

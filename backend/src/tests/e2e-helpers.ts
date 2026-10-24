@@ -21,6 +21,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from '../modules/auth/jwt.strategy';
 import { RolesGuard } from '../modules/auth/roles.guard';
+import { AdminStepUpGuard } from '../modules/admin_step_up/admin_step_up.guard';
+import { AdminStepUpTokenService } from '../modules/admin_step_up/admin_step_up_token.service';
 import { ConfigModule } from '@nestjs/config';
 import { sign } from 'jsonwebtoken';
 import { applyGlobalValidation } from '../config/validation';
@@ -58,6 +60,8 @@ export function authToken(userId: string, role = 'listener'): string {
  *   - JWT authentication (AuthGuard("jwt") works)
  *   - The global RolesGuard (APP_GUARD), as registered in AppModule, so
  *     @Roles routes are enforced the same way as in production
+ *   - The global AdminStepUpGuard (APP_GUARD), so @RequireStepUp() routes
+ *     (#2173) need a proof; mint one with `stepUpProof(userId)`
  *   - Any additional providers (mocked services)
  *
  * No database, no Redis, no Docker — fast.
@@ -86,6 +90,9 @@ export async function createControllerTestApp(
     providers: [
       JwtStrategy,
       { provide: APP_GUARD, useClass: RolesGuard },
+      // As AppModule: @RequireStepUp() routes (#2173) are enforced for real.
+      { provide: APP_GUARD, useClass: AdminStepUpGuard },
+      AdminStepUpTokenService,
       ...providers,
     ],
   }).compile();
@@ -96,4 +103,15 @@ export async function createControllerTestApp(
   applyGlobalValidation(app);
   await app.init();
   return app;
+}
+
+/**
+ * A valid admin step-up proof (#2173) for `userId`, for the `X-Admin-Step-Up`
+ * header of a `@RequireStepUp()` route. Minted by the real token service with
+ * the same secret the test app uses, so the guard verifies it for real.
+ * Pass `now` in the past to mint an already-stale one.
+ */
+export function stepUpProof(userId: string, now: number = Date.now()): string {
+  const config = { get: (key: string) => (key === 'JWT_SECRET' ? TEST_JWT_SECRET : undefined) };
+  return new AdminStepUpTokenService(config as any).issueProof(userId, now).proof;
 }
