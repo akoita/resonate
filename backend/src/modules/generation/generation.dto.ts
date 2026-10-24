@@ -116,3 +116,9 @@ export interface StemAnalysisResult {
   suggestedPrompt: string;
   negativePrompt: string;
 }
+
+/** Body of `POST /generation/artwork` (#2197); the controller trims and rejects an empty prompt. */
+export class GenerateArtworkDto {
+  @IsString()
+  prompt!: string;
+}

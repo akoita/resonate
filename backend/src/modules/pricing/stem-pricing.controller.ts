@@ -10,7 +10,12 @@ import {
   Req,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
-import { StemPricingService, StemPricingDto } from "./stem-pricing.service";
+import { StemPricingService } from "./stem-pricing.service";
+import {
+  BatchStemPricingBodyDto,
+  BatchUpsertStemPricingBodyDto,
+  StemPricingBodyDto,
+} from "./stem-pricing.dto";
 
 @Controller("api/stem-pricing")
 export class StemPricingController {
@@ -53,7 +58,7 @@ export class StemPricingController {
   @Put(":stemId")
   upsertPricing(
     @Param("stemId") stemId: string,
-    @Body() dto: StemPricingDto,
+    @Body() dto: StemPricingBodyDto,
     @Req() req: { user: { userId: string } },
   ) {
     return this.pricingService.upsertPricing(stemId, req.user.userId, dto);
@@ -66,7 +71,7 @@ export class StemPricingController {
   @UseGuards(AuthGuard("jwt"))
   @Post("batch")
   batchUpdate(
-    @Body() body: { releaseId: string } & StemPricingDto,
+    @Body() body: BatchStemPricingBodyDto,
     @Req() req: { user: { userId: string } },
   ) {
     const { releaseId, ...dto } = body;
@@ -84,7 +89,7 @@ export class StemPricingController {
   @UseGuards(AuthGuard("jwt"))
   @Post("batch-upsert")
   batchUpsertByMap(
-    @Body() body: { releaseId: string; pricingMap: Record<string, StemPricingDto> },
+    @Body() body: BatchUpsertStemPricingBodyDto,
     @Req() req: { user: { userId: string } },
   ) {
     return this.pricingService.batchUpsertByMap(

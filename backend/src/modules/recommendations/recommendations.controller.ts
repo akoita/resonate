@@ -1,7 +1,8 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { HomeFeedService } from "./home-feed.service";
-import { RecommendationsService, UserPreferences } from "./recommendations.service";
+import { RecommendationsService } from "./recommendations.service";
+import { SetPreferencesDto } from "./preferences.dto";
 import { ApplyTasteEditsDto, PreviewTasteEditsDto } from "./taste_edit.dto";
 import { TasteMemoryService } from "./taste_memory.service";
 
@@ -23,7 +24,7 @@ export class RecommendationsController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("preferences")
-  setPreferences(@Body() body: { userId: string; preferences: UserPreferences }, @Req() req: any) {
+  setPreferences(@Body() body: SetPreferencesDto, @Req() req: any) {
     this.assertOwnUser(body.userId, req);
     return this.recommendationsService.setPreferences(body.userId, body.preferences);
   }

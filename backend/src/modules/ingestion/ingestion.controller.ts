@@ -17,6 +17,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { seconds } from "../shared/rate_limits";
 import { IngestionService } from "./ingestion.service";
+import { UploadFormDto } from "./ingestion.dto";
 import { IngestionMultipartInterceptor } from "./ingestion-multipart.interceptor";
 import {
   cleanupIngestionMultipartRequest,
@@ -39,12 +40,7 @@ export class IngestionController {
   @Throttle({ default: { limit: 20, ttl: seconds(60) } })
   async upload(
     @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },
-    @Body()
-    body: {
-      artistId?: string;
-      trackId?: string; // Reuse audio of one of the caller's own catalog tracks
-      metadata?: any; // Can be string (from FormData) or object (from JSON body)
-    },
+    @Body() body: UploadFormDto,
     @Request() req: any,
   ): Promise<unknown> {
     try {

@@ -35,6 +35,20 @@ import type {
 import { RightsRouteReassessmentService } from "../rights/rights-route-reassessment.service";
 import { TrustedSourceService } from "../rights/trusted-source.service";
 import { toAiDisclosureRecord } from "../catalog/ai-disclosure.policy";
+import {
+  CastJuryVoteDto,
+  CreateRightsRouteReassessmentDto,
+  EscalateDisputeToJuryDto,
+  ReleaseRightsUpgradeRequestDto,
+  ReviewReleaseRightsUpgradeRequestDto,
+  ReviewRightsRouteReassessmentDto,
+  ReviewTrustedSourceLinkRequestDto,
+  RevokeTrustedSourceLinkDto,
+  SubmitDisputeEvidenceDto,
+  TrustedSourceLinkRequestDto,
+  UpdateNotificationPreferencesDto,
+  VerifyCuratorHumanityDto,
+} from "./metadata.dto";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
@@ -1209,17 +1223,7 @@ export class MetadataController {
   async createRightsRouteReassessment(
     @Request() req: any,
     @Param("releaseId") releaseId: string,
-    @Body()
-    body: {
-      trigger?: string;
-      reason?: string;
-      recommendedRoute?: string;
-      evidenceSubjectType?: string;
-      evidenceSubjectId?: string;
-      trustedSourceLinkId?: string;
-      rightsUpgradeRequestId?: string;
-      flags?: string[];
-    },
+    @Body() body: CreateRightsRouteReassessmentDto,
   ) {
     return this.rightsRouteReassessmentService.createReassessment({
       releaseId,
@@ -1292,12 +1296,7 @@ export class MetadataController {
   async reviewRightsRouteReassessment(
     @Request() req: any,
     @Param("id") id: string,
-    @Body()
-    body: {
-      action?: "apply_route" | "confirm_current" | "dismiss";
-      nextRoute?: string;
-      reason?: string;
-    },
+    @Body() body: ReviewRightsRouteReassessmentDto,
   ) {
     if (!body?.action) {
       throw new BadRequestException("Review action is required");
@@ -1319,18 +1318,7 @@ export class MetadataController {
   @Post("trusted-sources/link-requests")
   async submitTrustedSourceLinkRequest(
     @Request() req: any,
-    @Body()
-    body: {
-      requestedSourceType?: string;
-      sourceName?: string;
-      sourceKey?: string;
-      requestedTrustLevel?: string;
-      proofSummary?: string;
-      domain?: string;
-      feedUrl?: string;
-      traceability?: Record<string, unknown>;
-      evidences?: RightsEvidenceDraftInput[];
-    },
+    @Body() body: TrustedSourceLinkRequestDto,
   ) {
     return this.trustedSourceService.submitLinkRequest({
       requesterAddress: String(req?.user?.userId || "").toLowerCase(),
@@ -1392,13 +1380,7 @@ export class MetadataController {
   async reviewTrustedSourceLinkRequest(
     @Request() req: any,
     @Param("id") id: string,
-    @Body()
-    body: {
-      action?: "under_review" | "approve" | "deny";
-      decisionReason?: string;
-      trustLevel?: string;
-      reviewState?: string;
-    },
+    @Body() body: ReviewTrustedSourceLinkRequestDto,
   ) {
     if (!body?.action) {
       throw new BadRequestException("Review action is required");
@@ -1423,7 +1405,7 @@ export class MetadataController {
   async revokeTrustedSourceArtistLink(
     @Request() req: any,
     @Param("id") id: string,
-    @Body() body: { reason?: string },
+    @Body() body: RevokeTrustedSourceLinkDto,
   ) {
     const revokedBy = String(req?.user?.userId || "").toLowerCase();
     const link = await this.trustedSourceService.revokeArtistLink({
@@ -1471,12 +1453,7 @@ export class MetadataController {
   async submitReleaseRightsUpgradeRequest(
     @Request() req: any,
     @Param("releaseId") releaseId: string,
-    @Body()
-    body: {
-      summary?: string;
-      requestedRoute?: string;
-      evidences: RightsEvidenceDraftInput[];
-    },
+    @Body() body: ReleaseRightsUpgradeRequestDto,
   ) {
     const request = await this.contractsService.submitReleaseRightsUpgradeRequest({
       releaseId,
@@ -1529,18 +1506,7 @@ export class MetadataController {
   async reviewReleaseRightsUpgradeRequest(
     @Request() req: any,
     @Param("id") id: string,
-    @Body()
-    body: {
-      action:
-        | "under_review"
-        | "more_evidence_requested"
-        | "approved_standard_escrow"
-        | "approved_trusted_fast_path"
-        | "denied";
-      decisionReason?: string;
-      note?: string;
-      evidences?: RightsEvidenceDraftInput[];
-    },
+    @Body() body: ReviewReleaseRightsUpgradeRequestDto,
   ) {
     if (!body?.action) {
       throw new BadRequestException("Review action is required");
@@ -1572,13 +1538,7 @@ export class MetadataController {
   @Post("disputes/:id/evidence")
   async submitEvidence(
     @Param("id") id: string,
-    @Body()
-    body: {
-      submitter: string;
-      party: string;
-      evidenceURI: string;
-      description?: string;
-    },
+    @Body() body: SubmitDisputeEvidenceDto,
   ) {
     if (!body.submitter || !body.party || !body.evidenceURI) {
       throw new BadRequestException("Missing required fields");
@@ -1636,7 +1596,7 @@ export class MetadataController {
   @Patch("disputes/:id/escalate-jury")
   async escalateDisputeToJury(
     @Param("id") id: string,
-    @Body() body: { jurors: string[]; deadlineHours?: number },
+    @Body() body: EscalateDisputeToJuryDto,
   ) {
     if (!Array.isArray(body.jurors) || body.jurors.length < 3) {
       throw new BadRequestException("At least 3 jurors are required");
@@ -1651,7 +1611,7 @@ export class MetadataController {
   @Patch("disputes/:id/jury-vote")
   async castJuryVote(
     @Param("id") id: string,
-    @Body() body: { jurorAddr: string; vote: "reporter" | "creator" },
+    @Body() body: CastJuryVoteDto,
   ) {
     if (!body.jurorAddr || !["reporter", "creator"].includes(body.vote)) {
       throw new BadRequestException("Body must include jurorAddr and vote=reporter|creator");
@@ -1752,14 +1712,7 @@ export class MetadataController {
   async updateNotificationPreferences(
     @Request() req: any,
     @Param("address") address: string,
-    @Body() body: {
-      disputeFiled?: boolean;
-      disputeResolved?: boolean;
-      disputeAppealed?: boolean;
-      evidenceSubmitted?: boolean;
-      listingExpiringSoon?: boolean;
-      listingExpired?: boolean;
-    },
+    @Body() body: UpdateNotificationPreferencesDto,
   ) {
     await this.assertCanAccessNotifications(req?.user, address, "write");
     return this.notificationService.updatePreferences(address.toLowerCase(), body);
@@ -1804,7 +1757,7 @@ export class MetadataController {
   @Post("curators/:address/verification")
   async verifyCuratorHumanity(
     @Param("address") address: string,
-    @Body() body: { provider?: string; proof?: string },
+    @Body() body: VerifyCuratorHumanityDto,
   ) {
     const normalized = address.toLowerCase();
     const verification = await this.humanVerificationService.verify({

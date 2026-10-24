@@ -26,6 +26,7 @@ import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
 import { UpdateTrackDescriptorDto } from "./track-descriptor.dto";
+import { CreateReleaseDto, UpdateReleaseDto } from "./release.dto";
 import { trackDescriptorVocabulary } from "../descriptors/track_descriptor";
 import { getArtworkMaxBytes } from "../shared/artwork-validation";
 import {
@@ -312,33 +313,7 @@ export class CatalogController {
   @Post()
   create(
     @Request() req: any,
-    @Body()
-    body: {
-      title: string;
-      type?: string;
-      primaryArtist?: string;
-      featuredArtists?: string[];
-      artistCredits?: Array<{
-        artistId?: string | null;
-        displayName?: string | null;
-        role: string;
-        sortOrder?: number;
-      }>;
-      genre?: string;
-      moods?: string[];
-      label?: string;
-      releaseDate?: string;
-      explicit?: boolean;
-      tracks?: Array<{
-        title: string;
-        position: number;
-        explicit?: boolean;
-        aiDisclosure: {
-          level: "none" | "partly" | "all";
-          facets?: string[];
-        };
-      }>;
-    },
+    @Body() body: CreateReleaseDto,
   ) {
     return this.catalogService.createRelease({
       ...body,
@@ -417,18 +392,7 @@ export class CatalogController {
   @Patch("releases/:releaseId")
   updateRelease(
     @Param("releaseId") releaseId: string,
-    @Body() body: {
-      title?: string;
-      status?: string;
-      primaryArtist?: string;
-      tracks?: Array<{
-        id: string;
-        aiDisclosure: {
-          level: "none" | "partly" | "all";
-          facets?: string[];
-        };
-      }>;
-    },
+    @Body() body: UpdateReleaseDto,
     @Request() req: any,
   ) {
     // Owner-scoped: the service verifies release.artist.userId === userId.
