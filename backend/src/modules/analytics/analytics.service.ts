@@ -33,12 +33,14 @@ import { buildHabitMixQualityReport } from "./analytics_habit_mix_quality";
 import { unmetDemandCards } from "./analytics_unmet_demand";
 import { UNMET_DEMAND_SOURCE, type UnmetDemandSource } from "../scene_scout/unmet_demand.contracts";
 import { FIRST_LISTENER_RECEPTION_SOURCE, firstListenerReceptionCards, type FirstListenerReceptionSource } from "./analytics_first_listener";
+import { ARTIST_NET_RECEIVED_SOURCE, type ArtistNetReceivedSource } from "./analytics_net_received";
 
 /**
  * What `payoutUsd` / `totalPayoutUsd` measure in the artist analytics responses (#2144).
  * The figures sum the gross settled stablecoin sale amount, before the on-chain platform
  * fee and royalty splits; native-token sales are counted per asset but carry no USD value.
- * They are not the artist's net share. The field names stay for API compatibility.
+ * They are not the artist's net share. The field names stay for API compatibility; the
+ * artist's net comes beside them in the dashboard's `netReceived` block (#2172).
  */
 export const ARTIST_PAYOUT_BASIS = "gross_settled" as const;
 
@@ -287,6 +289,10 @@ export class AnalyticsService {
     @Optional()
     @Inject(FIRST_LISTENER_RECEPTION_SOURCE)
     private readonly firstListenerReceptionSource?: FirstListenerReceptionSource,
+    // #2172: net received per marketplace sale, from the indexed settlement records.
+    @Optional()
+    @Inject(ARTIST_NET_RECEIVED_SOURCE)
+    private readonly netReceivedSource?: ArtistNetReceivedSource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
@@ -419,12 +425,24 @@ export class AnalyticsService {
       available: false, minimumAudience: 3, releases: [],
     }));
     const receptionCards = firstListenerReceptionCards(reception);
+    // Read-only join onto the indexed settlement records; a failure leaves the rest of the dashboard intact.
+    const netReceived = await this.netReceivedSource
+      ?.getArtistNetReceived({
+        artistId,
+        from: new Date(data.metadata.timeWindow.from),
+        to: new Date(data.metadata.timeWindow.to),
+      })
+      .catch(() => ({
+        status: "unavailable" as const,
+        reason: "Net received is temporarily unavailable. Your gross sales are still shown.",
+      }));
 
     return {
       summary: {
         ...summary,
         payoutsByAsset: exportPayload.payoutsByAsset,
       },
+      ...(netReceived ? { netReceived } : {}),
       tracks,
       topTracks,
       sessions: [...sessionMap.values()],

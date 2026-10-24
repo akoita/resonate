@@ -34,6 +34,7 @@ import { SceneScoutEntitlementsService } from "../scene_scout/scene_scout.servic
 import { FirstListenerModule } from "../recommendations/first_listener.module";
 import { FirstListenerReceptionService } from "../recommendations/first_listener_reception.service";
 import { FIRST_LISTENER_RECEPTION_SOURCE, entitledFirstListenerReceptionSource } from "./analytics_first_listener";
+import { ARTIST_NET_RECEIVED_SOURCE, PrismaArtistNetReceivedSource } from "./analytics_net_received";
 
 @Module({
   imports: [SharedModule, AccountStandingModule, AgentsModule, DiscoveryJournalModule, SceneScoutModule, FirstListenerModule],
@@ -44,6 +45,11 @@ import { FIRST_LISTENER_RECEPTION_SOURCE, entitledFirstListenerReceptionSource }
       provide: FIRST_LISTENER_RECEPTION_SOURCE,
       useFactory: entitledFirstListenerReceptionSource,
       inject: [FirstListenerReceptionService, SceneScoutEntitlementsService],
+    },
+    {
+      // #2172: net received per marketplace sale, beside the gross settled figure.
+      provide: ARTIST_NET_RECEIVED_SOURCE,
+      useClass: PrismaArtistNetReceivedSource,
     },
     AnalyticsAuthorizationService,
     AnalyticsConsentService,
