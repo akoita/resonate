@@ -1,5 +1,11 @@
 import { Controller, Post, Body, Logger, Headers } from "@nestjs/common";
 import { WebAuthnService } from "./webauthn.service";
+import {
+  PasskeyLoginOptionsDto,
+  PasskeyLoginVerifyDto,
+  PasskeyRegisterOptionsDto,
+  PasskeyRegisterVerifyDto,
+} from "./webauthn.dto";
 
 /**
  * Self-hosted WebAuthn/Passkey server endpoints.
@@ -20,7 +26,7 @@ export class WebAuthnController {
   constructor(private readonly webAuthnService: WebAuthnService) {}
 
   @Post("register/options")
-  async registerOptions(@Body() body: { username?: string; rpID?: string }) {
+  async registerOptions(@Body() body: PasskeyRegisterOptionsDto) {
     const username = body.username || "Resonate";
     this.logger.log(`Register options requested for "${username}"`);
     return this.webAuthnService.getRegistrationOptions(username, body.rpID);
@@ -29,7 +35,7 @@ export class WebAuthnController {
   @Post("register/verify")
   async registerVerify(
     @Headers("origin") origin: string | undefined,
-    @Body() body: { userId: string; username?: string; cred: any; rpID?: string },
+    @Body() body: PasskeyRegisterVerifyDto,
   ) {
     this.logger.log(`Register verify for userId: ${body.userId}`);
     return this.webAuthnService.verifyRegistration(
@@ -42,7 +48,7 @@ export class WebAuthnController {
   }
 
   @Post("login/options")
-  async loginOptions(@Body() body: { rpID?: string }) {
+  async loginOptions(@Body() body: PasskeyLoginOptionsDto) {
     this.logger.log("Login options requested");
     return this.webAuthnService.getAuthenticationOptions(body.rpID);
   }
@@ -50,7 +56,7 @@ export class WebAuthnController {
   @Post("login/verify")
   async loginVerify(
     @Headers("origin") origin: string | undefined,
-    @Body() body: { cred: any; rpID?: string },
+    @Body() body: PasskeyLoginVerifyDto,
   ) {
     this.logger.log("Login verify requested");
     return this.webAuthnService.verifyAuthentication(

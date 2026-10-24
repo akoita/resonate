@@ -44,6 +44,12 @@ import { isRightNowContext, resolveRightNow, type RightNowSummary } from "./agen
 import { resolveListeningLanes } from "./listening_lanes.service";
 import { historyRecommendation, pickNoteColumns, pickNoteFromRow, pickNotesFromRunResult } from "./agent_pick_notes";
 import type { PickNote } from "./agent_pick_notes";
+import {
+    CreateAgentConfigDto,
+    RecordAgentSignalDto,
+    StartAgentConfigSessionDto,
+    UpdateAgentConfigDto,
+} from "./agent_config.dto";
 
 /** Tracked per signed-in person where the guard has resolved them, else per IP. */
 const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
@@ -95,7 +101,7 @@ export class AgentConfigController {
     @UseGuards(AuthGuard("jwt"))
     async create(
         @Req() req: any,
-        @Body() body: { name: string; vibes: string[]; monthlyCapUsd: number }
+        @Body() body: CreateAgentConfigDto
     ) {
         // Ensure User record exists (JWT userId = wallet address)
         const ensuredUserId = normalizeUserId(req.user.userId);
@@ -132,7 +138,7 @@ export class AgentConfigController {
     @UseGuards(AuthGuard("jwt"))
     async update(
         @Req() req: any,
-        @Body() body: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: string; monthlyCapUsd?: number; isActive?: boolean; allowExplicit?: boolean }
+        @Body() body: UpdateAgentConfigDto
     ) {
         const allowedData: {
             name?: string;
@@ -271,7 +277,7 @@ export class AgentConfigController {
     @UseGuards(AuthGuard("jwt"))
     async recordSignal(
         @Req() req: any,
-        @Body() body: { trackId: string; action: string; sessionId?: string; metadata?: Record<string, unknown> }
+        @Body() body: RecordAgentSignalDto
     ) {
         // Habit-only actions enter through consented analytics instrumentation,
         // where browser-session deduplication and training controls are enforced.
@@ -336,48 +342,7 @@ export class AgentConfigController {
     @UseGuards(AuthGuard("jwt"))
     async startSession(
         @Req() req: any,
-        @Body() body?: {
-            preferences?: {
-                mood?: string;
-                energy?: "low" | "medium" | "high";
-                genres?: string[];
-                allowExplicit?: boolean;
-                licenseType?: "personal" | "remix" | "commercial";
-                sessionIntent?: string;
-                sessionIntentName?: string;
-                queueStyle?: string;
-                source?: string;
-                /** Listening filters parsed from the listener's own words (#2037). Sanitized here. */
-                request?: unknown;
-                /**
-                 * The listener's sentence (#2241): joins this session's semantic query only.
-                 * Bounded here; never stored, logged or published.
-                 */
-                requestText?: unknown;
-                /** Catalog artists the sentence named (#2241); seed neighbours for retrieval. */
-                artists?: unknown;
-                /**
-                 * What the session starts from (#2244): `{ kind: "track" | "artist" | "playlist", id, label }`.
-                 * Resolved here: a playlist the caller neither owns nor may see is refused (403).
-                 */
-                seed?: unknown;
-                /**
-                 * Request-first selection (#2316): allow marked off-request tracks to
-                 * fill a batch the catalog cannot fill with matches. Only `true` counts.
-                 */
-                fillSimilar?: unknown;
-                /** "New artists" (#2249): only artists the listener has never interacted with. Only `true` counts. */
-                newArtists?: unknown;
-                /** The Discovery control (#2327): "familiar", "mixed" or "new"; anything else is ignored. */
-                discovery?: unknown;
-                myMix?: MyMixPreferences | null;
-                /**
-                 * "Right now" (#2245): the client's coarse time/day bucket. Used only by a
-                 * session with no filters, to weight habit lanes; never stored or published.
-                 */
-                listeningContext?: unknown;
-            };
-        }
+        @Body() body?: StartAgentConfigSessionDto,
     ) {
         const config = await prisma.agentConfig.findUnique({
             where: { userId: req.user.userId },

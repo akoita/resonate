@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -13,6 +14,7 @@ import { recoverMessageAddress, type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
 import { SignupFaucetService, type AuthMode } from "./signup_faucet.service";
+import { AuthNonceDto, AuthVerifyDto } from "./auth.dto";
 import { EventBus } from "../shared/event_bus";
 import { AccountClosureService } from "../privacy/account_closure.service";
 import { writeStructuredLog } from "../shared/structured_logging";
@@ -44,33 +46,25 @@ export class AuthController {
     if (process.env.AUTH_DEV_LOGIN_ENABLED !== "true") {
       throw new ForbiddenException("auth/login is disabled");
     }
+    // Checked here rather than by a DTO so a disabled route answers 403 to
+    // every caller, whatever the body (#2197).
+    if (typeof body?.userId !== "string" || (body.role !== undefined && typeof body.role !== "string")) {
+      throw new BadRequestException("userId must be a string and role, when sent, a string");
+    }
 
     return this.authService.issueToken(body.userId, body.role ?? "listener");
   }
 
   @Post("nonce")
   @Throttle({ default: { limit: 20, ttl: seconds(60) } })
-  nonce(@Body() body: { address: string }) {
+  nonce(@Body() body: AuthNonceDto) {
     return { nonce: this.nonceService.issue(body.address) };
   }
 
   @Post("verify")
   @Throttle({ default: { limit: 10, ttl: seconds(60) } })
   async verify(
-    @Body()
-    body: {
-      address: string;
-      message: string;
-      signature: `0x${string}`;
-      role?: string;
-      authMode?: AuthMode;
-      chainId?: number;
-      /** Local dev (31337): EOA that signed; we verify this and issue token for address (smart account) */
-      signerAddress?: string;
-      /** P-256 public key coordinates for passkey identity continuity */
-      pubKeyX?: string;
-      pubKeyY?: string;
-    }
+    @Body() body: AuthVerifyDto,
   ) {
     try {
       const chainId = await this.publicClient.getChainId();

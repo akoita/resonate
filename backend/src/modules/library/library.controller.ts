@@ -1,7 +1,8 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, Req, Query, HttpCode } from "@nestjs/common";
 import { Request } from "express";
 import { AuthGuard } from "@nestjs/passport";
-import { LibraryService, SaveTrackInput } from "./library.service";
+import { LibraryService } from "./library.service";
+import { DeleteLibraryTracksDto, SaveLibraryTrackDto, SaveLibraryTracksDto } from "./library.dto";
 
 @Controller("library")
 @UseGuards(AuthGuard("jwt"))
@@ -9,12 +10,12 @@ export class LibraryController {
     constructor(private readonly libraryService: LibraryService) {}
 
     @Post("tracks")
-    saveTrack(@Req() req: Request, @Body() body: SaveTrackInput) {
+    saveTrack(@Req() req: Request, @Body() body: SaveLibraryTrackDto) {
         return this.libraryService.saveTrack((req as any).user.userId, body);
     }
 
     @Post("tracks/batch")
-    saveTracks(@Req() req: Request, @Body() body: { tracks: SaveTrackInput[] }) {
+    saveTracks(@Req() req: Request, @Body() body: SaveLibraryTracksDto) {
         return this.libraryService.saveTracks((req as any).user.userId, body.tracks);
     }
 
@@ -30,7 +31,7 @@ export class LibraryController {
 
     @Delete("tracks/batch")
     @HttpCode(200)
-    deleteTracks(@Req() req: Request, @Body() body: { ids: string[] }) {
+    deleteTracks(@Req() req: Request, @Body() body: DeleteLibraryTracksDto) {
         return this.libraryService.deleteTracks((req as any).user.userId, body.ids);
     }
 

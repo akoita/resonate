@@ -6,6 +6,7 @@ import { AgentGoldenEvalService } from "./agent_golden_eval.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentRunnerService } from "./agent_runner.service";
+import { EvaluateAgentDto, OrchestrateAgentDto, RunAgentDto, RuntimeRunAgentDto } from "./agents.dto";
 
 @Controller("agents")
 export class AgentsController {
@@ -20,20 +21,7 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("run")
-  run(@Body() body: {
-    sessionId: string;
-    userId: string;
-    trackId: string;
-    recentTrackIds: string[];
-    budgetRemainingUsd: number;
-    preferences: {
-      mood?: string;
-      energy?: "low" | "medium" | "high";
-      genres?: string[];
-      allowExplicit?: boolean;
-      licenseType?: "personal" | "remix" | "commercial";
-    };
-  }) {
+  run(@Body() body: RunAgentDto) {
     return this.agentRunner.run(body);
   }
 
@@ -47,48 +35,21 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("orchestrate")
-  orchestrate(@Body() body: {
-    sessionId: string;
-    userId: string;
-    recentTrackIds: string[];
-    budgetRemainingUsd: number;
-    preferences: {
-      mood?: string;
-      energy?: "low" | "medium" | "high";
-      genres?: string[];
-      allowExplicit?: boolean;
-      licenseType?: "personal" | "remix" | "commercial";
-    };
-  }) {
+  orchestrate(@Body() body: OrchestrateAgentDto) {
     return this.orchestrator.orchestrate(body);
   }
 
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("evaluate")
-  evaluate(@Body() body: {
-    sessions: Parameters<AgentEvaluationService["evaluate"]>[0];
-    runtime?: "vertex" | "langgraph" | "local";
-  }) {
+  evaluate(@Body() body: EvaluateAgentDto) {
     return this.evaluator.evaluate(body.sessions, { runtime: body.runtime });
   }
 
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("runtime")
-  runtimeRun(@Body() body: {
-    sessionId: string;
-    userId: string;
-    recentTrackIds: string[];
-    budgetRemainingUsd: number;
-    preferences: {
-      mood?: string;
-      energy?: "low" | "medium" | "high";
-      genres?: string[];
-      allowExplicit?: boolean;
-      licenseType?: "personal" | "remix" | "commercial";
-    };
-  }) {
+  runtimeRun(@Body() body: RuntimeRunAgentDto) {
     return this.runtime.run(body);
   }
 }

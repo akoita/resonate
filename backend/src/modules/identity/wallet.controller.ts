@@ -16,6 +16,24 @@ import { Roles } from "../auth/roles.decorator";
 import { SessionKeyService } from "./session_key.service";
 import { SocialRecoveryService } from "./social_recovery.service";
 import { normalizeUserId } from "./user_id";
+import {
+  ActivateAgentSessionKeyDto,
+  AgentPurchaseDto,
+  ApproveRecoveryDto,
+  ConfigurePaymasterDto,
+  CreateSessionKeyDto,
+  DisableAgentWalletDto,
+  EnableAgentWalletDto,
+  FundWalletDto,
+  RefreshWalletDto,
+  RequestRecoveryDto,
+  ResetPaymasterDto,
+  RotateAgentKeyDto,
+  SetGuardiansDto,
+  SetWalletBudgetDto,
+  SetWalletProviderDto,
+  ValidateSessionKeyDto,
+} from "./wallet.dto";
 import { WalletService } from "./wallet.service";
 import { AgentWalletService } from "../agents/agent_wallet.service";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
@@ -48,7 +66,7 @@ export class WalletController {
 
   @Post("fund")
   @UseGuards(AuthGuard("jwt"))
-  fund(@Req() req: any, @Body() body: { userId: string; amountUsd: number }) {
+  fund(@Req() req: any, @Body() body: FundWalletDto) {
     this.assertOwnWalletOrAdmin(req, body?.userId);
     return this.walletService.fundWallet(body);
   }
@@ -57,7 +75,7 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   setBudget(
     @Req() req: any,
-    @Body() body: { userId: string; monthlyCapUsd: number; resetSpent?: boolean },
+    @Body() body: SetWalletBudgetDto,
   ) {
     this.assertOwnWalletOrAdmin(req, body?.userId);
     return this.walletService.setBudget(body);
@@ -66,14 +84,14 @@ export class WalletController {
   @Post("provider")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  setProvider(@Body() body: { userId: string; provider: "local" | "erc4337" }) {
+  setProvider(@Body() body: SetWalletProviderDto) {
     return this.walletService.setProvider(body);
   }
 
   @Post("refresh")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  refresh(@Body() body: { userId: string; provider?: "local" | "erc4337" }) {
+  refresh(@Body() body: RefreshWalletDto) {
     return this.walletService.refreshWallet(body);
   }
 
@@ -94,7 +112,7 @@ export class WalletController {
   @Post("paymaster")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  configurePaymaster(@Body() body: { sponsorMaxUsd: number; paymasterAddress: string }) {
+  configurePaymaster(@Body() body: ConfigurePaymasterDto) {
     this.walletService.configurePaymaster(body);
     return { status: "ok" };
   }
@@ -109,7 +127,7 @@ export class WalletController {
   @Post("paymaster/reset")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  resetPaymaster(@Body() body: { userId: string }) {
+  resetPaymaster(@Body() body: ResetPaymasterDto) {
     this.walletService.resetPaymaster(body.userId);
     return { status: "ok" };
   }
@@ -126,7 +144,7 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   createSessionKey(
-    @Body() body: { userId: string; scope: string; ttlSeconds: number }
+    @Body() body: CreateSessionKeyDto
   ) {
     return this.sessionKeyService.issue(body);
   }
@@ -134,28 +152,28 @@ export class WalletController {
   @Post("session-key/validate")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  validateSessionKey(@Body() body: { token: string; scope: string }) {
+  validateSessionKey(@Body() body: ValidateSessionKeyDto) {
     return this.sessionKeyService.validate(body.token, body.scope);
   }
 
   @Post("guardians")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  setGuardians(@Body() body: { userId: string; guardians: string[]; required: number }) {
+  setGuardians(@Body() body: SetGuardiansDto) {
     return this.recoveryService.setGuardians(body.userId, body.guardians, body.required);
   }
 
   @Post("recovery/request")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  requestRecovery(@Body() body: { userId: string; newOwner: string; required: number }) {
+  requestRecovery(@Body() body: RequestRecoveryDto) {
     return this.recoveryService.requestRecovery(body);
   }
 
   @Post("recovery/approve")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
-  approveRecovery(@Body() body: { requestId: string; guardian: string }) {
+  approveRecovery(@Body() body: ApproveRecoveryDto) {
     return this.recoveryService.approveRecovery(body);
   }
 
@@ -170,16 +188,7 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   enableAgentWallet(
     @Req() req: any,
-    @Body() body?: {
-      permissions?: {
-        target: string;
-        function: string;
-        totalCapWei: string;
-        perTxCapWei: string;
-        rateLimit: number;
-      };
-      validityHours?: number;
-    },
+    @Body() body?: EnableAgentWalletDto,
   ) {
     const defaultPermissions = {
       target: process.env.MARKETPLACE_ADDRESS ?? "",
@@ -203,10 +212,7 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   activateSessionKey(
     @Req() req: any,
-    @Body() body: {
-      approvalData: string;
-      txHash?: string;
-    },
+    @Body() body: ActivateAgentSessionKeyDto,
   ) {
     return this.agentWalletService.activateSessionKey(
       req.user.userId,
@@ -219,7 +225,7 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   disableAgentWallet(
     @Req() req: any,
-    @Body() body?: { revokeTxHash?: string },
+    @Body() body?: DisableAgentWalletDto,
   ) {
     return this.agentWalletService.disable(
       req.user.userId,
@@ -247,10 +253,7 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   rotateAgentKey(
     @Req() req: any,
-    @Body() body?: {
-      permissions?: any;
-      validityHours?: number;
-    },
+    @Body() body?: RotateAgentKeyDto,
   ) {
     const defaultPermissions = {
       target: process.env.MARKETPLACE_ADDRESS || "",
@@ -269,14 +272,7 @@ export class WalletController {
 
   @Post("agent/purchase")
   @UseGuards(AuthGuard("jwt"))
-  agentPurchase(@Req() req: any, @Body() body: {
-    sessionId: string;
-    listingId: string;
-    tokenId: string;
-    amount: string;
-    totalPriceWei: string;
-    priceUsd: number;
-  }) {
+  agentPurchase(@Req() req: any, @Body() body: AgentPurchaseDto) {
     return this.agentPurchaseService.purchase({
       sessionId: body.sessionId,
       userId: req.user.userId,

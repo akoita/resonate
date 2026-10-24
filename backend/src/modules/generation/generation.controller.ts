@@ -4,7 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { seconds } from '../shared/rate_limits';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GenerationService } from './generation.service';
-import { CreateGenerationDto, CreateComplementaryDto, PublishGenerationDto } from './generation.dto';
+import { CreateGenerationDto, CreateComplementaryDto, GenerateArtworkDto, PublishGenerationDto } from './generation.dto';
 import { getArtworkMaxBytes } from '../shared/artwork-validation';
 
 @Controller('generation')
@@ -120,7 +120,7 @@ export class GenerationController {
   @Post('artwork')
   @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async generateArtwork(
-    @Body() body: { prompt: string },
+    @Body() body: GenerateArtworkDto,
   ) {
     if (!body.prompt?.trim()) {
       throw new Error('Prompt is required');

@@ -4,6 +4,7 @@ import { Throttle } from "@nestjs/throttler";
 import { seconds } from "../shared/rate_limits";
 import { Roles } from "../auth/roles.decorator";
 import { CurationService } from "./curation.service";
+import { CuratorReportDto, CuratorStakeDto } from "./curation.dto";
 
 @Controller("curation")
 export class CurationController {
@@ -13,7 +14,7 @@ export class CurationController {
   @Post("stake")
   @Roles("curator", "admin")
   @Throttle({ default: { limit: 10, ttl: seconds(60) } })
-  stake(@Body() body: { curatorId: string; amountUsd: number }) {
+  stake(@Body() body: CuratorStakeDto) {
     return this.curationService.stake(body);
   }
 
@@ -28,7 +29,7 @@ export class CurationController {
   @Post("report")
   @Roles("curator", "admin")
   @Throttle({ default: { limit: 15, ttl: seconds(60) } })
-  report(@Body() body: { curatorId: string; trackId: string; reason: string }) {
+  report(@Body() body: CuratorReportDto) {
     return this.curationService.report(body);
   }
 
