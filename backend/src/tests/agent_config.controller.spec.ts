@@ -103,6 +103,46 @@ describe("AgentConfigController", () => {
     });
   });
 
+  describe("the time-of-day bucket on session start (#2245)", () => {
+    const req = { user: { userId: "user_1" } };
+
+    it("hands a valid bucket to the runtime only, never to the session.started event or the session row", async () => {
+      const ctrl = makeController();
+
+      await ctrl.startSession(req, { preferences: { listeningContext: "evening:weekday" } });
+      await jest.advanceTimersByTimeAsync(500);
+
+      const runInput = (ctrl as any).runtimeService.run.mock.calls[0][0];
+      expect(runInput.preferences.listeningContext).toBe("evening:weekday");
+      // It is not a filter: the saved vibes stay the session's genres, with no request of its own.
+      expect(runInput.preferences).not.toHaveProperty("sessionGenres");
+      expect(runInput.preferences).not.toHaveProperty("request");
+      const published = (ctrl as any).eventBus.publish.mock.calls.find(
+        ([event]: [{ eventName: string }]) => event.eventName === "session.started",
+      )[0];
+      expect(JSON.stringify(published)).not.toContain("evening");
+      expect(JSON.stringify(createSession.mock.calls)).not.toContain("evening");
+    });
+
+    it("refuses a value that is not one of the eight buckets before anything is written", async () => {
+      const ctrl = makeController();
+      for (const listeningContext of ["Europe/Paris", "lunch:weekday", "2026-10-24T18:00:00Z", 7, {}]) {
+        await expect(ctrl.startSession(req, { preferences: { listeningContext } })).rejects.toMatchObject({
+          response: { reason: "invalid_listening_context" },
+        });
+      }
+      expect(createSession).not.toHaveBeenCalled();
+      expect((ctrl as any).runtimeService.run).not.toHaveBeenCalled();
+    });
+
+    it("sends nothing when the client sent no bucket", async () => {
+      const ctrl = makeController();
+      await ctrl.startSession(req, { preferences: { mood: "Chill" } });
+      await jest.advanceTimersByTimeAsync(500);
+      expect((ctrl as any).runtimeService.run.mock.calls[0][0].preferences).not.toHaveProperty("listeningContext");
+    });
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();

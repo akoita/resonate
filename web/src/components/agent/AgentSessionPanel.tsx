@@ -12,6 +12,7 @@ import {
     getAgentMixCoverage,
     getAgentMixVocabulary,
     getAgentNextPick,
+    getAgentRightNow,
     getAgentSounds,
     getTasteMemory,
     parseAgentSessionRequest,
@@ -20,6 +21,7 @@ import {
     type AgentMyMixPreferences,
     type AgentNextPreferences,
     type AgentRequestCoverage,
+    type AgentRightNow,
     type AgentSessionEnergy,
     type AgentSessionRequest,
     type AgentSessionRequestIgnoredKey,
@@ -31,6 +33,7 @@ import {
     createMyMixPreferences,
     getMyMixLocalContext,
 } from "../../lib/agentMyMix";
+import { withRightNowContext } from "../../lib/agentRightNow";
 import { resolveDjQueue } from "../../lib/agentDjPlayback";
 import { getDjSet, setDjSet, useDjSet, type DjPickNote } from "../../lib/agentDjSet";
 import {
@@ -137,6 +140,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const [myMixVocabulary, setMyMixVocabulary] = useState<AgentMixVocabulary>({ genres: [], moods: [] });
     const [myMixPreferences, setMyMixPreferences] = useState<AgentMyMixPreferences | null>(null);
     const [myMixCoverage, setMyMixCoverage] = useState<AgentMixCoverage | null>(null);
+    // "Right now" (#2245): what a session with no filters follows at this time of day, and
+    // whether the listener picked that starter. Null until loaded, or when the request fails,
+    // which hides the starter (a starter without data is not shown).
+    const [rightNow, setRightNow] = useState<AgentRightNow | null>(null);
+    const [rightNowSelected, setRightNowSelected] = useState(false);
     const [isSavingMyMix, setIsSavingMyMix] = useState(false);
     const [myMixSaveMessage, setMyMixSaveMessage] = useState<string | null>(null);
     // Optimistic "include explicit tracks" value while the save is in flight (#2088).
@@ -179,6 +187,19 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const offersFillSimilar =
         !myMixPreferences && ((request?.genres.length ?? 0) > 0 || artists.length > 0 || seed !== null);
 
+    // The "Right now" starter stands for the session only while nothing else steers it:
+    // any starter, sentence, chip, seed or My Mix replaces it.
+    const rightNowActive =
+        rightNowSelected &&
+        rightNow !== null &&
+        !myMixPreferences &&
+        !activePreset &&
+        !hasFilters(request) &&
+        artists.length === 0 &&
+        seed === null &&
+        parsedSentence === null &&
+        text.trim().length === 0;
+
     const invalidateMyMixCoverage = () => {
         myMixEditVersionRef.current += 1;
         replanSeqRef.current += 1;
@@ -217,6 +238,23 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 if (!current) return;
                 setMyMixLanes([]);
                 setMyMixVocabulary({ genres: [], moods: [] });
+            });
+        return () => { current = false; };
+    }, [token]);
+
+    // "Right now" reads the listener's own habits for the current coarse bucket; only the bucket is sent.
+    useEffect(() => {
+        if (!token) {
+            setRightNow(null);
+            return;
+        }
+        let current = true;
+        void getAgentRightNow(token, getMyMixLocalContext())
+            .then((next) => {
+                if (current) setRightNow(next);
+            })
+            .catch(() => {
+                if (current) setRightNow(null);
             });
         return () => { current = false; };
     }, [token]);
@@ -272,9 +310,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             seed,
             fillSimilar,
         });
+        // A pick with no filters of its own carries the coarse time-of-day bucket (#2245).
+        const preferences = withRightNowContext(regularPreferences) ?? regularPreferences;
         return myMixWasSelectedRef.current
-            ? { ...regularPreferences, myMix: null }
-            : regularPreferences;
+            ? { ...preferences, myMix: null }
+            : preferences;
     }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed, fillSimilar]);
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
@@ -453,6 +493,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             const queued = takeDjSeed();
             if (!queued) return;
             setSeed(queued);
+            setRightNowSelected(false);
             // A seeded session replaces My Mix, as typing a sentence does.
             if (myMixPreferencesRef.current) {
                 setMyMixPreferences(null);
@@ -527,6 +568,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const handleTextChange = (value: string) => {
         setText(value);
         setActivePreset(null);
+        setRightNowSelected(false);
         // A new sentence replaces the Adjust energy; a starter whose sentence is edited is marked so.
         energyAdjustedRef.current = false;
         if (!value.trim()) starterRef.current = null;
@@ -569,6 +611,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         }
         setRequest(next);
         setActivePreset(null);
+        setRightNowSelected(false);
         if (starterRef.current) starterRef.current.edited = true;
         if (myMixPreferences) {
             setMyMixPreferences(null);
@@ -605,6 +648,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const handleEnergyChange = (band: AgentSessionEnergy | null) => {
         cancelParse();
         energyAdjustedRef.current = band !== null;
+        if (band !== null) setRightNowSelected(false);
         setRequest(setEnergy(request ?? emptyRequest(), band));
         setParseError(null);
         scheduleReplan();
@@ -620,6 +664,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     };
 
     const handleSelectMyMix = () => {
+        setRightNowSelected(false);
         cancelParse();
         energyAdjustedRef.current = false;
         starterRef.current = { row: "for_you", id: "my_mix", edited: false };
@@ -635,6 +680,34 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         setMyMixPreferences(createMyMixPreferences());
         invalidateMyMixCoverage();
         setMyMixSaveMessage(null);
+        scheduleReplan();
+    };
+
+    /**
+     * "Right now" (#2245): a session with no filters, weighted by the habits of this time of
+     * day. It clears every other choice, writes no sentence and creates no request: the server
+     * treats the session as taste-driven and falls back to the saved vibes on a cold start.
+     */
+    const handleSelectRightNow = () => {
+        cancelParse();
+        energyAdjustedRef.current = false;
+        starterRef.current = { row: "for_you", id: "right_now", edited: false };
+        setText("");
+        setRequest(emptyRequest());
+        setParsedSentence(null);
+        setArtists([]);
+        setSeed(null);
+        setUnparsed([]);
+        setIgnored([]);
+        setParseError(null);
+        setActivePreset(null);
+        if (myMixPreferencesRef.current) {
+            setMyMixPreferences(null);
+            myMixWasSelectedRef.current = true;
+            invalidateMyMixCoverage();
+            setMyMixSaveMessage(null);
+        }
+        setRightNowSelected(true);
         scheduleReplan();
     };
 
@@ -824,7 +897,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             // The sentence is still being read: starting now would ignore it.
             if (isParsing) return;
             const preset = activePreset;
-            const starter = myMixPreferences ? { row: "for_you", id: "my_mix", edited: false } : starterRef.current;
+            const starter = myMixPreferences
+                ? { row: "for_you", id: "my_mix", edited: false }
+                : rightNowActive
+                    ? { row: "for_you", id: "right_now", edited: false }
+                    : starterRef.current;
             // Optional filters in use: Energy set from the Adjust row, and the explicit choice.
             const optionalFilters = [
                 ...(energyAdjustedRef.current && !myMixPreferences && request?.energy ? ["energy"] : []),
@@ -833,19 +910,20 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             ];
             const startedFrom: SessionStartedFrom = myMixPreferences
                 ? "my_mix"
-                : preset ? "preset" : hasFilters(request) ? "prompt" : "plain";
+                : preset ? "preset" : hasFilters(request) ? "prompt" : rightNowActive ? "right_now" : "plain";
             // A preset or a typed request steers this session only: it travels as
             // session preferences and never overwrites the vibes saved in Settings.
             const preferences = myMixPreferences
                 ? { myMix: { ...myMixPreferences, context: getMyMixLocalContext() } }
-                : buildSessionPreferences({
+                // A session with no filters carries the coarse time-of-day bucket only (#2245).
+                : withRightNowContext(buildSessionPreferences({
                     activePreset: preset,
                     request,
                     sentence: parsedSentence,
                     artists,
                     seed,
                     fillSimilar: fillSimilar && offersFillSimilar,
-                });
+                }));
             try {
                 setIsStarting(true);
                 const result = await startSession(preferences ? { preferences } : undefined);
@@ -893,6 +971,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         ? `${preset.name} is now guiding the queue.`
                         : startedFrom === "my_mix"
                           ? "My Mix is now guiding the queue."
+                        : startedFrom === "right_now"
+                          ? "Your DJ is following your habits for this time of day."
                         : startedFrom === "prompt"
                           ? "Your DJ is following your filters and will start playing shortly."
                           : "Your DJ is picking tracks and will start playing shortly.",
@@ -908,6 +988,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         // A starter writes its sentence into the prompt and shows the filters that sentence
         // reads as, without waiting for the parser. The listener can edit either.
         cancelParse();
+        setRightNowSelected(false);
         setText(preset.sentence);
         // An Energy chosen in the Adjust row combines with the starter instead of being lost.
         const adjustedEnergy = energyAdjustedRef.current ? (request?.energy ?? null) : null;
@@ -1013,6 +1094,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                             error: explicitError,
                             onChange: handleExplicitChange,
                         }}
+                        rightNow={rightNow ? { summary: rightNow, selected: rightNowActive, onSelect: handleSelectRightNow } : undefined}
                         myMix={{
                             lanes: myMixLanes,
                             vocabulary: myMixVocabulary,
@@ -1099,6 +1181,6 @@ function starterRowOf(preset: SessionPreset): StarterRow {
     return preset.group === "mood" ? "moments" : "sounds";
 }
 
-export type SessionStartedFrom = "preset" | "prompt" | "plain" | "my_mix";
+export type SessionStartedFrom = "preset" | "prompt" | "plain" | "my_mix" | "right_now";
 
 export { buildPickPreferences, buildSessionPreferences, toIntentPreferences };

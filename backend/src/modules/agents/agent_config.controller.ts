@@ -39,6 +39,7 @@ import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../recommendations/taste_edit_vocabulary";
 import { resolveMyMixPlan } from "./agent_my_mix";
 import type { MyMixPreferences } from "./agent_my_mix";
+import { isRightNowContext, resolveRightNow, type RightNowSummary } from "./agent_right_now";
 import { resolveListeningLanes } from "./listening_lanes.service";
 import { historyRecommendation, pickNoteColumns, pickNoteFromRow, pickNotesFromRunResult } from "./agent_pick_notes";
 import type { PickNote } from "./agent_pick_notes";
@@ -191,6 +192,23 @@ export class AgentConfigController {
      * `AGENT_SOUNDS_MIN_TRACKS` are omitted, and the rest follow the listener's
      * learned taste, then catalog size.
      */
+    /**
+     * "Right now" (#2245): what a session with no filters would follow at this
+     * coarse time of day, and why, in the same terms the runtime weights lanes
+     * with (`resolveRightNow` is the one source). `context` is one of the eight
+     * time/day buckets My Mix uses; nothing about it is stored. A listener with
+     * too little history gets `cold_start`, and their session uses the saved vibes.
+     */
+    @Get("session/right-now")
+    @UseGuards(AuthGuard("jwt"))
+    async getRightNow(@Req() req: any, @Query("context") context?: string): Promise<RightNowSummary> {
+        if (!isRightNowContext(context)) {
+            throw new BadRequestException({ reason: "invalid_listening_context" });
+        }
+        const lanes = await resolveListeningLanes(req.user.userId);
+        return resolveRightNow(lanes, context, getAgentTrackLimit()).summary;
+    }
+
     @Get("session/sounds")
     @UseGuards(AuthGuard("jwt"))
     async getSessionSounds(@Req() req: any, @Query("allowExplicit") allowExplicitQuery?: string) {
@@ -348,6 +366,11 @@ export class AgentConfigController {
                  */
                 fillSimilar?: unknown;
                 myMix?: MyMixPreferences | null;
+                /**
+                 * "Right now" (#2245): the client's coarse time/day bucket. Used only by a
+                 * session with no filters, to weight habit lanes; never stored or published.
+                 */
+                listeningContext?: unknown;
             };
         }
     ) {
@@ -363,6 +386,10 @@ export class AgentConfigController {
                 await resolveListeningLanes(req.user.userId),
                 getAgentTrackLimit(),
             );
+        }
+        const listeningContext = body?.preferences?.listeningContext;
+        if (listeningContext != null && !isRightNowContext(listeningContext)) {
+            throw new BadRequestException({ reason: "invalid_listening_context" });
         }
         // The seed (#2244) is resolved, and a playlist access-checked, before anything is written.
         const seed = body?.preferences?.seed != null
@@ -490,6 +517,8 @@ export class AgentConfigController {
                     queueStyle: sessionPreferences.queueStyle,
                     source: sessionPreferences.source,
                     myMix: sessionPreferences.myMix,
+                    // "Right now" (#2245): read by the runtime for a session with no filters.
+                    ...(isRightNowContext(listeningContext) ? { listeningContext } : {}),
                     // The sentence and the artists it named (#2241): in memory for this
                     // run only, read by the semantic query and the artist seeds.
                     ...(requested.requestText ? { requestText: requested.requestText } : {}),
@@ -865,6 +894,6 @@ export class AgentConfigController {
 
 function publicSessionPreferences(preferences: Record<string, unknown>): Record<string, unknown> {
     // The sentence and the artists it named stay inside the request (#2241).
-    const { myMix: _myMix, requestText: _requestText, artists: _artists, ...safePreferences } = preferences;
+    const { myMix: _myMix, requestText: _requestText, artists: _artists, listeningContext: _listeningContext, ...safePreferences } = preferences;
     return safePreferences;
 }

@@ -78,7 +78,7 @@ export class AgentRuntimeExecutorService {
 }
 
 function withoutMyMix(input: AgentRuntimeInput): AgentRuntimeInput {
-  const { myMix: _myMix, ...preferences } = input.preferences ?? {};
+  const { myMix: _myMix, listeningContext: _listeningContext, ...preferences } = input.preferences ?? {};
   return {
     sessionId: input.sessionId,
     userId: input.userId,

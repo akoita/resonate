@@ -17,6 +17,8 @@ import {
   ResolvedMyMixPlan,
 } from "./agent_my_mix";
 import { getAgentTrackLimit } from "./agent_runtime.config";
+import { isRightNowContext, resolveRightNow } from "./agent_right_now";
+import { requestScopeFor } from "./agent_session_request";
 import { logDegradedFallback } from "../shared/degraded_fallback";
 
 export interface MyMixLaneDemandObservation {
@@ -61,10 +63,16 @@ export class AgentRuntimeService {
   async run(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
     const assignment = habitMixAssignment(input);
     const resolvedPlan = await this.resolveMyMix(input);
+    // "Right now" (#2245): only a session with no filters and no My Mix, from a client
+    // that sent its bucket, and only once the habits are enough to weight.
+    const rightNowPlan = resolvedPlan ? undefined : await this.resolveRightNowPlan(input);
     const plan = resolvedPlan && assignment.orderingVariant !== "single_profile"
       ? { ...resolvedPlan, orderingVariant: assignment.orderingVariant }
-      : undefined;
-    if (!plan) this.clearMyMixSession(input.userId, input.sessionId);
+      // Not a My Mix session, so outside the habit-mix experiment: lane quotas by
+      // context, in the listener's own order (no habit ordering experiment arm).
+      : rightNowPlan ? { ...rightNowPlan, orderingVariant: "neutral" as const } : undefined;
+    // A Right now plan keeps no My Mix coverage or demand snapshot: those belong to the My Mix surface.
+    if (!plan || rightNowPlan) this.clearMyMixSession(input.userId, input.sessionId);
     const safeInput = withoutMyMix(input);
     const result = plan
       ? await this.executor.runWithMyMix(safeInput, plan)
@@ -73,7 +81,7 @@ export class AgentRuntimeService {
         : await this.execute(safeInput);
     const final =
       this.policy && !("tracks" in result) ? await this.policy.apply(input, result) : result;
-    if (plan && "tracks" in final) {
+    if (plan && !rightNowPlan && "tracks" in final) {
       this.rememberMyMixSession(input.userId, input.sessionId, plan, final);
     }
     this.recordVariant(input, final, plan?.orderingVariant ?? "single_profile", assignment);
@@ -166,6 +174,29 @@ export class AgentRuntimeService {
     return resolveMyMixPlan(input.preferences.myMix, visibleLanes, getAgentTrackLimit());
   }
 
+  /**
+   * The context-weighted lane plan of a session with no filters (#2245), or
+   * undefined for every other session: My Mix, a session with a request (a
+   * genre, mood, energy, tempo, seed, named artist or sentence), a starter's
+   * intent, a client that sent no valid bucket, or a listener without enough
+   * history (the saved vibes stay the fallback). Reading lanes fails open.
+   */
+  private async resolveRightNowPlan(input: AgentRuntimeInput): Promise<ResolvedMyMixPlan | undefined> {
+    const preferences = input.preferences;
+    if (!preferences || preferences.myMix != null) return undefined;
+    const context = preferences.listeningContext;
+    if (!isRightNowContext(context)) return undefined;
+    if (preferences.sessionIntent || preferences.sessionIntentName) return undefined;
+    if (requestScopeFor(preferences)) return undefined;
+    try {
+      const lanes = await resolveListeningLanes(input.userId);
+      return resolveRightNow(lanes, context, getAgentTrackLimit()).plan;
+    } catch (error) {
+      this.logger.warn(`Right now lanes unavailable; using saved vibes: ${String(error)}`);
+      return undefined;
+    }
+  }
+
   private rememberMyMixSession(
     userId: string,
     sessionId: string,
@@ -210,7 +241,7 @@ export class AgentRuntimeService {
 }
 
 function withoutMyMix(input: AgentRuntimeInput): AgentRuntimeInput {
-  const { myMix: _myMix, ...preferences } = input.preferences ?? {};
+  const { myMix: _myMix, listeningContext: _listeningContext, ...preferences } = input.preferences ?? {};
   return {
     sessionId: input.sessionId,
     userId: input.userId,

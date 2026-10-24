@@ -6,7 +6,7 @@ import { EventBus } from "../shared/event_bus";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
 import { AgentRuntimeService } from "../agents/agent_runtime.service";
-import type { MyMixPreferences } from "../agents/agent_my_mix";
+import type { MyMixContext, MyMixPreferences } from "../agents/agent_my_mix";
 import { djPickVariantFields } from "./dj_pick_variant";
 import { AgentLearningService } from "../agents/agent_learning.service";
 import { getAgentTrackLimit } from "../agents/agent_runtime.config";
@@ -54,6 +54,13 @@ export interface AgentPreferences {
   artists?: string[];
   /** Session-only preference; explicit null clears it on the next request. */
   myMix?: MyMixPreferences | null;
+  /**
+   * "Right now" (#2245): the client's coarse time/day bucket (one of eight; no
+   * timezone, timestamp or place). Remembered for the live session so a pick that
+   * omits it still follows the last bucket, but read only while the session has
+   * no filters; never published.
+   */
+  listeningContext?: MyMixContext;
   /**
    * Request-first selection (#2316): "Fill with similar sounds". When true, a
    * batch the catalog cannot fill with matches of the request is padded with
@@ -807,6 +814,7 @@ function publicSessionPreferences(preferences: AgentPreferences): Record<string,
   // A session seed (#2244) is published as its kind only: its id may name a private playlist.
   const {
     myMix: _myMix,
+    listeningContext: _listeningContext,
     seedTrackId: _seedTrackId,
     requestText: _requestText,
     artists: _artists,

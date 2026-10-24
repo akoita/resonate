@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentMixVocabulary, AgentSessionRequest, ListeningLane } from "../../lib/api";
+import type { AgentMixVocabulary, AgentRightNow, AgentSessionRequest, ListeningLane } from "../../lib/api";
 import AgentSessionPrompt from "./AgentSessionPrompt";
 import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, soundPresetsForFamilies } from "./sessionPresetData";
 
@@ -176,6 +176,84 @@ describe("AgentSessionPrompt", () => {
     // Absent items are omitted, not shown broken: no "For you" row without lanes.
     expect(hidden).not.toContain(">For you<");
     expect(render()).not.toContain(">For you<");
+  });
+
+  describe("Right now (#2245)", () => {
+    const ready: AgentRightNow = {
+      status: "ready",
+      context: "evening:weekday",
+      highlights: ["Deep House", "Jazz"],
+    };
+    const cold: AgentRightNow = { status: "cold_start", context: "evening:weekday", reason: "no_history" };
+    const rightNow = (summary: AgentRightNow, selected = false) => ({ summary, selected, onSelect: vi.fn() });
+
+    it("is the first For you starter, with its reason always visible", () => {
+      const html = render({ rightNow: rightNow(ready) });
+      expect(html).toContain(">For you<");
+      expect(html.indexOf(">Right now</button>")).toBeLessThan(html.indexOf(">Moments<"));
+      const reason = html.slice(html.indexOf('data-testid="agent-right-now-reason"'));
+      expect(reason).toContain("Your usual weekday-evening mix: Deep House, Jazz.");
+      // The reason describes the button for screen readers, and nothing is hidden behind hover.
+      expect(html).toMatch(/aria-describedby="([^"]*right-now-reason)"/);
+      expect(html).not.toContain('title="');
+    });
+
+    it("sits before My Mix and beside the quick starts, without replacing them", () => {
+      const myMix = {
+        lanes: [myMixLane],
+        vocabulary,
+        preferences: null,
+        onSelect: vi.fn(),
+        onChange: vi.fn(),
+        onSave: vi.fn(),
+      };
+      const html = render({ rightNow: rightNow(ready), myMix });
+      expect(html.indexOf(">Right now</button>")).toBeLessThan(html.indexOf(">My Mix</button>"));
+      expect(html.indexOf(">My Mix</button>")).toBeLessThan(html.indexOf(">Moments<"));
+      expect(html).toContain(">Moments<");
+      expect(html).toContain(">Sounds<");
+    });
+
+    it("shows the For you row for Right now alone, since My Mix needs lanes", () => {
+      const html = render({ rightNow: rightNow(ready) });
+      expect(html).toContain(">For you<");
+      expect(html).not.toContain(">My Mix</button>");
+    });
+
+    it("says so on a cold start and names the saved vibes as the fallback", () => {
+      const html = render({ rightNow: rightNow(cold) });
+      expect(html).toContain("Not enough listening history yet. Your DJ will start from your saved vibes.");
+      const noContext = render({
+        rightNow: rightNow({ status: "cold_start", context: "morning:weekend", reason: "no_context_history" }),
+      });
+      expect(noContext).toContain("Not enough listening history for a weekend-morning yet.");
+    });
+
+    it("marks the chosen starter and explains that it sets no filters", () => {
+      const html = render({ rightNow: rightNow(ready, true) });
+      const button = html.slice(html.lastIndexOf("<button", html.indexOf(">Right now</button>")), html.indexOf(">Right now</button>"));
+      expect(button).toContain('aria-pressed="true"');
+      expect(button).toContain("active");
+      expect(render({ rightNow: rightNow(ready, false) })).toContain('aria-pressed="false"');
+      const about = html.slice(html.indexOf('data-testid="agent-right-now-about"'));
+      expect(about).toContain("Right now sets no filters.");
+      expect(render({ rightNow: rightNow(ready, false) })).not.toContain("agent-right-now-about");
+    });
+
+    it("is hidden when its data is missing: no dead starter", () => {
+      const html = render();
+      expect(html).not.toContain("Right now");
+      expect(html).not.toContain("agent-right-now-reason");
+    });
+
+    it("tells the empty state that the time of day leads, with the saved vibes as the fallback", () => {
+      const withHabits = render({ rightNow: rightNow(ready), savedVibes: ["Chill", "Jazz"] });
+      expect(withHabits).toContain("With no filters, your DJ follows your usual weekday-evening mix.");
+      expect(withHabits).toContain("<strong>Chill, Jazz</strong>");
+      // Cold start: nothing else to follow, so the saved vibes are what the DJ starts from.
+      const coldStart = render({ rightNow: rightNow(cold), savedVibes: ["Chill", "Jazz"] });
+      expect(coldStart).toContain("With no filters, your DJ starts from:");
+    });
   });
 
   it("describes the selected preset and what it sounds like, visibly (#2052)", () => {

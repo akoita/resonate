@@ -7,6 +7,7 @@ import type {
     AgentMixVocabulary,
     AgentMyMixPreferences,
     AgentRequestCoverage,
+    AgentRightNow,
     AgentSessionEnergy,
     AgentSessionRequest,
     AgentSessionRequestIgnoredKey,
@@ -23,6 +24,7 @@ import {
 import { SESSION_PRESETS, SESSION_PROMPT_EXAMPLES, soundCountLabel, type SessionPreset } from "./sessionPresetData";
 import AgentMyMixEditor from "./AgentMyMixEditor";
 import { selectedMyMixLanes } from "../../lib/agentMyMix";
+import { rightNowPhrase, rightNowReason } from "../../lib/agentRightNow";
 
 /** Where the DJ's saved vibes are edited. */
 export const DJ_SETTINGS_HREF = "/settings?section=dj";
@@ -41,7 +43,7 @@ const PLACEHOLDER_ROTATE_MS = 5000;
 /**
  * The starter rows (#2249): Moments set a feel (mood, energy, tempo) across all
  * genres; Sounds set everyday genre families. A "For you" row sits above them
- * and shows only what works today: My Mix.
+ * and shows only what works today: "Right now" (#2245, with its reason) and My Mix.
  */
 const PRESET_ROWS: Array<{ key: SessionPreset["group"]; label: string }> = [
     { key: "mood", label: "Moments" },
@@ -108,6 +110,16 @@ type Props = {
         enabled: boolean;
         onChange: (next: boolean) => void;
     };
+    /**
+     * "Right now" (#2245): the first For you starter. It sets no filters; the session goes by the
+     * listener's habits for this time of day, and the reason is always visible. Absent while the
+     * summary has not loaded, which hides the starter.
+     */
+    rightNow?: {
+        summary: AgentRightNow;
+        selected: boolean;
+        onSelect: () => void;
+    };
     myMix?: {
         lanes: readonly ListeningLane[];
         vocabulary: AgentMixVocabulary;
@@ -149,6 +161,7 @@ export default function AgentSessionPrompt({
     isBusy = false,
     explicit,
     fillSimilar,
+    rightNow,
     myMix,
     onSubmit,
 }: Props) {
@@ -178,6 +191,7 @@ export default function AgentSessionPrompt({
     const myMixHasInputs = myMix?.preferences
         ? selectedMyMixLanes(myMix.preferences, myMix.lanes).length > 0 || (myMix.preferences.additions?.length ?? 0) > 0
         : false;
+    const hasMyMixLanes = Boolean(myMix && myMix.lanes.some((lane) => !lane.hidden));
     const submitDisabled = isParsing || isBusy;
     const submitLabel = isBusy
         ? isLive ? "Updating…" : "Starting…"
@@ -204,23 +218,46 @@ export default function AgentSessionPrompt({
             </p>
 
             <div className="aid-prompt-preset-groups">
-                {/* For you: only what works today (My Mix, once there are lanes to blend). */}
-                {myMix && myMix.lanes.some((lane) => !lane.hidden) ? (
+                {/* For you: only what works today (Right now, and My Mix once there are lanes to blend). */}
+                {rightNow || hasMyMixLanes ? (
                     <div className="aid-prompt-preset-group aid-my-mix-choice">
                         <span id={`${id}-presets-for-you`} className="aid-prompt-preset-group-label">
                             For you
                         </span>
                         <div className="aid-prompt-presets" role="group" aria-labelledby={`${id}-presets-for-you`}>
-                            <button
-                                type="button"
-                                className={`aid-prompt-preset ${myMix.preferences ? "active" : ""}`}
-                                aria-pressed={Boolean(myMix.preferences)}
-                                onClick={myMix.onSelect}
-                            >
-                                My Mix
-                            </button>
+                            {rightNow ? (
+                                <button
+                                    type="button"
+                                    className={`aid-prompt-preset ${rightNow.selected ? "active" : ""}`}
+                                    aria-pressed={rightNow.selected}
+                                    aria-describedby={`${id}-right-now-reason`}
+                                    onClick={rightNow.onSelect}
+                                >
+                                    Right now
+                                </button>
+                            ) : null}
+                            {hasMyMixLanes && myMix ? (
+                                <button
+                                    type="button"
+                                    className={`aid-prompt-preset ${myMix.preferences ? "active" : ""}`}
+                                    aria-pressed={Boolean(myMix.preferences)}
+                                    onClick={myMix.onSelect}
+                                >
+                                    My Mix
+                                </button>
+                            ) : null}
                         </div>
-                        {myMix.preferences ? (
+                        {/* The reason is always visible (touch has no hover) and says so on a cold start. */}
+                        {rightNow ? (
+                            <p
+                                id={`${id}-right-now-reason`}
+                                className="aid-prompt-hint"
+                                data-testid="agent-right-now-reason"
+                            >
+                                {rightNowReason(rightNow.summary)}
+                            </p>
+                        ) : null}
+                        {hasMyMixLanes && myMix?.preferences ? (
                             <AgentMyMixEditor
                                 lanes={myMix.lanes}
                                 vocabulary={myMix.vocabulary}
@@ -283,6 +320,10 @@ export default function AgentSessionPrompt({
                     <strong>{describedPreset.name}.</strong> {describedPreset.description}{" "}
                     <span className="aid-prompt-preset-expect">You&apos;ll hear: {describedPreset.output}.</span>
                 </p>
+            ) : rightNow?.selected ? (
+                <p className="aid-prompt-hint" data-testid="agent-right-now-about">
+                    Right now sets no filters. Pick a starter or type a sentence to ask for something specific.
+                </p>
             ) : myMix?.preferences ? (
                 <p className="aid-prompt-hint">
                     {myMixHasInputs
@@ -316,7 +357,10 @@ export default function AgentSessionPrompt({
                             "Reading what you wrote…"
                         ) : savedVibes === undefined ? null : savedVibes.length > 0 ? (
                             <>
-                                With no filters, your DJ starts from: <strong>{startingTasteSummary(savedVibes)}</strong>
+                                {rightNow?.summary.status === "ready"
+                                    ? `With no filters, your DJ follows your usual ${rightNowPhrase(rightNow.summary.context)} mix. Your saved vibes are the fallback: `
+                                    : "With no filters, your DJ starts from: "}
+                                <strong>{startingTasteSummary(savedVibes)}</strong>
                                 {" · "}
                                 <Link href={DJ_SETTINGS_HREF}>Edit</Link>
                             </>

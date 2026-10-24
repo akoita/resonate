@@ -158,6 +158,11 @@ describe('SessionsController (e2e)', () => {
     // "Fill with similar sounds" is a boolean (#2316).
     await post('/sessions/agent/next', { sessionId: 's1', preferences: { fillSimilar: 'yes' } }).expect(400);
     await post('/sessions/start', { budgetCapUsd: 10, preferences: { fillSimilar: 1 } }).expect(400);
+    // "Right now" (#2245) takes one of the eight coarse buckets, never a timezone or a timestamp.
+    for (const listeningContext of ['Europe/Paris', 'lunch:weekday', '2026-10-24T18:00:00Z', 7]) {
+      await post('/sessions/agent/next', { sessionId: 's1', preferences: { listeningContext } }).expect(400);
+      await post('/sessions/start', { budgetCapUsd: 10, preferences: { listeningContext } }).expect(400);
+    }
 
     expect(mockSessionsService.startSession).not.toHaveBeenCalled();
     expect(mockSessionsService.stopSession).not.toHaveBeenCalled();
@@ -200,9 +205,12 @@ describe('SessionsController (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         sessionId: 's1',
-        preferences: { genres: ['Jazz'], allowExplicit: false, myMix: null, request: { genres: ['jazz'] } },
+        preferences: { genres: ['Jazz'], allowExplicit: false, myMix: null, request: { genres: ['jazz'] }, listeningContext: 'evening:weekday' },
       })
       .expect(201);
     expect(mockSessionsService.agentNext).toHaveBeenCalledTimes(1);
+    expect(mockSessionsService.agentNext).toHaveBeenCalledWith(
+      expect.objectContaining({ preferences: expect.objectContaining({ listeningContext: 'evening:weekday' }) }),
+    );
   });
 });

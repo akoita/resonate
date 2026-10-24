@@ -36,15 +36,22 @@ export function getMyMixLocalContext(now = new Date()): ListeningLaneContextKey 
   return `${localHourBucket}:${weekdayKind}` as ListeningLaneContextKey;
 }
 
-/** Re-bucket My Mix at each request, so a long session follows the current local context. */
+/**
+ * Re-bucket at each request, so a long session follows the current local
+ * context: My Mix's context, and the "Right now" bucket (#2245) a session with
+ * no filters carries. Preferences without either are returned as they are.
+ */
 export function withCurrentMyMixContext(
   preferences: AgentNextPreferences,
   now = new Date(),
 ): AgentNextPreferences {
-  if (!preferences.myMix) return preferences;
+  if (!preferences.myMix && !preferences.listeningContext) return preferences;
   return {
     ...preferences,
-    myMix: { ...preferences.myMix, context: getMyMixLocalContext(now) },
+    ...(preferences.myMix
+      ? { myMix: { ...preferences.myMix, context: getMyMixLocalContext(now) } }
+      : {}),
+    ...(preferences.listeningContext ? { listeningContext: getMyMixLocalContext(now) } : {}),
   };
 }
 
