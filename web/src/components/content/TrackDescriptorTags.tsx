@@ -22,15 +22,23 @@ const VOCAL_LABEL: Record<NonNullable<TrackDescriptor["vocal"]>, string> = {
   instrumental: "Instrumental",
 };
 
-/** The suggested tags of a track, in reading order: families, styles, then sound. */
+/** The measured sound tags of a track (tempo, energy, vocals). They cannot be edited. */
+export function trackDescriptorSoundLabels(descriptor?: TrackDescriptor | null): string[] {
+  if (!descriptor) return [];
+  return [
+    ...(descriptor.tempoBand ? [TEMPO_LABEL[descriptor.tempoBand]] : []),
+    ...(descriptor.energyBand ? [ENERGY_LABEL[descriptor.energyBand]] : []),
+    ...(descriptor.vocal ? [VOCAL_LABEL[descriptor.vocal]] : []),
+  ];
+}
+
+/** The tags of a track, in reading order: families, styles, then sound. */
 export function trackDescriptorTagLabels(descriptor?: TrackDescriptor | null): string[] {
   if (!descriptor) return [];
   return [
     ...descriptor.familyLabels,
     ...descriptor.subGenres,
-    ...(descriptor.tempoBand ? [TEMPO_LABEL[descriptor.tempoBand]] : []),
-    ...(descriptor.energyBand ? [ENERGY_LABEL[descriptor.energyBand]] : []),
-    ...(descriptor.vocal ? [VOCAL_LABEL[descriptor.vocal]] : []),
+    ...trackDescriptorSoundLabels(descriptor),
   ].filter(Boolean);
 }
 
@@ -45,9 +53,10 @@ const chipStyle: CSSProperties = {
 };
 
 /**
- * Read-only tags Resonate suggested for a track (#2240). There is nothing to
- * click or edit: artist corrections are a later change (#2292). Renders nothing
- * when the track has no tags. Tag text is plain text (React escapes it).
+ * Read-only tags of a track (#2240): the ones Resonate suggested, or the ones
+ * the release team corrected (#2292, see `TrackDescriptorEditor` for the
+ * editing control). There is nothing to click here. Renders nothing when the
+ * track has no tags. Tag text is plain text (React escapes it).
  */
 export function TrackDescriptorTags({ descriptor }: TrackDescriptorTagsProps) {
   const labels = trackDescriptorTagLabels(descriptor);
@@ -60,7 +69,7 @@ export function TrackDescriptorTags({ descriptor }: TrackDescriptorTagsProps) {
       onClick={(event) => event.stopPropagation()}
     >
       <ul
-        aria-label="Suggested tags"
+        aria-label={descriptor?.source === "artist" ? "Track tags" : "Suggested tags"}
         style={{ display: "flex", flexWrap: "wrap", gap: 4, margin: 0, padding: 0, listStyle: "none" }}
       >
         {labels.map((label, index) => (
@@ -70,7 +79,9 @@ export function TrackDescriptorTags({ descriptor }: TrackDescriptorTagsProps) {
         ))}
       </ul>
       <p style={{ margin: "3px 0 0", fontSize: 11, color: "#a1a1aa" }}>
-        Suggested by Resonate from your track&apos;s details and sound
+        {descriptor?.source === "artist"
+          ? "Corrected by your release team. Tempo, energy and vocals are measured from the audio."
+          : "Suggested by Resonate from your track's details and sound"}
       </p>
     </div>
   );

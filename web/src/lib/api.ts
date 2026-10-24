@@ -575,8 +575,8 @@ export type ReleaseArtistCredit = {
 
 /**
  * Tags Resonate generated for a track (#2240), from its details and its measured
- * sound. Only the owner-scoped release route returns them; the artist sees them
- * read-only in the release editor (corrections: #2292).
+ * sound. Only the owner-scoped release route returns them. `source: "artist"`
+ * marks tags the release team corrected (#2292); the bands stay measured.
  */
 export type TrackDescriptor = {
   families: string[];
@@ -5163,6 +5163,33 @@ export async function updateTrackMetadata(
   return apiRequest<Track>(
     `/catalog/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(trackId)}/metadata`,
     { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** The tags an artist can correct a track's genre tags from (#2292). */
+export type TrackDescriptorVocabulary = {
+  families: Array<{ id: string; label: string }>;
+  subGenres: string[];
+};
+
+export async function getTrackDescriptorVocabulary() {
+  return apiRequest<TrackDescriptorVocabulary>("/catalog/descriptor-vocabulary");
+}
+
+/**
+ * Correct a track's genre families and sub-genres (#2292): the complete new
+ * set, from the vocabulary only. Owner or a manager with track-metadata rights.
+ */
+export async function updateTrackDescriptor(
+  token: string,
+  releaseId: string,
+  trackId: string,
+  input: { families: string[]; subGenres: string[] },
+) {
+  return apiRequest<TrackDescriptor>(
+    `/catalog/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(trackId)}/descriptor`,
+    { method: "PUT", body: JSON.stringify(input) },
     token,
   );
 }

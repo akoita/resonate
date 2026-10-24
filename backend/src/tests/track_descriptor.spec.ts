@@ -7,6 +7,10 @@ import {
   sanitizeDescriptorText,
   sanitizeSubGenre,
   validateModelAnswer,
+  validateDescriptorCorrection,
+  trackDescriptorVocabulary,
+  artistDescriptorContentHash,
+  SUB_GENRE_VOCABULARY,
   FAMILY_IDS,
   MAX_SUB_GENRES,
 } from "../modules/descriptors/track_descriptor";
@@ -231,5 +235,56 @@ describe("embedding text", () => {
     expect(text).toContain("Tempo: mid");
     expect(text).toContain("Energy: low");
     expect(trackEmbeddingContentHash(text, "m")).not.toBe(trackEmbeddingContentHash(trackEmbeddingText(track), "m"));
+  });
+});
+
+describe("artist descriptor corrections (#2292)", () => {
+  it("offers the genre families and a sorted, sanitized sub-genre vocabulary", () => {
+    const vocabulary = trackDescriptorVocabulary();
+    expect(vocabulary.families.map((family) => family.id)).toEqual(FAMILY_IDS);
+    expect(vocabulary.families[0]).toEqual({ id: "hip-hop", label: "Hip-Hop" });
+    expect(vocabulary.subGenres).toEqual([...vocabulary.subGenres].sort());
+    expect(vocabulary.subGenres).toEqual(expect.arrayContaining(["afrobeats", "senegal", "boom bap"]));
+    expect(vocabulary.subGenres.every((label) => sanitizeSubGenre(label) === label)).toBe(true);
+  });
+
+  it("accepts families and vocabulary sub-genres, normalised and sorted", () => {
+    expect(validateDescriptorCorrection({ families: ["world", "african", "world"], subGenres: ["Senegal", "boom bap"] })).toEqual({
+      ok: true,
+      value: { families: ["african", "world"], subGenres: ["boom bap", "senegal"] },
+    });
+    expect(validateDescriptorCorrection({ families: [], subGenres: [] })).toEqual({
+      ok: true,
+      value: { families: [], subGenres: [] },
+    });
+  });
+
+  it("rejects anything outside the vocabulary and malformed lists", () => {
+    const bad = (raw: Parameters<typeof validateDescriptorCorrection>[0]) =>
+      expect(validateDescriptorCorrection(raw)).toMatchObject({ ok: false });
+    bad({ families: ["not-a-family"], subGenres: [] });
+    bad({ families: ["World"], subGenres: [] }); // ids only, not labels
+    bad({ families: [], subGenres: ["my own invented style"] });
+    bad({ families: [], subGenres: ["<script>alert(1)</script>"] });
+    bad({ families: [42], subGenres: [] });
+    bad({ families: "world", subGenres: [] });
+    bad({ families: [] });
+    bad({ families: [], subGenres: SUB_GENRE_VOCABULARY.slice(0, MAX_SUB_GENRES + 1) as string[] });
+  });
+
+  it("lets an artist keep a generated free label already on the track, but not add a new one", () => {
+    expect(validateDescriptorCorrection({ families: [], subGenres: ["sahel blues"] }, ["sahel blues"])).toEqual({
+      ok: true,
+      value: { families: [], subGenres: ["sahel blues"] },
+    });
+    expect(validateDescriptorCorrection({ families: [], subGenres: ["desert blues"] }, ["sahel blues"])).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it("hashes the correction itself", () => {
+    const a = artistDescriptorContentHash({ families: ["world"], subGenres: [] });
+    expect(a).toBe(artistDescriptorContentHash({ families: ["world"], subGenres: [] }));
+    expect(a).not.toBe(artistDescriptorContentHash({ families: ["jazz"], subGenres: [] }));
   });
 });
