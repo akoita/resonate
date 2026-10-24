@@ -129,6 +129,11 @@ export class SessionPreferencesDto {
   @IsBoolean()
   fillSimilar?: boolean;
 
+  /** "New artists" (#2249): only artists the listener has never interacted with. Off unless `true`. */
+  @IsOptional()
+  @IsBoolean()
+  newArtists?: boolean;
+
   /** Session-only taste lanes (#2065); validated by the service. `null` clears them. */
   myMix?: MyMixPreferences | null;
 

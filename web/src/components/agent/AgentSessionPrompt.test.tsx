@@ -256,6 +256,50 @@ describe("AgentSessionPrompt", () => {
     });
   });
 
+  describe("More like... and New artists in... (#2249)", () => {
+    const moreLike = (selected = false, title = "Harbor Lights") => ({ title, selected, onSelect: vi.fn() });
+    const newArtists = (selected = false) => ({ familyName: "Jazz", selected, onSelect: vi.fn() });
+    const rightNow = { summary: { status: "ready" as const, context: "evening:weekday" as const, highlights: ["Jazz"] }, selected: false, onSelect: vi.fn() };
+    const myMix = { lanes: [myMixLane], vocabulary, preferences: null, onSelect: vi.fn(), onChange: vi.fn(), onSave: vi.fn() };
+
+    it("lists the For you starters in order: Right now, More like, New artists, My Mix", () => {
+      const html = render({ rightNow, moreLike: moreLike(), newArtists: newArtists(), myMix });
+      const order = [">Right now</button>", "More like Harbor Lights</button>", "New artists in Jazz</button>", ">My Mix</button>", ">Moments<"];
+      const positions = order.map((needle) => html.indexOf(needle));
+      expect(positions.every((position) => position >= 0)).toBe(true);
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    });
+
+    it("shows the row for either starter alone, and nothing for a missing one", () => {
+      expect(render({ moreLike: moreLike() })).toContain(">For you<");
+      expect(render({ newArtists: newArtists() })).toContain(">For you<");
+      const none = render();
+      expect(none).not.toContain("More like");
+      expect(none).not.toContain("New artists in");
+      expect(none).not.toContain(">For you<");
+    });
+
+    it("keeps a long track title short on the button and whole for assistive technology", () => {
+      const title = "A Very Long Track Title That Would Break The Button Layout";
+      const html = render({ moreLike: moreLike(false, title) });
+      expect(html).toContain(`aria-label="More like ${title}"`);
+      expect(html).toContain("More like A Very Long Track Title Tha…</button>");
+    });
+
+    it("marks the chosen starters", () => {
+      const html = render({ moreLike: moreLike(true), newArtists: newArtists(true) });
+      expect(html.match(/aria-pressed="true"/g)).toHaveLength(2);
+      expect(render({ moreLike: moreLike(), newArtists: newArtists() })).not.toContain('aria-pressed="true"');
+    });
+
+    it("shows a removable chip while the session is limited to new artists", () => {
+      const html = render({ newArtistsOnly: true, request });
+      expect(html).toContain("New artists only");
+      expect(html).toContain('aria-label="Remove filter New artists only"');
+      expect(render({ request })).not.toContain("New artists only");
+    });
+  });
+
   it("describes the selected preset and what it sounds like, visibly (#2052)", () => {
     const html = render({ activePresetIntent: "R&B" });
     const about = html.slice(html.indexOf('data-testid="agent-session-preset-about"'));

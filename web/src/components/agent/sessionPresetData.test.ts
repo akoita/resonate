@@ -8,6 +8,7 @@ import {
   LEGACY_PRESET_NAMES,
   SESSION_PRESETS,
   SESSION_PROMPT_EXAMPLES,
+  newArtistsPresetFor,
   plainPresetLabel,
   soundCountLabel,
   soundPresetsForFamilies,
@@ -174,6 +175,26 @@ describe("catalog-aware Sounds (#2249)", () => {
       "World",
       "Jazz",
     ]);
+  });
+
+  describe("New artists in <family> (#2249)", () => {
+    const families = [
+      { id: "jazz", label: "Jazz", count: 12 },
+      { id: "world", label: "World", count: 2 },
+      { id: "african", label: "African", count: 99 },
+    ];
+
+    it("uses the starter of the listener's top family", () => {
+      expect(newArtistsPresetFor("jazz", families)?.intent).toBe("Jazz");
+    });
+
+    it("is hidden without a top family, when the catalog cannot fill it, or when it has no starter", () => {
+      expect(newArtistsPresetFor(undefined, families)).toBeNull();
+      expect(newArtistsPresetFor("rock", families)).toBeNull();
+      expect(newArtistsPresetFor("world", families)).toBeNull();
+      expect(newArtistsPresetFor("african", families)).toBeNull();
+      expect(newArtistsPresetFor("jazz", [])).toBeNull();
+    });
   });
 
   it("leaves out families that have no starter instead of inventing one", () => {

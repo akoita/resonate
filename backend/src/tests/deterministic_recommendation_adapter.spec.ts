@@ -53,6 +53,16 @@ describe("deterministicSelectorInput (#2094)", () => {
     });
   });
 
+  it("asks the selector for new artists only when the session is a New artists session (#2249)", () => {
+    expect(deterministicSelectorInput(input)).not.toHaveProperty("newArtistsOnly");
+    expect(
+      deterministicSelectorInput({ ...input, preferences: { ...input.preferences, newArtists: false } }),
+    ).not.toHaveProperty("newArtistsOnly");
+    expect(
+      deterministicSelectorInput({ ...input, preferences: { ...input.preferences, newArtists: true } }),
+    ).toMatchObject({ newArtistsOnly: true });
+  });
+
   it("is exactly what recommend() passes to the selector", async () => {
     const selector = {
       select: jest

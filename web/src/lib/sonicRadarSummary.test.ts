@@ -11,6 +11,7 @@ import {
     catalogItemToPlayableTrack,
     newFromDiscoveredItems,
     followUpDaysLeft,
+    latestResonantItem,
     pendingItemToLocalTrack,
     pendingItems,
     resonantItemCount,
@@ -257,5 +258,35 @@ describe("addedAgoLabel", () => {
 
     it("falls back for an unparseable date", () => {
         expect(addedAgoLabel("not a date", NOW)).toBe("Recently added");
+    });
+});
+
+describe("latestResonantItem (#2249 More like...)", () => {
+    it("is the track that resonated last, across every day group", () => {
+        const older = { ...resonant("older"), resonatedAt: "2026-10-01T09:00:00.000Z" };
+        const newest = { ...resonant("newest"), title: "  Harbor Lights ", resonatedAt: "2026-10-03T18:00:00.000Z" };
+        const sameDay = { ...resonant("same-day"), resonatedAt: "2026-10-03T08:00:00.000Z" };
+        const base = journal([[], []], undefined);
+        base.groups[0].items = [older, sameDay];
+        base.groups[1].items = [newest];
+        expect(latestResonantItem(base)).toEqual({ trackId: "newest", title: "Harbor Lights" });
+    });
+
+    it("is null without a resonant track, so the starter is hidden", () => {
+        expect(latestResonantItem(null)).toBeNull();
+        expect(latestResonantItem(undefined)).toBeNull();
+        expect(latestResonantItem(journal([], ["p1"]))).toBeNull();
+        // A played-through track that was not replayed or saved has not resonated yet.
+        expect(latestResonantItem(journal([[]], ["p1"]))).toBeNull();
+    });
+
+    it("skips an item it cannot name or date", () => {
+        const base = journal([["a"]], undefined);
+        base.groups[0].items = [
+            { ...resonant("untitled"), title: "  " },
+            { ...resonant("undated"), resonatedAt: "not a date" },
+            { ...resonant("ok"), resonatedAt: "2026-10-01T00:00:00.000Z" },
+        ];
+        expect(latestResonantItem(base)?.trackId).toBe("ok");
     });
 });

@@ -5864,6 +5864,12 @@ export type AgentSoundFamily = { id: string; label: string; count: number };
 
 export type AgentSounds = {
   families: AgentSoundFamily[];
+  /**
+   * #2249: the offered family the listener's learned taste favours most. Absent
+   * with no taste for any offered family (and on an older server), which hides
+   * the "New artists in <family>" starter.
+   */
+  topFamilyId?: string;
   /** The fewest playable tracks a family needs to be offered. */
   minTracks: number;
 };
@@ -5935,6 +5941,12 @@ export type AgentNextPreferences = {
    * timestamp or a place; re-bucketed on every pick request.
    */
   listeningContext?: ListeningLaneContextKey;
+  /**
+   * #2249 "New artists": play only artists the listener has never played. The
+   * server keeps the last value for the live session, so a pick states it
+   * either way when the caller knows it; `false` turns it back off.
+   */
+  newArtists?: boolean;
   /**
    * #2243 "More like this": a track the DJ already picked in this session. The
    * server adds its stored-embedding neighbours to this one request only; it

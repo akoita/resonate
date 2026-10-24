@@ -183,3 +183,27 @@ describe("Fill with similar sounds (#2316)", () => {
     ).toMatchObject({ fillSimilar: true });
   });
 });
+
+describe("New artists only (#2249)", () => {
+  const jazz = SESSION_PRESETS.find((preset) => preset.group === "genre")!;
+
+  it("rides with the Sounds starter on a start, and only when on", () => {
+    const on = buildSessionPreferences({ activePreset: jazz, request: null, newArtists: true });
+    expect(on).toMatchObject({ sessionIntent: jazz.intent, newArtists: true });
+    expect(buildSessionPreferences({ activePreset: jazz, request: null, newArtists: false })).not.toHaveProperty("newArtists");
+    expect(buildSessionPreferences({ activePreset: jazz, request: null })).not.toHaveProperty("newArtists");
+    expect(buildSessionPreferences({ activePreset: null, request: null })).toBeUndefined();
+  });
+
+  it("is stated either way on a pick, so turning it off reaches the server", () => {
+    const on = buildPickPreferences({ activePreset: jazz, request: requestFromPreset(jazz), newArtists: true });
+    const off = buildPickPreferences({ activePreset: jazz, request: requestFromPreset(jazz), newArtists: false });
+    const unknown = buildPickPreferences({ activePreset: jazz, request: requestFromPreset(jazz) });
+    expect(on.newArtists).toBe(true);
+    expect(off.newArtists).toBe(false);
+    expect(unknown).not.toHaveProperty("newArtists");
+    // A removed chip leaves a session with no filters: still stated, so the earlier value is replaced.
+    expect(buildPickPreferences({ activePreset: null, request: request(), savedVibes: SAVED_VIBES, newArtists: false }))
+      .toMatchObject({ genres: SAVED_VIBES, newArtists: false });
+  });
+});

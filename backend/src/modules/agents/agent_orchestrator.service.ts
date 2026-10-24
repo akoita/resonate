@@ -56,6 +56,8 @@ export interface AgentOrchestratorInput {
     seed?: SessionSeed;
     /** Request-first selection (#2316): allow marked off-request tracks to fill a short batch. */
     fillSimilar?: boolean;
+    /** "New artists" (#2249): only artists the listener has never interacted with. */
+    newArtists?: boolean;
     /** The session's own genres (#2059), before learned favourites and saved vibes join `genres`. */
     sessionGenres?: string[];
     myMix?: MyMixPreferences | null;

@@ -31,6 +31,7 @@ export function buildSessionPreferences({
     artists = [],
     seed = null,
     fillSimilar,
+    newArtists,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
@@ -45,9 +46,16 @@ export function buildSessionPreferences({
      * default, so a session that never touched it is exactly what it was.
      */
     fillSimilar?: boolean;
+    /**
+     * "New artists only" (#2249). Sent only when on: off is the server's default.
+     * It rides with whatever else the session carries (a Sounds starter, a sentence).
+     */
+    newArtists?: boolean;
 }): AgentNextPreferences | undefined {
     const built = buildSessionPreferencesBase({ activePreset, request, sentence, artists, seed });
-    return built && fillSimilar === true ? { ...built, fillSimilar: true } : built;
+    const withFill = built && fillSimilar === true ? { ...built, fillSimilar: true } : built;
+    if (newArtists !== true) return withFill;
+    return { ...(withFill ?? {}), newArtists: true };
 }
 
 function buildSessionPreferencesBase({
@@ -113,6 +121,7 @@ export function buildPickPreferences({
     artists,
     seed = null,
     fillSimilar,
+    newArtists,
 }: {
     activePreset: SessionPreset | null;
     request: AgentSessionRequest | null;
@@ -126,9 +135,17 @@ export function buildPickPreferences({
      * key is omitted; `false` turns padding back off.
      */
     fillSimilar?: boolean;
+    /**
+     * "New artists only" (#2249). Stated either way when the caller knows it, for the same
+     * reason as `fillSimilar`: the server remembers the earlier value when the key is omitted.
+     */
+    newArtists?: boolean;
 }): AgentNextPreferences {
     const built = buildSessionPreferences({ activePreset, request, sentence, artists, seed });
-    const fillField = fillSimilar === undefined ? {} : { fillSimilar };
+    const fillField = {
+        ...(fillSimilar === undefined ? {} : { fillSimilar }),
+        ...(newArtists === undefined ? {} : { newArtists }),
+    };
     // The server remembers a live session's earlier preferences when a key is omitted, so a sentence
     // or artists the listener has since dropped are cleared explicitly (empty values).
     // A seed the listener removed is cleared the same way (`null`), because omitting it keeps it.

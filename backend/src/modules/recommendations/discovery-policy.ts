@@ -79,6 +79,13 @@ export interface DiscoveryPolicyOptions {
   /** Artist ids the listener has any recorded interaction with. */
   playedArtistIds?: ReadonlySet<string>;
   /**
+   * "New artists" sessions (#2249): leave out every candidate whose artist the
+   * listener has already interacted with (`playedArtistIds`). A candidate with no
+   * artist id cannot be known as played and stays. Off by default, so Home and the
+   * plain DJ are exactly what they were.
+   */
+  excludePlayedArtists?: boolean;
+  /**
    * Session mode. Artist keys (see `discoveryArtistKey`) of the most recent
    * session tracks; only the last 9 are used, so the cap is per 10 session
    * tracks counting the page being built. Omit for plain page mode.
@@ -199,6 +206,9 @@ export function applyDiscoveryPolicy<T extends RankedDiscoveryCandidate>(
     }
     if (!options.allowAiContent && !isPromotionEligible(candidate.aiDisclosureLevel)) {
       dropped.aiGenerated += 1;
+      continue;
+    }
+    if (options.excludePlayedArtists && candidate.artistId && played.has(candidate.artistId)) {
       continue;
     }
     eligible.push(candidate);

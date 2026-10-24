@@ -67,6 +67,12 @@ export interface AgentPreferences {
    * marked off-request tracks. Off by default; remembered for the live session.
    */
   fillSimilar?: boolean;
+  /**
+   * "New artists" (#2249): play only artists the listener has never interacted
+   * with (e.g. the For you starter "New artists in <family>"). Remembered for the
+   * live session; only `true` turns it on, so a pick that sends `false` turns it off.
+   */
+  newArtists?: boolean;
   /** "More like this" (#2243): one request's seed track; never remembered or published. */
   seedTrackId?: string;
   /**
@@ -793,6 +799,7 @@ function sanitizeIncomingRequest(preferences?: AgentPreferences): AgentPreferenc
   if ("artists" in preferences) sanitized.artists = sanitizeArtistNames(preferences.artists);
   // Only an explicit `true` allows padding (#2316); anything else is off.
   if ("fillSimilar" in preferences) sanitized.fillSimilar = preferences.fillSimilar === true;
+  if ("newArtists" in preferences) sanitized.newArtists = preferences.newArtists === true;
   return sanitized;
 }
 

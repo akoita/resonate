@@ -53,7 +53,8 @@ export function withRightNowContext(
     Boolean(bare.requestText?.trim()) ||
     (bare.artists?.length ?? 0) > 0 ||
     Boolean(bare.seed) ||
-    Boolean(bare.seedTrackId);
+    Boolean(bare.seedTrackId) ||
+    bare.newArtists === true;
   if (hasOwnFilters) return preferences;
   return { ...bare, listeningContext: getMyMixLocalContext(now) };
 }

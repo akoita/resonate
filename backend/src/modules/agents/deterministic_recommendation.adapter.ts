@@ -152,6 +152,7 @@ export function deterministicSelectorInput(
     queries,
     ...(requestScope ? { requestScope } : {}),
     ...(tasteQueries.length > 0 ? { tasteQueries } : {}),
+    ...(input.preferences.newArtists === true ? { newArtistsOnly: true } : {}),
     recentTrackIds: input.recentTrackIds,
     allowExplicit: input.preferences.allowExplicit,
     useEmbeddings: queries.length > 0,

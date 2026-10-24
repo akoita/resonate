@@ -56,6 +56,24 @@ export function newFromDiscoveredItems(journal: DiscoveryJournal | null | undefi
     return journal?.newFromDiscovered ?? [];
 }
 
+/**
+ * The listener's latest resonant track (played to 90%+, then replayed or saved),
+ * by the time it resonated; null when the journal has none (#2249 "More like...").
+ */
+export function latestResonantItem(
+    journal: DiscoveryJournal | null | undefined,
+): { trackId: string; title: string } | null {
+    let latest: { trackId: string; title: string; at: number } | null = null;
+    for (const group of journal?.groups ?? []) {
+        for (const item of group.items) {
+            const at = Date.parse(item.resonatedAt);
+            if (!item.trackId || !item.title?.trim() || !Number.isFinite(at)) continue;
+            if (!latest || at > latest.at) latest = { trackId: item.trackId, title: item.title.trim(), at };
+        }
+    }
+    return latest ? { trackId: latest.trackId, title: latest.title } : null;
+}
+
 export type SonicRadarSessionLine =
     | { kind: "session"; saved: number; replayed: number }
     | { kind: "pending"; count: number }

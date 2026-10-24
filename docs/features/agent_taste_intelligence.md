@@ -1099,6 +1099,64 @@ listener's visible habit lanes by that bucket instead.
   time-of-day boundary shows the old reason, while the session itself uses the
   fresh bucket); Session History does not label a Right now session.
 
+## The For you row: "More like..." and "New artists in..." (#2249, slice 3)
+
+Vision-neutral quality (ADR-BM-6): no fee, split or payout is touched, and nothing
+here is ranked by money or popularity. The For you row now holds, in order, Right
+now (#2245), More like <the track that last resonated>, New artists in <your top
+family> and My Mix. Each is built from data the web already has or one additive
+field, and **a starter whose data is missing is not rendered** (no dead starter).
+
+- **More like <title>.** The latest resonant item of the Sonic Radar journal
+  (`latestResonantItem`: the group item with the newest `resonatedAt`, so a track
+  played through but never replayed or saved does not count) becomes a track seed
+  (#2244): the same removable "From: <title>" chip and `seed` preference as
+  "Start a DJ session from this". Choosing it clears the other starter state (a
+  clean seeded session); the server resolves the seed again on start. The button
+  shortens a long title to 28 characters and keeps the whole title in its
+  accessible name. Analytics: `starterRow: for_you`, `starterId: more_like`,
+  `seedKind: track`; the id and the title are never sent.
+- **New artists in <family>.** `GET /agents/config/session/sounds` gained an
+  additive `topFamilyId`: the offered family (catalog count at least
+  `AGENT_SOUNDS_MIN_TRACKS`) the listener's learned genre weights favour most
+  (`familyTasteWeights`, positive weights only). Without any taste for an offered
+  family it is absent: catalog size alone is not the listener's taste, and the
+  starter is hidden. The starter selects that family's Sounds starter (so the
+  request, the sentence and the chips are the family's own and the session is
+  request-first, #2316) and turns on `preferences.newArtists`, shown as a
+  removable "New artists only" chip. The saved vibes are not involved.
+- **What "new artist" means.** An artist the listener has no `AgentSignal` for on
+  any of their tracks: any recorded interaction counts (a skip too), the same
+  lookup exploration uses (`loadPlayedArtists`). `newArtists` reaches the
+  selector as `newArtistsOnly` and `applyDiscoveryPolicy` drops those candidates
+  (`excludePlayedArtists`, off for Home and the plain DJ, so nothing else
+  changes). Every other rule still applies (hidden taste, AI, the per-artist cap,
+  the explicit preference); a candidate with no artist id cannot be known as
+  played and stays. A short batch says so through the existing shortfall line
+  rather than padding with known artists.
+- **Runtime.** Only `true` counts (controller, `sessions.service` sanitiser and
+  the session DTO's `IsBoolean`); the session remembers it, and a pick may send
+  `false` (the chip). A New artists session runs through the deterministic
+  selector (`AgentRuntimeExecutorService.runDeterministic`), because a model's
+  picks never see the played-artist lookup; it is not weighted by the time of day
+  (Right now skips it).
+- **Limits.** The starter is shown when the family is fillable and the listener
+  has taste for it, but it does not check that unplayed artists remain in that
+  family (that needs a per-listener catalog query); a listener who has played
+  every artist of the family gets an empty or short set with the shortfall line.
+  If the played-artist lookup fails the session still plays (logged as a degraded
+  fallback) rather than going silent. Session History does not yet show the
+  "New artists only" limit.
+- **Tests.** Backend `discovery_policy.spec.ts`, `agent_sounds.spec.ts`,
+  `deterministic_recommendation_adapter.spec.ts`,
+  `agent_new_artists.integration.spec.ts` (real history: a known artist is left
+  out, an ordinary session still plays them; routing),
+  `sessions.integration.spec.ts`, `sessions.controller.http.spec.ts`,
+  `agent_config.controller.spec.ts`. Web `sonicRadarSummary.test.ts`,
+  `sessionPresetData.test.ts`, `sessionPreferences.test.ts`,
+  `agentSessionRequest.test.ts`, `AgentSessionPrompt.test.tsx`,
+  `AgentSessionPanel.test.tsx`.
+
 ## One genre matcher for sessions and My Mix lanes (#2236)
 
 There used to be two genre matchers. Ordinary sessions used the genre-family
@@ -1418,11 +1476,12 @@ Shipped in slice 2 (catalog-aware Sounds):
 
 Remaining (explicitly tracked on #2249, which stays open):
 
-- **Slice 3, For you and Discovery:** "Right now" shipped (#2245, see its section);
-  "More like..." (#2244),
-  "New artists in..." and the Familiar, Mixed, New segmented control on the
-  exploration share (default Mixed; owner decision 2), plus the optional Tempo
-  filter in Adjust and the dismissible "you can combine" tip.
+- **Slice 3, For you and Discovery:** the For you row shipped ("Right now" #2245,
+  "More like..." and "New artists in...", see their section). Still open: the
+  Familiar, Mixed, New segmented control on the exploration share (default Mixed;
+  owner decision 2), the optional Tempo filter in Adjust and the dismissible "you
+  can combine" tip. #2249 stays open for them (Sprint 38 admits the For you row
+  only).
 - Screenshots in the User Guide are not refreshed in these slices.
 
 ## Played-through milestone for Sonic Radar (#2097)

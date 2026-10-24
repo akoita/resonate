@@ -107,6 +107,12 @@ export interface ListenerSoundsFamily {
 
 export interface ListenerSounds {
   families: ListenerSoundsFamily[];
+  /**
+   * The offered family the listener's learned taste favours most (#2249 "New
+   * artists in <family>"). Absent with no positive taste for any offered family:
+   * catalog size alone is not the listener's taste.
+   */
+  topFamilyId?: string;
   /** The threshold applied, so clients can hide a stale family too. */
   minTracks: number;
 }
@@ -156,5 +162,7 @@ export function soundsForListener(
         b.count - a.count ||
         a.label.localeCompare(b.label),
     );
-  return { families, minTracks };
+  const top = families[0];
+  const topFamilyId = top && (taste.get(top.id) ?? 0) > 0 ? top.id : undefined;
+  return { families, minTracks, ...(topFamilyId ? { topFamilyId } : {}) };
 }

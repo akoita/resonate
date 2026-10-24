@@ -17,6 +17,7 @@ import {
     SESSION_REQUEST_MAX_TEXT_LENGTH,
     artistChips,
     chipsFromRequest,
+    newArtistsChips,
     seedChips,
     coverageLine,
     ignoredKeyLabels,
@@ -34,6 +35,14 @@ const STARTING_TASTE_VISIBLE_VIBES = 3;
 export function startingTasteSummary(vibes: readonly string[]): string {
     const shown = vibes.slice(0, STARTING_TASTE_VISIBLE_VIBES).join(", ");
     return vibes.length > STARTING_TASTE_VISIBLE_VIBES ? `${shown}…` : shown;
+}
+
+const MORE_LIKE_TITLE_MAX = 28;
+
+/** A long track title shortened for a button; the full title stays in the tooltip and the seed chip. */
+function truncateTitle(title: string): string {
+    const clean = title.trim();
+    return clean.length > MORE_LIKE_TITLE_MAX ? `${clean.slice(0, MORE_LIKE_TITLE_MAX - 1).trimEnd()}…` : clean;
 }
 
 /** The first real example; the placeholder then cycles through all of them (#2249). */
@@ -120,6 +129,26 @@ type Props = {
         selected: boolean;
         onSelect: () => void;
     };
+    /**
+     * "More like <the track that last resonated>" (#2249): a session seeded from it. Absent when
+     * the listener has no resonant track, which hides the starter.
+     */
+    moreLike?: {
+        title: string;
+        selected: boolean;
+        onSelect: () => void;
+    };
+    /**
+     * "New artists in <your top family>" (#2249): that family's starter, limited to artists the
+     * listener has never played. Absent without a top family the catalog can fill.
+     */
+    newArtists?: {
+        familyName: string;
+        selected: boolean;
+        onSelect: () => void;
+    };
+    /** The session is limited to artists the listener has never played; shown as a removable chip. */
+    newArtistsOnly?: boolean;
     myMix?: {
         lanes: readonly ListeningLane[];
         vocabulary: AgentMixVocabulary;
@@ -162,6 +191,9 @@ export default function AgentSessionPrompt({
     explicit,
     fillSimilar,
     rightNow,
+    moreLike,
+    newArtists,
+    newArtistsOnly = false,
     myMix,
     onSubmit,
 }: Props) {
@@ -185,7 +217,12 @@ export default function AgentSessionPrompt({
     }, [boxIsEmpty]);
     const presetDescriptionId = (preset: SessionPreset) =>
         `${id}-preset-${preset.intent.replace(/[^a-zA-Z0-9_-]/g, "")}`;
-    const chips = [...seedChips(seed), ...artistChips(artists), ...chipsFromRequest(request)];
+    const chips = [
+        ...seedChips(seed),
+        ...newArtistsChips(newArtistsOnly),
+        ...artistChips(artists),
+        ...chipsFromRequest(request),
+    ];
     const ignoredLabels = ignoredKeyLabels(ignored);
     const coverageSummary = coverageLine(coverage, request);
     const myMixHasInputs = myMix?.preferences
@@ -219,7 +256,7 @@ export default function AgentSessionPrompt({
 
             <div className="aid-prompt-preset-groups">
                 {/* For you: only what works today (Right now, and My Mix once there are lanes to blend). */}
-                {rightNow || hasMyMixLanes ? (
+                {rightNow || moreLike || newArtists || hasMyMixLanes ? (
                     <div className="aid-prompt-preset-group aid-my-mix-choice">
                         <span id={`${id}-presets-for-you`} className="aid-prompt-preset-group-label">
                             For you
@@ -234,6 +271,28 @@ export default function AgentSessionPrompt({
                                     onClick={rightNow.onSelect}
                                 >
                                     Right now
+                                </button>
+                            ) : null}
+                            {moreLike ? (
+                                <button
+                                    type="button"
+                                    className={`aid-prompt-preset ${moreLike.selected ? "active" : ""}`}
+                                    aria-pressed={moreLike.selected}
+                                    title={`More like ${moreLike.title}`}
+                                    aria-label={`More like ${moreLike.title}`}
+                                    onClick={moreLike.onSelect}
+                                >
+                                    More like {truncateTitle(moreLike.title)}
+                                </button>
+                            ) : null}
+                            {newArtists ? (
+                                <button
+                                    type="button"
+                                    className={`aid-prompt-preset ${newArtists.selected ? "active" : ""}`}
+                                    aria-pressed={newArtists.selected}
+                                    onClick={newArtists.onSelect}
+                                >
+                                    New artists in {newArtists.familyName}
                                 </button>
                             ) : null}
                             {hasMyMixLanes && myMix ? (

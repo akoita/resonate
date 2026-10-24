@@ -82,6 +82,24 @@ describe("soundsForListener (#2249)", () => {
     expect(sounds.families.map((family) => family.id)).toEqual(["jazz", "pop", "hip-hop"]);
   });
 
+  it("names the family the listener's taste favours most, never one only the catalog favours (#2249)", () => {
+    const withTaste = soundsForListener(aggregate, {
+      allowExplicit: true,
+      minTracks: 3,
+      genreWeights: { jazz: 4, Pop: 1 },
+    });
+    expect(withTaste.topFamilyId).toBe("jazz");
+    // No taste at all: the biggest family leads the row but is not the listener's top family.
+    expect(soundsForListener(aggregate, { allowExplicit: true, minTracks: 3 }).topFamilyId).toBeUndefined();
+    // Taste only for a family the catalog cannot fill (Rock has 2 tracks): no top family.
+    const unfillable = soundsForListener(aggregate, { allowExplicit: true, minTracks: 3, genreWeights: { Rock: 9 } });
+    expect(unfillable.topFamilyId).toBeUndefined();
+    // A negative weight is not taste.
+    expect(
+      soundsForListener(aggregate, { allowExplicit: true, minTracks: 3, genreWeights: { Jazz: -3 } }).topFamilyId,
+    ).toBeUndefined();
+  });
+
   it("breaks ties by label so the order is stable", () => {
     const tied = tallyCatalogSounds([
       ...repeat(3, () => row("Jazz")),

@@ -922,6 +922,24 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "for-you-starters",
+        heading: "More like your last find, and new artists in your style",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The For you row also offers two starters that appear only when your DJ has what they need. More like and the title of the last track that resonated with you starts a session from that track, shown as a From chip you can remove. It needs a track you played through and then replayed or saved; until then it is not shown. New artists in your favourite style, for example New artists in Jazz, starts that style's session and plays only artists you have never listened to, skipped or saved before. A New artists only chip shows the limit; remove it to hear artists you already know as well.",
+          },
+          {
+            kind: "list",
+            items: [
+              "New artists in shows once your listening points to a style the catalog has enough music for. It is based on your listening, not on the saved vibes in Settings.",
+              "If the catalog has few new artists in that style, the session can be shorter, and the DJ says so instead of filling it with artists you know.",
+              "Choosing another starter, or removing the chip, ends the limit.",
+            ],
+          },
+        ],
+      },
+      {
         id: "my-mix",
         heading: "Blend your listening lanes with My Mix",
         blocks: [
@@ -950,7 +968,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Type what the session is for, for example \"Warm deep house around 122 BPM\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. The box suggests real examples while it is empty. Not sure what to type? Tap a starter: it writes its sentence into the box and shows the chips, so you learn how to ask, and you can edit either. Starters come in two rows. A sound only appears when the catalog has enough playable tracks for it, so it can come and go as music is added; if you have not allowed explicit tracks, those are not counted either, and tracks that are fully AI-generated are not counted. Sounds are genre families the catalog can fill: for example Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton, World Music, Electronic, Jazz, Rock & Indie, Ambient & Lo-fi and Classical. When they are available, a For you row above them holds Right now and My Mix. Each shows a light count of the tracks available to you, such as \"World Music · 40+\" (the exact number under 10, then 10+, 20+ or 40+), and the ones you listen to most come first. The genres you choose for this session decide which tracks the DJ plays; your usual listening taste only orders them, and your hidden and downranked preferences still apply. You can name an artist who is on Resonate, for example \"like Nadia Okoro\", \"more from Hana Mori\" or \"Kofi Amarteifio-style\". Spelling, capital letters and accents do not matter, and a small typo is forgiven. The artist appears as a \"Like: Nadia Okoro\" chip; the DJ plays some of their tracks and music that sounds close to them, and you can remove the chip with its x. A name that is not on Resonate stays under Didn't catch; name a genre instead. The DJ also uses the rest of your sentence to find music for this session only, so \"for cooking\" or \"for a long run\" can still matter even when it is not turned into a chip. Removing a chip makes the DJ stop using your sentence's wording for that session. Your sentence is not saved. Where the optional AI reading is switched on, a sentence that the simple reader could not fully understand may also be sent to an AI model provider to be read, and nothing else about you is sent.",
+            text: "Type what the session is for, for example \"Warm deep house around 122 BPM\". The DJ reads it and shows what it understood as filter chips: genres, moods, energy, and a tempo range. The box suggests real examples while it is empty. Not sure what to type? Tap a starter: it writes its sentence into the box and shows the chips, so you learn how to ask, and you can edit either. Starters come in two rows. A sound only appears when the catalog has enough playable tracks for it, so it can come and go as music is added; if you have not allowed explicit tracks, those are not counted either, and tracks that are fully AI-generated are not counted. Sounds are genre families the catalog can fill: for example Hip-Hop & Rap, R&B & Soul, Pop Hits, Afrobeats & Amapiano, Reggae & Dancehall, Latin & Reggaeton, World Music, Electronic, Jazz, Rock & Indie, Ambient & Lo-fi and Classical. When they are available, a For you row above them holds Right now, More like your last find, New artists in your style and My Mix. Each shows a light count of the tracks available to you, such as \"World Music · 40+\" (the exact number under 10, then 10+, 20+ or 40+), and the ones you listen to most come first. The genres you choose for this session decide which tracks the DJ plays; your usual listening taste only orders them, and your hidden and downranked preferences still apply. You can name an artist who is on Resonate, for example \"like Nadia Okoro\", \"more from Hana Mori\" or \"Kofi Amarteifio-style\". Spelling, capital letters and accents do not matter, and a small typo is forgiven. The artist appears as a \"Like: Nadia Okoro\" chip; the DJ plays some of their tracks and music that sounds close to them, and you can remove the chip with its x. A name that is not on Resonate stays under Didn't catch; name a genre instead. The DJ also uses the rest of your sentence to find music for this session only, so \"for cooking\" or \"for a long run\" can still matter even when it is not turned into a chip. Removing a chip makes the DJ stop using your sentence's wording for that session. Your sentence is not saved. Where the optional AI reading is switched on, a sentence that the simple reader could not fully understand may also be sent to an AI model provider to be read, and nothing else about you is sent.",
           },
           {
             kind: "list",
