@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatUnits } from "viem";
+import { formatStakeAmount } from "../../lib/stakeConstants";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { useReportContent } from "../../hooks/useContracts";
@@ -346,7 +346,7 @@ export default function ReportContentModal({
         disputeId: result.disputeId?.toString(),
         txHash: result.hash,
         tokenId: result.tokenId?.toString(),
-        counterStakeEth: `${formatUnits(result.counterStake, counterStakeDecimals)} ${counterStakeSymbol}`,
+        counterStakeEth: formatStakeAmount(result.counterStake, { symbol: counterStakeSymbol, decimals: counterStakeDecimals }),
       });
       onClose();
     } catch (err) {
@@ -484,7 +484,7 @@ export default function ReportContentModal({
               <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px", justifyContent: "flex-end" }}>
                 <span style={{ color: "#f59e0b" }}><IconDiamond size={14} /></span>
                 <span style={{ fontSize: "16px", fontWeight: 700, color: "#f59e0b" }}>
-                  {counterStake != null ? `${formatUnits(counterStake, counterStakeDecimals)} ${counterStakeSymbol}` : "..."}
+                  {counterStake != null ? formatStakeAmount(counterStake, { symbol: counterStakeSymbol, decimals: counterStakeDecimals }) : "..."}
                 </span>
               </div>
             </div>

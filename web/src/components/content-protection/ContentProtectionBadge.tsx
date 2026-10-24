@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useStakeInfo, useAttestationInfo } from "../../hooks/useContracts";
 import {
-  formatEth,
+  formatStakeAmount,
   deriveStakeStatus,
   deriveEscrowStatus,
   STAKE_STATUS_LABELS,
@@ -76,6 +76,10 @@ export default function ContentProtectionBadge({
   // If no data at all (contract not deployed or token doesn't exist), hide
   if (!stakeData) return null;
 
+  const stakeAmountLabel = formatStakeAmount(stakeData.amount, {
+    symbol: stakeData.assetSymbol,
+    decimals: stakeData.assetDecimals,
+  });
   const escrowDays = trustTier?.escrowDays ?? 30;
   const status = deriveStakeStatus(stakeData.active, stakeData.amount, stakeData.depositedAt, escrowDays);
   const escrow = deriveEscrowStatus(stakeData.active, stakeData.depositedAt, escrowDays);
@@ -96,7 +100,7 @@ export default function ContentProtectionBadge({
         </span>
         {stakeData.amount > 0n && (
           <span style={{ opacity: 0.5, fontSize: "11px", marginLeft: "4px" }}>
-            ({formatEth(stakeData.amount)})
+            ({stakeAmountLabel})
           </span>
         )}
       </div>
@@ -128,7 +132,7 @@ export default function ContentProtectionBadge({
         <div style={rowStyle}>
           <span style={{ opacity: 0.6, fontSize: "12px" }}>Stake Amount</span>
           <span style={{ fontWeight: 600, fontSize: "13px" }}>
-            {formatEth(stakeData.amount)}
+            {stakeAmountLabel}
           </span>
         </div>
       )}

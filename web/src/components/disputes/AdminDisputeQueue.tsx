@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useToast } from "../ui/Toast";
-import { formatEth } from "../../lib/stakeConstants";
+import { formatStakeAmount } from "../../lib/stakeConstants";
 import { useAuth } from "../auth/AuthProvider";
 import { useWebSockets, type ReleaseRightsRequestUpdate } from "../../hooks/useWebSockets";
 import {
@@ -35,7 +35,11 @@ interface Dispute {
   status: string;
   outcome: string | null;
   evidenceURI: string;
+  /** Base units of the counter-stake asset. */
   counterStake: string;
+  counterStakeAssetSymbol?: string | null;
+  counterStakeAssetDecimals?: number | null;
+  counterStakeAmountUsd?: string | null;
   createdAt: string;
   evidences: Array<{
     id: string;
@@ -976,12 +980,11 @@ export default function AdminDisputeQueue() {
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {disputes.map((d) => {
             const isEvidenceExpanded = expandedEvidence.has(d.id);
-            let stakeDisplay: string;
-            try {
-              stakeDisplay = formatEth(BigInt(d.counterStake));
-            } catch {
-              stakeDisplay = d.counterStake;
-            }
+            const stakeDisplay = formatStakeAmount(d.counterStake, {
+              symbol: d.counterStakeAssetSymbol,
+              decimals: d.counterStakeAssetDecimals,
+              usd: d.counterStakeAmountUsd,
+            });
 
             return (
               <div key={d.id} className="adq-card" style={{ ...cardStyle, borderLeftColor: statusColor(d.status) }}>

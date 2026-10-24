@@ -5,6 +5,8 @@
  * and MyStakesCard (wallet dashboard).
  */
 
+import { formatUnits } from "viem";
+
 // ============ Economic Trust Tier Display ============
 
 export const TIER_LABELS: Record<string, string> = {
@@ -23,15 +25,141 @@ export const TIER_COLORS: Record<string, string> = {
 
 // ============ Formatting Helpers ============
 
+export interface StakeAssetInfo {
+  /** Asset ticker as recorded with the stake (e.g. "USDC", "ETH"). Defaults to "ETH". */
+  symbol?: string | null;
+  /** Token decimals as recorded with the stake. Defaults to 18 (native ETH). */
+  decimals?: number | null;
+  /** Canonical USD value of the stake, when known. Appended for non-USD assets. */
+  usd?: string | number | null;
+}
+
+const USD_PEGGED_SYMBOL = /^(USD|DAI$|PYUSD$|USDS$)/i;
+
+function toBigInt(value: string | bigint | number): bigint | null {
+  try {
+    if (typeof value === "number" && !Number.isInteger(value)) return null;
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function groupThousands(whole: string): string {
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 /**
- * Format a wei value (string or bigint) to a human-readable ETH string.
- * Returns "Waived" for zero values.
+ * Format a canonical USD value such as "5" or "4.999" as "$5" or "$1,234.5". Returns
+ * null when the value is missing or not a positive number.
+ */
+export function formatUsdValue(usd: string | number | null | undefined): string | null {
+  if (usd === null || usd === undefined || usd === "") return null;
+  const numeric = Number(usd);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const fixed = numeric.toFixed(2).replace(/\.?0+$/, "");
+  const [whole, fraction] = fixed.split(".");
+  return `$${groupThousands(whole)}${fraction ? `.${fraction}` : ""}`;
+}
+
+/**
+ * Format a stake amount stored in base units of its own payment asset.
+ *
+ * Uses exact integer arithmetic (never exponent notation). Stablecoin-sized
+ * assets (6 decimals or fewer) show up to 2 decimals ("5 USDC"); 18-decimal
+ * assets show up to 6 ("0.005 ETH"). Non-zero amounts below the display
+ * precision render as "< 0.000001 ETH" instead of rounding to zero.
+ * Returns "Waived" for zero and an em dash for unparseable input.
+ */
+export function formatStakeAmount(
+  amount: string | bigint | number | null | undefined,
+  asset: StakeAssetInfo = {},
+): string {
+  if (amount === null || amount === undefined || amount === "") return "\u2014";
+  const units = toBigInt(amount);
+  if (units === null || units < 0n) return "\u2014";
+  if (units === 0n) return "Waived";
+
+  const symbol = asset.symbol?.trim() || "ETH";
+  const decimals =
+    typeof asset.decimals === "number" && Number.isInteger(asset.decimals) && asset.decimals >= 0
+      ? asset.decimals
+      : 18;
+  const maxFraction = Math.min(decimals, decimals <= 6 ? 2 : 6);
+
+  const [whole, fraction = ""] = formatUnits(units, decimals).split(".");
+  const kept = fraction.slice(0, maxFraction).replace(/0+$/, "");
+  const isBelowPrecision = whole === "0" && kept === "";
+
+  const body = isBelowPrecision
+    ? `< ${maxFraction > 0 ? `0.${"0".repeat(maxFraction - 1)}1` : "1"}`
+    : `${groupThousands(whole)}${kept ? `.${kept}` : ""}`;
+  const label = `${body} ${symbol}`;
+
+  const usd = USD_PEGGED_SYMBOL.test(symbol) ? null : formatUsdValue(asset.usd);
+  return usd ? `${label} (\u2248 ${usd})` : label;
+}
+
+/**
+ * Format a genuine 18-decimal native ETH value (string or bigint wei).
+ * Stake records can be paid in other assets: use `formatStakeAmount` with the
+ * record's own symbol and decimals for those.
  */
 export function formatEth(wei: string | bigint): string {
-  const numeric = typeof wei === "bigint" ? Number(wei) : Number(wei);
-  const eth = numeric / 1e18;
-  if (eth === 0) return "Waived";
-  return `${eth} ETH`;
+  return formatStakeAmount(wei, { symbol: "ETH", decimals: 18 });
+}
+
+export interface AssetAmountTotal {
+  assetSymbol: string;
+  assetDecimals: number;
+  /** Base units of this single asset. */
+  amount: string;
+  amountUsd?: string | null;
+}
+
+/**
+ * One entry per asset ("5 USDC + 0.005 ETH"). Stakes are paid in different
+ * assets, so base units are never added together across assets. Without a
+ * per-asset breakdown, the legacy total is treated as native ETH wei.
+ */
+export function formatStakeTotals(
+  totals: AssetAmountTotal[] | undefined,
+  legacyNativeWei: string = "0",
+): string {
+  if (!totals) return legacyNativeWei === "0" ? "0" : formatEth(legacyNativeWei);
+  const nonZero = totals.filter((t) => t.amount !== "0");
+  if (nonZero.length === 0) return "0";
+  return nonZero
+    .map((t) =>
+      formatStakeAmount(t.amount, { symbol: t.assetSymbol, decimals: t.assetDecimals, usd: t.amountUsd }),
+    )
+    .join(" + ");
+}
+
+export interface ReleaseStakeFields {
+  staked: boolean;
+  stakeAmount?: string | null;
+  stakeAssetSymbol?: string | null;
+  stakeAssetDecimals?: number | null;
+  stakeAmountUsd?: string | null;
+}
+
+/**
+ * Label for the release page "Stake" cell. A recorded stake is shown in its own
+ * asset. Before anything is staked, `stakeAmount` is the native-ETH policy
+ * requirement, so the USD requirement is preferred when known.
+ */
+export function formatReleaseStake(data: ReleaseStakeFields): string {
+  if (!data.stakeAmount) return "\u2014";
+  if (!data.staked && data.stakeAmount !== "0") {
+    const usd = formatUsdValue(data.stakeAmountUsd);
+    if (usd) return `${usd} required`;
+  }
+  return formatStakeAmount(data.stakeAmount, {
+    symbol: data.stakeAssetSymbol,
+    decimals: data.stakeAssetDecimals,
+    usd: data.stakeAmountUsd,
+  });
 }
 
 /**

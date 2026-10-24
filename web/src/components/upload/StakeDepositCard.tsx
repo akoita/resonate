@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import { type TrustTier } from "../../lib/api";
-import { TIER_COLORS, TIER_LABELS } from "../../lib/stakeConstants";
-
-function formatEth(wei: string): string {
-  const eth = Number(wei) / 1e18;
-  if (eth === 0) return "Waived";
-  return `${eth} ETH`;
-}
+import { TIER_COLORS, TIER_LABELS, formatEth } from "../../lib/stakeConstants";
 
 function formatMaxListingPrice(trustTier: TrustTier): string {
   if (trustTier.maxListingPriceUncapped || !trustTier.maxListingPriceWei) {
