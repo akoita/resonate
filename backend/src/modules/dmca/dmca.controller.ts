@@ -14,6 +14,8 @@ import { Throttle } from "@nestjs/throttler";
 import { Roles } from "../auth/roles.decorator";
 import { hours } from "../shared/rate_limits";
 import { DmcaService, type DmcaActor } from "./dmca.service";
+import { AdminAudit, auditBody, auditCode, auditRef } from "../admin_audit/admin_audit.interceptor";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 
 @Controller("api/dmca")
 export class DmcaController {
@@ -69,6 +71,10 @@ export class DmcaController {
   @UseGuards(AuthGuard("jwt"))
   @Patch(":id/resolve")
   @Roles("admin", "operator")
+  @RequireStepUp()
+  @AdminAudit("dmca.report_resolved", (c) => ({
+    detail: { reportId: auditRef(c.params.id), outcome: auditCode(auditBody(c).outcome, ["upheld", "rejected"] as const) },
+  }))
   async resolveReport(
     @Req() req: { user: DmcaActor },
     @Param("id") id: string,
@@ -86,6 +92,7 @@ export class DmcaController {
   @UseGuards(AuthGuard("jwt"))
   @Get()
   @Roles("admin", "operator")
+  @AdminAudit("dmca.reports_viewed", (c) => ({ detail: { status: auditRef(c.query.status) } }))
   async listReports(@Query("status") status?: string) {
     return this.dmcaService.listReports(status);
   }

@@ -8,7 +8,14 @@ import {
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { CreditsController } from "../modules/credits/credits.controller";
 import { GenerationCreditsService } from "../modules/credits/generation-credits.service";
-import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
+import { authToken, confirmedBearer as confirmed, createControllerTestApp, expectStepUpRequired } from "./e2e-helpers";
+
+jest.mock("../modules/admin_audit/admin_audit_event", () => ({
+  ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const mockCreditsService = {
   getBalance: jest.fn().mockResolvedValue({ balanceCents: 250, recentTransactions: [] }),
@@ -149,7 +156,7 @@ describe("CreditsController (http)", () => {
     it("allows an operator to grant credits", async () => {
       await request(app.getHttpServer())
         .post("/credits/grant")
-        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .set(confirmed("operator-1", "operator"))
         .send(body)
         .expect(201)
         .expect((res) => {
@@ -168,7 +175,7 @@ describe("CreditsController (http)", () => {
     ])("rejects %s with 400", async (_label, invalid) => {
       await request(app.getHttpServer())
         .post("/credits/grant")
-        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .set(confirmed("operator-1", "operator"))
         .send(invalid)
         .expect(400);
       expect(mockCreditsService.grant).not.toHaveBeenCalled();
@@ -177,7 +184,7 @@ describe("CreditsController (http)", () => {
     it("allows an admin to grant credits", async () => {
       await request(app.getHttpServer())
         .post("/credits/grant")
-        .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+        .set(confirmed("admin-1", "admin"))
         .send(body)
         .expect(201);
       expect(mockCreditsService.grant).toHaveBeenCalledWith("user-2", 500, "promo_grant");
@@ -194,7 +201,7 @@ describe("CreditsController (http)", () => {
     it.each(invalidGrants)("rejects %s with 400 (#1888)", async (_label, invalidBody) => {
       await request(app.getHttpServer())
         .post("/credits/grant")
-        .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+        .set(confirmed("admin-1", "admin"))
         .send(invalidBody)
         .expect(400);
       expect(mockCreditsService.grant).not.toHaveBeenCalled();
@@ -264,7 +271,7 @@ describe("CreditsController (http)", () => {
       mockCreditsService.grantCreditRequest.mockResolvedValueOnce(REQUEST_ROW);
       await request(app.getHttpServer())
         .post("/credits/requests/req-1/grant")
-        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .set(confirmed("operator-1", "operator"))
         .send({ amountCents: 500, reason: "welcome top-up" })
         .expect(201)
         .expect((res) => {
@@ -282,7 +289,7 @@ describe("CreditsController (http)", () => {
       mockCreditsService.grantCreditRequest.mockResolvedValueOnce(REQUEST_ROW);
       await request(app.getHttpServer())
         .post("/credits/requests/req-1/grant")
-        .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+        .set(confirmed("admin-1", "admin"))
         .send({ amountCents: 10_000_000 })
         .expect(201);
       expect(mockCreditsService.grantCreditRequest).toHaveBeenCalledWith(
@@ -304,7 +311,7 @@ describe("CreditsController (http)", () => {
     ])("rejects an amount that is %s with 400", async (_label, body) => {
       await request(app.getHttpServer())
         .post("/credits/requests/req-1/grant")
-        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .set(confirmed("operator-1", "operator"))
         .send(body)
         .expect(400);
       expect(mockCreditsService.grantCreditRequest).not.toHaveBeenCalled();
@@ -316,7 +323,7 @@ describe("CreditsController (http)", () => {
       );
       await request(app.getHttpServer())
         .post("/credits/requests/req-1/grant")
-        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .set(confirmed("operator-1", "operator"))
         .send({ amountCents: 500 })
         .expect(409)
         .expect((res) => {
@@ -333,7 +340,7 @@ describe("CreditsController (http)", () => {
       );
       await request(app.getHttpServer())
         .post("/credits/requests/req-own/grant")
-        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .set(confirmed("operator-1", "operator"))
         .send({ amountCents: 500 })
         .expect(403)
         .expect((res) => {
@@ -356,7 +363,7 @@ describe("CreditsController (http)", () => {
       );
       await request(app.getHttpServer())
         .post("/credits/requests/missing/grant")
-        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .set(confirmed("operator-1", "operator"))
         .send({ amountCents: 500 })
         .expect(404);
     });
@@ -393,6 +400,95 @@ describe("CreditsController (http)", () => {
         .send({ note: "n".repeat(281) })
         .expect(400);
       expect(mockCreditsService.dismissCreditRequest).not.toHaveBeenCalled();
+    });
+  });
+  describe("step-up and audit (#2362)", () => {
+    it.each([
+      ["/credits/grant", { userId: "user-2", amountCents: 500, reason: "promo_grant" }],
+      ["/credits/requests/req-1/grant", { amountCents: 500 }],
+    ])("%s needs a fresh step-up proof", async (path, body) => {
+      await expectStepUpRequired(app, "post", path, { userId: "operator-1", role: "operator" }, body);
+      expect(mockCreditsService.grant).not.toHaveBeenCalled();
+      expect(mockCreditsService.grantCreditRequest).not.toHaveBeenCalled();
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it("dismissing a request is audited and needs no step-up", async () => {
+      mockCreditsService.dismissCreditRequest.mockResolvedValueOnce({ ...REQUEST_ROW, status: "dismissed" });
+      await request(app.getHttpServer())
+        .post("/credits/requests/req-1/dismiss")
+        .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+        .send({ note: "free text never recorded" })
+        .expect(201);
+      expect(mockAudit).toHaveBeenCalledTimes(1);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: "operator-1",
+        action: "credit_request.dismissed",
+        targetUserId: "user-2",
+        detail: { requestId: "req-1" },
+      });
+    });
+
+    it("a direct grant records the amount and the recipient, never the reason text", async () => {
+      await request(app.getHttpServer())
+        .post("/credits/grant")
+        .set(confirmed("admin-1", "admin"))
+        .send({ userId: "user-2", amountCents: 500, reason: "a long free-text reason" })
+        .expect(201);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: "admin-1",
+        action: "credits.granted",
+        targetUserId: "user-2",
+        detail: { amountCents: 500 },
+      });
+    });
+
+    it("granting a queued request records the request, the recipient and the amount", async () => {
+      mockCreditsService.grantCreditRequest.mockResolvedValueOnce(REQUEST_ROW);
+      await request(app.getHttpServer())
+        .post("/credits/requests/req-1/grant")
+        .set(confirmed("operator-1", "operator"))
+        .send({ amountCents: 700, reason: "ok" })
+        .expect(201);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: "operator-1",
+        action: "credit_request.granted",
+        targetUserId: "user-2",
+        detail: { requestId: "req-1", amountCents: 700 },
+      });
+    });
+
+    it("records nothing when the action fails or is refused", async () => {
+      mockCreditsService.grantCreditRequest.mockRejectedValueOnce(new ConflictException("already handled"));
+      await request(app.getHttpServer())
+        .post("/credits/requests/req-1/grant")
+        .set(confirmed("operator-1", "operator"))
+        .send({ amountCents: 700 })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post("/credits/grant")
+        .set(confirmed("operator-1", "operator"))
+        .send({ userId: "user-2", amountCents: 0, reason: "x" })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post("/credits/grant")
+        .set(confirmed("user-1", "listener"))
+        .send({ userId: "user-2", amountCents: 5, reason: "x" })
+        .expect(403);
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it("viewing the queue is recorded with the status filter", async () => {
+      await request(app.getHttpServer())
+        .get("/credits/requests?status=resolved")
+        .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+        .expect(200);
+      expect(mockAudit).toHaveBeenCalledWith({
+        actorUserId: "admin-1",
+        action: "credit_requests.viewed",
+        targetUserId: null,
+        detail: { status: "resolved" },
+      });
     });
   });
 });

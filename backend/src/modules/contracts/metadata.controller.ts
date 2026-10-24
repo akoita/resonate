@@ -50,6 +50,8 @@ import {
   VerifyCuratorHumanityDto,
 } from "./metadata.dto";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
+import { AdminAudit, auditBody, auditBoolean, auditCode, auditNumber, auditRef } from "../admin_audit/admin_audit.interceptor";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -1220,6 +1222,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("rights-reassessments/releases/:releaseId")
+  @AdminAudit("rights_reassessment.created", (c) => ({ detail: { releaseId: auditRef(c.params.releaseId) } }))
   async createRightsRouteReassessment(
     @Request() req: any,
     @Param("releaseId") releaseId: string,
@@ -1246,6 +1249,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("rights-reassessments/audit-sample")
+  @AdminAudit("rights_reassessment.audit_sampled", (c) => ({ detail: { limit: auditNumber(auditBody(c).limit) } }))
   async sampleRightsRouteAudits(
     @Request() req: any,
     @Body() body: { limit?: number; reason?: string },
@@ -1264,6 +1268,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Get("rights-reassessments/pending")
+  @AdminAudit("rights_reassessments.viewed")
   async listPendingRightsRouteReassessments(@Query("limit") limitStr?: string) {
     const limit = Math.min(parseInt(limitStr || "20", 10) || 20, 100);
     return this.rightsRouteReassessmentService.listPendingReassessments(limit);
@@ -1293,6 +1298,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Patch("rights-reassessments/:id/review")
+  @AdminAudit("rights_reassessment.reviewed", (c) => ({ detail: { reassessmentId: auditRef(c.params.id), action: auditCode(auditBody(c).action, ["apply_route", "confirm_current", "dismiss"] as const) } }))
   async reviewRightsRouteReassessment(
     @Request() req: any,
     @Param("id") id: string,
@@ -1365,6 +1371,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Get("trusted-sources/link-requests/pending")
+  @AdminAudit("trusted_source_link_requests.viewed")
   async listPendingTrustedSourceLinkRequests(@Query("limit") limitStr?: string) {
     const limit = Math.min(parseInt(limitStr || "20", 10) || 20, 100);
     return this.trustedSourceService.listPendingLinkRequests(limit);
@@ -1377,6 +1384,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Patch("trusted-sources/link-requests/:id/review")
+  @AdminAudit("trusted_source_link.reviewed", (c) => ({ detail: { requestId: auditRef(c.params.id), action: auditCode(auditBody(c).action, ["under_review", "approve", "deny"] as const) } }))
   async reviewTrustedSourceLinkRequest(
     @Request() req: any,
     @Param("id") id: string,
@@ -1402,6 +1410,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Patch("trusted-sources/links/:id/revoke")
+  @AdminAudit("trusted_source_link.revoked", (c) => ({ detail: { linkId: auditRef(c.params.id) } }))
   async revokeTrustedSourceArtistLink(
     @Request() req: any,
     @Param("id") id: string,
@@ -1480,6 +1489,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Get("release-rights/requests/pending")
+  @AdminAudit("release_rights_requests.viewed")
   async listPendingReleaseRightsUpgradeRequests(@Query("limit") limitStr?: string) {
     const limit = Math.min(parseInt(limitStr || "20", 10) || 20, 100);
     return this.contractsService.listPendingReleaseRightsUpgradeRequests(limit);
@@ -1492,6 +1502,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Get("release-rights/requests/:id")
+  @AdminAudit("release_rights_request.viewed", (c) => ({ detail: { requestId: auditRef(c.params.id) } }))
   async getReleaseRightsUpgradeRequest(@Param("id") id: string) {
     return this.contractsService.getReleaseRightsUpgradeRequestById(id);
   }
@@ -1503,6 +1514,18 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Patch("release-rights/requests/:id/review")
+  @AdminAudit("release_rights_request.reviewed", (c) => ({
+    detail: {
+      requestId: auditRef(c.params.id),
+      action: auditCode(auditBody(c).action, [
+        "under_review",
+        "more_evidence_requested",
+        "approved_standard_escrow",
+        "approved_trusted_fast_path",
+        "denied",
+      ] as const),
+    },
+  }))
   async reviewReleaseRightsUpgradeRequest(
     @Request() req: any,
     @Param("id") id: string,
@@ -1801,6 +1824,8 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("indexer/reset")
+  @RequireStepUp()
+  @AdminAudit("indexer.reset", (c) => ({ detail: { chainId: auditNumber(auditBody(c).chainId), fromBlock: auditNumber(auditBody(c).fromBlock) } }))
   async resetIndexer(@Body() body: { chainId: number; fromBlock: number }) {
     const { chainId, fromBlock } = body;
     this.logger.log(`Resetting indexer for chain ${chainId} to block ${fromBlock}`);
@@ -1816,6 +1841,8 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("indexer/reindex-tx")
+  @RequireStepUp()
+  @AdminAudit("indexer.tx_reindexed", (c) => ({ detail: { chainId: auditNumber(auditBody(c).chainId), txHash: auditRef(auditBody(c).txHash), force: auditBoolean(auditBody(c).force) } }))
   async reindexTransaction(@Body() body: { txHash: string; chainId: number; force?: boolean }) {
     const { txHash, chainId, force } = body;
     this.logger.log(`Manually reindexing tx ${txHash} on chain ${chainId}${force ? " (force)" : ""}`);

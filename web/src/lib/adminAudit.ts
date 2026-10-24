@@ -15,6 +15,68 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "notice.targeted_sent", label: "Sent a notice to named people" },
   { value: "admin.step_up_verified", label: "Confirmed with a passkey" },
   { value: "admin.step_up_refused", label: "Passkey confirmation refused" },
+  { value: "credits.granted", label: "Granted credits" },
+  { value: "credit_requests.viewed", label: "Opened the credit requests" },
+  { value: "credit_request.granted", label: "Granted a credit request" },
+  { value: "credit_request.dismissed", label: "Dismissed a credit request" },
+  { value: "dmca.reports_viewed", label: "Opened the takedown reports" },
+  { value: "dmca.report_resolved", label: "Resolved a takedown report" },
+  { value: "trust.artist_verified", label: "Verified an artist" },
+  { value: "curation.reports_viewed", label: "Opened the curator reports" },
+  { value: "catalog_credit.identity_reviewed", label: "Reviewed a credit's identity" },
+  { value: "artist_claims.viewed", label: "Opened the artist claims" },
+  { value: "artist_claim.reviewed", label: "Decided an artist claim" },
+  { value: "management_recovery.queue_viewed", label: "Opened the management recovery requests" },
+  { value: "management_recovery.reviewed", label: "Decided a management recovery" },
+  { value: "show_authority.approved", label: "Approved a show's authority" },
+  { value: "show_authority.rejected", label: "Rejected a show's authority" },
+  { value: "show_authority.revoked", label: "Revoked a show's authority" },
+  { value: "show_authority.expired", label: "Expired a show's authority" },
+  { value: "show_campaign.chain_resynced", label: "Re-synced a show from the chain" },
+  { value: "show_campaign.onchain_discovered", label: "Looked up a show on the chain" },
+  { value: "show_campaign.booking_confirmed", label: "Confirmed a show booking" },
+  { value: "show_campaign.fulfillment_confirmed", label: "Confirmed a show was delivered" },
+  { value: "show_reconciliation.acknowledged", label: "Acknowledged a reconciliation mismatch" },
+  { value: "show_reconciliation.acknowledgement_removed", label: "Removed a mismatch acknowledgement" },
+  { value: "show_dispute.opened", label: "Opened a show dispute" },
+  { value: "show_dispute.resolved", label: "Resolved a show dispute" },
+  { value: "x402_refunds.viewed", label: "Opened the refunds due" },
+  { value: "x402_refund.marked_refunded", label: "Marked a payment refunded" },
+  { value: "rights_reassessments.viewed", label: "Opened the rights reassessments" },
+  { value: "rights_reassessment.created", label: "Started a rights reassessment" },
+  { value: "rights_reassessment.audit_sampled", label: "Sampled releases for a rights audit" },
+  { value: "rights_reassessment.reviewed", label: "Decided a rights reassessment" },
+  { value: "trusted_source_link_requests.viewed", label: "Opened the trusted-source requests" },
+  { value: "trusted_source_link.reviewed", label: "Decided a trusted-source request" },
+  { value: "trusted_source_link.revoked", label: "Revoked a trusted-source link" },
+  { value: "release_rights_requests.viewed", label: "Opened the release rights requests" },
+  { value: "release_rights_request.viewed", label: "Opened a release rights request" },
+  { value: "release_rights_request.reviewed", label: "Decided a release rights request" },
+  { value: "indexer.reset", label: "Reset the chain indexer" },
+  { value: "indexer.tx_reindexed", label: "Re-indexed a transaction" },
+  { value: "maintenance.stem_features_backfill_run", label: "Ran the stem features backfill" },
+  { value: "maintenance.track_embeddings_backfill_run", label: "Ran the track embeddings backfill" },
+  { value: "maintenance.retention_cleanup_run", label: "Ran the retention cleanup" },
+  { value: "maintenance.erasures_run", label: "Ran the due account erasures" },
+  { value: "maintenance.analytics_warehouse_loaded", label: "Loaded the analytics warehouse" },
+  { value: "maintenance.analytics_warehouse_backfilled", label: "Backfilled the analytics warehouse" },
+  { value: "maintenance.community_cohorts_generated", label: "Generated community cohorts" },
+  { value: "maintenance.releases_wiped", label: "Wiped the releases" },
+  { value: "community_moderation.queue_viewed", label: "Opened the community moderation queue" },
+  { value: "community_moderation.report_resolved", label: "Resolved a community moderation report" },
+  { value: "wallet.provider_set", label: "Changed a wallet provider" },
+  { value: "wallet.refreshed", label: "Refreshed a wallet" },
+  { value: "wallet.paymaster_configured", label: "Configured the paymaster" },
+  { value: "wallet.paymaster_reset", label: "Reset a paymaster" },
+  { value: "wallet.session_key_issued", label: "Issued a session key" },
+  { value: "wallet.guardians_set", label: "Set wallet guardians" },
+  { value: "wallet.recovery_requested", label: "Requested a wallet recovery" },
+  { value: "wallet.recovery_approved", label: "Approved a wallet recovery" },
+  { value: "agents.run_invoked", label: "Ran an agent" },
+  { value: "agents.orchestrated", label: "Ran the agent orchestrator" },
+  { value: "agents.evaluated", label: "Ran an agent evaluation" },
+  { value: "agents.golden_eval_run", label: "Ran the golden agent evaluation" },
+  { value: "agents.runtime_run", label: "Ran an agent on the runtime" },
 ];
 
 export const ADMIN_AUDIT_OUTCOME_OPTIONS: ReadonlyArray<{ value: AdminAuditOutcome; label: string }> = [
@@ -68,6 +130,13 @@ export function adminAuditDetailSummary(event: Pick<AdminAuditEvent, "action" | 
   if (recipients !== null) parts.push(`${recipients} ${recipients === 1 ? "person" : "people"}`);
   const events = count("eventCount");
   if (events !== null) parts.push(`${events} ${events === 1 ? "event" : "events"}`);
+  // #2362: codes and amounts the other admin actions record.
+  for (const key of ["decision", "action", "outcome", "status", "provider"]) {
+    const value = text(key);
+    if (value) parts.push(value.replace(/_/g, " "));
+  }
+  const cents = count("amountCents");
+  if (cents !== null) parts.push(`$${(cents / 100).toFixed(2)}`);
   const sessionId = text("sessionId");
   if (sessionId) parts.push(`session ${sessionId}`);
   const noticeId = text("noticeId");

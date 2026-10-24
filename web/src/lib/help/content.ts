@@ -454,7 +454,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Suspending an account, closing it and sending a broadcast notice cannot easily be undone, so Resonate asks you to prove it is really you at that moment. Your passkey (or wallet) opens a prompt and you approve it. You are asked only when needed: once you have confirmed, further suspensions, closures and broadcasts work without another prompt for about five minutes, and then you are asked again.",
+            text: "Actions that cannot easily be undone ask you to prove it is really you at that moment: suspending or closing an account, sending a broadcast notice, granting credits, deciding a management transfer recovery, removing a message or member in community moderation, and the maintenance actions that delete or reset data or re-run the chain indexer. Your passkey (or wallet) opens a prompt and you approve it. You are asked only when needed: once you have confirmed, further actions like these work without another prompt for about five minutes, and then you are asked again. Other reviews, queues and anything that only reads, or that you can easily set back, do not ask.",
           },
           {
             kind: "list",
@@ -473,7 +473,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Open Audit Log in the sidebar to see one list, newest first, of what operators did: opening a person's record, suspending, lifting or closing an account, opening a session's agent events, sending a notice, and each passkey confirmation. You can filter by what happened and by outcome (done or refused). Nothing in it can be edited or removed from this page.",
+            text: "Open Audit Log in the sidebar to see one list, newest first, of what operators did: opening a person's record, suspending, lifting or closing an account, opening a session's agent events, sending a notice, and each passkey confirmation. Every other admin and operator action is in it too: credit grants and dismissals, takedown decisions, artist claim and recovery reviews, show reviews and disputes, rights and trusted-source reviews, refunds marked as sent, wallet changes, community moderation, indexer resets, maintenance runs, and opening the queues that show people's details. You can filter by what happened and by outcome (done or refused). Nothing in it can be edited or removed from this page.",
           },
           {
             kind: "callout",
@@ -1889,7 +1889,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "For operators: processing credit requests",
-            text: "Operators and administrators get an in-app notification for each request; it opens Credit Requests in the admin navigation. The Pending tab shows each requester's note and current balance. Grant a quick amount ($1, $5, or $10) or a custom one with an optional reason, or dismiss the request with a note. Every grant asks you to confirm, is recorded in the credit ledger, and notifies the requester. A request can only be resolved once, and you can't resolve your own request; another operator has to. The Resolved tab keeps the history.",
+            text: "Operators and administrators get an in-app notification for each request; it opens Credit Requests in the admin navigation. The Pending tab shows each requester's note and current balance. Grant a quick amount ($1, $5, or $10) or a custom one with an optional reason, or dismiss the request with a note. Every grant asks you to confirm, then asks for your passkey (or wallet) once, because adding credits cannot easily be undone. It is recorded in the credit ledger and in the audit log, and notifies the requester. A request can only be resolved once, and you can't resolve your own request; another operator has to. The Resolved tab keeps the history.",
           },
         ],
       },
@@ -2884,7 +2884,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Operators and administrators can open Management transfer recovery from the admin navigation. Compare the requester's evidence with the accepted transfer and the listed profiles or releases, then record a review note before approving or rejecting. Approval restores management to the original sender only when the recipient still manages every listed resource and no later accepted transfer has involved one. It ends existing manager grants and pending transfers for those resources. A rejection leaves management as it is. Each request lists the affected profiles or releases and explains what approval changes, and both approving and rejecting ask you to confirm.",
+            text: "Operators and administrators can open Management transfer recovery from the admin navigation. Compare the requester's evidence with the accepted transfer and the listed profiles or releases, then record a review note before approving or rejecting. Approval restores management to the original sender only when the recipient still manages every listed resource and no later accepted transfer has involved one. It ends existing manager grants and pending transfers for those resources. A rejection leaves management as it is. Each request lists the affected profiles or releases and explains what approval changes, and both approving and rejecting ask you to confirm and then to approve with your passkey (or wallet). Each decision is recorded in the audit log.",
           },
         ],
       },

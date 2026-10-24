@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useToast } from "../../../components/ui/Toast";
+import { AdminStepUpCancelledError, withAdminStepUp } from "../../../lib/adminStepUp";
 import {
   getPendingManagementRecoveries,
   reviewManagementRecovery,
@@ -16,7 +17,7 @@ type ScopedValue<T> = { scope: symbol | null; value: T };
 type ReviewInFlight = { requestId: string; decision: ManagementRecoveryDecision };
 
 export default function ManagementRecoveryAdminPage() {
-  const { token, role, userId } = useAuth();
+  const { token, role, userId, signMessage } = useAuth();
   const sessionScope = useMemo(
     () => token ? Symbol(userId ?? role ?? "management-recovery-session") : null,
     [role, token, userId],
@@ -115,7 +116,20 @@ export default function ManagementRecoveryAdminPage() {
     setReviewingSnapshot({ scope: requestScope, value: { requestId: request.id, decision } });
     updateReviewErrors((previous) => ({ ...previous, [request.id]: "" }));
     try {
-      await reviewManagementRecovery(token, request.id, { decision, note });
+      // Deciding a recovery moves management of a profile or release, so it needs a fresh passkey confirmation (#2362).
+      await withAdminStepUp(
+        {
+          token,
+          signMessage,
+          onPrompt: () =>
+            addToast({
+              type: "info",
+              title: "Confirm it is you",
+              message: "Your passkey will ask you to confirm this decision.",
+            }),
+        },
+        (proof) => reviewManagementRecovery(token, request.id, { decision, note }, proof),
+      );
       if (currentScopeRef.current !== requestScope) return;
       updateReviewNotes((previous) => ({ ...previous, [request.id]: "" }));
       setApprovalSnapshot({ scope: requestScope, value: null });
@@ -132,6 +146,13 @@ export default function ManagementRecoveryAdminPage() {
       await load(true);
     } catch (reason) {
       if (currentScopeRef.current !== requestScope) return;
+      if (reason instanceof AdminStepUpCancelledError) {
+        // The passkey prompt was dismissed: nothing was sent, so nothing changed.
+        setApprovalSnapshot({ scope: requestScope, value: null });
+        setRejectionSnapshot({ scope: requestScope, value: null });
+        addToast({ type: "info", title: "Nothing changed", message: reason.message });
+        return;
+      }
       const message = reason instanceof Error ? reason.message : "Unable to record the review decision.";
       updateReviewErrors((previous) => ({ ...previous, [request.id]: message }));
       setApprovalSnapshot({ scope: requestScope, value: null });

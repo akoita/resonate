@@ -4,6 +4,7 @@ import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
+import { BroadcastNoticeDto, TargetedNoticeDto } from "./notice.dto";
 import { NoticeService } from "./notice.service";
 import { parseBroadcastNoticeInput, parseTargetedNoticeInput } from "./notice_validation";
 
@@ -42,7 +43,7 @@ export class NoticeController {
   @Roles("admin", "operator")
   @RequireStepUp()
   @Post("broadcast")
-  broadcast(@Req() req: any, @Body() body: unknown) {
+  broadcast(@Req() req: any, @Body() body: BroadcastNoticeDto) {
     const input = parseBroadcastNoticeInput(body);
     return this.notices.sendBroadcast(input, { userId: req.user.userId, role: req.user.role });
   }
@@ -50,7 +51,7 @@ export class NoticeController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Post("targeted")
-  targeted(@Req() req: any, @Body() body: unknown) {
+  targeted(@Req() req: any, @Body() body: TargetedNoticeDto) {
     const input = parseTargetedNoticeInput(body);
     return this.notices.sendTargeted(input, { userId: req.user.userId, role: req.user.role });
   }

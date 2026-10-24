@@ -20,6 +20,8 @@ import {
   RequestCreditsDto,
 } from "./credits.dto";
 import { GenerationCreditsService } from "./generation-credits.service";
+import { AdminAudit, auditBody, auditCode, auditNumber, auditRef, auditResult } from "../admin_audit/admin_audit.interceptor";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 
 /**
  * The global ValidationPipe (#1888) already rejects DTO violations; this
@@ -60,6 +62,11 @@ export class CreditsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Post("grant")
+  @RequireStepUp()
+  @AdminAudit("credits.granted", (c) => ({
+    targetUserId: auditRef(auditBody(c).userId) ?? null,
+    detail: { amountCents: auditNumber(auditBody(c).amountCents) },
+  }))
   async grant(@Body(validate) dto: GrantCreditsDto) {
     const balanceCents = await this.credits.grant(
       dto.userId,
@@ -72,6 +79,9 @@ export class CreditsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Get("requests")
+  @AdminAudit("credit_requests.viewed", (c) => ({
+    detail: { status: auditCode(c.query.status, ["pending", "resolved", "all"] as const) },
+  }))
   listRequests(@Query(validate) query: ListCreditRequestsQueryDto) {
     return this.credits.listCreditRequests(query.status ?? "pending");
   }
@@ -79,6 +89,11 @@ export class CreditsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Post("requests/:id/grant")
+  @RequireStepUp()
+  @AdminAudit("credit_request.granted", (c) => ({
+    targetUserId: auditRef(auditResult(c).userId) ?? null,
+    detail: { requestId: auditRef(c.params.id), amountCents: auditNumber(auditBody(c).amountCents) },
+  }))
   grantRequest(
     @Request() req: any,
     @Param("id") id: string,
@@ -95,6 +110,10 @@ export class CreditsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Post("requests/:id/dismiss")
+  @AdminAudit("credit_request.dismissed", (c) => ({
+    targetUserId: auditRef(auditResult(c).userId) ?? null,
+    detail: { requestId: auditRef(c.params.id) },
+  }))
   dismissRequest(
     @Request() req: any,
     @Param("id") id: string,

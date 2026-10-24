@@ -29,7 +29,7 @@ import { PrivacyController } from "../modules/privacy/privacy.controller";
 import { RecommendationsController } from "../modules/recommendations/recommendations.controller";
 import { RemixController } from "../modules/remix/remix.controller";
 import { WebAuthnController } from "../modules/webauthn/webauthn.controller";
-import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { authToken, createControllerTestApp, stepUpProof } from "./e2e-helpers";
 import { restoreEnv } from "./env-helpers";
 
 type Verb = "post" | "put" | "patch" | "delete";
@@ -60,7 +60,9 @@ function stubProviders(controller: Type<unknown>) {
   return [...providers.values()];
 }
 
-const admin = authToken("admin-1", "admin");
+const ADMIN_ID = "admin-1";
+const admin = authToken(ADMIN_ID, "admin");
+// A step-up proof rides along on every call: the wallet recovery routes need one (#2362) and the others ignore it.
 
 const SUITES: Array<{ controller: Type<unknown>; cases: Case[] }> = [
   {
@@ -243,6 +245,7 @@ describe("converted request bodies (HTTP, #2197)", () => {
           const res = await request(app.getHttpServer())
             [testCase.verb](testCase.url)
             .set("Authorization", `Bearer ${admin}`)
+            .set("X-Admin-Step-Up", stepUpProof(ADMIN_ID))
             .send(testCase.bad);
           expect(res.status).toBe(400);
           expect(JSON.stringify(res.body)).toMatch(/must be|should not be empty|must contain|must be an? /);
@@ -252,6 +255,7 @@ describe("converted request bodies (HTTP, #2197)", () => {
           const res = await request(app.getHttpServer())
             [testCase.verb](testCase.url)
             .set("Authorization", `Bearer ${admin}`)
+            .set("X-Admin-Step-Up", stepUpProof(ADMIN_ID))
             .send(testCase.ok);
           const validationMessage = JSON.stringify(res.body);
           expect(

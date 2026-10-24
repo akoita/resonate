@@ -30,6 +30,7 @@ import {
 } from "../shared/artwork-validation";
 import { ContentLengthLimitInterceptor } from "../shared/content-length-limit.interceptor";
 import { BoundedMemoryStorage } from "../shared/bounded-memory.storage";
+import { AdminAudit, auditBody, auditCode, auditRef } from "../admin_audit/admin_audit.interceptor";
 
 @Controller("shows")
 export class ShowsController {
@@ -253,6 +254,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Patch("campaigns/:id/authority")
+  @AdminAudit("show_authority.approved", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   approveAuthority(
     @Param("id") id: string,
     @Request() req: any,
@@ -264,6 +266,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/reject-authority")
+  @AdminAudit("show_authority.rejected", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   rejectAuthority(
     @Param("id") id: string,
     @Request() req: any,
@@ -275,6 +278,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/revoke-authority")
+  @AdminAudit("show_authority.revoked", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   revokeAuthority(
     @Param("id") id: string,
     @Request() req: any,
@@ -286,6 +290,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/expire-authority")
+  @AdminAudit("show_authority.expired", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   expireAuthority(
     @Param("id") id: string,
     @Request() req: any,
@@ -307,6 +312,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Post("campaigns/:id/resync-chain")
+  @AdminAudit("show_campaign.chain_resynced", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   resyncCampaignFromChain(
     @Param("id") id: string,
     @Request() req: any,
@@ -350,6 +356,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Post("operator/reconciliation-mismatches/:contractCampaignId/acknowledge")
+  @AdminAudit("show_reconciliation.acknowledged", (c) => ({ detail: { contractCampaignId: auditRef(c.params.contractCampaignId) } }))
   acknowledgeReconciliationMismatch(
     @Param("contractCampaignId") contractCampaignId: string,
     @Request() req: any,
@@ -365,6 +372,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Delete("operator/reconciliation-mismatches/:contractCampaignId/acknowledgement")
+  @AdminAudit("show_reconciliation.acknowledgement_removed", (c) => ({ detail: { contractCampaignId: auditRef(c.params.contractCampaignId) } }))
   removeReconciliationAcknowledgement(
     @Param("contractCampaignId") contractCampaignId: string,
     @Request() req: any,
@@ -382,6 +390,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
   @Post("campaigns/:id/discover-onchain")
+  @AdminAudit("show_campaign.onchain_discovered", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   discoverOnChainCampaign(
     @Param("id") id: string,
     @Request() req: any,
@@ -434,6 +443,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/confirm-booking")
+  @AdminAudit("show_campaign.booking_confirmed", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   confirmBooking(
     @Param("id") id: string,
     @Request() req: any,
@@ -445,6 +455,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/confirm-fulfillment")
+  @AdminAudit("show_campaign.fulfillment_confirmed", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   confirmFulfillment(
     @Param("id") id: string,
     @Request() req: any,
@@ -457,6 +468,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/dispute")
+  @AdminAudit("show_dispute.opened", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   initiateDispute(
     @Param("id") id: string,
     @Request() req: any,
@@ -468,6 +480,13 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Patch("campaigns/:id/dispute/:disputeId/resolve")
+  @AdminAudit("show_dispute.resolved", (c) => ({
+    detail: {
+      campaignId: auditRef(c.params.id),
+      disputeId: auditRef(c.params.disputeId),
+      outcome: auditCode(auditBody(c).outcome, ["upheld", "rejected", "inconclusive"] as const),
+    },
+  }))
   resolveDispute(
     @Param("id") id: string,
     @Param("disputeId") disputeId: string,

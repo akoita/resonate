@@ -2,9 +2,9 @@ import { Body, Controller, Get, Param, Post, Request, UseGuards } from "@nestjs/
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
+import { MarkX402RefundedDto } from "./x402-refund-reconciliation.dto";
 import { X402RefundReconciliationService } from "./x402-refund-reconciliation.service";
-
-type MarkRefundedBody = { refundTxHash?: string };
+import { AdminAudit, auditBody, auditRef } from "../admin_audit/admin_audit.interceptor";
 
 /**
  * Operator surface for reconciling `refund_due` x402 settlements (#1506).
@@ -23,14 +23,16 @@ export class X402RefundReconciliationController {
   constructor(private readonly reconciliation: X402RefundReconciliationService) {}
 
   @Get()
+  @AdminAudit("x402_refunds.viewed")
   listRefundDue() {
     return this.reconciliation.listRefundDue();
   }
 
   @Post(":id/mark-refunded")
+  @AdminAudit("x402_refund.marked_refunded", (c) => ({ detail: { settlementId: auditRef(c.params.id), refundTxHash: auditRef(auditBody(c).refundTxHash) } }))
   markRefunded(
     @Param("id") id: string,
-    @Body() body: MarkRefundedBody,
+    @Body() body: MarkX402RefundedDto,
     @Request() req: any,
   ) {
     return this.reconciliation.markRefunded(

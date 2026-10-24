@@ -37,6 +37,8 @@ import {
 import { WalletService } from "./wallet.service";
 import { AgentWalletService } from "../agents/agent_wallet.service";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
+import { AdminAudit, auditBody, auditCount, auditNumber, auditRef } from "../admin_audit/admin_audit.interceptor";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 
 @Controller("wallet")
 export class WalletController {
@@ -84,6 +86,7 @@ export class WalletController {
   @Post("provider")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @AdminAudit("wallet.provider_set", (c) => ({ targetUserId: auditRef(auditBody(c).userId) ?? null, detail: { provider: auditRef(auditBody(c).provider) } }))
   setProvider(@Body() body: SetWalletProviderDto) {
     return this.walletService.setProvider(body);
   }
@@ -91,6 +94,7 @@ export class WalletController {
   @Post("refresh")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @AdminAudit("wallet.refreshed", (c) => ({ targetUserId: auditRef(auditBody(c).userId) ?? null }))
   refresh(@Body() body: RefreshWalletDto) {
     return this.walletService.refreshWallet(body);
   }
@@ -112,6 +116,7 @@ export class WalletController {
   @Post("paymaster")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @AdminAudit("wallet.paymaster_configured", (c) => ({ detail: { sponsorMaxUsd: auditNumber(auditBody(c).sponsorMaxUsd), paymasterAddress: auditRef(auditBody(c).paymasterAddress) } }))
   configurePaymaster(@Body() body: ConfigurePaymasterDto) {
     this.walletService.configurePaymaster(body);
     return { status: "ok" };
@@ -127,6 +132,7 @@ export class WalletController {
   @Post("paymaster/reset")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @AdminAudit("wallet.paymaster_reset", (c) => ({ targetUserId: auditRef(auditBody(c).userId) ?? null }))
   resetPaymaster(@Body() body: ResetPaymasterDto) {
     this.walletService.resetPaymaster(body.userId);
     return { status: "ok" };
@@ -143,6 +149,7 @@ export class WalletController {
   @Post("session-key")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @AdminAudit("wallet.session_key_issued", (c) => ({ targetUserId: auditRef(auditBody(c).userId) ?? null, detail: { scope: auditRef(auditBody(c).scope), ttlSeconds: auditNumber(auditBody(c).ttlSeconds) } }))
   createSessionKey(
     @Body() body: CreateSessionKeyDto
   ) {
@@ -159,6 +166,8 @@ export class WalletController {
   @Post("guardians")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @RequireStepUp()
+  @AdminAudit("wallet.guardians_set", (c) => ({ targetUserId: auditRef(auditBody(c).userId) ?? null, detail: { guardianCount: auditCount(auditBody(c).guardians), required: auditNumber(auditBody(c).required) } }))
   setGuardians(@Body() body: SetGuardiansDto) {
     return this.recoveryService.setGuardians(body.userId, body.guardians, body.required);
   }
@@ -166,6 +175,8 @@ export class WalletController {
   @Post("recovery/request")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @RequireStepUp()
+  @AdminAudit("wallet.recovery_requested", (c) => ({ targetUserId: auditRef(auditBody(c).userId) ?? null, detail: { newOwner: auditRef(auditBody(c).newOwner), required: auditNumber(auditBody(c).required) } }))
   requestRecovery(@Body() body: RequestRecoveryDto) {
     return this.recoveryService.requestRecovery(body);
   }
@@ -173,6 +184,8 @@ export class WalletController {
   @Post("recovery/approve")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
+  @RequireStepUp()
+  @AdminAudit("wallet.recovery_approved", (c) => ({ detail: { requestId: auditRef(auditBody(c).requestId) } }))
   approveRecovery(@Body() body: ApproveRecoveryDto) {
     return this.recoveryService.approveRecovery(body);
   }

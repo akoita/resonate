@@ -24,10 +24,12 @@
 
 `backend/src/tests/body_dto_guard.spec.ts` scans every `*.controller.ts` by
 reflection and fails when a whole-body `@Body()` parameter is not a class and is
-not listed in its allowlist with a category and a reason. A stale allowlist
+not listed in its allowlist with a category and a reason. The `deferred-admin` category is gone: no admin body is deferred any more. A stale allowlist
 entry fails too. `@Body("field")` (a single value) is not a whole body and is not
 flagged. HTTP cases for the converted routes are in
-`backend/src/tests/request_body_validation.controller.http.spec.ts`.
+`backend/src/tests/request_body_validation.controller.http.spec.ts`; the admin
+bodies converted in #2362 are covered in `maintenance.controller.http.spec.ts`,
+`notice.controller.http.spec.ts` and `x402-refund-reconciliation.controller.http.spec.ts`.
 
 ## Inventory (#2197 audit)
 
@@ -74,9 +76,9 @@ class-typed before this change. "Converted" routes now take a class DTO.
 | punchline | update draft, add/update moment, set unlock, collect (5) | Already validated in service |
 | sessions | playback capability, device, resolve, queue, play, control, confirm (7) | Already validated in controller (sanitizers) |
 | shows | 21 lifecycle and pledge routes (`any`) | Already validated in service normalizers; per-route DTOs tracked as a follow-up |
-| maintenance (`/admin/*`) | 7 backfill and job routes | Deferred to after #2173 (admin controller) |
-| x402 refund reconciliation (`/admin/x402-refunds`) | mark refunded (1) | Deferred to after #2173 (admin controller) |
-| notices | broadcast, targeted (2) | Deferred to after #2173 (admin controller; already parsed by `notice_validation`) |
+| maintenance (`/admin/*`) | stem and embedding backfills, erasure run-due, warehouse load and backfill, cohort generation, moderation resolve (7) | Converted (`maintenance.dto.ts`, #2362); types only, so `limit: "25"` and similar strings now answer 400. `erasure/run-due` still takes a numeric string, as its service does |
+| x402 refund reconciliation (`/admin/x402-refunds`) | mark refunded (1) | Converted (`x402-refund-reconciliation.dto.ts`, #2362); the service still owns the hash message |
+| notices | broadcast, targeted (2) | Converted (`notice.dto.ts`, #2362); types and shape only, `notice_validation` still owns the value rules and its messages |
 
 Every "already validated" and "inline" row is an entry in the guard's allowlist
 with its reason. New routes should not need one: use a class DTO.

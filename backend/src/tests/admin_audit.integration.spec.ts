@@ -58,9 +58,9 @@ describe("admin audit log (integration)", () => {
       ]);
     });
 
-    it("covers every action the product writes", () => {
-      expect([...ADMIN_AUDIT_ACTIONS].sort()).toEqual(
-        [
+    it("covers the actions written by services and names every other one in the same shape (#2362)", () => {
+      expect([...ADMIN_AUDIT_ACTIONS]).toEqual(
+        expect.arrayContaining([
           "account.closed",
           "account.suspended",
           "account.unsuspended",
@@ -70,8 +70,10 @@ describe("admin audit log (integration)", () => {
           "notice.broadcast_sent",
           "notice.targeted_sent",
           "user.detail_viewed",
-        ].sort(),
+        ]),
       );
+      expect(new Set(ADMIN_AUDIT_ACTIONS).size).toBe(ADMIN_AUDIT_ACTIONS.length);
+      for (const action of ADMIN_AUDIT_ACTIONS) expect(action).toMatch(/^[a-z0-9_]+\.[a-z0-9_]+$/);
     });
   });
 

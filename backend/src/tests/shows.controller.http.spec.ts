@@ -5,7 +5,14 @@ import { CommunityRoomsService } from "../modules/community/community_rooms.serv
 import { ShowsController } from "../modules/shows/shows.controller";
 import { ShowRefundReminderService } from "../modules/shows/show-refund-reminder.service";
 import { ShowsService } from "../modules/shows/shows.service";
+import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
+
+jest.mock("../modules/admin_audit/admin_audit_event", () => ({
+  ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const mockShowsService = {
   listCampaigns: jest.fn().mockResolvedValue([]),
@@ -37,6 +44,8 @@ const mockShowsService = {
   cancelCampaign: jest.fn(),
   confirmBooking: jest.fn(),
   confirmFulfillment: jest.fn(),
+  initiateDispute: jest.fn(),
+  resolveDispute: jest.fn(),
 };
 
 const mockRefundReminders = {
@@ -459,5 +468,80 @@ describe("ShowsController (http)", () => {
       .expect(403);
     expect(mockShowsService.acknowledgeReconciliationMismatch).not.toHaveBeenCalled();
     expect(mockShowsService.removeReconciliationAcknowledgement).not.toHaveBeenCalled();
+  });
+});
+
+describe("ShowsController operator actions are audited (#2362)", () => {
+  let app: INestApplication;
+  const operator = { Authorization: `Bearer ${authToken("operator-1", "operator")}` };
+  const listener = { Authorization: `Bearer ${authToken("user-1", "listener")}` };
+
+  beforeAll(async () => {
+    app = await createControllerTestApp(ShowsController, [
+      { provide: ShowsService, useValue: mockShowsService },
+      { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
+      { provide: ShowRefundReminderService, useValue: mockRefundReminders },
+      RolesGuard,
+    ]);
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  // Earlier suites leave rejecting implementations on the shared service mock.
+  beforeEach(() => jest.resetAllMocks());
+
+  it.each([
+    ["patch", "/shows/campaigns/c-1/authority", "show_authority.approved", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/reject-authority", "show_authority.rejected", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/revoke-authority", "show_authority.revoked", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/expire-authority", "show_authority.expired", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/resync-chain", "show_campaign.chain_resynced", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/discover-onchain", "show_campaign.onchain_discovered", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/confirm-booking", "show_campaign.booking_confirmed", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/confirm-fulfillment", "show_campaign.fulfillment_confirmed", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/dispute", "show_dispute.opened", { campaignId: "c-1" }],
+    [
+      "post",
+      "/shows/operator/reconciliation-mismatches/7/acknowledge",
+      "show_reconciliation.acknowledged",
+      { contractCampaignId: "7" },
+    ],
+    [
+      "delete",
+      "/shows/operator/reconciliation-mismatches/7/acknowledgement",
+      "show_reconciliation.acknowledgement_removed",
+      { contractCampaignId: "7" },
+    ],
+  ])("%s %s records %s with ids only", async (method, path, action, detail) => {
+    await (request(app.getHttpServer()) as any)[method](path).set(operator).send({ note: "free text" }).expect((res: any) => {
+      expect(res.status).toBeLessThan(300);
+    });
+    expect(mockAudit).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith({ actorUserId: "operator-1", action, targetUserId: null, detail });
+  });
+
+  it("records a dispute resolution with its outcome code and ids, not the operator note", async () => {
+    await request(app.getHttpServer())
+      .patch("/shows/campaigns/c-1/dispute/d-1/resolve")
+      .set(operator)
+      .send({ outcome: "upheld", operatorNote: "free text" })
+      .expect(200);
+    expect(mockAudit).toHaveBeenCalledWith({
+      actorUserId: "operator-1",
+      action: "show_dispute.resolved",
+      targetUserId: null,
+      detail: { campaignId: "c-1", disputeId: "d-1", outcome: "upheld" },
+    });
+  });
+
+  it("records nothing for a refused role, a failed action, or the aggregate reads", async () => {
+    await request(app.getHttpServer()).post("/shows/campaigns/c-1/confirm-booking").set(listener).send({}).expect(403);
+    mockShowsService.confirmBooking.mockRejectedValueOnce(new BadRequestException("not ready"));
+    await request(app.getHttpServer()).post("/shows/campaigns/c-1/confirm-booking").set(operator).send({}).expect(400);
+    mockShowsService.listReconciliationMismatches.mockResolvedValueOnce([]);
+    mockRefundReminders.getUnclaimedRefunds.mockResolvedValueOnce([]);
+    await request(app.getHttpServer()).get("/shows/operator/reconciliation-mismatches").set(operator).expect(200);
+    await request(app.getHttpServer()).get("/shows/operator/unclaimed-refunds").set(operator).expect(200);
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 });
