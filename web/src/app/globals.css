@@ -6789,26 +6789,35 @@ a.listener-cohort-detail__action:focus-visible {
   font-size: 13px;
 }
 
-.usage-autoreload {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  padding: var(--space-3);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  opacity: 0.85;
+.usage-limit-meter-inline {
+  margin-top: 6px;
 }
 
-.usage-autoreload strong {
+.usage-limit-meter-value[data-depleted="true"] {
+  color: #fca5a5;
+}
+
+.usage-grant-info {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.usage-grant-info strong {
   display: block;
+  margin-bottom: 4px;
   color: var(--color-text);
   font-size: 14px;
 }
 
-.usage-autoreload small {
-  color: var(--color-text-muted);
+.usage-grant-info ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .usage-limit-list {

@@ -148,11 +148,56 @@ the sidebar and from the notification):
 
 Delivery is in-app only for now; email/Slack fan-out is a future enhancement.
 
+## Usage & Billing surface (#1422, Sprint 40)
+
+**Revenue line:** ADR-BM-6 Line 2 (creator tools / metered generation), Phase 2
+groundwork. **Nothing is charged**: no prices change, and there is no buy,
+auto-reload or Stripe flow (those wait for the pricing decision in #1421 and the
+license review in #1193).
+
+One read, `GET /usage/summary` (JWT, always scoped to the caller), returns three
+deliberately separate sections plus the plan tier:
+
+- `credits` -- the prepaid balance, price per 30 s and recent ledger rows
+  (same shape as `GET /credits/balance`).
+- `limits` -- fair-use rate-quota windows per kind: `remaining`, `limit`,
+  `percentLeft`, `windowSeconds`, `resetsAt`. Hitting one means waiting for the
+  reset; it is never solved by topping up.
+- `breakdown` -- credit spend per metered kind over the last 30 days: unit size
+  and live unit cost, number of charges, spent, refunded and net cents.
+
+**Metered-action registry**
+([`backend/src/modules/credits/metered-actions.ts`](../../backend/src/modules/credits/metered-actions.ts))
+is the single source of truth: kind, label, debit-ledger reasons, unit size and
+default duration, and an optional usage-limit window (`limit`, `windowMs`, env
+key). It is read by the enforcers, not mirrored from them: the catalog and remix
+rate limiters take their default, window and env override from it
+(`STRIKE_RATE_LIMIT` 50/hr, `REMIX_GENERATION_RATE_LIMIT` 10/hr), the debit
+sites take their ledger `reason` from it, and the usage breakdown attributes
+ledger rows to kinds with it. The credit **price** is not duplicated: a unit
+cost is always `unitCostCents(kind, livePrice)`, the same formula as
+`costForDurationCents`, and `metered-actions.spec.ts` pins that parity (and the
+50/10 defaults and the enforcing services' use of the registry). Adding a metered
+feature means adding a registry entry.
+
+**UI.** Settings -> Usage & Billing (`UsageBillingPanel`) shows plan, credits
+(with a short "how credits are granted today" note and no purchase or
+auto-reload control), usage limits, spend by action and the recent ledger.
+`CreditBalanceMeter` (credits) and `UsageLimitMeter` (one limit window: % left,
+count, reset time) are the reusable meters; Remix Studio shows both next to
+Generate, and Create shows the credit meter plus its rate-limit cell.
+
+**How credits are granted today:** the one-time starter allowance, operator
+grants (including the in-app request queue), and automatic refunds for failed
+generations. Nothing else adds credits.
+
 ## Surfaces
 
 - API:
   - `GET /credits/balance` (JWT) — caller's `balanceCents`, `priceCentsPer30s`,
     and recent ledger entries.
+  - `GET /usage/summary` (JWT) — credits + usage limits + 30-day spend
+    breakdown + plan tier, caller-scoped (#1422).
   - `POST /credits/request` (JWT) — ask an operator for a top-up (fans out to
     operator notifications).
   - `POST /credits/grant` (JWT + `@Roles('admin','operator')`).
@@ -178,6 +223,10 @@ Delivery is in-app only for now; email/Slack fan-out is a future enhancement.
   `priceCentsPer30s` so the client never hardcodes the price. Because the remix
   debit happens in a worker (no synchronous 402), the studio fetches the balance
   directly and gates Generate proactively when it can't fund one 30s block.
+- UI (usage limits): reusable
+  [`UsageLimitMeter`](web/src/components/credits/UsageLimitMeter.tsx) (#1422)
+  renders one usage-limit window (% left, count, reset time) and is used on the
+  Usage & Billing page and in Remix Studio.
 - Service: `backend/src/modules/credits/generation-credits.service.ts`
   (`GenerationCreditsService`: `costForDurationCents`, `getBalance`, `grant`,
   `debit`, `refund`, `ensureSignupStarter`; `InsufficientCreditsException`).
@@ -209,6 +258,8 @@ Delivery is in-app only for now; email/Slack fan-out is a future enhancement.
 
 - Controller (unit): `cd backend && npx jest --config jest.config.js --testPathPattern='credits.controller'`
 - Analytics taxonomy: `cd backend && npx jest --config jest.config.js --testPathPattern='analytics'`
+- Registry + usage aggregation (pure): `cd backend && npx jest --config jest.config.js --testPathPattern='metered-actions|usage-aggregation|usage.controller'`
+- Usage endpoint (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='usage-summary.integration'`
 - Meter (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credits.integration'`
 - Generation/remix gating (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credits-generation-block|credits-remix-block'`
 
@@ -228,15 +279,14 @@ Delivery is in-app only for now; email/Slack fan-out is a future enhancement.
   itself is unchanged**; deriving a measured, reconciled per-path sell price
   needs real Lyria/GPU billing data and lands later (reconciled into
   `business-model.md` + ADR-BM-3). Design: [`docs/rfc/generation-cost-model.md`](../rfc/generation-cost-model.md).
-- **Usage & Billing consolidation (#1422)** — shipped across two slices: (1) the
-  reusable `CreditBalanceMeter` + Remix Studio parity; (2) a metered-action
-  registry (`backend/src/modules/credits/metered-actions.ts`), a unified
-  **`GET /usage/summary`** (`UsageModule`/`UsageService`) aggregating credits +
-  per-kind usage-limits (the remix rate-limit is now queryable via a
-  side-effect-free peek getter) + plan tier, and a read-only **Usage & Billing**
-  settings section (`UsageBillingPanel`: plan, credits, limits with reset timers,
-  ledger/history). Design of record: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md).
-  Still deferred: live Stripe buy/auto-reload (blocked on #1421 pricing + #1193).
+- **Usage & Billing consolidation (#1422)** — shipped: the reusable
+  `CreditBalanceMeter` and Remix Studio parity, the metered-action registry,
+  `GET /usage/summary`, the Settings -> Usage & Billing page, and (Sprint 40)
+  the registry as the enforcers' single source of truth, the per-kind spend
+  breakdown, `percentLeft` on every limit and the `UsageLimitMeter` in Remix
+  Studio. Still deferred and not code-writable yet: buy credits, auto-reload
+  and any Stripe flow (blocked on #1421 pricing + #1193); #1422 stays open for
+  that. Design of record: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md).
 
 ## Links
 

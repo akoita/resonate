@@ -6620,19 +6620,45 @@ export type UsageLimit = {
   label: string;
   remaining: number;
   limit: number;
+  /** 0-100: how much of the window's quota is still available. */
+  percentLeft: number;
   windowSeconds: number;
   /** ISO timestamp of when the window resets, or null when idle (no requests). */
   resetsAt: string | null;
 };
 
 /**
+ * Credit spend attributed to one metered action kind over the breakdown
+ * period (#1422). `unitCostCents` is the registry unit size at the live price.
+ */
+export type UsageBreakdownItem = {
+  kind: "lyria" | "remix_draft";
+  label: string;
+  unitSeconds: number;
+  unitCostCents: number;
+  charges: number;
+  spentCents: number;
+  refundedCents: number;
+  netCents: number;
+};
+
+export type UsageBreakdown = {
+  periodDays: number;
+  /** ISO timestamp the period starts at. */
+  since: string;
+  items: UsageBreakdownItem[];
+};
+
+/**
  * Unified Usage & Billing snapshot for the current user (#1422): the monetary
- * credit balance + ledger, per-kind usage limits with reset timers, and the
- * current plan tier. Read from `GET /usage/summary`.
+ * credit balance + ledger, per-kind usage limits (% left, reset time), the
+ * per-kind spend breakdown, and the current plan tier. Read from
+ * `GET /usage/summary`. Credits, limits and breakdown are separate concepts.
  */
 export type UsageSummary = {
   credits: GenerationCreditBalance;
   limits: UsageLimit[];
+  breakdown: UsageBreakdown;
   plan: { tier: "free"; monthlyAllowanceCents: number | null };
 };
 

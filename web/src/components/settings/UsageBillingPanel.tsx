@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { getUsageSummary, requestGenerationCredits, type UsageSummary } from "../../lib/api";
 import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
+import { UsageLimitMeter } from "../credits/UsageLimitMeter";
+import { formatCents } from "../../lib/usage";
 import { Button } from "../ui/Button";
 
 type ToastFn = (toast: {
@@ -17,34 +19,6 @@ type Props = {
 };
 
 type CreditRequestState = "idle" | "sending" | "sent";
-
-/**
- * Human-readable "resets in …" label from an ISO timestamp (#1422). Pure so it
- * is unit-testable. Returns "—" when there is no active window (`resetsAt` is
- * null), "now" when the window has already lapsed, and otherwise a coarse
- * relative span like "in 42 min" or "in 2 h 5 min".
- *
- * @param resetsAt ISO timestamp, or null when the limiter is idle.
- * @param now      Reference time in ms (defaults to `Date.now()`); injectable
- *                 for deterministic tests.
- */
-export function formatResetIn(resetsAt: string | null, now: number = Date.now()): string {
-  if (!resetsAt) return "—";
-  const target = new Date(resetsAt).getTime();
-  if (Number.isNaN(target)) return "—";
-  const deltaMs = target - now;
-  if (deltaMs <= 0) return "resets now";
-  const totalMinutes = Math.ceil(deltaMs / 60_000);
-  if (totalMinutes < 60) return `resets in ${totalMinutes} min`;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24);
-    const remHours = hours % 24;
-    return remHours > 0 ? `resets in ${days}d ${remHours}h` : `resets in ${days}d`;
-  }
-  return minutes > 0 ? `resets in ${hours}h ${minutes}min` : `resets in ${hours}h`;
-}
 
 /**
  * Format a ledger amount in cents, signed by transaction type (#1422). Debits
@@ -76,8 +50,9 @@ function humanizeType(type: string): string {
 /**
  * Pure presentational view for the Usage & Billing panel (#1422). Kept separate
  * from the fetching container so it can be rendered with an injected summary in
- * tests (`renderToStaticMarkup`). Renders four visually distinct sections: plan,
- * credits (monetary balance), usage limits (rate quotas), and usage history.
+ * tests (`renderToStaticMarkup`). Renders visually distinct sections: plan,
+ * credits (monetary balance), usage limits (rate quotas), spend by action, and
+ * usage history. There is no purchase affordance: nothing is sold yet.
  */
 export function UsageBillingView({
   summary,
@@ -90,7 +65,7 @@ export function UsageBillingView({
   requesting?: boolean;
   now?: number;
 }) {
-  const { credits, limits, plan } = summary;
+  const { credits, limits, breakdown, plan } = summary;
   const transactions = credits.recentTransactions ?? [];
 
   return (
@@ -127,14 +102,20 @@ export function UsageBillingView({
           onRequestCredits={onRequestCredits}
           requesting={requesting}
         />
-        <div className="usage-autoreload" aria-disabled="true">
-          <div>
-            <strong>Auto-reload</strong>
-            <small>Automatically top up when your balance runs low.</small>
-          </div>
-          <button type="button" className="ui-btn ui-btn-ghost" disabled>
-            Coming soon
-          </button>
+        <div className="usage-grant-info">
+          <strong>How credits are granted today</strong>
+          <ul>
+            <li>
+              New accounts can start with a one-time free allowance, when the operator has turned
+              it on.
+            </li>
+            <li>
+              An operator can grant more. Use <em>Request credits</em> when you run low and
+              you&rsquo;ll be notified once they&rsquo;re added.
+            </li>
+            <li>A generation that fails is refunded automatically.</li>
+            <li>Buying credits and automatic top-ups are not available yet.</li>
+          </ul>
         </div>
       </section>
 
@@ -151,40 +132,75 @@ export function UsageBillingView({
         </div>
         {limits.length ? (
           <ul className="usage-limit-list">
-            {limits.map((limit) => {
-              const pct =
-                limit.limit > 0
-                  ? Math.max(0, Math.min(100, (limit.remaining / limit.limit) * 100))
-                  : 0;
-              const depleted = limit.remaining <= 0;
-              return (
-                <li key={limit.kind} className="usage-limit-row">
-                  <div className="usage-limit-head">
-                    <span className="usage-limit-label">{limit.label}</span>
-                    <span
-                      className="usage-limit-count"
-                      data-depleted={depleted ? "true" : undefined}
-                    >
-                      {limit.remaining} / {limit.limit}
-                    </span>
-                  </div>
-                  <div
-                    className="usage-limit-bar"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={limit.limit}
-                    aria-valuenow={limit.remaining}
-                    aria-label={`${limit.label} remaining`}
-                  >
-                    <div className="usage-limit-bar-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="usage-limit-reset">{formatResetIn(limit.resetsAt, now)}</span>
-                </li>
-              );
-            })}
+            {limits.map((limit) => (
+              <li key={limit.kind}>
+                <UsageLimitMeter limit={limit} now={now} />
+              </li>
+            ))}
           </ul>
         ) : (
           <div className="usage-empty">No usage limits apply to your account.</div>
+        )}
+      </section>
+
+      {/* Spend by action (credits, per metered kind) ----------------------- */}
+      <section className="usage-billing-block" aria-labelledby="usage-breakdown-heading">
+        <div className="usage-billing-block-head">
+          <h3 id="usage-breakdown-heading" className="settings-section-title">
+            Spend by action
+          </h3>
+          <p className="settings-copy">
+            What each kind of AI action cost you in credits over the last {breakdown.periodDays}{" "}
+            days, net of refunds for failed runs. Prices are per 30 seconds of audio.
+          </p>
+        </div>
+        {breakdown.items.some((item) => item.charges > 0) ? (
+          <div className="usage-history-scroll">
+            <table className="usage-history-table">
+              <thead>
+                <tr>
+                  <th scope="col">Action</th>
+                  <th scope="col" className="usage-num">
+                    Price
+                  </th>
+                  <th scope="col" className="usage-num">
+                    Runs
+                  </th>
+                  <th scope="col" className="usage-num">
+                    Spent
+                  </th>
+                  <th scope="col" className="usage-num">
+                    Refunded
+                  </th>
+                  <th scope="col" className="usage-num">
+                    Net
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {breakdown.items.map((item) => (
+                  <tr key={item.kind}>
+                    <td>{item.label}</td>
+                    <td className="usage-num">
+                      {formatCents(item.unitCostCents)} / {item.unitSeconds}s
+                    </td>
+                    <td className="usage-num">{item.charges}</td>
+                    <td className="usage-num">{formatCents(item.spentCents)}</td>
+                    <td className="usage-num">{formatCents(item.refundedCents)}</td>
+                    <td className="usage-num">{formatCents(item.netCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="usage-empty">
+            No credits spent in the last {breakdown.periodDays} days.{" "}
+            {breakdown.items
+              .map((item) => `${item.label}: ${formatCents(item.unitCostCents)} per ${item.unitSeconds}s`)
+              .join(" · ")}
+            .
+          </div>
         )}
       </section>
 
@@ -234,9 +250,63 @@ export function UsageBillingView({
 }
 
 /**
+ * The Usage & Billing panel body for each fetch state (#1422): loading, error
+ * (with a Retry action), and the loaded view. Pure, so the states are testable
+ * with `renderToStaticMarkup`; the container owns the fetching.
+ */
+export function UsageBillingBody({
+  summary,
+  loading,
+  error,
+  onRetry,
+  retryDisabled = false,
+  onRequestCredits,
+  requesting = false,
+  now,
+}: {
+  summary: UsageSummary | null;
+  loading: boolean;
+  error: boolean;
+  onRetry?: () => void;
+  retryDisabled?: boolean;
+  onRequestCredits?: () => void;
+  requesting?: boolean;
+  now?: number;
+}) {
+  if (summary) {
+    return (
+      <UsageBillingView
+        summary={summary}
+        onRequestCredits={onRequestCredits}
+        requesting={requesting}
+        now={now}
+      />
+    );
+  }
+  if (loading) {
+    return (
+      <div className="usage-empty" role="status">
+        Loading usage &amp; billing…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="usage-error" role="alert">
+        <p>Could not load your usage &amp; billing summary.</p>
+        <Button variant="ghost" onClick={onRetry} disabled={retryDisabled}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+  return null;
+}
+
+/**
  * Settings → Usage & Billing panel (#1422). Read-only: reads the unified
  * `GET /usage/summary` snapshot and renders plan tier, credit balance, per-kind
- * usage limits, and a usage-history table. The only write is the operator
+ * usage limits, spend by action, and a usage-history table. The only write is the operator
  * credit-request affordance (reused from #1418).
  */
 export default function UsageBillingPanel({ token, addToast }: Props) {
@@ -290,7 +360,7 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
         <div>
           <h3 className="settings-section-title">Usage &amp; Billing</h3>
           <p className="home-subtitle">
-            Your plan, generation credits, usage limits, and recent activity.
+            Your plan, generation credits, usage limits, spend by action, and recent activity.
           </p>
         </div>
         <Button variant="ghost" onClick={load} disabled={loading || !token}>
@@ -298,24 +368,15 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
         </Button>
       </div>
 
-      {loading && !summary ? (
-        <div className="usage-empty" role="status">
-          Loading usage &amp; billing…
-        </div>
-      ) : error && !summary ? (
-        <div className="usage-error" role="alert">
-          <p>Could not load your usage &amp; billing summary.</p>
-          <Button variant="ghost" onClick={load} disabled={!token}>
-            Retry
-          </Button>
-        </div>
-      ) : summary ? (
-        <UsageBillingView
-          summary={summary}
-          onRequestCredits={handleRequestCredits}
-          requesting={creditRequestState === "sending"}
-        />
-      ) : null}
+      <UsageBillingBody
+        summary={summary}
+        loading={loading}
+        error={error}
+        onRetry={load}
+        retryDisabled={!token}
+        onRequestCredits={handleRequestCredits}
+        requesting={creditRequestState === "sending"}
+      />
     </div>
   );
 }

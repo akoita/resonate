@@ -88,7 +88,7 @@ const SETTINGS_SECTIONS: Array<{
         id: "usage",
         label: "Usage & Billing",
         eyebrow: "Credits & limits",
-        description: "Plan, generation credits, usage limits, and history.",
+        description: "Plan, generation credits, usage limits, spend by action, and history.",
     },
     {
         id: "notifications",
