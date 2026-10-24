@@ -32,6 +32,13 @@ import {
   genreFamilyNamed,
   genreMatchesRequest,
 } from "./genre_families";
+import { discoveryArtistKey } from "./discovery-policy";
+import {
+  SessionSteering,
+  steeringArtistKey,
+  steeringFamilyIds,
+  steeringPointsFor,
+} from "./session_steering";
 
 /**
  * The unified discovery scoring core (#1448 WS-1, RFC
@@ -164,6 +171,13 @@ export interface DiscoveryRankingContext {
   sessionRequest?: { genres: string[]; moods: string[] };
   tastePolicy?: TasteMemoryPolicy;
   /**
+   * In-session steering (#2247): what the listener skipped, saved or finished in
+   * THIS AI DJ session, read from the session's own AgentSignal rows. A bounded
+   * (+-15) ranking term that works inside a request tier. Only the AI DJ
+   * selector sets it; Home and the plain DJ never do, so their scores are unchanged.
+   */
+  sessionSteering?: SessionSteering;
+  /**
    * Caller-prefetched audio features per track id (the DJ provides these;
    * the Home feed omits them). Kept as data, not a service dependency, so the
    * core stays pure and shareable across modules without DI coupling.
@@ -181,6 +195,8 @@ export interface RankedDiscoveryCandidate extends DiscoveryCandidate {
   audioFeatures?: AgentAudioFeatures;
   trace?: Record<string, unknown>;
   recentlyPlayed: boolean;
+  /** In-session steering points this score includes (#2247); absent when none applied. */
+  steeringPoints?: number;
 }
 
 /** Weight of a declared "more of this" signal: above the learned-preference cap of 18. */
@@ -438,6 +454,28 @@ export class DiscoveryRankingService {
       }
     }
 
+    // In-session steering (#2247): bounded, session-scoped, never an explanation
+    // here (the selector words it only on a pick the signal changed).
+    const steeringPoints = context.sessionSteering
+      ? steeringPointsFor(
+          {
+            families: steeringFamilyIds(candidate.release?.genre, candidate.descriptorFamilies),
+            artistKey: steeringArtistKey(discoveryArtistKey(candidate)),
+          },
+          context.sessionSteering,
+        )
+      : 0;
+    if (steeringPoints !== 0) {
+      signals.push({
+        label: "session_steering",
+        weight: steeringPoints,
+        reason:
+          steeringPoints > 0
+            ? "close to what you saved or finished in this session"
+            : "close to what you skipped in this session",
+      });
+    }
+
     if (recentlyPlayed) {
       signals.push({
         label: "recently_played",
@@ -468,6 +506,7 @@ export class DiscoveryRankingService {
       reasonCode: primaryReasonFor(signals),
       // A played track is not "new" for the exploration slots either.
       recentlyPlayed: recentlyPlayed || playedRecently,
+      ...(steeringPoints !== 0 ? { steeringPoints } : {}),
       ...(audioFeatures ? { audioFeatures } : {}),
       ...(tasteScore ? { trace: { bigQueryTasteScore: tasteScore } } : {}),
     };

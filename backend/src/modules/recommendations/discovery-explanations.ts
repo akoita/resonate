@@ -58,6 +58,13 @@ export const DISCOVERY_EXPLANATION_VARIANTS = {
   learned_taste_light: "Lightly boosted by learned taste",
   /** A genre or mood the listener asked for more of in a confirmed taste edit. */
   declared_taste: "You asked for more of this",
+  /**
+   * In-session steering (#2247): shown only on a pick that the session's own
+   * skips ("Not this" included) or saves and finishes changed. Not a reason
+   * code: the primary reason of the pick is unchanged.
+   */
+  steered_away: "Less like the tracks you skipped",
+  steered_toward: "More like what you saved",
 } as const;
 
 /** Energy match is templated by the requested band; stays categorical. */
@@ -201,7 +208,8 @@ function codeForSignal(signal: ReasonSignal): DiscoveryReasonCode | null {
       return reasonCodeForAnalyticsType(primary ?? "taste_fit");
     }
     // `audio_features` (no sentence), `recently_played` and
-    // `negative_preference` (penalties) never explain a recommendation.
+    // `negative_preference` (penalties) never explain a recommendation;
+    // `session_steering` (#2247) is worded by the selector, only on a pick it changed.
     default:
       return null;
   }

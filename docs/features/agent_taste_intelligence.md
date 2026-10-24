@@ -2956,3 +2956,75 @@ data the DJ already produces.
   survives a server restart and a poll on another instance, and it stays after
   the listener plays the pick (the recorded signal has no flag, so the note's
   survives). Only a pick recorded before #2299 shows no mark.
+
+## In-session steering (#2247)
+
+Vision-neutral quality (ADR-BM-6): no fee, split, price or payout is read or
+changed, popularity stays out of payouts (ADR-BM-4), and nothing new is stored.
+Phase 2 of `docs/roadmap/2026-10-ai-dj-quality-and-experience.md`. What the
+listener does during a live AI DJ session now nudges that session's next picks.
+
+- **Signal.** A session-scoped ranking term (`session_steering`,
+  `recommendations/session_steering.ts`, pure) of at most **+-15 points**.
+  Completes and saves count +; skips count -. "Not this" writes the existing
+  `skip` signal (#2243), so it and the player's own skip are the same input.
+  `accept`, `replay`, `loop`, `unsave`, `add_to_playlist` and `purchase` do not
+  steer. A track counts once per direction (finished and saved is one +).
+- **Matching.** An event matches a candidate by **genre family** (5 points,
+  from the release genre and the stored descriptor; narrow families win over
+  broad ones such as World, so one Afrobeats skip does not lean on all of World;
+  a genre no family knows is matched on its own label) and by **credited
+  artist** (5 points, the same key as the per-artist cap, so a track with no
+  credit matches nobody). One fresh event contributes up to 10 points; the sum
+  over events is bounded to +-15 and rounded away from zero.
+- **Decay.** Each event **halves after 4 further picks** (`0.5 ^ (picks / 4)`).
+  Picks are counted from the session's `AgentPickNote` rows (one per pick,
+  `createdAt`) made after the event. A refill that picked 12 tracks therefore
+  leaves earlier events at an eighth; a session whose picks carry no note (before
+  #2299) does not decay.
+- **Nothing is persisted.** The events are read from this session's existing
+  `AgentSignal` rows by `DiscoveryPolicyContextService.sessionSteering`: rows
+  with the session id (the explicit "Not this" skip) or `metadata.agentSessionId`
+  equal to it (playback signals mirrored by analytics never fill the column), at
+  most 120 rows and 40 events, listener-scoped. A listener who switched off
+  playback learning has no such rows, so the session is not steered (the web
+  still removes a rejected track and never re-offers it). A read failure is
+  logged as a degraded fallback (`session_steering`) and the pick is ranked as
+  before.
+- **Inside a tier, never across one.** The term is part of the score, and
+  request-first selection (#2316) chooses tier first and score second, so it
+  reorders tracks of one tier (A, B or C) and cannot lift a tier C track over a
+  tier A track, or sink a tier A one under C, at the full bound. Exploration,
+  the per-artist cap and My Mix lane quotas are unchanged. A session with no
+  request orders by the same score, so there the term reorders the whole pool.
+- **Explanation, only when it changes a pick.** After the policy step the selector
+  runs the same pipeline once without the term (only when some candidate was
+  steered) and compares batches. A pick that is in the batch only because of the
+  term gets "Less like the tracks you skipped" (it took the place of a demoted
+  track) or "More like what you saved" (its own points are positive); a pick the
+  term lifted to an earlier place with positive points also gets "More like what
+  you saved". A demoted pick, or one that only shifted a place, gets no sentence.
+  The sentence is first in the pick's explanation, so the Now & Up next card,
+  the player mark and Session History show it, and it is in the shared
+  vocabulary (`DISCOVERY_EXPLANATION_VARIANTS.steered_away` and `steered_toward`),
+  so the persisted pick note keeps it (`agent_pick_notes.ts` takes every variant).
+  The primary `reasonCode` is unchanged and the sentence names no track.
+- **Wiring.** `sessionId` on `AgentSelectorInput`, set from the orchestrator's
+  session by `deterministicSelectorInput` (the rule-based path) and by the LLM
+  runtime's top-up and discovery swap. Home, the plain DJ, offline evaluation and
+  the golden set pass no session, so their scores are unchanged (a test pins that
+  the session link of a signal changes nothing on Home).
+- **Limits.** The LLM curator keeps the model's own order for its picks (only the
+  rule-based fill-ins are steered, and the model sees the session's recent tracks
+  as before); a track both skipped and saved in one session nets out. Nothing is
+  tuned against production traffic: the 5-point steps, the +-15 bound and the
+  4-pick half-life are the Sprint 39 decision on #2247.
+- **Tests.** `session_steering.spec.ts` (bound, decay, family and artist matching,
+  de-duplication, Home unchanged, never crosses tiers, sentences in the pick
+  note), `agent_session_steering.integration.spec.ts` (real `AgentSignal` rows:
+  three skips of a genre shift the next picks away in the same session, saves lift,
+  a mirrored playback signal counts, another session or listener does not, decay
+  from pick notes, a tier is never crossed, a read failure keeps the pick, Home
+  ranks the same). The golden set (`agent_golden_eval.spec.ts`,
+  `agent_dj_retrieval_golden.integration.spec.ts`) passes no session and is
+  unchanged.

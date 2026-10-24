@@ -4,6 +4,13 @@ import { resolveCreditedArtistName, resolveCreditedArtistNames } from "../shared
 import { deriveCreatorVerificationStates } from "../trust/verification-semantics";
 import { discoveryArtistKey } from "./discovery-policy";
 import type { DiscoveryCandidate } from "./discovery-ranking.service";
+import {
+  buildSteeringEvents,
+  SESSION_STEERING_ACTIONS,
+  SessionSteering,
+  steeringArtistKey,
+  steeringFamilyIds,
+} from "./session_steering";
 
 const DISCOVERY_PICK_REASON = "discovery_pick";
 
@@ -18,6 +25,8 @@ export const RECENT_PLAY_WINDOW_DAYS = 14;
 /** At most this many distinct recently played tracks are read. */
 export const RECENT_PLAY_LIMIT = 50;
 const RECENT_PLAY_READ_CAP = 300;
+/** In-session steering (#2247) reads at most this many of the session's latest signal rows. */
+const SESSION_STEERING_READ_CAP = 120;
 
 function reasonCodeOf(metadata: unknown): unknown {
   if (!metadata || typeof metadata !== "object") return undefined;
@@ -125,6 +134,60 @@ export class DiscoveryPolicyContextService {
       select: { trackId: true },
     });
     return [...new Set(rows.map((row) => row.trackId))].slice(0, RECENT_PLAY_LIMIT);
+  }
+
+  /**
+   * In-session steering (#2247): the steering events of ONE AI DJ session, read
+   * from its existing AgentSignal rows (nothing new is stored). A row belongs to
+   * the session when it carries the session id (the explicit "Not this" skip) or
+   * the DJ session id in its metadata (playback signals mirrored by analytics,
+   * which never fill the column). A listener who switched off playback learning
+   * has no rows, so the session is not steered. An event's age is how many of the
+   * session's picks (their pick notes) were made after it. One signals query, one
+   * pick-note query and one batched track read; errors propagate and the caller
+   * treats a failure as "no steering".
+   * `performerCap` keys artists on the credited performer alone (request-first, #2316).
+   */
+  async sessionSteering(
+    userId: string | undefined,
+    sessionId: string | undefined,
+    options: { performerCap?: boolean } = {},
+  ): Promise<SessionSteering> {
+    if (!userId || !sessionId) return { events: [] };
+    const rows = await prisma.agentSignal.findMany({
+      where: {
+        userId,
+        action: { in: [...SESSION_STEERING_ACTIONS] },
+        OR: [{ sessionId }, { metadata: { path: ["agentSessionId"], equals: sessionId } }],
+      },
+      orderBy: { createdAt: "desc" },
+      take: SESSION_STEERING_READ_CAP,
+      select: { trackId: true, action: true, createdAt: true },
+    });
+    if (rows.length === 0) return { events: [] };
+    const [candidates, notes] = await Promise.all([
+      this.loadTrackCandidates(rows.map((row) => row.trackId), { performerCap: options.performerCap }),
+      prisma.agentPickNote.findMany({
+        where: { userId, license: { sessionId } },
+        select: { createdAt: true },
+      }),
+    ]);
+    const facts = new Map(
+      [...candidates].map(([id, candidate]) => [
+        id,
+        {
+          families: steeringFamilyIds(candidate.release?.genre, candidate.descriptorFamilies),
+          artistKey: steeringArtistKey(discoveryArtistKey(candidate)),
+        },
+      ]),
+    );
+    return {
+      events: buildSteeringEvents({
+        signals: rows,
+        pickTimes: notes.map((note) => note.createdAt),
+        facts,
+      }),
+    };
   }
 
   /**
