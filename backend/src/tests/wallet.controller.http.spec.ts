@@ -117,6 +117,40 @@ describe('WalletController (e2e)', () => {
       .expect(201);
   });
 
+  it('records an admin changing another user\'s wallet, not their own or the owner\'s (#2380)', async () => {
+    await request(app.getHttpServer())
+      .post('/wallet/fund')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: 'u1', amountUsd: 10 })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/wallet/budget')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: 'u1', monthlyCapUsd: 10 })
+      .expect(201);
+    expect(mockAudit).toHaveBeenCalledTimes(2);
+    expect(mockAudit).toHaveBeenCalledWith({ actorUserId: 'admin-1', action: 'wallet.support_changed', targetUserId: 'u1', detail: { change: 'fund' } });
+    expect(mockAudit).toHaveBeenCalledWith({ actorUserId: 'admin-1', action: 'wallet.support_changed', targetUserId: 'u1', detail: { change: 'budget' } });
+
+    mockAudit.mockClear();
+    await request(app.getHttpServer())
+      .post('/wallet/fund')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: 'admin-1', amountUsd: 10 })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/wallet/fund')
+      .set('Authorization', `Bearer ${listenerToken}`)
+      .send({ userId: 'user-1', amountUsd: 10 })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/wallet/fund')
+      .set('Authorization', `Bearer ${listenerToken}`)
+      .send({ userId: 'u1', amountUsd: 10 })
+      .expect(403);
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
   it('POST /wallet/budget → 403 when naming another user, 201 for own wallet', async () => {
     await request(app.getHttpServer())
       .post('/wallet/budget')

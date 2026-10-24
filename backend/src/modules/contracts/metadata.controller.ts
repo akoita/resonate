@@ -54,6 +54,7 @@ import {
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { AdminAudit, auditBody, auditBoolean, auditCode, auditNumber, auditRef } from "../admin_audit/admin_audit.interceptor";
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
+import { auditAdminBranch, isAdminOrOperatorRole } from "../admin_audit/admin_branch_audit";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -539,7 +540,11 @@ export class MetadataController {
     @Request() req: any,
     @Param("walletAddress") walletAddress: string,
   ) {
-    await this.assertCanAccessCollection(req?.user, walletAddress);
+    const access = await this.assertCanAccessCollection(req?.user, walletAddress);
+    // #2380: a support read of someone else's collection is recorded; the owner's own read is not.
+    if (access === "support") {
+      await auditAdminBranch(req.user, "collection.support_viewed", { detail: { address: auditRef(walletAddress.toLowerCase()) } });
+    }
     // #1776: delivery state is the holder's own; a support read of another wallet carries none.
     const callerId = typeof req?.user?.userId === "string" ? req.user.userId : "";
     const isSupportRead = req?.user?.role === "admin" || req?.user?.role === "operator";
@@ -600,7 +605,7 @@ export class MetadataController {
 
   private async assertCanAccessCollection(user: any, walletAddress: string) {
     // Generic denial on purpose: never reveal whether the wallet holds anything.
-    await this.assertCallerOwnsAddress(user, walletAddress, {
+    return this.assertCallerOwnsAddress(user, walletAddress, {
       paramName: "walletAddress",
       allowSupportAccess: true,
       deniedMessage: "Cannot access another account's collection",
@@ -611,13 +616,14 @@ export class MetadataController {
    * Require `address` to be a well-formed address (else 400) that belongs to
    * the caller: the wallet-auth userId, Wallet.address or Wallet.ownerAddress
    * (else 403 with `deniedMessage`). With `allowSupportAccess`, admin/operator
-   * pass without owning the address.
+   * pass without owning the address. Returns `"support"` when that branch let the
+   * caller in (the caller then records it, #2380) and `"owner"` otherwise.
    */
   private async assertCallerOwnsAddress(
     user: any,
     address: string,
     options: { paramName: string; allowSupportAccess: boolean; deniedMessage: string },
-  ) {
+  ): Promise<"owner" | "support"> {
     if (!/^0x[0-9a-fA-F]{40}$/.test(address ?? "")) {
       throw new BadRequestException(`${options.paramName} must be a 0x-prefixed 20-byte hex address`);
     }
@@ -625,12 +631,18 @@ export class MetadataController {
     if (!userId) {
       throw new ForbiddenException("Authentication required");
     }
-    if (options.allowSupportAccess && (user.role === "admin" || user.role === "operator")) {
-      return;
-    }
+    const support = options.allowSupportAccess && isAdminOrOperatorRole(user.role);
     const ownAddresses = await this.contractsService.getCallerWalletAddresses(userId);
-    if (!ownAddresses.has(address.toLowerCase())) {
-      throw new ForbiddenException(options.deniedMessage);
+    if (ownAddresses.has(address.toLowerCase())) return "owner";
+    if (support) return "support";
+    throw new ForbiddenException(options.deniedMessage);
+  }
+
+  /** A notification read: own addresses, or a support read that is recorded (#2380). */
+  private async readNotificationsAccess(req: any, address: string) {
+    const access = await this.assertCanAccessNotifications(req?.user, address, "read");
+    if (access === "support") {
+      await auditAdminBranch(req.user, "notifications.support_viewed", { detail: { address: auditRef(address.toLowerCase()) } });
     }
   }
 
@@ -799,7 +811,11 @@ export class MetadataController {
     @Query("limit") limitStr?: string,
     @Query("offset") offsetStr?: string,
   ) {
-    await this.assertCanAccessOwnerListings(req.user, seller);
+    const listingsAccess = await this.assertCanAccessOwnerListings(req.user, seller);
+    // #2380: an admin reading another seller's inventory is recorded; a seller's own read is not.
+    if (listingsAccess === "support") {
+      await auditAdminBranch(req.user, "seller_listings.support_viewed", { detail: { seller: auditRef(seller.toLowerCase()) } });
+    }
     const chainId = chainIdStr ? parseInt(chainIdStr) : undefined;
     const limit = Math.min(parseInt(limitStr || "50"), 100);
     const offset = parseInt(offsetStr || "0");
@@ -822,14 +838,14 @@ export class MetadataController {
     };
   }
 
-  private async assertCanAccessOwnerListings(user: any, seller: string) {
+  private async assertCanAccessOwnerListings(user: any, seller: string): Promise<"owner" | "support"> {
     const requestedSeller = seller.toLowerCase();
     const userId = user?.userId?.toLowerCase();
     if (!userId) {
       throw new ForbiddenException("Authentication required");
     }
-    if (user.role === "admin" || userId === requestedSeller) {
-      return;
+    if (userId === requestedSeller) {
+      return "owner";
     }
 
     const linkedWallet = await prisma.wallet.findFirst({
@@ -847,9 +863,9 @@ export class MetadataController {
       },
       select: { id: true },
     });
-    if (!linkedWallet) {
-      throw new ForbiddenException("Cannot access another seller's listing inventory");
-    }
+    if (linkedWallet) return "owner";
+    if (user.role === "admin") return "support";
+    throw new ForbiddenException("Cannot access another seller's listing inventory");
   }
 
   /**
@@ -1250,6 +1266,17 @@ export class MetadataController {
       submittedByAddress,
     });
     await this.rightsRouteReassessmentService.createReassessmentFromEvidenceBundle(bundle);
+    // #2380: only an admin can get here with a privileged evidence role (ops, system,
+    // trusted source); that is an admin action taken inside a user-facing route.
+    if (privilegedRoles.has(requestedRole)) {
+      await auditAdminBranch(req.user, "rights_evidence.privileged_submitted", {
+        detail: {
+          evidenceRole: auditCode(requestedRole, ["ops", "system", "trusted_source"] as const),
+          subjectType: auditRef(body.subjectType),
+          subjectId: auditRef(body.subjectId),
+        },
+      });
+    }
     return bundle;
   }
 
@@ -1326,6 +1353,7 @@ export class MetadataController {
       releaseId,
       String(req?.user?.userId || "").toLowerCase(),
       String(req?.user?.role || "listener").toLowerCase(),
+      req?.user,
     );
   }
 
@@ -1488,6 +1516,7 @@ export class MetadataController {
       releaseId,
       String(req?.user?.userId || "").toLowerCase(),
       String(req?.user?.role || "listener").toLowerCase(),
+      req?.user,
     );
   }
 
@@ -1708,7 +1737,7 @@ export class MetadataController {
     @Query("limit") limitStr?: string,
     @Query("offset") offsetStr?: string,
   ) {
-    await this.assertCanAccessNotifications(req?.user, address, "read");
+    await this.readNotificationsAccess(req, address);
     const limit = Math.min(parseInt(limitStr || "20"), 100);
     const offset = parseInt(offsetStr || "0");
     const [notifications, unreadCount] = await Promise.all([
@@ -1760,7 +1789,7 @@ export class MetadataController {
   @UseGuards(AuthGuard("jwt"))
   @Get("notifications/:address/preferences")
   async getNotificationPreferences(@Request() req: any, @Param("address") address: string) {
-    await this.assertCanAccessNotifications(req?.user, address, "read");
+    await this.readNotificationsAccess(req, address);
     return this.notificationService.getPreferences(address.toLowerCase());
   }
 
@@ -2229,9 +2258,13 @@ export class MetadataController {
    * notify-listing writes listing intents for `sellerAddress`; only that
    * seller (one of the caller's own addresses) or admin/operator may do so.
    */
-  /** True when the caller is admin/operator or owns or manages the stem's release artist. */
-  private async callerMayLinkStem(user: any, stemId: string): Promise<boolean> {
-    if (user?.role === "admin" || user?.role === "operator") return true;
+  /**
+   * `"owner"` when the caller owns or manages the stem's release artist,
+   * `"support"` when only their admin/operator role lets them link it (the
+   * caller records that, #2380), `false` otherwise.
+   */
+  private async callerMayLinkStem(user: any, stemId: string): Promise<false | "owner" | "support"> {
+    const support = isAdminOrOperatorRole(user?.role);
     const userId = typeof user?.userId === "string" ? user.userId : "";
     if (!userId) return false;
     const stem = await prisma.stem.findUnique({
@@ -2250,27 +2283,26 @@ export class MetadataController {
       },
     });
     const release = stem?.track?.release;
-    if (!release) return false;
+    if (!release) return support ? "support" : false;
     const owners = [release.managementOwnerUserId, release.artist?.userId, release.artist?.managementOwnerUserId]
       .filter((value): value is string => Boolean(value))
       .map((value) => value.toLowerCase());
-    if (owners.includes(userId.toLowerCase())) return true;
+    if (owners.includes(userId.toLowerCase())) return "owner";
     const ownAddresses = await this.contractsService.getCallerWalletAddresses(userId);
-    return owners.some((owner) => ownAddresses.has(owner));
+    if (owners.some((owner) => ownAddresses.has(owner))) return "owner";
+    return support ? "support" : false;
   }
 
-  private async assertCallerOwnsSellerAddress(user: any, sellerAddress: string) {
+  /** `"support"` when only the admin/operator role let the caller name this seller (recorded by the caller, #2380). */
+  private async assertCallerOwnsSellerAddress(user: any, sellerAddress: string): Promise<"owner" | "support"> {
     const userId = typeof user?.userId === "string" ? user.userId : "";
     if (!userId) {
       throw new ForbiddenException("Authentication required");
     }
-    if (user.role === "admin" || user.role === "operator") {
-      return;
-    }
     const ownAddresses = await this.contractsService.getCallerWalletAddresses(userId);
-    if (!ownAddresses.has(sellerAddress)) {
-      throw new ForbiddenException("sellerAddress is not one of your addresses");
-    }
+    if (ownAddresses.has(sellerAddress)) return "owner";
+    if (isAdminOrOperatorRole(user.role)) return "support";
+    throw new ForbiddenException("sellerAddress is not one of your addresses");
   }
 
   /**
@@ -2309,7 +2341,18 @@ export class MetadataController {
     }
     const seller = body.sellerAddress.toLowerCase();
     const tiers = parseNotifyListingTiers(body.tiers);
-    await this.assertCallerOwnsSellerAddress(req?.user, seller);
+    const sellerAccess = await this.assertCallerOwnsSellerAddress(req?.user, seller);
+    // #2380: an admin/operator recording a listing intent for someone else's address (or
+    // linking someone else's stem) is recorded once; an owner's own call is not.
+    let supportRecorded = false;
+    const recordSupport = async (stemId?: string) => {
+      if (supportRecorded) return;
+      supportRecorded = true;
+      await auditAdminBranch(req.user, "listing_intent.support_recorded", {
+        detail: { sellerAddress: auditRef(seller), stemId: auditRef(stemId) },
+      });
+    };
+    if (sellerAccess === "support") await recordSupport(typeof body.stemId === "string" ? body.stemId : undefined);
 
     try {
       // Listing rows MUST be stamped with the same chainId the polling
@@ -2337,7 +2380,9 @@ export class MetadataController {
       // Only the stem's own artist (owner or manager) or an operator may link
       // it; a foreign caller is skipped, not refused, so its listing intents
       // still record (#2041).
-      if (body.stemId && body.tokenId && await this.callerMayLinkStem(req?.user, body.stemId)) {
+      const stemAccess = body.stemId && body.tokenId ? await this.callerMayLinkStem(req?.user, body.stemId) : false;
+      if (stemAccess === "support") await recordSupport(body.stemId);
+      if (body.stemId && body.tokenId && stemAccess) {
         await prisma.stem.update({
           where: { id: body.stemId },
           data: { ipnftId: body.tokenId },

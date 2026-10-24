@@ -23,6 +23,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import { CommunityRoomsService } from "../community/community_rooms.service";
 import { ShowRefundReminderService } from "./show-refund-reminder.service";
 import { ShowsService } from "./shows.service";
+import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import {
   getShowsVisualMaxBytes,
@@ -443,6 +444,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/confirm-booking")
+  @RequireStepUp()
   @AdminAudit("show_campaign.booking_confirmed", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   confirmBooking(
     @Param("id") id: string,
@@ -455,6 +457,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Post("campaigns/:id/confirm-fulfillment")
+  @RequireStepUp()
   @AdminAudit("show_campaign.fulfillment_confirmed", (c) => ({ detail: { campaignId: auditRef(c.params.id) } }))
   confirmFulfillment(
     @Param("id") id: string,
@@ -480,6 +483,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin", "operator")
   @Patch("campaigns/:id/dispute/:disputeId/resolve")
+  @RequireStepUp()
   @AdminAudit("show_dispute.resolved", (c) => ({
     detail: {
       campaignId: auditRef(c.params.id),

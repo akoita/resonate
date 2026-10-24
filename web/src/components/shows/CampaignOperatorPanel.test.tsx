@@ -11,6 +11,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
 vi.mock("../auth/AuthProvider", () => ({ useAuth: () => auth.current }));
+vi.mock("../ui/Toast", () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 // #1390: the contract-address map is built from env at module-eval time, so the
 // escrow address for chain 84532 must be set before contracts_abi is imported.

@@ -2,7 +2,8 @@
 
 Status: `in-progress` — tracked in
 [#2173](https://github.com/akoita/resonate/issues/2173) (Sprint 41) and
-[#2362](https://github.com/akoita/resonate/issues/2362) (Sprint 42). Step-up and
+[#2362](https://github.com/akoita/resonate/issues/2362) (Sprint 42) and
+[#2380](https://github.com/akoita/resonate/issues/2380) (Sprint 43). Step-up and
 audit now cover every admin and operator route; what is deliberately left is
 under "Not covered".
 
@@ -112,9 +113,48 @@ and retries once. The proof is remembered in memory per session for the window, 
 the prompt appears once per window. A dismissed prompt is a quiet "nothing changed".
 Wired into `AccountRestrictionControls` (suspend, close), the notices page
 (broadcast), the Credit Requests page (grant), the management recovery page
-(approve and reject) and the community moderation page (resolve). The other gated
-routes have no screen yet; they are reached with the API. `/help` article
+(approve and reject), the community moderation page (resolve) and, since #2380,
+the Shows operator panel (`CampaignOperatorPanel`: confirm booking, confirm
+fulfilment, resolve dispute; the Shows client throws `ApiRequestError` so a
+`403 step_up_*` is recognised). A dismissed passkey prompt shows an info toast
+("Nothing changed") and sends nothing. `POST /admin/x402-refunds/:id/mark-refunded`
+has no screen yet; it is reached with the API and needs the `X-Admin-Step-Up`
+header (see the x402 refund runbook). The other gated routes have no screen yet
+either. `/help` article
 `admin-users` covers it, and the credit and recovery articles mention it.
+
+## Admin branches inside user-facing routes (#2380)
+
+Some routes people use for their own data let an admin or operator in through a
+role check. When that branch is taken for someone else's data, one
+`AdminAuditEvent` is written by `auditAdminBranch` (`admin_branch_audit.ts`):
+ids, codes and counts only, the data's owner as `targetUserId`. The owner's own
+access, an admin acting on their own data, a refused caller and a call with no
+audit actor write nothing (the helper also skips a target equal to the actor). Like
+every non-`required` write, a failed audit write is logged and does not block the
+read. None of these is step-up gated: they are reads, or narrow support writes.
+
+| Branch | Audit action | Detail |
+| --- | --- | --- |
+| `GET /wallet/:id` (admin reads any wallet) | `wallet.support_viewed` | target = wallet owner |
+| `POST /wallet/fund`, `/budget` (admin names another user; recorded after success) | `wallet.support_changed` | `change` |
+| `GET /metadata/collection/:address` (admin/operator support read) | `collection.support_viewed` | `address` |
+| `GET /metadata/notifications/:address`, `/preferences` (support read; writes stay owner-only) | `notifications.support_viewed` | `address` |
+| `GET /metadata/listings/owner/:seller` (admin) | `seller_listings.support_viewed` | `seller` |
+| `POST /metadata/notify-listing` (admin/operator names another seller or links another's stem) | `listing_intent.support_recorded` | `sellerAddress`, `stemId` |
+| `POST /metadata/evidence/bundles` with a privileged evidence role (admin only) | `rights_evidence.privileged_submitted` | `evidenceRole`, `subjectType`, `subjectId` |
+| `GET /metadata/release-rights/releases/:id` (admin, not the owner) | `release_rights_request.support_viewed` | `releaseId`, target = artist owner |
+| `GET /metadata/rights-reassessments/releases/:id` (admin, not the owner) | `rights_reassessment_history.support_viewed` | `releaseId`, target = artist owner |
+| `GET /analytics/artist/:id`, `/v1` (admin, not the owner) | `artist_analytics.support_viewed` | `artistId`, target = artist owner |
+| Shows campaign edit, visuals, request authority, activate, cancel by an operator who is not the artist | `show_campaign.operator_accessed` | `campaignId`, `via` (closed code) |
+| Shows pledge confirm and refund confirm by an operator for another person's pledge | `show_pledge.operator_acted` | `pledgeId`, `campaignId`, `via` |
+| Campaign update posted by an operator (community rooms) | `community_campaign_update.operator_posted` | `campaignId` |
+| Artist benefit rules listed or changed by an operator | `community_benefit_rule.operator_managed` | `artistId`, `via` |
+
+`admin_branch_audit_coverage.spec.ts` scans the backend for every comparison of a
+role with admin or operator, per file, and fails when a count changes without a
+decision (record it with `auditAdminBranch` and list the action, or list the
+reason). It also checks that every audit action has a web label.
 
 ## Optional `/admin` network restriction (mechanism only)
 
@@ -124,8 +164,8 @@ Documented, not adopted; adoption is a deployment task in `resonate-iac`.
 ## Admin routes (#2362)
 
 Step-up gates the destructive actions only (takedowns, credit grants, recovery,
-maintenance resets and reindexing, and the removals and bans of community
-moderation). Everything else is audited without a prompt. `Detail` is ids, codes
+maintenance resets and reindexing, the removals and bans of community
+moderation, and, since #2380, the four money-release operator actions. Everything else is audited without a prompt. `Detail` is ids, codes
 and counts, never free text.
 
 | Route | Audit action | Step-up |
@@ -153,8 +193,9 @@ and counts, never free text.
 | `POST /api/trust/:artistId/verify` | `trust.artist_verified` | no |
 | `PATCH /catalog/credits/:creditId/identity` | `catalog_credit.identity_reviewed` | no |
 | `GET /artists/claims/pending`; `PATCH /artists/claims/:claimId` | `artist_claims.viewed`; `artist_claim.reviewed` | no |
-| Shows operator actions (`authority` approve, reject, revoke, expire; `resync-chain`; `discover-onchain`; `confirm-booking`; `confirm-fulfillment`; `dispute`, `dispute/:id/resolve`; reconciliation acknowledge and remove) | `show_authority.*`, `show_campaign.*`, `show_dispute.*`, `show_reconciliation.*` | no |
-| `POST /admin/x402-refunds/:id/mark-refunded`; `GET /admin/x402-refunds` | `x402_refund.marked_refunded`; `x402_refunds.viewed` | no |
+| `POST /shows/campaigns/:id/confirm-booking`, `/confirm-fulfillment`; `PATCH /shows/campaigns/:id/dispute/:disputeId/resolve` | `show_campaign.booking_confirmed`, `show_campaign.fulfillment_confirmed`; `show_dispute.resolved` (`campaignId`, `disputeId`, `outcome`) | yes (#2380) |
+| Other Shows operator actions (`authority` approve, reject, revoke, expire; `resync-chain`; `discover-onchain`; `dispute`; reconciliation acknowledge and remove) | `show_authority.*`, `show_campaign.*`, `show_dispute.opened`, `show_reconciliation.*` | no |
+| `POST /admin/x402-refunds/:id/mark-refunded`; `GET /admin/x402-refunds` | `x402_refund.marked_refunded`; `x402_refunds.viewed` | yes (#2380); no |
 | Rights reassessments, trusted-source links, release rights requests (create, sample, review, revoke and their queues) | `rights_reassessment*`, `trusted_source_link*`, `release_rights_request*` | no |
 | `GET /curation/reports` | `curation.reports_viewed` | no |
 | `POST /agents/run`, `/orchestrate`, `/evaluate`, `/evaluate/golden`, `/runtime` | `agents.run_invoked`, `agents.orchestrated`, `agents.evaluated`, `agents.golden_eval_run`, `agents.runtime_run` | no |
@@ -172,18 +213,24 @@ and not gated.
   record is what is audited), aggregate status reads (pipeline health, backfill
   status, cohort quality, reconciliation mismatches, unclaimed refunds, paymaster
   status), session-key validation, and curator-role routes.
-- Admin and operator access on routes that are not admin-only (an admin reading
-  any wallet, support access to a release or dispute inside a shared route) is
-  not audited; each is a role branch inside a user-facing route and needs its own
-  decision.
+- Admin and operator branches inside user-facing routes are audited since #2380
+  (table above). Deliberately left, with the reason in
+  `admin_branch_audit_coverage.spec.ts`: the operator console's management read of
+  a campaign (`GET /shows/campaigns/:id/manage`; it loads on every campaign page an
+  operator opens, and each action taken from it is recorded on its own route); the
+  AI DJ quality dashboard (aggregate counts, no person's data) and the `agent`
+  analytics reader (automated, not a person); comparisons with the literal ids
+  `"admin"` / `"operator"` in community rooms and the Discord bridge (a signed-in
+  session carries a wallet-address id, so no role reaches them); the viewer
+  capability flag in community rooms (grants no access); and role checks inside
+  admin-only routes that `@AdminAudit` already records.
 - Any future bulk admin action must add `@RequireStepUp()`.
 - The audit log's own reads are not logged; no export of the log; actor-side
   export for an operator's own entries.
 - A passkey-only ERC-1271 end-to-end check against a deployed smart account is
   covered by the shared verifier's existing behaviour, not by a new test here.
-- Shows money-release actions (confirm booking and fulfilment, dispute
-  resolution) are audited but not gated; whether they count as destructive is a
-  product call tracked on #2362.
+- Shows money-release actions and the x402 mark-refunded route are gated since
+  #2380 (owner decision). The x402 route still has no admin screen.
 
 ## Tests
 
@@ -194,6 +241,18 @@ Backend: `admin_step_up.controller.http.spec.ts`, `admin_audit.controller.http.s
 `admin_step_up.integration.spec.ts`, `admin_audit.integration.spec.ts`. Web:
 `adminStepUp.test.ts`, `adminAudit.test.ts`, `AuditLogView.test.tsx`,
 `audit/pages.test.tsx`, and the help integrity test.
+
+#2380: `admin_step_up_routes.spec.ts` (the four new routes), the step-up cases in
+`shows.controller.http.spec.ts` and `x402-refund-reconciliation.controller.http.spec.ts`,
+`admin_branch_audit_coverage.spec.ts`, `admin_branch_audit.integration.spec.ts`
+(analytics, wallet read, route history, community benefit rules, show campaign),
+and the audit cases in `wallet.controller.http.spec.ts`,
+`metadata_collection.controller.http.spec.ts`,
+`metadata_notifications.controller.http.spec.ts`,
+`metadata_notify_listing.controller.http.spec.ts` and
+`metadata_rights_admin_branches.controller.http.spec.ts`. Web:
+`adminStepUpGatedActions.test.ts` (Shows money-release calls) and
+`adminAudit.test.ts`.
 
 #2362: `admin_audit_coverage.spec.ts` (every admin route is audited or excused),
 `admin_step_up_routes.spec.ts` (the pinned gated set), the `step-up and audit`

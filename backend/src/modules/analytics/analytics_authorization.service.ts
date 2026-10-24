@@ -1,5 +1,7 @@
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
+import { auditRef } from "../admin_audit/admin_audit.interceptor";
 
 export interface AnalyticsRequestUser {
   userId?: string;
@@ -18,6 +20,15 @@ export class AnalyticsAuthorizationService {
 
   async assertCanReadArtistMetrics(artistId: string, user: AnalyticsRequestUser | undefined) {
     if (user?.role === "admin") {
+      // #2380: an admin reading another artist's analytics is recorded; their own is not.
+      const artist = await prisma.artist.findUnique({
+        where: { id: artistId },
+        select: { userId: true },
+      });
+      await auditAdminBranch(user, "artist_analytics.support_viewed", {
+        targetUserId: artist?.userId ?? null,
+        detail: { artistId: auditRef(artistId) },
+      });
       return;
     }
 

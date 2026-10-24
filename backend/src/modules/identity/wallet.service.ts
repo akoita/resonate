@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
 import { EventBus } from "../shared/event_bus";
 import { Erc4337Client } from "./erc4337/erc4337_client";
 import { KernelAccountService } from "./kernel_account.service";
@@ -144,6 +145,8 @@ export class WalletService {
       if (!found) {
         throw new NotFoundException("Wallet not found");
       }
+      // #2380: an admin reading someone else's wallet is recorded; the owner's own read is not.
+      await auditAdminBranch(caller, "wallet.support_viewed", { targetUserId: found.userId });
       return found;
     }
 

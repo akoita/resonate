@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useToast } from "../ui/Toast";
+import { AdminStepUpCancelledError, withAdminStepUp } from "../../lib/adminStepUp";
 import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
   activateShowCampaign,
@@ -82,7 +84,8 @@ function campaignNetEstimate(campaign: Campaign) {
 
 export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   const router = useRouter();
-  const { role, token, status } = useAuth();
+  const { role, token, status, signMessage } = useAuth();
+  const { addToast } = useToast();
   const [current, setCurrent] = useState(campaign);
   const [beneficiaryAddress, setBeneficiaryAddress] = useState(campaign.beneficiaryAddress ?? "");
   const [beneficiaryType, setBeneficiaryType] = useState<"wallet" | "split_contract" | "multisig">(
@@ -246,7 +249,42 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
 
   if (!isOperator) return null;
 
-  async function runAction(action: ActionKey, request: () => Promise<Campaign>, success: string) {
+  /**
+   * #2380: the money-release actions (confirm booking, confirm fulfilment,
+   * resolve dispute) need a fresh passkey confirmation. `withAdminStepUp` tries
+   * the call, and only when the server asks does it prompt once and retry.
+   * Other actions pass `stepUp: false` and are called as before.
+   */
+  function withConfirmation<T>(
+    stepUp: boolean,
+    prompt: string,
+    request: (proof?: string) => Promise<T>,
+  ): Promise<T> {
+    if (!stepUp) return request();
+    return withAdminStepUp(
+      {
+        token: token ?? "",
+        signMessage,
+        onPrompt: () =>
+          addToast({ type: "info", title: "Confirm it is you", message: prompt }),
+      },
+      request,
+    );
+  }
+
+  /** A dismissed passkey prompt sent nothing, so say that and keep the panel as it was. */
+  function reportCancelled(err: unknown): boolean {
+    if (!(err instanceof AdminStepUpCancelledError)) return false;
+    addToast({ type: "info", title: "Nothing changed", message: err.message });
+    return true;
+  }
+
+  async function runAction(
+    action: ActionKey,
+    request: (proof?: string) => Promise<Campaign>,
+    success: string,
+    options: { stepUp?: boolean } = {},
+  ) {
     if (!token) {
       setError("Connect with an operator account first.");
       return;
@@ -256,11 +294,16 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
     setError(null);
     setNotice(null);
     try {
-      const updated = await request();
+      const updated = await withConfirmation(
+        options.stepUp === true,
+        "Your passkey will ask you to confirm this release step.",
+        request,
+      );
       setCurrent(updated);
       setNotice(success);
       router.refresh();
     } catch (err) {
+      if (reportCancelled(err)) return;
       setError(err instanceof Error ? err.message : "Campaign operation failed.");
     } finally {
       setPending(null);
@@ -269,7 +312,12 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
 
   // Dispute mutations return the dispute (not the campaign), so refetch the
   // managed read to refresh the panel's dispute list + status rows.
-  async function runDisputeAction(action: "dispute" | "resolve", request: () => Promise<unknown>, success: string) {
+  async function runDisputeAction(
+    action: "dispute" | "resolve",
+    request: (proof?: string) => Promise<unknown>,
+    success: string,
+    options: { stepUp?: boolean } = {},
+  ) {
     if (!token) {
       setError("Connect with an operator account first.");
       return;
@@ -278,12 +326,17 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
     setError(null);
     setNotice(null);
     try {
-      await request();
+      await withConfirmation(
+        options.stepUp === true,
+        "Your passkey will ask you to confirm resolving this dispute.",
+        request,
+      );
       const managed = await getManagedShowCampaign({ campaignId: current.backendId, token });
       if (managed) setCurrent(managed);
       setNotice(success);
       router.refresh();
     } catch (err) {
+      if (reportCancelled(err)) return;
       setError(err instanceof Error ? err.message : "Dispute operation failed.");
     } finally {
       setPending(null);
@@ -461,13 +514,15 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
               type="button"
               onClick={() => runAction(
                 "booking",
-                () => confirmShowCampaignBooking({
+                (stepUpProof) => confirmShowCampaignBooking({
                   campaign: current,
                   token: token ?? "",
                   evidenceBundleId: lifecycleEvidenceBundleId,
                   reason,
+                  stepUpProof,
                 }),
                 "Booking confirmed.",
+                { stepUp: true },
               )}
               disabled={!isAuthenticated || busy || !canConfirmBooking}
               title={disabledReason("booking")}
@@ -478,13 +533,15 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
               type="button"
               onClick={() => runAction(
                 "fulfillment",
-                () => confirmShowCampaignFulfillment({
+                (stepUpProof) => confirmShowCampaignFulfillment({
                   campaign: current,
                   token: token ?? "",
                   evidenceBundleId: lifecycleEvidenceBundleId,
                   reason,
+                  stepUpProof,
                 }),
                 "Fulfillment confirmed.",
+                { stepUp: true },
               )}
               disabled={!isAuthenticated || busy || !canConfirmFulfillment}
               title={disabledReason("fulfillment")}
@@ -533,14 +590,16 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
                 type="button"
                 onClick={() => runDisputeAction(
                   "resolve",
-                  () => resolveShowCampaignDispute({
+                  (stepUpProof) => resolveShowCampaignDispute({
                     campaign: current,
                     token: token ?? "",
                     disputeId: openDispute.id,
                     outcome: resolveOutcome,
                     operatorNote: resolveNote,
+                    stepUpProof,
                   }),
                   "Dispute resolved.",
+                  { stepUp: true },
                 )}
                 disabled={!isAuthenticated || busy}
               >

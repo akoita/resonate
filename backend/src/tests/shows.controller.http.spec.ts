@@ -6,7 +6,7 @@ import { ShowsController } from "../modules/shows/shows.controller";
 import { ShowRefundReminderService } from "../modules/shows/show-refund-reminder.service";
 import { ShowsService } from "../modules/shows/shows.service";
 import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
-import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { authToken, confirmedBearer as confirmed, createControllerTestApp, expectStepUpRequired } from "./e2e-helpers";
 
 jest.mock("../modules/admin_audit/admin_audit_event", () => ({
   ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
@@ -497,8 +497,6 @@ describe("ShowsController operator actions are audited (#2362)", () => {
     ["post", "/shows/campaigns/c-1/expire-authority", "show_authority.expired", { campaignId: "c-1" }],
     ["post", "/shows/campaigns/c-1/resync-chain", "show_campaign.chain_resynced", { campaignId: "c-1" }],
     ["post", "/shows/campaigns/c-1/discover-onchain", "show_campaign.onchain_discovered", { campaignId: "c-1" }],
-    ["post", "/shows/campaigns/c-1/confirm-booking", "show_campaign.booking_confirmed", { campaignId: "c-1" }],
-    ["post", "/shows/campaigns/c-1/confirm-fulfillment", "show_campaign.fulfillment_confirmed", { campaignId: "c-1" }],
     ["post", "/shows/campaigns/c-1/dispute", "show_dispute.opened", { campaignId: "c-1" }],
     [
       "post",
@@ -520,10 +518,38 @@ describe("ShowsController operator actions are audited (#2362)", () => {
     expect(mockAudit).toHaveBeenCalledWith({ actorUserId: "operator-1", action, targetUserId: null, detail });
   });
 
+  // #2380: the three money-release actions need a fresh step-up proof.
+  it.each([
+    ["post", "/shows/campaigns/c-1/confirm-booking", {}],
+    ["post", "/shows/campaigns/c-1/confirm-fulfillment", {}],
+    ["patch", "/shows/campaigns/c-1/dispute/d-1/resolve", { outcome: "upheld" }],
+  ] as const)("%s %s needs a fresh step-up proof, for operators and admins", async (method, path, body) => {
+    await expectStepUpRequired(app, method, path, { userId: "operator-1", role: "operator" }, body);
+    await expectStepUpRequired(app, method, path, { userId: "admin-1", role: "admin" }, body);
+    expect(mockShowsService.confirmBooking).not.toHaveBeenCalled();
+    expect(mockShowsService.confirmFulfillment).not.toHaveBeenCalled();
+    expect(mockShowsService.resolveDispute).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["post", "/shows/campaigns/c-1/confirm-booking", "show_campaign.booking_confirmed", { campaignId: "c-1" }],
+    ["post", "/shows/campaigns/c-1/confirm-fulfillment", "show_campaign.fulfillment_confirmed", { campaignId: "c-1" }],
+  ] as const)("%s %s with a proof reaches the service and records %s with ids only", async (method, path, action, detail) => {
+    await (request(app.getHttpServer()) as any)[method](path)
+      .set(confirmed("operator-1", "operator"))
+      .send({ note: "free text" })
+      .expect(201);
+    expect(mockAudit).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith({ actorUserId: "operator-1", action, targetUserId: null, detail });
+    const service = path.endsWith("confirm-booking") ? mockShowsService.confirmBooking : mockShowsService.confirmFulfillment;
+    expect(service).toHaveBeenCalledWith({ userId: "operator-1", role: "operator" }, "c-1", { note: "free text" });
+  });
+
   it("records a dispute resolution with its outcome code and ids, not the operator note", async () => {
     await request(app.getHttpServer())
       .patch("/shows/campaigns/c-1/dispute/d-1/resolve")
-      .set(operator)
+      .set(confirmed("operator-1", "operator"))
       .send({ outcome: "upheld", operatorNote: "free text" })
       .expect(200);
     expect(mockAudit).toHaveBeenCalledWith({
@@ -537,7 +563,7 @@ describe("ShowsController operator actions are audited (#2362)", () => {
   it("records nothing for a refused role, a failed action, or the aggregate reads", async () => {
     await request(app.getHttpServer()).post("/shows/campaigns/c-1/confirm-booking").set(listener).send({}).expect(403);
     mockShowsService.confirmBooking.mockRejectedValueOnce(new BadRequestException("not ready"));
-    await request(app.getHttpServer()).post("/shows/campaigns/c-1/confirm-booking").set(operator).send({}).expect(400);
+    await request(app.getHttpServer()).post("/shows/campaigns/c-1/confirm-booking").set(confirmed("operator-1", "operator")).send({}).expect(400);
     mockShowsService.listReconciliationMismatches.mockResolvedValueOnce([]);
     mockRefundReminders.getUnclaimedRefunds.mockResolvedValueOnce([]);
     await request(app.getHttpServer()).get("/shows/operator/reconciliation-mismatches").set(operator).expect(200);

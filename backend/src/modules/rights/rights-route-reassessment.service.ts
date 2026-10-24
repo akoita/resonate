@@ -6,6 +6,8 @@ import {
 } from "@nestjs/common";
 import type { Prisma, RightsEvidenceBundle } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
+import { auditRef } from "../admin_audit/admin_audit.interceptor";
 import {
   UPLOAD_RIGHTS_POLICY_VERSION,
   UPLOAD_RIGHTS_ROUTES,
@@ -195,7 +197,16 @@ export class RightsRouteReassessmentService {
     });
   }
 
-  async listReleaseHistory(releaseId: string, requesterAddress?: string | null, role = "listener") {
+  /**
+   * `auditActor` is the signed-in caller of the user-facing route. When only the
+   * admin role lets it see a release it does not own, that is recorded (#2380).
+   */
+  async listReleaseHistory(
+    releaseId: string,
+    requesterAddress?: string | null,
+    role = "listener",
+    auditActor?: { userId?: string; role?: string },
+  ) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
       select: { artist: { select: { userId: true } } },
@@ -204,12 +215,17 @@ export class RightsRouteReassessmentService {
       throw new NotFoundException(`Release ${releaseId} not found`);
     }
 
-    if (role !== "admin") {
-      const normalized = requesterAddress?.toLowerCase();
-      const ownerUserId = release.artist.userId?.toLowerCase();
-      if (!normalized || !ownerUserId || ownerUserId !== normalized) {
-        throw new ForbiddenException("You can only view route history for your own releases");
-      }
+    const normalized = requesterAddress?.toLowerCase();
+    const ownerUserId = release.artist.userId?.toLowerCase();
+    const isOwner = Boolean(normalized) && Boolean(ownerUserId) && ownerUserId === normalized;
+    if (role !== "admin" && !isOwner) {
+      throw new ForbiddenException("You can only view route history for your own releases");
+    }
+    if (role === "admin" && !isOwner && auditActor) {
+      await auditAdminBranch(auditActor, "rights_reassessment_history.support_viewed", {
+        targetUserId: release.artist.userId,
+        detail: { releaseId: auditRef(releaseId) },
+      });
     }
 
     return prisma.rightsRouteReassessment.findMany({

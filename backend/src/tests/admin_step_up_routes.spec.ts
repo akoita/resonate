@@ -32,7 +32,7 @@ function protectedHandlers(): string[] {
 }
 
 describe("@RequireStepUp routes", () => {
-  it("are exactly the destructive admin actions (#2173, #2362)", () => {
+  it("are exactly the destructive admin actions (#2173, #2362, #2380)", () => {
     expect(protectedHandlers()).toEqual([
       // Account closure and suspension (#2147).
       "accounts/accounts.controller.ts:close",
@@ -58,6 +58,11 @@ describe("@RequireStepUp routes", () => {
       "management/management.controller.ts:reviewTransferRecoveryRequest",
       // A broadcast cannot be recalled.
       "notifications/notice.controller.ts:broadcast",
+      // Money release: the x402 refund record, Shows booking and fulfilment confirmation, dispute resolution (#2380).
+      "punchline/x402-refund-reconciliation.controller.ts:markRefunded",
+      "shows/shows.controller.ts:confirmBooking",
+      "shows/shows.controller.ts:confirmFulfillment",
+      "shows/shows.controller.ts:resolveDispute",
     ]);
   });
 

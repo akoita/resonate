@@ -12,6 +12,12 @@ import {
   resolveCommunityModerationReport,
   reviewManagementRecovery,
 } from "./api";
+import {
+  confirmShowCampaignBooking,
+  confirmShowCampaignFulfillment,
+  resolveShowCampaignDispute,
+  type Campaign,
+} from "./shows";
 
 const TOKEN = "session-token";
 const CHALLENGE = {
@@ -95,5 +101,79 @@ describe("gated admin calls carry the proof (#2362)", () => {
       ),
     ).rejects.toBeInstanceOf(AdminStepUpCancelledError);
     expect(paths()).toEqual(["/management/recoveries/rec-1", "/admin/step-up/challenge"]);
+  });
+});
+
+// #2380: the Shows money-release actions are step-up gated too.
+describe("Shows money-release actions carry the proof (#2380)", () => {
+  const campaign = { backendId: "camp 1" } as Campaign;
+  const backendCampaign = { id: "camp-1", slug: "paris", title: "Paris", artistDisplayName: "Artist", city: "Paris", country: "FR", status: "funded", deadline: "2026-12-01T00:00:00.000Z" };
+  const deniedWithoutProof = () => json({ statusCode: 403, code: "step_up_required", message: "needs confirmation" }, 403);
+
+  const actions: Array<[string, string, (proof?: string) => Promise<unknown>, string]> = [
+    [
+      "confirmShowCampaignBooking",
+      "/shows/campaigns/camp%201/confirm-booking",
+      (proof) => confirmShowCampaignBooking({ campaign, token: TOKEN, evidenceBundleId: "ev-1", reason: "r", stepUpProof: proof }),
+      '{"evidenceBundleId":"ev-1","reason":"r"}',
+    ],
+    [
+      "confirmShowCampaignFulfillment",
+      "/shows/campaigns/camp%201/confirm-fulfillment",
+      (proof) => confirmShowCampaignFulfillment({ campaign, token: TOKEN, evidenceBundleId: "ev-2", reason: "r", stepUpProof: proof }),
+      '{"evidenceBundleId":"ev-2","reason":"r"}',
+    ],
+    [
+      "resolveShowCampaignDispute",
+      "/shows/campaigns/camp%201/dispute/d-1/resolve",
+      (proof) => resolveShowCampaignDispute({ campaign, token: TOKEN, disputeId: "d-1", outcome: "upheld", operatorNote: "n", stepUpProof: proof }),
+      '{"outcome":"upheld","operatorNote":"n"}',
+    ],
+  ];
+
+  it.each(actions)("%s sends the header only when it has a proof", async (_name, path, call) => {
+    fetchMock.mockImplementation(async () => json(backendCampaign));
+    await call(undefined);
+    await call("proof-9");
+    expect(paths()).toEqual([path, path]);
+    expect(headerOf(calls()[0][1], ADMIN_STEP_UP_HEADER)).toBeNull();
+    expect(headerOf(calls()[1][1], ADMIN_STEP_UP_HEADER)).toBe("proof-9");
+    expect(headerOf(calls()[1][1], "Authorization")).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it.each(actions)("%s prompts once on step_up_required, then retries with the proof and the same body", async (_name, _path, call, body) => {
+    fetchMock.mockImplementationOnce(async () => deniedWithoutProof());
+    fetchMock.mockImplementationOnce(async () => json(CHALLENGE));
+    fetchMock.mockImplementationOnce(async () => json(proofBody()));
+    fetchMock.mockImplementationOnce(async () => json(backendCampaign));
+    const onPrompt = vi.fn();
+
+    await withAdminStepUp({ token: TOKEN, signMessage, onPrompt }, call);
+
+    expect(paths().slice(1, 3)).toEqual(["/admin/step-up/challenge", "/admin/step-up/verify"]);
+    expect(onPrompt).toHaveBeenCalledTimes(1);
+    expect(headerOf(calls()[0][1], ADMIN_STEP_UP_HEADER)).toBeNull();
+    expect(headerOf(calls()[3][1], ADMIN_STEP_UP_HEADER)).toBe("proof-1");
+    expect(calls()[0][1].body).toBe(body);
+    expect(calls()[3][1].body).toBe(body);
+  });
+
+  it.each(actions)("%s: a dismissed passkey prompt sends nothing more and reports nothing changed", async (_name, path, call) => {
+    fetchMock.mockImplementationOnce(async () => deniedWithoutProof());
+    fetchMock.mockImplementationOnce(async () => json(CHALLENGE));
+    signMessage.mockRejectedValueOnce(Object.assign(new Error("The operation was cancelled"), { name: "NotAllowedError" }));
+
+    await expect(withAdminStepUp({ token: TOKEN, signMessage }, call)).rejects.toBeInstanceOf(AdminStepUpCancelledError);
+    expect(paths()).toEqual([path, "/admin/step-up/challenge"]);
+  });
+
+  it("a refusal that is not a step-up answer keeps the server text as the message", async () => {
+    fetchMock.mockImplementationOnce(async () => new Response("Campaign is not funded", { status: 400 }));
+    await expect(
+      withAdminStepUp({ token: TOKEN, signMessage }, (proof) =>
+        confirmShowCampaignBooking({ campaign, token: TOKEN, stepUpProof: proof }),
+      ),
+    ).rejects.toThrow("Campaign is not funded");
+    expect(paths()).toEqual(["/shows/campaigns/camp%201/confirm-booking"]);
   });
 });

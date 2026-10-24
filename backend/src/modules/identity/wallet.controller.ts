@@ -39,6 +39,7 @@ import { AgentWalletService } from "../agents/agent_wallet.service";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AdminAudit, auditBody, auditCount, auditNumber, auditRef } from "../admin_audit/admin_audit.interceptor";
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
 
 @Controller("wallet")
 export class WalletController {
@@ -55,32 +56,49 @@ export class WalletController {
   /**
    * Wallet writes that take a target user id act on the caller's own wallet;
    * admins may name any user. Ids are compared in their canonical form (#2180).
+   * Returns true when the admin branch let the caller in.
    */
-  private assertOwnWalletOrAdmin(req: any, userId: string) {
-    if (req?.user?.role === "admin") return;
+  private assertOwnWalletOrAdmin(req: any, userId: string): boolean {
+    if (req?.user?.role === "admin") return true;
     if (
       typeof userId !== "string" ||
       normalizeUserId(userId) !== normalizeUserId(req?.user?.userId)
     ) {
       throw new ForbiddenException("You can only change your own wallet");
     }
+    return false;
+  }
+
+  /**
+   * #2380: an admin who changed another user's wallet is recorded once the change
+   * succeeded; changing their own wallet, or an owner changing theirs, is not.
+   */
+  private async recordAdminWalletChange(req: any, userId: string, change: "fund" | "budget") {
+    await auditAdminBranch(req.user, "wallet.support_changed", {
+      targetUserId: typeof userId === "string" ? normalizeUserId(userId) : null,
+      detail: { change },
+    });
   }
 
   @Post("fund")
   @UseGuards(AuthGuard("jwt"))
-  fund(@Req() req: any, @Body() body: FundWalletDto) {
-    this.assertOwnWalletOrAdmin(req, body?.userId);
-    return this.walletService.fundWallet(body);
+  async fund(@Req() req: any, @Body() body: FundWalletDto) {
+    const asAdmin = this.assertOwnWalletOrAdmin(req, body?.userId);
+    const result = await this.walletService.fundWallet(body);
+    if (asAdmin) await this.recordAdminWalletChange(req, body.userId, "fund");
+    return result;
   }
 
   @Post("budget")
   @UseGuards(AuthGuard("jwt"))
-  setBudget(
+  async setBudget(
     @Req() req: any,
     @Body() body: SetWalletBudgetDto,
   ) {
-    this.assertOwnWalletOrAdmin(req, body?.userId);
-    return this.walletService.setBudget(body);
+    const asAdmin = this.assertOwnWalletOrAdmin(req, body?.userId);
+    const result = await this.walletService.setBudget(body);
+    if (asAdmin) await this.recordAdminWalletChange(req, body.userId, "budget");
+    return result;
   }
 
   @Post("provider")

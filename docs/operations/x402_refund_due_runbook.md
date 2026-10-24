@@ -114,6 +114,14 @@ For each outstanding row:
    { "refundTxHash": "0x<66-char-refund-tx-hash>" }
    ```
 
+   The route needs a **fresh passkey step-up** (#2380): the call carries the
+   `X-Admin-Step-Up` header with a proof from `POST /admin/step-up/challenge` and
+   `/verify` (valid for at most 5 minutes). Without it the route answers
+   `403 { "code": "step_up_required" }`. There is no admin screen for this route
+   yet, so a caller using the API gets the proof the same way the web admin
+   screens do: sign the server's challenge message with the operator's own
+   passkey or wallet. A script or scheduler cannot call it, by design.
+
    This validates the hash, flips `status` from `refund_due` to `refunded`, and
    stores `refundTxHash` + `refundedAt`. It never mutates the stored `receipt`
    JSON — that stays the immutable receipt as issued. The route rejects with a
