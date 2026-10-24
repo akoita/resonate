@@ -13,6 +13,8 @@
  *    for sale is not a reason to recommend a track (ADR-TE-2 rule 1).
  */
 
+import { GENRE_FAMILIES } from "./genre_families";
+
 export const DISCOVERY_REASON_CODES = [
   "taste_match",
   "nearby_taste",
@@ -61,6 +63,24 @@ export const DISCOVERY_EXPLANATION_VARIANTS = {
 /** Energy match is templated by the requested band; stays categorical. */
 export function energyMatchExplanation(energy: "low" | "medium" | "high") {
   return `${energy} energy match`;
+}
+
+/**
+ * "Trending in World this week" (#2246): the AI DJ's trending source. Templated
+ * by a genre FAMILY label from the closed family list, never by free text, so it
+ * stays categorical: it says what is popular in a family, not who played it.
+ */
+export function trendingExplanation(familyLabel: string): string {
+  return `Trending in ${familyLabel} this week`;
+}
+
+const TRENDING_SENTENCES: ReadonlySet<string> = new Set(
+  GENRE_FAMILIES.map((family) => trendingExplanation(family.label)),
+);
+
+/** True for a trending sentence of a known genre family (what a pick note may store). */
+export function isTrendingExplanation(sentence: string): boolean {
+  return TRENDING_SENTENCES.has(sentence);
 }
 
 /** Categories a warehouse taste explanation can fall into. */

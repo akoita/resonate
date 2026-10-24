@@ -58,7 +58,8 @@ describe("reciprocalRankFusion", () => {
 describe("hybridRetrievalConfig", () => {
   it("defaults, and reads budgets, timeout and cap from the environment", () => {
     const defaults = hybridRetrievalConfig({});
-    expect(defaults.budgets).toEqual({ keyword: 20, semantic: 20, audio_range: 20, lane: 20, seed: 20 });
+    expect(defaults.budgets).toEqual({ keyword: 20, semantic: 20, audio_range: 20, lane: 20, seed: 20, trending: 20 });
+    expect(defaults.trendingMaxSharePercent).toBe(20);
     expect(defaults.timeoutMs).toBe(DEFAULT_RETRIEVAL_TIMEOUT_MS);
     expect(defaults.maxCandidates).toBe(DEFAULT_MAX_FUSED_CANDIDATES);
 
@@ -66,8 +67,10 @@ describe("hybridRetrievalConfig", () => {
       AGENT_RETRIEVAL_BUDGETS: "keyword=8, audio_range=5,bogus=3,seed=abc,lane=999",
       AGENT_RETRIEVAL_TIMEOUT_MS: "250",
       AGENT_RETRIEVAL_MAX_CANDIDATES: "40",
+      AGENT_RETRIEVAL_TRENDING_MAX_SHARE_PERCENT: "10",
     });
-    expect(custom.budgets).toEqual({ keyword: 8, semantic: 20, audio_range: 5, lane: 50, seed: 20 });
+    expect(custom.budgets).toEqual({ keyword: 8, semantic: 20, audio_range: 5, lane: 50, seed: 20, trending: 20 });
+    expect(custom.trendingMaxSharePercent).toBe(10);
     expect(custom.timeoutMs).toBe(250);
     expect(custom.maxCandidates).toBe(40);
   });
@@ -213,6 +216,7 @@ describe("AgentSelectorService hybrid retrieval (hybrid_rrf_v1)", () => {
       ["audio_range", "skipped"],
       ["lane", "skipped"],
       ["seed", "ok"],
+      ["trending", "skipped"],
     ]);
     expect(result.retrieval?.onlyFrom).toEqual({ keyword: 1, semantic: 1, seed: 1 });
     const shared = result.selected.find((track) => track.id === "shared")!;

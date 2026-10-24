@@ -2,6 +2,7 @@ import {
   DISCOVERY_EXPLANATIONS,
   DISCOVERY_EXPLANATION_VARIANTS,
   DISCOVERY_REASON_CODES,
+  isTrendingExplanation,
 } from "../recommendations/discovery-explanations";
 import { normalizeAgentRuntimeResult } from "./agent_runtime.types";
 import type { AgentRuntimeRunResult } from "./agent_runtime.types";
@@ -57,6 +58,8 @@ function vocabularySentence(line: unknown): string | undefined {
   const sentence = line.trim();
   if (!sentence || sentence.length > SENTENCE_MAX_LENGTH) return undefined;
   if (COHORT_SENTENCE.test(sentence)) return DISCOVERY_EXPLANATIONS.scene;
+  // "Trending in {family} this week" (#2246): templated by a closed family label.
+  if (isTrendingExplanation(sentence)) return sentence;
   if (VOCABULARY_SENTENCES.has(sentence) || TEMPLATED_SENTENCES.some((pattern) => pattern.test(sentence))) {
     return sentence;
   }
