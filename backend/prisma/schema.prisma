@@ -1269,11 +1269,17 @@ model RoyaltyPayment {
   settlementAmountUnits String?
   canonicalAmountUsd    String?
   transactionHash       String
+  /// Position of the RoyaltyPaid log in the transaction. A batched transaction can
+  /// carry several sales of one token, each with its own RoyaltyPaid log, so a
+  /// payment is the (transactionHash, logIndex) of its log (#2344). Null only on
+  /// rows indexed before #2344 whose log could not be matched during the backfill.
+  logIndex              Int?
   blockNumber           BigInt
   paidAt                DateTime
   createdAt             DateTime @default(now())
 
-  @@unique([transactionHash, tokenId], name: "transactionHash_tokenId")
+  @@unique([transactionHash, logIndex], name: "transactionHash_logIndex")
+  @@index([transactionHash, tokenId])
   @@index([recipientAddress])
   @@index([tokenId, chainId])
   @@index([paidAt])

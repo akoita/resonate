@@ -49,7 +49,7 @@ describe("ArtistAnalyticsDashboard", () => {
     const netReceived: ArtistAnalyticsDashboardData["netReceived"] = {
       status: "ready",
       basis: "net_after_fee_and_split",
-      coverage: { marketplace: true, x402: false, x402Reason: "x402 reason" },
+      coverage: { marketplace: true, x402: "entitled_only", x402Note: "x402 note" },
       saleCount: 2,
       finalizedSales: 1,
       pendingSales: 1,
@@ -78,6 +78,58 @@ describe("ArtistAnalyticsDashboard", () => {
       expect(html).toContain("$9.00");
       expect(html).toContain("1 of 2 marketplace sales counted, 1 pending");
       expect(html).toContain("x402 sales are not included");
+      // No x402 sales in this report: the entitled card and table are absent.
+      expect(html).not.toContain("Entitled net (x402)");
+      expect(html).not.toContain("x402-entitled-net");
+    });
+
+    it("shows x402 as an entitled net, labelled and apart from the net received (#2344)", () => {
+      const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+        data={{
+          ...dashboard,
+          netReceived: {
+            ...(netReceived as Extract<typeof netReceived, { status: "ready" }>),
+            entitled: {
+              basis: "quoted_net_to_seller",
+              note: "What your x402 sales entitle you to: the price minus the platform fee quoted at the time of sale.",
+              saleCount: 2,
+              quotedSales: 1,
+              unquotedSales: 1,
+              totals: { grossQuotedUsd: 5, entitledNetUsd: 4.5 },
+              byAsset: [],
+              truncated: false,
+              recentSales: [
+                {
+                  settlementKey: "x-quoted", occurredAt: "2026-10-22T10:00:00.000Z", paymentRail: "mcp", resourceKind: "stem",
+                  trackId: "track-2", trackTitle: "Quoted Stem", symbol: "USDC", decimals: 6, grossAmountUnits: "5000000",
+                  grossAmount: "5", grossUsd: 5, status: "quoted", feeBps: 1000, platformFeeUnits: "500000",
+                  entitledNetUnits: "4500000", entitledNetAmount: "4.5", entitledNetUsd: 4.5,
+                },
+                {
+                  settlementKey: "x-old", occurredAt: "2026-10-01T10:00:00.000Z", paymentRail: "facilitator", resourceKind: "stem",
+                  trackId: "track-2", trackTitle: "Old Stem", symbol: "USDC", decimals: 6, grossAmountUnits: "50000",
+                  grossAmount: "0.05", grossUsd: 0.05, status: "unquoted",
+                },
+              ],
+            },
+          },
+        }} onDaysChange={() => {}} />);
+      // The on-chain net card keeps its own figure.
+      expect(html).toContain("Net received");
+      expect(html).toContain("$9.00");
+      // The entitled card and table say "Entitled", owed to the artist.
+      expect(html).toContain("Entitled net (x402)");
+      expect(html).toContain("$4.50");
+      expect(html).toContain("Entitled — owed to you");
+      expect(html).toContain("1 of 2 x402 sales counted, 1 without a recorded quote");
+      const table = html.slice(html.indexOf('data-testid="x402-entitled-net"'));
+      expect(table).toContain("x402 sales: gross and entitled net");
+      expect(table).toContain("Quoted Stem");
+      expect(table).toContain("$5.00");
+      // An older sale without a quote reads Not recorded: not $0 and not its gross.
+      const oldRow = table.slice(table.indexOf("Old Stem"));
+      expect(oldRow.slice(0, oldRow.indexOf("</tr>"))).toContain("Not recorded");
+      expect(oldRow.slice(0, oldRow.indexOf("</tr>"))).not.toContain("$0.00");
     });
 
     it("lists each sale with gross beside net, and a pending sale reads Pending (not $0 or its gross)", () => {

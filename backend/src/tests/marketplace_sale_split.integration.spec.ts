@@ -17,6 +17,8 @@
 const previousRpcUrl = process.env.RPC_URL;
 process.env.RPC_URL = process.env.ANVIL_RPC_URL ?? "";
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createPublicClient, createWalletClient, http, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
@@ -379,5 +381,119 @@ describeWithAnvil("#2172 marketplace sale split and artist net received (Anvil)"
     expect(await gained(artist, receipt.blockNumber)).toBe(
       BigInt(one.royaltyPaid) + BigInt(one.sellerReceived) + BigInt(two.royaltyPaid),
     );
+  });
+  describe("#2344 RoyaltyPayment is keyed on the RoyaltyPaid log", () => {
+    const royaltyPaymentsOf = (transactionHash: string) =>
+      prisma.royaltyPayment.findMany({ where: { transactionHash }, orderBy: { logIndex: "asc" } });
+
+    it("a batched transaction with two sales of one token keeps both royalty rows, and a replay adds none", async () => {
+      const first = await seedListing(17n, tokenRoyalty, artist);
+      const second = await seedListing(18n, tokenRoyalty, collector);
+      const receipt = await write(
+        "buyBatch",
+        [[first, second], [tokenRoyalty, tokenRoyalty], [artist, collector], [ETH, 3n * ETH]],
+        4n * ETH,
+      );
+      const royaltyTopic = receipt.logs[0].topics[0];
+      const royaltyLogs = receipt.logs.filter((log) => log.topics[0] === royaltyTopic);
+      expect(royaltyLogs).toHaveLength(2);
+
+      for (const log of receipt.logs) await processLog(log);
+      const rows = await waitFor(async () => {
+        const found = await royaltyPaymentsOf(receipt.transactionHash);
+        return found.length === 2 ? found : null;
+      });
+      // Same transaction, same token, two payments: told apart by their log position.
+      expect(rows.map((row) => row.logIndex)).toEqual(royaltyLogs.map((log) => log.logIndex));
+      expect(rows.map((row) => row.amount)).toEqual([(ETH / 20n).toString(), ((3n * ETH) / 20n).toString()]);
+      expect(new Set(rows.map((row) => row.tokenId)).size).toBe(1);
+
+      // Reindexing the same logs writes nothing new.
+      for (const log of receipt.logs) await processLog(log);
+      await wait(500);
+      expect(await royaltyPaymentsOf(receipt.transactionHash)).toHaveLength(2);
+    });
+
+    it("the migration backfill gives a legacy row the position of its first matching RoyaltyPaid log", async () => {
+      const migration = readFileSync(
+        join(__dirname, "../../prisma/migrations/20261024140000_royalty_payment_log_index/migration.sql"),
+        "utf8",
+      );
+      const update = migration.slice(migration.indexOf("UPDATE"), migration.indexOf(";", migration.indexOf("UPDATE")) + 1);
+      expect(update).toContain('SET "logIndex"');
+      const transactionHash = `0x${P}legacy_backfill`;
+      const tokenId = baseToken + 50n;
+      const recipient = artist;
+      txHashes.push(transactionHash);
+      for (const logIndex of [3, 7]) {
+        await prisma.contractEvent.create({
+          data: {
+            eventName: "RoyaltyPaid",
+            chainId,
+            contractAddress: harness,
+            transactionHash,
+            logIndex,
+            blockNumber: 1n,
+            blockHash: "0x",
+            args: { tokenId: tokenId.toString(), recipient, amount: "500" },
+          },
+        });
+      }
+      const matched = await prisma.royaltyPayment.create({
+        data: {
+          tokenId,
+          chainId,
+          recipientAddress: recipient.toLowerCase(),
+          amount: "500",
+          transactionHash,
+          blockNumber: 1n,
+          paidAt: new Date(),
+        },
+      });
+      const unmatched = await prisma.royaltyPayment.create({
+        data: {
+          tokenId: tokenId + 1n,
+          chainId,
+          recipientAddress: recipient,
+          amount: "500",
+          transactionHash,
+          blockNumber: 1n,
+          paidAt: new Date(),
+        },
+      });
+
+      await prisma.$executeRawUnsafe(update);
+
+      // The lowest matching position (the one the indexer kept), and no guess for a row with no log.
+      expect((await prisma.royaltyPayment.findUnique({ where: { id: matched.id } }))!.logIndex).toBe(3);
+      expect((await prisma.royaltyPayment.findUnique({ where: { id: unmatched.id } }))!.logIndex).toBeNull();
+    });
+
+    it("a royalty row indexed before the log position was kept is adopted by its log, not duplicated", async () => {
+      const listingId = await seedListing(19n, tokenRoyalty, collector);
+      const receipt = await write("buy", [listingId, tokenRoyalty, collector], ETH);
+      const royaltyLog = receipt.logs[0];
+      // The legacy shape: one row for the (transaction, token), no log position.
+      await prisma.royaltyPayment.create({
+        data: {
+          tokenId: tokenRoyalty,
+          chainId,
+          recipientAddress: artist,
+          amount: (ETH / 20n).toString(),
+          transactionHash: receipt.transactionHash,
+          blockNumber: receipt.blockNumber,
+          paidAt: new Date(),
+        },
+      });
+
+      await processLog(royaltyLog);
+      const rows = await waitFor(async () => {
+        const found = await royaltyPaymentsOf(receipt.transactionHash);
+        return found.length === 1 && found[0].logIndex != null ? found : null;
+      });
+      expect(rows[0].logIndex).toBe(royaltyLog.logIndex);
+      await wait(300);
+      expect(await royaltyPaymentsOf(receipt.transactionHash)).toHaveLength(1);
+    });
   });
 });

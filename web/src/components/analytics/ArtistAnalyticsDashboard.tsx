@@ -2,10 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type { ArtistActionCard, ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
+import type {
+  ArtistActionCard,
+  ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData,
+  ArtistEntitledNet,
+} from "../../lib/api";
 import { grossSalesExplainer } from "../../lib/marketplaceProceeds";
 import {
+  ENTITLED_BADGE,
+  ENTITLED_NET_LABEL,
   PENDING_NET_LABEL,
+  UNQUOTED_NET_LABEL,
+  entitledNetDetail,
+  entitledNetHeadline,
+  entitledNetNote,
+  entitledNetOf,
+  entitledSaleFeeLabel,
+  entitledSaleGrossLabel,
+  entitledSaleNetLabel,
   isNetReceivedReady,
   netReceivedDetail,
   netReceivedHeadline,
@@ -84,6 +98,7 @@ function ReadyDashboard({
   // `totalPayoutUsd` is the gross settled sale amount (payoutBasis "gross_settled"), not
   // the artist's net share, so it is labelled as gross sales (#2144).
   const grossSalesLabel = formatUsd(data.summary.totalPayoutUsd);
+  const entitledNet = entitledNetOf(data.netReceived);
   const actions = data.actions ?? [];
 
   if (data.meta.isEmpty) {
@@ -129,6 +144,14 @@ function ReadyDashboard({
             value={netReceivedHeadline(data.netReceived) ?? ""}
             detail={netReceivedDetail(data.netReceived)}
             note={netReceivedNote(data.netReceived)}
+          />
+        ) : null}
+        {entitledNet ? (
+          <Kpi
+            label={ENTITLED_NET_LABEL}
+            value={entitledNetHeadline(entitledNet)}
+            detail={entitledNetDetail(entitledNet)}
+            note={entitledNetNote(entitledNet)}
           />
         ) : null}
         <Kpi label="Top track" value={topTrack?.title ?? "No track yet"} detail={topTrack ? `${formatNumber(topTrack.plays)} plays` : "Waiting for play events"} />
@@ -184,6 +207,7 @@ function ReadyDashboard({
       </div>
 
       <MarketplaceSalesNet report={data.netReceived} />
+      <X402EntitledNet entitled={entitledNet} />
 
       <div className="premium-table-wrapper">
         <h2>Track Performance</h2>
@@ -415,7 +439,7 @@ function Kpi({ label, value, detail, note }: { label: string; value: string; det
   const isAgent = label.toLowerCase().includes("top track");
   const icon = label.toLowerCase().includes("plays")
     ? "▶"
-    : label.toLowerCase().includes("sales") || label.toLowerCase().includes("received")
+    : label.toLowerCase().includes("sales") || label.toLowerCase().includes("received") || label.toLowerCase().includes("entitled")
     ? "$"
     : label.toLowerCase().includes("track")
     ? "★"
@@ -684,8 +708,73 @@ function MarketplaceSalesNet({ report }: { report: ArtistAnalyticsDashboardData[
           ? "The newest sales are counted; older ones in this window are not. "
           : ""}
         Net received is what reached your own addresses after the platform fee and any share paid to someone else.
-        {report.coverage.x402 ? "" : " x402 sales are not included."}
+        {" x402 sales are not included here; they are shown apart as entitled net."}
       </p>
+    </div>
+  );
+}
+
+/**
+ * #2344: x402 sales, gross beside the ENTITLED net (the price minus the platform
+ * fee quoted at the time of sale). Kept apart from the marketplace table: it is
+ * what Resonate owes the artist, not something that reached their addresses.
+ */
+function X402EntitledNet({ entitled }: { entitled: ArtistEntitledNet | null }) {
+  if (!entitled || entitled.recentSales.length === 0) {
+    return null;
+  }
+  return (
+    <div className="premium-table-wrapper" data-testid="x402-entitled-net">
+      <h2>x402 sales: gross and entitled net</h2>
+      <p className="analytics-muted" style={{ margin: "0 0 12px", lineHeight: 1.4 }}>
+        <span
+          className="status-capsule-badge inactive"
+          style={{ fontSize: "10px", padding: "2px 8px", marginRight: "8px" }}
+          title={entitled.note}
+        >
+          {ENTITLED_BADGE}
+        </span>
+        {entitled.note}
+      </p>
+      <table className="premium-table">
+        <thead>
+          <tr>
+            <th>Sale</th>
+            <th>Track</th>
+            <th>Gross</th>
+            <th>Platform fee</th>
+            <th>Entitled net</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entitled.recentSales.map((sale) => (
+            <tr key={sale.settlementKey}>
+              <td className="premium-table-cell-mono">{shortDate(sale.occurredAt)}</td>
+              <td style={{ fontWeight: 600 }}>{sale.trackTitle ?? "Unknown track"}</td>
+              <td className="premium-table-cell-mono">{entitledSaleGrossLabel(sale)}</td>
+              <td className="premium-table-cell-mono">{entitledSaleFeeLabel(sale) ?? "—"}</td>
+              <td className="premium-table-cell-mono">
+                {sale.status === "unquoted" ? (
+                  <span
+                    className="status-capsule-badge inactive"
+                    style={{ fontSize: "10px", padding: "2px 8px" }}
+                    title="This sale was settled before the quote was recorded, so its entitled net is not counted."
+                  >
+                    {UNQUOTED_NET_LABEL}
+                  </span>
+                ) : (
+                  entitledSaleNetLabel(sale)
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {entitled.truncated ? (
+        <p className="analytics-muted" style={{ margin: "12px 0 0", lineHeight: 1.4 }}>
+          The newest sales are counted; older ones in this window are not.
+        </p>
+      ) : null}
     </div>
   );
 }

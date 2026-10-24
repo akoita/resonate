@@ -139,11 +139,37 @@ describe("buildArtistNetReceived", () => {
     expect(report.byAsset).toHaveLength(1);
   });
 
-  it("always says x402 is not part of net received", () => {
+  it("says x402 is reported as entitled net, apart from the on-chain net", () => {
     const report = buildArtistNetReceived([], addresses);
     expect(report.coverage.marketplace).toBe(true);
-    expect(report.coverage.x402).toBe(false);
-    expect(report.coverage.x402Reason).toMatch(/payout address/);
+    expect(report.coverage.x402).toBe("entitled_only");
+    expect(report.coverage.x402Note).toMatch(/payout address/);
+    expect(report.coverage.x402Note).toMatch(/entitled net/);
     expect(report.saleCount).toBe(0);
+    expect(report.entitled.saleCount).toBe(0);
+  });
+
+  it("never adds x402 entitled net to the on-chain net", () => {
+    const report = buildArtistNetReceived([sale()], addresses, {
+      x402Sales: [
+        {
+          settlementKey: "commerce.settled:x402:s1",
+          occurredAt: new Date("2026-10-21T10:00:00.000Z"),
+          paymentRail: "facilitator",
+          resourceKind: "stem",
+          trackId: "track-1",
+          trackTitle: "Groove",
+          paymentToken: USDC,
+          paymentAssetId: "local:usdc",
+          symbol: "USDC",
+          decimals: 6,
+          grossUnits: "50000",
+          quote: { feeBps: 1500, platformFeeUnits: "7500", netToSellerUnits: "42500" },
+        },
+      ],
+    });
+    expect(report.totals.netUsd).toBe(9);
+    expect(report.entitled.totals.entitledNetUsd).toBe(0.0425);
+    expect(report.saleCount).toBe(1);
   });
 });
