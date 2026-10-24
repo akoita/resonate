@@ -22,6 +22,11 @@
  *   - CRATE DIGGER pass (#1963, opt-in): the Crate Digger guide images from a
  *     fully mocked crate API (web/tests/fixtures/crate-digger-mock.mjs, shared
  *     with the Playwright flow), so no backend or catalog data is needed.
+ *   - SEEDED PUBLIC pass (#1846, opt-in): the public Shows page, one live
+ *     pledgeable campaign page and the Marketplace, drawn from invented
+ *     campaigns and listings (web/tests/fixtures/guide-seed-mock.mjs). The
+ *     script starts that sample backend itself on API_BASE_URL's port, so no
+ *     hosted data is involved and every run draws the same pictures.
  *
  * Usage:
  *   # Public pass against staging (default):
@@ -49,6 +54,12 @@
  *   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_CRATES=true \
  *     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
  *
+ *   # Seeded public pass (Shows, a campaign page, Marketplace): the local app
+ *   # must talk to the sample backend on port 3000 (the default API URL), so
+ *   # stop any real backend on that port first:
+ *   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_SEEDED=true \
+ *     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+ *
  * Requirements: a Chromium browser for Playwright
  *   npx playwright install chromium
  *   (or set CHROMIUM_EXECUTABLE_PATH to an installed Chromium binary)
@@ -69,6 +80,7 @@ import {
   mockCrateApi,
   watchingWatch,
 } from "../tests/fixtures/crate-digger-mock.mjs";
+import { GUIDE_FEATURED_CAMPAIGN_SLUG, startGuideSeedApi } from "../tests/fixtures/guide-seed-mock.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "https://staging.resonate.pydes.xyz";
 const API_BASE_URL = (process.env.API_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -77,6 +89,7 @@ const CAPTURE_AUTH = process.env.CAPTURE_AUTH !== "false";
 const CAPTURE_OWNER = process.env.CAPTURE_OWNER === "true";
 const CAPTURE_REMIX = process.env.CAPTURE_REMIX === "true";
 const CAPTURE_CRATES = process.env.CAPTURE_CRATES === "true";
+const CAPTURE_SEEDED = process.env.CAPTURE_SEEDED === "true";
 const OWNER_USER_ID = "e2e-user-00000000-0000-0000-0000-000000000001";
 const OWNER_WALLET_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const OUT_DIR = path.resolve(
@@ -99,9 +112,8 @@ const PUBLIC_TARGETS = [
     },
   ],
   ["/catalog", "catalog.png"],
-  ["/shows", "shows.png"],
-  ["/shows/sennarin-paris", "show-campaign.png"],
-  ["/crates?tab=stems", "marketplace.png"],
+  // shows.png, show-campaign.png and marketplace.png come from the seeded
+  // public pass (SEEDED_TARGETS below), not from hosted data (#1846).
   ["/drops", "drops.png"],
   ["/wallet", "wallet.png"],
   ["/library", "connect-wallet.png"],
@@ -791,6 +803,66 @@ async function loginSeededOwner(page) {
 }
 
 
+// ── Seeded public pass (#1846) ───────────────────────────────────────────
+// The public Shows pages and the Marketplace, drawn from the invented sample
+// backend in tests/fixtures/guide-seed-mock.mjs instead of a hosted environment.
+/** Hides the Next.js dev indicator and parks the pointer, so nothing hovers or overlays the shot. */
+async function settleSeededPage(page) {
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.mouse.move(0, 0);
+}
+
+const SEEDED_TARGETS = [
+  ["/shows", "shows.png", {
+    selectors: [".campaign-card"],
+    text: ["Fans bring the show"],
+    // All six campaign cards in full.
+    viewportHeight: 1800,
+    reducedMotion: true,
+    prepare: settleSeededPage,
+  }],
+  [`/shows/${GUIDE_FEATURED_CAMPAIGN_SLUG}`, "show-campaign.png", {
+    selectors: [".show-detail__pledge-action"],
+    text: ["Nadia Okoro in Paris"],
+    // Banner, funding progress, signal tiers and the pledge module.
+    viewportHeight: 1500,
+    reducedMotion: true,
+    prepare: settleSeededPage,
+  }],
+  ["/crates?tab=stems", "marketplace.png", {
+    selectors: [".stem-card"],
+    text: ["Own the stems"],
+    // Two full rows of listing cards, ending before the "Mint your own stems" tile.
+    viewportHeight: 1845,
+    reducedMotion: true,
+    prepare: settleSeededPage,
+  }],
+];
+
+/** Starts the sample backend, captures the seeded targets, stops it. */
+async function captureSeeded(browser) {
+  const apiPort = Number(new URL(API_BASE_URL).port || 80);
+  const sampleApi = process.env.CAPTURE_SEEDED_START_API === "false"
+    ? null
+    : await startGuideSeedApi({ port: apiPort });
+  try {
+    const ctx = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      deviceScaleFactor: 1,
+      locale: "en-US",
+      timezoneId: "UTC",
+    });
+    await ctx.addInitScript(() => {
+      sessionStorage.setItem("resonate.agent_onboarding_dismissed", "1");
+    });
+    await capture(await ctx.newPage(), SEEDED_TARGETS, "seeded-public");
+    await ctx.close();
+  } finally {
+    await sampleApi?.close();
+  }
+}
+
 // ── Remix Studio pass (#1905) ────────────────────────────────────────────
 // A project with a rendered draft and one earlier version, for the overview
 // and the Drafts panel. Fixed dates older than a day render as absolute
@@ -1175,6 +1247,7 @@ async function main() {
 
     if (CAPTURE_REMIX) await captureRemix(browser);
     if (CAPTURE_CRATES) await captureCrates(browser);
+    if (CAPTURE_SEEDED) await captureSeeded(browser);
   } finally {
     await browser.close();
   }
