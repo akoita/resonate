@@ -27,14 +27,19 @@ import { StorageProvider } from "../storage/storage_provider";
 import { readIngestionUploadBuffer } from "./ingestion-upload-buffer";
 import {
   OFFICIAL_STEM_ANALYSIS_SAMPLE_RATE,
+  bandEnvelopes,
   decodeMonoSamples,
+  measurePartAgainstMix,
   measureSummedLevel,
   probeAudioFacts,
   rmsDb,
 } from "./official-stems.audio";
 import {
+  isCompleteOfficialSet,
+  isOfficialStemType,
   officialStemContainer,
   summarizeOfficialStemIssues,
+  validatePartAlignment,
   validateOfficialStemFiles,
   validateOfficialStemSilence,
   validateSummedLevel,
@@ -75,8 +80,16 @@ export type OfficialStemUploadResult = {
     sampleRate: number | null;
     isEncrypted: boolean;
   }>;
-  /** Earlier official stems of the track that this package replaced. */
+  /** Earlier official stems of the supplied types that this package replaced. */
   replaced: number;
+  /**
+   * Whether the package supplies every part the track is sold with. Only then
+   * is the sum of the parts compared with the mix (`summedLevel`); otherwise it
+   * is null and each part was checked on its own.
+   */
+  complete: boolean;
+  /** Stem types of the track's earlier official package that this one left untouched. */
+  kept: string[];
   summedLevel: { differenceDb: number; envelopeCorrelation: number | null } | null;
 };
 
@@ -180,7 +193,13 @@ export class OfficialStemsService {
         message: "The published mix could not be read to check the stems. Try again later",
       });
     }
+    const expectedTypes = await this.expectedPartTypes(trackId);
+    const complete = isCompleteOfficialSet(
+      candidates.map((candidate) => candidate.type),
+      expectedTypes,
+    );
     const { issues, summedLevel } = await this.check({
+      complete,
       mixBuffer,
       mixMimeType: mix.mimeType,
       mixDurationFallback: mix.durationSeconds,
@@ -257,7 +276,7 @@ export class OfficialStemsService {
       }
 
       // 6. Record: retire the previous official package, create the new rows.
-      const replaced = await prisma.$transaction(async (tx) => {
+      const { replaced, kept } = await prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT "id" FROM "Release" WHERE "id" = ${releaseId} FOR UPDATE`;
         const current = await tx.release.findUnique({
           where: { id: releaseId },
@@ -286,14 +305,22 @@ export class OfficialStemsService {
           });
         }
 
+        // A package retires only the official stems of the types it supplies
+        // (#2379): a vocals-only upload leaves the drums already on sale, and a
+        // minted drums stem does not block a new vocals part.
+        const suppliedTypes = stored.map((stem) => stem.type);
         const previous = await tx.stem.findMany({
-          where: { trackId, isCurrent: true, source: "official" },
+          where: { trackId, isCurrent: true, source: "official", type: { in: suppliedTypes } },
           select: { id: true, type: true, nftMint: { select: { id: true } }, pricing: true },
+        });
+        const untouched = await tx.stem.findMany({
+          where: { trackId, isCurrent: true, source: "official", type: { notIn: suppliedTypes } },
+          select: { type: true },
         });
         if (previous.some((stem) => stem.nftMint)) {
           throw new ConflictException({
             code: "official_stems_already_minted",
-            message: "Official stems cannot be replaced after one of them has been minted",
+            message: "An official stem that has been minted cannot be replaced. Leave that part out of the package",
           });
         }
         if (previous.length > 0) {
@@ -340,7 +367,7 @@ export class OfficialStemsService {
             });
           }
         }
-        return previous.length;
+        return { replaced: previous.length, kept: [...new Set(untouched.map((stem) => stem.type))].sort() };
       }, { timeout: 15_000 });
 
       this.catalogService.invalidateCache();
@@ -360,6 +387,8 @@ export class OfficialStemsService {
           isEncrypted: stem.isEncrypted,
         })),
         replaced,
+        complete,
+        kept,
         summedLevel,
       };
     } catch (error) {
@@ -368,6 +397,26 @@ export class OfficialStemsService {
       );
       throw error;
     }
+  }
+
+  /**
+   * The parts the track is sold with: its current separated stems other than
+   * the full mix. A package that supplies all of them is expected to add up to
+   * the mix. Official stems do not count (a partial package would otherwise
+   * define its own completeness), and a track with no separated stems has no
+   * expectation.
+   */
+  private async expectedPartTypes(trackId: string): Promise<string[]> {
+    const rows = await prisma.stem.findMany({
+      where: { trackId, isCurrent: true, NOT: { source: "official" } },
+      select: { type: true },
+    });
+    const types = new Set<string>();
+    for (const row of rows) {
+      const type = row.type.toLowerCase();
+      if (isOfficialStemType(type)) types.add(type);
+    }
+    return [...types].sort();
   }
 
   private async loadMixBuffer(mix: {
@@ -387,9 +436,12 @@ export class OfficialStemsService {
   /**
    * Runs every check of an official package: decodes the published mix (its
    * duration is the reference), applies the per-file rules, and only then
-   * decodes the stems for the silence and summed-level checks.
+   * decodes the stems. Each supplied part is checked on its own (silence,
+   * level and alignment with the mix); the sum-of-parts check runs only for a
+   * `complete` package.
    */
   private async check(input: {
+    complete: boolean;
     mixBuffer: Buffer;
     mixMimeType: string | null;
     mixDurationFallback: number | null;
@@ -439,6 +491,14 @@ export class OfficialStemsService {
 
       const silent = validateOfficialStemSilence(candidates);
       if (silent.length > 0) return { issues: silent, summedLevel: null };
+
+      // Every part on its own, all reported at once.
+      const mixEnvelopes = bandEnvelopes(mixSamples);
+      const partIssues = candidates.flatMap((candidate, index) =>
+        validatePartAlignment(candidate, measurePartAgainstMix(mixSamples, decoded[index], mixEnvelopes)),
+      );
+      if (partIssues.length > 0) return { issues: partIssues, summedLevel: null };
+      if (!input.complete) return { issues: [], summedLevel: null };
 
       const measure = measureSummedLevel(mixSamples, decoded);
       return {

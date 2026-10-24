@@ -7,8 +7,13 @@ import { OFFICIAL_STEM_FORMATS } from "../shared/stem-media";
  * An artist uploads their own lossless parts for a published track. The package
  * is accepted only when it plausibly is the track's own parts, aligned with the
  * published mix: allowed stem types, a lossless container, a sample rate every
- * file shares, each duration within a tolerance of the mix, and a summed-level
- * check that catches a wrong, misaligned or incomplete file.
+ * file shares, and each duration within a tolerance of the mix.
+ *
+ * A package may carry any non-empty subset of the stem types (#2379). Every
+ * part is then judged on its own: not silent, not louder than the mix, and its
+ * band-by-band loudness over time follows the mix's without an offset. Only a
+ * package that supplies every part the track is sold with is also checked by
+ * summing it and comparing the sum with the mix.
  *
  * Pure: it judges measurements the caller took (see official-stems.audio.ts), so
  * every rule is unit-testable and every refusal carries a readable reason.
@@ -56,6 +61,53 @@ export const OFFICIAL_STEM_SUMMED_LEVEL_TOLERANCE_DB = 6;
  */
 export const OFFICIAL_STEM_MIN_ENVELOPE_CORRELATION = 0.8;
 
+/**
+ * Per-part alignment (#2379). The part's loudness envelope (100 ms frames) is
+ * compared with the mix's in each of these bands (Hz), so a quiet part is
+ * judged where it is audible instead of against whatever is loudest.
+ */
+export const OFFICIAL_STEM_PART_BANDS_HZ: ReadonlyArray<readonly [number, number]> = [
+  [0, 200],
+  [200, 800],
+  [800, 2000],
+  [2000, 4000],
+];
+
+/** A frame counts for a band when the part is at least this fraction of its own peak there (-20 dB). */
+export const OFFICIAL_STEM_PART_ACTIVE_RATIO = 0.1;
+/** Fewer envelope frames than this (3 s) is too little to judge alignment on. */
+export const OFFICIAL_STEM_PART_MIN_FRAMES = 30;
+/** A band with fewer active frames than this is left out of the comparison. */
+export const OFFICIAL_STEM_PART_MIN_ACTIVE_FRAMES = 10;
+/** Shifts searched when looking for where the part really lines up: +-1 s. */
+export const OFFICIAL_STEM_PART_MAX_LAG_FRAMES = 10;
+/** An offset of up to this many frames (100 ms) is the tolerance, not a fault. */
+export const OFFICIAL_STEM_PART_LAG_TOLERANCE_FRAMES = 1;
+
+/**
+ * A part is refused as shifted when correlating it at some other offset beats
+ * the in-tolerance correlation by more than this margin.
+ *
+ * From the fixtures (`official_stems_fixtures.ts`, six parts of a synthetic
+ * song, eight seeds, 20 s): aligned parts, including ones off by half a frame,
+ * never exceed 0.29, while parts exported 0.3 s or more late exceed 0.35 for
+ * every part with a rhythm of its own. A part with an almost steady level
+ * (here the quiet guitar and "other") gives the check nothing to hold on to and
+ * can slip through; the first-version limit is documented, not hidden.
+ */
+export const OFFICIAL_STEM_PART_OFFSET_MARGIN = 0.35;
+
+/**
+ * A part whose best in-tolerance correlation is below this follows nothing in
+ * the mix (noise, or a badly shifted part). Aligned fixture parts, down to one
+ * 19 dB under the whole mix, stay above 0.25 (above 0.09 when half a frame
+ * off); badly shifted ones mostly fall below 0.05. A part of another song with
+ * the same beat grid and instruments can still score 0.2 to 0.6, so this is not
+ * a way to recognise a wrong track; only a complete package's sum is held to
+ * the mix.
+ */
+export const OFFICIAL_STEM_PART_MIN_CORRELATION = 0.05;
+
 /** A stem quieter than this RMS level (dBFS) is treated as silent. */
 export const OFFICIAL_STEM_SILENCE_FLOOR_DB = -70;
 
@@ -90,6 +142,18 @@ export type SummedLevelMeasure = {
   envelopeCorrelation: number | null;
 };
 
+/** How one part's loudness over time lines up with the mix (see `measurePartAlignment`). */
+export type PartAlignmentMeasure = {
+  /** Best correlation within the tolerated offset; null when there is too little to judge. */
+  alignedCorrelation: number | null;
+  /** Best correlation at an offset beyond the tolerance. */
+  offsetCorrelation: number | null;
+  /** Offset of that best match in 100 ms frames; positive when the part comes later than the mix. */
+  offsetFrames: number | null;
+  /** Part RMS minus mix RMS, in dB. */
+  levelDifferenceDb: number;
+};
+
 export type OfficialStemIssueCode =
   | "no_files"
   | "unknown_type"
@@ -105,6 +169,7 @@ export type OfficialStemIssueCode =
   | "duration_mismatch"
   | "silent_stem"
   | "summed_level_mismatch"
+  | "part_louder_than_mix"
   | "misaligned";
 
 export type OfficialStemIssue = {
@@ -298,6 +363,74 @@ export function validateSummedLevel(measure: SummedLevelMeasure): OfficialStemIs
       message:
         "The stems do not line up with the published mix: their loudness over time does not follow the mix. " +
         "Export every stem from the same start point as the mix, without trimming silence.",
+    });
+  }
+  return issues;
+}
+
+/**
+ * Whether a package supplies every part the track is sold with, which is when
+ * the sum of the parts is expected to equal the mix. An unknown or empty
+ * expectation is never "full": nothing is then compared with the sum.
+ */
+export function isCompleteOfficialSet(
+  supplied: readonly string[],
+  expected: readonly string[],
+): boolean {
+  if (expected.length === 0) return false;
+  const have = new Set(supplied);
+  return expected.every((type) => have.has(type));
+}
+
+/** Frames of 100 ms as seconds, for a message. */
+function offsetSeconds(frames: number): string {
+  return `${(Math.abs(frames) * 0.1).toFixed(1)} s`;
+}
+
+/**
+ * The per-part check of a partial (or any) package: the part may not be louder
+ * than the whole mix, and its loudness over time has to follow the mix's
+ * without a shift. A part too short or too quiet to judge is not refused here.
+ */
+export function validatePartAlignment(
+  part: { type: string; fileName: string },
+  measure: PartAlignmentMeasure,
+): OfficialStemIssue[] {
+  const issues: OfficialStemIssue[] = [];
+  const label = `${part.type} (${part.fileName})`;
+  if (measure.levelDifferenceDb > OFFICIAL_STEM_SUMMED_LEVEL_TOLERANCE_DB) {
+    issues.push({
+      code: "part_louder_than_mix",
+      stemType: part.type,
+      message:
+        `The ${label} file is ${measure.levelDifferenceDb.toFixed(1)} dB louder than the whole published mix ` +
+        `(at most ${OFFICIAL_STEM_SUMMED_LEVEL_TOLERANCE_DB} dB is allowed). ` +
+        "It may be the full mix or another track, or it was exported with extra gain.",
+    });
+  }
+  const aligned = measure.alignedCorrelation;
+  if (aligned === null) return issues;
+  if (
+    measure.offsetCorrelation !== null &&
+    measure.offsetFrames !== null &&
+    measure.offsetCorrelation - aligned > OFFICIAL_STEM_PART_OFFSET_MARGIN
+  ) {
+    const direction = measure.offsetFrames > 0 ? "later" : "earlier";
+    issues.push({
+      code: "misaligned",
+      stemType: part.type,
+      message:
+        `The ${label} file does not line up with the published mix: it matches the mix about ` +
+        `${offsetSeconds(measure.offsetFrames)} ${direction} than where it sits. ` +
+        "Export every stem from the same start point as the mix, without trimming silence.",
+    });
+  } else if (aligned < OFFICIAL_STEM_PART_MIN_CORRELATION) {
+    issues.push({
+      code: "misaligned",
+      stemType: part.type,
+      message:
+        `The ${label} file does not follow the published mix: its loudness over time matches nothing in it. ` +
+        "Check that it is the right track and that it starts where the mix starts.",
     });
   }
   return issues;

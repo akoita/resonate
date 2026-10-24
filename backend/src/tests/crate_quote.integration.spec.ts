@@ -177,6 +177,8 @@ class FakeTransactionIndexer implements CrateTransactionIndexer {
 
 type SeedListing = {
   stemType: string;
+  /** Which stem of that type, when a track has one of each source (#2379). */
+  stemKey?: string;
   tier: "personal" | "remix" | "commercial";
   /** Price per unit in units of the chain token. */
   units: bigint;
@@ -185,7 +187,8 @@ type SeedListing = {
   dbToken: string;
 };
 
-type SeedTrack = { key: string; stems: string[]; listings: SeedListing[] };
+type SeedStem = string | { key: string; type: string; source: "official" | "separated" };
+type SeedTrack = { key: string; stems: SeedStem[]; listings: SeedListing[] };
 
 const usdc = (stemType: string, units: bigint, tier: SeedListing["tier"] = "personal"): SeedListing => ({
   stemType,
@@ -193,6 +196,11 @@ const usdc = (stemType: string, units: bigint, tier: SeedListing["tier"] = "pers
   units,
   chainToken: USDC,
   dbToken: USDC,
+});
+
+const usdcOf = (stemKey: string, stemType: string, units: bigint): SeedListing => ({
+  ...usdc(stemType, units),
+  stemKey,
 });
 
 const TRACKS: SeedTrack[] = [
@@ -216,6 +224,30 @@ const TRACKS: SeedTrack[] = [
     key: "tC",
     stems: ["vocals", "drums", "bass", "guitar"],
     listings: [usdc("vocals", USDC_UNIT), usdc("drums", USDC_UNIT), usdc("bass", USDC_UNIT)],
+  },
+  {
+    // The same stem type sold from two sources: the artist's official vocals
+    // (4 USDC) and the separated ones (1 USDC), plus separated drums (#2379).
+    key: "tS",
+    stems: [
+      "drums",
+      { key: "vocals_sep", type: "vocals", source: "separated" },
+      { key: "vocals_off", type: "vocals", source: "official" },
+    ],
+    listings: [
+      usdc("drums", 2n * USDC_UNIT),
+      usdcOf("vocals_sep", "vocals", USDC_UNIT),
+      usdcOf("vocals_off", "vocals", 4n * USDC_UNIT),
+    ],
+  },
+  {
+    // Official vocals with no listing; only the separated vocals are on sale.
+    key: "tT",
+    stems: [
+      { key: "vocals_sep", type: "vocals", source: "separated" },
+      { key: "vocals_off", type: "vocals", source: "official" },
+    ],
+    listings: [usdcOf("vocals_sep", "vocals", USDC_UNIT)],
   },
   {
     key: "tE",
@@ -291,13 +323,16 @@ async function seedCatalog() {
     await prisma.stem.create({
       data: { id: id(`${track.key}_original`), trackId: id(track.key), type: "original", uri: "local://o.mp3" },
     });
-    for (const stemType of track.stems) {
+    for (const seed of track.stems) {
+      const stem = typeof seed === "string" ? { key: seed, type: seed, source: null } : seed;
       await prisma.stem.create({
         data: {
-          id: id(`${track.key}_${stemType}`),
+          id: id(`${track.key}_${stem.key}`),
           trackId: id(track.key),
-          type: stemType,
-          uri: `local://${track.key}-${stemType}.mp3`,
+          type: stem.type,
+          uri: `local://${track.key}-${stem.key}.${stem.source === "official" ? "wav" : "mp3"}`,
+          ...(stem.source ? { source: stem.source } : {}),
+          ...(stem.source === "official" ? { mimeType: "audio/wav" } : {}),
         },
       });
     }
@@ -307,7 +342,7 @@ async function seedCatalog() {
       const row = await prisma.stemListing.create({
         data: {
           listingId,
-          stemId: id(`${track.key}_${listing.stemType}`),
+          stemId: id(`${track.key}_${listing.stemKey ?? listing.stemType}`),
           tokenId: listingId + 1000n,
           chainId: CHAIN_ID,
           // Mixed case on purpose: the marketplace match is case-insensitive.
@@ -330,7 +365,7 @@ async function seedCatalog() {
         listingId,
         rowId: row.id,
         tokenId: listingId + 1000n,
-        stemId: id(`${track.key}_${listing.stemType}`),
+        stemId: id(`${track.key}_${listing.stemKey ?? listing.stemType}`),
       });
     }
   }
@@ -575,6 +610,73 @@ describe("CrateQuoteService (integration)", () => {
       });
       expect(overridden.lines[0].licenseType).toBe("personal");
       expect(overridden.lines[0].items.map((item) => item.stemType)).toEqual(["bass", "vocals"]);
+    });
+
+    describe("a stem type sold from both sources (#2379)", () => {
+      it("quotes one stem per type, never both sources, when the crate has no source filter", async () => {
+        const quote = await service.createQuote(DJ, await makeCrate(DJ, ["tS"]), {});
+        const items = quote.lines[0].items;
+        expect(items.map((item) => item.stemType)).toEqual(["drums", "vocals"]);
+        // The cheaper listing is picked: the separated vocals, not the official ones.
+        expect(itemOf(quote, "tS", "vocals")).toMatchObject({
+          stemId: id("tS_vocals_sep"),
+          source: "separated",
+          sourceLabel: "Separated (AI)",
+          total: "1",
+        });
+        expect(quote.totalUsd).toBe("3");
+        // One quote row per stem type: the drums and one vocals, never a row for each source.
+        expect(await prisma.crateQuoteLine.count({ where: { quoteId: quote.id } })).toBe(2);
+        expect(quote.totals).toHaveLength(1);
+        expect(quote.totals[0].total).toBe("3");
+      });
+
+      it("quotes only the official stems under the official filter, at the official price", async () => {
+        const crateId = await makeCrate(DJ, ["tS"], { stemSource: "official" });
+        const quote = await service.createQuote(DJ, crateId, {});
+        // The drums are separated only, so they are not part of an official-only crate.
+        expect(quote.lines[0].items.map((item) => item.stemType)).toEqual(["vocals"]);
+        expect(itemOf(quote, "tS", "vocals")).toMatchObject({
+          stemId: id("tS_vocals_off"),
+          status: "quoted",
+          source: "official",
+          sourceLabel: "Official",
+          mimeType: "audio/wav",
+          total: "4",
+        });
+        expect(quote.totalUsd).toBe("4");
+        expect(quote.totals[0].total).toBe("4");
+        expect(allItems(quote).filter((item) => item.stemType === "vocals")).toHaveLength(1);
+      });
+
+      it("quotes only the separated stems under the separated filter", async () => {
+        const crateId = await makeCrate(DJ, ["tS"], { stemSource: "separated" });
+        const quote = await service.createQuote(DJ, crateId, {});
+        expect(quote.lines[0].items.map((item) => [item.stemType, item.stemId])).toEqual([
+          ["drums", id("tS_drums")],
+          ["vocals", id("tS_vocals_sep")],
+        ]);
+        expect(allItems(quote).every((item) => item.source === "separated")).toBe(true);
+        expect(quote.totalUsd).toBe("3");
+      });
+
+      it("keeps the filter when a line names the stem type, and never falls back to the other source", async () => {
+        const official = await makeCrate(DJ, ["tS", "tT"], { stemSource: "official" });
+        const quote = await service.createQuote(DJ, official, {
+          lines: [{ trackId: id("tS"), stemTypes: ["vocals"] }, { trackId: id("tT"), stemTypes: ["vocals"] }],
+        });
+        // tS: the official vocals even though the separated ones are cheaper.
+        expect(itemOf(quote, "tS", "vocals")).toMatchObject({ stemId: id("tS_vocals_off"), total: "4" });
+        // tT: the official vocals have no listing; the separated listing is not substituted.
+        expect(itemOf(quote, "tT", "vocals")).toMatchObject({
+          stemId: id("tT_vocals_off"),
+          status: "dropped",
+          reason: "not_listed",
+          listingId: null,
+        });
+        expect(quote.totalUsd).toBe("4");
+        expect(quote.lines.find((line) => line.trackId === id("tT"))?.items).toHaveLength(1);
+      });
     });
 
     it("quotes only the requested lines, in crate order", async () => {

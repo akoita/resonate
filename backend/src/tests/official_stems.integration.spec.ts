@@ -20,7 +20,7 @@ import { UploadRightsRoutingService } from "../modules/rights/upload-rights-rout
 import { EventBus } from "../modules/shared/event_bus";
 import { LocalStorageProvider } from "../modules/storage/local_storage_provider";
 import { StemPricingService } from "../modules/pricing/stem-pricing.service";
-import { flacHeaderBuffer, scaled, shifted, syntheticStems, wavBuffer } from "./official_stems_fixtures";
+import { PART_NAMES, flacFromWav, FFMPEG_AVAILABLE, flacHeaderBuffer, fullSong, scaled, shifted, syntheticStems, wavBuffer } from "./official_stems_fixtures";
 
 const P = `ofst_${Date.now()}_`;
 const OWNER = `${P}owner`;
@@ -31,9 +31,14 @@ const TRACK = `${P}track`;
 const MIX_STEM = `${P}mix`;
 const BLOCKED_RELEASE = `${P}release_blocked`;
 const BLOCKED_TRACK = `${P}track_blocked`;
+const PARTIAL_RELEASE = `${P}release_partial`;
+const PARTIAL_TRACK = `${P}track_partial`;
+const ALL_TRACKS = [TRACK, BLOCKED_TRACK, PARTIAL_TRACK];
 const BUYER = "0x00000000000000000000000000000000000b0b01";
 
 const stems = syntheticStems(4);
+// A 20 s song of six parts with rhythms of their own: long enough for the per-part alignment check.
+const song = fullSong(20, 1, 44_100);
 const file = (buffer: Buffer, name: string) =>
   ({ buffer, originalname: name, mimetype: "audio/wav", size: buffer.length, fieldname: "x" }) as Express.Multer.File;
 const goodPackage = () => ({
@@ -72,6 +77,21 @@ describe("official stems (integration)", () => {
         data: { id: trackId, releaseId, title: "Night Drive", position: 1, artist: "Official Test Artist" },
       });
     }
+    await prisma.release.create({
+      data: { id: PARTIAL_RELEASE, artistId: OWNER_ARTIST, title: "Partial stems release", status: "ready", rightsRoute: "STANDARD_ESCROW" },
+    });
+    await prisma.track.create({
+      data: { id: PARTIAL_TRACK, releaseId: PARTIAL_RELEASE, title: "Long Night", position: 1, artist: "Official Test Artist" },
+    });
+    await prisma.stem.create({
+      data: { id: `${MIX_STEM}_p`, trackId: PARTIAL_TRACK, type: "original", uri: `/catalog/stems/${MIX_STEM}_p.wav/blob`, data: wavBuffer(song.mix), mimeType: "audio/wav", durationSeconds: 20, isCurrent: true },
+    });
+    // The track is sold with its six separated parts, so a package of all six is a complete one.
+    for (const type of PART_NAMES) {
+      await prisma.stem.create({
+        data: { id: `${P}partial_sep_${type}`, trackId: PARTIAL_TRACK, type, uri: `mock://${P}${type}.mp3`, mimeType: "audio/mpeg", source: "separated", separationModel: "demucs-htdemucs-6s", isCurrent: true },
+      });
+    }
     const mix = wavBuffer(stems.mix);
     await prisma.stem.create({
       data: { id: MIX_STEM, trackId: TRACK, type: "original", uri: `/catalog/stems/${MIX_STEM}.wav/blob`, data: mix, mimeType: "audio/wav", durationSeconds: 4, isCurrent: true },
@@ -82,17 +102,17 @@ describe("official stems (integration)", () => {
   }, 60_000);
 
   afterAll(async () => {
-    const all = await prisma.stem.findMany({ where: { trackId: { in: [TRACK, BLOCKED_TRACK] } }, select: { id: true, uri: true } });
+    const all = await prisma.stem.findMany({ where: { trackId: { in: ALL_TRACKS } }, select: { id: true, uri: true } });
     for (const stem of all) {
       await storage.delete(stem.uri).catch(() => undefined);
     }
     await prisma.stemPurchase.deleteMany({ where: { listing: { stem: { trackId: TRACK } } } });
     await prisma.stemListing.deleteMany({ where: { stem: { trackId: TRACK } } });
-    await prisma.stemNftMint.deleteMany({ where: { stem: { trackId: TRACK } } });
-    await prisma.stemPricing.deleteMany({ where: { stem: { trackId: { in: [TRACK, BLOCKED_TRACK] } } } });
-    await prisma.stem.deleteMany({ where: { trackId: { in: [TRACK, BLOCKED_TRACK] } } });
-    await prisma.track.deleteMany({ where: { id: { in: [TRACK, BLOCKED_TRACK] } } });
-    await prisma.release.deleteMany({ where: { id: { in: [RELEASE, BLOCKED_RELEASE] } } });
+    await prisma.stemNftMint.deleteMany({ where: { stem: { trackId: { in: ALL_TRACKS } } } });
+    await prisma.stemPricing.deleteMany({ where: { stem: { trackId: { in: ALL_TRACKS } } } });
+    await prisma.stem.deleteMany({ where: { trackId: { in: ALL_TRACKS } } });
+    await prisma.track.deleteMany({ where: { id: { in: ALL_TRACKS } } });
+    await prisma.release.deleteMany({ where: { id: { in: [RELEASE, BLOCKED_RELEASE, PARTIAL_RELEASE] } } });
     await prisma.artist.deleteMany({ where: { id: OWNER_ARTIST } });
     await prisma.user.deleteMany({ where: { id: { in: [OWNER, OTHER] } } });
     eventBus.destroy();
@@ -143,20 +163,20 @@ describe("official stems (integration)", () => {
       await noOfficialRows();
     });
 
-    it("refuses stems that are shifted against the mix", async () => {
-      const body = await refusal({
-        vocals: file(wavBuffer(scaled(shifted(stems.vocals, 0.25), 0.9)), "vocals.wav"),
-        drums: file(wavBuffer(scaled(shifted(stems.drums, 0.25), 0.9)), "drums.wav"),
-        bass: file(wavBuffer(scaled(shifted(stems.bass, 0.25), 0.9)), "bass.wav"),
+    it("accepts a single part: a package does not have to add up to the mix", async () => {
+      // Checked on its own, one quiet part is fine; the sum is compared with the mix only for a complete package.
+      const result = await service.uploadPackage({
+        releaseId: RELEASE,
+        trackId: TRACK,
+        userId: OWNER,
+        files: { bass: file(wavBuffer(scaled(stems.bass, 0.9)), "bass.wav") },
       });
-      expect(body.issues.map((issue) => issue.code)).toEqual(["misaligned"]);
-      await noOfficialRows();
-    });
-
-    it("refuses a package that does not add up to the mix (one quiet part)", async () => {
-      const body = await refusal({ bass: file(wavBuffer(scaled(stems.bass, 0.9)), "bass.wav") });
-      expect(body.issues.map((issue) => issue.code)).toContain("summed_level_mismatch");
-      await noOfficialRows();
+      expect(result.stems.map((stem) => stem.type)).toEqual(["bass"]);
+      expect(result.complete).toBe(false);
+      expect(result.summedLevel).toBeNull();
+      const rows = await prisma.stem.findMany({ where: { id: { in: result.stems.map((stem) => stem.id) } } });
+      for (const row of rows) await storage.delete(row.uri).catch(() => undefined);
+      await prisma.stem.deleteMany({ where: { id: { in: rows.map((row) => row.id) } } });
     });
 
     it("refuses a wrong sample rate, a lossy codec and a file that is not audio", async () => {
@@ -181,7 +201,9 @@ describe("official stems (integration)", () => {
       const result = await service.uploadPackage({ releaseId: RELEASE, trackId: TRACK, userId: OWNER, files });
       expect(result.replaced).toBe(0);
       expect(result.stems.map((stem) => stem.type).sort()).toEqual(["bass", "drums", "vocals"]);
-      expect(result.summedLevel?.envelopeCorrelation).toBeGreaterThan(0.9);
+      // This track is sold with no separated parts, so nothing says the package is complete.
+      expect(result.complete).toBe(false);
+      expect(result.summedLevel).toBeNull();
 
       const rows = await officialStems();
       expect(rows).toHaveLength(3);
@@ -338,6 +360,132 @@ describe("official stems (integration)", () => {
       expect(error).toBeInstanceOf(BadRequestException);
       expect(error.getResponse().issues.map((issue: { code: string }) => issue.code)).toEqual(["unreadable_audio"]);
     });
+  });
+
+  describe("partial packages", () => {
+    const partial = (files: Record<string, Express.Multer.File>) =>
+      service.uploadPackage({ releaseId: PARTIAL_RELEASE, trackId: PARTIAL_TRACK, userId: OWNER, files });
+    const part = (name: (typeof PART_NAMES)[number], delay = 0, gain = 0.9) =>
+      file(wavBuffer(scaled(delay ? shifted(song.parts[name], delay, 44_100) : song.parts[name], gain)), `${name}.wav`);
+    const refusal = async (files: Record<string, Express.Multer.File>) => {
+      const error = await partial(files).catch((e) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      return error.getResponse() as { code: string; message: string; issues: Array<{ code: string; stemType?: string; message: string }> };
+    };
+    const rows = () =>
+      prisma.stem.findMany({ where: { trackId: PARTIAL_TRACK, source: "official" }, orderBy: [{ type: "asc" }, { id: "asc" }] });
+    const currentTypes = async () => (await rows()).filter((row) => row.isCurrent).map((row) => row.type);
+
+    it("accepts one part of a track sold with six, checking only that part", async () => {
+      const result = await partial({ bass: part("bass") });
+      expect(result.stems.map((stem) => stem.type)).toEqual(["bass"]);
+      expect(result.complete).toBe(false);
+      expect(result.summedLevel).toBeNull();
+      expect(result.replaced).toBe(0);
+      expect(result.kept).toEqual([]);
+      expect(await currentTypes()).toEqual(["bass"]);
+    }, 60_000);
+
+    it("lists every part that fails, each with its own reason", async () => {
+      const body = await refusal({ vocals: part("vocals", 0.7), bass: part("bass", 0.7), piano: part("piano") });
+      expect(body.code).toBe("official_stems_rejected");
+      expect(body.issues.map((issue) => [issue.code, issue.stemType])).toEqual([
+        ["misaligned", "vocals"],
+        ["misaligned", "bass"],
+      ]);
+      expect(body.issues[0].message).toContain("vocals (vocals.wav)");
+      expect(body.issues[0].message).toContain("0.7 s later");
+      // Nothing was stored or retired by the refused package.
+      expect(await currentTypes()).toEqual(["bass"]);
+    }, 60_000);
+
+    it("refuses a part that is louder than the whole mix", async () => {
+      const body = await refusal({ other: file(wavBuffer(scaled(song.mix, 3)), "mixdown.wav") });
+      expect(body.issues.map((issue) => issue.code)).toEqual(["part_louder_than_mix"]);
+      expect(body.issues[0].stemType).toBe("other");
+    }, 60_000);
+
+    it("retires only the types it supplies, so another part stays on sale", async () => {
+      const bassBefore = (await rows()).find((row) => row.type === "bass" && row.isCurrent)!;
+      const added = await partial({ vocals: part("vocals") });
+      expect(added.replaced).toBe(0);
+      expect(added.kept).toEqual(["bass"]);
+      expect(await currentTypes()).toEqual(["bass", "vocals"]);
+      expect((await prisma.stem.findUniqueOrThrow({ where: { id: bassBefore.id } })).isCurrent).toBe(true);
+
+      const vocalsBefore = (await rows()).find((row) => row.type === "vocals" && row.isCurrent)!;
+      await prisma.stemPricing.create({
+        data: { stemId: vocalsBefore.id, basePlayPriceUsd: 0, remixLicenseUsd: 1.25, commercialLicenseUsd: 4, floorUsd: 0, ceilingUsd: 10 },
+      });
+      const replaced = await partial({ vocals: part("vocals") });
+      expect(replaced.replaced).toBe(1);
+      expect(replaced.kept).toEqual(["bass"]);
+      expect(await currentTypes()).toEqual(["bass", "vocals"]);
+      expect((await prisma.stem.findUniqueOrThrow({ where: { id: vocalsBefore.id } })).isCurrent).toBe(false);
+      expect((await prisma.stem.findUniqueOrThrow({ where: { id: bassBefore.id } })).isCurrent).toBe(true);
+      // The price set for the retired vocals part is carried to its replacement.
+      const carried = await prisma.stemPricing.findUnique({ where: { stemId: replaced.stems[0].id } });
+      expect(carried?.remixLicenseUsd).toBe(1.25);
+    }, 60_000);
+
+    it("lets a part be replaced while another part of the package is minted, but not the minted one", async () => {
+      const bass = (await rows()).find((row) => row.type === "bass" && row.isCurrent)!;
+      await prisma.stemNftMint.create({
+        data: {
+          stemId: bass.id, tokenId: BigInt(910004), chainId: 31337, contractAddress: "0x0000000000000000000000000000000000000001",
+          creatorAddress: BUYER, royaltyBps: 500, remixable: true, metadataUri: "ipfs://y", transactionHash: `0x${P}mint_p`,
+          blockNumber: BigInt(1), mintedAt: new Date(),
+        },
+      });
+      const vocals = await partial({ vocals: part("vocals") });
+      expect(vocals.replaced).toBe(1);
+      expect(vocals.kept).toEqual(["bass"]);
+      const error = await partial({ bass: part("bass") }).catch((e) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.getResponse()).toEqual(expect.objectContaining({ code: "official_stems_already_minted" }));
+      expect(await currentTypes()).toEqual(["bass", "vocals"]);
+    }, 90_000);
+
+    it("compares the sum with the mix only for a complete package, and keeps the minted part out of its replacement", async () => {
+      // Every part the track is sold with, one tenth of its level: each part is fine alone, together they are far too quiet.
+      const quiet: Record<string, Express.Multer.File> = {};
+      for (const name of PART_NAMES) quiet[name] = part(name, 0, 0.09);
+      const body = await refusal(quiet);
+      expect(body.issues.map((issue) => issue.code)).toEqual(["summed_level_mismatch"]);
+      expect(body.issues[0].message).toContain("quieter");
+
+      // Without the minted bass the same quiet parts are a partial package and pass.
+      const { bass: _bass, ...withoutBass } = quiet;
+      void _bass;
+      const partialResult = await partial(withoutBass);
+      expect(partialResult.complete).toBe(false);
+      expect(partialResult.summedLevel).toBeNull();
+      expect(partialResult.replaced).toBe(1); // the vocals part
+      expect(partialResult.kept).toEqual(["bass"]);
+    }, 120_000);
+
+    it("accepts a complete, aligned package, measures its sum, and replaces all of the supplied parts", async () => {
+      // Clear the minted bass so the whole set can be replaced.
+      await prisma.stemNftMint.deleteMany({ where: { stem: { trackId: PARTIAL_TRACK } } });
+      const full: Record<string, Express.Multer.File> = {};
+      for (const name of PART_NAMES) full[name] = part(name);
+      const result = await partial(full);
+      expect(result.complete).toBe(true);
+      expect(result.kept).toEqual([]);
+      expect(result.stems.map((stem) => stem.type).sort()).toEqual([...PART_NAMES].sort());
+      expect(Math.abs(result.summedLevel!.differenceDb)).toBeLessThan(1);
+      expect(result.summedLevel!.envelopeCorrelation).toBeGreaterThan(0.95);
+      expect(await currentTypes()).toEqual([...PART_NAMES].sort());
+    }, 120_000);
+
+    (FFMPEG_AVAILABLE ? it : it.skip)("stores a real FLAC part as FLAC and decodes it for the checks", async () => {
+      const flac = flacFromWav(wavBuffer(scaled(song.parts.drums, 0.9)));
+      const result = await partial({ drums: file(flac, "drums.flac") });
+      expect(result.stems).toEqual([expect.objectContaining({ type: "drums", mimeType: "audio/flac", sampleRate: 44_100 })]);
+      const row = await prisma.stem.findUniqueOrThrow({ where: { id: result.stems[0].id } });
+      expect(row.uri).toMatch(/\.flac\/blob$/);
+      expect(row.durationSeconds).toBeCloseTo(20, 1);
+    }, 60_000);
   });
 
   describe("separation results", () => {

@@ -1,5 +1,6 @@
 "use client";
 
+import "../../styles/stem-source-badge.css";
 import {
   STEM_SOURCE_LABELS,
   stemSourceTitle,

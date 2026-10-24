@@ -27,6 +27,10 @@
  *     campaigns and listings (web/tests/fixtures/guide-seed-mock.mjs). The
  *     script starts that sample backend itself on API_BASE_URL's port, so no
  *     hosted data is involved and every run draws the same pictures.
+ *   - OFFICIAL STEMS pass (#2379, opt-in): the Official stems upload panel on
+ *     an artist's release page, and the Official / Separated (AI) badges in
+ *     Browse stems, from fixed mock data (web/tests/fixtures/official-stems-mock.mjs).
+ *     No backend or catalog data is needed.
  *
  * Usage:
  *   # Public pass against staging (default):
@@ -60,6 +64,10 @@
  *   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_SEEDED=true \
  *     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
  *
+ *   # Official stems pass (a local dev server with mock auth is enough):
+ *   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_OFFICIAL_STEMS=true \
+ *     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+ *
  * Requirements: a Chromium browser for Playwright
  *   npx playwright install chromium
  *   (or set CHROMIUM_EXECUTABLE_PATH to an installed Chromium binary)
@@ -73,6 +81,11 @@ import path from "node:path";
 import { chromium } from "@playwright/test";
 import { mockSceneScoutApi } from "../tests/fixtures/scene-scout-mock.mjs";
 import { PROJECT_ID as REMIX_PROJECT_ID, mockRemixApi } from "../tests/fixtures/remix-studio-mock.mjs";
+import {
+  OFFICIAL_STEMS_RELEASE_ID,
+  mockOfficialStemsRelease,
+  mockSourceListings,
+} from "../tests/fixtures/official-stems-mock.mjs";
 import {
   CRATE_ID,
   CRATE_REQUEST_TEXT,
@@ -90,6 +103,7 @@ const CAPTURE_OWNER = process.env.CAPTURE_OWNER === "true";
 const CAPTURE_REMIX = process.env.CAPTURE_REMIX === "true";
 const CAPTURE_CRATES = process.env.CAPTURE_CRATES === "true";
 const CAPTURE_SEEDED = process.env.CAPTURE_SEEDED === "true";
+const CAPTURE_OFFICIAL_STEMS = process.env.CAPTURE_OFFICIAL_STEMS === "true";
 const OWNER_USER_ID = "e2e-user-00000000-0000-0000-0000-000000000001";
 const OWNER_WALLET_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const OUT_DIR = path.resolve(
@@ -1198,6 +1212,90 @@ async function captureCrates(browser) {
   await ctx.close();
 }
 
+// ── Official stems pass (#2379) ───────────────────────────────────────────
+// file -> { viewportHeight, prepare(page) => { locator } | { clip } | {} }
+const OFFICIAL_STEMS_TARGETS = [
+  {
+    // The artist's panel: one track with official vocals and bass already on
+    // sale as chips, and the upload form open on the other with three files
+    // chosen and Upload enabled.
+    file: "official-stems-panel.png",
+    viewportHeight: 1800,
+    prepare: async (page) => {
+      await mockOfficialStemsRelease(page);
+      await page.goto(`${BASE_URL}/release/${OFFICIAL_STEMS_RELEASE_ID}`, { waitUntil: "networkidle", timeout: 90000 });
+      const panel = page.getByTestId("official-stems-panel");
+      await panel.waitFor({ timeout: 45000 });
+      await panel.getByLabel("Official stems of Golden Road").waitFor({ timeout: 15000 });
+      // The release page refreshes itself while it loads and can re-mount the
+      // panel under the click; retry until the form stays open.
+      const hint = panel.getByText(/one is enough/);
+      for (let attempt = 0; attempt < 12 && !(await hint.isVisible()); attempt += 1) {
+        await panel.getByRole("button", { name: "Upload official stems" }).click({ timeout: 3000 }).catch(() => undefined);
+        await page.waitForTimeout(1500);
+      }
+      await hint.waitFor({ timeout: 15000 });
+      // Three parts picked: Upload turns primary and says how many.
+      const sample = (name, mimeType, megabytes) => ({ name, mimeType, buffer: Buffer.alloc(Math.round(megabytes * 1024 * 1024)) });
+      await panel.getByLabel("Vocals file (WAV or FLAC)").setInputFiles(sample("lantern-season-vocals.wav", "audio/wav", 31.4));
+      await panel.getByLabel("Drums file (WAV or FLAC)").setInputFiles(sample("lantern-season-drums.flac", "audio/flac", 18.2));
+      await panel.getByLabel("Bass file (WAV or FLAC)").setInputFiles(sample("lantern-season-bass.wav", "audio/wav", 24.8));
+      await panel.getByRole("button", { name: "Upload 3 parts" }).waitFor({ timeout: 15000 });
+      return { locator: panel };
+    },
+  },
+  {
+    // Browse stems: the same part sold as Official and as Separated (AI).
+    file: "stem-source-badges.png",
+    viewportHeight: 1300,
+    prepare: async (page) => {
+      await mockSourceListings(page);
+      await page.goto(`${BASE_URL}/crates?tab=stems`, { waitUntil: "networkidle", timeout: 90000 });
+      await page.getByText("Golden Road Bass").first().waitFor({ timeout: 45000 });
+      const cards = page.locator(".stem-card");
+      await cards.nth(2).waitFor({ timeout: 15000 });
+      // From the source menu down to the first row of cards: the same vocals
+      // part sold as Official and as Separated (AI).
+      const clip = await unionClip(page, [page.getByTestId("marketplace-source-filter"), cards.nth(0), cards.nth(2)]);
+      return { clip };
+    },
+  },
+];
+
+async function captureOfficialStems(browser) {
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    locale: "en-US",
+    timezoneId: "UTC",
+    reducedMotion: "reduce",
+  });
+  await ctx.addInitScript((auth) => {
+    localStorage.setItem("resonate.token", auth.token);
+    localStorage.setItem("resonate.address", auth.address);
+    localStorage.setItem("resonate.mock_auth", "true");
+    sessionStorage.setItem("resonate.agent_onboarding_dismissed", "1");
+  }, MOCK_AUTH);
+  for (const target of OFFICIAL_STEMS_TARGETS) {
+    if (process.env.CAPTURE_ONLY && target.file !== process.env.CAPTURE_ONLY) continue;
+    // A fresh page per target: routes never leak between shots.
+    const page = await ctx.newPage();
+    await page.setViewportSize({ width: 1440, height: target.viewportHeight ?? 900 });
+    const shot = await target.prepare(page);
+    await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(1500);
+    const out = path.join(OUT_DIR, target.file);
+    if (shot.locator) await shot.locator.screenshot({ path: out });
+    else if (shot.clip) await page.screenshot({ path: out, clip: shot.clip });
+    else await page.screenshot({ path: out });
+    console.log(`✓ [official-stems] ${target.file}`);
+    await page.close();
+  }
+  await ctx.close();
+}
+
 async function main() {
   // CHROMIUM_EXECUTABLE_PATH: use an already-installed Chromium whose build
   // differs from the one this Playwright version expects.
@@ -1248,6 +1346,7 @@ async function main() {
     if (CAPTURE_REMIX) await captureRemix(browser);
     if (CAPTURE_CRATES) await captureCrates(browser);
     if (CAPTURE_SEEDED) await captureSeeded(browser);
+    if (CAPTURE_OFFICIAL_STEMS) await captureOfficialStems(browser);
   } finally {
     await browser.close();
   }
