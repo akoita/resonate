@@ -221,7 +221,7 @@ describe("official stems (integration)", () => {
       await prisma.stemPurchase.create({
         data: {
           listingId, buyerAddress: BUYER, amount: BigInt(1), totalPaid: "1", royaltyPaid: "0", protocolFeePaid: "0",
-          sellerReceived: "1", transactionHash: `0x${P}p1`, logIndex: 0, blockNumber: BigInt(1), purchasedAt: new Date(),
+          sellerReceived: "1", transactionHash: `0x${P}p1`, logIndex: 0, blockNumber: BigInt(1), purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
         },
       });
       const headers: Record<string, unknown> = {};
@@ -254,7 +254,7 @@ describe("official stems (integration)", () => {
       await prisma.stemPurchase.create({
         data: {
           listingId, buyerAddress: BUYER, amount: BigInt(1), totalPaid: "1", royaltyPaid: "0", protocolFeePaid: "0",
-          sellerReceived: "1", transactionHash: `0x${P}p2`, logIndex: 0, blockNumber: BigInt(1), purchasedAt: new Date(),
+          sellerReceived: "1", transactionHash: `0x${P}p2`, logIndex: 0, blockNumber: BigInt(1), purchasedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // past the 14-day withdrawal period (#1776)
         },
       });
       const headers: Record<string, unknown> = {};
