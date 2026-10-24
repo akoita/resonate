@@ -2,7 +2,13 @@
  * Official stem package checks (#1976, ADR-TE-7) — pure unit tests: the rules
  * judge measurements, and the audio math is exercised on synthetic signals.
  */
+import { mkdtemp, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
+  bandEnvelopes,
+  decodeMonoSamples,
+  measurePartAgainstMix,
   measureSummedLevel,
   pearsonCorrelation,
   probeAudioFacts,
@@ -10,19 +16,27 @@ import {
 } from "../modules/ingestion/official-stems.audio";
 import {
   OFFICIAL_STEM_MIN_ENVELOPE_CORRELATION,
+  OFFICIAL_STEM_PART_OFFSET_MARGIN,
   OFFICIAL_STEM_SUMMED_LEVEL_TOLERANCE_DB,
+  isCompleteOfficialSet,
   isOfficialStemType,
   officialStemContainer,
   officialStemDurationToleranceSeconds,
   summarizeOfficialStemIssues,
   validateOfficialStemFiles,
   validateOfficialStemSilence,
+  validatePartAlignment,
   validateSummedLevel,
   type OfficialStemCandidate,
+  type PartAlignmentMeasure,
 } from "../modules/ingestion/official-stems.validation";
 import {
+  FFMPEG_AVAILABLE,
   FIXTURE_SAMPLE_RATE,
+  PART_NAMES,
+  flacFromWav,
   flacHeaderBuffer,
+  fullSong,
   scaled,
   shifted,
   syntheticStems,
@@ -260,4 +274,234 @@ describe("header probe", () => {
     expect(officialStemContainer("mp3")).toBeNull();
     expect(officialStemContainer(null)).toBeNull();
   });
+});
+
+describe("partial packages (#2379)", () => {
+  it("accepts any non-empty subset of the stem types, each part checked on its own", () => {
+    expect(validateOfficialStemFiles({ mixDurationSeconds: 200, stems: [candidate("guitar")] })).toEqual([]);
+    expect(
+      validateOfficialStemFiles({ mixDurationSeconds: 200, stems: [candidate("bass"), candidate("piano", { container: "flac" })] }),
+    ).toEqual([]);
+  });
+
+  it("lists the problem of every part, naming the part", () => {
+    const issues = validateOfficialStemFiles({
+      mixDurationSeconds: 200,
+      stems: [
+        candidate("vocals", { durationSeconds: 150 }),
+        candidate("drums"),
+        candidate("bass", { container: "mp3", lossless: false }),
+      ],
+    });
+    expect(issues.map((issue) => [issue.code, issue.stemType])).toEqual([
+      ["duration_mismatch", "vocals"],
+      ["unsupported_format", "bass"],
+    ]);
+    expect(issues[0].message).toContain("vocals (vocals.wav)");
+    expect(issues[1].message).toContain("bass (bass.wav)");
+  });
+
+  it("treats a package as complete only when it supplies every part the track is sold with", () => {
+    const sold = ["bass", "drums", "vocals"];
+    expect(isCompleteOfficialSet(["vocals", "drums", "bass"], sold)).toBe(true);
+    expect(isCompleteOfficialSet(["vocals", "drums", "bass", "guitar"], sold)).toBe(true);
+    expect(isCompleteOfficialSet(["vocals", "drums"], sold)).toBe(false);
+    // Nothing known to be sold: nothing is compared with the sum.
+    expect(isCompleteOfficialSet(["vocals", "drums", "bass"], [])).toBe(false);
+  });
+});
+
+describe("per-part alignment rule", () => {
+  const measure = (overrides: Partial<PartAlignmentMeasure> = {}): PartAlignmentMeasure => ({
+    alignedCorrelation: 0.6,
+    offsetCorrelation: 0.3,
+    offsetFrames: 4,
+    levelDifferenceDb: -8,
+    ...overrides,
+  });
+  const part = { type: "vocals", fileName: "lead.wav" };
+
+  it("passes a part that follows the mix and is quieter than it", () => {
+    expect(validatePartAlignment(part, measure())).toEqual([]);
+    // Barely under the margin: not a shift.
+    expect(
+      validatePartAlignment(part, measure({ alignedCorrelation: 0.4, offsetCorrelation: 0.4 + OFFICIAL_STEM_PART_OFFSET_MARGIN - 0.01 })),
+    ).toEqual([]);
+  });
+
+  it("says how far a shifted part is and in which direction", () => {
+    const late = validatePartAlignment(part, measure({ alignedCorrelation: 0.05, offsetCorrelation: 0.8, offsetFrames: 7 }));
+    expect(late).toHaveLength(1);
+    expect(late[0]).toEqual(expect.objectContaining({ code: "misaligned", stemType: "vocals" }));
+    expect(late[0].message).toContain("vocals (lead.wav)");
+    expect(late[0].message).toContain("0.7 s later");
+    const early = validatePartAlignment(part, measure({ alignedCorrelation: 0.05, offsetCorrelation: 0.8, offsetFrames: -3 }));
+    expect(early[0].message).toContain("0.3 s earlier");
+  });
+
+  it("refuses a part that follows nothing in the mix", () => {
+    const issues = validatePartAlignment(part, measure({ alignedCorrelation: 0.01, offsetCorrelation: 0.1 }));
+    expect(issues.map((issue) => issue.code)).toEqual(["misaligned"]);
+    expect(issues[0].message).toContain("matches nothing");
+  });
+
+  it("refuses a part louder than the whole mix, and does not refuse a quiet one", () => {
+    const loud = validatePartAlignment(part, measure({ levelDifferenceDb: OFFICIAL_STEM_SUMMED_LEVEL_TOLERANCE_DB + 3 }));
+    expect(loud.map((issue) => issue.code)).toEqual(["part_louder_than_mix"]);
+    expect(loud[0].message).toContain("9.0 dB louder");
+    expect(validatePartAlignment(part, measure({ levelDifferenceDb: -40 }))).toEqual([]);
+  });
+
+  it("does not judge what it cannot measure (a short or near-silent part)", () => {
+    expect(
+      validatePartAlignment(part, measure({ alignedCorrelation: null, offsetCorrelation: null, offsetFrames: null })),
+    ).toEqual([]);
+  });
+});
+
+describe("per-part alignment on audio", () => {
+  // Six parts with rhythms of their own at the analysis rate; see PART_SPECS in the fixtures.
+  const RATE = 8_000;
+  const seeds = [1, 2, 3];
+  const songs = seeds.map((seed) => {
+    const song = fullSong(20, seed, RATE);
+    return { song, envelopes: bandEnvelopes(song.mix) };
+  });
+  const issuesFor = (index: number, name: (typeof PART_NAMES)[number], shiftSeconds = 0, gain = 0.9) => {
+    const { song, envelopes } = songs[index];
+    const samples = scaled(shiftSeconds ? shifted(song.parts[name], shiftSeconds, RATE) : song.parts[name], gain);
+    return validatePartAlignment({ type: name, fileName: `${name}.wav` }, measurePartAgainstMix(song.mix, samples, envelopes));
+  };
+
+  it("passes every aligned part on its own, down to one 19 dB under the mix, and one 100 ms late", () => {
+    for (let index = 0; index < songs.length; index += 1) {
+      for (const name of PART_NAMES) {
+        expect(issuesFor(index, name)).toEqual([]);
+        expect(issuesFor(index, name, 0.1)).toEqual([]);
+      }
+    }
+  });
+
+  it("refuses a part exported 0.3 s or more late when it has a rhythm of its own", () => {
+    for (let index = 0; index < songs.length; index += 1) {
+      for (const name of ["vocals", "drums", "bass", "piano"] as const) {
+        for (const delay of [0.3, 0.7]) {
+          const issues = issuesFor(index, name, delay);
+          expect(issues.map((issue) => issue.code)).toEqual(["misaligned"]);
+          expect(issues[0].stemType).toBe(name);
+        }
+      }
+    }
+    // The message names the offset it found.
+    expect(issuesFor(0, "bass", 0.7)[0].message).toContain("0.7 s later");
+  });
+
+  it("refuses a part that is louder than the whole mix (the mix itself with extra gain, another loud track)", () => {
+    const { song, envelopes } = songs[0];
+    const loud = validatePartAlignment(
+      { type: "other", fileName: "other.wav" },
+      measurePartAgainstMix(song.mix, scaled(song.mix, 3), envelopes),
+    );
+    expect(loud.map((issue) => issue.code)).toEqual(["part_louder_than_mix"]);
+  });
+
+  it("does not claim to recognise another track's part: a partial package cannot prove a part belongs to the mix", () => {
+    // A part of a different song with the same instrumentation and beat grid can follow the mix as
+    // well as a real part does (aligned correlations of 0.2 to 0.6 here), so the per-part rule is a
+    // guard against shifts, wrong length and wrong level. Only a complete package's sum is held to
+    // the mix. This pins that limit so a threshold change does not silently pretend otherwise.
+    const { song, envelopes } = songs[0];
+    const stranger = fullSong(20, 99, RATE).parts.vocals;
+    const measured = measurePartAgainstMix(song.mix, scaled(stranger, 0.9), envelopes);
+    expect(measured.alignedCorrelation as number).toBeGreaterThan(0.2);
+  });
+
+  it("judges nothing when there is too little audio", () => {
+    const short = fullSong(2, 1, RATE);
+    const measured = measurePartAgainstMix(short.mix, short.parts.vocals);
+    expect(measured.alignedCorrelation).toBeNull();
+    expect(validatePartAlignment({ type: "vocals", fileName: "v.wav" }, measured)).toEqual([]);
+  });
+
+  it("keeps the margin between aligned and shifted parts the thresholds rely on", () => {
+    // The documented calibration: aligned parts (at most 100 ms off) never get near the margin.
+    let largestAlignedGap = -Infinity;
+    for (const { song, envelopes } of songs) {
+      for (const name of PART_NAMES) {
+        const measured = measurePartAgainstMix(song.mix, scaled(shifted(song.parts[name], 0.05, RATE), 0.9), envelopes);
+        largestAlignedGap = Math.max(largestAlignedGap, (measured.offsetCorrelation as number) - (measured.alignedCorrelation as number));
+      }
+    }
+    expect(largestAlignedGap).toBeLessThan(OFFICIAL_STEM_PART_OFFSET_MARGIN);
+  });
+});
+
+// Without ffmpeg on PATH the block below is reported as skipped (the integration
+// spec and the backend image both have ffmpeg, so CI still exercises it).
+const describeWithFfmpeg = FFMPEG_AVAILABLE ? describe : describe.skip;
+describeWithFfmpeg("real FLAC decode (needs ffmpeg on PATH)", () => {
+  let directory: string;
+  beforeAll(async () => {
+    directory = await mkdtemp(join(tmpdir(), "official-stems-flac-spec-"));
+  });
+  afterAll(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  const source = syntheticStems(3, FIXTURE_SAMPLE_RATE);
+
+  it("reads the STREAMINFO of an encoded FLAC and accepts it as a lossless stem", () => {
+    const flac = flacFromWav(wavBuffer(scaled(source.drums, 0.9), { channels: 2 }));
+    expect(flac.toString("ascii", 0, 4)).toBe("fLaC");
+    const facts = probeAudioFacts(flac);
+    expect(facts).toEqual({ container: "flac", lossless: true, sampleRate: 44_100, channels: 2, durationSeconds: 3 });
+    expect(
+      validateOfficialStemFiles({
+        mixDurationSeconds: 3,
+        stems: [{ type: "drums", fileName: "drums.flac", size: flac.length, audio: facts }],
+      }),
+    ).toEqual([]);
+  });
+
+  it("reads the rate and channel count of a 24-bit 48 kHz mono FLAC", () => {
+    const wav = wavBuffer(syntheticStems(2, 48_000).vocals, { sampleRate: 48_000, channels: 1 });
+    const facts = probeAudioFacts(flacFromWav(wav, { bitDepth: 24 }));
+    expect(facts).toEqual({ container: "flac", lossless: true, sampleRate: 48_000, channels: 1, durationSeconds: 2 });
+  });
+
+  it("decodes to the same samples as the WAV it was made from (lossless round trip)", async () => {
+    const samples = scaled(source.vocals, 0.9);
+    const wav = wavBuffer(samples);
+    const flac = flacFromWav(wav);
+    const wavPath = join(directory, "vocals.wav");
+    const flacPath = join(directory, "vocals.flac");
+    await writeFile(wavPath, wav);
+    await writeFile(flacPath, flac);
+    const fromWav = await decodeMonoSamples(wavPath);
+    const fromFlac = await decodeMonoSamples(flacPath);
+    expect(fromFlac.length).toBe(fromWav.length);
+    expect(fromFlac.length).toBeCloseTo(3 * 8_000, -1);
+    for (let i = 0; i < fromWav.length; i += 1) expect(fromFlac[i]).toBeCloseTo(fromWav[i], 5);
+    expect(rmsDb(fromFlac)).toBeGreaterThan(-30);
+    expect(flac.length).toBeLessThan(wav.length);
+  });
+
+  it("checks a FLAC part against the mix like a WAV part", async () => {
+    const song = fullSong(20, 1, 44_100);
+    const mixPath = join(directory, "mix.wav");
+    const bassPath = join(directory, "bass.flac");
+    await writeFile(mixPath, wavBuffer(song.mix));
+    await writeFile(bassPath, flacFromWav(wavBuffer(scaled(song.parts.bass, 0.9))));
+    const mix = await decodeMonoSamples(mixPath);
+    const bass = await decodeMonoSamples(bassPath);
+    expect(validatePartAlignment({ type: "bass", fileName: "bass.flac" }, measurePartAgainstMix(mix, bass))).toEqual([]);
+    const late = await (async () => {
+      const latePath = join(directory, "bass-late.flac");
+      await writeFile(latePath, flacFromWav(wavBuffer(scaled(shifted(song.parts.bass, 0.7, 44_100), 0.9))));
+      return decodeMonoSamples(latePath);
+    })();
+    expect(
+      validatePartAlignment({ type: "bass", fileName: "bass-late.flac" }, measurePartAgainstMix(mix, late)).map((issue) => issue.code),
+    ).toEqual(["misaligned"]);
+  }, 60_000);
 });

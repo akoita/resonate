@@ -1,7 +1,14 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import {
+  OFFICIAL_STEM_PART_ACTIVE_RATIO,
+  OFFICIAL_STEM_PART_BANDS_HZ,
+  OFFICIAL_STEM_PART_LAG_TOLERANCE_FRAMES,
+  OFFICIAL_STEM_PART_MAX_LAG_FRAMES,
+  OFFICIAL_STEM_PART_MIN_ACTIVE_FRAMES,
+  OFFICIAL_STEM_PART_MIN_FRAMES,
   type OfficialStemAudioFacts,
+  type PartAlignmentMeasure,
   type SummedLevelMeasure,
 } from "./official-stems.validation";
 
@@ -220,4 +227,157 @@ export function measureSummedLevel(
       rmsEnvelope(summed, frameLength),
     ),
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Per-part alignment (Sprint 43, #2379): a partial package has no complete sum
+// to compare with the mix, so each part is judged on its own.
+// ---------------------------------------------------------------------------
+
+/** One second-order Butterworth section (RBJ cookbook), run over the samples. */
+function biquad(samples: Float32Array, kind: "low" | "high", cutoffHz: number): Float32Array {
+  const w = (2 * Math.PI * cutoffHz) / OFFICIAL_STEM_ANALYSIS_SAMPLE_RATE;
+  const cos = Math.cos(w);
+  const alpha = Math.sin(w) / (2 * Math.SQRT1_2);
+  const a0 = 1 + alpha;
+  const a1 = -2 * cos;
+  const a2 = 1 - alpha;
+  const b0 = kind === "low" ? (1 - cos) / 2 : (1 + cos) / 2;
+  const b1 = kind === "low" ? 1 - cos : -(1 + cos);
+  const b2 = b0;
+  const out = new Float32Array(samples.length);
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const x = samples[i];
+    const y = (b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+    out[i] = y;
+    x2 = x1;
+    x1 = x;
+    y2 = y1;
+    y1 = y;
+  }
+  return out;
+}
+
+/** Loudness envelope (100 ms RMS frames) of each analysis band of a signal. */
+export function bandEnvelopes(samples: Float32Array): number[][] {
+  const frameLength = Math.round(OFFICIAL_STEM_ANALYSIS_SAMPLE_RATE * OFFICIAL_STEM_ENVELOPE_FRAME_SECONDS);
+  const nyquist = OFFICIAL_STEM_ANALYSIS_SAMPLE_RATE / 2;
+  return OFFICIAL_STEM_PART_BANDS_HZ.map(([low, high]) => {
+    let band = samples;
+    if (high < nyquist) band = biquad(biquad(band, "low", high), "low", high);
+    if (low > 0) band = biquad(biquad(band, "high", low), "high", low);
+    return rmsEnvelope(band, frameLength);
+  });
+}
+
+/** Correlation of `part[i]` with `mix[i + lag]` over the given frames, or null when undefined. */
+function laggedCorrelation(
+  part: readonly number[],
+  mix: readonly number[],
+  lag: number,
+  frames: readonly number[],
+): number | null {
+  const a: number[] = [];
+  const b: number[] = [];
+  for (const frame of frames) {
+    const other = frame + lag;
+    if (other < 0 || other >= mix.length) continue;
+    a.push(part[frame]);
+    b.push(mix[other]);
+  }
+  return pearsonCorrelation(a, b);
+}
+
+/**
+ * How well one part's loudness envelope follows the mix's, band by band.
+ *
+ * A full-band envelope would be dominated by whichever part is loudest, so a
+ * quiet bass would correlate with nothing. Splitting into bands lets a part be
+ * compared where it is audible: the bass with the mix's low end, the vocal with
+ * its mids. Within a band only the frames where the part is active (above
+ * `OFFICIAL_STEM_PART_ACTIVE_RATIO` of its own peak) count, and the bands are
+ * weighted by the part's energy in them.
+ *
+ * The correlation is taken at every shift of up to `MAX_LAG` frames. An aligned
+ * part peaks at no shift (within `LAG_TOLERANCE` frames); a part exported late
+ * or early peaks at the shift that is its offset, which is also what lets the
+ * message say how far off it is. Returns nulls when there is too little
+ * material to judge (a short or near-silent part).
+ */
+export function measurePartAlignment(
+  partEnvelopes: readonly number[][],
+  mixEnvelopes: readonly number[][],
+  levels: { partRmsDb: number; mixRmsDb: number },
+): PartAlignmentMeasure {
+  const empty: PartAlignmentMeasure = {
+    alignedCorrelation: null,
+    offsetCorrelation: null,
+    offsetFrames: null,
+    levelDifferenceDb: levels.partRmsDb - levels.mixRmsDb,
+  };
+  const lags: number[] = [];
+  for (let lag = -OFFICIAL_STEM_PART_MAX_LAG_FRAMES; lag <= OFFICIAL_STEM_PART_MAX_LAG_FRAMES; lag += 1) lags.push(lag);
+  const weighted = new Array<number>(lags.length).fill(0);
+  let totalWeight = 0;
+
+  for (let band = 0; band < partEnvelopes.length; band += 1) {
+    const part = partEnvelopes[band];
+    const mix = mixEnvelopes[band];
+    if (!part || !mix || part.length < OFFICIAL_STEM_PART_MIN_FRAMES) continue;
+    let peak = 0;
+    let energy = 0;
+    for (const value of part) {
+      peak = Math.max(peak, value);
+      energy += value * value;
+    }
+    if (peak <= 0) continue;
+    const frames: number[] = [];
+    for (let frame = 0; frame < part.length; frame += 1) {
+      if (part[frame] >= peak * OFFICIAL_STEM_PART_ACTIVE_RATIO) frames.push(frame);
+    }
+    if (frames.length < OFFICIAL_STEM_PART_MIN_ACTIVE_FRAMES) continue;
+    const correlations = lags.map((lag) => laggedCorrelation(part, mix, lag, frames));
+    if (correlations.some((value) => value === null)) continue;
+    totalWeight += energy;
+    correlations.forEach((value, index) => {
+      weighted[index] += energy * (value as number);
+    });
+  }
+  if (totalWeight <= 0) return empty;
+
+  const correlation = weighted.map((value) => value / totalWeight);
+  let aligned = -Infinity;
+  let offsetIndex = -1;
+  for (let index = 0; index < lags.length; index += 1) {
+    if (Math.abs(lags[index]) <= OFFICIAL_STEM_PART_LAG_TOLERANCE_FRAMES) {
+      aligned = Math.max(aligned, correlation[index]);
+    } else if (offsetIndex < 0 || correlation[index] > correlation[offsetIndex]) {
+      offsetIndex = index;
+    }
+  }
+  return {
+    alignedCorrelation: aligned,
+    offsetCorrelation: offsetIndex >= 0 ? correlation[offsetIndex] : null,
+    // Positive when the part comes later than the mix (the mix event is `-lag` frames before it).
+    offsetFrames: offsetIndex >= 0 ? -lags[offsetIndex] : null,
+    levelDifferenceDb: levels.partRmsDb - levels.mixRmsDb,
+  };
+}
+
+/** Judges one decoded part against the mix (see `measurePartAlignment`). */
+export function measurePartAgainstMix(
+  mix: Float32Array,
+  part: Float32Array,
+  mixEnvelopes: readonly number[][] = bandEnvelopes(mix),
+): PartAlignmentMeasure {
+  const length = Math.min(mix.length, part.length);
+  return measurePartAlignment(bandEnvelopes(part.subarray(0, length)), mixEnvelopes, {
+    partRmsDb: rmsDb(part.subarray(0, length)),
+    mixRmsDb: rmsDb(mix),
+  });
 }

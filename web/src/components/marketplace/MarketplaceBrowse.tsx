@@ -22,6 +22,7 @@ import { BuyModal } from "./BuyModal";
 import type { LicenseType } from "./LicenseTypeSelector";
 import { StemSourceBadge } from "../stem/StemSourceBadge";
 import { STEM_SOURCE_FILTERS, resolveStemSource, type StemSource, type StemSourceFilter } from "../../lib/stemSource";
+import { buildMarketplaceListingsParams } from "../../lib/marketplaceListingsQuery";
 import { artistProfileHref } from "../../lib/artistRoutes";
 import { PURCHASED_STEMS_HREF } from "../../lib/ownedStems";
 import { groupListingsByStem, groupTierOrder } from "../../lib/marketplaceStemGroups";
@@ -245,10 +246,14 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
             }
             setError(null);
 
-            const params = new URLSearchParams({ status: "active", limit: String(PAGE_SIZE), offset: String(currentOffset), sortBy });
-            if (debouncedSearch) params.set("search", debouncedSearch);
-            if (sourceFilter !== "all") params.set("source", sourceFilter);
-            if (hideOwnListings && signerAddress) params.set("excludeSeller", signerAddress);
+            const params = buildMarketplaceListingsParams({
+                limit: PAGE_SIZE,
+                offset: currentOffset,
+                sortBy,
+                search: debouncedSearch,
+                source: sourceFilter,
+                excludeSeller: hideOwnListings ? signerAddress : null,
+            });
 
             const res = await fetch(`/api/contracts/listings?${params.toString()}`);
             if (!res.ok) {
