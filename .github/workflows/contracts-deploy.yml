@@ -758,7 +758,8 @@ jobs:
               fi
               ;;
             schedule-content-protection-upgrade|execute-content-protection-upgrade)
-              live_delay="$(cast call "${CONTENT_PROTECTION_TIMELOCK_ADDRESS}" 'getMinDelay()(uint256)' --rpc-url "${rpc_url}")"
+              # Newer cast prints large integers as "172800 [1.728e5]": keep the first token.
+              live_delay="$(cast call "${CONTENT_PROTECTION_TIMELOCK_ADDRESS}" 'getMinDelay()(uint256)' --rpc-url "${rpc_url}" | awk '{print $1}')"
               if [[ ! "${live_delay}" =~ ^[0-9]+$ ]] || lt_uint "${live_delay}" "172800"; then
                 echo "::error::ContentProtection timelock delay ${live_delay} is below 172800 seconds."
                 exit 1
