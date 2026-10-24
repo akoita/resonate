@@ -5263,8 +5263,12 @@ export type OfficialStemUploadResponse = {
   releaseId: string;
   trackId: string;
   stems: Array<{ id: string; type: string; source: "official"; mimeType: string; durationSeconds: number }>;
-  /** Earlier official stems of the track that this package replaced. */
+  /** Earlier official stems of the supplied types that this package replaced. */
   replaced: number;
+  /** True when the package supplies every part the track is sold with (#2379); then its sum was checked too. */
+  complete?: boolean;
+  /** Stem types of the earlier official package that this one left on sale. */
+  kept?: string[];
 };
 
 /**

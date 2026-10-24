@@ -149,6 +149,18 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
   CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_CRATES=true \
     BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
   ```
+- **Official stems pass** (`CAPTURE_OFFICIAL_STEMS=true`, off by default): the
+  artist's Official stems panel on a release page (`official-stems-panel.png`)
+  and the Official / Separated (AI) badges with the source menu in Browse stems
+  (`stem-source-badges.png`, #2379) for the `official-stems` and `stem-sources`
+  guide sections, from fixed mock data
+  (`web/tests/fixtures/official-stems-mock.mjs`), so no backend or catalog data is
+  needed. From `web/`, with mock auth and `next dev -p 3001 --webpack` running:
+
+  ```sh
+  CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_OFFICIAL_STEMS=true \
+    BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+  ```
 
 - **Seeded public pass** (#1846, `CAPTURE_SEEDED=true`, off by default): the
   Shows page (`shows.png`), a live pledgeable campaign page

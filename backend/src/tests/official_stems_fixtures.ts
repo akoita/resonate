@@ -1,3 +1,8 @@
+import { execFileSync, spawnSync } from "child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+
 /**
  * Deterministic audio for the official-stem tests (#1976): synthetic stems
  * whose sum is the mix, and WAV / FLAC-header writers. No audio files are
@@ -114,4 +119,98 @@ export function flacHeaderBuffer(input: {
   buffer[info + 13] = ((bits & 0x0f) << 4) | (Math.floor(input.totalSamples / 2 ** 32) & 0x0f);
   buffer.writeUInt32BE(input.totalSamples % 2 ** 32, info + 14);
   return buffer;
+}
+
+export type PartName = "vocals" | "drums" | "bass" | "guitar" | "piano" | "other";
+export const PART_NAMES: readonly PartName[] = ["vocals", "drums", "bass", "guitar", "piano", "other"];
+
+type PartSpec = {
+  /** Candidate pitches (Hz); none means noise bursts (drums). */
+  pitches: number[];
+  /** Seconds between possible note starts. */
+  step: number;
+  /** Chance that a start carries a note. */
+  probability: number;
+  /** Decay rate of a note, per second. */
+  decay: number;
+  amplitude: number;
+};
+
+const PART_SPECS: Record<PartName, PartSpec> = {
+  vocals: { pitches: [330, 392, 440, 494, 523], step: 0.5, probability: 0.7, decay: 2.5, amplitude: 0.25 },
+  drums: { pitches: [], step: 0.25, probability: 0.6, decay: 14, amplitude: 0.45 },
+  bass: { pitches: [55, 62, 73, 82], step: 0.5, probability: 0.8, decay: 2, amplitude: 0.3 },
+  guitar: { pitches: [196, 247, 294, 392], step: 0.25, probability: 0.5, decay: 5, amplitude: 0.2 },
+  piano: { pitches: [262, 330, 392, 523, 659], step: 1, probability: 0.7, decay: 1.5, amplitude: 0.2 },
+  other: { pitches: [1000, 1320, 1760, 2100], step: 0.75, probability: 0.5, decay: 4, amplitude: 0.1 },
+};
+
+export type FullSong = { parts: Record<PartName, Float32Array>; mix: Float32Array };
+
+/**
+ * Six parts with rhythms of their own (notes and noise bursts at different
+ * steps and pitch ranges), and their mix at 0.9 gain. Overlapping parts make
+ * each one harder to see in the mix than in `syntheticStems`, which is what the
+ * per-part alignment thresholds are calibrated against. `seed` varies the notes.
+ */
+export function fullSong(seconds: number, seed: number, sampleRate = 8_000): FullSong {
+  const length = Math.round(seconds * sampleRate);
+  const parts = {} as Record<PartName, Float32Array>;
+  PART_NAMES.forEach((name, index) => {
+    const spec = PART_SPECS[name];
+    const random = noise(seed * 1000 + index);
+    const out = new Float32Array(length);
+    for (let start = 0; start < seconds; start += spec.step) {
+      if ((random() + 1) / 2 > spec.probability) continue;
+      const pitch = spec.pitches.length
+        ? spec.pitches[Math.floor(((random() + 1) / 2) * spec.pitches.length) % spec.pitches.length]
+        : 0;
+      const first = Math.round(start * sampleRate);
+      const last = Math.min(length, first + Math.round(sampleRate * spec.step * 1.5));
+      for (let i = first; i < last; i += 1) {
+        const t = (i - first) / sampleRate;
+        const envelope = Math.exp(-t * spec.decay) * Math.min(1, t * 200);
+        out[i] += spec.amplitude * envelope * (pitch ? Math.sin(2 * Math.PI * pitch * t) : random());
+      }
+    }
+    parts[name] = out;
+  });
+  const mix = new Float32Array(length);
+  for (let i = 0; i < length; i += 1) {
+    let sum = 0;
+    for (const name of PART_NAMES) sum += parts[name][i];
+    mix[i] = 0.9 * sum;
+  }
+  return { parts, mix };
+}
+
+/** Whether `ffmpeg` runs here; the specs that need it skip with a stated reason when it does not. */
+export const FFMPEG_AVAILABLE = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+
+/**
+ * A real FLAC file (frames and a STREAMINFO block with the sample count), made
+ * by encoding a WAV with ffmpeg. It goes through a temp file because ffmpeg
+ * cannot go back and fill in the sample count of a FLAC written to a pipe.
+ */
+export function flacFromWav(wav: Buffer, options: { bitDepth?: 16 | 24 } = {}): Buffer {
+  const directory = mkdtempSync(join(tmpdir(), "official-stems-fixture-"));
+  try {
+    const input = join(directory, "in.wav");
+    const output = join(directory, "out.flac");
+    writeFileSync(input, wav);
+    execFileSync(
+      "ffmpeg",
+      [
+        "-v", "error", "-nostdin", "-y", "-i", input,
+        "-c:a", "flac",
+        "-sample_fmt", options.bitDepth === 24 ? "s32" : "s16",
+        ...(options.bitDepth === 24 ? ["-bits_per_raw_sample", "24"] : []),
+        output,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+    return readFileSync(output);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }

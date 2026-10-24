@@ -2059,28 +2059,6 @@
   background: rgba(var(--color-accent-rgb), 0.1);
 }
 
-/* Stem source badge (#1976): Official (lossless, from the artist) vs Separated (AI). */
-.stem-source-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  border: 1px solid transparent;
-}
-.stem-source-badge--official {
-  color: #6ee7b7;
-  background: rgba(16, 185, 129, 0.14);
-  border-color: rgba(16, 185, 129, 0.4);
-}
-.stem-source-badge--separated {
-  color: #a1a1aa;
-  background: rgba(113, 113, 122, 0.16);
-  border-color: rgba(113, 113, 122, 0.4);
-}
 .stem-source-terms {
   margin: 0 0 12px;
   padding: 10px 12px;
