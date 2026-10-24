@@ -54,7 +54,7 @@ Upload staking is stablecoin-first when an enabled `upload_stake` stablecoin has
 
 ### 1. Read Hooks (`hooks/useContracts.ts`)
 
-- **`useStakeInfo(tokenId)`** — reads on-chain stake data, returns `{ amount, depositedAt, active }`
+- **`useStakeInfo(tokenId)`** — reads on-chain stake data, returns `{ amount, depositedAt, active, assetToken, assetSymbol, assetDecimals }` (the stake currency is read from `stakeTokens(tokenId)`; ERC-20 symbol/decimals are read on-chain)
 - **`useAttestationInfo(tokenId)`** — reads on-chain attestation data
 - **`useStakeRefund()`** — write hook to withdraw stake after escrow expires
 
@@ -74,8 +74,8 @@ Reads live on-chain data via `useStakeInfo` + `useAttestationInfo`. Fetches trus
 Renders on **release detail pages** (`/release/[id]`) — visible to all users.
 
 - Fetches from backend indexer (`/api/content-protection/release/{id}`)
-- When indexer unavailable, shows program defaults, preferring configured stablecoin staking where available — consistent with publish-time staking model
-- When data available, shows live status pill, stake amount, economic tier, escrow countdown, provenance status, and rights-review status
+- When indexer unavailable, shows the program policy without asserting an amount (the amount depends on the creator's tier and stake currency)
+- When data available, shows live status pill, stake amount in the stake's own asset (`stakeAssetSymbol` / `stakeAssetDecimals`, e.g. `5 USDC`; ETH stakes append the USD value when known, e.g. `0.002 ETH (≈ $5)`; before anything is staked the USD requirement is shown, e.g. `$5 required`), economic tier, escrow countdown, provenance status, and rights-review status
 
 ### 4. My Stakes Dashboard (`components/wallet/MyStakesCard.tsx`)
 
@@ -84,7 +84,7 @@ Renders on the **wallet page** (`/wallet`). Table showing:
 | Column    | Description                               |
 | --------- | ----------------------------------------- |
 | Token     | Release identifier                        |
-| Amount    | Staked ETH                                |
+| Amount    | Staked amount in the stake's own asset (e.g. `5 USDC`, `0.005 ETH`) |
 | Deposited | Date of stake                             |
 | Escrow    | Countdown or status                       |
 | Status    | Active / Releasable / Refunded / Slashed  |
@@ -97,7 +97,9 @@ Fetches from backend (`/api/metadata/stakes/{address}`). Falls back to empty sta
 Renders on the **analytics page** (`/artist/analytics`). Shows:
 
 - **4 KPI cards**: Total Staked, Protected Releases, Slashed, Refunded
-- **Stake History table**: Release name, amount, date, status
+- **Stake History table**: Release name, amount (in each stake's own asset), date, status
+
+`Total Staked` and the slashed total are grouped per asset (`totalStakedByAsset` / `totalSlashedByAsset`, e.g. `10 USDC + 0.002 ETH (≈ $5)`); base units are never summed across assets. `totalStaked` / `totalSlashed` remain as the native-ETH subtotal for older clients.
 
 Fetches from backend (`/api/metadata/stakes/analytics/{address}`).
 
@@ -105,8 +107,10 @@ Fetches from backend (`/api/metadata/stakes/analytics/{address}`).
 
 - `deriveStakeStatus(active, amount, depositedAt, escrowDays)` → `StakeStatus`
 - `deriveEscrowStatus(active, depositedAt, escrowDays)` → `{ status, daysRemaining }`
-- `formatEth(wei)` → native fallback formatting such as `"0.005 ETH"` or `"Waived"`
-- `formatPaymentAmountWithSymbol(amountUnits, decimals, symbol)` → stablecoin stake formatting such as `"5 USDC"`
+- `formatStakeAmount(amount, { symbol, decimals, usd })` → exact (no floating point, never exponent notation) formatting in the stake's own asset: `"5 USDC"`, `"0.005 ETH"`, `"Waived"` for zero. Stablecoins show up to 2 decimals, 18-decimal assets up to 6
+- `formatStakeTotals(totals)` → per-asset totals such as `"10 USDC + 0.002 ETH"`
+- `formatReleaseStake(data)` → the release page stake cell
+- `formatEth(wei)` → thin wrapper for genuine 18-decimal native ETH values only
 - Label/color maps for all statuses and tiers
 
 ## Page Integration Map
@@ -128,7 +132,7 @@ Fetches from backend (`/api/metadata/stakes/analytics/{address}`).
 
 ## Testing
 
-- **15 unit tests** in `lib/__tests__/stakeConstants.test.ts` — `formatEth`, `deriveStakeStatus`, `deriveEscrowStatus`, label map completeness
+- Unit tests in `lib/__tests__/stakeConstants.test.ts` — `formatStakeAmount` (USDC, ETH, zero, large values, no exponent notation), `formatStakeTotals`, `formatReleaseStake`, `formatEth`, `deriveStakeStatus`, `deriveEscrowStatus`, label map completeness
 - TypeScript build passes clean (`tsc --noEmit`)
 
 ## Dependencies

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { ReleaseContentProtectionData } from "../../lib/api";
 import {
-  formatEth,
+  formatReleaseStake,
   parseDateToEpochSeconds,
   deriveStakeStatus,
   deriveEscrowStatus,
@@ -93,7 +93,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           </div>
           <div style={statStyle}>
             <span style={statLabelStyle}>Stake Required</span>
-            <span style={{ fontWeight: 600, fontSize: "15px" }}>0.01 ETH</span>
+            <span style={{ fontWeight: 600, fontSize: "15px" }}>Set by tier</span>
           </div>
           <div style={statStyle}>
             <span style={statLabelStyle}>Escrow Period</span>
@@ -109,7 +109,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           fontSize: "12px",
           opacity: 0.7,
         }}>
-          A refundable stake of <strong>0.01 ETH</strong> was deposited on publish.
+          A refundable stake was deposited on publish, sized by the creator&apos;s Economic Trust tier.
           Revenue is held in escrow for 30 days. This economic policy discourages abuse and funds dispute accountability; it is not independent rights verification.
         </div>
       </section>
@@ -131,6 +131,8 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
       ? deriveEscrowStatus(data.active, depositedEpoch, data.escrowDays)
       : { status: data.active ? "locked" as const : "released" as const, daysRemaining: 0 }
     : { status: "none" as const, daysRemaining: 0 };
+
+  const stakeLabel = formatReleaseStake(data);
 
   const economicTier = data.economicTrustTier || data.trustTier;
   const tierLabel = TIER_LABELS[economicTier] || economicTier;
@@ -202,7 +204,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
         <div style={statStyle}>
           <span style={statLabelStyle}>Stake</span>
           <span style={{ fontWeight: 600, fontSize: "15px" }}>
-            {data.stakeAmount ? formatEth(data.stakeAmount) : "—"}
+            {stakeLabel}
           </span>
         </div>
 

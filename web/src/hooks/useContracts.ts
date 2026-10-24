@@ -1214,9 +1214,14 @@ export function useAttestAndStake() {
 // ============ Content Protection Read Hooks ============
 
 export interface StakeInfoData {
+  /** Base units of the stake asset (`assetDecimals`). */
   amount: bigint;
   depositedAt: bigint;
   active: boolean;
+  /** Stake currency: native ETH or an ERC-20 such as USDC. */
+  assetToken: Address;
+  assetSymbol: string;
+  assetDecimals: number;
 }
 
 /**
@@ -1258,8 +1263,52 @@ export function useStakeInfo(tokenId: bigint | undefined) {
           args: [tokenId],
         }) as [bigint, bigint, boolean];
 
+        // Resolve the stake currency so the amount is shown in its own units.
+        let assetToken = ZERO_ADDRESS;
+        let assetSymbol = "ETH";
+        let assetDecimals = 18;
+        try {
+          assetToken = (await publicClient.readContract({
+            address: addresses.contentProtection as Address,
+            abi: ContentProtectionABI,
+            functionName: "stakeTokens",
+            args: [tokenId],
+          })) as Address;
+        } catch {
+          // Older deployments without per-stake tokens are native-only.
+        }
+        if (assetToken.toLowerCase() !== ZERO_ADDRESS) {
+          try {
+            const [dec, sym] = await Promise.all([
+              publicClient.readContract({
+                address: assetToken,
+                abi: ERC20_STAKE_ABI,
+                functionName: "decimals",
+              }) as Promise<number>,
+              publicClient.readContract({
+                address: assetToken,
+                abi: ERC20_STAKE_ABI,
+                functionName: "symbol",
+              }) as Promise<string>,
+            ]);
+            assetDecimals = Number(dec);
+            assetSymbol = sym;
+          } catch {
+            // Without token metadata the amount cannot be scaled safely.
+            assetSymbol = "base units";
+            assetDecimals = 0;
+          }
+        }
+
         if (mountedRef.current) {
-          setData({ amount: result[0], depositedAt: result[1], active: result[2] });
+          setData({
+            amount: result[0],
+            depositedAt: result[1],
+            active: result[2],
+            assetToken,
+            assetSymbol,
+            assetDecimals,
+          });
           setLoading(false);
         }
       } catch (err) {

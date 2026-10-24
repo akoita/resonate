@@ -24,6 +24,7 @@ import { LicenseType, type AiDisclosureLevel, type Prisma } from "@prisma/client
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, keccak256, toHex, type Address, type Chain } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
+import { NATIVE_STAKE_TOKEN, StakeAssetTotal, sumStakesByAsset } from "./stake-totals";
 import { CuratorReputationService } from "./curator-reputation.service";
 import { HumanVerificationService } from "./human-verification.service";
 import { isPubliclyPurchasableListing } from "./listing-lifecycle";
@@ -1068,6 +1069,11 @@ export class MetadataController {
         tokenId: s.tokenId.toString(),
         chainId: s.chainId,
         amount: s.amount,
+        // `amount` is in base units of this asset (e.g. 5_000_000 for 5 USDC).
+        assetSymbol: s.paymentAssetSymbol,
+        assetDecimals: s.paymentAssetDecimals,
+        assetToken: s.paymentToken,
+        amountUsd: s.canonicalAmountUsd ?? null,
         active: s.active,
         depositedAt: s.depositedAt.toISOString(),
         refundedAt: s.refundedAt?.toISOString() || null,
@@ -1090,14 +1096,21 @@ export class MetadataController {
     const slashed = stakes.filter(s => !!(s as any).slashedAt);
     const refunded = stakes.filter(s => !!(s as any).refundedAt);
 
-    // Sum amounts (wei strings)
-    const totalStakedWei = active.reduce((sum, s) => sum + BigInt(s.amount), 0n);
-    const totalSlashedWei = slashed.reduce((sum, s) => sum + BigInt(s.amount), 0n);
+    // Stakes are paid in different assets (stablecoins with 6 decimals, ETH
+    // with 18), so base-unit amounts must never be summed across assets.
+    // Totals are grouped per asset; `totalStaked`/`totalSlashed` stay as the
+    // native-ETH subtotal for older clients.
+    const totalStakedByAsset = sumStakesByAsset(active);
+    const totalSlashedByAsset = sumStakesByAsset(slashed);
+    const nativeTotal = (groups: StakeAssetTotal[]) =>
+      groups.find((g) => g.assetToken === NATIVE_STAKE_TOKEN)?.amount ?? "0";
 
     return {
       owner: owner.toLowerCase(),
-      totalStaked: totalStakedWei.toString(),
-      totalSlashed: totalSlashedWei.toString(),
+      totalStaked: nativeTotal(totalStakedByAsset),
+      totalSlashed: nativeTotal(totalSlashedByAsset),
+      totalStakedByAsset,
+      totalSlashedByAsset,
       counts: {
         total: stakes.length,
         active: active.length,
@@ -1107,6 +1120,10 @@ export class MetadataController {
       stakes: stakes.map((s) => ({
         releaseTitle: (s as any).releaseTitle || null,
         amount: s.amount,
+        assetSymbol: s.paymentAssetSymbol,
+        assetDecimals: s.paymentAssetDecimals,
+        assetToken: s.paymentToken,
+        amountUsd: s.canonicalAmountUsd ?? null,
         active: s.active,
         depositedAt: s.depositedAt.toISOString(),
         slashedAt: s.slashedAt?.toISOString() || null,

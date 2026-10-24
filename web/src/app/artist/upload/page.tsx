@@ -44,6 +44,7 @@ import {
   paymentAssetSupportsSurface,
 } from "../../../lib/payments";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
+import { formatStakeAmount } from "../../../lib/stakeConstants";
 import { CATALOG_GENRE_OPTIONS, MOOD_TAG_OPTIONS } from "../../../lib/catalogVocabulary";
 import { ContentProtectionABI, getAddresses } from "../../../contracts_abi";
 import type { Address } from "viem";
@@ -1710,7 +1711,7 @@ export default function ArtistUploadPage() {
                 }}>
                   <span style={{ fontSize: "18px" }}>🔒</span>
                   <span>
-                    Acknowledge your <strong>{stakeAssetLabel ?? (trustTier ? `${Number(trustTier.stakeAmountWei) / 1e18} ETH` : "...")}</strong> Content Protection stake above to unlock publishing.
+                    Acknowledge your <strong>{stakeAssetLabel ?? (trustTier ? formatStakeAmount(trustTier.stakeAmountWei, { symbol: "ETH", decimals: 18, usd: trustTier.stakeAmountUsd }) : "...")}</strong> Content Protection stake above to unlock publishing.
                   </span>
                 </div>
               )}
