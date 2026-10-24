@@ -829,6 +829,7 @@
   font-size: 0.85rem;
 }
 .aid-prompt-chip--seed { border-color: rgba(167,139,250,0.55); background: rgba(124,92,255,0.18); }
+.aid-prompt-chip--new-artists { border-color: rgba(167,139,250,0.55); background: rgba(124,92,255,0.18); }
 .aid-prompt-chip-label { color: rgba(240,234,255,0.6); font-size: 0.8rem; }
 .aid-prompt-chip-select {
   border: 0;

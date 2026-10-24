@@ -245,6 +245,24 @@ describe('SessionsService (integration)', () => {
     expect(runtimeService.runCommerce.mock.calls[0][0].preferences).not.toHaveProperty('myMix');
   });
 
+  it('remembers New artists for the live session until a pick turns it off (#2249)', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({ status: 'no_tracks', tracks: [], shortfall: 1 }),
+    };
+    const { service } = makeService(runtimeService);
+    const userId = `${TEST_PREFIX}user`;
+    const session = await service.startSession({ userId, budgetCapUsd: 10 });
+
+    await service.agentNext({ sessionId: session.id, userId, preferences: { genres: ['Jazz'], newArtists: true } });
+    await service.agentNext({ sessionId: session.id, userId });
+    // Only an explicit `true` counts, and a later pick can turn it off.
+    await service.agentNext({ sessionId: session.id, userId, preferences: { newArtists: 'yes' as unknown as boolean } });
+    await service.agentNext({ sessionId: session.id, userId, preferences: { newArtists: false } });
+
+    const sent = runtimeService.runCommerce.mock.calls.map(([call]) => call.preferences.newArtists);
+    expect(sent).toEqual([true, true, false, false]);
+  });
+
   it('records an unmet My Mix genre against existing catalog ownership', async () => {
     await prisma.analyticsConsent.upsert({
       where: { userId: `${TEST_PREFIX}user` },

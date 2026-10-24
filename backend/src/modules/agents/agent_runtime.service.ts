@@ -78,7 +78,10 @@ export class AgentRuntimeService {
       ? await this.executor.runWithMyMix(safeInput, plan)
       : assignment.sessionSource === "my_mix" && assignment.orderingVariant === "single_profile"
         ? await this.executor.runWithSingleProfile(safeInput)
-        : await this.execute(safeInput);
+        // "New artists" (#2249) needs the selector's played-artist lookup, which a model's picks never see.
+        : input.preferences?.newArtists === true
+          ? await this.executor.runDeterministic(safeInput)
+          : await this.execute(safeInput);
     const final =
       this.policy && !("tracks" in result) ? await this.policy.apply(input, result) : result;
     if (plan && !rightNowPlan && "tracks" in final) {
@@ -187,6 +190,7 @@ export class AgentRuntimeService {
     const context = preferences.listeningContext;
     if (!isRightNowContext(context)) return undefined;
     if (preferences.sessionIntent || preferences.sessionIntentName) return undefined;
+    if (preferences.newArtists === true) return undefined;
     if (requestScopeFor(preferences)) return undefined;
     try {
       const lanes = await resolveListeningLanes(input.userId);

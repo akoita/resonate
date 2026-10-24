@@ -66,6 +66,11 @@ export class AgentRuntimeExecutorService {
     }
   }
 
+  /** The deterministic shared selector, with no adapter in front (a "New artists" session, #2249). */
+  runDeterministic(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
+    return this.orchestrator.orchestrate(withoutMyMix(input));
+  }
+
   /** Single-profile control uses the deterministic shared selector, avoiding adapter confounding. */
   runWithSingleProfile(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
     return this.orchestrator.orchestrate(withoutMyMix(input));

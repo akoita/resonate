@@ -60,6 +60,7 @@ describe("withRightNowContext", () => {
     ["an artist", { artists: ["Nadia Okoro"] }],
     ["a seed", { seed: { kind: "artist", id: "a1", label: "Nadia" } }],
     ["a seed track", { seedTrackId: "t1" }],
+    ["New artists only", { newArtists: true }],
     ["My Mix", { myMix: { context: "evening:weekday" } }],
   ])("leaves a session with %s untouched: the request decides, not the clock", (_name, preferences) => {
     expect(withRightNowContext(preferences, EVENING)).toBe(preferences);

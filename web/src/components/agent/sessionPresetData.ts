@@ -374,6 +374,23 @@ export function soundPresetsForFamilies(
   return { presets, counts };
 }
 
+/**
+ * The Sounds starter behind "New artists in <family>" (#2249): the listener's top
+ * family, when the catalog can fill it and a starter exists for it. Null otherwise,
+ * which hides the starter.
+ */
+export function newArtistsPresetFor(
+  topFamilyId: string | undefined,
+  families: readonly SoundFamilyAvailability[],
+  minTracks: number = DEFAULT_SOUNDS_MIN_TRACKS,
+): SessionPreset | null {
+  if (!topFamilyId) return null;
+  const family = families.find((candidate) => candidate.id === topFamilyId);
+  if (!family) return null;
+  const { presets } = soundPresetsForFamilies([family], minTracks);
+  return presets[0] ?? null;
+}
+
 /** "7" under 10, then "10+", "20+", "40+" (never overstating the catalog). */
 export function soundCountLabel(count: number): string {
   if (count < 10) return String(Math.max(0, Math.floor(count)));

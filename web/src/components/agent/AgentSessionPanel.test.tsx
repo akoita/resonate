@@ -714,6 +714,168 @@ describe("AgentSessionPanel", () => {
     );
   });
 
+  describe("For you starters: More like... and New artists in... (#2249)", () => {
+    const resonantJournal = (items: Array<{ id: string; title: string; at: string }>): DiscoveryJournal =>
+      ({
+        schemaVersion: "discovery-journal/v1",
+        window: { days: 28, from: "2026-09-06T00:00:00.000Z", to: "2026-10-04T00:00:00.000Z" },
+        headline: { resonantDiscoveriesThisWeek: 0, newArtistsThisWeek: 0 },
+        groups: [
+          {
+            key: "day:0",
+            sessionId: null,
+            date: "2026-10-03",
+            items: items.map((item) => ({
+              trackId: item.id,
+              title: item.title,
+              artistId: "a1",
+              artistName: "Artist",
+              releaseId: `r-${item.id}`,
+              releaseTitle: "Release",
+              artworkUrl: null,
+              hasUploadedArtwork: false,
+              artworkRevision: 1,
+              resonatedAt: item.at,
+              followUp: "saved",
+              discovery: false,
+              reason: { code: "listening_pattern", text: "Fit" },
+              nextAction: null,
+            })),
+          },
+        ],
+      }) as unknown as DiscoveryJournal;
+    const sounds = (topFamilyId?: string) => ({
+      minTracks: 3,
+      ...(topFamilyId ? { topFamilyId } : {}),
+      families: [
+        { id: "world", label: "World", count: 41 },
+        { id: "jazz", label: "Jazz", count: 12 },
+      ],
+    });
+    async function loadSounds() {
+      render();
+      effects.forEach((run) => run());
+      await Promise.resolve();
+      await Promise.resolve();
+      render();
+    }
+
+    it("offers More like <the track that resonated last>, and hides it without one", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      expect(captured.prompt?.moreLike).toBeUndefined();
+
+      hookState.journal = resonantJournal([
+        { id: "older", title: "Older", at: "2026-10-01T09:00:00.000Z" },
+        { id: "latest", title: "Harbor Lights", at: "2026-10-03T18:00:00.000Z" },
+      ]);
+      render();
+      expect(captured.prompt?.moreLike).toMatchObject({ title: "Harbor Lights", selected: false });
+    });
+
+    it("starts a clean session seeded from that track, shown as the From chip", async () => {
+      hookState.config = config({ isActive: false });
+      hookState.journal = resonantJournal([{ id: "latest", title: "Harbor Lights", at: "2026-10-03T18:00:00.000Z" }]);
+      render();
+      captured.prompt?.onSelectPreset(SESSION_PRESETS[0]);
+      render();
+      captured.prompt?.moreLike?.onSelect();
+      render();
+
+      expect(captured.prompt?.seed).toEqual({ kind: "track", id: "latest", label: "Harbor Lights" });
+      expect(captured.prompt?.moreLike?.selected).toBe(true);
+      expect(captured.prompt?.text).toBe("");
+      expect(captured.prompt?.activePresetIntent).toBeNull();
+      await captured.prompt?.onSubmit();
+      expect(startSession).toHaveBeenCalledWith({
+        preferences: expect.objectContaining({ seed: { kind: "track", id: "latest", label: "Harbor Lights" } }),
+      });
+      // A seeded session is a request: the clock does not steer it.
+      const [startInput] = startSession.mock.calls[0] as unknown as [{ preferences: Record<string, unknown> }];
+      expect(startInput.preferences).not.toHaveProperty("listeningContext");
+      const started = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      const payload = (started?.[2] as { payload: Record<string, unknown> }).payload;
+      expect(payload).toMatchObject({ starterRow: "for_you", starterId: "more_like", seedKind: "track" });
+      // The track's id and title stay out of analytics.
+      expect(JSON.stringify(started)).not.toContain("Harbor Lights");
+      expect(JSON.stringify(started)).not.toContain('"latest"');
+    });
+
+    it("drops the seed when its chip is removed", async () => {
+      hookState.config = config({ isActive: false });
+      hookState.journal = resonantJournal([{ id: "latest", title: "Harbor Lights", at: "2026-10-03T18:00:00.000Z" }]);
+      render();
+      captured.prompt?.moreLike?.onSelect();
+      render();
+      captured.prompt?.onRemoveChip("seed");
+      render();
+      expect(captured.prompt?.seed).toBeNull();
+      expect(captured.prompt?.moreLike?.selected).toBe(false);
+    });
+
+    it("offers New artists in <top family> only when the listener has a top family the catalog can fill", async () => {
+      getAgentSounds.mockResolvedValueOnce(sounds());
+      hookState.config = config({ isActive: false });
+      await loadSounds();
+      expect(captured.prompt?.newArtists).toBeUndefined();
+
+      getAgentSounds.mockResolvedValueOnce(sounds("jazz"));
+      slots.length = 0;
+      await loadSounds();
+      expect(captured.prompt?.newArtists).toMatchObject({ familyName: "Jazz", selected: false });
+    });
+
+    it("starts that family's session limited to artists the listener has never played", async () => {
+      getAgentSounds.mockResolvedValueOnce(sounds("jazz"));
+      hookState.config = config({ isActive: false });
+      await loadSounds();
+      captured.prompt?.newArtists?.onSelect();
+      render();
+
+      expect(captured.prompt?.newArtists?.selected).toBe(true);
+      expect(captured.prompt?.newArtistsOnly).toBe(true);
+      expect(captured.prompt?.request?.genres.length).toBeGreaterThan(0);
+      await captured.prompt?.onSubmit();
+      expect(startSession).toHaveBeenCalledWith({
+        preferences: expect.objectContaining({ sessionIntent: "Jazz", newArtists: true }),
+      });
+      const started = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      const payload = (started?.[2] as { payload: Record<string, unknown> }).payload;
+      expect(payload).toMatchObject({
+        starterRow: "for_you",
+        starterId: "new_artists",
+        optionalFilters: expect.arrayContaining(["new_artists"]),
+      });
+    });
+
+    it("states New artists on every pick, and the chip turns only that limit off", async () => {
+      getAgentSounds.mockResolvedValueOnce(sounds("jazz"));
+      hookState.config = config({ isActive: true });
+      await loadSounds();
+      captured.prompt?.newArtists?.onSelect();
+      render();
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ newArtists: true, sessionIntent: "Jazz" });
+
+      captured.prompt?.onRemoveChip("new-artists");
+      render();
+      expect(captured.prompt?.newArtistsOnly).toBe(false);
+      // The genre stays; the earlier `true` is replaced on the server by an explicit false.
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ newArtists: false, sessionIntent: "Jazz" });
+    });
+
+    it("is replaced by another starter, and is not weighted by the time of day", async () => {
+      getAgentSounds.mockResolvedValueOnce(sounds("jazz"));
+      hookState.config = config({ isActive: false });
+      await loadSounds();
+      captured.prompt?.newArtists?.onSelect();
+      render();
+      captured.prompt?.onSelectPreset(SESSION_PRESETS[0]);
+      render();
+      expect(captured.prompt?.newArtistsOnly).toBe(false);
+      expect(captured.prompt?.newArtists?.selected).toBe(false);
+    });
+  });
+
   describe("Right now (#2245)", () => {
     const ready: AgentRightNow = { status: "ready", context: "evening:weekday", highlights: ["Deep House", "Jazz"] };
 

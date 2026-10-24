@@ -103,6 +103,22 @@ describe("AgentConfigController", () => {
     });
   });
 
+  describe("New artists on session start (#2249)", () => {
+    const req = { user: { userId: "user_1" } };
+
+    it("hands the runtime the flag only when it is exactly true", async () => {
+      const ctrl = makeController();
+      await ctrl.startSession(req, { preferences: { newArtists: true, genres: ["Jazz"] } });
+      await ctrl.startSession(req, { preferences: { newArtists: "true" as unknown, genres: ["Jazz"] } as any });
+      await ctrl.startSession(req, { preferences: { genres: ["Jazz"] } });
+      await jest.advanceTimersByTimeAsync(500);
+      const runs = (ctrl as any).runtimeService.run.mock.calls;
+      expect(runs[0][0].preferences.newArtists).toBe(true);
+      expect(runs[1][0].preferences).not.toHaveProperty("newArtists");
+      expect(runs[2][0].preferences).not.toHaveProperty("newArtists");
+    });
+  });
+
   describe("the time-of-day bucket on session start (#2245)", () => {
     const req = { user: { userId: "user_1" } };
 

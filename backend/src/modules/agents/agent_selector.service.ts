@@ -159,6 +159,13 @@ export interface AgentSelectorInput {
    */
   tasteQueries?: string[];
   /**
+   * "New artists" (#2249): only tracks by artists the listener has never
+   * interacted with. Applied inside the policy stage with the same played-artist
+   * lookup exploration uses. If that lookup is unavailable the session still plays
+   * (the failure is logged as a degraded fallback) rather than going silent.
+   */
+  newArtistsOnly?: boolean;
+  /**
    * Overrides the retrieval variant that otherwise comes from the listener's
    * ranker-variant assignment (#2005). Used by offline evaluation; production
    * callers leave it unset so the assignment decides.
@@ -806,6 +813,7 @@ export class AgentSelectorService {
         ? policyContext.verifiedHumanArtistIds
         : new Set<string>(),
       playedArtistIds: policyContext.playedArtistIds,
+      ...(input.newArtistsOnly && policyContext.playedArtistsKnown ? { excludePlayedArtists: true } : {}),
       // Relaxed and widened passes keep two per artist per pick but drop the session window.
       priorSessionArtistKeys: pass === "strict" ? policyContext.priorSessionArtistKeys : undefined,
       priorExplorationCount: policyContext.priorExplorationCount,
@@ -1521,6 +1529,7 @@ export class AgentSelectorService {
   ) {
     let verifiedHumanArtistIds: ReadonlySet<string> = new Set<string>();
     let playedArtistIds: ReadonlySet<string> = new Set<string>();
+    let playedArtistsKnown = false;
     let sessionArtistKeys = new Map<string, string>();
     // Unknown until counted: the policy then takes the share over the page
     // alone instead of inflating the reserve late in a session.
@@ -1538,6 +1547,7 @@ export class AgentSelectorService {
         ]);
         verifiedHumanArtistIds = context.verifiedHumanArtistIds;
         playedArtistIds = context.playedArtistIds;
+        playedArtistsKnown = Boolean(input.userId);
         sessionArtistKeys = keysByTrack;
       } catch (error) {
         logDegradedFallback({
@@ -1581,6 +1591,7 @@ export class AgentSelectorService {
     return {
       verifiedHumanArtistIds,
       playedArtistIds,
+      playedArtistsKnown,
       priorSessionArtistKeys,
       priorExplorationCount,
     };

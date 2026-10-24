@@ -960,3 +960,43 @@ describe("discovery policy (ADR-TE-2)", () => {
     });
   });
 });
+
+
+describe("New artists sessions (#2249)", () => {
+  const pool = [
+    ranked("known-1", 90, { artistId: "known" }),
+    ranked("fresh-1", 80, { artistId: "fresh" }),
+    ranked("known-2", 70, { artistId: "known" }),
+    ranked("fresh-2", 60, { artistId: "other-fresh" }),
+    ranked("anonymous", 50),
+  ];
+  const played = new Set(["known"]);
+
+  it("leaves out every track by an artist the listener has already played", () => {
+    const result = applyDiscoveryPolicy(pool, {
+      limit: 5,
+      playedArtistIds: played,
+      excludePlayedArtists: true,
+    });
+    expect(result.items.map((item) => item.id).sort()).toEqual(["anonymous", "fresh-1", "fresh-2"]);
+  });
+
+  it("changes nothing for Home and the plain DJ, which never set the option", () => {
+    const result = applyDiscoveryPolicy(pool, { limit: 5, playedArtistIds: played });
+    expect(result.items.map((item) => item.id).sort()).toEqual([
+      "anonymous",
+      "fresh-1",
+      "fresh-2",
+      "known-1",
+      "known-2",
+    ]);
+  });
+
+  it("returns a short batch rather than a played artist when too few new artists remain", () => {
+    const result = applyDiscoveryPolicy(
+      [ranked("known-1", 90, { artistId: "known" }), ranked("fresh-1", 80, { artistId: "fresh" })],
+      { limit: 5, playedArtistIds: played, excludePlayedArtists: true },
+    );
+    expect(result.items.map((item) => item.id)).toEqual(["fresh-1"]);
+  });
+});

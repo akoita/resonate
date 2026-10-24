@@ -8,6 +8,8 @@ import {
   emptyRequest,
   hasFilters,
   ignoredKeyLabels,
+  NEW_ARTISTS_CHIP_KEY,
+  newArtistsChips,
   removeArtistChip,
   removeChip,
   requestFilterKeys,
@@ -296,5 +298,13 @@ describe("seedChips (#2244)", () => {
     expect(seedChips({ label: "Late night" })).toEqual([{ key: "seed", kind: "seed", label: "From: Late night" }]);
     expect(seedChips(null)).toEqual([]);
     expect(seedChips(undefined)).toEqual([]);
+  });
+});
+
+describe("newArtistsChips (#2249)", () => {
+  it("shows a removable chip only while the session is limited to new artists", () => {
+    expect(newArtistsChips(true)).toEqual([{ key: NEW_ARTISTS_CHIP_KEY, kind: "new-artists", label: "New artists only" }]);
+    expect(newArtistsChips(false)).toEqual([]);
+    expect(newArtistsChips(undefined)).toEqual([]);
   });
 });

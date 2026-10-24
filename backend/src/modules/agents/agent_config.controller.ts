@@ -365,6 +365,8 @@ export class AgentConfigController {
                  * fill a batch the catalog cannot fill with matches. Only `true` counts.
                  */
                 fillSimilar?: unknown;
+                /** "New artists" (#2249): only artists the listener has never interacted with. Only `true` counts. */
+                newArtists?: unknown;
                 myMix?: MyMixPreferences | null;
                 /**
                  * "Right now" (#2245): the client's coarse time/day bucket. Used only by a
@@ -527,6 +529,8 @@ export class AgentConfigController {
                     ...(seed ? { seed } : {}),
                     // "Fill with similar sounds" (#2316): off unless the listener turned it on.
                     ...(body?.preferences?.fillSimilar === true ? { fillSimilar: true } : {}),
+                    // "New artists" (#2249): off unless the listener started a New artists session.
+                    ...(body?.preferences?.newArtists === true ? { newArtists: true } : {}),
                     // The described session (#2037); absent without a request.
                     ...(requested.request
                         ? {

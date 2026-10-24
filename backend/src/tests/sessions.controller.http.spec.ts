@@ -158,6 +158,9 @@ describe('SessionsController (e2e)', () => {
     // "Fill with similar sounds" is a boolean (#2316).
     await post('/sessions/agent/next', { sessionId: 's1', preferences: { fillSimilar: 'yes' } }).expect(400);
     await post('/sessions/start', { budgetCapUsd: 10, preferences: { fillSimilar: 1 } }).expect(400);
+    // "New artists" is a boolean too (#2249).
+    await post('/sessions/agent/next', { sessionId: 's1', preferences: { newArtists: 'yes' } }).expect(400);
+    await post('/sessions/start', { budgetCapUsd: 10, preferences: { newArtists: 1 } }).expect(400);
     // "Right now" (#2245) takes one of the eight coarse buckets, never a timezone or a timestamp.
     for (const listeningContext of ['Europe/Paris', 'lunch:weekday', '2026-10-24T18:00:00Z', 7]) {
       await post('/sessions/agent/next', { sessionId: 's1', preferences: { listeningContext } }).expect(400);

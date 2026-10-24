@@ -69,6 +69,12 @@ export interface AgentRuntimeInput {
      * fill with matches. Off by default: a short batch is returned and said so.
      */
     fillSimilar?: boolean;
+    /**
+     * "New artists" (#2249): play only artists the listener has never interacted
+     * with. Only `true` counts. Such a session runs through the deterministic
+     * selector, which owns the played-artist lookup.
+     */
+    newArtists?: boolean;
   };
 }
 

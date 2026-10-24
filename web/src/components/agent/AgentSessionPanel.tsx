@@ -42,6 +42,7 @@ import {
     removeArtistChip,
     removeChip,
     requestFilterKeys,
+    NEW_ARTISTS_CHIP_KEY,
     SEED_CHIP_KEY,
     requestFromPreset,
     setEnergy,
@@ -52,7 +53,7 @@ import { DJ_SEED_EVENT, takeDjSeed, type DjSeed } from "../../lib/djSeed";
 import { saveTracksMetadata } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
-import { sonicRadarSessionLine } from "../../lib/sonicRadarSummary";
+import { latestResonantItem, sonicRadarSessionLine } from "../../lib/sonicRadarSummary";
 import { useToast } from "../ui/Toast";
 import AgentHistoryCard from "./AgentHistoryCard";
 import { humanPickReason } from "../../lib/agentPickReason";
@@ -60,7 +61,7 @@ import AgentUpNextCard from "./AgentUpNextCard";
 import { useDjUpNext } from "./useDjUpNext";
 import { pickNotesFromLicenses, pickNotesFromResponse } from "../../lib/agentUpNext";
 import AgentSessionPrompt from "./AgentSessionPrompt";
-import { SESSION_PRESETS, soundPresetsForFamilies, type SessionPreset } from "./sessionPresetData";
+import { SESSION_PRESETS, newArtistsPresetFor, soundPresetsForFamilies, type SessionPreset } from "./sessionPresetData";
 import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
 import AgentSetupWizard from "./AgentSetupWizard";
 import AgentCommandBar from "./AgentCommandBar";
@@ -145,6 +146,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     // which hides the starter (a starter without data is not shown).
     const [rightNow, setRightNow] = useState<AgentRightNow | null>(null);
     const [rightNowSelected, setRightNowSelected] = useState(false);
+    // "New artists only" (#2249): the session plays artists the listener has never played.
+    const [newArtistsOnly, setNewArtistsOnly] = useState(false);
     const [isSavingMyMix, setIsSavingMyMix] = useState(false);
     const [myMixSaveMessage, setMyMixSaveMessage] = useState<string | null>(null);
     // Optimistic "include explicit tracks" value while the save is in flight (#2088).
@@ -199,6 +202,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         seed === null &&
         parsedSentence === null &&
         text.trim().length === 0;
+
+    // For you (#2249): "More like <the track that last resonated>" and "New artists in <your top
+    // family>". Each is offered only while its data exists, so no starter is a dead end.
+    const latestResonant = useMemo(() => latestResonantItem(journal), [journal]);
+    const newArtistsPreset = useMemo(
+        () => (sounds ? newArtistsPresetFor(sounds.topFamilyId, sounds.families, sounds.minTracks) : null),
+        [sounds],
+    );
 
     const invalidateMyMixCoverage = () => {
         myMixEditVersionRef.current += 1;
@@ -309,13 +320,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             artists,
             seed,
             fillSimilar,
+            newArtists: newArtistsOnly,
         });
         // A pick with no filters of its own carries the coarse time-of-day bucket (#2245).
         const preferences = withRightNowContext(regularPreferences) ?? regularPreferences;
         return myMixWasSelectedRef.current
             ? { ...preferences, myMix: null }
             : preferences;
-    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed, fillSimilar]);
+    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed, fillSimilar, newArtistsOnly]);
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
@@ -624,6 +636,12 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     };
 
     const handleRemoveChip = (chipKey: string) => {
+        if (chipKey === NEW_ARTISTS_CHIP_KEY) {
+            // Only the "New artists only" limit goes; the genre and the rest of the filters stay.
+            setNewArtistsOnly(false);
+            scheduleReplan();
+            return;
+        }
         if (chipKey === SEED_CHIP_KEY) {
             // Removing the chip drops the seed; the filters and the sentence stay as they are.
             setSeed(null);
@@ -665,6 +683,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
     const handleSelectMyMix = () => {
         setRightNowSelected(false);
+        setNewArtistsOnly(false);
         cancelParse();
         energyAdjustedRef.current = false;
         starterRef.current = { row: "for_you", id: "my_mix", edited: false };
@@ -689,6 +708,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
      * treats the session as taste-driven and falls back to the saved vibes on a cold start.
      */
     const handleSelectRightNow = () => {
+        setNewArtistsOnly(false);
         cancelParse();
         energyAdjustedRef.current = false;
         starterRef.current = { row: "for_you", id: "right_now", edited: false };
@@ -709,6 +729,47 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         }
         setRightNowSelected(true);
         scheduleReplan();
+    };
+
+    /**
+     * "More like <the track that last resonated>" (#2249): a clean session seeded from that
+     * track (#2244), shown as the removable "From: <title>" chip. The server checks the seed
+     * again on start.
+     */
+    const handleSelectMoreLike = () => {
+        if (!latestResonant) return;
+        cancelParse();
+        energyAdjustedRef.current = false;
+        starterRef.current = { row: "for_you", id: "more_like", edited: false };
+        setText("");
+        setRequest(emptyRequest());
+        setParsedSentence(null);
+        setArtists([]);
+        setUnparsed([]);
+        setIgnored([]);
+        setParseError(null);
+        setActivePreset(null);
+        setRightNowSelected(false);
+        setNewArtistsOnly(false);
+        setSeed({ kind: "track", id: latestResonant.trackId, label: latestResonant.title });
+        if (myMixPreferencesRef.current) {
+            setMyMixPreferences(null);
+            myMixWasSelectedRef.current = true;
+            invalidateMyMixCoverage();
+            setMyMixSaveMessage(null);
+        }
+        scheduleReplan();
+    };
+
+    /**
+     * "New artists in <your top family>" (#2249): that family's Sounds starter, limited to artists
+     * the listener has never played. The limit is a removable "New artists only" chip.
+     */
+    const handleSelectNewArtists = () => {
+        if (!newArtistsPreset) return;
+        handleSelectPreset(newArtistsPreset);
+        starterRef.current = { row: "for_you", id: "new_artists", edited: false };
+        setNewArtistsOnly(true);
     };
 
     const handleMyMixChange = (next: AgentMyMixPreferences) => {
@@ -907,6 +968,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 ...(energyAdjustedRef.current && !myMixPreferences && request?.energy ? ["energy"] : []),
                 ...((explicitPending ?? config?.allowExplicit ?? false) ? ["explicit"] : []),
                 ...(fillSimilar && offersFillSimilar ? ["fill_similar"] : []),
+                ...(newArtistsOnly && !myMixPreferences ? ["new_artists"] : []),
             ];
             const startedFrom: SessionStartedFrom = myMixPreferences
                 ? "my_mix"
@@ -923,6 +985,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     artists,
                     seed,
                     fillSimilar: fillSimilar && offersFillSimilar,
+                    newArtists: newArtistsOnly,
                 }));
             try {
                 setIsStarting(true);
@@ -989,6 +1052,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         // reads as, without waiting for the parser. The listener can edit either.
         cancelParse();
         setRightNowSelected(false);
+        setNewArtistsOnly(false);
         setText(preset.sentence);
         // An Energy chosen in the Adjust row combines with the starter instead of being lost.
         const adjustedEnergy = energyAdjustedRef.current ? (request?.energy ?? null) : null;
@@ -1094,6 +1158,25 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                             error: explicitError,
                             onChange: handleExplicitChange,
                         }}
+                        moreLike={
+                            latestResonant
+                                ? {
+                                    title: latestResonant.title,
+                                    selected: seed?.kind === "track" && seed.id === latestResonant.trackId,
+                                    onSelect: handleSelectMoreLike,
+                                }
+                                : undefined
+                        }
+                        newArtists={
+                            newArtistsPreset
+                                ? {
+                                    familyName: newArtistsPreset.name,
+                                    selected: newArtistsOnly && activePreset?.intent === newArtistsPreset.intent,
+                                    onSelect: handleSelectNewArtists,
+                                }
+                                : undefined
+                        }
+                        newArtistsOnly={newArtistsOnly}
                         rightNow={rightNow ? { summary: rightNow, selected: rightNowActive, onSelect: handleSelectRightNow } : undefined}
                         myMix={{
                             lanes: myMixLanes,

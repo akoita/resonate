@@ -19,7 +19,7 @@ import type {
 export const SESSION_REQUEST_MAX_TEXT_LENGTH = 500;
 export const SESSION_ENERGY_BANDS: readonly AgentSessionEnergy[] = ["low", "medium", "high"];
 
-export type RequestChipKind = "genre" | "mood" | "energy" | "bpm" | "artist" | "seed";
+export type RequestChipKind = "genre" | "mood" | "energy" | "bpm" | "artist" | "seed" | "new-artists";
 
 export type RequestChip = {
   /** Stable key passed to {@link removeChip}. */
@@ -79,6 +79,13 @@ export const SEED_CHIP_KEY = "seed";
 /** The "From: <label>" chip for a session seed (#2244). */
 export function seedChips(seed: { label: string } | null | undefined): RequestChip[] {
   return seed ? [{ key: SEED_CHIP_KEY, kind: "seed", label: `From: ${seed.label}` }] : [];
+}
+
+export const NEW_ARTISTS_CHIP_KEY = "new-artists";
+
+/** The "New artists only" chip (#2249): the session plays artists the listener has never played. */
+export function newArtistsChips(on: boolean | null | undefined): RequestChip[] {
+  return on ? [{ key: NEW_ARTISTS_CHIP_KEY, kind: "new-artists", label: "New artists only" }] : [];
 }
 
 /** The artists left after removing an artist chip; other keys leave them unchanged. */
