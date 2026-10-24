@@ -41,6 +41,12 @@ Recommendation (follow-up issue): place the indexer management endpoints
 behind the existing admin role guard (`AuthGuard` + `RolesGuard`), as done for
 other admin surfaces in this controller.
 
+**Resolved (2026-10-24):** `POST /metadata/indexer/reset` and
+`POST /metadata/indexer/reindex-tx` now require an admin session
+(`AuthGuard("jwt")` + `RolesGuard` + `@Roles("admin")`), pinned by
+`backend/src/tests/metadata_indexer_admin.controller.http.spec.ts`. The
+read-only `GET /metadata/indexer/status` stays public.
+
 ## Low Findings
 
 None.
