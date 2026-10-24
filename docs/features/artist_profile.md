@@ -139,9 +139,12 @@ flags them, because approving one automatically rejects the others.
 - `GET /artists/:id/enrichment/candidates` and
   `POST /artists/:id/enrichment/suggestions` (JWT, `PROFILE_EDIT` scope) return
   distinct public identities and then source-linked suggestions for one
-  selected identity. Both are throttled and read only. Their responses are
-  review material, not authority to edit; the existing `PATCH` remains the
-  sole write path.
+  selected identity. Both are throttled and never change profile fields.
+  Their responses are review material, not authority to edit; the existing
+  `PATCH` remains the sole write path for profile fields. The one side effect
+  is that the suggestions route stores the matched MusicBrainz id, Wikidata
+  QID, match confidence and match time on the artist (#2258) for the catalog
+  attestation report; they are not returned by `GET /artists/:id`.
 - `GET /artists/:id` returns public profile fields including `website` and
   `socialLinks`, without account ownership, payout data, claimability status,
   or private claim proof.

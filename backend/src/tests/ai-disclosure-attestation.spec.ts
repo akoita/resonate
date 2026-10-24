@@ -114,6 +114,94 @@ describe("attestation classification", () => {
     ]);
   });
 
+  describe("stored artist ids (#2258)", () => {
+    const MBID = "5b11f4ce-a62d-471e-81fc-a69a8278c7da";
+    const IDS_ARTIST = {
+      ...COMMONS_ARTIST,
+      imageUrl: null,
+      musicbrainzArtistId: MBID,
+      wikidataQid: "Q42",
+      externalIdMatchConfidence: "high",
+      externalIdMatchedAt: new Date("2026-10-20T10:00:00.000Z"),
+    };
+    const dated = { releaseDate: new Date("2015-01-01") };
+    const codes = (r: AttestationCandidateRelease) =>
+      classifyAttestationCandidate(r, NOW).signals.map((signal) => signal.code);
+
+    it("proposes on a date plus a stored high-confidence id, with no URL trace", () => {
+      const result = classifyAttestationCandidate(release({ ...dated, artist: IDS_ARTIST }), NOW);
+
+      expect(result.bucket).toBe("proposed");
+      expect(result.signals.map((signal) => signal.code)).toEqual([
+        "release_date_before_cutoff",
+        "artist_external_id",
+      ]);
+      expect(result.signals[1].detail).toBe(
+        `artist matched MusicBrainz ${MBID}, Wikidata Q42 (high confidence, matched 2026-10-20)`,
+      );
+    });
+
+    it("accepts a medium match and a MusicBrainz id without a Wikidata QID", () => {
+      const artist = { ...IDS_ARTIST, wikidataQid: null, externalIdMatchConfidence: "medium", externalIdMatchedAt: null };
+      const result = classifyAttestationCandidate(release({ ...dated, artist }), NOW);
+
+      expect(result.bucket).toBe("proposed");
+      expect(result.signals[1].detail).toBe(`artist matched MusicBrainz ${MBID} (medium confidence)`);
+    });
+
+    it("emits one artist signal: stored ids replace the URL-host inference", () => {
+      expect(codes(release({ ...dated, artist: { ...IDS_ARTIST, imageUrl: COMMONS_ARTIST.imageUrl } })))
+        .toEqual(["release_date_before_cutoff", "artist_external_id"]);
+    });
+
+    it.each([
+      ["a low-confidence match", { externalIdMatchConfidence: "low" }],
+      ["a missing confidence", { externalIdMatchConfidence: null }],
+      ["an unknown confidence", { externalIdMatchConfidence: "certain" }],
+      ["a malformed MusicBrainz id", { musicbrainzArtistId: "not-a-uuid" }],
+      ["no MusicBrainz id", { musicbrainzArtistId: null }],
+    ])("does not count %s as provenance", (_label, override) => {
+      const result = classifyAttestationCandidate(
+        release({ ...dated, artist: { ...IDS_ARTIST, ...override } }),
+        NOW,
+      );
+
+      expect(result.bucket).toBe("needs_review");
+      expect(result.reasons).toEqual(["missing_provenance_evidence"]);
+      expect(result.signals.map((signal) => signal.code)).toEqual(["release_date_before_cutoff"]);
+    });
+
+    it("falls back to the URL-host inference when the stored match is unusable", () => {
+      const artist = { ...COMMONS_ARTIST, musicbrainzArtistId: MBID, externalIdMatchConfidence: "low" };
+
+      expect(codes(release({ ...dated, artist }))).toEqual([
+        "release_date_before_cutoff",
+        "artist_external_reference",
+      ]);
+    });
+
+    it("still falls back to URL hosts for an artist with no stored ids at all", () => {
+      expect(codes(release({ ...dated, artist: COMMONS_ARTIST }))).toEqual([
+        "release_date_before_cutoff",
+        "artist_external_reference",
+      ]);
+    });
+
+    it("never lets stored ids override a conflicting or excluding signal", () => {
+      const late = classifyAttestationCandidate(
+        release({ artist: IDS_ARTIST, releaseDate: new Date("2024-01-01") }),
+        NOW,
+      );
+      const ai = classifyAttestationCandidate(
+        release({ ...dated, artist: IDS_ARTIST, type: "ai_generated" }),
+        NOW,
+      );
+
+      expect(late.bucket).toBe("needs_review");
+      expect(ai.bucket).toBe("excluded");
+    });
+  });
+
   it("treats the cutoff day itself as not before the cutoff", () => {
     const result = classifyAttestationCandidate(
       release({ releaseDate: GENERATIVE_AI_ERA_CUTOFF, label: "Sony Music" }),

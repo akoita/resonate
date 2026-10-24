@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { CatalogAiDisclosureRecordedEvent } from "../../events/event_types";
+import { storedArtistIdSignal } from "../artist/artist-external-ids";
 import {
   AI_DISCLOSURE_VERSION,
   CATALOG_ATTESTATION_SOURCE,
@@ -33,7 +34,7 @@ import {
 export const GENERATIVE_AI_ERA_CUTOFF = new Date("2023-01-01T00:00:00.000Z");
 
 /** Bump when the classification rules below change; echoed in the report. */
-export const ATTESTATION_RULES_VERSION = "2252-v1";
+export const ATTESTATION_RULES_VERSION = "2258-v1";
 
 export const ATTESTATION_BUCKETS = ["proposed", "needs_review", "excluded"] as const;
 export type AttestationBucket = (typeof ATTESTATION_BUCKETS)[number];
@@ -44,6 +45,7 @@ export type AttestationSignalCode =
   | "isrc_year_before_cutoff"
   | "isrc_year_on_or_after_cutoff"
   | "known_label"
+  | "artist_external_id"
   | "artist_external_reference";
 
 export type AttestationSignal = {
@@ -88,10 +90,11 @@ export const SELF_RELEASE_LABEL_TOKENS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Hosts that enrichment (`artist-enrichment.service.ts`) draws on. The
- * enrichment service does not persist a MusicBrainz or Wikidata id, so the only
- * durable traces on an `Artist` row are URLs pointing at these hosts (for
- * example the Wikimedia Commons image it suggests).
+ * Hosts that enrichment (`artist-enrichment.service.ts`) draws on. Since #2258
+ * enrichment persists the matched MusicBrainz and Wikidata ids on the `Artist`
+ * row and the report prefers them (`artist_external_id`). This host inference
+ * is only the fallback for artists enrichment has not resolved: the traces are
+ * URLs on these hosts (for example the Wikimedia Commons image it suggests).
  */
 export const ARTIST_REFERENCE_HOSTS: readonly string[] = [
   "musicbrainz.org",
@@ -121,6 +124,11 @@ export type AttestationCandidateRelease = {
     imageUrl: string | null;
     website: string | null;
     socialLinks: unknown;
+    /** #2258 stored enrichment ids; absent/null until enrichment resolves. */
+    musicbrainzArtistId?: string | null;
+    wikidataQid?: string | null;
+    externalIdMatchConfidence?: string | null;
+    externalIdMatchedAt?: Date | null;
   } | null;
   tracks: AttestationCandidateTrack[];
 };
@@ -221,15 +229,17 @@ function isUndeclaredMigration(track: AttestationCandidateTrack): boolean {
  *    its tracks carries `generationMetadata` (platform-generated or remixed
  *    audio), or none of its tracks is `UNDECLARED` + `migration`.
  * 2. `excluded` when no signal of any kind exists (no release date, no ISRC,
- *    no known label, no artist reference): nothing supports an attestation.
+ *    no known label, no artist reference or stored artist id): nothing supports an attestation.
  * 3. `needs_review` when a conflicting signal exists (a release date or ISRC
  *    year at or after the cutoff), when the release mixes `UNDECLARED` tracks
  *    with tracks declared at another level or source, or when only one
  *    category of evidence is present.
  * 4. `proposed` when there is BOTH date evidence (release date before the
  *    cutoff, or every track ISRC year before the cutoff with at least one
- *    ISRC) AND provenance evidence (a known label or an artist reference to
- *    MusicBrainz/Wikidata) and nothing conflicts.
+ *    ISRC) AND provenance evidence (a known label, a stored MusicBrainz/
+ *    Wikidata artist id matched with high or medium confidence, or, when no
+ *    such id is stored, an artist profile URL on those hosts) and nothing
+ *    conflicts.
  *
  * A date alone is never enough to propose: anyone can type a release date.
  */
@@ -289,13 +299,31 @@ export function classifyAttestationCandidate(
     });
   }
 
-  const hosts = artistReferenceHosts(release.artist);
-  if (hosts.length > 0) {
+  // #2258: stored ids first; the URL-host inference only when there are none
+  // (or the stored match is too weak to count).
+  const storedIds = storedArtistIdSignal(release.artist);
+  if (storedIds) {
+    const ids = [
+      `MusicBrainz ${storedIds.musicbrainzArtistId}`,
+      ...(storedIds.wikidataQid ? [`Wikidata ${storedIds.wikidataQid}`] : []),
+    ].join(", ");
+    const matched = storedIds.matchedAt
+      ? `, matched ${storedIds.matchedAt.toISOString().slice(0, 10)}`
+      : "";
     signals.push({
-      code: "artist_external_reference",
+      code: "artist_external_id",
       kind: "supporting",
-      detail: `artist profile references ${hosts.join(", ")}`,
+      detail: `artist matched ${ids} (${storedIds.confidence} confidence${matched})`,
     });
+  } else {
+    const hosts = artistReferenceHosts(release.artist);
+    if (hosts.length > 0) {
+      signals.push({
+        code: "artist_external_reference",
+        kind: "supporting",
+        detail: `artist profile references ${hosts.join(", ")}`,
+      });
+    }
   }
 
   const has = (code: AttestationSignalCode) =>
@@ -322,7 +350,9 @@ export function classifyAttestationCandidate(
       has("release_date_before_cutoff") ||
       (has("isrc_year_before_cutoff") && !has("isrc_year_on_or_after_cutoff"));
     const provenanceEvidence =
-      has("known_label") || has("artist_external_reference");
+      has("known_label") ||
+      has("artist_external_id") ||
+      has("artist_external_reference");
     const conflicting = signals.some((signal) => signal.kind === "conflicting");
     const mixed = undeclared.length !== release.tracks.length;
 
@@ -425,6 +455,10 @@ export async function loadAttestationCandidates(
             imageUrl: true,
             website: true,
             socialLinks: true,
+            musicbrainzArtistId: true,
+            wikidataQid: true,
+            externalIdMatchConfidence: true,
+            externalIdMatchedAt: true,
           },
         },
         tracks: {

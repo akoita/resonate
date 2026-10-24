@@ -45,3 +45,13 @@ The review UI shows the file page and rights metadata, while the existing
 profile schema stores only the approved image URL. Source/provenance records
 for saved profile fields are not persisted. Adding persistent provenance would
 require a separate data-model and lifecycle decision.
+
+One narrow exception (#2258): when suggestions load for a selected MusicBrainz
+candidate, the controller stores the matched MusicBrainz artist id, the
+Wikidata QID from its relationships, a match confidence (`high` / `medium` /
+`low`, comparing the profile display name with the matched name) and the match
+time on the `Artist` row (`ArtistService.recordEnrichmentMatch`). These are
+public reference identifiers used as the durable artist signal of the catalog
+attestation report; they never populate profile fields, are not exposed by
+`GET /artists/:id`, and a storage failure never fails the suggestions response.
+Each run replaces the previous match as a unit; there is no backfill.

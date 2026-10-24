@@ -10,6 +10,7 @@ import {
     Request,
     UseGuards,
     Param,
+    Logger,
     NotFoundException,
     Optional,
     ServiceUnavailableException,
@@ -33,6 +34,8 @@ const ARTIST_ENRICHMENT_THROTTLE = {
 
 @Controller("artists")
 export class ArtistController {
+    private readonly logger = new Logger(ArtistController.name);
+
     constructor(
         private readonly artistService: ArtistService,
         @Optional() private readonly artistEnrichmentService?: ArtistEnrichmentService,
@@ -111,8 +114,19 @@ export class ArtistController {
         @Param("id") id: string,
         @Body() body: { candidateId?: unknown },
     ) {
-        await this.artistService.authorizeProfileEdit(req.user.userId, id);
-        return this.requireArtistEnrichmentService().buildSuggestions(body?.candidateId);
+        const artist = await this.artistService.authorizeProfileEdit(req.user.userId, id);
+        const result = await this.requireArtistEnrichmentService().buildSuggestions(body?.candidateId);
+        // #2258: remember the resolved ids for the catalog attestation report.
+        // Best-effort: the suggestions are the product here, and enrichment
+        // repopulates the ids on its next run.
+        try {
+            await this.artistService.recordEnrichmentMatch(artist.id, result);
+        } catch (error) {
+            this.logger.warn(
+                `Could not store enrichment ids for artist ${artist.id}: ${error instanceof Error ? error.message : "unknown error"}`,
+            );
+        }
+        return result;
     }
 
     private requireArtistEnrichmentService(): ArtistEnrichmentService {

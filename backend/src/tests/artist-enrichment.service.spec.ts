@@ -139,6 +139,7 @@ describe("ArtistEnrichmentService", () => {
         const result = await service.buildSuggestions(MBID);
 
         expect(result.candidate).toMatchObject({ id: MBID, name: "Ada Example" });
+        expect(result.wikidataId).toBe("Q42");
         expect(mockGenerateContent).toHaveBeenCalledTimes(1);
         expect(result.warnings).toEqual([]);
         expect(result.suggestions).toEqual(expect.arrayContaining([

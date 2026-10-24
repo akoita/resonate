@@ -827,7 +827,9 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     matchOn: "userId",
     note:
       "`displayName`, `summary` and `website` are deliberately kept — the released catalogue is "
-      + "published under them. `payoutAddress` goes so no later payout routes to the erased person's wallet. "
+      + "published under them. The enrichment reference ids (`musicbrainzArtistId`, `wikidataQid`, "
+      + "`externalIdMatchConfidence`, `externalIdMatchedAt`, #2258) are public reference metadata about "
+      + "the catalogue's artist, kept for the same reason and the catalog attestation report. `payoutAddress` goes so no later payout routes to the erased person's wallet. "
       + "`managementOwnerUserId` is not cleared; if it names the erased person it follows the User "
       + "foreign-key cascade to the rotated, closed id so legacy-owner fallback cannot reauthorize "
       + "another account.",

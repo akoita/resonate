@@ -111,15 +111,29 @@ track in exactly one bucket:
 - **Date evidence:** `Release.releaseDate` strictly before the cutoff
   `GENERATIVE_AI_ERA_CUTOFF` (2023-01-01), or every `Track.isrc` year of
   reference before it (at least one valid ISRC).
-- **Provenance evidence:** a known label (non-empty and not a self-release
-  placeholder such as "independent"), or an artist profile pointing at
-  MusicBrainz / Wikidata (the hosts the artist enrichment feature draws on).
+- **Provenance evidence** (#2258), any one of:
+  - a known label (non-empty and not a self-release placeholder such as
+    "independent");
+  - **stored artist ids**: the MusicBrainz artist id (and Wikidata QID) that
+    artist enrichment matched, persisted on the `Artist` row with a match
+    confidence and match time, signal code `artist_external_id`. Only `high`
+    (display name equals the matched name) and `medium` (one name is a
+    whole-word run of the other) matches count; a `low` match, or a missing or
+    malformed id, does not;
+  - **fallback**, used only when the artist has no usable stored ids: an
+    artist profile pointing at MusicBrainz / Wikidata / Wikimedia Commons hosts
+    (signal code `artist_external_reference`). An artist never emits both
+    signals; stored ids win.
 - A date alone or a label alone never proposes: anyone can type a release date.
-- Limits: enrichment (`artist-enrichment.service.ts`) does not persist a
-  MusicBrainz or Wikidata id, so the artist signal is read from URLs on the
-  persisted artist profile (for example the Wikimedia Commons image enrichment
-  suggests) and is often absent. An ISRC year shows the recording existed then,
-  not who uploaded it. Review the report before trusting any bucket.
+- Limits: the ids are written when an artist manager or `PROFILE_EDIT` grantee
+  loads enrichment suggestions for a MusicBrainz candidate they selected
+  (`ArtistService.recordEnrichmentMatch`), so they are a public reference
+  match, not proof of identity or ownership; the confidence only compares the
+  profile name with the matched record. There is no forced backfill: artists
+  who have not run enrichment since #2258 keep only the URL-host fallback until
+  they do. An ISRC year shows the recording existed then, not who uploaded it.
+  Review the report before trusting any bucket. The report `rulesVersion` is
+  `2258-v1`.
 
 The apply step does not trust the report or the manifest alone. It re-checks,
 per track and again inside the write, that the track is `UNDECLARED` with source
@@ -248,7 +262,11 @@ independently from this disclosure and promotion slice.
   and `backend/src/modules/remix/remix-project.service.ts`.
 - Catalog attestation (#2252):
   `backend/src/modules/catalog/ai-disclosure-attestation.ts` (classification
-  and apply logic), with thin operator scripts
+  and apply logic), reading the enrichment ids stored by
+  `backend/src/modules/artist/artist-external-ids.ts` (#2258: confidence
+  rules and stored-id signal; schema columns `Artist.musicbrainzArtistId`,
+  `wikidataQid`, `externalIdMatchConfidence`, `externalIdMatchedAt`), with thin
+  operator scripts
   `backend/src/scripts/report_ai_disclosure_attestation_candidates.ts` and
   `backend/src/scripts/apply_ai_disclosure_attestation.ts`.
 - Promotion consumers: recommendation, home-feed, agent selector/tool registry,
@@ -277,6 +295,11 @@ Focused validation should cover:
   apply guards, idempotence, dry run, the analytics audit trail, and the public
   catalog response for attested tracks in
   `backend/src/tests/ai-disclosure-attestation.integration.spec.ts`;
+- stored artist ids (#2258): the confidence rules and stored-id signal in
+  `backend/src/tests/artist-external-ids.spec.ts`, the report preferring stored
+  ids with the URL-host fallback in the two attestation specs above, and
+  enrichment writing the ids, confidence and match time in
+  `backend/src/tests/artist-enrichment.integration.spec.ts`;
 - attested versus unattested badge and tooltip wording in
   `web/src/components/content/AiDisclosureBadge.test.tsx`.
 
@@ -306,6 +329,7 @@ Tracked by the [AI Music Integrity epic
 
 - [Issue #1336](https://github.com/akoita/resonate/issues/1336)
 - [Issue #2252](https://github.com/akoita/resonate/issues/2252) (catalog attestation)
+- [Issue #2258](https://github.com/akoita/resonate/issues/2258) (stored artist ids for the attestation signal)
 - [Implementation plan](../issue-1336-implementation-plan.md)
 - [DDEX ERN 4.3.1 SoundRecording data dictionary](https://service.ddex.net/dd/DD-ERN-431/dd/ern_SoundRecording.html)
 - [DDEX ERN 4.3.1 Contributor data dictionary](https://service.ddex.net/dd/DD-ERN-431/dd/ern_Contributor.html)
