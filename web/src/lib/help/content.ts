@@ -837,7 +837,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "right now", "time of day", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "now and up next", "up next", "skip", "not this", "more like this", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "starters", "moments", "sounds", "track counts", "missing sound", "adjust", "energy filter", "club", "late night", "warm", "calm", "focus", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks", "start from a track", "start from an artist", "start from a playlist", "seed", "from chip", "start a dj session from this", "ai dj queue", "steer", "outside your request", "fill with similar sounds", "similar sounds", "shorter set", "fewer tracks", "only what you asked for", "request", "catalog has few matches", "variety", "from this session", "session discoveries", "saved", "replayed"],
+    keywords: ["ai dj", "right now", "time of day", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "hip-hop", "rap", "r&b", "pop", "afrobeats", "reggae", "latin", "world music", "genres", "moods", "taste", "home", "settings", "discovery", "now and up next", "up next", "skip", "not this", "more like this", "next pick", "ai-generated", "ai disclosure", "no automatic buying", "no prices", "saved vibes", "starters", "moments", "sounds", "track counts", "missing sound", "adjust", "energy filter", "club", "late night", "warm", "calm", "focus", "taste memory", "starting point", "no filters", "describe session", "what's this session for", "quick start", "filters", "chips", "bpm", "tempo", "energy", "didn't catch", "not used for listening", "update session", "coverage", "my mix", "listening lanes", "boost lane", "session history", "almost there", "save", "played through", "resonated", "one save away", "new releases", "new from artists you discovered", "artists you discovered", "explicit", "explicit tracks", "explicit lyrics", "include explicit tracks", "start from a track", "start from an artist", "start from a playlist", "seed", "from chip", "start a dj session from this", "ai dj queue", "steer", "outside your request", "fill with similar sounds", "similar sounds", "shorter set", "fewer tracks", "only what you asked for", "request", "catalog has few matches", "variety", "from this session", "session discoveries", "saved", "replayed", "discovery", "familiar", "mixed", "new artists", "find new artists", "tempo filter", "bpm range", "measured tempo", "tip", "combine filters"],
     sections: [
       {
         id: "sessions",
@@ -974,7 +974,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Remove a chip with its × to drop only that filter. Typing in the box or removing a chip makes the filters yours, so they no longer count as a starter.",
-              "Adjust, under the chips, holds optional filters that combine with any starter or sentence. Energy lets you choose low, medium or high, or leave it to the DJ (Any); for example tap Afrobeats & Amapiano, then set Energy to Low. Include explicit tracks sits there too.",
+              "Adjust, under the chips, holds optional filters that combine with any starter or sentence. Energy lets you choose low, medium or high, or leave it to the DJ (Any); for example tap Afrobeats & Amapiano, then set Energy to Low. Tempo sets a BPM range (see Familiar, mixed or new, and a tempo range, below). Discovery chooses how many picks go to artists you haven't played. Include explicit tracks sits there too.",
               "While a session is live, editing a chip re-plans the upcoming picks. The tracks you've already heard, the one playing now, and anything you queued yourself stay as they are; the DJ's not-yet-played picks are replaced with ones that follow your filters. Rapid edits re-plan once. Use Update session to apply what you typed straight away.",
               "Didn't catch lists parts of your sentence the DJ couldn't turn into a filter. Rephrase them or add a filter by typing again.",
               "Not used for listening lists things you mentioned, such as a key, stems, a license, a price, or verified human artists only, that don't apply to a listening session. They are shown so you know they were left out; they have no effect on the DJ's picks.",
@@ -1005,6 +1005,33 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Only a few tracks match? The DJ may play a third track by the same artist before it gives up on the set, and says so: the catalog has few matches.",
               "Variety rules still hold when there is enough to choose from: at most two tracks per artist at a time.",
             ],
+          },
+        ],
+      },
+      {
+        id: "discovery-tempo",
+        heading: "Familiar, mixed or new, and a tempo range",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Two optional controls in the Adjust row, under What's this session for?, change how the DJ builds a set. Like Energy, they combine with any starter or sentence, and each one starts on its default, which leaves the choice to the DJ.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "Discovery: Familiar, Mixed, New",
+                description: "How much of the set goes to verified artists you have not played yet. Mixed is the default: a few picks, about one in five, are such artists. Familiar keeps none: the DJ plays what fits your request and your taste best. New raises it to about two picks in five. The control does not change what counts as a match: new artists are chosen only among tracks that fit your request, so a Jazz session stays Jazz, and a set can include fewer new artists when the catalog has few that fit. A pick from a new artist says so in its reason. It is not based on your history yet: Mixed is the same for everyone. For a session that plays only artists you have never listened to, use New artists in your favourite style.",
+              },
+              {
+                term: "Tempo",
+                description: "A range in beats per minute: type the lowest and the highest tempo, or only one of them for over or under. Only tracks with a measured tempo can match: a track whose tempo has not been measured never counts as a match, and it comes after the matches. The range also appears as a BPM chip in the filters; remove the chip or choose Clear tempo to drop it. A sentence such as around 122 BPM sets the same range.",
+              },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "After your first finished session, the Your AI DJ section shows one tip: you can combine filters, for example Afrobeats, chill. Tap the example to try it, or dismiss the tip. Once you dismiss it, tried it or started another session, it does not come back on this browser. Dismissing it is remembered on this device only.",
           },
         ],
       },

@@ -37,6 +37,7 @@ import { createAgentSessionRequestParser } from "./agent_session_parser";
 import { getAgentSessionHistoryLimit, getAgentTrackLimit } from "./agent_runtime.config";
 import { UnmetDemandService } from "../scene_scout/unmet_demand.service";
 import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../recommendations/taste_edit_vocabulary";
+import { isDiscoveryLevel } from "../recommendations/discovery-policy";
 import { resolveMyMixPlan } from "./agent_my_mix";
 import type { MyMixPreferences } from "./agent_my_mix";
 import { isRightNowContext, resolveRightNow, type RightNowSummary } from "./agent_right_now";
@@ -367,6 +368,8 @@ export class AgentConfigController {
                 fillSimilar?: unknown;
                 /** "New artists" (#2249): only artists the listener has never interacted with. Only `true` counts. */
                 newArtists?: unknown;
+                /** The Discovery control (#2327): "familiar", "mixed" or "new"; anything else is ignored. */
+                discovery?: unknown;
                 myMix?: MyMixPreferences | null;
                 /**
                  * "Right now" (#2245): the client's coarse time/day bucket. Used only by a
@@ -390,6 +393,7 @@ export class AgentConfigController {
             );
         }
         const listeningContext = body?.preferences?.listeningContext;
+        const discovery = body?.preferences?.discovery;
         if (listeningContext != null && !isRightNowContext(listeningContext)) {
             throw new BadRequestException({ reason: "invalid_listening_context" });
         }
@@ -531,6 +535,8 @@ export class AgentConfigController {
                     ...(body?.preferences?.fillSimilar === true ? { fillSimilar: true } : {}),
                     // "New artists" (#2249): off unless the listener started a New artists session.
                     ...(body?.preferences?.newArtists === true ? { newArtists: true } : {}),
+                    // The Discovery control (#2327): absent means Mixed, today's share.
+                    ...(isDiscoveryLevel(discovery) ? { discovery } : {}),
                     // The described session (#2037); absent without a request.
                     ...(requested.request
                         ? {

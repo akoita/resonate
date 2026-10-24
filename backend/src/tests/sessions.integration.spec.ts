@@ -263,6 +263,26 @@ describe('SessionsService (integration)', () => {
     expect(sent).toEqual([true, true, false, false]);
   });
 
+  it('remembers Discovery for the live session until a pick changes it, and drops unknown values (#2327)', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({ status: 'no_tracks', tracks: [], shortfall: 1 }),
+    };
+    const { service } = makeService(runtimeService);
+    const userId = `${TEST_PREFIX}user`;
+    const session = await service.startSession({ userId, budgetCapUsd: 10, preferences: { discovery: 'new' } });
+
+    await service.agentNext({ sessionId: session.id, userId });
+    await service.agentNext({ sessionId: session.id, userId, preferences: { discovery: 'familiar' } });
+    await service.agentNext({ sessionId: session.id, userId });
+    // An unknown value falls back to Mixed, the default share; Mixed can be stated again.
+    await service.agentNext({ sessionId: session.id, userId, preferences: { discovery: 'wild' as never } });
+    await service.agentNext({ sessionId: session.id, userId, preferences: { discovery: 'new' } });
+    await service.agentNext({ sessionId: session.id, userId, preferences: { discovery: 'mixed' } });
+
+    const sent = runtimeService.runCommerce.mock.calls.map(([call]) => call.preferences.discovery);
+    expect(sent).toEqual(['new', 'familiar', 'familiar', undefined, 'new', 'mixed']);
+  });
+
   it('records an unmet My Mix genre against existing catalog ownership', async () => {
     await prisma.analyticsConsent.upsert({
       where: { userId: `${TEST_PREFIX}user` },

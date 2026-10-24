@@ -751,6 +751,60 @@ describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", (
     expect(selector.select).not.toHaveBeenCalled();
   });
 
+  describe("the Discovery control (#2327)", () => {
+    const qualifyingPage = () =>
+      serviceFor([track("known"), track("fresh", { artistId: "verified-new" })], {
+        verifiedArtists: ["verified-new"],
+        selectorPicks: [{ id: "discover", artistId: "verified-new", reasonCode: "discovery_pick" }],
+      });
+    const modelPicks = { status: "approved" as const, picks: [pick("known"), pick("fresh")] };
+
+    it("Familiar reserves nothing: a qualifying pick is not labelled and the selector is not asked for one", async () => {
+      const { service, selector } = qualifyingPage();
+      const result = await service.apply(
+        baseInput({ preferences: { genres: ["House"], discovery: "familiar" } }),
+        modelPicks,
+      );
+      expect(ids(result)).toEqual(["known", "fresh"]);
+      expect(result.picks?.some((entry) => entry.reasonCode === "discovery_pick")).toBe(false);
+      expect(result.policy?.exploration).toEqual({ reserved: 0, served: 0, injected: false });
+      expect(selector.select).not.toHaveBeenCalled();
+    });
+
+    it("Familiar does not swap in a discovery pick either", async () => {
+      const { service, selector } = serviceFor([track("first"), track("second")], {
+        selectorPicks: [{ id: "discover", artistId: "verified-new", reasonCode: "discovery_pick" }],
+      });
+      const result = await service.apply(
+        baseInput({ preferences: { genres: ["House"], discovery: "familiar" } }),
+        { status: "approved", picks: [pick("first"), pick("second")] },
+      );
+      expect(ids(result)).toEqual(["first", "second"]);
+      expect(selector.select).not.toHaveBeenCalled();
+    });
+
+    it("Mixed, stated or absent, is today's share", async () => {
+      for (const preferences of [{ genres: ["House"] }, { genres: ["House"], discovery: "mixed" as const }]) {
+        const { service } = qualifyingPage();
+        const result = await service.apply(baseInput({ preferences }), modelPicks);
+        expect(result.picks?.[1].reasonCode).toBe("discovery_pick");
+        expect(result.policy?.exploration).toEqual({ reserved: 1, served: 1, injected: false });
+      }
+    });
+
+    it("New asks the selector for the replacement under the same level", async () => {
+      const { service, selector } = serviceFor([track("first"), track("second")], {
+        selectorPicks: [{ id: "discover", artistId: "verified-new", reasonCode: "discovery_pick" }],
+      });
+      const result = await service.apply(
+        baseInput({ preferences: { genres: ["House"], discovery: "new" } }),
+        { status: "approved", picks: [pick("first"), pick("second")] },
+      );
+      expect(ids(result)).toEqual(["first", "discover"]);
+      expect(selector.select).toHaveBeenCalledWith(expect.objectContaining({ discovery: "new" }));
+    });
+  });
+
   it("swaps a single pick when the session's discovery count is known and due", async () => {
     const { service } = serviceFor([track("only")], {
       priorDiscoveryPicks: 0,

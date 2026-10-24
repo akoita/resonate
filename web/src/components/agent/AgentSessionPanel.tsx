@@ -16,6 +16,7 @@ import {
     getAgentSounds,
     getTasteMemory,
     parseAgentSessionRequest,
+    type AgentDiscoveryLevel,
     type AgentMixCoverage,
     type AgentMixVocabulary,
     type AgentMyMixPreferences,
@@ -45,10 +46,16 @@ import {
     NEW_ARTISTS_CHIP_KEY,
     SEED_CHIP_KEY,
     requestFromPreset,
+    setBpm,
     setEnergy,
     trackIdsAt,
     upcomingDjIndices,
 } from "../../lib/agentSessionRequest";
+import {
+    FIRST_SESSION_TIP_EXAMPLE,
+    dismissFirstSessionTip,
+    isFirstSessionTipDismissed,
+} from "../../lib/agentFirstSessionTip";
 import { DJ_SEED_EVENT, takeDjSeed, type DjSeed } from "../../lib/djSeed";
 import { saveTracksMetadata } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
@@ -134,6 +141,13 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     // every start and pick (the server keeps the last value for the live session), and a live
     // set's own value is picked up again after a reload.
     const [fillSimilar, setFillSimilar] = useState<boolean>(() => getDjSet()?.preferences?.fillSimilar === true);
+    // Discovery (#2327): Familiar, Mixed or New. Mixed is the default and today's behaviour; a live
+    // set's own value is picked up again after a reload, like Fill with similar sounds.
+    const [discovery, setDiscovery] = useState<AgentDiscoveryLevel>(() =>
+        discoveryLevelOf(getDjSet()?.preferences?.discovery),
+    );
+    // The first-session tip (#2327): hidden until the browser's storage has been read.
+    const [tipDismissed, setTipDismissed] = useState(true);
     const [unparsed, setUnparsed] = useState<string[]>([]);
     const [ignored, setIgnored] = useState<AgentSessionRequestIgnoredKey[]>([]);
     const [activePreset, setActivePreset] = useState<SessionPreset | null>(null);
@@ -175,6 +189,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     const starterRef = useRef<{ row: StarterRow; id: string; edited: boolean } | null>(null);
     // The Energy filter was set from the Adjust row (not read from a sentence or a starter).
     const energyAdjustedRef = useRef(false);
+    // The Tempo filter was set from the Adjust row (#2327).
+    const tempoAdjustedRef = useRef(false);
     // The newest render's values, for timers that fire after later renders.
     const latestRef = useRef<{ replan: () => Promise<void>; player: typeof player } | null>(null);
     // A session started from this panel whose first picks should autoplay once
@@ -270,6 +286,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         return () => { current = false; };
     }, [token]);
 
+    // The tip's dismissal is read from this browser after mount (server and client render the same first).
+    useEffect(() => {
+        setTipDismissed(isFirstSessionTipDismissed());
+    }, []);
+
     // The Sounds row follows the catalog: one cached request per explicit choice, never per render.
     const soundsExplicit = explicitPending ?? config?.allowExplicit;
     useEffect(() => {
@@ -311,7 +332,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
     /** The preferences a next-pick request carries; also what the continuation reuses to keep the set going. */
     const buildNextPickPreferences = useCallback((): AgentNextPreferences => {
-        if (myMixPreferences) return { myMix: myMixPreferences };
+        // Discovery applies to My Mix too; a pick states it either way (the server keeps the last value).
+        if (myMixPreferences) return { myMix: myMixPreferences, discovery };
         const regularPreferences = buildPickPreferences({
             activePreset,
             request,
@@ -321,13 +343,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             seed,
             fillSimilar,
             newArtists: newArtistsOnly,
+            discovery,
         });
         // A pick with no filters of its own carries the coarse time-of-day bucket (#2245).
         const preferences = withRightNowContext(regularPreferences) ?? regularPreferences;
         return myMixWasSelectedRef.current
             ? { ...preferences, myMix: null }
             : preferences;
-    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed, fillSimilar, newArtistsOnly]);
+    }, [myMixPreferences, activePreset, request, config?.vibes, parsedSentence, artists, seed, fillSimilar, newArtistsOnly, discovery]);
 
     /** Put the DJ's picks in the player. Returns how many tracks were queued. */
     const playDjTracks = useCallback(
@@ -581,8 +604,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         setText(value);
         setActivePreset(null);
         setRightNowSelected(false);
-        // A new sentence replaces the Adjust energy; a starter whose sentence is edited is marked so.
+        // A new sentence replaces the Adjust energy and tempo; a starter whose sentence is edited is marked so.
         energyAdjustedRef.current = false;
+        tempoAdjustedRef.current = false;
         if (!value.trim()) starterRef.current = null;
         else if (starterRef.current) starterRef.current.edited = true;
         if (myMixPreferences) {
@@ -649,6 +673,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             return;
         }
         if (chipKey === "energy") energyAdjustedRef.current = false;
+        if (chipKey === "bpm") tempoAdjustedRef.current = false;
         if (chipKey.startsWith("artist:")) {
             // Only this artist goes; the rest of the sentence still steers the session.
             setArtists(removeArtistChip(artists, chipKey));
@@ -673,6 +698,37 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     };
 
     /**
+     * The Adjust row's Tempo filter (#2327): a BPM range that edits the request's own tempo (the
+     * one a sentence like "around 122 BPM" sets), so it combines with a starter or a sentence and
+     * the BPM chip removes it. Null returns the choice to the DJ.
+     */
+    const handleTempoChange = (bpm: AgentSessionRequest["bpm"]) => {
+        cancelParse();
+        tempoAdjustedRef.current = bpm !== null;
+        if (bpm !== null) setRightNowSelected(false);
+        setRequest(setBpm(request ?? emptyRequest(), bpm));
+        setParseError(null);
+        scheduleReplan();
+    };
+
+    /** The Discovery control (#2327). It applies from the next pick; a live set is re-planned like any filter edit. */
+    const handleDiscoveryChange = (next: AgentDiscoveryLevel) => {
+        setDiscovery(next);
+        scheduleReplan();
+    };
+
+    /** The first-session tip is gone for good in this browser, whether dismissed, tried or outgrown. */
+    const handleDismissTip = () => {
+        setTipDismissed(true);
+        dismissFirstSessionTip();
+    };
+
+    const handleTryTip = () => {
+        handleTextChange(FIRST_SESSION_TIP_EXAMPLE);
+        handleDismissTip();
+    };
+
+    /**
      * The "Fill with similar sounds" switch (#2316). It applies from the next pick; a live
      * set is re-planned so the upcoming tracks follow it, like any other filter edit.
      */
@@ -686,6 +742,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         setNewArtistsOnly(false);
         cancelParse();
         energyAdjustedRef.current = false;
+        tempoAdjustedRef.current = false;
         starterRef.current = { row: "for_you", id: "my_mix", edited: false };
         setText("");
         setRequest(null);
@@ -711,6 +768,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         setNewArtistsOnly(false);
         cancelParse();
         energyAdjustedRef.current = false;
+        tempoAdjustedRef.current = false;
         starterRef.current = { row: "for_you", id: "right_now", edited: false };
         setText("");
         setRequest(emptyRequest());
@@ -740,6 +798,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         if (!latestResonant) return;
         cancelParse();
         energyAdjustedRef.current = false;
+        tempoAdjustedRef.current = false;
         starterRef.current = { row: "for_you", id: "more_like", edited: false };
         setText("");
         setRequest(emptyRequest());
@@ -969,6 +1028,8 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                 ...((explicitPending ?? config?.allowExplicit ?? false) ? ["explicit"] : []),
                 ...(fillSimilar && offersFillSimilar ? ["fill_similar"] : []),
                 ...(newArtistsOnly && !myMixPreferences ? ["new_artists"] : []),
+                ...(tempoAdjustedRef.current && !myMixPreferences && request?.bpm ? ["tempo"] : []),
+                ...(discovery !== "mixed" ? ["discovery"] : []),
             ];
             const startedFrom: SessionStartedFrom = myMixPreferences
                 ? "my_mix"
@@ -976,7 +1037,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             // A preset or a typed request steers this session only: it travels as
             // session preferences and never overwrites the vibes saved in Settings.
             const preferences = myMixPreferences
-                ? { myMix: { ...myMixPreferences, context: getMyMixLocalContext() } }
+                ? {
+                    myMix: { ...myMixPreferences, context: getMyMixLocalContext() },
+                    // Mixed is the server's default, so only a changed Discovery is sent with a start (#2327).
+                    ...(discovery !== "mixed" ? { discovery } : {}),
+                }
                 // A session with no filters carries the coarse time-of-day bucket only (#2245).
                 : withRightNowContext(buildSessionPreferences({
                     activePreset: preset,
@@ -986,11 +1051,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                     seed,
                     fillSimilar: fillSimilar && offersFillSimilar,
                     newArtists: newArtistsOnly,
+                    discovery,
                 }));
             try {
                 setIsStarting(true);
                 const result = await startSession(preferences ? { preferences } : undefined);
                 if (result?.sessionId) {
+                    // The listener has moved on: the first-session tip does not come back (#2327).
+                    handleDismissTip();
                     setActiveSessionId(result.sessionId);
                     initialMixCoverageVersionRef.current = myMixPreferences
                         ? myMixEditVersionRef.current
@@ -1056,8 +1124,14 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
         setText(preset.sentence);
         // An Energy chosen in the Adjust row combines with the starter instead of being lost.
         const adjustedEnergy = energyAdjustedRef.current ? (request?.energy ?? null) : null;
+        // So does a Tempo range set there (#2327).
+        const adjustedBpm = tempoAdjustedRef.current ? (request?.bpm ?? null) : null;
         const starterRequest = requestFromPreset(preset);
-        setRequest(adjustedEnergy ? { ...starterRequest, energy: adjustedEnergy } : starterRequest);
+        setRequest({
+            ...starterRequest,
+            ...(adjustedEnergy ? { energy: adjustedEnergy } : {}),
+            ...(adjustedBpm ? { bpm: adjustedBpm } : {}),
+        });
         // A starter's canned sentence is not sent; its filters and intent are the session.
         setParsedSentence(null);
         setArtists([]);
@@ -1141,6 +1215,13 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
                         seed={seed}
                         onRemoveChip={handleRemoveChip}
                         onEnergyChange={handleEnergyChange}
+                        onTempoChange={handleTempoChange}
+                        discovery={{ value: discovery, onChange: handleDiscoveryChange }}
+                        tip={
+                            !tipDismissed && !config.isActive && sessions.some((session) => session.endedAt)
+                                ? { example: FIRST_SESSION_TIP_EXAMPLE, onTry: handleTryTip, onDismiss: handleDismissTip }
+                                : undefined
+                        }
                         unparsed={unparsed}
                         ignored={ignored}
                         coverage={config.isActive ? coverage : null}
@@ -1255,6 +1336,11 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             )}
         </div>
     );
+}
+
+/** A Discovery level from a stored preference; anything else is the default, Mixed. */
+function discoveryLevelOf(value: unknown): AgentDiscoveryLevel {
+    return value === "familiar" || value === "new" ? value : "mixed";
 }
 
 export type StarterRow = "moments" | "sounds" | "for_you";

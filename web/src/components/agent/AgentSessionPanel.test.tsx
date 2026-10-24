@@ -152,6 +152,19 @@ vi.mock("../../lib/api", () => ({
   parseAgentSessionRequest: (...args: unknown[]) => parseAgentSessionRequest(...(args as [string, string])),
   getTasteMemory: (...args: unknown[]) => getTasteMemory(...(args as [])),
 }));
+// The browser storage behind the first-session tip (#2327): a flag the tests control.
+const tipStorage = { dismissed: false, saved: 0 };
+vi.mock("../../lib/agentFirstSessionTip", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/agentFirstSessionTip")>();
+  return {
+    ...actual,
+    isFirstSessionTipDismissed: () => tipStorage.dismissed,
+    dismissFirstSessionTip: () => {
+      tipStorage.dismissed = true;
+      tipStorage.saved += 1;
+    },
+  };
+});
 vi.mock("../../hooks/useAgentEvents", () => ({ useAgentEvents: () => hookState.events }));
 vi.mock("../../hooks/useAgentHistory", () => ({
   useAgentHistory: () => ({
@@ -290,6 +303,8 @@ describe("AgentSessionPanel", () => {
     hookState.djSet = null;
     hookState.journal = null;
     hookState.journalLoading = false;
+    tipStorage.dismissed = false;
+    tipStorage.saved = 0;
     addTracksToQueue.mockImplementation((tracks: LocalTrack[]) => ({ added: tracks, skipped: [] }));
   });
 
@@ -482,6 +497,217 @@ describe("AgentSessionPanel", () => {
         }),
       }),
     );
+  });
+
+  describe("Discovery, Tempo and the first-session tip (#2327)", () => {
+    const starter = (intent: string) => SESSION_PRESETS.find((candidate) => candidate.intent === intent)!;
+    const started = () => (startSession.mock.calls.at(-1) as unknown as [{ preferences?: Record<string, unknown> }])[0];
+
+    it("offers Discovery as Mixed by default, and a plain start sends nothing for it", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      expect(captured.prompt?.discovery?.value).toBe("mixed");
+      await captured.prompt?.onSubmit();
+      expect(started().preferences ?? {}).not.toHaveProperty("discovery");
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ discovery: "mixed" });
+    });
+
+    it("sends a changed Discovery with the start, alone or with a starter, and records it as a used filter", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.discovery?.onChange("new");
+      render();
+      expect(captured.prompt?.discovery?.value).toBe("new");
+      await captured.prompt?.onSubmit();
+      expect(started().preferences).toEqual(expect.objectContaining({ discovery: "new" }));
+      const analytics = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      expect(analytics?.[2]).toMatchObject({ payload: { optionalFilters: ["discovery"] } });
+
+      vi.clearAllMocks();
+      render();
+      captured.prompt?.onSelectPreset(starter("Latin"));
+      render();
+      captured.prompt?.discovery?.onChange("familiar");
+      render();
+      await captured.prompt?.onSubmit();
+      expect(started().preferences).toMatchObject({ sessionIntent: "Latin", discovery: "familiar" });
+    });
+
+    it("states Discovery on every pick, including back to Mixed, so the server never keeps an older value", () => {
+      hookState.config = config({ isActive: true });
+      render();
+      captured.prompt?.discovery?.onChange("familiar");
+      render();
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ discovery: "familiar" });
+      captured.prompt?.discovery?.onChange("mixed");
+      render();
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ discovery: "mixed" });
+    });
+
+    it("picks up a live set's Discovery again after a reload, and ignores anything it does not know", () => {
+      hookState.config = config({ isActive: true });
+      hookState.djSet = { sessionId: "s-open", preferences: { discovery: "new" }, trackIds: [] };
+      render();
+      expect(captured.prompt?.discovery?.value).toBe("new");
+      slots.length = 0;
+      hookState.djSet = { sessionId: "s-open", preferences: { discovery: "wild" as never }, trackIds: [] };
+      render();
+      expect(captured.prompt?.discovery?.value).toBe("mixed");
+    });
+
+    it("keeps Discovery with My Mix, on the start and on picks", async () => {
+      hookState.config = config({ isActive: false });
+      await loadMyMixCatalog();
+      captured.prompt?.myMix?.onSelect();
+      render();
+      captured.prompt?.discovery?.onChange("new");
+      render();
+      expect(captured.upNext?.buildPreferences()).toMatchObject({ discovery: "new", myMix: expect.anything() });
+      await captured.prompt?.onSubmit();
+      expect(started().preferences).toMatchObject({ discovery: "new", myMix: expect.anything() });
+    });
+
+    it("re-plans a live set when Discovery changes", async () => {
+      hookState.config = config({ isActive: true });
+      hookState.sessions = [session("s-open", [])];
+      hookState.djSet = { sessionId: "s-open", preferences: {}, trackIds: ["a", "b"] };
+      hookState.queue = [{ id: "a" }, { id: "b" }];
+      render();
+      effects.forEach((run) => run());
+      getAgentNextPick.mockResolvedValueOnce({ status: "ok", track: { id: "n1", title: "n1", artistId: "a" } });
+      captured.prompt?.discovery?.onChange("new");
+      render();
+      effects.forEach((run) => run());
+      await vi.advanceTimersByTimeAsync(900);
+      expect(getAgentNextPick).toHaveBeenCalledTimes(1);
+      expect((getAgentNextPick.mock.calls[0] as unknown as [string, { preferences: Record<string, unknown> }])[1].preferences).toMatchObject({
+        discovery: "new",
+      });
+    });
+
+    it("sets the Tempo range on the request, combines it with a starter, and the BPM chip removes only it", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      expect(captured.prompt?.onTempoChange).toBeTypeOf("function");
+      captured.prompt?.onSelectPreset(starter("Latin"));
+      render();
+      captured.prompt?.onTempoChange?.({ min: 95, max: 105 });
+      render();
+      expect(captured.prompt?.activePresetIntent).toBe("Latin");
+      expect(captured.prompt?.request?.bpm).toEqual({ min: 95, max: 105 });
+      await captured.prompt?.onSubmit();
+      expect(started().preferences).toMatchObject({
+        sessionIntent: "Latin",
+        request: { bpm: { min: 95, max: 105 } },
+      });
+      const analytics = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      expect(analytics?.[2]).toMatchObject({ payload: { optionalFilters: ["tempo"] } });
+
+      captured.prompt?.onRemoveChip("bpm");
+      render();
+      expect(captured.prompt?.request?.bpm).toBeNull();
+      expect(captured.prompt?.request?.genres.length).toBeGreaterThan(0);
+    });
+
+    it("a Tempo set before a starter survives picking it, and a cleared Tempo goes back to the DJ", () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onTempoChange?.({ min: 120, max: null });
+      render();
+      expect(captured.prompt?.request).toMatchObject({ bpm: { min: 120, max: null }, genres: [] });
+      captured.prompt?.onSelectPreset(starter("Zen"));
+      render();
+      expect(captured.prompt?.request).toMatchObject({ moods: ["Zen"], bpm: { min: 120, max: null } });
+      captured.prompt?.onTempoChange?.(null);
+      render();
+      expect(captured.prompt?.request?.bpm).toBeNull();
+    });
+
+    it("a Tempo alone starts a described session, not a plain one", async () => {
+      hookState.config = config({ isActive: false });
+      render();
+      captured.prompt?.onTempoChange?.({ min: 118, max: 126 });
+      render();
+      await captured.prompt?.onSubmit();
+      expect(started().preferences).toMatchObject({ request: { bpm: { min: 118, max: 126 } }, genres: [] });
+      const analytics = recordProductAnalytics.mock.calls.find((call) => call[1] === "agent.session_started");
+      expect(analytics?.[2]).toMatchObject({ payload: { startedFrom: "prompt", requestFilterKeys: ["bpm"] } });
+    });
+
+    describe("first-session tip", () => {
+      const finished = () => [session("s-done", ["t1"], { endedAt: "2026-10-02T11:00:00.000Z" })];
+      function showTip() {
+        render();
+        effects.forEach((run) => run());
+        render();
+      }
+
+      it("is not shown before any session has finished, while one is live, or before storage is read", () => {
+        hookState.config = config({ isActive: false });
+        hookState.sessions = [];
+        showTip();
+        expect(captured.prompt?.tip).toBeUndefined();
+
+        hookState.sessions = finished();
+        hookState.config = config({ isActive: true });
+        showTip();
+        expect(captured.prompt?.tip).toBeUndefined();
+
+        // The first render, before the effect read the browser's storage, never shows it.
+        slots.length = 0;
+        hookState.config = config({ isActive: false });
+        render();
+        expect(captured.prompt?.tip).toBeUndefined();
+      });
+
+      it("shows once a session has finished and nothing is live", () => {
+        hookState.config = config({ isActive: false });
+        hookState.sessions = finished();
+        showTip();
+        expect(captured.prompt?.tip).toMatchObject({ example: "Afrobeats, chill" });
+      });
+
+      it("stays away for a listener who dismissed it earlier in this browser", () => {
+        tipStorage.dismissed = true;
+        hookState.config = config({ isActive: false });
+        hookState.sessions = finished();
+        showTip();
+        expect(captured.prompt?.tip).toBeUndefined();
+      });
+
+      it("is dismissed for good, in this browser only, and nothing about it reaches the server", () => {
+        hookState.config = config({ isActive: false });
+        hookState.sessions = finished();
+        showTip();
+        recordProductAnalytics.mockClear();
+        captured.prompt?.tip?.onDismiss();
+        render();
+        expect(captured.prompt?.tip).toBeUndefined();
+        expect(tipStorage.dismissed).toBe(true);
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(startSession).not.toHaveBeenCalled();
+        expect(recordProductAnalytics).not.toHaveBeenCalled();
+      });
+
+      it("trying the example fills the prompt and dismisses the tip", () => {
+        hookState.config = config({ isActive: false });
+        hookState.sessions = finished();
+        showTip();
+        captured.prompt?.tip?.onTry();
+        render();
+        expect(captured.prompt?.text).toBe("Afrobeats, chill");
+        expect(captured.prompt?.tip).toBeUndefined();
+        expect(tipStorage.saved).toBe(1);
+      });
+
+      it("is dismissed when the next session starts", async () => {
+        hookState.config = config({ isActive: false });
+        hookState.sessions = finished();
+        showTip();
+        await captured.prompt?.onSubmit();
+        expect(tipStorage.dismissed).toBe(true);
+      });
+    });
   });
 
   describe("catalog-aware Sounds (#2249)", () => {

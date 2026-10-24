@@ -5966,7 +5966,17 @@ export type AgentNextPreferences = {
    * the request. Off (absent or false) by default: the DJ returns a shorter set and says so.
    */
   fillSimilar?: boolean;
+  /**
+   * #2327 Discovery: how much of the session is kept for verified artists the listener has not
+   * played. "familiar" keeps none, "mixed" is the default share, "new" a larger one (always
+   * within the request). The server keeps the last value for the live session, so a pick states
+   * it either way when the caller knows it.
+   */
+  discovery?: AgentDiscoveryLevel;
 };
+
+/** #2327: the Discovery control's three steps. */
+export type AgentDiscoveryLevel = "familiar" | "mixed" | "new";
 
 /** #2075: why the AI curator could not pick; categorical, never an error message. */
 export type AgentRuntimeFallback = {

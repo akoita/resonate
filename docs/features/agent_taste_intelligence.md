@@ -1374,9 +1374,9 @@ backend events, and a leftover 💰 icon for the retired buy mode (ADR-TE-1).
   partial, none), `AgentEventsDebug.test.tsx`, `useAgentEvents.test.ts`.
 - Screenshots in the User Guide are not refreshed in this slice.
 
-## AI DJ quick starts: plain starters and composable filters (#2249, slices 1 and 2 of 3)
+## AI DJ quick starts: plain starters and composable filters (#2249)
 
-Status: **partial** (slices 1 and 2 of 3 shipped). Vision-neutral quality (ADR-BM-6):
+Status: **implemented** (slices 1 and 2 here, slice 3 in the For you row and #2327 sections). Vision-neutral quality (ADR-BM-6):
 no fee, split, price, payout or purchase change.
 
 Shipped in slice 1 (frontend and copy only):
@@ -1474,15 +1474,83 @@ Shipped in slice 2 (catalog-aware Sounds):
   instance (no shared cache) since it is cheap to recompute; the "dimmed" variant
   was dropped in favour of hiding.
 
-Remaining (explicitly tracked on #2249, which stays open):
+Remaining from #2249: nothing is open. The For you row shipped with its own
+section; Discovery, Tempo and the first-session tip shipped with #2327 (see
+[Discovery, Tempo and the first-session tip](#discovery-tempo-and-the-first-session-tip-2327)),
+which closes #2249. Screenshots in the User Guide are not refreshed in these slices.
 
-- **Slice 3, For you and Discovery:** the For you row shipped ("Right now" #2245,
-  "More like..." and "New artists in...", see their section). Still open: the
-  Familiar, Mixed, New segmented control on the exploration share (default Mixed;
-  owner decision 2), the optional Tempo filter in Adjust and the dismissible "you
-  can combine" tip. #2249 stays open for them (Sprint 38 admits the For you row
-  only).
-- Screenshots in the User Guide are not refreshed in these slices.
+## Discovery, Tempo and the first-session tip (#2327)
+
+Vision-neutral quality (ADR-BM-6): no fee, split, price, payout or purchase change.
+Discovery promotes verified human artists through the existing exploration share
+(ADR-BM-5 filters unchanged). These are the last three items of #2249's spec; the
+Sprint 39 decisions on #2327 are binding.
+
+- **Discovery: Familiar, Mixed, New.** A three-step control in Adjust. **Mixed is the
+  default and today's behaviour** (the 20% exploration share,
+  `DISCOVERY_POLICY_DEFAULTS.explorationShare`); the default does not follow the
+  listener's history (not personalised yet). **Familiar** reserves no exploration slot:
+  the batch is the best fit by request and taste, and nothing is labelled a discovery
+  pick. **New** raises the share to `NEW_EXPLORATION_SHARE` (0.4; 5 of a 12-pick batch,
+  against 2 for Mixed). The share is the only thing the control changes:
+  `explorationShareFor(level)` feeds `applyDiscoveryPolicy({ explorationShare })`,
+  where a share of 0 now means "reserve nothing" (any other share still reserves at
+  least one slot). Every other rule is unchanged: hidden taste, AI-generated tracks,
+  the per-artist cap, verified human and never-played artists only, and the session
+  pacing (a session never catches up in a burst).
+- **Inside the request.** Exploration slots still draw only from request tiers A and B
+  (#2316), at every step, with or without "Fill with similar sounds". New with too few
+  matching fresh artists serves fewer discovery picks rather than reaching outside the
+  request. The picks' reasons show the effect: a discovery pick carries the shared
+  `discovery_pick` reason ("a verified artist you haven't played yet" wording from
+  `DISCOVERY_EXPLANATIONS`), so more of them appear in New and none in Familiar.
+- **Plumbing (mirrors `fillSimilar`, #2316).** `preferences.discovery` is
+  `"familiar" | "mixed" | "new"`: validated by `IsIn` on the sessions DTO (anything else
+  is `400`), re-checked in the `agent_config` controller and the `sessions.service`
+  sanitiser (an unknown value is dropped, so Mixed), remembered for the live session
+  (a pick states it either way, including `"mixed"`, because the server keeps the last
+  value when the key is omitted), carried through the runtime and orchestrator inputs
+  and `deterministicSelectorInput` as `AgentSelectorInput.discovery`, where the selector
+  turns it into `explorationShare`. The LLM path honours it too:
+  `AgentRuntimePolicyService` passes the same share to the policy stage, skips the
+  discovery swap-in under Familiar (`canSwapForDiscovery`), and asks the selector for the
+  replacement under the same level. The LLM path still swaps in at most one discovery
+  pick; New's larger share then applies to the policy stage and the rule-based top-up.
+  A Start sends `discovery` only when it is not Mixed; a Mixed session is byte-for-byte
+  what it was. It applies to My Mix sessions as well (the control stays visible there).
+  Analytics: `optionalFilters` gains `discovery` when it is not Mixed.
+- **Tempo.** A BPM range in Adjust (two inputs: lowest and highest; one bound alone is
+  an open range; both empty clears it). It **edits `request.bpm`**, the tempo a sentence
+  such as "around 122 BPM" already sets, rather than adding a second preference: it
+  therefore combines with any starter or sentence, shows and removes through the
+  existing BPM chip, travels in the existing `request` (validated and bounded by the
+  backend, 40 to 220 BPM), and needs no new backend field. It is honest about coverage:
+  the hint reads "Only tracks with a measured tempo can match. A track without one never
+  counts as a match; it comes after the matches." (`requestPredicates`: an unmeasured
+  tempo never matches, so such a track is tier B behind the matches.) A half-typed or
+  unsupported number, or a lowest tempo above the highest, is not applied
+  (`readTempoDraft`) and says why. Hidden inside My Mix, which has no request. A Tempo set
+  before a starter survives picking it, like Energy. Analytics: `optionalFilters` gains
+  `tempo`.
+- **First-session tip.** After the first finished session (a session with `endedAt`,
+  none live), the prompt shows one line: "Tip: you can combine. Try *Afrobeats, chill*",
+  where the example fills the prompt when tapped, and a dismiss button. Dismissal (also
+  trying the example, or starting the next session) is stored in this browser only
+  (`localStorage` key `resonate.dj.firstSessionTipDismissed`, every access wrapped in
+  try/catch); nothing goes to the server or to analytics. If storage cannot be read the
+  tip stays hidden rather than returning on every visit. The example is covered by a
+  test that the parser reads it with nothing left over.
+- **Tests.** Backend pure: `discovery_control.spec.ts` (slots per level, tiers
+  respected, pacing, cap), the LLM path in `agent_runtime_policy.spec.ts`,
+  `deterministic_recommendation_adapter.spec.ts`, the DTO `400` cases in
+  `sessions.controller.http.spec.ts`, `agent_config.controller.spec.ts`. Backend
+  integration: `agent_discovery_control.integration.spec.ts` (real Postgres: Familiar
+  labels none, Mixed unchanged, New more than Mixed and never outside the request),
+  `sessions.integration.spec.ts` (remembered value). Web: `sessionPreferences.test.ts`,
+  `agentSessionRequest.test.ts`, `agentFirstSessionTip.test.ts`,
+  `AgentSessionPrompt.test.tsx`, `AgentSessionPanel.test.tsx`.
+- **Deferred.** A Discovery default that follows the listener's history (a later
+  decision); screenshots in the User Guide are not refreshed here.
 
 ## Played-through milestone for Sonic Radar (#2097)
 

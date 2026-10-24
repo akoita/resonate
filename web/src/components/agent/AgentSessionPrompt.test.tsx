@@ -506,3 +506,62 @@ describe("AgentSessionPrompt Sounds counts (#2249)", () => {
     expect(html).not.toContain("Pop Hits");
   });
 });
+
+describe("AgentSessionPrompt Discovery, Tempo and the tip (#2327)", () => {
+  it("offers Discovery as three labelled steps with Mixed pressed by default", () => {
+    expect(render()).not.toContain("Discovery");
+    const html = render({ discovery: { value: "mixed", onChange: vi.fn() } });
+    expect(html).toContain('data-testid="agent-session-discovery"');
+    expect(html).toMatch(/role="group"[^>]*aria-labelledby="[^"]*-discovery"/);
+    for (const label of ["Familiar", "Mixed", "New"]) expect(html).toMatch(new RegExp(`<button[^>]*>${label}</button>`));
+    expect(html.indexOf(">Familiar<")).toBeLessThan(html.indexOf(">Mixed<"));
+    expect(html.indexOf(">Mixed<")).toBeLessThan(html.indexOf(">New<"));
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Mixed</);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Familiar</);
+    expect(html).toContain("Mixed (the default)");
+    // It sits in the Adjust area.
+    expect(html.indexOf('data-testid="agent-session-discovery"')).toBeGreaterThan(html.indexOf('data-testid="agent-session-adjust"'));
+  });
+
+  it("says what each step does and that New still follows the request", () => {
+    expect(render({ discovery: { value: "familiar", onChange: vi.fn() } })).toContain("No picks are kept for artists you haven");
+    expect(render({ discovery: { value: "new", onChange: vi.fn() } })).toContain("They still have to match your request");
+  });
+
+  it("keeps Discovery in My Mix, where only Energy, Tempo and Fill with similar sounds are hidden", () => {
+    const html = render({
+      discovery: { value: "new", onChange: vi.fn() },
+      onTempoChange: vi.fn(),
+      myMix: { lanes: [], vocabulary: { genres: [], moods: [] }, preferences: { lanes: [] } as never, onSelect: vi.fn(), onChange: vi.fn(), onSave: vi.fn() },
+    });
+    expect(html).toContain('data-testid="agent-session-discovery"');
+    expect(html).not.toContain('data-testid="agent-session-tempo"');
+  });
+
+  it("offers Tempo only when it can be applied, showing the current range and the honest coverage note", () => {
+    expect(render({ request })).not.toContain('data-testid="agent-session-tempo"');
+    const html = render({ request, onTempoChange: vi.fn() });
+    expect(html).toContain('data-testid="agent-session-tempo"');
+    expect(html).toContain("Tempo (BPM)");
+    expect(html).toMatch(/aria-label="Lowest tempo in BPM"[^>]*value="120"/);
+    expect(html).toMatch(/aria-label="Highest tempo in BPM"[^>]*value="125"/);
+    expect(html).toContain("Only tracks with a measured tempo can match");
+    expect(html).toContain("Clear tempo");
+    expect(html.indexOf('data-testid="agent-session-tempo"')).toBeGreaterThan(html.indexOf('data-testid="agent-session-adjust"'));
+  });
+
+  it("starts Tempo empty with no Clear action when the request has no tempo", () => {
+    const html = render({ request: { ...request, bpm: null }, onTempoChange: vi.fn() });
+    expect(html).toMatch(/aria-label="Lowest tempo in BPM"[^>]*value=""/);
+    expect(html).not.toContain("Clear tempo");
+  });
+
+  it("shows the first-session tip with an example to try and a dismiss action, and nothing otherwise", () => {
+    expect(render()).not.toContain("agent-first-session-tip");
+    const html = render({ tip: { example: "Afrobeats, chill", onTry: vi.fn(), onDismiss: vi.fn() } });
+    expect(html).toContain('data-testid="agent-first-session-tip"');
+    expect(html).toContain("Tip: you can combine");
+    expect(html).toMatch(/<button[^>]*>Afrobeats, chill<\/button>/);
+    expect(html).toContain('aria-label="Dismiss this tip"');
+  });
+});

@@ -63,6 +63,18 @@ describe("deterministicSelectorInput (#2094)", () => {
     ).toMatchObject({ newArtistsOnly: true });
   });
 
+  it("passes the Discovery level to the selector, and ignores anything it does not know (#2327)", () => {
+    expect(deterministicSelectorInput(input)).not.toHaveProperty("discovery");
+    for (const discovery of ["familiar", "mixed", "new"] as const) {
+      expect(
+        deterministicSelectorInput({ ...input, preferences: { ...input.preferences, discovery } }),
+      ).toMatchObject({ discovery });
+    }
+    expect(
+      deterministicSelectorInput({ ...input, preferences: { ...input.preferences, discovery: "wild" as never } }),
+    ).not.toHaveProperty("discovery");
+  });
+
   it("is exactly what recommend() passes to the selector", async () => {
     const selector = {
       select: jest
