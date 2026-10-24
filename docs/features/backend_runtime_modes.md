@@ -53,8 +53,8 @@ place. "Gate" is the id in `BACKGROUND_LOOPS`.
 
 | Loop (source) | Gate | Class | Runs in `api`? | Why |
 | --- | --- | --- | --- | --- |
-| Contract indexer poll (`contracts/indexer.service.ts`, behind `ENABLE_CONTRACT_INDEXER`) | `contractIndexer` | a: indexer | no | Follows the chain continuously; its cursor must advance whether or not anyone is calling the API. |
-| Shows escrow indexer poll (`shows/shows-escrow-indexer.service.ts`, behind `ENABLE_SHOWS_ESCROW_INDEXER`) | `showsEscrowIndexer` | a: indexer | no | Same. Its database-clock lease and fencing epoch (#1567) are unchanged and still prevent double indexing if two processes briefly overlap. |
+| Contract indexer poll (`contracts/indexer.service.ts`, behind `ENABLE_CONTRACT_INDEXER`) | `contractIndexer` | a: indexer | no | Follows the chain continuously; its cursor must advance whether or not anyone is calling the API. A database-clock lease with a fencing epoch, one per chain (#2360), lets only one process poll and advance the cursor. |
+| Shows escrow indexer poll (`shows/shows-escrow-indexer.service.ts`, behind `ENABLE_SHOWS_ESCROW_INDEXER`) | `showsEscrowIndexer` | a: indexer | no | Same. Its database-clock lease and fencing epoch (#1567), one per chain/address target, prevent double indexing if two processes briefly overlap. |
 | Startup listing, lifecycle and orphan-listing reconcilers and the pending sale-split retry (`contracts/contracts.service.ts`, #2172) | `contractsStartupReconcile` | a: reconciler | no | Repairs persisted state from chain truth. The event-driven split finalisation on a `Sold` event is not gated: it follows the indexer. |
 | Stem processing watchdog (`ingestion/stem-watchdog.service.ts`) | `stemWatchdog` | a: reconciler | no | Detects stuck processing with no request in flight. |
 | x402 `refund_due` watchdog (`punchline/x402-refund-watchdog.service.ts`) | `x402RefundWatchdog` | a: reconciler | no | Alerts on stale refunds with no request in flight. |
@@ -80,10 +80,13 @@ The deployment steps are in `resonate-iac#322`. What the application requires:
    health probe on `/health` and must keep at least one instance running.
 2. Start the worker **before** switching the API to `api`. Until the API restarts
    in `api` mode it is still running the loops itself.
-3. While both run, the Shows escrow indexer's lease keeps one owner per
-   chain/address target, so no event is applied twice. The contract indexer has no
-   lease; its per-log idempotency (`ContractEvent` is unique on transaction hash and
-   log index) makes an overlap redundant work, not wrong data.
+3. While both run, each indexer's lease keeps one owner: the Shows escrow indexer
+   per chain/address target (#1567) and the contract indexer per chain (#2360).
+   Only the holder fetches logs, records events and advances the cursor, and a
+   process that lost its lease is fenced by the lease epoch, so no range is
+   indexed twice and no event is applied twice. The loser simply skips its cycles
+   until the holder stops or its lease expires (`INDEXER_LEASE_TTL_MS`,
+   `SHOWS_ESCROW_LEASE_TTL_MS`).
 4. Then restart the API with `BACKEND_RUNTIME_MODE=api`. Nothing that needs a
    background loop should be expected from it.
 5. Rollback is setting the variable back to `combined` (or removing it).
@@ -100,6 +103,11 @@ advisory lock.
 - `backend/src/tests/runtime_mode_loops.spec.ts`: each real `onModuleInit` starts
   nothing in `api` and starts its work in `worker`, `combined` and unset; the three
   queue processors are providers only where loops run.
+- `backend/src/tests/indexer_lease.integration.spec.ts`: the contract indexer
+  lease on real Postgres: two parallel pollers index a range exactly once,
+  takeover after expiry, a stale holder's cursor and event writes are fenced, and
+  an operator cursor reset fences an in-flight poller. The Shows counterpart is in
+  `shows-escrow-indexer.integration.spec.ts`.
 - `backend/src/tests/runtime_mode.integration.spec.ts`: the real `AppModule`
   booted in each mode (no indexer interval and no processor in `api`; both in
   `worker`, which answers `404` outside `/health`; today's behaviour in

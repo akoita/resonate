@@ -1013,7 +1013,7 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
   {
     model: "IndexerState",
     disposition: "untouched",
-    reason: "Per-chain block cursor for the indexer; operator infrastructure with no personal column.",
+    reason: "Per-chain block cursor and worker lease for the contract indexer; operator infrastructure, and `leaseOwnerId` is a worker process.",
   },
   {
     model: "ShowEscrowIndexerState",
@@ -1233,6 +1233,9 @@ export const PERSON_ID_COLUMN_PATTERNS: readonly RegExp[] = [
  * review, and the test keeps it honest by failing on an entry no pattern flags.
  */
 export const REVIEWED_NON_PERSON_ID_COLUMNS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  IndexerState: {
+    leaseOwnerId: "The id of the worker process holding the distributed contract indexer lease, not a person.",
+  },
   ShowEscrowIndexerState: {
     leaseOwnerId: "The id of the worker process holding the distributed indexer lease, not a person.",
   },

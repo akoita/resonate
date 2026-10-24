@@ -453,6 +453,17 @@ If ownership is unstable, set the backend maximum instance count to one through
 before restoring autoscaling. A graceful shutdown releases only leases still owned
 by that process; correctness after a hard crash relies on expiry and epoch fencing.
 
+### Contract indexer lease (#2360)
+
+`IndexerService` holds the same kind of lease per chain on its `IndexerState`
+cursor row. Its events are `contract_indexer.lease_acquired`,
+`contract_indexer.lease_takeover`, `contract_indexer.lease_lost` and
+`contract_indexer.lease_released`, with the same meaning and the same guidance as
+above, and the TTL is `INDEXER_LEASE_TTL_MS`. A second process that does not hold
+the lease logs nothing and skips its cycle. `resetIndexer` bumps the epoch, which
+fences a poller that is mid-batch so it cannot overwrite the reset; do not edit
+`leaseEpoch` or an active lease by hand.
+
 ### Provider `eth_getLogs` range limits
 
 Many RPC providers cap one `eth_getLogs` call by block range or by result
