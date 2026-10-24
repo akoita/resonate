@@ -1,12 +1,63 @@
 # Vision Sprint 42: Sell with confidence
 
-**Status:** Owner-approved 2026-10-24; in progress. No due date: it closes when
-its exit checks pass on staging.
+**Status:** ✅ Closed 2026-10-24. All six issues closed, and the exit checks pass
+on staging at `4ec6e8a3`.
 **Milestone:** [44](https://github.com/akoita/resonate/milestone/44).
 **Goal:** A consumer purchase is legally complete: consent to immediate
 delivery is recorded, confirmed to the buyer and tied to the transaction.
 Artists can sell official lossless stems with their source shown. The
 platform's admin and indexing paths are fully hardened.
+
+## Outcome
+
+A consumer purchase now completes with a recorded delivery choice. Artists can
+sell official lossless stems labelled as such. The admin and indexing paths are
+hardened.
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #1776 | Checkout records a delivery choice before payment: deliver now, with an acknowledged waiver of the withdrawal right, or wait. Nothing is pre-selected. A durable, append-only `PurchaseConsent` is linked to the payment and confirmed to the buyer in their notices, and by email when they have a confirmed address. Without a waiver the server holds off-chain delivery (downloads, licences, crate export, paid Punchline editions) for 14 days, and the buyer sees the release date and a "Deliver now" action. Mints need a fresh deliver-now consent. Purchases before 2026-10-25 are delivered as before. The refund policy and Terms are updated, and the wording is marked for legal review | #2373 |
+| #1976 | Artists upload official WAV/FLAC stems per track. Before a package is accepted it must pass format, sample-rate, duration, silence, summed-level and alignment checks against the mix. Buyers download the lossless file. The public preview is a bounded 128 kbps MP3 transcode, and the blob route never serves the lossless file. "Official" or "Separated (AI)" is shown on listings, the stem page, the buy modal, crate quotes, x402 receipts and MCP quotes, with a source filter. Existing stems are backfilled as separated (`demucs-htdemucs-6s`) | #2376 |
+| #2360 | The contract indexer holds a distributed lease with epoch fencing, so two processes cannot both advance the cursor | #2368 |
+| #2362 | Every admin and operator route writes one audit event (ids, codes and counts only), and a coverage test fails on an unaudited route. Step-up now also covers credit grants, DMCA resolve, recovery review, retention, erasure, wipe, moderation resolve, indexer reset and reindex, and wallet recovery. The deferred admin request bodies are now DTOs | #2370 |
+| #2361 | Wallet fund and budget amounts must be finite, positive (the budget may be 0, meaning paused) and at most 10,000 | #2369 |
+| #2182 | An optional, skippable email card on Home, plus dismissible prompts after a pledge, on the Listing Manager, and for unread account or refund notices. Email is never required | #2371 |
+| #1121 (scope check) | No remix-challenge product exists, so a cockpit card has nothing to show. The design question is filed as #2367 for the owner, and #1121 left the milestone | — |
+
+**Unplanned:** #2381. The staging release failed while building the backend
+image: the TypeScript build ran out of memory at the builder's default heap.
+The type check has needed about 2.7 GB since before this sprint (measured at
+both ends), so the build stage now runs with a 4 GB heap.
+
+**Staging verification (2026-10-24, `4ec6e8a3`):**
+
+- The purchase-consent routes, the official-stems upload and the newly gated
+  admin routes answer 401 without a sign-in. The public delivery wording is
+  served with version `2026-10-24.draft-1`.
+- Listings carry `source: separated` and `separationModel:
+  demucs-htdemucs-6s`, which shows the stem-source migration and its backfill
+  ran, and so did the earlier lease and consent migrations. The `source` filter
+  answers.
+- The indexer status is healthy under the lease.
+- The deployed User Guide has the new withdrawal article, the "Official or
+  Separated (AI)?" section and the optional email card text.
+
+**Carry-over and follow-ups:**
+
+- **Waiting on the owner:**
+  - #1421 pricing sign-off;
+  - the #2367 remix-challenge design decision;
+  - legal review of the consent wording and its open questions (in
+    `docs/legal/refund-policy.md`).
+- **Deployment halves (unchanged):** resonate-iac#320–#323.
+- **Follow-ups:**
+  - #2378: a standing delivery choice for AI DJ session-key purchases (held
+    for 14 days today);
+  - #2379: tuning the official-stem checks on real packages, partial packages,
+    removing a package, and screenshots;
+  - #2380: step-up for money-release operator actions, and auditing admin
+    branches inside user routes.
+- The next sprint is not yet selected.
 
 ## Why this theme
 
