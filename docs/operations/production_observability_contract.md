@@ -100,6 +100,17 @@ Infrastructure maps any `lease_lost` event to an operator alert and monitors
 repeated acquisition/takeover events for ownership churn. The companion rollout
 is tracked in [`akoita/resonate-iac#209`](https://github.com/akoita/resonate-iac/issues/209).
 
+## Contract Indexer Lease Events
+
+The contract indexer (#2360) uses the same ownership contract, one lease per
+chain, with the stable events `contract_indexer.lease_acquired`,
+`contract_indexer.lease_takeover`, `contract_indexer.lease_lost` and
+`contract_indexer.lease_released`. Fields are the same bounded set as above
+(`chainId`, `ownerId`, `leaseEpoch`, `leaseExpiresAt`, `leaseTtlMs`, `phase`,
+optional `reason`), without `contractAddress`. A `lease_lost` event is
+operator-alert grade for the same reason; companion alert wiring is deployment
+work in `resonate-iac`.
+
 ## Degraded Fallback Events
 
 `degraded.fallback` is emitted wherever the backend silently falls back to a

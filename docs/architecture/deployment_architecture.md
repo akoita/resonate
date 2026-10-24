@@ -70,7 +70,7 @@ flowchart LR
   Worker --> Results["Pub/Sub stem-results"]
   Results --> Backend
   Backend --> StableAudio["Cloud Run stable-audio<br>GPU remix service"]
-  Backend --> Indexers["In-process contract +<br>Shows escrow indexers"]
+  Backend --> Indexers["In-process contract +<br>Shows escrow indexers<br>(leased, one writer each)"]
   Scheduler["Cloud Scheduler"] --> MaintJobs["Scheduled Cloud Run Jobs<br>backend image"]
   MaintJobs --> SQL
   Backend --> Vertex["Vertex AI<br>Gemini, Lyria, embeddings"]
@@ -154,7 +154,9 @@ NestJS modules for auth, catalog, storefront, x402, MCP, storage, generation,
 remix, contracts, rights, payments, notifications, and indexing. Runs on Cloud
 Run with Secret Manager-backed configuration. The contract indexer and the Shows
 escrow indexer run inside the backend process by default (`BACKEND_RUNTIME_MODE`
-`combined`), behind enable flags and, for Shows, a distributed lease. The same
+`combined`), behind enable flags and a per-chain (contract, #2360) or per-target (Shows,
+#1567) distributed lease with epoch fencing, so overlapping processes never
+index the same range. The same
 image can instead run as a request-serving `api` process with no background
 loops or as a `worker` that runs them (#1608; see
 [Backend runtime modes](../features/backend_runtime_modes.md)). The frontend's server-side calls
