@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { UsageSummary } from "../../lib/api";
 import {
+  UsageBillingBody,
   UsageBillingView,
   formatLedgerAmount,
-  formatResetIn,
 } from "./UsageBillingPanel";
 
 const NOW = Date.parse("2026-07-10T12:00:00.000Z");
@@ -41,6 +41,7 @@ function summary(overrides: Partial<UsageSummary> = {}): UsageSummary {
         label: "Track generation",
         remaining: 48,
         limit: 50,
+        percentLeft: 96,
         windowSeconds: 3600,
         resetsAt: "2026-07-10T12:42:00.000Z",
       },
@@ -49,44 +50,41 @@ function summary(overrides: Partial<UsageSummary> = {}): UsageSummary {
         label: "AI remix draft",
         remaining: 10,
         limit: 10,
+        percentLeft: 100,
         windowSeconds: 3600,
         resetsAt: null,
       },
     ],
+    breakdown: {
+      periodDays: 30,
+      since: "2026-06-10T12:00:00.000Z",
+      items: [
+        {
+          kind: "lyria",
+          label: "Track generation",
+          unitSeconds: 30,
+          unitCostCents: 10,
+          charges: 3,
+          spentCents: 30,
+          refundedCents: 10,
+          netCents: 20,
+        },
+        {
+          kind: "remix_draft",
+          label: "AI remix draft",
+          unitSeconds: 30,
+          unitCostCents: 10,
+          charges: 0,
+          spentCents: 0,
+          refundedCents: 0,
+          netCents: 0,
+        },
+      ],
+    },
     plan: { tier: "free", monthlyAllowanceCents: null },
     ...overrides,
   };
 }
-
-describe("formatResetIn", () => {
-  it("returns an em dash when there is no active window", () => {
-    expect(formatResetIn(null, NOW)).toBe("—");
-  });
-
-  it("returns an em dash for an unparseable timestamp", () => {
-    expect(formatResetIn("not-a-date", NOW)).toBe("—");
-  });
-
-  it("says resets now when the window has already lapsed", () => {
-    expect(formatResetIn("2026-07-10T11:59:00.000Z", NOW)).toBe("resets now");
-  });
-
-  it("renders minutes under an hour", () => {
-    expect(formatResetIn("2026-07-10T12:42:00.000Z", NOW)).toBe("resets in 42 min");
-  });
-
-  it("renders hours and minutes over an hour", () => {
-    expect(formatResetIn("2026-07-10T14:05:00.000Z", NOW)).toBe("resets in 2h 5min");
-  });
-
-  it("renders whole hours without a minute part", () => {
-    expect(formatResetIn("2026-07-10T15:00:00.000Z", NOW)).toBe("resets in 3h");
-  });
-
-  it("renders days beyond 24h", () => {
-    expect(formatResetIn("2026-07-12T13:00:00.000Z", NOW)).toBe("resets in 2d 1h");
-  });
-});
 
 describe("formatLedgerAmount", () => {
   it("renders debits as negative", () => {
@@ -116,19 +114,25 @@ describe("UsageBillingView", () => {
     expect(html).toContain("≈ 5 min · 5 tracks");
   });
 
-  it("shows the Auto-reload coming-soon affordance", () => {
+  it("explains how credits are granted today and offers no purchase or auto-reload control", () => {
     const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
-    expect(html).toContain("Auto-reload");
-    expect(html).toContain("Coming soon");
+    expect(html).toContain("How credits are granted today");
+    expect(html).toContain("Buying credits and automatic top-ups are not available yet.");
+    expect(html).not.toMatch(/buy credits|purchase|auto-reload|top up now|add funds/i);
+    // No dead buttons: with a healthy balance and no request handler there is
+    // not a single <button> on the page.
+    expect(html).not.toContain("<button");
   });
 
   it("renders one row per usage limit with counts and reset timers", () => {
     const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
     expect(html).toContain("Track generation");
-    expect(html).toContain("48 / 50");
+    expect(html).toContain("96% left");
+    expect(html).toContain("48 / 50 per hour");
     expect(html).toContain("resets in 42 min");
     expect(html).toContain("AI remix draft");
-    expect(html).toContain("10 / 10");
+    expect(html).toContain("100% left");
+    expect(html).toContain("10 / 10 per hour");
     // remix_draft has a null resetsAt → em dash.
     expect(html).toContain("—");
   });
@@ -172,5 +176,109 @@ describe("UsageBillingView", () => {
       <UsageBillingView summary={summary({ limits: [] })} now={NOW} />,
     );
     expect(html).toContain("No usage limits apply to your account.");
+  });
+
+  it("keeps credits, usage limits and spend by action as separate sections", () => {
+    const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
+    const credits = html.indexOf("usage-credits-heading");
+    const limits = html.indexOf("usage-limits-heading");
+    const breakdown = html.indexOf("usage-breakdown-heading");
+    expect(credits).toBeGreaterThan(-1);
+    expect(limits).toBeGreaterThan(credits);
+    expect(breakdown).toBeGreaterThan(limits);
+  });
+
+  it("renders the per-kind spend breakdown with unit price and net cost", () => {
+    const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
+    expect(html).toContain("Spend by action");
+    expect(html).toContain("$0.10 / 30s");
+    expect(html).toContain("$0.30");
+    expect(html).toContain("$0.20");
+  });
+
+  it("renders a spend empty state that still lists each action price", () => {
+    const base = summary();
+    const html = renderToStaticMarkup(
+      <UsageBillingView
+        summary={summary({
+          breakdown: {
+            ...base.breakdown,
+            items: base.breakdown.items.map((item) => ({
+              ...item,
+              charges: 0,
+              spentCents: 0,
+              refundedCents: 0,
+              netCents: 0,
+            })),
+          },
+        })}
+        now={NOW}
+      />,
+    );
+    expect(html).toContain("No credits spent in the last 30 days.");
+    expect(html).toContain("Track generation: $0.10 per 30s");
+    expect(html).toContain("AI remix draft: $0.10 per 30s");
+  });
+});
+
+describe("UsageBillingBody (fetch states)", () => {
+  it("shows a loading status while the first read is in flight", () => {
+    const html = renderToStaticMarkup(
+      <UsageBillingBody summary={null} loading error={false} />,
+    );
+    expect(html).toContain('role="status"');
+    expect(html).toContain("Loading usage");
+    expect(html).not.toContain("Spend by action");
+  });
+
+  it("shows an error alert with a Retry action when the read fails", () => {
+    const html = renderToStaticMarkup(
+      <UsageBillingBody summary={null} loading={false} error onRetry={() => {}} />,
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Could not load your usage");
+    expect(html).toContain("Retry");
+    expect(html).not.toMatch(/purchase|buy credits/i);
+  });
+
+  it("renders the loaded view once a summary exists, even while refreshing", () => {
+    const html = renderToStaticMarkup(
+      <UsageBillingBody summary={summary()} loading error={false} now={NOW} />,
+    );
+    expect(html).toContain("Spend by action");
+    expect(html).not.toContain("Loading usage");
+  });
+
+  it("renders a brand-new account (no spend, no history, idle windows) without crashing", () => {
+    const base = summary();
+    const html = renderToStaticMarkup(
+      <UsageBillingBody
+        summary={{
+          credits: { balanceCents: 100, priceCentsPer30s: 10, recentTransactions: [] },
+          limits: base.limits.map((l) => ({
+            ...l,
+            remaining: l.limit,
+            percentLeft: 100,
+            resetsAt: null,
+          })),
+          breakdown: {
+            ...base.breakdown,
+            items: base.breakdown.items.map((i) => ({
+              ...i,
+              charges: 0,
+              spentCents: 0,
+              refundedCents: 0,
+              netCents: 0,
+            })),
+          },
+          plan: { tier: "free", monthlyAllowanceCents: null },
+        }}
+        loading={false}
+        error={false}
+        now={NOW}
+      />,
+    );
+    expect(html).toContain("No usage yet.");
+    expect(html).toContain("No credits spent in the last 30 days.");
   });
 });

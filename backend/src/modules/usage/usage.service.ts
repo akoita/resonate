@@ -1,40 +1,50 @@
 import { Injectable } from "@nestjs/common";
+import { prisma } from "../../db/prisma";
 import {
   GenerationCreditsService,
   type GenerationCreditBalance,
 } from "../credits/generation-credits.service";
-import {
-  METERED_ACTIONS,
-  type MeteredActionKind,
-} from "../credits/metered-actions";
+import type { MeteredActionKind } from "../credits/metered-actions";
 import { GenerationService } from "../generation/generation.service";
 import { RemixProjectService } from "../remix/remix-project.service";
+import {
+  USAGE_BREAKDOWN_PERIOD_DAYS,
+  buildUsageBreakdown,
+  buildUsageLimits,
+  type DebitGroup,
+  type RateLimitPeek,
+  type RefundRow,
+  type UsageBreakdown,
+  type UsageLimitSummary,
+} from "./usage-aggregation";
 
-/** One usage-limit row in the unified summary (#1422). */
-export interface UsageLimitSummary {
-  kind: MeteredActionKind;
-  label: string;
-  remaining: number;
-  limit: number;
-  windowSeconds: number;
-  /** ISO timestamp; null when no requests are recorded in the window. */
-  resetsAt: string | null;
-}
+export type {
+  UsageBreakdown,
+  UsageBreakdownItem,
+  UsageLimitSummary,
+} from "./usage-aggregation";
 
-/** Canonical `GET /usage/summary` contract (#1422). The frontend codes to this. */
+/**
+ * Canonical `GET /usage/summary` contract (#1422). The frontend codes to this.
+ * Three deliberately separate concepts (RFC docs/rfc/usage-billing.md):
+ *   - `credits`   — the prepaid monetary balance + recent ledger
+ *   - `limits`    — fair-use rate-quota windows (% left, reset time)
+ *   - `breakdown` — what each metered kind cost over the last 30 days
+ */
 export interface UsageSummary {
   credits: GenerationCreditBalance;
   limits: UsageLimitSummary[];
+  breakdown: UsageBreakdown;
   plan: { tier: "free"; monthlyAllowanceCents: number | null };
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Aggregates the two distinct usage concepts (RFC docs/rfc/usage-billing.md):
- *   - credits: a buyable monetary balance (GenerationCreditsService)
- *   - usage limits: per-kind sliding-window rate quotas, read side-effect-free
- *     from the enforcing services' peek getters (never recording a hit here).
- * Plus the (currently Free) plan tier. Reads the metered-action registry for
- * labels/window descriptors so limits stay a single typed source.
+ * Aggregates the usage concepts (see `UsageSummary`). The metered-action
+ * registry supplies labels, unit sizes and ledger-reason attribution; the
+ * enforcing services supply live window counts through side-effect-free peek
+ * getters (a read here never records a hit); the credit ledger supplies spend.
  */
 @Injectable()
 export class UsageService {
@@ -46,35 +56,72 @@ export class UsageService {
 
   async getSummary(userId: string): Promise<UsageSummary> {
     const credits = await this.credits.getBalance(userId);
+    const since = new Date(Date.now() - USAGE_BREAKDOWN_PERIOD_DAYS * DAY_MS);
 
-    const lyriaStatus = this.generation.getGenerationRateLimitStatus(userId);
-    const remixStatus = this.remix.getGenerationRateLimitStatus(userId);
+    const peeks: Record<MeteredActionKind, RateLimitPeek> = {
+      lyria: this.generation.getGenerationRateLimitStatus(userId),
+      remix_draft: this.remix.getGenerationRateLimitStatus(userId),
+    };
 
-    const limits: UsageLimitSummary[] = [
-      {
-        kind: "lyria",
-        label: METERED_ACTIONS.lyria.label,
-        remaining: lyriaStatus.remaining,
-        limit: lyriaStatus.limit,
-        windowSeconds: Math.round(lyriaStatus.windowMs / 1000),
-        resetsAt: lyriaStatus.resetsAt ? lyriaStatus.resetsAt.toISOString() : null,
-      },
-      {
-        kind: "remix_draft",
-        label: METERED_ACTIONS.remix_draft.label,
-        remaining: remixStatus.remaining,
-        limit: remixStatus.limit,
-        windowSeconds: Math.round(remixStatus.windowMs / 1000),
-        resetsAt: remixStatus.resetsAt ? remixStatus.resetsAt.toISOString() : null,
-      },
-    ];
+    const { debits, refunds } = await this.readLedger(userId, since);
 
     return {
       credits,
-      limits,
+      limits: buildUsageLimits(peeks),
+      breakdown: buildUsageBreakdown({
+        debits,
+        refunds,
+        priceCentsPer30s: credits.priceCentsPer30s,
+        since,
+      }),
       // Free tier today; Artist Pro + bundled monthly allowance land later
       // (ADR-BM-3). No live-money plan exists yet, so allowance is null.
       plan: { tier: "free", monthlyAllowanceCents: null },
+    };
+  }
+
+  /**
+   * The caller's debits (grouped by reason) and refunds (tagged with the reason
+   * of the debit they return) since `since`. Scoped by `userId` in every query.
+   */
+  private async readLedger(
+    userId: string,
+    since: Date,
+  ): Promise<{ debits: DebitGroup[]; refunds: RefundRow[] }> {
+    const [debitGroups, refundRows] = await Promise.all([
+      prisma.generationCreditTransaction.groupBy({
+        by: ["reason"],
+        where: { userId, type: "debit", createdAt: { gte: since } },
+        _count: { _all: true },
+        _sum: { amountCents: true },
+      }),
+      prisma.generationCreditTransaction.findMany({
+        where: { userId, type: "refund", createdAt: { gte: since } },
+        select: { amountCents: true, jobId: true },
+      }),
+    ]);
+
+    const jobIds = refundRows
+      .map((row) => row.jobId)
+      .filter((id): id is string => !!id);
+    const debitRows = jobIds.length
+      ? await prisma.generationCreditTransaction.findMany({
+          where: { userId, type: "debit", jobId: { in: jobIds } },
+          select: { jobId: true, reason: true },
+        })
+      : [];
+    const reasonByJob = new Map(debitRows.map((row) => [row.jobId, row.reason]));
+
+    return {
+      debits: debitGroups.map((group) => ({
+        reason: group.reason,
+        count: group._count._all,
+        amountCents: group._sum.amountCents ?? 0,
+      })),
+      refunds: refundRows.map((row) => ({
+        amountCents: row.amountCents,
+        debitReason: row.jobId ? (reasonByJob.get(row.jobId) ?? null) : null,
+      })),
     };
   }
 }
