@@ -101,6 +101,7 @@ describe("admin users formatting (#2166)", () => {
 
   it("words audit actions and shows only a reason category", () => {
     expect(adminActionLabel("account.suspended")).toBe("Suspended the account");
+    expect(adminActionLabel("agent_session.events_viewed")).toBe("Opened the agent events of one of their AI DJ sessions");
     expect(adminActionLabel("something.new")).toBe("something.new");
     expect(adminActionReason({ reason: "fraud" })).toBe("Fraud");
     expect(adminActionReason({ note: "private" })).toBeNull();

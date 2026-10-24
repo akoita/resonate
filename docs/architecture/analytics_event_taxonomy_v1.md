@@ -307,7 +307,7 @@ when they follow the privacy and versioning rules above.
 
 `agent.next_pick_requested` is the DJ-impression / accepted-pick event (`status` `ok` with a `trackId`; the discovery-quality report and the `accepted_pick` agent-quality metric read it). Since #2243 the web app sends it every time the AI DJ adds picks to the player queue from a next-pick response triggered by the listener (the refill after "Not this" and "More like this"), with the same payload and meaning as when the Next AI Pick button sent it; the background continuation and re-plan never sent it. `agent.up_next_action` is the separate per-click event of the Now & Up next card (what the listener did, ids only); it feeds no DJ-quality metric.
 | `agent.evaluated` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `trackId`, `licenseType`, `priceUsd`, `reason` | none |
-| `agent.decision_made` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `reason` | `trackId`, `artistId`, `releaseId`, `licenseType`, `priceUsd` |
+| `agent.decision_made` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `reason` | `trackId`, `artistId`, `releaseId`, `licenseType`, `priceUsd`, `shortfall`, `unmetIntent`, `trackCount`, `pickIndex`, `pickCount`, `curatedBy`, `latencyMs`, `runtimeFallback` (`from`, `reason` codes), `coverage` (`picks`, `gaps[{filter, matched}]`, `heldBack`, `capRelaxed.artists`, `shortfallReason`; counts and filter keys only, #2259) |
 | `agent.purchase_completed` | `agent-purchase-service` | `listing` | `userId` | `sessionId`, `userId`, `listingId`, `tokenId`, `amount`, `priceUsd`, `txHash` | `mode` |
 | `agent.purchase_failed` | `agent-purchase-service` | `listing` | `userId` | `sessionId`, `userId`, `listingId`, `error` | `tokenId`, `amount`, `priceUsd` |
 | `recommendation.generated` | `recommendations-service` | none | pseudonymous actor for DJ measurement | `trackIds`, `strategy` | Home: `userId`, `candidateCount`, aggregate `cohortInfluence`; DJ: per-pick `trackId`, `agentSessionId`, `sessionSource`, `rankerVariant`, `orderingVariant`, `experimentKey`, `explorationPick` (#2067) |
@@ -324,6 +324,8 @@ when they follow the privacy and versioning rules above.
 | `settings.updated` | `web-app` | none | auth user | `setting`, `source` | `surface`, `clientEventId` |
 
 `agent.decision_made` carries at most one track: its subject is the `trackId`, and the envelope caps `subjectId` at 200 characters. A session start whose runtime picks several tracks (12 by default) emits one event per pick (#2317), each with a single `trackId`; it must never join the ids into one subject, which the bridge rejects. A batch-level decision (rules curation, an empty catalog) has no `trackId` and no subject. A mart that counts decisions per session or per track reads per-pick events; count distinct sessions for per-session metrics.
+
+The LLM's `reasoning` and the pre-rendered `coverageSummary` ride on the in-process event for the live feed only; the bridge never records them (free text, #2259). The operator view of a session's raw agent events ([feature page](../features/admin_agent_session_events.md)) reads `agent.*` events by `sessionId` and shows a whitelist of identifiers, codes and counts.
 
 ## Examples
 

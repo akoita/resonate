@@ -7,7 +7,9 @@ export type AdminAuditAction =
   | "user.detail_viewed"
   | "account.suspended"
   | "account.unsuspended"
-  | "account.closed";
+  | "account.closed"
+  /** #2259: an admin opened the raw agent events of a session. */
+  | "agent_session.events_viewed";
 
 export interface AdminAuditInput {
   actorUserId: string;

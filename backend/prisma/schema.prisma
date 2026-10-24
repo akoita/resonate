@@ -2112,6 +2112,8 @@ model AnalyticsEvent {
   @@index([actorId, eventName, occurredAt])
   @@index([subjectType, subjectId])
   @@index([createdAt])
+  // #2259: the operator view of one session's agent events reads by session.
+  @@index([sessionId, occurredAt])
 }
 
 /// Durable first-listener placements. The unique listener/release pair means
@@ -3342,7 +3344,7 @@ model DemandSignal {
 model AdminAuditEvent {
   id           String   @id @default(uuid())
   actorUserId  String
-  /// user.detail_viewed | account.suspended | account.unsuspended | account.closed
+  /// user.detail_viewed | account.suspended | account.unsuspended | account.closed | agent_session.events_viewed
   action       String
   targetUserId String?
   detail       Json?

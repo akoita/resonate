@@ -442,9 +442,27 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "agent-session-events",
+        heading: "What the AI DJ decided in a session (admins)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Admins can look up one AI DJ session by its id and see what the DJ did, oldest first: which tracks it picked and in what order, whether the AI model or the rules chose them, the reason code, and how many picks matched what the listener asked for. Open DJ Session Events in the sidebar and enter the session id.",
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "What you see, and what is logged",
+            text: "The page shows identifiers, decisions, counts and reason codes, never what the listener typed, the model's wording or track titles. Opening a session is logged with who opened it and when, and it appears in the listener's record under operator activity. Events are kept for as long as other analytics events and are gone after that. Operators who are not admins cannot open this page.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Users (operators)", href: "/admin/users", description: "The overview, search and filters, and each person's record." },
+      { label: "DJ Session Events (admins)", href: "/admin/agent-sessions", description: "Look up one AI DJ session and see what it decided.", audience: "operator" },
     ],
     related: ["account-suspension", "platform-notices", "settings-privacy"],
   },

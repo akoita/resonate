@@ -52,6 +52,7 @@ import { AccountStatusInterceptor } from "./accounts/account_status.interceptor"
 import { UserActivityInterceptor } from "./accounts/user_activity.interceptor";
 import { UserActivityModule } from "./accounts/user_activity.module";
 import { AdminUsersModule } from "./admin_users/admin_users.module";
+import { AdminAgentSessionsModule } from "./admin_agent_sessions/admin_agent_sessions.module";
 
 @Module({
   imports: [
@@ -110,6 +111,7 @@ import { AdminUsersModule } from "./admin_users/admin_users.module";
     AccountsModule,
     UserActivityModule,
     AdminUsersModule,
+    AdminAgentSessionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

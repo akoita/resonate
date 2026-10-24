@@ -204,6 +204,62 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
   });
 
+  it("records the pick position, curator and sanitized coverage of a decision, never its free text (#2259)", async () => {
+    const ingest = new AnalyticsIngestService();
+    eventBus = new EventBus();
+    bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+    bridge.onModuleInit();
+
+    eventBus.publish({
+      eventName: "agent.decision_made",
+      eventVersion: 1,
+      occurredAt: "2026-10-24T12:00:00.000Z",
+      sessionId: "session-ops-1",
+      trackId: "track-ops-1",
+      licenseType: "personal",
+      reason: "llm",
+      curatedBy: "llm",
+      pickIndex: 0,
+      pickCount: 12,
+      latencyMs: 900,
+      reasoning: "A sentence the model wrote about the listener's request",
+      coverageSummary: "not matched: deep house (9 of 12)",
+      coverage: {
+        picks: 12,
+        gaps: [
+          { filter: "genres", matched: 9 },
+          { filter: "not a filter", matched: 3 },
+        ],
+        heldBack: { variety: 2, explicit: 0 },
+        capRelaxed: { artists: 1, top: { artist: "A Named Artist", tracks: 4 } },
+        shortfallReason: "catalog_short",
+        summary: "free text",
+      },
+      runtimeFallback: { from: "adk", reason: "timeout", message: "free text" },
+    } as any);
+
+    await waitForExpect(async () => expect(await ingest.listEvents()).toHaveLength(1));
+    const payload = (await ingest.listEvents())[0].payload;
+    expect(payload).toEqual({
+      sessionId: "session-ops-1",
+      trackId: "track-ops-1",
+      licenseType: "personal",
+      reason: "llm",
+      curatedBy: "llm",
+      pickIndex: 0,
+      pickCount: 12,
+      latencyMs: 900,
+      coverage: {
+        picks: 12,
+        gaps: [{ filter: "genres", matched: 9 }],
+        heldBack: { variety: 2, explicit: 0 },
+        capRelaxed: { artists: 1 },
+        shortfallReason: "catalog_short",
+      },
+      runtimeFallback: { from: "adk", reason: "timeout" },
+    });
+  });
+
   // #2317: the envelope caps subjectId at 200 characters, so an event whose
   // subject key carries a comma-joined list of a 12-track batch is rejected and
   // the bridge only logs a warning. Every agent.* event must therefore be
