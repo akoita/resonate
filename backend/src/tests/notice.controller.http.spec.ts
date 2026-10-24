@@ -3,7 +3,7 @@ import { INestApplication } from "@nestjs/common";
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { NoticeController } from "../modules/notifications/notice.controller";
 import { NoticeService } from "../modules/notifications/notice.service";
-import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { authToken, createControllerTestApp, stepUpProof } from "./e2e-helpers";
 
 const mockNoticeService = {
   listForUser: jest.fn().mockResolvedValue({ notices: [], unreadCount: 0 }),
@@ -34,6 +34,11 @@ describe("NoticeController (http)", () => {
 
   const server = () => app.getHttpServer();
   const bearer = (userId: string, role: string) => ({ Authorization: `Bearer ${authToken(userId, role)}` });
+  /** A session plus a fresh step-up proof (#2173): what a broadcast needs. */
+  const confirmed = (userId: string, role: string) => ({
+    ...bearer(userId, role),
+    "X-Admin-Step-Up": stepUpProof(userId),
+  });
 
   describe("user routes", () => {
     it("require a JWT", async () => {
@@ -49,6 +54,39 @@ describe("NoticeController (http)", () => {
     it("mark a notice read for the caller only", async () => {
       await request(server()).post("/notices/n-1/read").set(bearer("listener-1", "listener")).expect(200);
       expect(mockNoticeService.markRead).toHaveBeenCalledWith("listener-1", "listener", "n-1");
+    });
+  });
+
+  describe("broadcast step-up (#2173)", () => {
+    it("refuses a broadcast without a proof (403 step_up_required)", async () => {
+      const res = await request(server()).post("/notices/broadcast").set(bearer("op-1", "admin")).send(BROADCAST).expect(403);
+      expect(res.body.code).toBe("step_up_required");
+      expect(mockNoticeService.sendBroadcast).not.toHaveBeenCalled();
+    });
+
+    it("refuses a stale proof (403 step_up_expired)", async () => {
+      const stale = stepUpProof("op-1", Date.now() - 6 * 60 * 1000);
+      const res = await request(server())
+        .post("/notices/broadcast")
+        .set({ ...bearer("op-1", "admin"), "X-Admin-Step-Up": stale })
+        .send(BROADCAST)
+        .expect(403);
+      expect(res.body.code).toBe("step_up_expired");
+      expect(mockNoticeService.sendBroadcast).not.toHaveBeenCalled();
+    });
+
+    it("refuses another person's proof (403 step_up_invalid)", async () => {
+      const res = await request(server())
+        .post("/notices/broadcast")
+        .set({ ...bearer("op-1", "admin"), "X-Admin-Step-Up": stepUpProof("op-2") })
+        .send(BROADCAST)
+        .expect(403);
+      expect(res.body.code).toBe("step_up_invalid");
+    });
+
+    it("does not ask for a proof to send a targeted notice or read the sent list", async () => {
+      await request(server()).post("/notices/targeted").set(bearer("op-1", "admin")).send(TARGETED).expect(201);
+      await request(server()).get("/notices/sent").set(bearer("op-1", "admin")).expect(200);
     });
   });
 
@@ -68,7 +106,7 @@ describe("NoticeController (http)", () => {
     });
 
     it.each(["operator", "admin"])("accept the %s role", async (role) => {
-      await request(server()).post("/notices/broadcast").set(bearer("op-1", role)).send(BROADCAST).expect(201);
+      await request(server()).post("/notices/broadcast").set(confirmed("op-1", role)).send(BROADCAST).expect(201);
       expect(mockNoticeService.sendBroadcast).toHaveBeenCalledWith(
         expect.objectContaining({ audience: "all", category: "policy", title: "Policy update" }),
         { userId: "op-1", role },
@@ -92,7 +130,7 @@ describe("NoticeController (http)", () => {
       ["an invalid effective date", { ...BROADCAST, effectiveAt: "not-a-date" }],
       ["an expiry in the past", { ...BROADCAST, expiresAt: "2000-01-01T00:00:00.000Z" }],
     ])("reject a broadcast with %s (400)", async (_label, body) => {
-      await request(server()).post("/notices/broadcast").set(bearer("op-1", "operator")).send(body).expect(400);
+      await request(server()).post("/notices/broadcast").set(confirmed("op-1", "operator")).send(body).expect(400);
       expect(mockNoticeService.sendBroadcast).not.toHaveBeenCalled();
     });
 

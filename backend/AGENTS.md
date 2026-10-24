@@ -96,3 +96,12 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    global guards before route guards, and a reflection spec fails if a `@Roles`
    route uses a different auth guard. Test each role-restricted route with an
    under-privileged token and expect `403`.
+
+9. **Destructive admin routes carry `@RequireStepUp()` (#2173).** The global
+   `AdminStepUpGuard` (registered by `createControllerTestApp` as in
+   `app.module.ts`) answers `403 { code: "step_up_required" | "step_up_expired" |
+   "step_up_invalid" }` without a fresh `X-Admin-Step-Up` proof. Mint one in a
+   spec with `stepUpProof(userId)` from `e2e-helpers`, and cover the missing,
+   stale and fresh cases. A new route gated this way also goes in the pinned list
+   in `admin_step_up_routes.spec.ts`, and an admin action writes one
+   `writeAdminAuditEvent` record.

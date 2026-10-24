@@ -3357,19 +3357,25 @@ model DemandSignal {
   @@index([artistId, computedAt])
 }
 
-/// #2166: durable record of operator access to and actions on a person's account.
+/// #2166 / #2173: the one durable, append-only record of operator access to and actions on a
+/// person's account, and of the step-up confirmations in front of destructive actions.
 /// `actorUserId` and `targetUserId` hold user ids without a relation (they must
 /// survive either person's erasure; erasure rewrites them). `detail` never holds
-/// free-text operator notes or personal data. #2173 extends this to every admin action.
+/// free-text operator notes or personal data. Application code only inserts rows (erasure rewrites the two ids).
 model AdminAuditEvent {
   id           String   @id @default(uuid())
   actorUserId  String
   /// user.detail_viewed | account.suspended | account.unsuspended | account.closed | agent_session.events_viewed
+  /// | notice.broadcast_sent | notice.targeted_sent | admin.step_up_verified | admin.step_up_refused
   action       String
   targetUserId String?
+  /// success | denied (a refused step-up is recorded as denied)
+  outcome      String   @default("success")
   detail       Json?
   createdAt    DateTime @default(now())
 
   @@index([targetUserId, createdAt])
   @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
 }

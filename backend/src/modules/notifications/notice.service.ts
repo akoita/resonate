@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { Subscription } from "rxjs";
 import { prisma } from "../../db/prisma";
 import { CommunityModerationActionTakenEvent } from "../../events/event_types";
+import { writeAdminAuditEvent } from "../admin_audit/admin_audit_event";
 import { AuditService } from "../audit/audit.service";
 import { EventBus } from "../shared/event_bus";
 import {
@@ -136,6 +137,18 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
         ...(options.dedupeKey ? { deduplicated: parsed.userIds.length - result.count } : {}),
       },
     });
+    // #2173: the durable operator trail. Notices the platform sends on its own
+    // (`system:<source>` actors: suspension, refunds, moderation) are not admin
+    // actions and are not logged here; the action that triggered them is. Counts
+    // and the category only, never the title or body of a notice about one person.
+    if (!actor.userId.startsWith("system:")) {
+      await writeAdminAuditEvent({
+        actorUserId: actor.userId,
+        action: "notice.targeted_sent",
+        targetUserId: parsed.userIds.length === 1 ? parsed.userIds[0] : null,
+        detail: { category: parsed.category, recipientCount: parsed.userIds.length, created: result.count },
+      });
+    }
     return { recipientCount: parsed.userIds.length, created: result.count };
   }
 
@@ -164,6 +177,12 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
         audience: notice.audience,
         title: notice.title,
       },
+    });
+    // #2173: a broadcast is public by nature, so its identifiers are the record.
+    await writeAdminAuditEvent({
+      actorUserId: actor.userId,
+      action: "notice.broadcast_sent",
+      detail: { noticeId: notice.id, category: notice.category, audience: notice.audience },
     });
     return {
       id: notice.id,
