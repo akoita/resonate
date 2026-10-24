@@ -1,3 +1,4 @@
+import { backgroundLoopProviders } from "../../config/runtime_mode";
 import { Module } from "@nestjs/common";
 import { IngestionController } from "./ingestion.controller";
 import { IngestionService } from "./ingestion.service";
@@ -25,7 +26,9 @@ import { CatalogModule } from "../catalog/catalog.module";
   controllers: [IngestionController],
   providers: [
     IngestionService,
-    StemsProcessor,
+    // Queue consumers run only where background loops run (#1608); the queue
+    // itself stays registered so every mode can enqueue.
+    ...backgroundLoopProviders("stemsQueueProcessor", [StemsProcessor]),
     StemPubSubPublisher,
     StemResultSubscriber,
     StemWatchdogService,

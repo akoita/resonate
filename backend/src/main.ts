@@ -10,14 +10,19 @@ import { applyGlobalValidation } from "./config/validation";
 import { requestObservabilityMiddleware } from "./modules/shared/request_observability.middleware";
 import { createAppLogger } from "./modules/shared/structured_nest_logger";
 import { assertAnalyticsActorIdSaltConfiguration } from "./modules/analytics/analytics_identity";
+import {
+  resolveBackendRuntimeMode,
+  servesPublicApi,
+  shouldRunBackgroundLoop,
+} from "./config/runtime_mode";
+import { workerHealthOnlyMiddleware } from "./modules/health/worker_health_only.middleware";
 
-async function bootstrap() {
-  console.log("========================================");
-  console.log("🚀 RESONATE BACKEND BOOTING...");
-  console.log("========================================");
-
-  assertAnalyticsActorIdSaltConfiguration();
-
+/**
+ * Boot-time repair: fast-forwards a stale indexer cursor and normalises absolute
+ * URIs. It is background work, so an `api` process skips it (#1608): that keeps
+ * cold starts short and leaves the indexer cursor to the process that runs it.
+ */
+async function runStartupSelfHealing() {
   // Self-Healing: Reset indexer if it's vastly out of date (e.g. from an old Sepolia fork/deployment)
   try {
     const { prisma } = require("./db/prisma");
@@ -50,6 +55,26 @@ async function bootstrap() {
   } catch (e) {
     console.warn(`[Self-Healing] Could not check indexer state:`, e);
   }
+}
+
+async function bootstrap() {
+  console.log("========================================");
+  console.log("🚀 RESONATE BACKEND BOOTING...");
+  console.log("========================================");
+
+  assertAnalyticsActorIdSaltConfiguration();
+
+  // #1608: one image, one entrypoint; BACKEND_RUNTIME_MODE picks the role.
+  const runtimeMode = resolveBackendRuntimeMode();
+  console.log(`[Bootstrap] Runtime mode: ${runtimeMode}`);
+
+  if (
+    shouldRunBackgroundLoop("startupSelfHealing", {
+      log: (message) => console.log(`[Bootstrap] ${message}`),
+    })
+  ) {
+    await runStartupSelfHealing();
+  }
 
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
@@ -80,6 +105,12 @@ async function bootstrap() {
   });
 
   app.use(requestObservabilityMiddleware());
+  if (!servesPublicApi(runtimeMode)) {
+    // A worker runs the Nest app only so the in-process event bus joins each
+    // indexer to its subscribers; it must not answer the public API. Its HTTP
+    // listener exists for the platform's health probe.
+    app.use(workerHealthOnlyMiddleware());
+  }
   const port = process.env.PORT || 3000;
   await app.listen(port);
   console.log(`🚀 Backend is running on: http://localhost:${port}`);

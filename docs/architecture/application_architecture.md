@@ -71,6 +71,10 @@ Cross-cutting subscribers attach to the shared `EventBus` exported by
 `SharedModule`. Feature modules should import that shared provider instead of
 declaring their own `EventBus`, so realtime fan-out, contract/indexer handlers,
 and analytics bridge subscribers observe the same process-level event stream.
+Because the bus is in-process, a background worker (`BACKEND_RUNTIME_MODE=worker`)
+boots this same module graph so each indexer stays next to the subscribers that
+persist and fan out its events; `api` mode starts no background loops. See
+[Backend runtime modes](../features/backend_runtime_modes.md).
 
 Lyria realtime sessions are authenticated per operation from the Socket.IO
 handshake `auth` token. `AuthService` verifies the JWT and supplies the subject;

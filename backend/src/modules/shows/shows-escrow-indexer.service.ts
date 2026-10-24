@@ -23,6 +23,7 @@ import {
   fetchWithAdaptiveWindow,
 } from "../shared/adaptive_block_window";
 import { writeStructuredLog } from "../shared/structured_logging";
+import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { resolveIndexerChainId } from "../contracts/indexer.service";
 import { configuredShowCampaignEscrowAddress } from "./shows.service";
 
@@ -369,6 +370,7 @@ export class ShowsEscrowIndexerService
       );
       return;
     }
+    if (!shouldRunBackgroundLoop("showsEscrowIndexer", this.logger)) return;
     this.logger.log(
       `Starting Shows escrow indexer (poll=${this.pollIntervalMs}ms, blocksPerBatch=${this.blocksPerBatch} (upper bound))`,
     );

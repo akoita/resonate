@@ -1,3 +1,4 @@
+import { backgroundLoopProviders } from "../../config/runtime_mode";
 import { Module } from "@nestjs/common";
 import { BullModule } from "@nestjs/bullmq";
 import { SharedModule } from "../shared/shared.module";
@@ -61,7 +62,9 @@ import {
     // Entitlement seam (#1903): Remix Studio Pro mode, free for everyone.
     RemixEntitlementsService,
     RemixProjectService,
-    RemixGenerationProcessor,
+    ...backgroundLoopProviders("remixGenerationQueueProcessor", [
+      RemixGenerationProcessor,
+    ]),
     RemixWorkerPrewarmService,
     // Shared stem mixer (#1182 slice 4): loads + ffmpeg-mixes the unmuted
     // stems into one buffer. Used by both stem_mix render and the

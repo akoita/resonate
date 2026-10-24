@@ -1,3 +1,4 @@
+import { backgroundLoopProviders } from "../../config/runtime_mode";
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { CatalogModule } from '../catalog/catalog.module';
@@ -23,7 +24,7 @@ import { SynthIdController } from './synthid.controller';
     CreditsModule,
   ],
   controllers: [GenerationController, SynthIdController],
-  providers: [GenerationService, GenerationProcessor, LyriaClient, LyriaRealtimeService, SynthIdService],
+  providers: [GenerationService, ...backgroundLoopProviders('generationQueueProcessor', [GenerationProcessor]), LyriaClient, LyriaRealtimeService, SynthIdService],
   exports: [GenerationService, LyriaClient, LyriaRealtimeService, SynthIdService],
 })
 export class GenerationModule {}
