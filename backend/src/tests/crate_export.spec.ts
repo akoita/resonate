@@ -396,3 +396,62 @@ describe("measured features", () => {
     expect(exportFeatures({ garbage: true }, "nope")).toEqual({ bpm: null, key: null, camelot: null, firstBeatSec: null });
   });
 });
+
+describe("lossless official stems (#1976)", () => {
+  const lossless = JSON.parse(readFixture("entries-lossless.json")) as {
+    crateTitle: string;
+    entries: Array<Omit<CrateExportEntry, "fileName">>;
+  };
+  const names = assignStemFileNames(lossless.entries);
+  const losslessEntries: CrateExportEntry[] = lossless.entries.map((entry, index) => ({
+    ...entry,
+    fileName: names[index],
+  }));
+
+  it("names each file with the extension of its stored format", () => {
+    expect(names).toEqual([
+      "DJ Öz - Night Drive (Vocals).wav",
+      "DJ Öz - Night Drive (Bass).flac",
+      "DJ Öz - Night Drive (Drums).mp3",
+    ]);
+    expect(stemFileName({ artistName: "A", title: "T", stemType: "bass", mimeType: "audio/flac" })).toBe(
+      "A - T (Bass).flac",
+    );
+    // No mimeType keeps today's MP3 names.
+    expect(stemFileName({ artistName: "A", title: "T", stemType: "bass" })).toBe("A - T (Bass).mp3");
+  });
+
+  it("keeps the collision suffix before the lossless extension", () => {
+    const same = [
+      { stemId: "aaaaaa11", artistName: "A", title: "T", stemType: "bass", mimeType: "audio/wav" },
+      { stemId: "bbbbbb22", artistName: "A", title: "T", stemType: "bass", mimeType: "audio/wav" },
+    ];
+    expect(assignStemFileNames(same)).toEqual(["A - T (Bass).wav", "A - T (Bass) [bbbbbb].wav"]);
+  });
+
+  it("writes the rekordbox Kind and Location of the file the DJ downloaded, byte for byte", () => {
+    const xml = buildRekordboxXml({
+      crateTitle: lossless.crateTitle,
+      folder: folder("/Users/dj/Music/Official"),
+      entries: losslessEntries,
+    });
+    expect(xml).toBe(readFixture("rekordbox-lossless.xml"));
+    expect(xml).toContain('Kind="WAV File"');
+    expect(xml).toContain('Kind="FLAC File"');
+    expect(xml).toContain('Kind="MP3 File"');
+    expect(xml).toContain("%28Vocals%29.wav");
+    expect(xml).toContain("%28Bass%29.flac");
+  });
+
+  it("points the Serato crate at the lossless file names", () => {
+    const crate = buildSeratoCrate({ folder: folder("/Users/dj/Music/Official"), entries: losslessEntries });
+    const paths = readTags(crate)
+      .filter((tag) => tag.id === "otrk")
+      .map((tag) => decodeUtf16be(readTags(tag.payload)[0].payload));
+    expect(paths).toEqual([
+      "Users/dj/Music/Official/DJ Öz - Night Drive (Vocals).wav",
+      "Users/dj/Music/Official/DJ Öz - Night Drive (Bass).flac",
+      "Users/dj/Music/Official/DJ Öz - Night Drive (Drums).mp3",
+    ]);
+  });
+});

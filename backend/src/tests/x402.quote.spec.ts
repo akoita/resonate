@@ -41,6 +41,7 @@ describe("buildStemX402Quote", () => {
     expect(quote.licenseOptions).toEqual([
       {
         key: "personal",
+        terms: expect.any(String),
         price: { currency: "USDC", amount: "0.05" },
         displayPrice: "0.05 USDC",
         breakdown: {
@@ -53,6 +54,7 @@ describe("buildStemX402Quote", () => {
       },
       {
         key: "remix",
+        terms: expect.any(String),
         price: { currency: "USDC", amount: "5" },
         displayPrice: "5 USDC",
         breakdown: {
@@ -65,6 +67,7 @@ describe("buildStemX402Quote", () => {
       },
       {
         key: "commercial",
+        terms: expect.any(String),
         price: { currency: "USDC", amount: "25" },
         displayPrice: "25 USDC",
         breakdown: {
@@ -91,6 +94,43 @@ describe("buildStemX402Quote", () => {
         amountWei: "10000000000000000",
       },
     ]);
+  });
+
+  it("shows the source of the stem and the plain-words terms of every license (#1976)", () => {
+    const base = {
+      stemId: "stem_1",
+      type: "vocals",
+      title: "Hook Vocals",
+      trackTitle: "Midnight Run",
+      artist: "Koita",
+      releaseTitle: "Neon Heat",
+      hasNft: false,
+      tokenId: null,
+      network: "eip155:84532",
+      payTo: "0xPayTo",
+      licensePricing,
+    };
+    const official = buildStemX402Quote({ ...base, source: { source: "official" } });
+    expect(official.source).toEqual({
+      source: "official",
+      label: "Official",
+      description: "Lossless audio uploaded by the artist, aligned with the published mix.",
+      separationModel: null,
+      lossless: true,
+    });
+    expect(official.licenseOptions.map((option) => [option.key, typeof option.terms])).toEqual([
+      ["personal", "string"],
+      ["remix", "string"],
+      ["commercial", "string"],
+    ]);
+    expect(official.licenseOptions[1].terms).toMatch(/remix, mashup or new composition/);
+
+    const separated = buildStemX402Quote({ ...base, source: { source: "separated", separationModel: "demucs-htdemucs-6s" } });
+    expect(separated.source).toEqual(
+      expect.objectContaining({ source: "separated", label: "Separated (AI)", separationModel: "demucs-htdemucs-6s", lossless: false }),
+    );
+    // A caller with no stem row reports an unknown source, never a guessed one.
+    expect(buildStemX402Quote(base).source).toBeNull();
   });
 
   it("falls back to default pricing when explicit pricing is missing", () => {
@@ -147,6 +187,7 @@ describe("buildStemX402Quote", () => {
     });
     expect(quote.licenseOptions[0]).toEqual({
       key: "personal",
+      terms: expect.any(String),
       price: { currency: "USDC", amount: "2" },
       displayPrice: "2 USDC",
       breakdown: {

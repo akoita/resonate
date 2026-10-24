@@ -43,6 +43,10 @@ export type CrateExportEntryDto = {
   licenseType: CrateExportLicenseType;
   /** The name to save the downloaded stem under; the files point at it. */
   fileName: string;
+  /** Stored format of the file the DJ downloads (`audio/mpeg`, or `audio/wav` / `audio/flac` for official stems). */
+  mimeType: string;
+  /** `official` (lossless, uploaded by the artist) or `separated` (AI, MP3). */
+  source: "official" | "separated";
   /** Measured tempo, or null. */
   bpm: number | null;
   /** Key name such as "Am", or null. */

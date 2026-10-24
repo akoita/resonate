@@ -34,6 +34,8 @@ import {
   type X402StemQuote,
 } from "../../lib/x402StemQuote";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
+import { StemSourceBadge } from "../stem/StemSourceBadge";
+import { LICENSE_PLAIN_TERMS, STEM_SOURCE_DESCRIPTIONS, type StemSource } from "../../lib/stemSource";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { PurchaseHandoff } from "./PurchaseHandoff";
 import type { Listing } from "../../lib/contracts";
@@ -88,6 +90,9 @@ interface BuyModalProps {
   listingChainId?: number;
   initialListing?: IndexedListingSnapshot;
   licenseType?: LicenseType;
+  /** Where the stem's audio comes from (#1976); shown next to the license terms. */
+  stemSource?: StemSource | null;
+  separationModel?: string | null;
   tierListings?: TierListings;
   tierPricesUsd?: Partial<Record<LicenseType, number>>;
   isOpen: boolean;
@@ -176,6 +181,8 @@ export function BuyModal({
   listingChainId,
   initialListing,
   licenseType = "personal",
+  stemSource,
+  separationModel,
   tierListings,
   tierPricesUsd,
   isOpen,
@@ -699,6 +706,20 @@ export function BuyModal({
                   +
                 </button>
               </div>
+            </div>
+
+            {/* What the stem is and what the license lets you do, in plain words (#1976) */}
+            <div className="stem-source-terms" data-testid="buy-modal-source-terms">
+              {stemSource && (
+                <p>
+                  <StemSourceBadge source={stemSource} separationModel={separationModel} />{" "}
+                  {STEM_SOURCE_DESCRIPTIONS[stemSource]}
+                </p>
+              )}
+              <p>
+                <strong>{selectedLicense[0].toUpperCase() + selectedLicense.slice(1)} license:</strong>{" "}
+                {LICENSE_PLAIN_TERMS[selectedLicense]}
+              </p>
             </div>
 
             {/* License Terms Preview */}

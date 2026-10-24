@@ -263,6 +263,7 @@ export class PaymentRouterService {
       releaseTitle: stem.track?.release?.title ?? null,
       hasNft: !!stem.nftMint,
       tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+      stemSource: stem,
       licenseKey: input.licenseType,
       amountUsd,
       paymentAsset: {

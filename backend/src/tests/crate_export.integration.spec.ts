@@ -51,7 +51,13 @@ const features = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
-type SeedStem = { type: string; current?: boolean; features?: Record<string, unknown> };
+type SeedStem = {
+  type: string;
+  current?: boolean;
+  features?: Record<string, unknown>;
+  mimeType?: string;
+  source?: "official" | "separated";
+};
 type SeedTrack = { key: string; artist?: string; stems: SeedStem[] };
 
 const TRACKS: SeedTrack[] = [
@@ -70,6 +76,16 @@ const TRACKS: SeedTrack[] = [
   { key: "tC", stems: [{ type: "original" }, { type: "vocals" }] },
   { key: "tD", stems: [{ type: "original" }, { type: "vocals" }, { type: "bass", current: false }] },
   { key: "tE", stems: [{ type: "original" }, { type: "drums" }, { type: "bass" }] },
+  // An official lossless stem next to a separated one (#1976).
+  {
+    key: "tF",
+    stems: [
+      { type: "original" },
+      { type: "vocals", mimeType: "audio/wav", source: "official" },
+      { type: "bass", mimeType: "audio/flac", source: "official" },
+      { type: "drums", mimeType: "audio/mpeg", source: "separated" },
+    ],
+  },
 ];
 
 /** Purchases: [buyer, track, stem type, license]. */
@@ -88,6 +104,10 @@ const PURCHASES: Array<[string, string, string, string]> = [
   // One stem with a standard license, one without.
   [DJ_WALLET, "tE", "drums", "personal"],
   [DJ_WALLET, "tE", "bass", "broadcast"],
+  // Official stems bought under a standard license.
+  [DJ_WALLET, "tF", "vocals", "commercial"],
+  [DJ_WALLET, "tF", "bass", "remix"],
+  [DJ_WALLET, "tF", "drums", "personal"],
 ];
 
 async function seedCatalog() {
@@ -121,6 +141,8 @@ async function seedCatalog() {
           trackId: id(track.key),
           type: stem.type,
           uri: `local://${track.key}-${stem.type}.mp3`,
+          mimeType: stem.mimeType,
+          source: stem.source,
           isCurrent: stem.current ?? true,
           audioFeatures: (stem.features ?? undefined) as never,
         },
@@ -268,6 +290,8 @@ describe("CrateExportService (integration)", () => {
           artistName: "Credited / Name",
           licenseType: "commercial",
           fileName: "Credited Name - Track A & Co (Vocals).mp3",
+          mimeType: "audio/mpeg",
+          source: "separated",
           // The mix's measured features win over the stem's own: every stem
           // of a track shares the mix's grid.
           bpm: 126,
@@ -285,6 +309,8 @@ describe("CrateExportService (integration)", () => {
           artistName: "Credited / Name",
           licenseType: "remix",
           fileName: "Credited Name - Track A & Co (Drums).mp3",
+          mimeType: "audio/mpeg",
+          source: "separated",
           // No features of its own: the track's measured features.
           bpm: 126,
           key: "Am",
@@ -307,7 +333,26 @@ describe("CrateExportService (integration)", () => {
         firstBeatSec: null,
         hasCue: false,
         fileName: "Export Artist - Track tE (Drums).mp3",
+        mimeType: "audio/mpeg",
+        source: "separated",
       });
+    });
+
+    it("names an official stem with its lossless extension and reports its format and source (#1976)", async () => {
+      const crateId = await makeCrate(DJ, ["tF"]);
+      const { entries } = await service.getManifest(DJ, crateId);
+      expect(entries.map((entry) => [entry.stemType, entry.fileName, entry.mimeType, entry.source])).toEqual([
+        ["vocals", "Export Artist - Track tF (Vocals).wav", "audio/wav", "official"],
+        ["drums", "Export Artist - Track tF (Drums).mp3", "audio/mpeg", "separated"],
+        ["bass", "Export Artist - Track tF (Bass).flac", "audio/flac", "official"],
+      ]);
+      const file = await service.exportFile(DJ, crateId, { format: "rekordbox", folder: "/Music" });
+      const xml = file.body.toString("utf8");
+      expect(xml).toContain('Kind="WAV File"');
+      expect(xml).toContain('Kind="FLAC File"');
+      expect(xml).toContain('Kind="MP3 File"');
+      expect(xml).toContain("Track%20tF%20%28Vocals%29.wav");
+      expect(xml).toContain("Track%20tF%20%28Bass%29.flac");
     });
 
     it("explains the limits in notes, including the Serato limit and a left-out stem", async () => {

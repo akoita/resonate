@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { calculatePrice, PricingInput } from "../../pricing/pricing";
+import { resolveStemSource, type StemSourceValue } from "../shared/stem-source";
 
 export interface StemPricingDto {
   basePlayPriceUsd: number;
@@ -118,10 +119,18 @@ export class StemPricingService {
     const pricing = await prisma.stemPricing.findUnique({
       where: { stemId },
     });
+    // Official and separated stems are priced separately (#1976): the response
+    // says which source this price belongs to.
+    const stemRow = await prisma.stem.findUnique({
+      where: { id: stemId },
+      select: { type: true, source: true },
+    });
+    const source = stemRow ? resolveStemSource(stemRow) : null;
 
     if (!pricing) {
       return {
         stemId,
+        source,
         basePlayPriceUsd: 0.05,
         remixLicenseUsd: 5.0,
         commercialLicenseUsd: 25.0,
@@ -138,6 +147,7 @@ export class StemPricingService {
 
     return {
       ...pricing,
+      source,
       computed: this.computePrices({
         basePlayPriceUsd: pricing.basePlayPriceUsd,
         remixLicenseUsd: pricing.remixLicenseUsd,
@@ -159,6 +169,11 @@ export class StemPricingService {
     });
 
     const pricingMap = new Map(pricingRows.map((p) => [p.stemId, p]));
+    const stemRows = await prisma.stem.findMany({
+      where: { id: { in: stemIds } },
+      select: { id: true, type: true, source: true },
+    });
+    const sourceByStem = new Map(stemRows.map((row) => [row.id, resolveStemSource(row)]));
     const result: Record<string, unknown> = {};
 
     for (const stemId of stemIds) {
@@ -166,6 +181,7 @@ export class StemPricingService {
       if (!pricing) {
         result[stemId] = {
           stemId,
+          source: sourceByStem.get(stemId) ?? null,
           basePlayPriceUsd: 0.05,
           remixLicenseUsd: 5.0,
           commercialLicenseUsd: 25.0,
@@ -181,6 +197,7 @@ export class StemPricingService {
       } else {
         result[stemId] = {
           ...pricing,
+          source: sourceByStem.get(stemId) ?? null,
           computed: this.computePrices({
             basePlayPriceUsd: pricing.basePlayPriceUsd,
             remixLicenseUsd: pricing.remixLicenseUsd,
@@ -224,7 +241,12 @@ export class StemPricingService {
   /**
    * Batch-update pricing for all stems of a release
    */
-  async batchUpdateByRelease(releaseId: string, userId: string, dto: StemPricingDto) {
+  async batchUpdateByRelease(
+    releaseId: string,
+    userId: string,
+    dto: StemPricingDto,
+    source?: StemSourceValue,
+  ) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
       include: {
@@ -232,7 +254,14 @@ export class StemPricingService {
         tracks: {
           include: {
             stems: {
-              where: { type: { not: "ORIGINAL" }, isCurrent: true },
+              // With a source, only that source's stems are priced (#1976):
+              // official and separated stems carry separate prices, and a
+              // source never matches the full-mix rows.
+              where: {
+                type: { not: "ORIGINAL" },
+                isCurrent: true,
+                ...(source ? { source } : {}),
+              },
             },
           },
         },

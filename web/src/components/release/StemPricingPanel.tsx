@@ -5,6 +5,8 @@ import { PricingTemplates, PricingTemplate } from "./PricingTemplates";
 import { PayoutSplitPreview } from "./PayoutSplitPreview";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
+import { StemSourceBadge } from "../stem/StemSourceBadge";
+import { resolveStemSource } from "../../lib/stemSource";
 import "../../styles/stem-pricing.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -12,6 +14,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 interface StemForPricing {
   id: string;
   type: string;
+  /** Official and separated stems are priced separately (#1976). */
+  source?: string | null;
+  separationModel?: string | null;
 }
 
 interface TrackWithStems {
@@ -326,6 +331,10 @@ export function StemPricingPanel({ releaseId, tracks }: StemPricingPanelProps) {
                             <span>
                               {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
                             </span>
+                            <StemSourceBadge
+                              source={resolveStemSource(stem)}
+                              separationModel={stem.separationModel}
+                            />
                           </div>
 
                           <div className="pricing-control">

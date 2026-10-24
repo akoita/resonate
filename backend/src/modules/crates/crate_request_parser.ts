@@ -457,6 +457,12 @@ const AI_OK = new RegExp(
   "gi",
 );
 
+/** "official stems", "lossless stems", "WAV stems": the artist's own parts (#1976). */
+const OFFICIAL_STEMS = new RegExp(
+  String.raw`\b(?:(?:official|lossless|artist[\s-]+(?:made|supplied|uploaded))\s+(?:(?:wav|flac)\s+)?(?:stems?|parts?)|(?:wav|flac)\s+stems?|stems?\s+(?:from|by)\s+the\s+artist)\b`,
+  "gi",
+);
+
 /** Consumes every match of `pattern`; true when at least one was found. */
 function consumeFlag(space: Workspace, pattern: RegExp): boolean {
   let found = false;
@@ -696,6 +702,8 @@ export function parseCrateRequestText(text: string): CrateParseResult {
   // "no AI" asks for verified humans and never lets fully AI recordings in.
   if (consumeFlag(space, HUMAN_ONLY)) filters.verifiedHumanOnly = true;
   if (consumeFlag(space, AI_OK)) filters.allowFullyAi = true;
+
+  if (consumeFlag(space, OFFICIAL_STEMS)) filters.stemSource = "official";
 
   filters.licenseType = parseLicense(space);
 

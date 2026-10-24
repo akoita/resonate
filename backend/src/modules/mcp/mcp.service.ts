@@ -26,6 +26,13 @@ import {
 import { McpStemService, McpToolError } from "./mcp-stem.service";
 
 const licenseTypeSchema = z.enum(["personal", "remix", "commercial"]);
+const stemSourceSchema = z.object({
+  source: z.enum(["separated", "official"]),
+  label: z.string(),
+  description: z.string(),
+  separationModel: z.string().nullable(),
+  lossless: z.boolean(),
+});
 const availableActionSchema = z.object({
   action: z.string(),
   description: z.string(),
@@ -287,6 +294,7 @@ export class McpService implements OnModuleDestroy {
             trackTitle: z.string().nullable(),
             releaseTitle: z.string().nullable(),
             usage: z.string(),
+            terms: z.string().nullable(),
             attribution: z.string(),
             constraints: z.array(z.string()),
           }),
@@ -310,6 +318,7 @@ export class McpService implements OnModuleDestroy {
             artist: z.string().nullable(),
             releaseTitle: z.string().nullable(),
             mimeType: z.string(),
+            source: stemSourceSchema.nullable(),
           }),
         },
         annotations: {

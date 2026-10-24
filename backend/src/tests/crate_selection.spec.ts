@@ -486,3 +486,40 @@ describe("computeCoverage", () => {
     });
   });
 });
+
+describe("stem source filter (#1976)", () => {
+  const bySource = {
+    official: ["vocals", "bass"],
+    separated: ["vocals", "drums", "bass"],
+  };
+
+  it("keeps a track with a stem of the requested source and fails one without", () => {
+    const both = facts({ stemTypesBySource: bySource });
+    const separatedOnly = facts({ stemTypesBySource: { official: [], separated: ["vocals"] } });
+    expect(failedFilters(both, filters({ stemSource: "official" }))).toEqual([]);
+    expect(failedFilters(separatedOnly, filters({ stemSource: "official" }))).toEqual(["stemSource"]);
+    expect(failedFilters(separatedOnly, filters({ stemSource: "separated" }))).toEqual([]);
+  });
+
+  it("looks up the required stem types among stems of that source", () => {
+    const track = facts({ stemTypesBySource: bySource });
+    expect(failedFilters(track, filters({ stemSource: "official", requiredStems: ["vocals", "bass"] }))).toEqual([]);
+    // drums exist only as a separated stem.
+    expect(failedFilters(track, filters({ stemSource: "official", requiredStems: ["drums"] }))).toEqual([
+      "requiredStems",
+    ]);
+    expect(failedFilters(track, filters({ stemSource: "separated", requiredStems: ["drums"] }))).toEqual([]);
+    expect(failedFilters(track, filters({ requiredStems: ["drums"] }))).toEqual([]);
+  });
+
+  it("counts facts without sources as separated", () => {
+    const legacy = facts();
+    expect(failedFilters(legacy, filters({ stemSource: "separated" }))).toEqual([]);
+    expect(failedFilters(legacy, filters({ stemSource: "official" }))).toEqual(["stemSource"]);
+  });
+
+  it("is an active filter key only when set", () => {
+    expect(activeCrateFilterKeys(filters())).not.toContain("stemSource");
+    expect(activeCrateFilterKeys(filters({ stemSource: "official" }))).toContain("stemSource");
+  });
+});

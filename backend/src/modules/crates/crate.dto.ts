@@ -143,6 +143,8 @@ export class AddCrateItemDto {
 /** A current non-original, non-master stem of a crate line. */
 export type CrateItemStemDto = {
   type: string;
+  /** Where the stem's audio comes from (#1976): `official` (lossless) or `separated` (AI). */
+  source: "official" | "separated";
   /** Rounded mean of the stem's quality ratings; null when unrated. */
   qualityScore: number | null;
 };

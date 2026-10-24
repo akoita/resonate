@@ -9,6 +9,7 @@ import { prisma } from "../../db/prisma";
 import { evaluatePurchaseDeliveries } from "../purchase_consent/purchase_consent_delivery";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import { CrateEntitlementsService } from "./crate-entitlements";
+import { resolveStemSource } from "../shared/stem-source";
 import {
   assignStemFileNames,
   bestExportLicense,
@@ -182,7 +183,7 @@ export class CrateExportService {
         },
         stems: {
           where: { isCurrent: true },
-          select: { id: true, type: true, audioFeatures: true },
+          select: { id: true, type: true, audioFeatures: true, mimeType: true, source: true },
         },
       },
     });
@@ -280,6 +281,8 @@ export class CrateExportService {
           trackId: track.id,
           stemId: stem.id,
           stemType: stem.type.toLowerCase(),
+          mimeType: stem.mimeType ?? "audio/mpeg",
+          source: resolveStemSource(stem),
           title: track.title,
           artistName,
           licenseType,
@@ -318,6 +321,8 @@ function toEntryDto(entry: CrateExportEntry): CrateExportEntryDto {
     artistName: entry.artistName,
     licenseType: entry.licenseType,
     fileName: entry.fileName,
+    mimeType: entry.mimeType ?? "audio/mpeg",
+    source: entry.source ?? "separated",
     bpm: entry.bpm,
     key: entry.key,
     camelot: entry.camelot,

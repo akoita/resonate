@@ -695,3 +695,14 @@
     justify-content: center;
   }
 }
+
+/* Official stems upload (#1976) */
+.official-stems-panel { margin: 24px 0; padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); }
+.official-stems-panel h3 { margin: 0 0 8px; font-size: 1.1rem; }
+.official-stems-panel__intro { margin: 0 0 12px; font-size: 0.85rem; line-height: 1.5; color: #d4d4d8; }
+.official-stems-panel__track { padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); }
+.official-stems-panel__track-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.official-stems-panel__form { display: grid; gap: 8px; margin-top: 10px; }
+.official-stems-panel__form label { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; font-size: 0.85rem; }
+.official-stems-panel__hint { font-size: 0.8rem; color: #a1a1aa; margin: 0; }
+.official-stems-panel__error { color: #fca5a5; font-size: 0.85rem; margin: 0; }

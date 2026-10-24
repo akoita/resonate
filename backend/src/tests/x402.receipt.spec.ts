@@ -15,6 +15,7 @@ describe('buildStemX402Receipt', () => {
       releaseTitle: 'Neon Heat',
       hasNft: true,
       tokenId: '42',
+      stemSource: { source: 'official' },
       amountUsd: 0.75,
       network: 'eip155:84532',
       payTo: '0xPayTo',
@@ -42,6 +43,13 @@ describe('buildStemX402Receipt', () => {
       quoteUrl: '/api/stems/stem_1/x402/info',
       mimeType: 'audio/mpeg',
       contentLength: 2048,
+      source: {
+        source: 'official',
+        label: 'Official',
+        description: 'Lossless audio uploaded by the artist, aligned with the published mix.',
+        separationModel: null,
+        lossless: true,
+      },
     });
     expect(receipt.payment).toEqual({
       protocol: 'x402',
@@ -68,6 +76,7 @@ describe('buildStemX402Receipt', () => {
     expect(receipt.license).toEqual({
       key: 'personal',
       name: 'Personal',
+      terms: expect.stringContaining('own listening'),
       currency: 'USDC',
       amount: '0.75',
       amountUsd: '0.75',

@@ -20,6 +20,14 @@ export const CRATE_STEM_TYPES = [
 ] as const;
 export type CrateStemType = (typeof CRATE_STEM_TYPES)[number];
 
+/**
+ * Stem sources a DJ can require (#1976, ADR-TE-7): `official` stems are the
+ * artist's own lossless parts, `separated` stems come from the AI separation of
+ * the mix. Same vocabulary as `Stem.source`.
+ */
+export const CRATE_STEM_SOURCES = ["official", "separated"] as const;
+export type CrateStemSource = (typeof CRATE_STEM_SOURCES)[number];
+
 /** License tiers a crate line can be filtered on (Prisma `LicenseType`). */
 export const CRATE_LICENSE_TYPES = [
   "personal",
@@ -62,6 +70,12 @@ export type CrateFilters = {
   energy: CrateNumberRange | null;
   /** Stem types every line must have as a current stem. */
   requiredStems: CrateStemType[];
+  /**
+   * Only stems of this source (#1976): `official` (lossless, from the artist)
+   * or `separated` (AI). `requiredStems` are then looked up among stems of that
+   * source. Null for any source.
+   */
+  stemSource: CrateStemSource | null;
   /** License tier every line must offer, or null for any. */
   licenseType: CrateLicenseType | null;
   /** Maximum indicative total in USD for the whole crate, or null. */
@@ -86,6 +100,7 @@ export const CRATE_FILTER_KEYS = [
   "keys",
   "energy",
   "requiredStems",
+  "stemSource",
   "licenseType",
   "maxPerItemUsd",
   "maxTotalUsd",
@@ -126,6 +141,12 @@ export type CrateCandidateFacts = {
   energy: number | null;
   /** Current stem types of the track (lower-case, without `original`). */
   stemTypes: string[];
+  /**
+   * Current stem types per source (#1976), lower-case, without `original`.
+   * Absent on facts built before sources existed: every stem then counts as
+   * separated.
+   */
+  stemTypesBySource?: Partial<Record<CrateStemSource, string[]>>;
   /** License tiers the track offers through an active listing. */
   listedLicenseTypes: string[];
   /**

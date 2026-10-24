@@ -1158,6 +1158,7 @@ describe('X402Controller', () => {
     const expectedLicenseOptions = [
       {
         key: 'personal',
+        terms: expect.any(String),
         price: { currency: 'USDC', amount: '0.05' },
         displayPrice: '0.05 USDC',
         breakdown: {
@@ -1170,6 +1171,7 @@ describe('X402Controller', () => {
       },
       {
         key: 'remix',
+        terms: expect.any(String),
         price: { currency: 'USDC', amount: '5' },
         displayPrice: '5 USDC',
         breakdown: {
@@ -1182,6 +1184,7 @@ describe('X402Controller', () => {
       },
       {
         key: 'commercial',
+        terms: expect.any(String),
         price: { currency: 'USDC', amount: '25' },
         displayPrice: '25 USDC',
         breakdown: {
@@ -1204,6 +1207,7 @@ describe('X402Controller', () => {
       trackId: 'track_1',
       trackTitle: 'Midnight Run',
       stemType: 'vocals',
+      source: expect.objectContaining({ source: 'separated', label: 'Separated (AI)' }),
       stemTypes: ['drums', 'vocals'],
       type: 'vocals',
       hasNft: true,
@@ -1356,6 +1360,7 @@ describe('X402Controller', () => {
     }));
     expect(result.licenseOptions[0]).toEqual(expect.objectContaining({
       key: 'personal',
+      terms: expect.any(String),
       price: { currency: 'USDC', amount: '2' },
       breakdown: expect.objectContaining({
         feeBps: 1000,

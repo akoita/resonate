@@ -65,10 +65,27 @@ describe('StemPricingController', () => {
         'rel-1',
         'user-1',
         expect.objectContaining({ personalUsd: 1.5, remixUsd: 3.0 }),
+        undefined,
       );
       // releaseId should NOT be in the dto
       const dto = mockPricingService.batchUpdateByRelease.mock.calls[0][2];
       expect(dto.releaseId).toBeUndefined();
+    });
+
+    it('passes the source apart from the dto so official and separated stems price separately (#1976)', () => {
+      const ctrl = makeController();
+      ctrl.batchUpdate(
+        { releaseId: 'rel-1', source: 'official', basePlayPriceUsd: 2 } as any,
+        req as any,
+      );
+      expect(mockPricingService.batchUpdateByRelease).toHaveBeenCalledWith(
+        'rel-1',
+        'user-1',
+        expect.objectContaining({ basePlayPriceUsd: 2 }),
+        'official',
+      );
+      const dto = mockPricingService.batchUpdateByRelease.mock.calls[0][2];
+      expect(dto.source).toBeUndefined();
     });
   });
 });

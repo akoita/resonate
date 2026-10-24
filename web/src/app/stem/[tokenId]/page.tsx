@@ -29,6 +29,7 @@ import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import { findPaymentAssetForToken, ZERO_PAYMENT_TOKEN } from "../../../lib/payments";
 import { formatListingPrice } from "../../../lib/listingPricing";
 import { shortAddress, stemTypeTheme } from "../../../lib/stemPageTheme";
+import { isStemSource } from "../../../lib/stemSource";
 import { getChainExplorerAddressUrl } from "../../../lib/explorer";
 import {
     buildTierRows,
@@ -47,6 +48,10 @@ type CatalogMeta = {
         release_id?: string;
         remixable?: boolean;
         generation?: unknown;
+        /** `official` or `separated`; absent on full-mix rows (#1976). */
+        stem_source?: string;
+        separation_model?: string | null;
+        lossless?: boolean;
     };
 };
 
@@ -409,6 +414,8 @@ export default function StemDetailPage() {
                     creatorAddress: stemData.creator,
                     isAiGenerated:
                         !!meta?.properties?.generation || !!primaryListing?.stem?.isAiGenerated,
+                    source: isStemSource(meta?.properties?.stem_source) ? meta?.properties?.stem_source : null,
+                    separationModel: meta?.properties?.separation_model ?? null,
                     remixable: stemData.remixable ?? null,
                     listingExpiresAt: primaryListing?.expiresAt ?? null,
                 }}
@@ -674,6 +681,8 @@ export default function StemDetailPage() {
                     stemId={catalogStemId ?? undefined}
                     listingChainId={buyListing.chainId}
                     licenseType={buyListing.licenseType}
+                    stemSource={isStemSource(meta?.properties?.stem_source) ? meta?.properties?.stem_source : null}
+                    separationModel={meta?.properties?.separation_model ?? null}
                     tierListings={tierListingIds}
                     tierPricesUsd={pricing ? {
                         personal: pricing.basePlayPriceUsd ?? undefined,

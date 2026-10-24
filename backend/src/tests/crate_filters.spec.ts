@@ -26,6 +26,7 @@ describe("defaultCrateFilters", () => {
       includeCamelotNeighbors: true,
       energy: null,
       requiredStems: [],
+      stemSource: null,
       licenseType: null,
       maxTotalUsd: null,
       maxPerItemUsd: null,
@@ -52,6 +53,7 @@ describe("sanitizeCrateFilters", () => {
       includeCamelotNeighbors: false,
       energy: { min: 0.65, max: 1 },
       requiredStems: ["vocals", "drums"],
+      stemSource: null,
       licenseType: "remix",
       maxTotalUsd: 20,
       maxPerItemUsd: 5,
@@ -359,5 +361,21 @@ describe("vocabulary helpers", () => {
       expect(crateMoodMatches(["zen"], ["Dark"])).toBe(false);
       expect(crateMoodMatches([], ["Dark"])).toBe(false);
     });
+  });
+});
+
+describe("stem source (#1976)", () => {
+  it("accepts official and separated, case-insensitively, and defaults to any source", () => {
+    expect(defaultCrateFilters().stemSource).toBeNull();
+    expect(sanitizeCrateFilters({ stemSource: "official" }).filters.stemSource).toBe("official");
+    expect(sanitizeCrateFilters({ stemSource: " Separated " }).filters.stemSource).toBe("separated");
+    expect(sanitizeCrateFilters({ stemSource: null })).toEqual({ filters: defaultCrateFilters(), errors: [] });
+  });
+
+  it("drops anything else with a fixed code and never echoes it", () => {
+    const result = sanitizeCrateFilters({ stemSource: "ai-made" });
+    expect(result.filters.stemSource).toBeNull();
+    expect(result.errors).toEqual(["invalid_stem_source"]);
+    expect(sanitizeCrateFilters({ stemSource: 3 }).errors).toEqual(["invalid_stem_source"]);
   });
 });

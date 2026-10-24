@@ -35,6 +35,7 @@ import type {
 import { RightsRouteReassessmentService } from "../rights/rights-route-reassessment.service";
 import { TrustedSourceService } from "../rights/trusted-source.service";
 import { toAiDisclosureRecord } from "../catalog/ai-disclosure.policy";
+import { isStemSource, stemSourceFields, type StemSourceValue } from "../shared/stem-source";
 import {
   CastJuryVoteDto,
   CreateRightsRouteReassessmentDto,
@@ -567,6 +568,7 @@ export class MetadataController {
           id: stem.id,
           title: stem.title || stem.type,
           type: stem.type,
+          ...stemSourceFields(stem),
           artist: release?.primaryArtist,
           // Source catalog track id: the library Stems tab needs it to
           // drive the eligibility-backed Remix CTA on owned stems (#1175).
@@ -658,8 +660,12 @@ export class MetadataController {
     @Query("excludeSeller") excludeSeller?: string,
     @Query("limit") limitStr?: string,
     @Query("offset") offsetStr?: string,
-    @Query("stemId") stemId?: string
+    @Query("stemId") stemId?: string,
+    @Query("source") source?: string,
   ) {
+    if (source !== undefined && source !== "" && !isStemSource(source)) {
+      throw new BadRequestException("source must be official or separated");
+    }
     const chainId = chainIdStr ? parseInt(chainIdStr) : undefined;
     const limit = limitStr ? parseInt(limitStr) : 20;
     const offset = offsetStr ? parseInt(offsetStr) : 0;
@@ -677,6 +683,7 @@ export class MetadataController {
       minPrice,
       maxPrice,
       excludeSellerAddress: excludeSeller?.toLowerCase(),
+      source: source ? (source as StemSourceValue) : undefined,
       limit,
       offset,
     });
@@ -754,6 +761,7 @@ export class MetadataController {
               id: stem.id,
               title: stem.title || `${stem.type.charAt(0).toUpperCase() + stem.type.slice(1)} Stem`,
               type: stem.type,
+              ...stemSourceFields(stem),
               track: track?.title || "Unknown Track",
               artist: release?.primaryArtist || "Unknown Artist",
               trackId: track?.id,
@@ -884,6 +892,7 @@ export class MetadataController {
           id: stem.id,
           title: stem.title,
           type: stem.type,
+          ...stemSourceFields(stem),
           uri: this.toRelativeUrl(stem.uri, stem.id),
           track: track?.title,
           artist: release?.primaryArtist,
@@ -997,6 +1006,7 @@ export class MetadataController {
           id: stem.id,
           title: stem.title || `${stem.type.charAt(0).toUpperCase() + stem.type.slice(1)} Stem`,
           type: stem.type,
+          ...stemSourceFields(stem),
           track: track?.title || "Unknown Track",
           artist: release?.primaryArtist || "Unknown Artist",
           trackId: track?.id,
@@ -1920,6 +1930,8 @@ export class MetadataController {
       stem_id: stem?.id,
       track_id: track?.id,
       release_id: release?.id,
+      // Where the audio comes from and the format a buyer receives (#1976).
+      ...(stem ? this.sourceProperties(stem) : {}),
     };
 
     // Add generation provenance for AI-created stems
@@ -1942,7 +1954,7 @@ export class MetadataController {
       name: stem?.title || track?.title || (stem?.type ? `${stem.type.charAt(0).toUpperCase() + stem.type.slice(1)} Stem` : `Stem #${tokenId}`),
       description: this.buildDescription(stem, track, release),
       image: this.toPublicUrl(stem?.artworkUrl || release?.artworkUrl) || `${process.env.FRONTEND_URL || "https://resonate.audio"}/default-stem-cover.png`,
-      animation_url: this.toPublicUrl(stem?.uri, stem?.id),
+      animation_url: this.animationUrl(stem),
       external_url: `${process.env.FRONTEND_URL || "https://resonate.audio"}/stem/${tokenId}`,
       attributes: this.buildAttributes(nftData, stem, track, release),
       properties,
@@ -1975,7 +1987,7 @@ export class MetadataController {
       name: stem.title || track?.title || `${stem.type.charAt(0).toUpperCase() + stem.type.slice(1)} Stem`,
       description: this.buildDescription(stem, track, release),
       image: this.toPublicUrl(stem.artworkUrl || release?.artworkUrl) || `${process.env.FRONTEND_URL || "https://resonate.audio"}/default-stem-cover.png`,
-      animation_url: this.toPublicUrl(stem.uri, stem.id),
+      animation_url: this.animationUrl(stem),
       external_url: `${process.env.FRONTEND_URL || "https://resonate.audio"}/stem/${stem.id}`,
       attributes: this.buildAttributes(nftMint, stem, track, release),
       properties: {
@@ -1983,6 +1995,7 @@ export class MetadataController {
         type: stem.type,
         trackId: track?.id,
         releaseId: release?.id,
+        ...this.sourceProperties(stem),
       }
     };
   }
@@ -2028,6 +2041,31 @@ export class MetadataController {
    * Convert a DB-stored URI to an absolute public URL for NFT metadata.
    * On-chain consumers (OpenSea, wallets) need full URLs.
    */
+  /** `stem_source`, `stem_source_label`, `separation_model`, `mime_type`, `lossless` (#1976). */
+  private sourceProperties(stem: any): Record<string, unknown> {
+    const fields = stemSourceFields(stem);
+    if (!fields.source) return {};
+    return {
+      stem_source: fields.source,
+      stem_source_label: fields.sourceLabel,
+      separation_model: fields.separationModel,
+      lossless: fields.lossless,
+      mime_type: fields.mimeType,
+    };
+  }
+
+  /**
+   * The audio URL in token metadata. An official stem is a lossless file buyers
+   * pay for, so its metadata points at the public preview (an MP3 transcode),
+   * never at the stored file (#1976).
+   */
+  private animationUrl(stem: any): string | undefined {
+    if (stem?.source === "official" && stem?.id) {
+      return `${process.env.BACKEND_URL || "http://localhost:3000"}/catalog/stems/${stem.id}/preview`;
+    }
+    return this.toPublicUrl(stem?.uri, stem?.id);
+  }
+
   private toPublicUrl(uri?: string | null, stemId?: string): string | undefined {
     const relative = this.toRelativeUrl(uri, stemId);
     if (!relative) return undefined;
@@ -2096,6 +2134,11 @@ export class MetadataController {
 
     if (stem?.type) {
       attributes.push({ trait_type: "Type", value: stem.type });
+    }
+
+    const sourceFields = stem ? stemSourceFields(stem) : null;
+    if (sourceFields?.sourceLabel) {
+      attributes.push({ trait_type: "Source", value: sourceFields.sourceLabel });
     }
 
     if (release?.primaryArtist) {

@@ -48,6 +48,8 @@ import {
   toAiDisclosureRecord,
   type AiDisclosureInput,
 } from "./ai-disclosure.policy";
+import { DEFAULT_SEPARATION_MODEL } from "../shared/stem-source";
+import { lossyPreviewFor } from "../shared/stem-preview";
 
 const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "LIMITED_MONITORING",
@@ -55,6 +57,21 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "TRUSTED_FAST_PATH",
 ];
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
+
+/**
+ * The `source` columns of a stem the ingestion worker produced (#1976): a
+ * separated stem names its model; the full-mix rows (`original`, `master`) have
+ * no source. Official stems are written by OfficialStemsService, never here.
+ */
+function workerStemSourceColumns(stemType: string, modelVersion: string | null | undefined) {
+  if (SOURCE_STEM_TYPES.has(String(stemType || "").toLowerCase())) {
+    return { source: null, separationModel: null };
+  }
+  return {
+    source: "separated" as const,
+    separationModel: modelVersion?.trim() || DEFAULT_SEPARATION_MODEL,
+  };
+}
 // Mirrors AUTHORIZED_STATUSES in ../shows/shows.service.ts; keep local to avoid importing service internals.
 const PLEDGE_OPEN_ARTIST_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "artist_authorized",
@@ -811,6 +828,7 @@ export class CatalogService implements OnModuleInit {
             isEncrypted: stem.isEncrypted ?? false,
             encryptionMetadata: stem.encryptionMetadata,
             storageProvider: stem.storageProvider ?? "local",
+            ...workerStemSourceColumns(stem.type, event.modelVersion),
             audioRevision,
             isCurrent: true,
           },
@@ -825,6 +843,7 @@ export class CatalogService implements OnModuleInit {
             isEncrypted: stem.isEncrypted ?? false,
             encryptionMetadata: stem.encryptionMetadata,
             storageProvider: stem.storageProvider ?? "local",
+            ...workerStemSourceColumns(stem.type, event.modelVersion),
             audioRevision,
             isCurrent: true,
           },
@@ -1159,6 +1178,9 @@ export class CatalogService implements OnModuleInit {
                   trackId: trackData.id,
                   type: { not: "original" },
                   id: { notIn: newStemIds },
+                  // Official stems (#1976) are the artist's uploads, not leftovers
+                  // of a crashed separation run.
+                  OR: [{ source: null }, { source: "separated" }],
                 },
               });
               if (deletedStale.count > 0) {
@@ -1183,6 +1205,7 @@ export class CatalogService implements OnModuleInit {
                     isEncrypted: stem.isEncrypted ?? false,
                     encryptionMetadata: stem.encryptionMetadata,
                     storageProvider: stem.storageProvider ?? "local",
+                    ...workerStemSourceColumns(stem.type, event.modelVersion),
                     isCurrent: true,
                   },
                   update: {
@@ -1196,6 +1219,7 @@ export class CatalogService implements OnModuleInit {
                     isEncrypted: stem.isEncrypted ?? false,
                     encryptionMetadata: stem.encryptionMetadata,
                     storageProvider: stem.storageProvider ?? "local",
+                    ...workerStemSourceColumns(stem.type, event.modelVersion),
                     isCurrent: true,
                   },
                 });
@@ -3392,6 +3416,7 @@ export class CatalogService implements OnModuleInit {
         mimeType: true,
         uri: true,
         storageProvider: true,
+        source: true,
         track: {
           select: {
             rightsRoute: true,
@@ -3417,6 +3442,7 @@ export class CatalogService implements OnModuleInit {
           mimeType: true,
           uri: true,
           storageProvider: true,
+          source: true,
           track: {
             select: {
               rightsRoute: true,
@@ -3433,6 +3459,11 @@ export class CatalogService implements OnModuleInit {
     }
 
     if (!stem) return null;
+
+    // #1976: an official stem is a lossless file buyers pay for. This route is
+    // unauthenticated, so it never serves one; buyers download through
+    // `POST /encryption/download`, and internal callers pass `includeRestricted`.
+    if (!options?.includeRestricted && stem.source === "official") return null;
 
     // Replaced and pending stems are retained for audit and existing entitlements,
     // but the unauthenticated blob route must only serve the active revision.
@@ -3540,11 +3571,13 @@ export class CatalogService implements OnModuleInit {
     const stem = await prisma.stem.findUnique({
       where: { id: stemId },
       select: {
+        id: true,
         isCurrent: true,
         uri: true,
         encryptionMetadata: true,
         data: true,
         mimeType: true,
+        source: true,
         track: {
           select: {
             rightsRoute: true,
@@ -3572,6 +3605,19 @@ export class CatalogService implements OnModuleInit {
 
     if (!stem.uri && !stem.data) throw new BadRequestException("Stem has no source URI or data");
 
+    const load = () => this.loadStemPreviewAudio(stem);
+    // #1976: an official stem is a lossless file buyers pay for; the public route
+    // sends only a lossy MP3 transcode of it, bounded and cached (stem-preview.ts).
+    if (stem.source === "official") return lossyPreviewFor(stem.id, load);
+    return load();
+  }
+
+  private async loadStemPreviewAudio(stem: {
+    uri: string | null;
+    encryptionMetadata: string | null;
+    data: Uint8Array | Buffer | null;
+    mimeType: string | null;
+  }): Promise<{ data: Buffer; mimeType: string }> {
     // Handle encrypted content from IPFS/Lighthouse
     // We prioritize this over stem.data because stem.data might contain the encrypted blob
     if (stem.encryptionMetadata) {
@@ -3596,7 +3642,7 @@ export class CatalogService implements OnModuleInit {
     }
 
     if (stem.data) {
-      return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
+      return { data: Buffer.isBuffer(stem.data) ? stem.data : Buffer.from(stem.data), mimeType: stem.mimeType || "audio/mpeg" };
     }
 
     // Unencrypted external content
@@ -3607,6 +3653,11 @@ export class CatalogService implements OnModuleInit {
 
   private clearCache() {
     this.searchCache.clear();
+  }
+
+  /** Drops cached search results after a change made outside this service (#1976). */
+  invalidateCache() {
+    this.clearCache();
   }
 
   private parseRightsRoute(value?: string | null): UploadRightsRoute | null {

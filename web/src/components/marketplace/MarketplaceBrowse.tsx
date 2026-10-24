@@ -20,6 +20,8 @@ import { ExpiryBadge } from "./ExpiryBadge";
 import { AddToCrateControl } from "./AddToCrateControl";
 import { BuyModal } from "./BuyModal";
 import type { LicenseType } from "./LicenseTypeSelector";
+import { StemSourceBadge } from "../stem/StemSourceBadge";
+import { STEM_SOURCE_FILTERS, resolveStemSource, type StemSource, type StemSourceFilter } from "../../lib/stemSource";
 import { artistProfileHref } from "../../lib/artistRoutes";
 import { PURCHASED_STEMS_HREF } from "../../lib/ownedStems";
 import { groupListingsByStem, groupTierOrder } from "../../lib/marketplaceStemGroups";
@@ -63,6 +65,10 @@ interface ListingData {
         generationProvider?: string;
         synthIdVerified?: boolean;
         synthIdConfidence?: number;
+        /** `official` (lossless, from the artist) or `separated` (AI) (#1976). */
+        source?: StemSource | null;
+        sourceLabel?: string | null;
+        separationModel?: string | null;
     } | null;
 }
 
@@ -157,6 +163,8 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
     const [selectedGenre, setSelectedGenre] = useState("all");
     const [selectedArtist, setSelectedArtist] = useState("all");
     const [sortBy, setSortBy] = useState("newest");
+    // Source filter (#1976): the artist's lossless stems or the AI-separated ones.
+    const [sourceFilter, setSourceFilter] = useState<StemSourceFilter>("all");
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [playingId, setPlayingId] = useState<string | null>(null);
@@ -239,6 +247,7 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
 
             const params = new URLSearchParams({ status: "active", limit: String(PAGE_SIZE), offset: String(currentOffset), sortBy });
             if (debouncedSearch) params.set("search", debouncedSearch);
+            if (sourceFilter !== "all") params.set("source", sourceFilter);
             if (hideOwnListings && signerAddress) params.set("excludeSeller", signerAddress);
 
             const res = await fetch(`/api/contracts/listings?${params.toString()}`);
@@ -270,7 +279,7 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress]);
+    }, [debouncedSearch, sortBy, sourceFilter, offset, listings.length, hideOwnListings, signerAddress]);
 
     // ---- Refetch when sort, search, or signer changes ----
     // Guard: if the user is logged in and wants to hide own listings,
@@ -280,7 +289,7 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
         if (hideOwnListings && walletAddress && !signerAddress) return;
         fetchListings(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [debouncedSearch, sortBy, hideOwnListings, signerAddress]);
+    }, [debouncedSearch, sortBy, sourceFilter, hideOwnListings, signerAddress]);
 
     useEffect(() => {
         const normalized = debouncedSearch.trim();
@@ -590,6 +599,19 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
 
                     <div className="toolbar-sep" />
 
+                    {/* Source: the artist's lossless stems or the AI-separated ones (#1976) */}
+                    <select
+                        className="marketplace-select"
+                        aria-label="Filter by stem source"
+                        value={sourceFilter}
+                        onChange={e => setSourceFilter(e.target.value as StemSourceFilter)}
+                        data-testid="marketplace-source-filter"
+                    >
+                        {STEM_SOURCE_FILTERS.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+
                     {/* Sort */}
                     <select
                         className="marketplace-select"
@@ -768,6 +790,10 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                                                 {listing.stem.type}
                                             </span>
                                         )}
+                                        <StemSourceBadge
+                                            source={resolveStemSource(listing.stem)}
+                                            separationModel={listing.stem?.separationModel}
+                                        />
                                         <ExpiryBadge expiresAt={listing.expiresAt} />
                                     </div>
 
@@ -931,6 +957,8 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                     listingChainId={buyModalListing.chainId}
                     licenseType={buyModalListing.licenseType}
                     initialListing={buyModalListing.listing}
+                    stemSource={resolveStemSource(buyModalListing.listing.stem)}
+                    separationModel={buyModalListing.listing.stem?.separationModel}
                     tierListings={buyModalListing.stemId ? tierListingsByStem[buyModalListing.stemId] : undefined}
                     tierPricesUsd={buyModalListing.stemId && pricingMap[buyModalListing.stemId] ? {
                         personal: pricingMap[buyModalListing.stemId].basePlayPriceUsd,

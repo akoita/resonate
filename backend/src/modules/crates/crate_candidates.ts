@@ -1,5 +1,6 @@
 import { measuredTrackFeatures } from "../agents/measured_track_features";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import { resolveStemSource } from "../shared/stem-source";
 import type { CrateCandidateFacts, CrateLicenseType } from "./crate.types";
 
 /**
@@ -16,6 +17,8 @@ export type CrateStemRow = {
   /** Stem id; the crate DTO needs it for previews and quality ratings. */
   id?: string;
   type: string;
+  /** `Stem.source` (#1976); a missing value counts as separated. */
+  source?: string | null;
   isCurrent: boolean;
   /** Raw `Stem.audioFeatures` JSON; only the current `original` stem's is read. */
   audioFeatures: unknown;
@@ -87,6 +90,16 @@ export function candidateFactsFromRow(
     ),
   ].sort();
 
+  const typesBySource: Record<"official" | "separated", Set<string>> = {
+    official: new Set(),
+    separated: new Set(),
+  };
+  for (const stem of currentStems) {
+    const type = stem.type.toLowerCase();
+    const source = resolveStemSource(stem);
+    if (source) typesBySource[source].add(type);
+  }
+
   const listed = new Set<string>();
   for (const stem of currentStems) {
     for (const listing of stem.listings) {
@@ -120,6 +133,10 @@ export function candidateFactsFromRow(
     camelot: measured.camelot,
     energy: measured.energy,
     stemTypes,
+    stemTypesBySource: {
+      official: [...typesBySource.official].sort(),
+      separated: [...typesBySource.separated].sort(),
+    },
     listedLicenseTypes: [...listed].sort(),
     indicativePriceUsd,
     verifiedHuman: verifiedHumanArtistIds.has(row.release.artistId),

@@ -7,6 +7,9 @@ export type StorefrontStemPresentationRow = {
   title: string | null;
   ipnftId: string | null;
   mimeType?: string | null;
+  /** `Stem.source` / `Stem.separationModel` (#1976); a missing source reads as separated. */
+  source?: string | null;
+  separationModel?: string | null;
   durationSeconds?: number | null;
   track: {
     id: string;
@@ -42,6 +45,7 @@ export function buildStorefrontStemItem(
     releaseTitle: row.track.release.title,
     hasNft: Boolean(row.ipnftId),
     tokenId: row.ipnftId,
+    source: row,
     basePlayPriceUsd: row.pricing?.basePlayPriceUsd,
     remixLicenseUsd: row.pricing?.remixLicenseUsd,
     commercialLicenseUsd: row.pricing?.commercialLicenseUsd,
@@ -60,6 +64,7 @@ export function buildStorefrontStemItem(
     trackId: row.track.id,
     trackTitle: row.track.title,
     stemType: row.type,
+    source: quote.source,
     stemTypes: row.track.stems.map((stem) => stem.type),
     hasIpnft: Boolean(row.ipnftId),
     price: quote.price,
@@ -82,7 +87,8 @@ export function buildStorefrontStemDetail(
     ...item,
     preview: {
       url: item.previewUrl,
-      mimeType: row.mimeType ?? "audio/mpeg",
+      // The public preview of an official (lossless) stem is an MP3 transcode.
+      mimeType: row.source === "official" ? "audio/mpeg" : row.mimeType ?? "audio/mpeg",
     },
     pricing: {
       currency: item.price.currency,

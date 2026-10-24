@@ -5,6 +5,11 @@ import { EncryptionService } from '../modules/encryption/encryption.service';
 import { AuthService } from '../modules/auth/auth.service';
 import { authToken, createControllerTestApp } from './e2e-helpers';
 
+jest.mock('../modules/encryption/stem-mime-lookup', () => ({
+    lookupStemMimeType: jest.fn().mockResolvedValue(null),
+}));
+import { lookupStemMimeType } from '../modules/encryption/stem-mime-lookup';
+
 const mockEncryptionService = {
     providerName: 'aes',
     decrypt: jest.fn(),
@@ -121,6 +126,25 @@ describe('EncryptionController (HTTP contract)', () => {
             [],
             authSig,
         );
+    });
+
+    it('decrypts an official stem with its stored lossless Content-Type (#1976)', async () => {
+        mockAuthService.isAddressForUser.mockResolvedValue(true);
+        (lookupStemMimeType as jest.Mock).mockResolvedValueOnce('audio/flac');
+
+        const res = await request(app.getHttpServer())
+            .post('/encryption/decrypt')
+            .set('Authorization', `Bearer ${authToken('owner-user')}`)
+            .send({
+                uri: 'https://storage.googleapis.com/resonate-stems-dev/stems/official.flac',
+                authSig: { address: '0xOwner', sig: 'sig', signedMessage: 'message' },
+            })
+            .expect(201);
+
+        expect(lookupStemMimeType).toHaveBeenCalledWith(
+            'https://storage.googleapis.com/resonate-stems-dev/stems/official.flac',
+        );
+        expect(res.headers['content-type']).toContain('audio/flac');
     });
 
     it('returns an opaque JSON error when decryption fails', async () => {

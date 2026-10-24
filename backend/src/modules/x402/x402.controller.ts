@@ -53,6 +53,7 @@ import {
   isSmartAccountPaymentProof,
 } from './x402.payer-binding';
 import { X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS } from './x402.smart-account';
+import { knownStemFileExtension } from '../shared/stem-media';
 
 /**
  * Body of `POST /api/stems/:stemId/x402/smart-account`. Only shapes are checked
@@ -459,6 +460,7 @@ export class X402Controller {
           releaseTitle: stem.track?.release?.title ?? null,
           hasNft: !!stem.nftMint,
           tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+          stemSource: stem,
           amountUsd,
           amount: paymentTerms.amount,
           paymentAsset: {
@@ -592,6 +594,7 @@ export class X402Controller {
         releaseTitle: stem.track?.release?.title ?? null,
         hasNft: !!stem.nftMint,
         tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+        stemSource: stem,
         amountUsd,
         amount: paymentTerms.amount,
         paymentAsset: {
@@ -1416,15 +1419,8 @@ export class X402Controller {
       return existingExtension;
     }
 
-    if (mimeType === 'audio/mp4') {
-      return '.m4a';
-    }
-
-    if (mimeType === 'audio/mpeg') {
-      return '.mp3';
-    }
-
-    return '';
+    const known = knownStemFileExtension(mimeType);
+    return known ? `.${known}` : '';
   }
 
   /**
@@ -1495,6 +1491,7 @@ export class X402Controller {
       releaseTitle: stem.track?.release?.title ?? null,
       hasNft: !!stem.nftMint,
       tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+      source: stem,
       basePlayPriceUsd: pricing?.basePlayPriceUsd,
       remixLicenseUsd: pricing?.remixLicenseUsd,
       commercialLicenseUsd: pricing?.commercialLicenseUsd,
@@ -1512,6 +1509,8 @@ export class X402Controller {
         title: stem.title,
         ipnftId: stem.ipnftId ?? null,
         mimeType: stem.mimeType ?? null,
+        source: stem.source ?? null,
+        separationModel: stem.separationModel ?? null,
         durationSeconds: stem.durationSeconds ?? null,
         pricing: pricing
           ? {
@@ -1548,6 +1547,7 @@ export class X402Controller {
       },
       stemId: quote.stemId,
       type: quote.type,
+      source: quote.source,
       hasNft: quote.hasNft,
       tokenId: quote.tokenId,
       purchase: quote.purchase,

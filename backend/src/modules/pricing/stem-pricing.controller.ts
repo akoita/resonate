@@ -74,11 +74,12 @@ export class StemPricingController {
     @Body() body: BatchStemPricingBodyDto,
     @Req() req: { user: { userId: string } },
   ) {
-    const { releaseId, ...dto } = body;
+    const { releaseId, source, ...dto } = body;
     return this.pricingService.batchUpdateByRelease(
       releaseId,
       req.user.userId,
       dto,
+      source,
     );
   }
 

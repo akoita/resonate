@@ -1,4 +1,5 @@
-import { IsNumber, IsObject, IsOptional, IsString } from "class-validator";
+import { IsIn, IsNumber, IsObject, IsOptional, IsString } from "class-validator";
+import { STEM_SOURCES, type StemSourceValue } from "../shared/stem-source";
 import type { StemPricingDto } from "./stem-pricing.service";
 
 /**
@@ -36,6 +37,14 @@ export class StemPricingBodyDto implements StemPricingDto {
 export class BatchStemPricingBodyDto extends StemPricingBodyDto {
   @IsString()
   releaseId!: string;
+
+  /**
+   * Price only this source's stems (#1976): `official` (the artist's lossless
+   * parts) or `separated` (AI). Omitted prices every stem, as before.
+   */
+  @IsOptional()
+  @IsIn(STEM_SOURCES)
+  source?: StemSourceValue;
 }
 
 export class BatchUpsertStemPricingBodyDto {

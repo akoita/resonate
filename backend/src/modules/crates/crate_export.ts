@@ -2,6 +2,8 @@ import { sanitizeStemAudioFeatures } from "../ingestion/stem-audio-features";
 import { measuredTrackFeatures } from "../agents/measured_track_features";
 import { CRATE_STEM_TYPES, type CrateLicenseType } from "./crate.types";
 import { bestStandardLicenseTier } from "../contracts/stem_license_tier";
+import { rekordboxKind, stemFileExtension } from "../shared/stem-media";
+import type { StemSourceValue } from "../shared/stem-source";
 
 /**
  * Crate export to rekordbox XML and a Serato crate (#1965,
@@ -70,6 +72,15 @@ export type CrateExportEntry = {
   artistName: string;
   licenseType: CrateExportLicenseType;
   fileName: string;
+  /**
+   * The stored format of the stem (`Stem.mimeType`, #1976). Official stems are
+   * lossless (`audio/wav`, `audio/flac`); absent or unknown means MP3. The file
+   * name's extension and the rekordbox `Kind` follow it, so both point at the
+   * file the DJ actually downloaded.
+   */
+  mimeType?: string | null;
+  /** Where the stem's audio comes from (#1976). */
+  source?: StemSourceValue | null;
   /** Measured tempo, or null. */
   bpm: number | null;
   /** Key name such as "Am", "C" or "F#m", or null. */
@@ -149,7 +160,8 @@ export function titleWithoutArtist(artist: string, title: string): string {
 }
 
 /**
- * `${artist} - ${title} (${StemLabel}).mp3` for one stem. Artist and title are
+ * `${artist} - ${title} (${StemLabel}).<ext>` for one stem (`mp3` unless `mimeType`
+ * names another stored format, #1976). Artist and title are
  * sanitized and the pair is shortened so the whole base stays within
  * {@link CRATE_EXPORT_FILE_NAME_MAX_LENGTH} characters and the stem label is
  * never cut off. A title that already starts with `${artist} - ` (uploads
@@ -159,13 +171,14 @@ export function stemFileName(input: {
   artistName: string;
   title: string;
   stemType: string;
+  mimeType?: string | null;
 }): string {
   const suffix = ` (${stemLabel(input.stemType)})`;
   const room = CRATE_EXPORT_FILE_NAME_MAX_LENGTH - Array.from(suffix).length;
   const artist = sanitizeFileNamePart(input.artistName);
   const title = sanitizeFileNamePart(titleWithoutArtist(artist, sanitizeFileNamePart(input.title)));
   const head = sanitizeFileNamePart(`${artist} - ${title}`, room);
-  return `${head}${suffix}.mp3`;
+  return `${head}${suffix}.${stemFileExtension(input.mimeType)}`;
 }
 
 /**
@@ -175,15 +188,22 @@ export function stemFileName(input: {
  * characters of the id only if even that collides.
  */
 export function assignStemFileNames(
-  stems: ReadonlyArray<{ stemId: string; artistName: string; title: string; stemType: string }>,
+  stems: ReadonlyArray<{
+    stemId: string;
+    artistName: string;
+    title: string;
+    stemType: string;
+    mimeType?: string | null;
+  }>,
 ): string[] {
   const used = new Set<string>();
   return stems.map((stem) => {
     const plain = stemFileName(stem);
     let name = plain;
     for (let length = 6; used.has(name.toLowerCase()); length += 1) {
-      const base = plain.slice(0, -".mp3".length);
-      name = `${base} [${stem.stemId.slice(0, length)}].mp3`;
+      const extension = `.${stemFileExtension(stem.mimeType)}`;
+      const base = plain.slice(0, -extension.length);
+      name = `${base} [${stem.stemId.slice(0, length)}]${extension}`;
       if (length > stem.stemId.length) break;
     }
     used.add(name.toLowerCase());
@@ -463,7 +483,7 @@ export function buildRekordboxXml(input: {
       ["Name", rekordboxTrackName(entry)],
       ["Artist", entry.artistName],
       ["Album", title],
-      ["Kind", "MP3 File"],
+      ["Kind", rekordboxKind(entry.mimeType)],
     ];
     if (entry.bpm !== null) pairs.push(["AverageBpm", entry.bpm.toFixed(2)]);
     if (entry.key !== null) pairs.push(["Tonality", entry.key]);

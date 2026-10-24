@@ -9,6 +9,7 @@ import {
   type CrateFilters,
   type CrateLicenseType,
   type CrateNumberRange,
+  type CrateStemSource,
 } from "./crate.types";
 
 /**
@@ -61,6 +62,8 @@ export function activeCrateFilterKeys(filters: CrateFilters): CrateFilterKey[] {
         return isRangeActive(filters.energy);
       case "requiredStems":
         return filters.requiredStems.length > 0;
+      case "stemSource":
+        return filters.stemSource !== null;
       case "licenseType":
         return filters.licenseType !== null;
       case "maxPerItemUsd":
@@ -131,6 +134,7 @@ export function isExcludedAsFullyAi(facts: CrateCandidateFacts, filters: CrateFi
  *   `includeCamelotNeighbors`.
  * - energy: a measured energy inside the range.
  * - requiredStems: every requested stem is a current stem of the track.
+ * - stemSource: the track has a current stem of the requested source (#1976).
  * - licenseType: the tier is listed or priced for the track.
  * - maxPerItemUsd: the line price is known and at most the limit.
  * - verifiedHumanOnly: the artist is a verified human.
@@ -151,8 +155,12 @@ export function failedFilters(facts: CrateCandidateFacts, filters: CrateFilters)
 
   if (isRangeActive(filters.energy) && !inRange(facts.energy, filters.energy)) failed.push("energy");
 
+  // With a source filter (#1976) the stems considered are those of that source.
+  const stemTypes = stemTypesOfSource(facts, filters.stemSource);
+  if (filters.stemSource !== null && stemTypes.length === 0) failed.push("stemSource");
+
   if (filters.requiredStems.length > 0) {
-    const have = new Set(facts.stemTypes.map((stem) => stem.toLowerCase()));
+    const have = new Set(stemTypes.map((stem) => stem.toLowerCase()));
     if (!filters.requiredStems.every((stem) => have.has(stem))) failed.push("requiredStems");
   }
 
@@ -177,6 +185,20 @@ export function failedFilters(facts: CrateCandidateFacts, filters: CrateFilters)
   }
 
   return failed;
+}
+
+/**
+ * The track's stem types, limited to `source` when given. Facts without
+ * `stemTypesBySource` (built before sources existed) count every stem as
+ * separated.
+ */
+export function stemTypesOfSource(
+  facts: CrateCandidateFacts,
+  source: CrateStemSource | null,
+): string[] {
+  if (source === null) return facts.stemTypes;
+  if (!facts.stemTypesBySource) return source === "separated" ? facts.stemTypes : [];
+  return facts.stemTypesBySource[source] ?? [];
 }
 
 export type CrateSelection<T> = {

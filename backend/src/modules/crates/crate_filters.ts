@@ -10,8 +10,10 @@ import {
   CRATE_LICENSE_TYPES,
   CRATE_MAX_COUNT,
   CRATE_MIN_COUNT,
+  CRATE_STEM_SOURCES,
   CRATE_STEM_TYPES,
   type CrateFilters,
+  type CrateStemSource,
   type CrateLicenseType,
   type CrateNumberRange,
   type CrateStemType,
@@ -46,6 +48,7 @@ export function defaultCrateFilters(): CrateFilters {
     includeCamelotNeighbors: true,
     energy: null,
     requiredStems: [],
+    stemSource: null,
     licenseType: null,
     maxTotalUsd: null,
     maxPerItemUsd: null,
@@ -303,6 +306,15 @@ export function sanitizeCrateFilters(raw: unknown): SanitizedCrateFilters {
       filters.requiredStems = CRATE_STEM_TYPES.filter((stem) => stems.has(stem));
     } else {
       errors.add("invalid_stem");
+    }
+  }
+
+  if (raw.stemSource !== undefined && raw.stemSource !== null) {
+    const source = typeof raw.stemSource === "string" ? raw.stemSource.trim().toLowerCase() : "";
+    if ((CRATE_STEM_SOURCES as readonly string[]).includes(source)) {
+      filters.stemSource = source as CrateStemSource;
+    } else {
+      errors.add("invalid_stem_source");
     }
   }
 
