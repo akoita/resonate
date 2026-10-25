@@ -15,6 +15,13 @@ import { EventBus } from "../shared/event_bus";
 import type { ResonateEvent } from "../../events/event_types";
 import type { MeteredActionKind } from "./metered-actions";
 import { releaseDueTopUpHolds } from "./top_up_ledger";
+import {
+  consumeAllowance,
+  lockAllowance,
+  readAllowanceStatus,
+  restoreAllowance,
+  type GenerationAllowanceStatus,
+} from "./allowance.service";
 
 /**
  * Default sell price for AI generation, in USD cents per 30 seconds (#1334,
@@ -97,7 +104,12 @@ export class InsufficientCreditsException extends HttpException {
 }
 
 export interface GenerationCreditBalance {
+  /** The bought/promo balance (the Artist Pro allowance is reported apart, #2408). */
   balanceCents: number;
+  /** What a generation can spend now: the live allowance plus the balance (#2408). */
+  spendableCents: number;
+  /** The Artist Pro monthly allowance bucket, or null when the person never had one (#2408). */
+  allowance: GenerationAllowanceStatus | null;
   /** Sell price in cents per 30s, so clients can render remaining capacity
    * (minutes / tracks) without hardcoding the price. */
   priceCentsPer30s: number;
@@ -105,6 +117,8 @@ export interface GenerationCreditBalance {
     id: string;
     type: string;
     amountCents: number;
+    /** Part of `amountCents` that moved through the allowance bucket (#2408). */
+    allowanceCents: number;
     reason: string;
     jobId: string | null;
     balanceAfterCents: number;
@@ -240,21 +254,26 @@ export class GenerationCreditsService {
     await this.ensureSignupStarter(userId);
     // Bought credits whose 14-day hold has ended are released here (#1422).
     await releaseDueTopUpHolds(userId);
-    const [account, recentTransactions] = await Promise.all([
+    const [account, recentTransactions, allowance] = await Promise.all([
       prisma.generationCreditAccount.findUnique({ where: { userId } }),
       prisma.generationCreditTransaction.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
         take: 20,
       }),
+      readAllowanceStatus(prisma, userId),
     ]);
+    const balanceCents = account?.balanceCents ?? 0;
     return {
-      balanceCents: account?.balanceCents ?? 0,
+      balanceCents,
+      spendableCents: balanceCents + (allowance?.remainingCents ?? 0),
+      allowance,
       priceCentsPer30s: this.priceCentsPer30s,
       recentTransactions: recentTransactions.map((txn) => ({
         id: txn.id,
         type: txn.type,
         amountCents: txn.amountCents,
+        allowanceCents: txn.allowanceCents,
         reason: txn.reason,
         jobId: txn.jobId,
         balanceAfterCents: txn.balanceAfterCents,
@@ -320,12 +339,16 @@ export class GenerationCreditsService {
   }
 
   /**
-   * Charge credits for a generation. Race-safe: a single atomic conditional
-   * `updateMany` guarded by `balanceCents >= amount` decrements the balance and
-   * asserts exactly one row changed. Concurrent debits that together exceed the
-   * balance therefore cannot oversell — the losing update matches zero rows and
-   * throws InsufficientCreditsException. On success, appends a `debit` txn with
-   * the post-debit balance. The whole read+write runs in a $transaction.
+   * Charge credits for a generation. The live Artist Pro allowance pays first
+   * (#2408, `consumeAllowance`, under a per-person lock), the bought/promo
+   * balance pays the rest. Race-safe: a single atomic conditional
+   * `updateMany` guarded by `balanceCents >= rest` decrements the balance and
+   * asserts exactly one row changed. Concurrent debits that together exceed
+   * what is spendable therefore cannot oversell — the losing update matches
+   * zero rows and throws InsufficientCreditsException, rolling back its
+   * allowance spend too. On success, appends one `debit` txn carrying the full
+   * amount, the allowance part and the post-debit balance. The whole
+   * read+write runs in a $transaction.
    */
   async debit(
     userId: string,
@@ -346,23 +369,27 @@ export class GenerationCreditsService {
     let balanceAfterCents: number;
     try {
       balanceAfterCents = await prisma.$transaction(async (tx) => {
-        const updated = await tx.generationCreditAccount.updateMany({
-          where: { userId, balanceCents: { gte: amountCents } },
-          data: { balanceCents: { decrement: amountCents } },
-        });
+        const allowance = await consumeAllowance(tx, userId, amountCents, new Date());
+        const fromBalanceCents = amountCents - allowance.fromAllowanceCents;
 
-        if (updated.count !== 1) {
-          const account = await tx.generationCreditAccount.findUnique({
-            where: { userId },
+        if (fromBalanceCents > 0) {
+          const updated = await tx.generationCreditAccount.updateMany({
+            where: { userId, balanceCents: { gte: fromBalanceCents } },
+            data: { balanceCents: { decrement: fromBalanceCents } },
           });
-          throw new InsufficientCreditsException(
-            userId,
-            amountCents,
-            account?.balanceCents ?? 0,
-          );
+          if (updated.count !== 1) {
+            const account = await tx.generationCreditAccount.findUnique({
+              where: { userId },
+            });
+            throw new InsufficientCreditsException(
+              userId,
+              amountCents,
+              (account?.balanceCents ?? 0) + allowance.fromAllowanceCents,
+            );
+          }
         }
 
-        const account = await tx.generationCreditAccount.findUniqueOrThrow({
+        const account = await tx.generationCreditAccount.findUnique({
           where: { userId },
         });
         await tx.generationCreditTransaction.create({
@@ -372,7 +399,9 @@ export class GenerationCreditsService {
             amountCents,
             reason,
             jobId: jobId ?? null,
-            balanceAfterCents: account.balanceCents,
+            balanceAfterCents: account?.balanceCents ?? 0,
+            allowanceCents: allowance.fromAllowanceCents,
+            allowanceGrantId: allowance.grantId,
           },
         });
         if (kind === "lyria" && jobId) {
@@ -380,7 +409,7 @@ export class GenerationCreditsService {
             data: { jobId, userId, status: "queued" },
           });
         }
-        return account.balanceCents;
+        return account?.balanceCents ?? 0;
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsException) {
@@ -474,7 +503,10 @@ export class GenerationCreditsService {
    * Restore credits for a debited generation that terminally failed or never
    * enqueued. Idempotent per jobId: if a `refund` txn already exists for the
    * jobId, this is a no-op so a double-refund can never inflate the balance.
-   * Returns the resulting balance (or the current balance when skipped).
+   * The part the job's debit took from the Artist Pro allowance goes back to
+   * that same grant (#2408; it lapses with the grant if its month has ended),
+   * the rest to the bought/promo balance. Returns the resulting balance (or the
+   * current balance when skipped).
    */
   async refund(
     userId: string,
@@ -485,6 +517,9 @@ export class GenerationCreditsService {
     assertPositiveCents(amountCents);
 
     const balanceAfterCents = await prisma.$transaction(async (tx) => {
+      // Serialize with this person's debits and other refunds (#2408), so the
+      // per-job idempotency check below cannot race a concurrent refund.
+      await lockAllowance(tx, userId);
       if (jobId) {
         const existing = await tx.generationCreditTransaction.findFirst({
           where: { userId, jobId, type: "refund" },
@@ -497,11 +532,32 @@ export class GenerationCreditsService {
         }
       }
 
-      const account = await tx.generationCreditAccount.upsert({
-        where: { userId },
-        create: { userId, balanceCents: amountCents },
-        update: { balanceCents: { increment: amountCents } },
-      });
+      const debit = jobId
+        ? await tx.generationCreditTransaction.findFirst({
+            where: { userId, jobId, type: "debit", allowanceCents: { gt: 0 } },
+            orderBy: { createdAt: "desc" },
+            select: { allowanceCents: true, allowanceGrantId: true },
+          })
+        : null;
+      const toAllowanceCents = debit?.allowanceGrantId
+        ? await restoreAllowance(
+            tx,
+            userId,
+            debit.allowanceGrantId,
+            Math.min(debit.allowanceCents, amountCents),
+          )
+        : 0;
+      const toBalanceCents = amountCents - toAllowanceCents;
+
+      const account =
+        toBalanceCents > 0
+          ? await tx.generationCreditAccount.upsert({
+              where: { userId },
+              create: { userId, balanceCents: toBalanceCents },
+              update: { balanceCents: { increment: toBalanceCents } },
+            })
+          : await tx.generationCreditAccount.findUnique({ where: { userId } });
+      const balanceAfter = account?.balanceCents ?? 0;
       await tx.generationCreditTransaction.create({
         data: {
           userId,
@@ -509,10 +565,12 @@ export class GenerationCreditsService {
           amountCents,
           reason,
           jobId: jobId ?? null,
-          balanceAfterCents: account.balanceCents,
+          balanceAfterCents: balanceAfter,
+          allowanceCents: toAllowanceCents,
+          allowanceGrantId: toAllowanceCents > 0 ? debit?.allowanceGrantId ?? null : null,
         },
       });
-      return account.balanceCents;
+      return balanceAfter;
     });
 
     this.logger.log(

@@ -30,6 +30,17 @@ export function formatCreditCapacity(balanceCents: number, priceCentsPer30s: num
 }
 
 /**
+ * What a generation can spend now, in cents: the live Artist Pro allowance plus
+ * the bought balance (#2408). Falls back to the balance for a response that
+ * predates the allowance.
+ */
+export function spendableCents(balance: { balanceCents: number; spendableCents?: number }): number {
+  return typeof balance.spendableCents === "number" && Number.isFinite(balance.spendableCents)
+    ? balance.spendableCents
+    : balance.balanceCents;
+}
+
+/**
  * Whether the balance covers at least one billable block (one 30s unit at the
  * reported price). Used to proactively gate a generate action when the balance
  * can't fund even the smallest run — the remix debit happens in a worker, so no

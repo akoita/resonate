@@ -39,7 +39,7 @@ export const TEST_JWT_SECRET = 'e2e-test-secret';
 export function stubGenerationCredits() {
   return {
     costForDurationCents: () => 0,
-    getBalance: async () => ({ balanceCents: 0, recentTransactions: [] }),
+    getBalance: async () => ({ balanceCents: 0, spendableCents: 0, allowance: null, recentTransactions: [] }),
     grant: async () => 0,
     debit: async () => 0,
     refund: async () => 0,

@@ -1,5 +1,5 @@
 import type { GenerationCreditBalance } from "../../lib/api";
-import { formatCreditCapacity } from "../../lib/credits";
+import { formatCreditCapacity, spendableCents } from "../../lib/credits";
 
 export interface CreditBalanceMeterProps {
   /** The caller's credit balance, or null while it is unknown / loading. */
@@ -81,10 +81,12 @@ export function CreditBalanceMeter({
     return null;
   }
 
-  const cap = formatCreditCapacity(balance.balanceCents, balance.priceCentsPer30s);
+  // Capacity counts the Artist Pro allowance too: it is spent first (#2408).
+  const available = spendableCents(balance);
+  const cap = formatCreditCapacity(available, balance.priceCentsPer30s);
   const status = cap.empty ? "exhausted" : cap.low ? "low" : "ok";
   const capacityText = cap.empty ? "0 — top up" : `≈ ${cap.minLabel} min · ${cap.tracks} tracks`;
-  const tooltip = `${balance.balanceCents}¢ remaining · ~${cap.tracks} × 1-min tracks`;
+  const tooltip = `${available}¢ remaining · ~${cap.tracks} × 1-min tracks`;
   const showRequest = !!onRequestCredits && (cap.empty || cap.low);
 
   if (variant === "strip") {

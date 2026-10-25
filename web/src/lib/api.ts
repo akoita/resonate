@@ -6730,14 +6730,36 @@ export type GenerationCreditTransaction = {
   id: string;
   type: string;
   amountCents: number;
+  /** Part of `amountCents` that moved through the Artist Pro allowance (#2408). */
+  allowanceCents?: number;
   reason: string;
   jobId: string | null;
   balanceAfterCents: number;
   createdAt: string;
 };
 
+/**
+ * The Artist Pro monthly generation allowance (#2408): credited on each paid
+ * invoice, spent before bought credits, expiring at the end of the month.
+ */
+export type GenerationAllowance = {
+  remainingCents: number;
+  grantedCents: number;
+  spentCents: number;
+  periodStart: string | null;
+  /** When the live allowance ends (it resets with the next paid month); null when none is live. */
+  expiresAt: string | null;
+  /** Unused allowance that lapsed when the previous month ended. */
+  previousExpiredCents: number;
+  previousEndedAt: string | null;
+};
+
 export type GenerationCreditBalance = {
+  /** Bought and promo credits. The Artist Pro allowance is reported apart. */
   balanceCents: number;
+  /** What a generation can spend now: the live allowance plus the balance (#2408). */
+  spendableCents?: number;
+  allowance?: GenerationAllowance | null;
   priceCentsPer30s: number;
   recentTransactions: GenerationCreditTransaction[];
 };
@@ -6871,7 +6893,8 @@ export type UsageSummary = {
 /**
  * The person's plan (#2406), from the one entitlement service: `pro` from an
  * Artist Pro subscription (#2407) or an operator or promo grant. Pro tools are
- * still free for everyone.
+ * still free for everyone. `monthlyAllowanceCents` is the generation allowance
+ * a paid subscription credits each month (#2408), null otherwise.
  */
 export type UsagePlan = {
   tier: "free" | "pro";

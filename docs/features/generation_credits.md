@@ -16,6 +16,8 @@ operator/promo grant path (endpoint or `make grant-credits`) and, since #1422
 mode** ($5, $10 default, $25; see [Buying credit packs](#buying-credit-packs-1422)).
 **Live charging stays off** until the Artist Pro RFC §8 gates clear. Revenue line: **(2) Artist Pro + generation credits**;
 phase per ADR-BM-6. Tracked by [#1334](https://github.com/akoita/resonate/issues/1334).
+Artist Pro subscribers also get a **monthly allowance bucket** (#2408), spent
+before the balance; see [Artist Pro allowance](#artist-pro-monthly-allowance-2408).
 
 ## Audience
 
@@ -236,6 +238,24 @@ fan→artist payout is touched (ADR-BM-4).
 Details (routes, webhook, configuration, data):
 [`artist_pro_billing.md`](artist_pro_billing.md#credit-packs-1422).
 
+## Artist Pro monthly allowance (#2408)
+
+A paid Artist Pro invoice credits `ARTIST_PRO_MONTHLY_ALLOWANCE_CENTS`
+(default 300 = $3.00) for each month it pays, in a separate bucket
+(`GenerationAllowanceGrant`); a yearly invoice writes twelve monthly slices.
+Each debit spends the live allowance first and the balance only for the rest;
+the single ledger row records the part that went through the bucket
+(`allowanceCents`, `allowanceGrantId`). A refund goes back to the bucket it
+came from. Unused allowance lapses at the end of the month (computed at read
+and debit time, no job), is never carried over, and is never refunded in cash
+or turned into bought credits. `GET /credits/balance` and `/usage/summary`
+return `balanceCents` (bought/promo only), `spendableCents` (both buckets) and
+`allowance` (`remainingCents`, `grantedCents`, `spentCents`, `periodStart`,
+`expiresAt`, `previousExpiredCents`, `previousEndedAt`; null without one), and
+`plan.monthlyAllowanceCents` for a paid subscription. The zero-balance block is
+unchanged; for a subscriber, `402` reports both buckets in `balanceCents`.
+Full rules: [Artist Pro billing](artist_pro_billing.md#the-monthly-generation-allowance-2408).
+
 ## Surfaces
 
 - API:
@@ -308,14 +328,17 @@ Details (routes, webhook, configuration, data):
 - Meter (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credits.integration'`
 - Generation/remix gating (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credits-generation-block|credits-remix-block'`
 - Credit packs: `credit_packs.spec.ts`, `credit_topup.controller.http.spec.ts`, and `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credit_topup.integration'`
+- Artist Pro allowance (#2408): `cd backend && npx jest --testPathPattern='generation-allowance.spec'` and `npx jest --runInBand --config jest.integration.config.js --testPathPattern='generation-allowance.integration'`
 
 ## Remaining / Deferred
 
 - **Live fiat top-up (Stripe)** — credit packs are built in test mode (#1422);
   live charging is gated on the Artist Pro RFC §8 gates (#1421 price
-  sign-off, legal review of the wording and refund policy, #1193). Auto-reload
-  and USDC top-up: #2410.
-- Artist Pro monthly credit allowance bundling (ADR-BM-3) is future work.
+  sign-off, legal review of the wording and refund policy, #1193, #2430).
+  Auto-reload and USDC top-up: #2410.
+- Artist Pro monthly allowance (ADR-BM-3): shipped in #2408 (test mode, with
+  Stripe billing). The withdrawal refund that deducts the allowance used waits
+  for live charging.
 - **Cost instrumentation (#1421)** — the flat `$0.06/30s` COGS guess is now a
   typed, env-overridable **per-path cost-model config**
   (`backend/src/modules/generation/generation-cost-model.ts`; defaults reproduce
