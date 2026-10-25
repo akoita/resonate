@@ -10,7 +10,9 @@
  *   overwrite the stored row, so an older event never overwrites a newer one.
  * - **Handled:** `checkout.session.completed`,
  *   `customer.subscription.created|updated|deleted`, `invoice.paid` and
- *   `invoice.payment_failed`. Checkout and invoice events re-read the
+ *   `invoice.payment_failed`. One-time (`mode: payment`) sessions,
+ *   `checkout.session.async_payment_succeeded` and `charge.refunded` are credit
+ *   packs (#1422), handed to `CreditTopUpService`. Checkout and invoice events re-read the
  *   subscription from Stripe, so the row mirrors the current state rather than
  *   the event's partial view.
  *
@@ -23,8 +25,10 @@ import { Prisma, type Subscription } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
+import { CreditTopUpService } from "./credit_topup.service";
 import {
   STRIPE_GATEWAY,
+  type StripeCharge,
   type StripeCheckoutSession,
   type StripeEvent,
   type StripeGateway,
@@ -45,6 +49,9 @@ export const HANDLED_STRIPE_EVENTS = [
   "customer.subscription.deleted",
   "invoice.paid",
   "invoice.payment_failed",
+  // Credit packs (#1422).
+  "checkout.session.async_payment_succeeded",
+  "charge.refunded",
 ] as const;
 
 export type WebhookResult = {
@@ -84,6 +91,7 @@ export class StripeWebhookService {
   constructor(
     private readonly config: BillingConfig,
     @Optional() @Inject(STRIPE_GATEWAY) private readonly gateway: StripeGateway | null = null,
+    @Optional() private readonly topUps: CreditTopUpService | null = null,
   ) {}
 
   /** Whether the webhook can verify events (billing configured). */
@@ -135,6 +143,7 @@ export class StripeWebhookService {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as StripeCheckoutSession;
+        if (session.mode === "payment") return this.topUps?.fulfilFromCheckout(session, createdAt) ?? "ignored_unavailable";
         if (session.mode !== "subscription") return "ignored_not_subscription";
         const subscriptionId = idOf(session.subscription);
         if (!subscriptionId) return "ignored_no_subscription";
@@ -156,6 +165,12 @@ export class StripeWebhookService {
         // #2408: `invoice.paid` is where the monthly allowance will be granted.
         return this.applyFromStripe(subscriptionId, createdAt, null);
       }
+      case "checkout.session.async_payment_succeeded":
+        return (
+          this.topUps?.fulfilFromCheckout(event.data.object as StripeCheckoutSession, createdAt) ?? "ignored_unavailable"
+        );
+      case "charge.refunded":
+        return this.topUps?.reverseFromRefund(event.data.object as StripeCharge) ?? "ignored_unavailable";
       default:
         return "ignored_unhandled_type";
     }

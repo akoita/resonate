@@ -289,7 +289,8 @@ export class PurchaseConsentService {
       body =
         `On ${when} UTC you chose to keep your right to withdraw from your purchase of "${row.subjectLabel}". ` +
         `Delivery is held until ${WITHDRAWAL_PERIOD_DAYS} days after the purchase and is then released to you ` +
-        `automatically. You can ask for immediate delivery from your library at any time, which ends your right to withdraw. ${wording}`;
+        `automatically. You can ask for immediate delivery from ${row.surface === "credit_topup" ? "Usage & Billing" : "your library"} ` +
+        `at any time, which ends your right to withdraw. ${wording}`;
     }
     try {
       await this.notices.sendTargeted(

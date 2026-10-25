@@ -244,6 +244,22 @@ exported). Webhook logs carry the event id and type only.
 The subscription start consent is a `PurchaseConsent` row with surface
 `subscription` (see "Immediate-delivery consent" below).
 
+## Credit packs (#1422)
+
+`CreditTopUp` records each generation-credit pack bought through Stripe
+Checkout: `userId`, the pack, its price and credits, the Stripe Checkout
+Session and payment intent ids, the `credit_topup` consent id, the delivery
+choice, the 14-day hold and its release, and the refunded and reversed amounts.
+No card data: Stripe holds the payment details and receipts. The Stripe customer
+is the person's one billing customer, stored on `Subscription`. Legal basis:
+performance of the purchase contract; kept for accounting and tax obligations.
+
+The model has a `User` relation on `userId` (cascade on update and delete).
+Export: the whole row. Erasure: `retain`, as a billing record; the person is
+named only through `userId`, which rotates. `GenerationCreditTransaction`
+gains `paymentRef`, the payment intent id behind a `top_up` grant or its
+`top_up_refund` reversal (already exported with the ledger).
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:
@@ -303,7 +319,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `ShowPledge`, `ShowPledgeDemandContext`, `ArtistFollow`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `PurchaseConsent`, `Crate`, `CrateItem`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
-`CrateWatchMatch`, `EntitlementGrant`, `Subscription`.
+`CrateWatchMatch`, `EntitlementGrant`, `Subscription`, `CreditTopUp`.
 
 Immediate-delivery consent (#1776) adds `PurchaseConsent`: for each consumer
 digital purchase, the buyer's recorded choice made before paying (asked for

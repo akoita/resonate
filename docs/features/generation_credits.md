@@ -11,9 +11,10 @@ owner: "@akoita"
 `partial` — the meter (debit, zero-balance block, refund, analytics) is live on
 staging. New accounts get a one-time free **starter allowance** so they can try
 generation before the meter charges; beyond that, credits enter via the
-operator/promo grant path (endpoint or `make grant-credits`). **Live fiat
-top-up (Stripe) is the deferred production flip** and is intentionally out of
-scope for this slice. Revenue line: **(2) Artist Pro + generation credits**;
+operator/promo grant path (endpoint or `make grant-credits`) and, since #1422
+(Artist Pro slice 4), **credit packs bought through Stripe Checkout in test
+mode** ($5, $10 default, $25; see [Buying credit packs](#buying-credit-packs-1422)).
+**Live charging stays off** until the Artist Pro RFC §8 gates clear. Revenue line: **(2) Artist Pro + generation credits**;
 phase per ADR-BM-6. Tracked by [#1334](https://github.com/akoita/resonate/issues/1334).
 
 ## Audience
@@ -55,8 +56,10 @@ internal meter.
 
 - **Ledger.** `GenerationCreditAccount` (`userId`, `balanceCents`) caches the
   balance; the append-only `GenerationCreditTransaction` ledger
-  (`type` grant|debit|refund, `amountCents`, `reason`, `jobId?`,
-  `balanceAfterCents`) is the audit source of truth.
+  (`type` grant|debit|refund|reversal, `amountCents`, `reason`, `jobId?`,
+  `paymentRef?`, `balanceAfterCents`) is the audit source of truth. `reversal`
+  (#1422) takes back refunded bought credits; `paymentRef` names the Stripe
+  payment intent of a `top_up` grant or its reversal.
 - **Debit is race-safe.** A single atomic conditional `updateMany` guarded by
   `balanceCents >= amount` decrements and asserts exactly one row changed;
   concurrent debits that together exceed the balance cannot oversell (the loser
@@ -101,8 +104,8 @@ is spent. Set the var to `0` to disable and fall back to operator-grant-only.
 
 ## Operator Grant Path (staging)
 
-Beyond the starter, credits enter through the operator/promo grant path — the
-only way to add credits until live top-up ships. Two equivalent routes:
+Beyond the starter, credits enter through the operator/promo grant path or a
+bought credit pack (#1422, Stripe test mode). Two equivalent operator routes:
 
 ```http
 POST /credits/grant            # @Roles('admin','operator'), @RequireStepUp()
@@ -198,9 +201,40 @@ auto-reload control), usage limits, spend by action and the recent ledger.
 count, reset time) are the reusable meters; Remix Studio shows both next to
 Generate, and Create shows the credit meter plus its rate-limit cell.
 
-**How credits are granted today:** the one-time starter allowance, operator
-grants (including the in-app request queue), and automatic refunds for failed
-generations. Nothing else adds credits.
+**How credits are added:** the one-time starter allowance, operator grants
+(including the in-app request queue), automatic refunds for failed
+generations, and (#1422) credit packs bought in Usage & Billing where the
+server has Stripe set up. The panel's note says so; the Buy credits block sits
+under the balance.
+
+## Buying credit packs (#1422)
+
+**Revenue line:** ADR-BM-6 line 2 (creator tools, metered generation), Phase 2,
+in Stripe **test mode** only. Credits are a cost-plus-margin tool balance; no
+fan→artist payout is touched (ADR-BM-4).
+
+- **Packs:** $5 (the minimum), $10 (the default) and $25, from the server
+  catalogue (`billing/credit_packs.ts`); a pack buys credits equal to its price
+  before tax. The client sends a pack id, never an amount.
+- **Consent first:** the `credit_topup` delivery choice (#1776) is recorded
+  before the Stripe Checkout Session exists. "Deliver now" credits the balance
+  as soon as the payment is confirmed and gives up withdrawal for the credits
+  used; "Wait 14 days" holds them.
+- **Ledger:** a `grant` row with reason `top_up` and the payment intent id in
+  `paymentRef`, written exactly once per Checkout Session (`CreditTopUp`,
+  unique session and payment intent ids).
+- **Held credits** are released lazily: `getBalance` and `debit` (and
+  `GET /billing/credits`) credit every purchase whose 14 days have passed
+  (`credits/top_up_ledger.ts`, a conditional claim, so concurrent reads credit
+  it once), or immediately when the buyer asks for delivery now.
+- **Refunds** (`charge.refunded`) withdraw the refunded share with a
+  `reversal` row (reason `top_up_refund`), never below a zero balance; spent
+  credits stay spent. A refunded held purchase releases less, or nothing.
+- **Expiry:** none. The RFC promises at least 24 months; the balance has no
+  per-purchase lots, so no expiry date is recorded.
+
+Details (routes, webhook, configuration, data):
+[`artist_pro_billing.md`](artist_pro_billing.md#credit-packs-1422).
 
 ## Surfaces
 
@@ -273,12 +307,14 @@ generations. Nothing else adds credits.
 - Usage endpoint (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='usage-summary.integration'`
 - Meter (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credits.integration'`
 - Generation/remix gating (integration): `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credits-generation-block|credits-remix-block'`
+- Credit packs: `credit_packs.spec.ts`, `credit_topup.controller.http.spec.ts`, and `cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='credit_topup.integration'`
 
 ## Remaining / Deferred
 
-- **Live fiat top-up (Stripe)** — the production flip; gated on the SA3
-  commercial-use license review (#1193). No live money changes hands in this
-  slice.
+- **Live fiat top-up (Stripe)** — credit packs are built in test mode (#1422);
+  live charging is gated on the Artist Pro RFC §8 gates (#1421 price
+  sign-off, legal review of the wording and refund policy, #1193). Auto-reload
+  and USDC top-up: #2410.
 - Artist Pro monthly credit allowance bundling (ADR-BM-3) is future work.
 - **Cost instrumentation (#1421)** — the flat `$0.06/30s` COGS guess is now a
   typed, env-overridable **per-path cost-model config**
@@ -295,9 +331,8 @@ generations. Nothing else adds credits.
   `GET /usage/summary`, the Settings -> Usage & Billing page, and (Sprint 40)
   the registry as the enforcers' single source of truth, the per-kind spend
   breakdown, `percentLeft` on every limit and the `UsageLimitMeter` in Remix
-  Studio. Still deferred and not code-writable yet: buy credits, auto-reload
-  and any Stripe flow (blocked on #1421 pricing + #1193); #1422 stays open for
-  that. Design of record: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md).
+  Studio. Buying credit packs shipped in Stripe test mode (#1422, Artist Pro
+  slice 4); auto-reload is #2410. Design of record: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md).
 
 ## Links
 

@@ -9,7 +9,8 @@ issue: 1776
 
 **Status:** `in-progress` (the checkout step, server checkpoint and confirmation
 ship together; the consent wording is a **draft for legal review before
-production**, and credit top-ups and on-chain mints have no checkout yet).
+production**, and on-chain mints have no checkout yet; credit packs use the
+step since #1422, in Stripe test mode).
 
 **Revenue line / phase (ADR-BM-6):** vision-neutral compliance infrastructure.
 It changes when a buyer receives content, not what anyone is charged: no fee or
@@ -46,7 +47,7 @@ so the refund policy stated that the right survived every digital purchase.
 
 In scope: human checkouts for **stem and licence purchases** (on-chain buy,
 browser x402 checkout, crate batch buy), **paid collectibles/drops**, and
-**future credit top-ups** (the surface exists; no top-up flow exists yet).
+**credit packs** (#1422, Stripe test mode).
 
 Out of scope: **x402 agent / MCP purchases** (machine-to-machine, not consumer
 sales; the agent route `GET /api/stems/:id/x402` has no signed-in buyer and is
@@ -62,7 +63,7 @@ not gated) and **Shows pledges** (not digital content). Free collectible claims
 | Crate batch buy | `CrateQuotePanel` (one consent per stem) | as the on-chain buy |
 | Paid collectible (Punchline) | `payMomentWithX402SmartAccount` | `POST /punchline/moments/:id/collect/smart-account`: the edition is allocated (scarcity) as `pending` and released lazily on read when a consent exists or 14 days have passed; set completion and the set reward wait for the release |
 | On-chain collectible mint | none yet | `requireMintConsent` (see below) |
-| Credit top-up | none yet | the same record can be reused |
+| Credit pack (#1422, Stripe test mode) | Usage & Billing → Credits → Buy → Stripe Checkout | `POST /billing/credits/checkout` records the `credit_topup` consent through `PurchaseConsentService.record` (the standard wording) before creating the Checkout Session, and links it to the session id. Deliver now credits on payment; wait holds the credits 14 days, released lazily on the next balance read or debit, or by Deliver now on the held purchase (a new consent linked to the same session). See [Artist Pro billing](artist_pro_billing.md#credit-packs-1422) |
 | Artist Pro subscription (#2407, Stripe test mode) | Usage & Billing → Plan → Stripe Checkout | none held: a service that starts at once. `POST /billing/subscription/checkout` records the `subscription` consent (its own wording, `2026-10-25.subscription-draft-1`: start now, refund of unused time on withdrawal) before creating the Checkout Session; `POST /purchase-consents` refuses this surface. See [Artist Pro billing](artist_pro_billing.md) |
 
 ## Design
@@ -117,8 +118,8 @@ manifests in `backend/src/modules/privacy/`.
 
 ## Known limits and open items
 
-- No consumer mint and no credit top-up checkout exists; both are covered by
-  the record and the helper but have nothing to wire yet.
+- No consumer mint checkout exists; it is covered by the record and the helper
+  but has nothing to wire yet.
 - Purchases by an AI DJ session key have no checkout step, so their downloads
   are held 14 days unless the buyer asks for them earlier.
 - A held collectible's `X402Settlement` is recorded at once (the payment is

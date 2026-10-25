@@ -6,6 +6,7 @@ import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
 import { UsageLimitMeter } from "../credits/UsageLimitMeter";
 import { formatCents } from "../../lib/usage";
 import { Button } from "../ui/Button";
+import { BuyCreditsSection } from "./BuyCredits";
 import { PlanBillingSection } from "./PlanBilling";
 
 type ToastFn = (toast: {
@@ -23,12 +24,13 @@ type CreditRequestState = "idle" | "sending" | "sent";
 
 /**
  * Format a ledger amount in cents, signed by transaction type (#1422). Debits
- * (spend) render negative; everything else (grant/top-up/refund) renders
- * positive so the sign matches the running balance.
+ * (spend) and reversals (credits taken back after a refund of a bought pack)
+ * render negative; everything else (grant/top-up/refund) renders positive so
+ * the sign matches the running balance.
  */
 export function formatLedgerAmount(type: string, amountCents: number): string {
   const magnitude = Math.abs(amountCents);
-  const isDebit = /debit|spend|charge|consume/i.test(type);
+  const isDebit = /debit|spend|charge|consume|reversal/i.test(type);
   const sign = isDebit ? "−" : "+";
   return `${sign}${magnitude}¢`;
 }
@@ -73,13 +75,24 @@ function humanizeType(type: string): string {
   return type.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Ledger reasons with a plain-language label (#1422); others show as written. */
+const LEDGER_REASON_LABELS: Record<string, string> = {
+  top_up: "Credit pack",
+  top_up_refund: "Credit pack refund",
+};
+
+export function describeLedgerReason(reason: string): string {
+  return LEDGER_REASON_LABELS[reason] ?? (reason || "—");
+}
+
 /**
  * Pure presentational view for the Usage & Billing panel (#1422). Kept separate
  * from the fetching container so it can be rendered with an injected summary in
  * tests (`renderToStaticMarkup`). Renders visually distinct sections: plan,
  * credits (monetary balance), usage limits (rate quotas), spend by action, and
- * usage history. The only purchase is the Artist Pro subscription in the Plan
- * section (#2407, Stripe test mode); credits are not sold yet.
+ * usage history. Purchases: the Artist Pro subscription in the Plan section
+ * (#2407) and credit packs in the Credits section (#1422), both in Stripe test
+ * mode.
  */
 export function UsageBillingView({
   summary,
@@ -87,6 +100,7 @@ export function UsageBillingView({
   requesting = false,
   now,
   planExtra,
+  creditsExtra,
 }: {
   summary: UsageSummary;
   onRequestCredits?: () => void;
@@ -94,6 +108,8 @@ export function UsageBillingView({
   now?: number;
   /** The subscription controls under the plan chip (#2407). */
   planExtra?: ReactNode;
+  /** The Buy credits controls under the balance (#1422). */
+  creditsExtra?: ReactNode;
 }) {
   const { credits, limits, breakdown, plan } = summary;
   const transactions = credits.recentTransactions ?? [];
@@ -124,8 +140,8 @@ export function UsageBillingView({
             Credits
           </h3>
           <p className="settings-copy">
-            A pre-funded balance spent down per AI action. Run out and you can request a top-up
-            from an operator.
+            A pre-funded balance spent down per AI action. Buy a credit pack, or run out and request
+            a top-up from an operator.
           </p>
         </div>
         <CreditBalanceMeter
@@ -134,8 +150,9 @@ export function UsageBillingView({
           onRequestCredits={onRequestCredits}
           requesting={requesting}
         />
+        {creditsExtra}
         <div className="usage-grant-info">
-          <strong>How credits are granted today</strong>
+          <strong>How credits are added</strong>
           <ul>
             <li>
               New accounts can start with a one-time free allowance, when the operator has turned
@@ -146,7 +163,10 @@ export function UsageBillingView({
               you&rsquo;ll be notified once they&rsquo;re added.
             </li>
             <li>A generation that fails is refunded automatically.</li>
-            <li>Buying credits and automatic top-ups are not available yet.</li>
+            <li>
+              Credit packs ($5, $10 or $25) are bought through Stripe, where the server has them set
+              up. Bought credits do not expire. Automatic top-ups are not available yet.
+            </li>
           </ul>
         </div>
       </section>
@@ -265,7 +285,7 @@ export function UsageBillingView({
                   <tr key={txn.id}>
                     <td>{formatTxnDate(txn.createdAt)}</td>
                     <td>{humanizeType(txn.type)}</td>
-                    <td>{txn.reason || "—"}</td>
+                    <td>{describeLedgerReason(txn.reason)}</td>
                     <td className="usage-num">{formatLedgerAmount(txn.type, txn.amountCents)}</td>
                     <td className="usage-num">{txn.balanceAfterCents}¢</td>
                   </tr>
@@ -296,6 +316,7 @@ export function UsageBillingBody({
   requesting = false,
   now,
   planExtra,
+  creditsExtra,
 }: {
   summary: UsageSummary | null;
   loading: boolean;
@@ -306,6 +327,7 @@ export function UsageBillingBody({
   requesting?: boolean;
   now?: number;
   planExtra?: ReactNode;
+  creditsExtra?: ReactNode;
 }) {
   if (summary) {
     return (
@@ -315,6 +337,7 @@ export function UsageBillingBody({
         requesting={requesting}
         now={now}
         planExtra={planExtra}
+        creditsExtra={creditsExtra}
       />
     );
   }
@@ -342,8 +365,9 @@ export function UsageBillingBody({
  * Settings → Usage & Billing panel (#1422). Reads the unified
  * `GET /usage/summary` snapshot and renders plan tier, credit balance, per-kind
  * usage limits, spend by action, and a usage-history table. Writes: the
- * operator credit-request affordance (reused from #1418) and, in the Plan
- * section, the Artist Pro subscription checkout and Manage billing (#2407).
+ * operator credit-request affordance (reused from #1418), in the Plan section
+ * the Artist Pro subscription checkout and Manage billing (#2407), and in the
+ * Credits section the credit pack checkout (#1422).
  */
 export default function UsageBillingPanel({ token, addToast }: Props) {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -413,6 +437,7 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
         onRequestCredits={handleRequestCredits}
         requesting={creditRequestState === "sending"}
         planExtra={<PlanBillingSection token={token} addToast={addToast} onPlanChanged={() => void load()} />}
+        creditsExtra={<BuyCreditsSection token={token} addToast={addToast} onCreditsChanged={() => void load()} />}
       />
     </div>
   );

@@ -79,6 +79,7 @@ model User {
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
   generationCreditRequests    GenerationCreditRequest[]
+  creditTopUps                CreditTopUp[]
   entitlementGrants           EntitlementGrant[]
   subscription                Subscription?
   generationJobOutcomes       GenerationJobOutcome[]
@@ -196,12 +197,66 @@ model GenerationCreditTransaction {
   amountCents       Int
   reason            String
   jobId             String?
+  /// The payment behind a bought-credit movement (#1422): the Stripe payment
+  /// intent id of a `top_up` grant or its `top_up_refund` reversal. Null otherwise.
+  paymentRef        String?
   balanceAfterCents Int
   createdAt         DateTime @default(now())
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([jobId])
+  @@index([paymentRef])
+}
+
+// A generation-credit pack bought through Stripe Checkout (#1422, Artist Pro
+// slice 4, docs/rfc/artist-pro.md §7; test mode). One row per Checkout Session:
+// the unique session and payment intent ids make fulfilment exactly-once. The
+// buyer's `credit_topup` consent decides delivery: `deliver_now` credits the
+// ledger at once; `wait` holds the credits until `heldUntil` (14 days after the
+// payment), released lazily on the next balance read or debit, or earlier when
+// the buyer asks for immediate delivery. `status`: held | credited | refunded |
+// needs_review (the paid amount did not match the pack; nothing credited).
+// Refunds (`charge.refunded`) withdraw the matching share of the credits:
+// `refundedCreditsCents` is that share, `reversedCents` what could actually be
+// taken back from the balance (never below zero; spent credits stay spent).
+// Bought credits carry no expiry (the RFC promises at least 24 months).
+// A billing record: kept on erasure for accounting, holds no card data.
+model CreditTopUp {
+  id                      String    @id @default(uuid())
+  userId                  String
+  packId                  String
+  /// What the pack costs, before tax, in USD cents (the server catalogue price).
+  priceCents              Int
+  currency                String    @default("usd")
+  /// Generation credits the pack buys, in USD cents.
+  creditsCents            Int
+  stripeCheckoutSessionId String    @unique
+  stripePaymentIntentId   String?   @unique
+  /// The `credit_topup` PurchaseConsent recorded before the Checkout Session.
+  consentId               String?
+  /// deliver_now | wait (no consent found counts as wait).
+  delivery                String
+  status                  String
+  heldUntil               DateTime?
+  creditedAt              DateTime?
+  /// consent (deliver now at checkout) | hold_elapsed | deliver_now_later.
+  releaseBasis            String?
+  /// Credits added to the ledger by this purchase.
+  creditedCents           Int       @default(0)
+  /// Cumulative amount refunded at Stripe (`charge.amount_refunded`), in cents.
+  refundedAmountCents     Int       @default(0)
+  /// The share of the credits the refunds withdraw.
+  refundedCreditsCents    Int       @default(0)
+  /// Credits actually taken back from the balance for those refunds.
+  reversedCents           Int       @default(0)
+  paidAt                  DateTime
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId, status, heldUntil])
+  @@index([userId, createdAt])
 }
 
 // Operator credit-request queue (#1885). A user out of generation credits asks

@@ -311,6 +311,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "subscription: that is an account-closure step (tracked as a follow-up).",
   },
   {
+    model: "CreditTopUp",
+    disposition: "retain",
+    reason:
+      "A billing record (#1422): which credit pack was paid for, when, through which Stripe Checkout Session and "
+      + "payment intent, how it was delivered and what was refunded, kept as long as accounting and tax rules require.",
+    note:
+      "Names the person only through `userId`, which rotates with the cascade; holds no card data and no free text. "
+      + "`consentId` points at the person's own PurchaseConsent, which is retained alongside.",
+  },
+  {
     model: "StripeEvent",
     disposition: "untouched",
     reason: "Stripe webhook idempotency log (#2407): event ids and types with no payload and no column naming a person.",

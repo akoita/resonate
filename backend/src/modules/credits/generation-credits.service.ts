@@ -14,6 +14,7 @@ import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import type { ResonateEvent } from "../../events/event_types";
 import type { MeteredActionKind } from "./metered-actions";
+import { releaseDueTopUpHolds } from "./top_up_ledger";
 
 /**
  * Default sell price for AI generation, in USD cents per 30 seconds (#1334,
@@ -237,6 +238,8 @@ export class GenerationCreditsService {
     // Provision the free starter on first balance read (e.g. the Create page
     // loading) so a brand-new account shows its allowance instead of a bare 0.
     await this.ensureSignupStarter(userId);
+    // Bought credits whose 14-day hold has ended are released here (#1422).
+    await releaseDueTopUpHolds(userId);
     const [account, recentTransactions] = await Promise.all([
       prisma.generationCreditAccount.findUnique({ where: { userId } }),
       prisma.generationCreditTransaction.findMany({
@@ -337,6 +340,8 @@ export class GenerationCreditsService {
     // user's first generation succeeds instead of hitting the 0-credit wall.
     // Idempotent: no-op once the account exists.
     await this.ensureSignupStarter(userId);
+    // A held credit purchase whose hold has ended is spendable now (#1422).
+    await releaseDueTopUpHolds(userId);
 
     let balanceAfterCents: number;
     try {

@@ -126,4 +126,11 @@ Implementing Stripe; changing staging billing behavior; merging the crypto
    joins `CreditBalanceMeter` in Remix Studio, and the dead "auto-reload coming soon"
    control is removed (the page states how credits are granted today instead).
    Revenue line ADR-BM-6 Line 2, Phase 2 groundwork; nothing is charged.
-3. **Later** — Stripe buy/auto-reload once #1421 + #1193 land.
+3. **Credit packs (#1422, Artist Pro slice 4, Stripe test mode)** — $5/$10/$25
+   packs through one-time Checkout (`GET /billing/credits`,
+   `POST /billing/credits/checkout`), the `credit_topup` consent before payment,
+   `top_up` ledger rows with the payment intent id, 14-day holds released
+   lazily, refund reversals floored at a zero balance; see
+   `docs/features/artist_pro_billing.md`. Live charging waits for the Artist Pro
+   RFC §8 gates (#1421, #1193, legal review).
+4. **Later** — auto-reload and USDC top-up (#2410).

@@ -1869,6 +1869,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "paragraph",
             text: "An Artist Pro subscription is a service, so it works differently: you ask for it to start now and keep your right to withdraw for 14 days, but if you withdraw you are refunded only for the unused time. The subscription checkout asks you to tick that box before you pay.",
           },
+          {
+            kind: "paragraph",
+            text: "Credit packs use the same two choices. Deliver now adds the credits as soon as your payment is confirmed, and you give up your right to withdraw for the credits you use. Wait 14 days holds them and adds them automatically when the 14 days end; you can ask for them sooner from Usage & Billing.",
+          },
         ],
       },
       {
@@ -2047,7 +2051,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Generate original tracks from a text prompt and publish them to your catalog, with AI provenance recorded automatically.",
     category: "create",
     audiences: ["artist"],
-    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe"],
+    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe", "buy credits", "credit pack", "top up", "receipt", "refund"],
     sections: [
       {
         id: "generate",
@@ -2077,7 +2081,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Generating uses credits",
-            text: "AI generation runs on prepaid credits — longer tracks cost more. The Credits meter above the Generate button shows roughly how much generation you have left (in minutes and tracks) and updates after each track. New accounts start with a small free allowance so you can try it right away. Once that runs out, generation is blocked with a message; ask an operator for a credit grant to top up. Refined-away or failed generations are not charged. Open Settings, then Usage & Billing, to see your balance, your usage limits and what each kind of AI action has cost you.",
+            text: "AI generation runs on prepaid credits — longer tracks cost more. The Credits meter above the Generate button shows roughly how much generation you have left (in minutes and tracks) and updates after each track. New accounts start with a small free allowance so you can try it right away. Once that runs out, generation is blocked with a message; buy a credit pack in Usage & Billing where it is available, or ask an operator for a credit grant. Refined-away or failed generations are not charged. Open Settings, then Usage & Billing, to see your balance, your usage limits and what each kind of AI action has cost you.",
           },
           {
             kind: "callout",
@@ -2113,8 +2117,41 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "callout",
             tone: "note",
-            title: "How you get credits today",
-            text: "You cannot buy credits yet, and nothing is charged in real money. New accounts can start with a free allowance when it is turned on, and an operator can grant more; use Request credits when you run low. Failed generations are refunded automatically. The same credit and limit meters appear where you generate: on Create, and in Remix Studio next to the Generate button.",
+            title: "How you get credits",
+            text: "Buy a credit pack under your balance (see Buying credits below). New accounts can also start with a free allowance when it is turned on, and an operator can grant more; use Request credits when you run low. Failed generations are refunded automatically. Automatic top-ups are not available yet. The same credit and limit meters appear where you generate: on Create, and in Remix Studio next to the Generate button.",
+          },
+        ],
+      },
+      {
+        id: "buy-credits",
+        heading: "Buying credits",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "In Settings, Usage & Billing, the Credits section offers packs of $5, $10 and $25. Each pack adds the same amount of generation credits as its price, before any tax. Payment happens on Stripe's secure checkout page, which shows the exact amount with any tax; Resonate never sees your card. Bought credits do not expire.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Confirm a contact email first, in Settings, Email. Your receipts are sent there.",
+              "Pick a pack. The $10 pack is selected to start with; choose another if you like.",
+              "Choose Buy, then choose how you want the credits delivered. Deliver now adds them as soon as your payment is confirmed: tick the box to say you understand you give up your right to withdraw for the credits you use. Wait 14 days keeps your right to withdraw: the credits are held and added automatically when the 14 days end. Nothing is selected for you, and your choice is recorded before you pay.",
+              "Choose Continue to secure checkout and pay on Stripe. You come back to Usage & Billing, which shows your new balance once Stripe confirms the payment, and you get a confirmation in your notices with a receipt reference.",
+            ],
+          },
+          {
+            kind: "list",
+            items: [
+              "Held credits are listed with the date they arrive. Choose Deliver now next to them to have them straight away; this ends your right to withdraw from that purchase.",
+              "If a purchase is refunded, the refunded share of its credits is removed from your balance. Credits you have already used stay used, and your balance never goes below zero.",
+              "Your recent purchases are listed with their status and receipt reference.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Test mode",
+            text: "Buying credits is in test for now. While the Credits section shows a Test mode note, purchases run in Stripe's test environment and no real card is charged. On a server where credit packs are not set up, the section says buying credits is not available yet.",
           },
         ],
       },
