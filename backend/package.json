@@ -22,6 +22,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "help:audio": "ts-node --transpile-only scripts/help-audio/render-help-audio-examples.ts",
     "fixtures:shows": "ts-node --transpile-only src/scripts/create_sample_show_campaigns.ts",
     "fixtures:shows:prod": "node dist/scripts/create_sample_show_campaigns.js",
     "identity:resolve": "ts-node --transpile-only src/scripts/resolve_identity.ts",

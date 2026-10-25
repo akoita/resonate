@@ -82,6 +82,14 @@ export type HelpBlock =
   | { kind: "callout"; tone: "tip" | "note" | "warning"; title?: string; text: string }
   /** A captioned screenshot. */
   | { kind: "figure"; figure: HelpFigureRef }
+  /**
+   * A short audio example (#1943): a "listen to it" clip for guidance that is
+   * hard to explain in words. `src` is a path under `web/public` (checked to
+   * exist), `caption` is shown above the player, `description` is visible text
+   * saying what the clip sounds like and what to listen for (for readers who
+   * cannot hear it), and `duration` is the clip length in seconds.
+   */
+  | { kind: "audio"; src: string; caption: string; description: string; duration: number }
   /** Term/definition pairs. Rendered as <dl>. */
   | { kind: "definitions"; items: { term: string; description: string }[] };
 
