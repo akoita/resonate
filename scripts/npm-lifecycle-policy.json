@@ -78,10 +78,6 @@
     "desktop": {
       "lockfile": "desktop/package-lock.json",
       "packageLifecycles": {
-        "node_modules/electron@41.10.6": {
-          "disposition": "execute",
-          "rationale": "Electron installs the pinned runtime binary required to run and package the desktop application."
-        },
         "node_modules/electron-winstaller@5.4.0": {
           "disposition": "execute",
           "rationale": "The Windows installer tooling selects the bundled 7-Zip executable for the current architecture."
