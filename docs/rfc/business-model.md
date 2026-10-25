@@ -252,6 +252,60 @@ fiat top-up (Stripe) is the deferred production flip, gated on the SA3
 commercial-use license review (#1193) — the license blocker gates *charging
 money*, not the internal meter, so building the meter now is license-safe.
 
+### Layer 2b — Artist Pro (canonical — accepted 2026-10-25)
+
+Design and rationale: [`docs/rfc/artist-pro.md`](artist-pro.md) (#2385). This
+is ADR-BM-6 line 2, Phase 2.
+
+**Plan and price:**
+
+- One creator plan for artists, producers and DJs.
+- **$14.99/month**, with an annual option at 2 months free.
+- Prices include VAT in the EU and exclude it elsewhere (Stripe Tax).
+
+**What Pro adds:**
+
+- Remix Studio Pro mode (`remix.pro`).
+- Crate Digger beyond 3 saved crates, plus export and watch (`crate.pro`).
+- The cockpit's demand cards (`cockpit.demand`).
+- Priority rights review. This only changes queue order; it never skips a
+  check.
+- A monthly generation allowance (below).
+
+**What stays free:** uploading, separating your own releases, listing, selling,
+official stems, payouts, refunds, Shows, and Content Protection.
+
+**Pro never buys exposure.**
+
+**Generation allowance:**
+
+- $3.00 a month at sell prices.
+- It lives in its own ledger bucket and is spent before bought credits.
+- It expires at the end of the billing period and is never refunded in cash.
+
+**Buying credits:**
+
+- Stripe for v1 (ADR-BM-6). USDC top-up follows on the same ledger.
+- Packs: $5 (the minimum), $10 (the default) and $25.
+- Bought credits don't expire for at least 24 months.
+
+**Billing rules:**
+
+- A failed payment gets 7 days' grace, then the plan drops to free. Nothing is
+  deleted.
+- There is no trial; operator grants are used instead.
+
+**Unchanged:** the marketplace take-rate, and the artist share of every
+transaction (at least 85%, ADR-BM-4).
+
+**Not in force until these gates clear:**
+
+- the #1421 per-path pricing sign-off;
+- legal review;
+- VAT/OSS;
+- deferred-revenue treatment;
+- the Stripe account.
+
 ### Layer 3 — Stem Licensing Marketplace (the Revenue Core)
 
 This is Resonate's primary revenue engine and its deepest moat.
@@ -505,7 +559,7 @@ remix finish #1206, license gate #1193 all shipped):
 | **P0**   | Shows production go-live ([#1583](https://github.com/akoita/resonate/issues/1583), gated owner decision) + real campaign cohort | Line 1 live — first collected revenue |
 | **P0**   | Generation-credit billing ([#1334](https://github.com/akoita/resonate/issues/1334); Stability registration first) | Line 2 opener — GPU becomes a margin line |
 | ~~**P1**~~ ✅ | Marketplace take-rate — on-chain **10% shipped** (deployed 2026-07-05); on-chain 15%-personal deferred to [#1300](https://github.com/akoita/resonate/issues/1300) ([#1333](https://github.com/akoita/resonate/issues/1333)) | Line 3 — 10% collected on-chain today |
-| **P1**   | Artist Pro subscription (Stripe v1) bundling credits + tools | Line 2 |
+| **P1**   | Artist Pro subscription (Stripe v1) bundling credits + tools. Design accepted 2026-10-25 ([artist-pro.md](artist-pro.md)); slices #2406, #2407, #2408, #1422, #2409 | Line 2 |
 | **P1**   | Remix real-user enablement gates (#1342 attribution, #1343 moderation, terms under #1164) | Lines 2/3 supply |
 | **P2**   | Listener Pro + wallet pre-fund (launch gate: ~500–1,000 genuine WAU in wedge communities) | Line 4 |
 | **P2**   | LicenseRegistry + recursive royalties (licensing roadmap Phases 2–3) | Line 5 / rights moat |
