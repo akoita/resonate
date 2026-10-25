@@ -8,9 +8,12 @@ from the pull-request branches.  The caller is responsible for authenticating
 ``gh`` and for granting the minimum permissions needed to push the train
 branch and edit/create its pull request.
 
-No source pull request is closed or merged by this script.  A conflict or a
-review-risk is isolated to that pull request and is recorded in the generated
-train description; other eligible pull requests can still be included.  Heads
+Source pull requests are never merged by this script.  A source is closed
+(with an explanatory comment) only when merging its head into the base branch
+would change nothing, i.e. its update is already on the base branch.  A
+conflict or a review-risk is isolated to that pull request and is recorded in
+the generated train description; other eligible pull requests can still be
+included.  Heads
 without a completed, non-failing source check are skipped, and the final
 number/SHA/disposition set is fingerprinted so a repeated run does not rewrite
 an unchanged train branch.
@@ -122,6 +125,7 @@ class TrainResult:
     source_fingerprint: str
     train_pr_number: int | None = None
     train_pr_url: str | None = None
+    superseded: tuple[TrainItem, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -530,6 +534,62 @@ def _fetch_pull_request(
     return local_ref, None
 
 
+def _is_already_on_base(repository_root: Path, base_sha: str, local_ref: str) -> bool:
+    """Return whether merging ``local_ref`` into ``base_sha`` changes nothing.
+
+    ``git merge-tree --write-tree`` computes the merge result without touching
+    the worktree or index.  A clean merge whose tree equals the base tree means
+    the update is already present, for example after a squash-merged train PR.
+    A conflict or any other failure is never treated as superseded.
+    """
+
+    merged = _git(
+        repository_root,
+        ["merge-tree", "--write-tree", "--no-messages", base_sha, local_ref],
+        check=False,
+    )
+    if merged.returncode != 0:
+        return False
+    lines = merged.stdout.splitlines()
+    merged_tree = lines[0].strip() if lines else ""
+    if not merged_tree:
+        return False
+    base_tree = _git(repository_root, ["rev-parse", f"{base_sha}^{{tree}}"], check=False)
+    if base_tree.returncode != 0:
+        return False
+    return merged_tree == base_tree.stdout.strip()
+
+
+def _close_superseded_pull_request(
+    repository_root: Path,
+    repository: str,
+    pull_request: PullRequest,
+    base_branch: str,
+) -> None:
+    """Close a source PR whose update is already on the base branch."""
+
+    _repository_owner(repository)
+    if not _valid_branch_name(base_branch):
+        raise DependencyTrainError(f"invalid base branch name: {base_branch!r}")
+    comment = (
+        f"Closed by the Dependency Train: this update is already on `{base_branch}` "
+        f"(merging this head into `{base_branch}` changes nothing). "
+        "Dependabot will open a new pull request if a newer version is released."
+    )
+    _gh(
+        repository_root,
+        [
+            "pr",
+            "close",
+            str(pull_request.number),
+            "--repo",
+            repository,
+            "--comment",
+            comment,
+        ],
+    )
+
+
 def _merge_pull_request(
     repository_root: Path,
     local_ref: str,
@@ -613,7 +673,8 @@ def render_train_section(
         "## Dependency train",
         "",
         "This review-only branch is rebuilt from the current `main` commit. "
-        "No source Dependabot pull request is closed or merged automatically.",
+        "No source Dependabot pull request is merged automatically; one is closed "
+        "only when its update is already on `main`.",
         "Source heads must report at least one completed, non-failing check. "
         "Zero reported checks are treated as pending and remain skipped.",
         "",
@@ -864,8 +925,13 @@ def rebuild_train(
     train_branch: str = DEFAULT_TRAIN_BRANCH,
     max_pull_requests: int = DEFAULT_MAX_PULL_REQUESTS,
     dry_run: bool = False,
+    close_superseded_only: bool = False,
 ) -> TrainResult:
-    """Fetch, classify, combine, and optionally publish the dependency train."""
+    """Fetch, classify, combine, and optionally publish the dependency train.
+
+    With ``close_superseded_only`` the run only closes source PRs already on
+    the base branch; it queries no checks and builds or publishes no train.
+    """
 
     _validate_options(base_branch, train_branch)
     _repository_owner(repository)
@@ -894,6 +960,7 @@ def rebuild_train(
     )
     skipped: list[TrainItem] = []
     risky: list[TrainItem] = []
+    superseded: list[TrainItem] = []
     candidates: list[tuple[PullRequest, str, tuple[str, ...]]] = []
 
     for pull_request in pull_requests:
@@ -915,6 +982,27 @@ def rebuild_train(
         local_ref, fetch_error = _fetch_pull_request(repository_root, remote, pull_request)
         if fetch_error:
             skipped.append(TrainItem(pull_request, "skipped", fetch_error))
+            continue
+        if _is_already_on_base(repository_root, base_sha, local_ref):
+            if not dry_run:
+                try:
+                    _close_superseded_pull_request(
+                        repository_root, repository, pull_request, base_branch
+                    )
+                except DependencyTrainError as error:
+                    skipped.append(
+                        TrainItem(
+                            pull_request,
+                            "skipped",
+                            f"unable to close superseded pull request: {error}",
+                        )
+                    )
+                    continue
+            superseded.append(
+                TrainItem(pull_request, "superseded", f"already on {base_branch}")
+            )
+            continue
+        if close_superseded_only:
             continue
         try:
             checks = _commit_checks(repository_root, repository, pull_request.head_sha)
@@ -947,6 +1035,19 @@ def rebuild_train(
             risky.append(TrainItem(pull_request, "risky", "; ".join(reasons), changed_files))
             continue
         candidates.append((pull_request, local_ref, changed_files))
+
+    if close_superseded_only:
+        return TrainResult(
+            base_sha=base_sha,
+            included=(),
+            skipped=tuple(skipped),
+            conflicting=(),
+            risky=tuple(risky),
+            source_fingerprint=source_set_fingerprint((*skipped, *risky)),
+            train_pr_number=existing_number,
+            train_pr_url=existing_url or None,
+            superseded=tuple(superseded),
+        )
 
     # Keep the run bounded even if a repository's Dependabot limits are raised.
     if len(candidates) > max_pull_requests:
@@ -1002,6 +1103,7 @@ def rebuild_train(
                     source_fingerprint=source_fingerprint,
                     train_pr_number=existing_number,
                     train_pr_url=existing_url or None,
+                    superseded=tuple(superseded),
                 )
             managed = render_train_section(
                 base_sha=base_sha,
@@ -1034,6 +1136,7 @@ def rebuild_train(
         source_fingerprint=source_fingerprint,
         train_pr_number=train_pr_number,
         train_pr_url=train_pr_url,
+        superseded=tuple(superseded),
     )
     if dry_run:
         print(
@@ -1058,6 +1161,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-branch", default=DEFAULT_TRAIN_BRANCH)
     parser.add_argument("--max-pull-requests", type=int, default=DEFAULT_MAX_PULL_REQUESTS)
     parser.add_argument("--dry-run", action="store_true", help="rebuild locally and print the PR body without pushing")
+    parser.add_argument(
+        "--close-superseded-only",
+        action="store_true",
+        help="only close source pull requests already on the base branch; build and publish no train",
+    )
     return parser
 
 
@@ -1075,6 +1183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             train_branch=args.train_branch,
             max_pull_requests=args.max_pull_requests,
             dry_run=args.dry_run,
+            close_superseded_only=args.close_superseded_only,
         )
     except DependencyTrainError as error:
         print(f"dependency train failed: {error}", file=sys.stderr)
@@ -1085,7 +1194,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"included={len(result.included)} "
         f"skipped={len(result.skipped)} "
         f"conflicting={len(result.conflicting)} "
-        f"risky={len(result.risky)}"
+        f"risky={len(result.risky)} "
+        f"superseded={len(result.superseded)}"
     )
     if result.train_pr_url:
         print(f"Train PR: {result.train_pr_url}")

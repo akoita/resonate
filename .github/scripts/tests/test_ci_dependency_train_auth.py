@@ -38,6 +38,17 @@ class DependencyTrainAuthTests(unittest.TestCase):
 
         self.assertRegex(rebuild, re.compile(r"persist-credentials:\s+false"))
 
+    def test_merged_train_pushes_trigger_a_close_only_run(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        rebuild = text.split("  report-failure:", maxsplit=1)[0]
+
+        self.assertRegex(rebuild, re.compile(r"\n  push:\n    branches: \[main\]\n"))
+        job_condition = rebuild.split("  rebuild:", maxsplit=1)[1].split("runs-on:", maxsplit=1)[0]
+        self.assertIn("github.event_name != 'push'", job_condition)
+        self.assertIn("'chore(deps): consolidate Dependabot updates'", job_condition)
+        self.assertIn("--close-superseded-only", rebuild)
+        self.assertIn("EVENT_NAME: ${{ github.event_name }}", rebuild)
+
 
 if __name__ == "__main__":
     unittest.main()
