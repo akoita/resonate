@@ -1,6 +1,7 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { EntitlementsService } from "../entitlements/entitlements.service";
 import {
   analyticsActorIdCandidates,
   pseudonymousAnalyticsActorId,
@@ -46,11 +47,39 @@ export interface SceneScoutSource {
   ): Promise<SceneScoutResult>;
 }
 
-/** Entitlement seam; the initial implementation keeps Scene Scout free. */
+/** The entitlement key for the cockpit demand cards. */
+export const COCKPIT_DEMAND_FEATURE = "cockpit.demand" as const;
+
+/**
+ * The cockpit demand cards' entitlement seam (`cockpit.demand`, #2406): Scene
+ * Scout city demand and show proposals, unmet request demand, and first-week
+ * discovery reception. A thin adapter over the one `EntitlementsService`.
+ *
+ * Demand belongs to an artist, and a plan belongs to the account that holds
+ * the artist profile: the artist's own user, or the managing account for a
+ * managed profile. Under policy `entitlements/v1` (`everyone`) every artist can
+ * read it, exactly as before; an unknown artist is decided as `free` (and its
+ * readers answer `thin_data` as they always did). A future denial never hides
+ * demand behind a buy button: Pro sells tools, never exposure
+ * (`docs/rfc/artist-pro.md` §2).
+ */
 @Injectable()
 export class SceneScoutEntitlementsService {
-  async canRead(_artistId: string): Promise<boolean> {
-    return true;
+  private readonly entitlements: EntitlementsService;
+
+  constructor(@Optional() entitlements?: EntitlementsService) {
+    this.entitlements = entitlements ?? new EntitlementsService();
+  }
+
+  async canRead(artistId: string): Promise<boolean> {
+    const artist = artistId
+      ? await prisma.artist.findUnique({
+          where: { id: artistId },
+          select: { userId: true, managementOwnerUserId: true },
+        })
+      : null;
+    const holder = artist?.userId ?? artist?.managementOwnerUserId ?? "";
+    return (await this.entitlements.decide(holder, COCKPIT_DEMAND_FEATURE)).allowed;
   }
 }
 

@@ -14,6 +14,12 @@
  * change must land in `docs/rfc/business-model.md` FIRST, then bump
  * {@link CRATE_PRO_POLICY}'s version here.
  *
+ * Since #2406 this is a thin adapter over the one `EntitlementsService`
+ * (`modules/entitlements`): {@link CrateEntitlementsService.pro} asks
+ * `decide(userId, "crate.pro")` under policy `entitlements/v1`. The crate DTO
+ * keeps its shape (`allowed`, `reason`, `policyVersion`) and this seam's own
+ * policy version, so nothing a client reads changes.
+ *
  * Exporting a crate to rekordbox or Serato (#1965) is decided through the same
  * seam by {@link CrateEntitlementsService.export}: free for everyone today. A
  * future policy that denies it makes the export routes answer 403
@@ -33,7 +39,8 @@
  * removable, whatever the policy says.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { EntitlementsService } from "../entitlements/entitlements.service";
 
 /** The entitlement key for Crate Digger Pro. */
 export const CRATE_PRO_FEATURE = "crate.pro" as const;
@@ -85,15 +92,21 @@ export function canCreateCrate(input: {
 
 @Injectable()
 export class CrateEntitlementsService {
+  private readonly entitlements: EntitlementsService;
+
+  constructor(@Optional() entitlements?: EntitlementsService) {
+    this.entitlements = entitlements ?? new EntitlementsService();
+  }
+
   /**
-   * Whether `userId` may use Crate Digger Pro (`crate.pro`). Async so a future
-   * policy can look up a subscription or a payment receipt; today's policy
-   * ignores `userId`.
+   * Whether `userId` may use Crate Digger Pro (`crate.pro`), as the one
+   * entitlement service decides it. Today's policy allows everyone.
    */
   async pro(userId: string): Promise<CrateEntitlementDecision> {
+    const decision = await this.entitlements.decide(userId, CRATE_PRO_FEATURE);
     return {
-      allowed: true,
-      reason: "free_for_everyone",
+      allowed: decision.allowed,
+      reason: decision.reason,
       policyVersion: CRATE_PRO_POLICY.version,
     };
   }

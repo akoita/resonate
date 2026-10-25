@@ -79,6 +79,7 @@ model User {
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
   generationCreditRequests    GenerationCreditRequest[]
+  entitlementGrants           EntitlementGrant[]
   generationJobOutcomes       GenerationJobOutcome[]
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
@@ -222,6 +223,41 @@ model GenerationCreditRequest {
 
   @@index([status, requestedAt])
   @@index([userId, status])
+}
+
+// Artist Pro operator and promo grants (#2406, docs/rfc/artist-pro.md §4).
+// A grant gives the person the `pro` plan between `validFrom` and `validUntil`
+// (open-ended when null) until an admin revokes it. The entitlement service
+// reads the plan from here; under policy `entitlements/v1` (`everyone`) the plan
+// is recorded in each decision but changes nothing a person can do.
+// `reason` is the admin's internal note about this person: personal data,
+// never copied into the admin audit log, scrubbed on the person's erasure.
+// `createdByUserId` / `revokedByUserId` are admins' User.ids and deliberately
+// carry no relation; the erasure manifest lists them as dangling person columns.
+model EntitlementGrant {
+  id              String                 @id @default(uuid())
+  userId          String
+  plan            EntitlementGrantPlan   @default(pro)
+  source          EntitlementGrantSource @default(operator_grant)
+  validFrom       DateTime               @default(now())
+  validUntil      DateTime?
+  reason          String?                @db.Text
+  createdByUserId String
+  createdAt       DateTime               @default(now())
+  revokedAt       DateTime?
+  revokedByUserId String?
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+enum EntitlementGrantPlan {
+  pro
+}
+
+enum EntitlementGrantSource {
+  operator_grant
+  promo
 }
 
 // Durable lifecycle evidence for each metered catalogue-generation debit.

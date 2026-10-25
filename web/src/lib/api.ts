@@ -6865,7 +6865,18 @@ export type UsageSummary = {
   credits: GenerationCreditBalance;
   limits: UsageLimit[];
   breakdown: UsageBreakdown;
-  plan: { tier: "free"; monthlyAllowanceCents: number | null };
+  plan: UsagePlan;
+};
+
+/**
+ * The person's plan (#2406), from the one entitlement service. `pro` today only
+ * comes from an operator or promo grant; Pro tools are still free for everyone.
+ */
+export type UsagePlan = {
+  tier: "free" | "pro";
+  monthlyAllowanceCents: number | null;
+  source?: "stripe_subscription" | "operator_grant" | "promo";
+  validUntil?: string;
 };
 
 /**
@@ -8155,6 +8166,8 @@ export type AdminAuditAction =
   | "credit_requests.viewed"
   | "credit_request.granted"
   | "credit_request.dismissed"
+  | "entitlement_grant.created"
+  | "entitlement_grant.revoked"
   | "dmca.reports_viewed"
   | "dmca.report_resolved"
   | "trust.artist_verified"
@@ -8270,6 +8283,58 @@ export function listAdminAuditEvents(token: string, query: AdminAuditEventsQuery
   return apiRequest<AdminAuditEventsPage>(
     `/admin/audit-events${buildAdminAuditQueryString(query)}`,
     { cache: "no-store" },
+    token,
+  );
+}
+
+// ============ Admin Pro grants (#2406) ============
+
+export type EntitlementGrantSource = "operator_grant" | "promo";
+export type EntitlementGrantStatus = "active" | "scheduled" | "expired" | "revoked";
+
+/** One grant of the Pro plan, as an admin sees it (`/admin/entitlements/grants`). */
+export type EntitlementGrant = {
+  id: string;
+  userId: string;
+  plan: "pro";
+  source: EntitlementGrantSource;
+  validFrom: string;
+  validUntil: string | null;
+  /** The admin's internal note; never shown to the person or written into the audit log. */
+  reason: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  revokedAt: string | null;
+  revokedByUserId: string | null;
+  status: EntitlementGrantStatus;
+};
+
+export function listEntitlementGrants(token: string, userId: string) {
+  return apiRequest<EntitlementGrant[]>(
+    `/admin/entitlements/grants?userId=${encodeURIComponent(userId)}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+/** Admins only, with a step-up proof (#2173): `403 step_up_required` without one. */
+export function createEntitlementGrant(
+  token: string,
+  input: { userId: string; validUntil?: string | null; source?: EntitlementGrantSource; reason: string },
+  stepUpProof?: string,
+) {
+  return apiRequest<EntitlementGrant>(
+    "/admin/entitlements/grants",
+    { method: "POST", body: JSON.stringify(input), headers: stepUpHeaders(stepUpProof) },
+    token,
+  );
+}
+
+/** Admins only, with a step-up proof. The grant is kept, marked revoked. */
+export function revokeEntitlementGrant(token: string, grantId: string, stepUpProof?: string) {
+  return apiRequest<EntitlementGrant>(
+    `/admin/entitlements/grants/${encodeURIComponent(grantId)}`,
+    { method: "DELETE", headers: stepUpHeaders(stepUpProof) },
     token,
   );
 }

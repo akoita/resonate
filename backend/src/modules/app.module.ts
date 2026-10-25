@@ -43,6 +43,7 @@ import { McpModule } from "./mcp/mcp.module";
 import { ShowsModule } from "./shows/shows.module";
 import { CreditsModule } from "./credits/credits.module";
 import { UsageModule } from "./usage/usage.module";
+import { EntitlementsModule } from "./entitlements/entitlements.module";
 import { PunchlineModule } from "./punchline/punchline.module";
 import { PurchaseConsentModule } from "./purchase_consent/purchase_consent.module";
 import { PrivacyModule } from "./privacy/privacy.module";
@@ -107,6 +108,7 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
     ShowsModule,
     CreditsModule,
     UsageModule,
+    EntitlementsModule,
     PunchlineModule,
     PurchaseConsentModule,
     PrivacyModule,

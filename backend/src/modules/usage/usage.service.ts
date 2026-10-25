@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import {
   GenerationCreditsService,
@@ -7,6 +7,8 @@ import {
 import type { MeteredActionKind } from "../credits/metered-actions";
 import { GenerationService } from "../generation/generation.service";
 import { RemixProjectService } from "../remix/remix-project.service";
+import { EntitlementsService } from "../entitlements/entitlements.service";
+import type { EntitlementPlan, EntitlementSource } from "../entitlements/entitlements.policy";
 import {
   USAGE_BREAKDOWN_PERIOD_DAYS,
   buildUsageBreakdown,
@@ -35,7 +37,19 @@ export interface UsageSummary {
   credits: GenerationCreditBalance;
   limits: UsageLimitSummary[];
   breakdown: UsageBreakdown;
-  plan: { tier: "free"; monthlyAllowanceCents: number | null };
+  plan: UsagePlan;
+}
+
+/**
+ * The person's plan, from the one entitlement service (#2406). `source` and
+ * `validUntil` are set only for `pro` (today: an operator or promo grant).
+ * `monthlyAllowanceCents` stays null until the allowance lands (#2408).
+ */
+export interface UsagePlan {
+  tier: EntitlementPlan;
+  monthlyAllowanceCents: number | null;
+  source?: EntitlementSource;
+  validUntil?: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -48,11 +62,16 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 @Injectable()
 export class UsageService {
+  private readonly entitlements: EntitlementsService;
+
   constructor(
     private readonly credits: GenerationCreditsService,
     private readonly generation: GenerationService,
     private readonly remix: RemixProjectService,
-  ) {}
+    @Optional() entitlements?: EntitlementsService,
+  ) {
+    this.entitlements = entitlements ?? new EntitlementsService();
+  }
 
   async getSummary(userId: string): Promise<UsageSummary> {
     const credits = await this.credits.getBalance(userId);
@@ -63,7 +82,10 @@ export class UsageService {
       remix_draft: this.remix.getGenerationRateLimitStatus(userId),
     };
 
-    const { debits, refunds } = await this.readLedger(userId, since);
+    const [{ debits, refunds }, plan] = await Promise.all([
+      this.readLedger(userId, since),
+      this.entitlements.resolvePlan(userId),
+    ]);
 
     return {
       credits,
@@ -74,9 +96,14 @@ export class UsageService {
         priceCentsPer30s: credits.priceCentsPer30s,
         since,
       }),
-      // Free tier today; Artist Pro + bundled monthly allowance land later
-      // (ADR-BM-3). No live-money plan exists yet, so allowance is null.
-      plan: { tier: "free", monthlyAllowanceCents: null },
+      // The plan comes from the entitlement service (#2406): `pro` only for an
+      // operator or promo grant today. No allowance exists yet (#2408, ADR-BM-3).
+      plan: {
+        tier: plan.plan,
+        monthlyAllowanceCents: null,
+        ...(plan.source ? { source: plan.source } : {}),
+        ...(plan.validUntil ? { validUntil: plan.validUntil } : {}),
+      },
     };
   }
 

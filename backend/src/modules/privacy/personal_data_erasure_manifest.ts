@@ -287,6 +287,19 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "the operator's user id without a relation and is listed in `DANGLING_PERSON_COLUMNS`.",
   },
   {
+    model: "EntitlementGrant",
+    disposition: "anonymize",
+    reason:
+      "A grant of the Pro plan (#2406) stays as the record of who was given Pro, by which admin and for how long; "
+      + "the admin's note about the person is private text and is scrubbed.",
+    scrub: ["reason"],
+    matchOn: "userId",
+    note:
+      "The erased account is closed, so a surviving grant gives nobody anything. `createdByUserId` and "
+      + "`revokedByUserId` hold admins' user ids without a relation and are listed in `DANGLING_PERSON_COLUMNS`; "
+      + "a note an erased admin wrote about somebody else is that person's record and is not scrubbed.",
+  },
+  {
     model: "GenerationJobOutcome",
     disposition: "retain",
     reason:
@@ -1167,6 +1180,22 @@ export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
     reason:
       "The operator who resolved the dispute. Not in the inventory, and easy to miss because the "
       + "model already has a User relation on `initiatorUserId` — that relation cascades, this column does not.",
+  },
+  {
+    model: "EntitlementGrant",
+    column: "createdByUserId",
+    action: "rewrite",
+    reason:
+      "The admin who granted the Pro plan (#2406). It has no User relation, so when that admin is erased the "
+      + "retained grant on somebody else's account must stop naming them.",
+  },
+  {
+    model: "EntitlementGrant",
+    column: "revokedByUserId",
+    action: "rewrite",
+    reason:
+      "The admin who revoked a Pro grant (#2406). It has no User relation, so the id rotation never reaches it "
+      + "and the retained grant must stop naming an erased admin.",
   },
   {
     model: "GenerationCreditRequest",

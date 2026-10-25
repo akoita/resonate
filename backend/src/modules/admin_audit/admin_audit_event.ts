@@ -32,6 +32,9 @@ export const ADMIN_AUDIT_ACTIONS = [
   "credit_requests.viewed",
   "credit_request.granted",
   "credit_request.dismissed",
+  /** #2406: an admin granted or revoked the `pro` plan (ids and codes; never the note). */
+  "entitlement_grant.created",
+  "entitlement_grant.revoked",
   "dmca.reports_viewed",
   "dmca.report_resolved",
   "trust.artist_verified",

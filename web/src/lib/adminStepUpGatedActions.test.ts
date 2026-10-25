@@ -8,8 +8,10 @@ import { AdminStepUpCancelledError, clearStepUpProof, withAdminStepUp } from "./
 import {
   ADMIN_STEP_UP_HEADER,
   API_BASE,
+  createEntitlementGrant,
   grantCreditRequest,
   resolveCommunityModerationReport,
+  revokeEntitlementGrant,
   reviewManagementRecovery,
 } from "./api";
 import {
@@ -57,6 +59,9 @@ describe("gated admin calls carry the proof (#2362)", () => {
     ["grantCreditRequest", "/credits/requests/req%201/grant", (proof?: string) => grantCreditRequest(TOKEN, "req 1", { amountCents: 500 }, proof)],
     ["reviewManagementRecovery", "/management/recoveries/rec-1", (proof?: string) => reviewManagementRecovery(TOKEN, "rec-1", { decision: "approve", note: "ok" }, proof)],
     ["resolveCommunityModerationReport", "/admin/community/moderation/reports/rep-1", (proof?: string) => resolveCommunityModerationReport(TOKEN, "rep-1", { action: "ban_member" }, proof)],
+    // #2406: granting and revoking Pro.
+    ["createEntitlementGrant", "/admin/entitlements/grants", (proof?: string) => createEntitlementGrant(TOKEN, { userId: "u-1", validUntil: "2026-12-31T23:59:59.000Z", reason: "founder" }, proof)],
+    ["revokeEntitlementGrant", "/admin/entitlements/grants/grant%201", (proof?: string) => revokeEntitlementGrant(TOKEN, "grant 1", proof)],
   ])("%s sends the header only when it has a proof", async (_name, path, call) => {
     fetchMock.mockImplementation(async () => json({ ok: true }));
     await call(undefined);

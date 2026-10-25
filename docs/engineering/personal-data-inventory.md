@@ -203,6 +203,23 @@ audit lines about email carry counts and error classes only, never addresses,
 tokens or bodies. Unsubscribe links are stateless signed tokens and store
 nothing.
 
+## Artist Pro grants (#2406)
+
+`EntitlementGrant` records an admin's grant of the Pro plan to a person:
+`userId`, `plan` (`pro`), `source` (`operator_grant` or `promo`), `validFrom`,
+an optional `validUntil`, `revokedAt`, and `reason`. The `reason` is the
+admin's free-text note about the person (for example "founding artist"), so it
+is personal data about them. Legal basis: the platform's legitimate interest in
+running founder, partner and support programmes; no grant is a payment.
+
+The model has a `User` relation on `userId` (cascade on update and delete).
+`createdByUserId` and `revokedByUserId` are admins' user ids with no relation,
+listed as dangling columns and rewritten when that admin is erased. Export: the
+person's grants, with both admin ids redacted. Erasure: `anonymize`, scrubbing
+`reason` on the person's own grants; the row stays as the record of who was
+given Pro. The note is never copied into `AdminAuditEvent`, whose
+`entitlement_grant.created` and `.revoked` rows hold ids and codes only.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:
@@ -262,7 +279,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `ShowPledge`, `ShowPledgeDemandContext`, `ArtistFollow`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `PurchaseConsent`, `Crate`, `CrateItem`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
-`CrateWatchMatch`.
+`CrateWatchMatch`, `EntitlementGrant`.
 
 Immediate-delivery consent (#1776) adds `PurchaseConsent`: for each consumer
 digital purchase, the buyer's recorded choice made before paying (asked for

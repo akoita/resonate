@@ -12,6 +12,12 @@ import {
   CrateEntitlementsService,
   canCreateCrate,
 } from "../modules/crates/crate-entitlements";
+import { EntitlementsService } from "../modules/entitlements/entitlements.service";
+import type { EntitlementGrantsService } from "../modules/entitlements/entitlement_grants.service";
+import { FREE_PLAN } from "../modules/entitlements/entitlements.policy";
+
+/** No database here: the adapter is wired to a plan source with no grants. */
+const noGrants = { resolvePlan: async () => FREE_PLAN } as unknown as EntitlementGrantsService;
 
 const GRANTED: CrateEntitlementDecision = {
   allowed: true,
@@ -26,7 +32,7 @@ const DENIED: CrateEntitlementDecision = {
 };
 
 describe("CrateEntitlementsService (#1966)", () => {
-  const service = new CrateEntitlementsService();
+  const service = new CrateEntitlementsService(new EntitlementsService(noGrants));
 
   it("names the feature and the free-for-everyone policy", () => {
     expect(CRATE_PRO_FEATURE).toBe("crate.pro");

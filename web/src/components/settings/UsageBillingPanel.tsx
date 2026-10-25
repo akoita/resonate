@@ -43,6 +43,25 @@ function formatTxnDate(iso: string): string {
   });
 }
 
+/**
+ * How the plan reads (#2406). `pro` today only comes from an operator or promo
+ * grant, so it says "Pro (granted)" with its end date. Pro tools are still free
+ * for everyone, so nothing here invites an upgrade.
+ */
+export function describePlan(plan: UsageSummary["plan"]): { label: string; note: string } {
+  if (plan.tier !== "pro") return { label: "Free", note: "Artist Pro — coming soon" };
+  const granted = plan.source === "operator_grant" || plan.source === "promo";
+  const end = plan.validUntil ? new Date(plan.validUntil) : null;
+  const until =
+    end && !Number.isNaN(end.getTime())
+      ? `Until ${end.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}`
+      : "No end date";
+  return {
+    label: granted ? "Pro (granted)" : "Pro",
+    note: `${until}. Pro tools are free for everyone for now.`,
+  };
+}
+
 function humanizeType(type: string): string {
   return type.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -67,6 +86,7 @@ export function UsageBillingView({
 }) {
   const { credits, limits, breakdown, plan } = summary;
   const transactions = credits.recentTransactions ?? [];
+  const planCopy = describePlan(plan);
 
   return (
     <div className="usage-billing">
@@ -79,9 +99,9 @@ export function UsageBillingView({
         </div>
         <div className="usage-plan-row">
           <span className="usage-plan-chip" data-tier={plan.tier}>
-            {plan.tier === "free" ? "Free" : plan.tier}
+            {planCopy.label}
           </span>
-          <span className="usage-muted-note">Artist Pro — coming soon</span>
+          <span className="usage-muted-note">{planCopy.note}</span>
         </div>
       </section>
 

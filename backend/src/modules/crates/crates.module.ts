@@ -4,6 +4,7 @@ import { ContractsModule } from "../contracts/contracts.module";
 import { IndexerService } from "../contracts/indexer.service";
 import { NotificationModule } from "../notifications/notification.module";
 import { RecommendationsModule } from "../recommendations/recommendations.module";
+import { EntitlementsModule } from "../entitlements/entitlements.module";
 import { CrateEntitlementsService } from "./crate-entitlements";
 import { CRATE_MARKETPLACE_READER, createViemMarketplaceReader } from "./crate_marketplace_reader";
 import { CrateExportService } from "./crate_export.service";
@@ -27,7 +28,7 @@ import { SceneScoutModule } from "../scene_scout/scene_scout.module";
  * Nothing imports this module, so it adds no import cycle.
  */
 @Module({
-  imports: [RecommendationsModule, AgentsModule, NotificationModule, ContractsModule, SceneScoutModule],
+  imports: [RecommendationsModule, AgentsModule, NotificationModule, ContractsModule, SceneScoutModule, EntitlementsModule],
   controllers: [CratesController],
   providers: [
     CratesService,
