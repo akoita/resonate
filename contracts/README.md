@@ -108,12 +108,30 @@ make kernel-v4-test
 
 ```bash
 curl -L https://foundry.paradigm.xyz | bash && foundryup
+git submodule update --init --checkout   # from the repository root
 cd contracts && ./scripts/install-deps.sh
+forge build   # and: forge test --no-match-path "test/formal/*"
 ```
 
-This bootstrap script checks out every Forge git dependency at its exact pinned
-commit and installs the locked v4 harness inputs from `kernel-v4/soldeer.lock`.
-It fails closed rather than replacing an unmanaged dependency directory.
+This is the same sequence CI runs, so a local build matches CI with no
+`--skip` flags. `.gitmodules` marks `lib/kernel` and `lib/kernel-v3` as
+`update = none` so Dependabot and plain `git submodule update --init
+--recursive` skip the Kernel clone (its nested metadata is malformed). The
+`--checkout` flag overrides that for an explicit init, and `install-deps.sh`
+clones either directory itself when it is still empty, so both paths work.
+
+Pin ownership: the root gitlinks for `lib/kernel` (Kernel v4 development
+commit) and `lib/kernel-v3` (Kernel v3.1, `03f7f5cf5871cda0070e4223f196f5b577f6cde2`)
+are the single source of truth. `install-deps.sh` reads both from the gitlinks
+instead of hard-coding them, so they cannot drift. To move a Kernel pin,
+`git -C contracts/lib/<dep> checkout <sha> && git add contracts/lib/<dep>`, then
+update that entry in `foundry.lock`. The remaining pins in `install-deps.sh`
+are still literal there.
+
+The script also installs the locked v4 harness inputs from
+`kernel-v4/soldeer.lock`. It fails closed rather than replacing an unmanaged
+dependency directory. After a fresh `forge clean && forge build`, run
+`./scripts/check-storage-layout.sh` to compare upgradeable-contract layouts.
 
 ### Local (Anvil)
 

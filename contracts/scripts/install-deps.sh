@@ -6,12 +6,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACTS_DIR="$(dirname "$SCRIPT_DIR")"
 
 KERNEL_REPO_URL="https://github.com/zerodevapp/kernel"
-KERNEL_V4_COMMIT="f2a84a332ec5a722e7e95a0d64601905c3c87fe9"
-KERNEL_V3_COMMIT="03f7f5cf5871cda0070e4223f196f5b577f6cde2"
 KERNEL_V4_AA_COMMIT="86fcd84cf7263fe384d61d078ee747b16e69a496"
 ACCOUNT_ABSTRACTION_V07_COMMIT="7af70c8993a6f42973f520ae0752386a5032abe7"
 
 cd "$CONTRACTS_DIR"
+
+# The root repository gitlink is the single source of truth for the Kernel
+# pins (Kernel v4 in lib/kernel, Kernel v3.1 in lib/kernel-v3), so this script
+# and `git submodule update --init --checkout` can never disagree. Bump a pin
+# with `git -C contracts/lib/<dep> checkout <sha> && git add contracts/lib/<dep>`
+# and update contracts/foundry.lock to match.
+gitlink_commit() {
+  local path="$1"
+  local commit
+  commit="$(git ls-files --stage -- "$path" | awk '$1 == "160000" { print $2; exit }')"
+  if [[ -z "$commit" ]]; then
+    echo "Error: $path is not a gitlink in this checkout; cannot resolve its pinned commit." >&2
+    return 1
+  fi
+  echo "$commit"
+}
+
+KERNEL_V4_COMMIT="$(gitlink_commit "lib/kernel")"
+KERNEL_V3_COMMIT="$(gitlink_commit "lib/kernel-v3")"
 
 install_pinned_dep() {
   local path="$1"
@@ -68,8 +85,9 @@ install_kernel_v4_dependencies() {
   fi
 }
 
-# These commits are the root repository gitlinks. Installing their exact SHAs
-# avoids Foundry silently following a newer default branch in clean runners.
+# Installing exact SHAs avoids Foundry silently following a newer default branch
+# in clean runners. The Kernel pins above come from the root gitlinks; the
+# remaining pins are literal here.
 install_pinned_dep "lib/forge-std" \
   "https://github.com/foundry-rs/forge-std" \
   "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b"
