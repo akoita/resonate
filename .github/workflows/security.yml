@@ -177,7 +177,9 @@ jobs:
           allowed = {
               ".github/workflows/ci.yml": {"merge_group", "pull_request", "push", "workflow_dispatch"},
               ".github/workflows/contracts-deploy.yml": {"workflow_dispatch"},
-              ".github/workflows/dependency-train.yml": {"schedule", "workflow_dispatch"},
+              # push (main only, enforced by the ref check below): the close-only run that
+              # tidies superseded Dependabot PRs after a train merges (#2433).
+              ".github/workflows/dependency-train.yml": {"push", "schedule", "workflow_dispatch"},
               ".github/workflows/deploy-handoff.yml": {"workflow_call", "workflow_dispatch"},
               ".github/workflows/desktop-release.yml": {"push", "workflow_dispatch"},
               ".github/workflows/publish-analytics-dataflow-flex-template.yml": {"workflow_dispatch"},
