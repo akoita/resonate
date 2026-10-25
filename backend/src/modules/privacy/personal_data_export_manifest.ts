@@ -126,6 +126,15 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "date and the admin's note. The granting and revoking admins' ids are redacted.",
   },
   {
+    model: "Subscription",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2407. The person's Artist Pro subscription as mirrored from Stripe: the Stripe customer and "
+      + "subscription ids, plan, interval, status, billing period, cancellation and past-due dates. No card data is "
+      + "held here; invoices and payment details are at Stripe, reachable from the Customer Portal.",
+  },
+  {
     model: "GenerationJobOutcome",
     primaryKey: "jobId",
     keys: [{ kind: "userId", column: "userId" }],
@@ -831,6 +840,8 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
   ArtistClaimDecisionEvent:
     "Internal artist-claim audit history; `actorUserId` identifies a reviewer whose decisions may concern another claimant, so historical free-text review notes are not exposed through an operator's personal export. The claimant's own current request and decision remain in the ArtistClaimRequest export.",
   IndexerState: "Per-chain block cursor for the indexer; operator infrastructure with no personal column.",
+  StripeEvent:
+    "Stripe webhook idempotency log (#2407): an event id, its type and when it was received and processed, with no payload and no column naming a person; the subscription it changed is exported as Subscription.",
   ShowEscrowIndexerState:
     "Per-chain escrow indexer cursor and worker lease; `feeRecipient` is the platform's address and `leaseOwnerId` is a worker process id, not a person.",
   ContractEvent:

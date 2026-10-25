@@ -1841,7 +1841,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "marketplace",
     audiences: ["listener", "producer"],
     status: "partial",
-    keywords: ["withdraw", "withdrawal", "14 days", "refund", "immediate delivery", "deliver now", "wait", "held", "download held", "consent", "cooling-off", "right of withdrawal", "mint", "collectible", "purchase confirmation"],
+    keywords: ["withdraw", "withdrawal", "14 days", "refund", "immediate delivery", "deliver now", "wait", "held", "download held", "consent", "cooling-off", "right of withdrawal", "mint", "collectible", "purchase confirmation", "subscription", "artist pro"],
     sections: [
       {
         id: "the-choice",
@@ -1864,6 +1864,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "Things that cannot be undone",
             text: "Where delivery means something recorded on a blockchain, which cannot be reversed, only Deliver now is offered, and you must tick the box to continue.",
+          },
+          {
+            kind: "paragraph",
+            text: "An Artist Pro subscription is a service, so it works differently: you ask for it to start now and keep your right to withdraw for 14 days, but if you withdraw you are refunded only for the unused time. The subscription checkout asks you to tick that box before you pay.",
           },
         ],
       },
@@ -2043,7 +2047,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Generate original tracks from a text prompt and publish them to your catalog, with AI provenance recorded automatically.",
     category: "create",
     audiences: ["artist"],
-    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits"],
+    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe"],
     sections: [
       {
         id: "generate",
@@ -2103,7 +2107,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Credits are your prepaid balance. Each AI action spends some of it, and the page shows the price per 30 seconds of audio for each kind of action.",
               "Usage limits are fair-use quotas, such as a number of generations per hour. They show how much is left as a percentage and when they reset. Reaching a limit just means waiting for the reset; it is not a credit problem and more credits will not change it.",
               "Spend by action shows what each kind of action cost you over the last 30 days, minus refunds for runs that failed. AI part takes in Remix Studio have their own line, separate from AI remix drafts.",
-              "Plan shows Free, or Pro (granted) with its last day when Resonate has given you Artist Pro, for example as a founding artist. Pro tools are free for everyone for now, so a grant does not change what you can do yet. Artist Pro is not on sale yet.",
+              "Plan shows Free, Pro when you subscribe to Artist Pro, or Pro (granted) with its last day when Resonate has given you Artist Pro, for example as a founding artist. Pro tools are free for everyone for now, so a subscription or a grant does not change what you can do yet.",
             ],
           },
           {
@@ -2111,6 +2115,39 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "How you get credits today",
             text: "You cannot buy credits yet, and nothing is charged in real money. New accounts can start with a free allowance when it is turned on, and an operator can grant more; use Request credits when you run low. Failed generations are refunded automatically. The same credit and limit meters appear where you generate: on Create, and in Remix Studio next to the Generate button.",
+          },
+        ],
+      },
+      {
+        id: "artist-pro-subscription",
+        heading: "Artist Pro subscription",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Artist Pro is one plan for artists, producers and DJs, at $14.99 a month or yearly. Subscribe from Settings, Usage & Billing, in the Plan section. Payment happens on Stripe's secure checkout page, which shows the exact price with any tax; Resonate never sees your card.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Confirm a contact email first, in Settings, Email. Your receipts are sent there, and the plan asks for it before you can subscribe.",
+              "Choose Subscribe monthly or Subscribe yearly.",
+              "Read how your right to withdraw works and tick the box to ask for Artist Pro to start now. Nothing is ticked for you, and your choice is recorded and confirmed in your notices before you pay.",
+              "Choose Continue to secure checkout and pay on Stripe. You come back to Usage & Billing, which shows your plan once Stripe confirms it.",
+            ],
+          },
+          {
+            kind: "list",
+            items: [
+              "Manage billing opens Stripe's billing page, where you can update your card, see invoices or cancel. After you cancel, Pro stays on until the end of the period you paid for.",
+              "If a payment fails, the Plan section says so and asks you to update your card. Pro stays on for 7 days; after that your plan returns to Free. Nothing is deleted.",
+              "You can withdraw within 14 days of subscribing. Because Artist Pro starts straight away at your request, you are then refunded for the unused time only, less any monthly generation allowance you have already used.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Test mode",
+            text: "Artist Pro subscriptions are in test for now. While the Plan section shows a Test mode note, subscriptions run in Stripe's test environment and no real card is charged. On a server where subscriptions are not set up, the Plan section says they are not available yet.",
           },
         ],
       },
@@ -2133,7 +2170,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Create", href: "/create", description: "Generate music with AI." },
-      { label: "Usage & Billing", href: "/settings", description: "Settings, then Usage & Billing: credits, limits and spend." },
+      { label: "Usage & Billing", href: "/settings?section=usage", description: "Settings, then Usage & Billing: your plan, credits, limits and spend." },
       { label: "Your catalog", href: "/artist/catalog", description: "Where published tracks appear." },
     ],
     related: ["upload-music", "remix-studio", "rights-protection"],

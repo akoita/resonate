@@ -63,6 +63,7 @@ not gated) and **Shows pledges** (not digital content). Free collectible claims
 | Paid collectible (Punchline) | `payMomentWithX402SmartAccount` | `POST /punchline/moments/:id/collect/smart-account`: the edition is allocated (scarcity) as `pending` and released lazily on read when a consent exists or 14 days have passed; set completion and the set reward wait for the release |
 | On-chain collectible mint | none yet | `requireMintConsent` (see below) |
 | Credit top-up | none yet | the same record can be reused |
+| Artist Pro subscription (#2407, Stripe test mode) | Usage & Billing → Plan → Stripe Checkout | none held: a service that starts at once. `POST /billing/subscription/checkout` records the `subscription` consent (its own wording, `2026-10-25.subscription-draft-1`: start now, refund of unused time on withdrawal) before creating the Checkout Session; `POST /purchase-consents` refuses this surface. See [Artist Pro billing](artist_pro_billing.md) |
 
 ## Design
 

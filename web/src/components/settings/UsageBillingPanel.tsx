@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { getUsageSummary, requestGenerationCredits, type UsageSummary } from "../../lib/api";
 import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
 import { UsageLimitMeter } from "../credits/UsageLimitMeter";
 import { formatCents } from "../../lib/usage";
 import { Button } from "../ui/Button";
+import { PlanBillingSection } from "./PlanBilling";
 
 type ToastFn = (toast: {
   type: "success" | "error" | "info" | "warning";
@@ -44,21 +45,27 @@ function formatTxnDate(iso: string): string {
 }
 
 /**
- * How the plan reads (#2406). `pro` today only comes from an operator or promo
- * grant, so it says "Pro (granted)" with its end date. Pro tools are still free
- * for everyone, so nothing here invites an upgrade.
+ * How the plan reads (#2406, #2407): Free, Pro from an Artist Pro subscription,
+ * or Pro (granted) from an operator or promo grant, with its end date. Pro
+ * tools are still free for everyone, and the copy says so.
  */
 export function describePlan(plan: UsageSummary["plan"]): { label: string; note: string } {
-  if (plan.tier !== "pro") return { label: "Free", note: "Artist Pro — coming soon" };
+  if (plan.tier !== "pro") return { label: "Free", note: "Uploading, selling and payouts are always free." };
   const granted = plan.source === "operator_grant" || plan.source === "promo";
   const end = plan.validUntil ? new Date(plan.validUntil) : null;
-  const until =
+  const date =
     end && !Number.isNaN(end.getTime())
-      ? `Until ${end.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}`
-      : "No end date";
+      ? end.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
+      : null;
+  if (plan.source === "stripe_subscription") {
+    return {
+      label: "Pro",
+      note: `${date ? `Artist Pro subscription, paid through ${date}` : "Artist Pro subscription"}. Pro tools are free for everyone for now.`,
+    };
+  }
   return {
     label: granted ? "Pro (granted)" : "Pro",
-    note: `${until}. Pro tools are free for everyone for now.`,
+    note: `${date ? `Until ${date}` : "No end date"}. Pro tools are free for everyone for now.`,
   };
 }
 
@@ -71,18 +78,22 @@ function humanizeType(type: string): string {
  * from the fetching container so it can be rendered with an injected summary in
  * tests (`renderToStaticMarkup`). Renders visually distinct sections: plan,
  * credits (monetary balance), usage limits (rate quotas), spend by action, and
- * usage history. There is no purchase affordance: nothing is sold yet.
+ * usage history. The only purchase is the Artist Pro subscription in the Plan
+ * section (#2407, Stripe test mode); credits are not sold yet.
  */
 export function UsageBillingView({
   summary,
   onRequestCredits,
   requesting = false,
   now,
+  planExtra,
 }: {
   summary: UsageSummary;
   onRequestCredits?: () => void;
   requesting?: boolean;
   now?: number;
+  /** The subscription controls under the plan chip (#2407). */
+  planExtra?: ReactNode;
 }) {
   const { credits, limits, breakdown, plan } = summary;
   const transactions = credits.recentTransactions ?? [];
@@ -103,6 +114,7 @@ export function UsageBillingView({
           </span>
           <span className="usage-muted-note">{planCopy.note}</span>
         </div>
+        {planExtra}
       </section>
 
       {/* Credits (money) ---------------------------------------------------- */}
@@ -283,6 +295,7 @@ export function UsageBillingBody({
   onRequestCredits,
   requesting = false,
   now,
+  planExtra,
 }: {
   summary: UsageSummary | null;
   loading: boolean;
@@ -292,6 +305,7 @@ export function UsageBillingBody({
   onRequestCredits?: () => void;
   requesting?: boolean;
   now?: number;
+  planExtra?: ReactNode;
 }) {
   if (summary) {
     return (
@@ -300,6 +314,7 @@ export function UsageBillingBody({
         onRequestCredits={onRequestCredits}
         requesting={requesting}
         now={now}
+        planExtra={planExtra}
       />
     );
   }
@@ -324,10 +339,11 @@ export function UsageBillingBody({
 }
 
 /**
- * Settings → Usage & Billing panel (#1422). Read-only: reads the unified
+ * Settings → Usage & Billing panel (#1422). Reads the unified
  * `GET /usage/summary` snapshot and renders plan tier, credit balance, per-kind
- * usage limits, spend by action, and a usage-history table. The only write is the operator
- * credit-request affordance (reused from #1418).
+ * usage limits, spend by action, and a usage-history table. Writes: the
+ * operator credit-request affordance (reused from #1418) and, in the Plan
+ * section, the Artist Pro subscription checkout and Manage billing (#2407).
  */
 export default function UsageBillingPanel({ token, addToast }: Props) {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -396,6 +412,7 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
         retryDisabled={!token}
         onRequestCredits={handleRequestCredits}
         requesting={creditRequestState === "sending"}
+        planExtra={<PlanBillingSection token={token} addToast={addToast} onPlanChanged={() => void load()} />}
       />
     </div>
   );

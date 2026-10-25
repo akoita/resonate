@@ -51,6 +51,12 @@ export const PURCHASE_CONSENT_SURFACES = {
   credit_topup: { deliveryKind: "off_chain", holdAllowed: true },
   /** An on-chain collectible mint, which cannot be undone: consent is required, waiting is not offered. */
   collectible_mint: { deliveryKind: "on_chain_mint", holdAllowed: false },
+  /**
+   * An Artist Pro subscription (#2407): a service that starts at once, with no
+   * hold. Recorded only by `POST /billing/subscription/checkout`, before the
+   * Stripe Checkout Session is created, with {@link SUBSCRIPTION_CONSENT_WORDING}.
+   */
+  subscription: { deliveryKind: "service", holdAllowed: false },
 } as const;
 
 export type PurchaseConsentSurface = keyof typeof PURCHASE_CONSENT_SURFACES;
@@ -105,3 +111,30 @@ export type PurchaseConsentWording = typeof PURCHASE_CONSENT_WORDING;
 /** Platform notice category used for the durable confirmation. Always emailed when a contact address is confirmed. */
 export const PURCHASE_CONSENT_NOTICE_CATEGORY = "purchase" as const;
 export const PURCHASE_CONSENT_NOTICE_ACTOR = { userId: "system:purchase-consent" } as const;
+
+/**
+ * The subscription start wording (#2407, `docs/rfc/artist-pro.md` §6). A
+ * subscription is a service, not content: asking for it to start during the 14
+ * days does not end the right to withdraw, it makes the person pay for the
+ * time used if they withdraw (Directive 2011/83/EU art. 7(3), 14(3)). Versioned
+ * on its own, because its sentences differ from the delivery wording above.
+ * Served by `GET /billing/subscription` so the web never carries its own copy.
+ * A draft until legal review (RFC §8).
+ */
+export const SUBSCRIPTION_CONSENT_TEXT_VERSION = "2026-10-25.subscription-draft-1";
+
+export const SUBSCRIPTION_CONSENT_WORDING = {
+  version: SUBSCRIPTION_CONSENT_TEXT_VERSION,
+  reviewStatus: CONSENT_REVIEW_STATUS,
+  heading: "Your subscription starts now",
+  intro:
+    "You can withdraw from a subscription within 14 days of subscribing. If you ask for Artist Pro to start straight away, you can still withdraw during those 14 days, but you pay for the time you used.",
+  acknowledgement:
+    "I ask for my Artist Pro subscription to start now, before the 14-day withdrawal period ends. I understand that if I withdraw within those 14 days, I am refunded only for the unused time, less the value of any monthly generation allowance I have already used.",
+  cancellation:
+    "You can cancel at any time from Manage billing. Artist Pro then stays on until the end of the period you paid for.",
+  confirmation:
+    "We record your choice and send you a confirmation in your notices and to your confirmed contact address.",
+} as const;
+
+export type SubscriptionConsentWording = typeof SUBSCRIPTION_CONSENT_WORDING;

@@ -6869,8 +6869,9 @@ export type UsageSummary = {
 };
 
 /**
- * The person's plan (#2406), from the one entitlement service. `pro` today only
- * comes from an operator or promo grant; Pro tools are still free for everyone.
+ * The person's plan (#2406), from the one entitlement service: `pro` from an
+ * Artist Pro subscription (#2407) or an operator or promo grant. Pro tools are
+ * still free for everyone.
  */
 export type UsagePlan = {
   tier: "free" | "pro";
@@ -8339,6 +8340,76 @@ export function revokeEntitlementGrant(token: string, grantId: string, stepUpPro
   );
 }
 
+// ============ Artist Pro subscription (#2407, Stripe test mode) ============
+
+export type BillingInterval = "month" | "year";
+export type BillingSubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid"
+  | "paused";
+
+/** The subscription start wording, served by the backend (versioned, for legal review). */
+export type SubscriptionConsentWording = {
+  version: string;
+  reviewStatus: string;
+  heading: string;
+  intro: string;
+  acknowledgement: string;
+  cancellation: string;
+  confirmation: string;
+};
+
+export type BillingState = {
+  /** Whether subscribing works on this server. */
+  available: boolean;
+  /** True while only Stripe test keys are accepted: no real card is charged. */
+  testMode: boolean;
+  contactEmailConfirmed: boolean;
+  /** A billing account exists, so Manage billing can open. */
+  hasBillingAccount: boolean;
+  plan: { plan: "free" | "pro"; source?: UsagePlan["source"]; validUntil?: string };
+  subscription: {
+    status: BillingSubscriptionStatus;
+    interval: BillingInterval;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+    pastDueSince: string | null;
+    graceEndsAt: string | null;
+  } | null;
+  consent: SubscriptionConsentWording;
+};
+
+export function getBillingState(token: string) {
+  return apiRequest<BillingState>("/billing/subscription", { cache: "no-store" }, token);
+}
+
+/**
+ * Start a Stripe Checkout for Artist Pro. The server records the immediate-start
+ * consent before it creates the session; the app then redirects to `url`.
+ * 409 `contact_email_required` without a confirmed contact email; 503
+ * `billing_unavailable` when subscriptions are not set up on this server.
+ */
+export function startSubscriptionCheckout(
+  token: string,
+  input: { interval: BillingInterval; acknowledgedImmediateStart: true; textVersion: string },
+) {
+  return apiRequest<{ url: string }>(
+    "/billing/subscription/checkout",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** The Stripe Customer Portal: card, cancellation and invoices. */
+export function openBillingPortal(token: string) {
+  return apiRequest<{ url: string }>("/billing/portal", { method: "POST" }, token);
+}
+
 // ============ Admin users directory (#2166) ============
 
 export type AdminUserRole = "admin" | "operator" | "agent" | "artist";
@@ -8524,7 +8595,13 @@ export function getAdminAgentSessionEvents(token: string, sessionId: string) {
 /** Whether a purchase has been delivered, or is held until the withdrawal period ends. */
 export type DeliveryState = { state: "released" } | { state: "held"; availableAt: string };
 
-export type PurchaseConsentSurface = "stem_purchase" | "punchline_collect" | "credit_topup" | "collectible_mint";
+export type PurchaseConsentSurface =
+  | "stem_purchase"
+  | "punchline_collect"
+  | "credit_topup"
+  | "collectible_mint"
+  /** An Artist Pro subscription start (#2407); recorded by the subscription checkout only. */
+  | "subscription";
 
 /** The checkout wording, served by the backend so the app never carries its own copy. */
 export type PurchaseConsentWording = {

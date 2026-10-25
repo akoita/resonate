@@ -300,6 +300,22 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "a note an erased admin wrote about somebody else is that person's record and is not scrubbed.",
   },
   {
+    model: "Subscription",
+    disposition: "retain",
+    reason:
+      "A billing record (#2407): which plan was paid for, when and through which Stripe customer and subscription, "
+      + "kept as long as accounting and tax rules require the invoices it backs to be kept.",
+    note:
+      "Names the person only through `userId`, which rotates with the cascade; holds no card data and no free text. "
+      + "The Stripe customer id is the link to the invoices held at Stripe. Erasure does not cancel a live Stripe "
+      + "subscription: that is an account-closure step (tracked as a follow-up).",
+  },
+  {
+    model: "StripeEvent",
+    disposition: "untouched",
+    reason: "Stripe webhook idempotency log (#2407): event ids and types with no payload and no column naming a person.",
+  },
+  {
     model: "GenerationJobOutcome",
     disposition: "retain",
     reason:
@@ -1289,7 +1305,7 @@ export const REVIEWED_NON_PERSON_ID_COLUMNS: Readonly<Record<string, Readonly<Re
     evidenceSubjectId: "Copied from the evidence bundle's subject, so it carries the same enum-constrained work or case id.",
   },
   PurchaseConsent: {
-    subjectId: "The item bought (a stem, a punchline moment or a credit pack, named by `surface`), never a person; the buyer is `userId`, which has a User relation.",
+    subjectId: "The item bought (a stem, a punchline moment, a credit pack or a plan such as `artist_pro_month`, named by `surface`), never a person; the buyer is `userId`, which has a User relation.",
   },
 };
 

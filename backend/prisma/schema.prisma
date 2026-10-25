@@ -80,6 +80,7 @@ model User {
   generationCreditTxns        GenerationCreditTransaction[]
   generationCreditRequests    GenerationCreditRequest[]
   entitlementGrants           EntitlementGrant[]
+  subscription                Subscription?
   generationJobOutcomes       GenerationJobOutcome[]
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
@@ -258,6 +259,73 @@ enum EntitlementGrantPlan {
 enum EntitlementGrantSource {
   operator_grant
   promo
+}
+
+// Artist Pro subscriptions through Stripe (#2407, docs/rfc/artist-pro.md §6).
+// One row per person: the person's Stripe customer and their current (or last)
+// subscription, mirrored from verified webhooks. Created at checkout with
+// status `incomplete` and no subscription id; webhooks fill in the rest.
+// `lastEventCreatedAt` orders webhook deliveries, so an older event never
+// overwrites a newer state. A billing record: kept on erasure for accounting
+// (the row keeps no card data; Stripe holds the payment details).
+model Subscription {
+  id                   String                @id @default(uuid())
+  userId               String                @unique
+  provider             SubscriptionProvider  @default(stripe)
+  stripeCustomerId     String                @unique
+  /// Null until the checkout completes.
+  stripeSubscriptionId String?               @unique
+  plan                 SubscriptionPlan      @default(pro)
+  interval             SubscriptionInterval
+  status               SubscriptionStatus    @default(incomplete)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean               @default(false)
+  /// When the subscription first went past due; the 7-day grace runs from here.
+  pastDueSince         DateTime?
+  /// `created` of the last Stripe event applied to this row.
+  lastEventCreatedAt   DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([status])
+}
+
+enum SubscriptionProvider {
+  stripe
+}
+
+enum SubscriptionPlan {
+  pro
+}
+
+enum SubscriptionInterval {
+  month
+  year
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+  incomplete_expired
+  unpaid
+  paused
+}
+
+// Stripe webhook idempotency (#2407): one row per delivered event id. A row
+// with no `processedAt` was received but not applied (the handler failed), so
+// Stripe's retry applies it. Holds no payload and names no person.
+model StripeEvent {
+  eventId     String    @id
+  type        String
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([receivedAt])
 }
 
 // Durable lifecycle evidence for each metered catalogue-generation debit.
@@ -3143,15 +3211,15 @@ model NoticeRead {
 model PurchaseConsent {
   id                  String    @id @default(uuid())
   userId              String
-  /// stem_purchase | punchline_collect | credit_topup | collectible_mint
+  /// stem_purchase | punchline_collect | credit_topup | collectible_mint | subscription (#2407)
   surface             String
-  /// The item: a stem id, a punchline moment id, a credit pack id.
+  /// The item: a stem id, a punchline moment id, a credit pack id, a plan (`artist_pro_month`).
   subjectId           String
   /// What the buyer was told they were buying, resolved by the server.
   subjectLabel        String
   /// The licence tier chosen at checkout, where the item has tiers.
   licenseType         String?
-  /// off_chain | on_chain_mint
+  /// off_chain | on_chain_mint | service (a subscription that starts at once)
   deliveryKind        String
   consented           Boolean
   acknowledgedWaiver  Boolean

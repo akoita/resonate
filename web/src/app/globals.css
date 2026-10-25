@@ -6789,6 +6789,83 @@ a.listener-cohort-detail__action:focus-visible {
   font-size: 13px;
 }
 
+/* Artist Pro subscription in Usage & Billing → Plan (#2407) */
+.plan-billing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.plan-billing p {
+  margin: 0;
+}
+
+.plan-billing-return,
+.plan-billing-test-mode,
+.plan-billing-email-gate {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.plan-billing-offer,
+.plan-billing-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.plan-billing-headline {
+  font-size: 15px;
+}
+
+.plan-billing-alert {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius-md);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.plan-billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.plan-billing-consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.plan-billing-consent legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.plan-billing-consent-check {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.plan-billing-consent-check input {
+  margin-top: 3px;
+}
+
 .usage-limit-meter-inline {
   margin-top: 6px;
 }

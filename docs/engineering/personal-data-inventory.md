@@ -220,6 +220,30 @@ person's grants, with both admin ids redacted. Erasure: `anonymize`, scrubbing
 given Pro. The note is never copied into `AdminAuditEvent`, whose
 `entitlement_grant.created` and `.revoked` rows hold ids and codes only.
 
+## Artist Pro subscriptions (#2407)
+
+`Subscription` mirrors a person's Stripe subscription: `userId` (unique), the
+Stripe customer and subscription ids, `plan` (`pro`), `interval`, `status`,
+the current billing period, `cancelAtPeriodEnd`, `pastDueSince` and
+`lastEventCreatedAt`. It holds no card data: Stripe holds the payment method,
+invoices and receipts, and the person reaches them through the Stripe Customer
+Portal. The person's confirmed contact address (#2169) is sent to Stripe as the
+customer's billing email. Legal basis: performance of the subscription
+contract; the records are kept for accounting and tax obligations.
+
+The model has a `User` relation on `userId` (cascade on update and delete).
+Export: the whole row. Erasure: `retain`, as a billing record kept for as long
+as accounting requires; the person is named only through `userId`, which
+rotates. Erasure does not cancel a live Stripe subscription; cancelling it on
+account closure is a tracked follow-up.
+
+`StripeEvent` is the webhook idempotency log: event id, type, received and
+processed times. It stores no payload and names nobody (`untouched`, not
+exported). Webhook logs carry the event id and type only.
+
+The subscription start consent is a `PurchaseConsent` row with surface
+`subscription` (see "Immediate-delivery consent" below).
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:
@@ -279,7 +303,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `ShowPledge`, `ShowPledgeDemandContext`, `ArtistFollow`, `ShowCampaignEvent`, `PunchlineCollectible`,
 `RecommendationProfile`, `PunchlineUnlockGrant`, `PurchaseConsent`, `Crate`, `CrateItem`,
 `CrateRequest`, `DemandObservation`, `CrateQuote`, `CrateQuoteLine`,
-`CrateWatchMatch`, `EntitlementGrant`.
+`CrateWatchMatch`, `EntitlementGrant`, `Subscription`.
 
 Immediate-delivery consent (#1776) adds `PurchaseConsent`: for each consumer
 digital purchase, the buyer's recorded choice made before paying (asked for
@@ -289,7 +313,11 @@ linked payment reference and, for a held delivery, the release date. Keyed by
 `userId`; it holds no wallet address and no text typed by the person. It is
 exported, and **retained** on erasure with the purchase records it evidences
 (`StemPurchase`, `PunchlineCollectible`), because it is the proof used to answer
-a withdrawal or refund claim; the user id rotates with the cascade.
+a withdrawal or refund claim; the user id rotates with the cascade. An Artist
+Pro subscription (#2407) adds rows with surface `subscription`: the person's
+request for the subscription to start at once and their acknowledgement that
+withdrawing within 14 days refunds only the unused time, with its own wording
+version and the Checkout Session id as `purchaseRef`.
 
 AI DJ Session History (#2096) adds `Session.filters`, a bounded summary of a
 listening session's own filters (preset name, requested genres and moods,
