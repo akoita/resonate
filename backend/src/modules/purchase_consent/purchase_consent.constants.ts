@@ -47,7 +47,7 @@ export const PURCHASE_CONSENT_SURFACES = {
   stem_purchase: { deliveryKind: "off_chain", holdAllowed: true },
   /** Paid Punchline moment collect. */
   punchline_collect: { deliveryKind: "off_chain", holdAllowed: true },
-  /** Generation-credit top-up. No top-up checkout exists yet; the record is shaped so one can reuse it. */
+  /** Generation-credit pack (#1422): recorded by `POST /billing/credits/checkout` before the Stripe Checkout Session. */
   credit_topup: { deliveryKind: "off_chain", holdAllowed: true },
   /** An on-chain collectible mint, which cannot be undone: consent is required, waiting is not offered. */
   collectible_mint: { deliveryKind: "on_chain_mint", holdAllowed: false },

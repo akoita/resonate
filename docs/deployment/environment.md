@@ -146,8 +146,11 @@ When adding a new environment variable:
 | `STRIPE_WEBHOOK_SECRET` | Backend secret | Signing secret of the Stripe webhook endpoint for `POST /billing/stripe/webhook` (`whsec_…`); the `Stripe-Signature` header is checked against the raw body. Required for billing |
 | `STRIPE_PRICE_ARTIST_PRO_MONTHLY` | Backend | Stripe price id of the monthly Artist Pro price. Required for billing; the amount lives in Stripe |
 | `STRIPE_PRICE_ARTIST_PRO_ANNUAL` | Backend | Stripe price id of the yearly Artist Pro price. Required for billing |
+| `STRIPE_PRICE_CREDITS_5` | Backend | Stripe price id of the $5 generation-credit pack (#1422): a one-time USD price of 500 cents. Buying credits is off (`POST /billing/credits/checkout` answers 503 `billing_unavailable`) until billing is available and all three pack prices are set. A payment whose subtotal or currency does not match the pack is recorded for review and credits nothing |
+| `STRIPE_PRICE_CREDITS_10` | Backend | Stripe price id of the $10 pack (the default pack): one-time, 1000 USD cents. Required for credit packs |
+| `STRIPE_PRICE_CREDITS_25` | Backend | Stripe price id of the $25 pack: one-time, 2500 USD cents. Required for credit packs |
 | `BILLING_LIVE_MODE` | Backend | `true` allows a live Stripe key. Default false (test mode only); live charging is out of scope until the Artist Pro RFC's pre-charge gates are met. While false the app shows a Test mode note |
-| `STRIPE_AUTOMATIC_TAX` | Backend | `true` turns on Stripe Tax in the subscription Checkout (`automatic_tax`, customer address collected). Default false; only enable it once Stripe Tax is configured on the account |
+| `STRIPE_AUTOMATIC_TAX` | Backend | `true` turns on Stripe Tax in the subscription and credit pack Checkouts (`automatic_tax`, customer address collected). Default false; only enable it once Stripe Tax is configured on the account |
 | `CORS_ORIGIN` | Backend | Optional comma-separated browser origins allowed to call the backend. Defaults include local dev and also derives from `FRONTEND_URL` / `WEBAUTHN_ORIGIN` |
 | `CORS_ORIGINS` | Backend | Optional plural alias for `CORS_ORIGIN` |
 | `WEBAUTHN_RP_ID` | Backend | Optional relying-party ID for self-hosted passkey credentials. Usually the frontend hostname, without protocol |

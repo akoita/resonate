@@ -1,10 +1,10 @@
 ---
-title: "Artist Pro billing (Stripe subscriptions)"
+title: "Artist Pro billing (Stripe subscriptions and credit packs)"
 status: in-progress
 owner: "@akoita"
 ---
 
-# Artist Pro billing (Stripe subscriptions)
+# Artist Pro billing (Stripe subscriptions and credit packs)
 
 ## Status
 
@@ -16,6 +16,11 @@ plan becomes `pro` with the source `stripe_subscription`. The entitlement
 policy is still `entitlements/v1` (`everyone`), so **subscribing changes
 nothing a person can do yet**.
 
+Slice 4 ([#1422](https://github.com/akoita/resonate/issues/1422), RFC §7)
+adds **credit packs**: $5, $10 (the default) and $25 of generation credits,
+bought through a one-time Stripe Checkout, also in test mode only. See
+[Credit packs](#credit-packs-1422) below.
+
 What remains:
 
 | Item | Where |
@@ -25,6 +30,9 @@ What remains:
 | The monthly allowance granted on `invoice.paid` | [#2408](https://github.com/akoita/resonate/issues/2408) (the hook is marked in `stripe_webhook.service.ts`) |
 | Pro gates on | [#2409](https://github.com/akoita/resonate/issues/2409) |
 | Cancelling a live Stripe subscription when an account is closed or erased | Follow-up: erasure keeps the billing record but does not cancel at Stripe |
+| Credit pack prices in Stripe (`STRIPE_PRICE_CREDITS_5/10/25`) | The deployment half, in the private infrastructure repository |
+| Auto-reload and USDC top-up of credits | [#2410](https://github.com/akoita/resonate/issues/2410) |
+| Legal review of the credit refund policy and the delivery wording for credits | RFC §8, before live charging |
 
 **Revenue line (ADR-BM-6):** line 2, Artist Pro, Phase 2. Price: $14.99 a
 month, with an annual option at 2 months free (`docs/rfc/business-model.md`,
@@ -165,6 +173,113 @@ Usage & Billing:
 User Guide: the Artist Pro subscription section of the AI generation article
 (Usage & Billing) and the withdrawal article.
 
+## Credit packs (#1422)
+
+**Revenue line (ADR-BM-6):** line 2 (creator tools, metered generation),
+Phase 2. Credits are a cost-plus-margin tool balance: they never touch a
+fan→artist transaction, so the artist share (ADR-BM-4) is unchanged. Packs
+from `docs/rfc/business-model.md` Layer 2b; no fee changes.
+
+### Catalogue and configuration
+
+`billing/credit_packs.ts` holds the catalogue on the server: `credits_5`
+(500 cents), `credits_10` (1000, the default) and `credits_25` (2500). A pack
+buys credits equal to its price before tax. The client names a pack id and
+nothing else: an amount in the request is ignored. Each pack's Stripe price id
+comes from `STRIPE_PRICE_CREDITS_5`, `_10` and `_25`; buying credits is
+available only when billing is (above) **and** all three are set, otherwise
+the checkout answers `503 billing_unavailable` and the page says buying is not
+available yet.
+
+### Routes
+
+| Route | Auth | What it does |
+| --- | --- | --- |
+| `GET /billing/credits` | JWT | `available`, `testMode`, `contactEmailConfirmed`, the packs and `defaultPackId`, `heldCents`, the 10 most recent purchases (status, hold date, refunds, receipt reference) and the #1776 delivery wording. Releases any hold that has ended first |
+| `POST /billing/credits/checkout` | JWT | `{ packId, consent: { choice: "deliver_now" \| "wait", acknowledgedWaiver, textVersion } }` → `{ url }` |
+| `POST /billing/credits/purchases/:id/deliver-now` | JWT | `{ acknowledgedWaiver: true, textVersion }` → the state; releases a held purchase now |
+
+Checkout, in order: `503` when unavailable; `409 contact_email_required`
+without a confirmed contact email; the `credit_topup` consent recorded through
+`PurchaseConsentService.record` (`409 consent_text_outdated`,
+`400 waiver_acknowledgement_required` / `waiver_without_consent`, nothing
+written on refusal) **before** anything is created at Stripe; the person's one
+Stripe customer (shared with the subscription; created with the same
+idempotency key); a Checkout Session in `payment` mode for the pack's price,
+with metadata `purpose: credit_topup`, `userId`, `packId` and `consentId` on
+the session and the payment intent, and return URLs
+`/settings?section=usage&credits=success|cancel` (success also carries the
+Checkout Session id). Stripe Tax as for subscriptions.
+
+### Fulfilment
+
+`checkout.session.completed` (and `checkout.session.async_payment_succeeded`)
+for a `payment` session is handed to `CreditTopUpService.fulfilFromCheckout`;
+the webhook's event-id idempotency and live-mode refusal apply as above.
+
+- Only `payment_status: paid` is fulfilled (an asynchronous method waits for
+  `async_payment_succeeded`).
+- **Exactly once:** one `CreditTopUp` row per Checkout Session; the session id
+  and the payment intent id are unique, and the ledger grant is written in the
+  same transaction, so a replay, a second event or a concurrent delivery
+  credits nothing more (`duplicate_checkout_session`).
+- **Deliver now** (the consent asked for immediate delivery and acknowledged the
+  waiver): a ledger `grant` with reason `top_up` and the payment intent id in
+  `paymentRef`.
+- **Wait** (or no consent found): status `held`, `heldUntil` = payment + 14
+  days. The hold is released **lazily**: every balance read and every debit
+  (`GenerationCreditsService.getBalance` / `debit`) and `GET /billing/credits`
+  credit any purchase whose date has passed, through a conditional claim on
+  the row, so concurrent reads credit it once. `releaseBasis` records
+  `consent`, `hold_elapsed` or `deliver_now_later`. Deliver now later records a
+  new `credit_topup` consent linked to the Checkout Session.
+- A paid subtotal or currency that does not match the pack is recorded as
+  `needs_review` and credits nothing (logged as an error).
+- A `purchase` notice (emailed to the contact address) states the amount, the
+  delivery choice and the receipt reference.
+
+**Expiry:** bought credits do not expire. The RFC promises at least 24 months;
+the balance is one pooled number with no per-purchase lots, so no expiry date
+is recorded.
+
+### Refunds
+
+A refund is issued in Stripe (for example after a withdrawal within 14 days for
+a "wait" purchase). `charge.refunded` withdraws the refunded share of the
+pack's credits (proportional to the money refunded, all of it on a full
+refund; cumulative across partial refunds):
+
+- credits already in the balance are taken back with a `reversal` row (reason
+  `top_up_refund`, same `paymentRef`), **never below a zero balance**: credits
+  already spent stay spent;
+- a held purchase simply releases less, or nothing after a full refund.
+
+Policy: unused credits are refundable according to the consent choice; with
+"deliver now" the buyer gave up the right to withdraw for the credits used.
+Refunds are an operator action in Stripe. **For legal review before live
+charging.**
+
+### Data
+
+`CreditTopUp` (one row per Checkout Session): pack, price, credits, session and
+payment intent ids, consent id, delivery, status (`held | credited | refunded |
+needs_review`), hold and release, credited, refunded and reversed amounts.
+Exported, and retained on erasure as a billing record.
+`GenerationCreditTransaction.paymentRef` names the payment behind a `top_up`
+grant or its reversal.
+
+### The web
+
+`web/src/components/settings/BuyCredits.tsx`, under the balance in Usage &
+Billing → Credits: the three packs with $10 preselected, "Buy $10.00 of
+credits", then the inline #1776 delivery step (`DeliveryConsentStep`, nothing
+selected, an unticked acknowledgement for deliver now) and Continue to secure
+checkout, enabled only once the choice is complete. Held purchases show their
+date and Deliver now (with an unticked acknowledgement); recent purchases show
+status and receipt reference. The `?credits=success` return re-reads the state
+and the balance until the purchase lands. A Test mode note, an email gate, and
+an informative unavailable state with no button.
+
 ## How to test
 
 - Unit: `billing_config.spec.ts` (live-key refusal, unconfigured, return
@@ -180,13 +295,21 @@ User Guide: the Artist Pro subscription section of the AI generation article
   from a subscription).
 - Web: `PlanBilling.test.tsx` (every plan state and the consent step) and
   `UsageBillingPanel.test.tsx`.
+- Credit packs: `credit_packs.spec.ts` (catalogue, configuration, refunded
+  share), `credit_topup.controller.http.spec.ts` (JWT, DTO `400`s, `503`),
+  `credit_topup.integration.spec.ts` (email gate, consent before the session,
+  client amount ignored, customer reuse, fulfilment once per session including
+  concurrent deliveries, asynchronous payments, amount mismatch, live-mode
+  events, the hold and its lazy and requested release, refunds floored at
+  zero), and `BuyCredits.test.tsx`.
 - Manually, in Stripe test mode: set the variables with test keys, forward
   webhooks with the Stripe CLI to `/billing/stripe/webhook`, and pay with a
   Stripe test card.
 
 ## References
 
-- RFC: [`docs/rfc/artist-pro.md`](../rfc/artist-pro.md) §4–§6, §8 and §10.
+- RFC: [`docs/rfc/artist-pro.md`](../rfc/artist-pro.md) §4–§8 and §10.
+- Generation credits: [`generation_credits.md`](generation_credits.md).
 - Business model: [`docs/rfc/business-model.md`](../rfc/business-model.md)
   (Layer 2b).
 - Entitlements: [`entitlements.md`](entitlements.md).

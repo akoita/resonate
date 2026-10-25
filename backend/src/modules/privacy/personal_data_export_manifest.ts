@@ -135,6 +135,15 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "held here; invoices and payment details are at Stripe, reachable from the Customer Portal.",
   },
   {
+    model: "CreditTopUp",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #1422. The person's credit pack purchases: pack, price, credits, the Stripe Checkout Session and "
+      + "payment intent ids, the delivery choice, the 14-day hold and its release, and refunds. No card data is held "
+      + "here; receipts and payment details are at Stripe.",
+  },
+  {
     model: "GenerationJobOutcome",
     primaryKey: "jobId",
     keys: [{ kind: "userId", column: "userId" }],

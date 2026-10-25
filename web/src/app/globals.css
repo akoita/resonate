@@ -6866,6 +6866,94 @@ a.listener-cohort-detail__action:focus-visible {
   margin-top: 3px;
 }
 
+/* Credit packs in Usage & Billing → Credits (#1422) */
+.buy-credits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.buy-credits p {
+  margin: 0;
+}
+
+.buy-credits-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.buy-credits-offer,
+.buy-credits-consent,
+.buy-credits-held,
+.buy-credits-release {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.buy-credits-packs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.buy-credits-pack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.buy-credits-pack[data-selected="true"] {
+  border-color: var(--color-accent, #8b5cf6);
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.buy-credits-pack input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.buy-credits-pack:focus-within {
+  outline: 2px solid var(--color-accent, #8b5cf6);
+  outline-offset: 2px;
+}
+
+.buy-credits-pack-price {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.buy-credits-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.buy-credits-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
 .usage-limit-meter-inline {
   margin-top: 6px;
 }

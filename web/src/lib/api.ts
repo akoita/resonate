@@ -8410,6 +8410,94 @@ export function openBillingPortal(token: string) {
   return apiRequest<{ url: string }>("/billing/portal", { method: "POST" }, token);
 }
 
+// ============ Credit packs (#1422, Stripe test mode) ============
+
+export type CreditPackId = "credits_5" | "credits_10" | "credits_25";
+
+export type CreditPack = {
+  id: CreditPackId;
+  label: string;
+  /** The price before tax, in USD cents. */
+  priceCents: number;
+  /** Generation credits the pack buys, in USD cents. */
+  creditsCents: number;
+  isDefault: boolean;
+};
+
+export type CreditPurchaseStatus = "held" | "credited" | "refunded" | "needs_review";
+
+export type CreditPurchase = {
+  id: string;
+  packId: string;
+  label: string;
+  priceCents: number;
+  creditsCents: number;
+  delivery: "deliver_now" | "wait" | string;
+  status: CreditPurchaseStatus | string;
+  heldUntil: string | null;
+  creditedAt: string | null;
+  creditedCents: number;
+  refundedCreditsCents: number;
+  reversedCents: number;
+  /** The payment reference, also on the Stripe receipt. */
+  receiptRef: string | null;
+  checkoutSessionId: string;
+  paidAt: string;
+};
+
+export type CreditTopUpState = {
+  /** Whether buying credits works on this server. */
+  available: boolean;
+  /** True while only Stripe test keys are accepted: no real card is charged. */
+  testMode: boolean;
+  contactEmailConfirmed: boolean;
+  packs: CreditPack[];
+  defaultPackId: CreditPackId;
+  /** Credits bought and held for the 14-day withdrawal period. */
+  heldCents: number;
+  purchases: CreditPurchase[];
+  /** The delivery wording (#1776), served by the backend. */
+  consent: PurchaseConsentWording;
+};
+
+export function getCreditTopUpState(token: string) {
+  return apiRequest<CreditTopUpState>("/billing/credits", { cache: "no-store" }, token);
+}
+
+/**
+ * Start a Stripe Checkout for a credit pack. The server records the delivery
+ * choice before it creates the session and takes the price from its own
+ * catalogue; the app then redirects to `url`. 409 `contact_email_required`
+ * without a confirmed contact email; 503 `billing_unavailable` when buying
+ * credits is not set up on this server.
+ */
+export function startCreditCheckout(
+  token: string,
+  input: {
+    packId: CreditPackId;
+    consent: { choice: "deliver_now" | "wait"; acknowledgedWaiver: boolean; textVersion: string };
+  },
+) {
+  return apiRequest<{ url: string }>(
+    "/billing/credits/checkout",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Ask for held credits now, which ends the right to withdraw from that purchase. */
+export function deliverHeldCreditsNow(
+  token: string,
+  purchaseId: string,
+  input: { acknowledgedWaiver: true; textVersion: string },
+) {
+  return apiRequest<CreditTopUpState>(
+    `/billing/credits/purchases/${encodeURIComponent(purchaseId)}/deliver-now`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
 // ============ Admin users directory (#2166) ============
 
 export type AdminUserRole = "admin" | "operator" | "agent" | "artist";

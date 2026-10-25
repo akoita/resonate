@@ -4,6 +4,7 @@ import type { UsageSummary } from "../../lib/api";
 import {
   UsageBillingBody,
   UsageBillingView,
+  describeLedgerReason,
   describePlan,
   formatLedgerAmount,
 } from "./UsageBillingPanel";
@@ -171,11 +172,12 @@ describe("UsageBillingView", () => {
     expect(html).toContain("≈ 5 min · 5 tracks");
   });
 
-  it("explains how credits are granted today and offers no purchase or auto-reload control", () => {
+  it("explains how credits are added and offers no purchase or auto-reload control of its own", () => {
     const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
-    expect(html).toContain("How credits are granted today");
-    expect(html).toContain("Buying credits and automatic top-ups are not available yet.");
-    expect(html).not.toMatch(/buy credits|purchase|auto-reload|top up now|add funds/i);
+    expect(html).toContain("How credits are added");
+    expect(html).toContain("Credit packs ($5, $10 or $25) are bought through Stripe");
+    expect(html).toContain("Bought credits do not expire. Automatic top-ups are not available yet.");
+    expect(html).not.toMatch(/auto-reload|top up now|add funds/i);
     // No dead buttons: with a healthy balance and no request handler there is
     // not a single <button> on the page.
     expect(html).not.toContain("<button");
@@ -201,6 +203,23 @@ describe("UsageBillingView", () => {
     expect(html).toContain("Track generation");
     expect(html).toContain("−20¢");
     expect(html).toContain("+120¢");
+  });
+
+  it("renders the Buy credits controls under the balance (#1422)", () => {
+    const html = renderToStaticMarkup(
+      <UsageBillingView summary={summary()} now={NOW} creditsExtra={<div data-testid="buy-credits">BUY</div>} />,
+    );
+    expect(html.indexOf("Generation credits")).toBeLessThan(html.indexOf('data-testid="buy-credits"'));
+    expect(html.indexOf('data-testid="buy-credits"')).toBeLessThan(html.indexOf("How credits are added"));
+  });
+
+  it("signs a reversal negative and labels the credit pack reasons (#1422)", () => {
+    expect(formatLedgerAmount("reversal", 300)).toBe("−300¢");
+    expect(formatLedgerAmount("grant", 1000)).toBe("+1000¢");
+    expect(describeLedgerReason("top_up")).toBe("Credit pack");
+    expect(describeLedgerReason("top_up_refund")).toBe("Credit pack refund");
+    expect(describeLedgerReason("Signup starter")).toBe("Signup starter");
+    expect(describeLedgerReason("")).toBe("—");
   });
 
   it("renders an empty history state when there are no transactions", () => {
