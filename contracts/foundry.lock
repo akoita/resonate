@@ -19,8 +19,8 @@
   },
   "lib/kernel-v3": {
     "tag": {
-      "name": "v2.4",
-      "rev": "e00c66aa82f6d04809c908d2df27d0bac64785ff"
+      "name": "v3.1",
+      "rev": "03f7f5cf5871cda0070e4223f196f5b577f6cde2"
     }
   },
   "lib/openzeppelin-contracts": {

@@ -58,6 +58,14 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    });
    ```
 
+   **Cleanup is scoped to rows the suite created.** Suites run in parallel against
+   one shared database, so never `deleteMany({})` / `deleteMany()` (or `TRUNCATE`,
+   or `DELETE FROM` without `WHERE`) in an integration spec: scope every delete by
+   the test prefix, collected ids, or a chain id the suite owns. Destructive
+   service paths (for example the indexer's chain-reset purge) are exercised on a
+   chain id no other suite uses, not the shared `31337`.
+   `src/tests/integration_cleanup_scope_guard.spec.ts` fails on unscoped wipes.
+
 4. **External services stay mocked.** Services that require external infrastructure not available as a Testcontainer (Google AI, Lyria, bundlers like Pimlico/Alto) should be mocked. Common allowed mocks:
    - `@google/genai`, `@google/adk` — AI SDK (ESM packages)
    - `google-auth-library` — Google Cloud auth
