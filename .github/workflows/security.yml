@@ -161,6 +161,18 @@ jobs:
           import json
           import os
           import re
+          import subprocess
+
+          def executed_job_count(run_id):
+              """Jobs GitHub started for a run, or None when the lookup fails (fail closed)."""
+              try:
+                  out = subprocess.run(
+                      ["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/jobs", "--jq", ".total_count"],
+                      check=True, capture_output=True, text=True, timeout=30,
+                  ).stdout.strip()
+                  return int(out)
+              except Exception:
+                  return None
 
           allowed = {
               ".github/workflows/ci.yml": {"merge_group", "pull_request", "push", "workflow_dispatch"},
@@ -212,10 +224,26 @@ jobs:
                   )
               ):
                   unexpected.append({**record, "unexpected_reason": "ref"})
+          # A workflow file GitHub cannot parse still records a failed run for
+          # each push, with zero jobs: nothing executed with the workflow's
+          # privileges. Record those separately instead of failing the review.
+          # Any run that started a job, or whose job count cannot be read,
+          # stays unexpected.
+          not_executed = []
+          still_unexpected = []
+          for record in unexpected:
+              if record["conclusion"] in {"failure", "startup_failure"} and executed_job_count(record["id"]) == 0:
+                  not_executed.append({**record, "not_executed_reason": "workflow file rejected; no job ran"})
+              else:
+                  still_unexpected.append(record)
+          unexpected = still_unexpected
+          for record in not_executed:
+              print(f"::notice file={record['path']}::Run {record['id']} ({record['event']} on {record['head_branch']}) started no job; recorded as not executed.")
           document = {
               "repository": os.environ["GITHUB_REPOSITORY"],
               "reviewed_at_run": os.environ["GITHUB_RUN_ID"],
               "runs": evidence,
+              "not_executed": not_executed,
               "unexpected": unexpected,
           }
           with open(os.environ["OUTPUT"], "w", encoding="utf-8") as handle:
