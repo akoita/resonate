@@ -215,6 +215,8 @@ const ADMIN_ACTION_LABELS: Record<string, string> = {
   "account.closed": "Closed the account",
   "agent_session.events_viewed": "Opened the agent events of one of their AI DJ sessions",
   "notice.targeted_sent": "Sent them a notice",
+  "entitlement_grant.created": "Granted them Pro",
+  "entitlement_grant.revoked": "Revoked their Pro grant",
 };
 
 /** A plain label for an audit action; unknown actions are shown as recorded. */

@@ -45,6 +45,9 @@ describe("@RequireStepUp routes", () => {
       "credits/credits.controller.ts:grantRequest",
       // Takedowns.
       "dmca/dmca.controller.ts:resolveReport",
+      // Pro plan grants and revocations (#2406).
+      "entitlements/admin_entitlement_grants.controller.ts:create",
+      "entitlements/admin_entitlement_grants.controller.ts:revoke",
       // Wallet recovery.
       "identity/wallet.controller.ts:approveRecovery",
       "identity/wallet.controller.ts:requestRecovery",

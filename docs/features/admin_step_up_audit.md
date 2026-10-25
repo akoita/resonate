@@ -176,6 +176,7 @@ and counts, never free text.
 | `POST /credits/grant` | `credits.granted` (recipient, `amountCents`) | yes |
 | `POST /credits/requests/:id/grant` | `credit_request.granted` | yes |
 | `POST /credits/requests/:id/dismiss`; `GET /credits/requests` | `credit_request.dismissed`; `credit_requests.viewed` | no |
+| `POST /admin/entitlements/grants`; `DELETE /admin/entitlements/grants/:id` (#2406) | `entitlement_grant.created` (recipient, `grantId`, `plan`, `source`, `validUntil`); `entitlement_grant.revoked` (recipient, `grantId`, `plan`); never the admin's note | yes |
 | `PATCH /api/dmca/:id/resolve` | `dmca.report_resolved` (`reportId`, `outcome`) | yes |
 | `GET /api/dmca` | `dmca.reports_viewed` | no |
 | `PATCH /management/recoveries/:id` | `management_recovery.reviewed` (`recoveryId`, `decision`) | yes |

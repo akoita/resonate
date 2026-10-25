@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { CreditsModule } from "../credits/credits.module";
 import { GenerationModule } from "../generation/generation.module";
 import { RemixModule } from "../remix/remix.module";
+import { EntitlementsModule } from "../entitlements/entitlements.module";
 import { UsageController } from "./usage.controller";
 import { UsageService } from "./usage.service";
 
@@ -13,7 +14,7 @@ import { UsageService } from "./usage.service";
  * only reads their public getters — it never back-imports into them.
  */
 @Module({
-  imports: [CreditsModule, GenerationModule, RemixModule],
+  imports: [CreditsModule, GenerationModule, RemixModule, EntitlementsModule],
   controllers: [UsageController],
   providers: [UsageService],
   exports: [UsageService],

@@ -26,6 +26,10 @@ boundary: every route is `@Roles("admin", "operator")` behind `AuthGuard("jwt")`
   sign-in, last active day), account status, activity (counts and the latest
   five purchases, pledges and releases, notices received) and the list of
   operator actions on the record (newest 20).
+- **Plan** (#2406): admins see the person's Pro grants and can grant Pro until
+  a date with a note, or revoke a grant (`EntitlementGrantsControls`, passkey
+  step-up). Operators see that only admins grant Pro. See
+  [Entitlements and Artist Pro grants](entitlements.md).
 - **Restriction controls** (suspend, lift, close) appear on the record **only
   for admins**. They are the existing #2147 controls
   (`AccountRestrictionPanel`) calling the existing admin-only

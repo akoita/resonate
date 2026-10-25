@@ -118,6 +118,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Added by #1885. The person's requests for an operator credit top-up and how each was resolved.",
   },
   {
+    model: "EntitlementGrant",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2406. Grants of the Pro plan an admin gave this person: plan, source, validity dates, revocation "
+      + "date and the admin's note. The granting and revoking admins' ids are redacted.",
+  },
+  {
     model: "GenerationJobOutcome",
     primaryKey: "jobId",
     keys: [{ kind: "userId", column: "userId" }],
@@ -860,6 +868,10 @@ export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, st
   },
   GenerationCreditRequest: {
     resolvedBy: "Internal operator identity; the requester can export the outcome, amount and note without the operator's account id.",
+  },
+  EntitlementGrant: {
+    createdByUserId: "Internal operator identity (#2406); the person can export the grant, its dates and note without the admin's account id.",
+    revokedByUserId: "Internal operator identity (#2406); the person can export when a grant was revoked without the admin's account id.",
   },
   SessionKey: {
     agentPrivateKey:

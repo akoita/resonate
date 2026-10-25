@@ -76,7 +76,9 @@ GET /usage/summary  → {
   credits: { balanceCents, priceCentsPer30s, recentTransactions[] },
   limits: [ { kind, label, remaining, limit, percentLeft, windowSeconds, resetsAt } ],
   breakdown: { periodDays, since, items: [ { kind, lineId, label, unitSeconds, unitCostCents, charges, spentCents, refundedCents, netCents } ] },
-  plan:   { tier: "free", monthlyAllowanceCents?: number }    // Free today; Artist Pro later (ADR-BM-3)
+  plan:   { tier: "free" | "pro", monthlyAllowanceCents: number | null, source?, validUntil? }
+          // From the entitlement service (#2406): "pro" today only from an operator or promo grant;
+          // the allowance stays null until #2408 (ADR-BM-3). See docs/features/entitlements.md.
 }
 ```
 

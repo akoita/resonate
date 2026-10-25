@@ -363,7 +363,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "account",
     audiences: ["operator"],
     status: "partial",
-    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up"],
+    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan"],
     sections: [
       {
         id: "who-can-use-it",
@@ -425,6 +425,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Identity: user id, wallet address, owner address, account type, network, how many passkeys they have, and when they joined and last signed in.",
               "Account status: whether the account is active, suspended or closed, the reason category, the end date of a suspension and when it last changed.",
               "Activity: counts of purchases, pledges and releases, how many notices they received, and their latest few of each.",
+              "Plan (admins): whether the person has Pro, each grant with its dates and note, and the controls to grant or revoke it.",
               "Operator activity: a list of the times someone opened this record or changed the account, newest first.",
             ],
           },
@@ -448,13 +449,30 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "granting-pro",
+        heading: "Granting Pro (admins)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Admins can give a founder, a partner or someone you are helping the Artist Pro plan until a date. On the person's record, in Plan, pick the last day of Pro, choose Operator grant or Promotion, say why in the note, then choose Grant Pro and confirm with your passkey. A grant that is active or has not started yet can be revoked from the same list; it stays there, marked revoked. Operators who are not admins do not see grants.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What a grant changes today",
+            text: "Pro tools (Remix Studio Pro mode, Crate Digger Pro and the demand cards in the artist cockpit) are free for everyone for now, so a grant changes what the person's plan says, not what they can do: their Usage & Billing shows Pro (granted) with its last day. Granting and revoking are in the audit log with the grant's id and kind, never the note. The note stays on the grant, and the person gets it if they download their data.",
+          },
+        ],
+      },
+      {
         id: "confirming-with-your-passkey",
         heading: "Confirming with your passkey (admins and operators)",
         audience: "operator",
         blocks: [
           {
             kind: "paragraph",
-            text: "Actions that cannot easily be undone ask you to prove it is really you at that moment: suspending or closing an account, sending a broadcast notice, granting credits, deciding a management transfer recovery, removing a message or member in community moderation, the show money-release steps (confirming a booking, confirming a show was delivered, resolving a dispute), marking an x402 refund as sent, and the maintenance actions that delete or reset data or re-run the chain indexer. Your passkey (or wallet) opens a prompt and you approve it. You are asked only when needed: once you have confirmed, further actions like these work without another prompt for about five minutes, and then you are asked again. Other reviews, queues and anything that only reads, or that you can easily set back, do not ask.",
+            text: "Actions that cannot easily be undone ask you to prove it is really you at that moment: suspending or closing an account, sending a broadcast notice, granting credits, granting or revoking Pro, deciding a management transfer recovery, removing a message or member in community moderation, the show money-release steps (confirming a booking, confirming a show was delivered, resolving a dispute), marking an x402 refund as sent, and the maintenance actions that delete or reset data or re-run the chain indexer. Your passkey (or wallet) opens a prompt and you approve it. You are asked only when needed: once you have confirmed, further actions like these work without another prompt for about five minutes, and then you are asked again. Other reviews, queues and anything that only reads, or that you can easily set back, do not ask.",
           },
           {
             kind: "list",
@@ -473,7 +491,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Open Audit Log in the sidebar to see one list, newest first, of what operators did: opening a person's record, suspending, lifting or closing an account, opening a session's agent events, sending a notice, and each passkey confirmation. Every other admin and operator action is in it too: credit grants and dismissals, takedown decisions, artist claim and recovery reviews, show reviews and disputes, rights and trusted-source reviews, refunds marked as sent, wallet changes, community moderation, indexer resets, maintenance runs, and opening the queues that show people's details. When an admin or operator uses the wider access they have inside a page people use for their own data, such as reading someone else's wallet, collection or notifications, opening an artist's analytics, or managing an artist's show campaign, that is in it too; using your own data is not. You can filter by what happened and by outcome (done or refused). Nothing in it can be edited or removed from this page.",
+            text: "Open Audit Log in the sidebar to see one list, newest first, of what operators did: opening a person's record, suspending, lifting or closing an account, opening a session's agent events, sending a notice, and each passkey confirmation. Every other admin and operator action is in it too: credit grants and dismissals, Pro grants and revocations, takedown decisions, artist claim and recovery reviews, show reviews and disputes, rights and trusted-source reviews, refunds marked as sent, wallet changes, community moderation, indexer resets, maintenance runs, and opening the queues that show people's details. When an admin or operator uses the wider access they have inside a page people use for their own data, such as reading someone else's wallet, collection or notifications, opening an artist's analytics, or managing an artist's show campaign, that is in it too; using your own data is not. You can filter by what happened and by outcome (done or refused). Nothing in it can be edited or removed from this page.",
           },
           {
             kind: "callout",
@@ -2079,6 +2097,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Credits are your prepaid balance. Each AI action spends some of it, and the page shows the price per 30 seconds of audio for each kind of action.",
               "Usage limits are fair-use quotas, such as a number of generations per hour. They show how much is left as a percentage and when they reset. Reaching a limit just means waiting for the reset; it is not a credit problem and more credits will not change it.",
               "Spend by action shows what each kind of action cost you over the last 30 days, minus refunds for runs that failed. AI part takes in Remix Studio have their own line, separate from AI remix drafts.",
+              "Plan shows Free, or Pro (granted) with its last day when Resonate has given you Artist Pro, for example as a founding artist. Pro tools are free for everyone for now, so a grant does not change what you can do yet. Artist Pro is not on sale yet.",
             ],
           },
           {

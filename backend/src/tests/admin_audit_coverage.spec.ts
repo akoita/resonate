@@ -34,6 +34,7 @@ const NOT_AUDITED: Record<string, string> = {
   "AdminStepUpController.challenge": "A challenge changes nothing; the answer to it is recorded by verify.",
   "AdminUsersController.overview": "Aggregate counts only, no person's record (#2166 audits the detail view).",
   "AdminUsersController.list": "A directory page of masked rows; opening a record is what is audited (#2166).",
+  "AdminEntitlementGrantsController.list": "A person's Pro grants, shown on the record page whose open is already audited as user.detail_viewed (#2406).",
   "AdminAccountsController.status": "Restriction state shown on the record page, whose open is already audited as user.detail_viewed.",
   "NoticeController.listSent": "Sent broadcasts are public to their audience; nothing about a person.",
   "MaintenanceController.getStemAudioFeatureBackfillStatus": "A count of stems, no person's data.",

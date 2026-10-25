@@ -22,6 +22,7 @@ import {
   toRestrictionAccount,
 } from "../../../../lib/adminUsers";
 import AccountRestrictionControls from "./AccountRestrictionControls";
+import EntitlementGrantsControls from "./EntitlementGrantsControls";
 import { DuplicateChip, RoleChips, StatusChip } from "../UsersView";
 
 export type UserDetailState =
@@ -37,6 +38,8 @@ export type UserDetailViewProps = {
   isAdmin: boolean;
   token: string | null;
   onStatusChanged: (updated: AdminAccountStatus) => void;
+  /** After a Pro grant or revocation (#2406): reload the record. */
+  onRecordChanged?: () => void;
   onRetry: () => void;
 };
 
@@ -132,6 +135,37 @@ function StatusSection({
         <p className="admin-users-readonly">
           Only admins can suspend or close an account. You can see its state here.
         </p>
+      )}
+    </Section>
+  );
+}
+
+function PlanSection({
+  detail,
+  isAdmin,
+  token,
+  onRecordChanged,
+}: {
+  detail: AdminUserDetail;
+  isAdmin: boolean;
+  token: string | null;
+  onRecordChanged?: () => void;
+}) {
+  return (
+    <Section title="Plan" id="admin-user-plan">
+      <p className="admin-users-note">
+        Grant Pro to a founder, partner or for support, until a date. Pro tools are free for everyone today, so a grant
+        changes what the person&apos;s plan says (Usage &amp; Billing shows Pro (granted)), not what they can do.
+      </p>
+      {isAdmin ? (
+        <EntitlementGrantsControls
+          token={token}
+          userId={detail.id}
+          who={personLabel(detail)}
+          onChanged={onRecordChanged}
+        />
+      ) : (
+        <p className="admin-users-readonly">Only admins can see and grant Pro.</p>
       )}
     </Section>
   );
@@ -254,7 +288,14 @@ function AdminActions({ detail }: { detail: AdminUserDetail }) {
  * the data and the auth gate. Operators read; only admins see the controls
  * that suspend or close an account.
  */
-export default function UserDetailView({ state, isAdmin, token, onStatusChanged, onRetry }: UserDetailViewProps) {
+export default function UserDetailView({
+  state,
+  isAdmin,
+  token,
+  onStatusChanged,
+  onRecordChanged,
+  onRetry,
+}: UserDetailViewProps) {
   if (state.status === "loading") {
     return (
       <ReviewQueuePage className="admin-users-page">
@@ -330,6 +371,7 @@ export default function UserDetailView({ state, isAdmin, token, onStatusChanged,
       </div>
       <Identity detail={detail} />
       <StatusSection detail={detail} isAdmin={isAdmin} token={token} onStatusChanged={onStatusChanged} />
+      <PlanSection detail={detail} isAdmin={isAdmin} token={token} onRecordChanged={onRecordChanged} />
       <Activity detail={detail} />
       <AdminActions detail={detail} />
     </ReviewQueuePage>

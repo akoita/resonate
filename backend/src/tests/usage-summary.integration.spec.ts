@@ -113,6 +113,30 @@ describe("Usage summary (integration)", () => {
     // Plan: Free today, no live-money allowance yet (ADR-BM-3).
     expect(summary.plan.tier).toBe("free");
     expect(summary.plan.monthlyAllowanceCents).toBeNull();
+    expect(summary.plan).toEqual({ tier: "free", monthlyAllowanceCents: null });
+  });
+
+  it("reads Pro from an active operator grant, and free again once revoked (#2406)", async () => {
+    const validUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const grant = await prisma.entitlementGrant.create({
+      data: { userId, validUntil, reason: "usage summary test", createdByUserId: otherUserId },
+    });
+    try {
+      const granted = await usageService.getSummary(userId);
+      expect(granted.plan).toEqual({
+        tier: "pro",
+        monthlyAllowanceCents: null,
+        source: "operator_grant",
+        validUntil: validUntil.toISOString(),
+      });
+      // The other person's plan is their own.
+      expect((await usageService.getSummary(otherUserId)).plan.tier).toBe("free");
+
+      await prisma.entitlementGrant.update({ where: { id: grant.id }, data: { revokedAt: new Date() } });
+      expect((await usageService.getSummary(userId)).plan).toEqual({ tier: "free", monthlyAllowanceCents: null });
+    } finally {
+      await prisma.entitlementGrant.deleteMany({ where: { id: grant.id } });
+    }
   });
   it("breaks credit spend down per metered kind from the real ledger", async () => {
     // The debit's `kind` argument only decides whether a catalog job-outcome
