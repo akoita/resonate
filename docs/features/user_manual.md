@@ -52,7 +52,8 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
   the content list via `generateStaticParams`.
 - Tests in `web/src/lib/help/help.test.ts` enforce unique slugs, valid
   related-links, valid categories/audiences, and that **every referenced
-  screenshot file exists on disk** (so a broken image fails CI, not users).
+  screenshot file and every audio example file exists on disk** (so a broken
+  image or clip fails CI, not users).
 - **Update an article in the same PR as the feature it documents** (see the
   Feature Catalog rules in `CLAUDE.md`).
 - **Levels.** Tag a section with `level: "beginner" | "intermediate" | "pro"`
@@ -84,6 +85,48 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
   `figure`s with descriptive `alt`, `:focus-visible` rings,
   `prefers-reduced-motion` support, ≥44px touch targets, and section
   `scroll-margin` so the sticky top bar never hides anchors.
+
+## Audio examples
+
+Some guidance is easier to hear than to read, so an article section can carry a
+short **audio example** (block `kind: "audio"`: `src`, `caption`, `description`,
+`duration`; #1943). The Remix Studio guide has five clips on a demo song:
+before and after Slowed + reverb, echo on the vocals only, a Short edit, and an
+added bass part.
+
+- **Reader view.** A native `<audio controls preload="none">` under a caption,
+  so nothing downloads until the reader presses play. The `description` is
+  always visible text saying what the clip sounds like and what to listen for,
+  for readers who cannot hear it or have audio off; it is also indexed by guide
+  search. Write it as honest, plain-language text: if an example illustrates a
+  control rather than the real feature, say so (the bass example does).
+- **Rights and provenance.** The clips are project-generated: a short demo song
+  ("Resonate Help Demo") synthesized from scratch as four stems, with no catalog
+  audio, recordings, samples, downloads, AI models or paid APIs. Provenance,
+  licence and the last run's per-clip facts are recorded next to the audio in
+  `web/public/help/audio/PROVENANCE.md` and `manifest.json`. Never add catalog
+  or third-party audio to the guide.
+- **Regenerating.** From `backend/`, run `npm run help:audio` (needs `ffmpeg`
+  >= 7 on `PATH`; no network, database or credentials). It synthesizes the
+  stems (`backend/scripts/help-audio/demo-song.ts`) and renders every clip
+  through the studio's own render graph (`buildStemMixFfmpegArgs`) with the
+  recipes the studio's controls build (`applyVibe` and `shortEdit` from
+  `web/src/lib/`), so the examples follow the studio when its DSP or vibes
+  change. Output is 128 kbps MP3 under `web/public/help/audio/` (the only
+  difference from a studio draft; the loudness policy is the draft's, about
+  -14 LUFS). The script prints each clip's duration, size, loudness and true
+  peak. Review the changed clips by ear, update the `duration` and the
+  description in `content.ts` if they moved, and commit the audio, the
+  manifest and the content together.
+- **The bass example** goes through the same prompt, conform, loop and
+  placement steps as a generated take, but its clip comes from the studio's
+  deterministic stub generator, not an AI model. The same inputs give the same
+  stems; MP3 bytes can differ between ffmpeg builds.
+- **Adding an example.** Add a clip to `clipSpecs` in
+  `backend/scripts/help-audio/render-help-audio-examples.ts`, regenerate, then
+  add an `audio` block in `content.ts`. `help.test.ts` checks that the file
+  exists, is an MP3 under `/help/audio/`, is at most 30 seconds, and has a
+  caption and a real description.
 
 ## Screenshots
 
@@ -196,8 +239,12 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
   `web/tests/fixtures/remix-studio-mock.mjs` (shared studio mock),
   `web/tests/fixtures/guide-seed-mock.mjs` (sample Shows and Marketplace backend),
   `web/src/lib/help/`, `web/src/styles/help.css`
-- **Assets:** `web/public/help/screenshots/`
+- **Assets:** `web/public/help/screenshots/`, `web/public/help/audio/`
+  (audio examples, with `PROVENANCE.md` and `manifest.json`)
+- **Audio generator:** `backend/scripts/help-audio/` (`npm run help:audio` in
+  `backend/`)
 - **Tests:** `web/src/lib/help/help.test.ts`,
+  `web/src/components/help/HelpAudio.test.tsx`,
   `web/src/components/help/HelpLevelledBody.test.tsx`,
   `web/tests/help-levels.spec.ts`
 

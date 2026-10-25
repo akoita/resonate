@@ -102,6 +102,35 @@ describe("help content integrity", () => {
     }
   });
 
+  it("points every audio example at an existing clip with a caption and a visible description", () => {
+    let audioBlocks = 0;
+    for (const article of HELP_ARTICLES) {
+      for (const section of article.sections) {
+        for (const block of section.blocks) {
+          if (block.kind !== "audio") continue;
+          audioBlocks += 1;
+          const { src, caption, description, duration } = block;
+          expect(src.startsWith("/help/audio/"), src).toBe(true);
+          expect(src, "audio examples ship as mp3").toMatch(/\.mp3$/);
+          expect(caption.trim().length, `missing caption for ${src}`).toBeGreaterThan(0);
+          // The description is the text alternative: it must say something real.
+          expect(description.trim().length, `missing description for ${src}`).toBeGreaterThan(40);
+          expect(duration, `duration of ${src}`).toBeGreaterThan(0);
+          expect(duration, `duration of ${src} (examples stay short)`).toBeLessThanOrEqual(30);
+          const onDisk = path.join(PUBLIC_DIR, src.replace(/^\//, ""));
+          expect(existsSync(onDisk), `audio file missing: ${onDisk}`).toBe(true);
+        }
+      }
+    }
+    expect(audioBlocks).toBeGreaterThanOrEqual(4);
+  });
+
+  it("keeps the audio examples' recorded provenance next to the clips", () => {
+    const provenance = path.join(PUBLIC_DIR, "help/audio/PROVENANCE.md");
+    expect(existsSync(provenance), "web/public/help/audio/PROVENANCE.md").toBe(true);
+    expect(existsSync(path.join(PUBLIC_DIR, "help/audio/manifest.json"))).toBe(true);
+  });
+
   it("references the seeded-owner guide screenshots", () => {
     const content = JSON.stringify(HELP_ARTICLES);
     for (const filename of ["artist-analytics.png", "artist-catalog.png", "community.png"]) {
@@ -163,6 +192,11 @@ describe("help search", () => {
     expect(find("refund")).toContain("shows-back");
     expect(find("list stems")).toContain("marketplace-sell");
     expect(find("reset session")).toContain("troubleshooting");
+  });
+
+  it("finds an article from the words describing its audio example", () => {
+    const hits = searchArticles(HELP_ARTICLES, "dotted eighth echo repeats").map((a) => a.slug);
+    expect(hits).toContain("remix-studio");
   });
 
   it("ranks a title match above a body-only match", () => {
