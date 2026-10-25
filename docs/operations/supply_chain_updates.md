@@ -24,7 +24,12 @@ default branch, collects same-repository pull requests authored by
 `automation/dependency-train` branch. Ordinary source pull requests keep the
 deterministic supply-chain baseline but skip the expensive CI, advisory scan,
 and formal-verification jobs; those jobs run once on the train pull request.
-The workflow never merges or closes a source pull request.
+The workflow never merges a source pull request. Each run closes, with an
+explanatory comment, the source pull requests whose head merged into `main`
+would change nothing, because their update is already on `main`. When a train
+pull request merges, a push-triggered close-only run closes the superseded
+sources right away without building a new train; Dependabot opens a new pull
+request if a newer version is released.
 
 Major upgrades and changes to workflows, containers, contracts, deployment
 configuration, or executable scripts stay outside the automatic train and are
