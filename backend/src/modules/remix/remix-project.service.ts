@@ -2071,9 +2071,10 @@ export class RemixProjectService {
     );
     const perTakeCents = this.credits.costForDurationCents(PART_CLIP_SECONDS);
     const quoteCents = quotePartTakesCents(request.takes, perTakeCents);
-    const { balanceCents } = await this.credits.getBalance(userId);
-    if (balanceCents < quoteCents) {
-      throw new InsufficientCreditsException(userId, quoteCents, balanceCents);
+    // The Artist Pro allowance counts toward what can be spent (#2408).
+    const { spendableCents } = await this.credits.getBalance(userId);
+    if (spendableCents < quoteCents) {
+      throw new InsufficientCreditsException(userId, quoteCents, spendableCents);
     }
     this.enforceRateLimit("generate", userId, this.maxGenerationsPerHour, request.takes);
 

@@ -80,6 +80,7 @@ model User {
   generationCreditTxns        GenerationCreditTransaction[]
   generationCreditRequests    GenerationCreditRequest[]
   creditTopUps                CreditTopUp[]
+  generationAllowanceGrants   GenerationAllowanceGrant[]
   entitlementGrants           EntitlementGrant[]
   subscription                Subscription?
   generationJobOutcomes       GenerationJobOutcome[]
@@ -190,8 +191,13 @@ model GenerationCreditAccount {
 // Append-only ledger of every credit movement. `type` (grant|debit|refund)
 // gives the direction; `amountCents` is a positive magnitude; `balanceAfterCents`
 // snapshots the account balance after the movement for audit/reconciliation.
+// #2408: a debit or refund can move part of `amountCents` through the Artist
+// Pro allowance bucket instead of the bought/promo balance: `allowanceCents` is
+// that part and `allowanceGrantId` the allowance grant it came from (debit) or
+// went back to (refund). `amountCents - allowanceCents` moved the balance, so
+// `balanceAfterCents` keeps meaning the bought/promo balance.
 model GenerationCreditTransaction {
-  id                String   @id @default(uuid())
+  id                String                    @id @default(uuid())
   userId            String
   type              String
   amountCents       Int
@@ -201,12 +207,16 @@ model GenerationCreditTransaction {
   /// intent id of a `top_up` grant or its `top_up_refund` reversal. Null otherwise.
   paymentRef        String?
   balanceAfterCents Int
-  createdAt         DateTime @default(now())
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  allowanceCents    Int                       @default(0)
+  allowanceGrantId  String?
+  createdAt         DateTime                  @default(now())
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  allowanceGrant    GenerationAllowanceGrant? @relation(fields: [allowanceGrantId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([jobId])
   @@index([paymentRef])
+  @@index([allowanceGrantId])
 }
 
 // A generation-credit pack bought through Stripe Checkout (#1422, Artist Pro
@@ -257,6 +267,38 @@ model CreditTopUp {
 
   @@index([userId, status, heldUntil])
   @@index([userId, createdAt])
+}
+
+// Artist Pro monthly generation allowance (#2408, docs/rfc/artist-pro.md §5,
+// docs/rfc/business-model.md Layer 2b): a ledger bucket kept apart from bought
+// and promo credits. One row per month of a paid subscription invoice: a
+// monthly invoice gives one row, an annual invoice twelve monthly slices
+// (`sliceIndex` 0..11) with consecutive windows, all written when the invoice
+// is paid. A row is spendable from `periodStart` until `expiresAt` (or until a
+// later grant starts, after a plan change), while the subscription still gives
+// the plan. It is spent before the balance, never carried over and never
+// refunded in cash. `consumedCents` only moves with a debit or refund ledger
+// row naming this grant, so it reconciles against the ledger; what was not
+// consumed by the end lapsed (`amountCents - consumedCents`).
+model GenerationAllowanceGrant {
+  id              String                        @id @default(uuid())
+  userId          String
+  subscriptionId  String
+  stripeInvoiceId String
+  sliceIndex      Int                           @default(0)
+  amountCents     Int
+  consumedCents   Int                           @default(0)
+  periodStart     DateTime
+  expiresAt       DateTime
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  user            User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription    Subscription                  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  transactions    GenerationCreditTransaction[]
+
+  @@unique([stripeInvoiceId, sliceIndex])
+  @@unique([userId, periodStart])
+  @@index([subscriptionId, periodStart])
 }
 
 // Operator credit-request queue (#1885). A user out of generation credits asks
@@ -343,6 +385,7 @@ model Subscription {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  allowanceGrants      GenerationAllowanceGrant[]
 
   @@index([status])
 }

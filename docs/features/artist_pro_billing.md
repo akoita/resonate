@@ -27,7 +27,7 @@ What remains:
 | --- | --- |
 | Live charging (`BILLING_LIVE_MODE=true`) | Blocked on the RFC §8 gates: price sign-off (#1421), legal review of the consent wording and terms, tax and accounting set-up |
 | The Stripe account, prices, Stripe Tax, webhook endpoint and secrets | The deployment half, in the private infrastructure repository |
-| The monthly allowance granted on `invoice.paid` | [#2408](https://github.com/akoita/resonate/issues/2408) (the hook is marked in `stripe_webhook.service.ts`) |
+| Refunding money on withdrawal, less the allowance used | Needs live charging; the "allowance spent this period" value is ready (`GenerationAllowanceService.spentThisBillingPeriodCents`, #2408) |
 | Pro gates on | [#2409](https://github.com/akoita/resonate/issues/2409) |
 | Cancelling a live Stripe subscription when an account is closed or erased | Follow-up: erasure keeps the billing record but does not cancel at Stripe |
 | Credit pack prices in Stripe (`STRIPE_PRICE_CREDITS_5/10/25`) | The deployment half, in the private infrastructure repository |
@@ -280,6 +280,62 @@ status and receipt reference. The `?credits=success` return re-reads the state
 and the balance until the purchase lands. A Test mode note, an email gate, and
 an informative unavailable state with no button.
 
+## The monthly generation allowance (#2408)
+
+Slice 3 of Artist Pro (`docs/rfc/artist-pro.md` §5,
+`docs/rfc/business-model.md` Layer 2b). **Revenue line (ADR-BM-6):** line 2,
+generation credits (ADR-BM-3), Phase 2. In Stripe test mode only, like the
+rest of billing.
+
+- **Size:** `ARTIST_PRO_MONTHLY_ALLOWANCE_CENTS`, default `300` ($3.00 at sell
+  prices, about 30 Lyria clips); `0` turns grants off.
+- **Grant:** `invoice.paid` calls `GenerationAllowanceService.grantForInvoice`
+  (`backend/src/modules/credits/allowance.service.ts`) after the subscription
+  row is updated. Only invoices that open a billing period grant
+  (`subscription_create`, `subscription_cycle`, or a `subscription_update`
+  with a full, non-proration line such as a switch to yearly); proration-only,
+  manual and threshold invoices grant nothing. An invoice with
+  `amount_paid = 0` (for example a 100% coupon) grants nothing either:
+  free allowances come only through promo credits (ADR-BM-3). The allowance
+  is spendable only while the subscription still gives Pro, so an immediate
+  cancellation also stops future annual slices. The period comes from the
+  invoice's own subscription line, so a late invoice still grants the month it
+  paid. Idempotent per invoice (`stripeInvoiceId`, `sliceIndex`) and per month
+  (`userId`, `periodStart`).
+- **Annual plans:** the paid year is cut into twelve monthly slices with
+  consecutive windows (`monthlySlices` in `credits/allowance.ts`, calendar
+  months clamped like Stripe's anchors), all written when the invoice is paid.
+  Each becomes spendable only in its own month. Writing them up front is
+  deterministic and needs no job; a lazy grant on first use would make the row
+  depend on when the person first generates.
+- **Bucket:** `GenerationAllowanceGrant` (`amountCents`, `consumedCents`,
+  `periodStart`, `expiresAt`, CHECK `0 <= consumedCents <= amountCents`), kept
+  apart from the bought/promo balance. Debit and refund ledger rows carry
+  `allowanceCents` and `allowanceGrantId`, so `consumedCents` reconciles
+  against `GenerationCreditTransaction` and `balanceAfterCents` still means the
+  bought/promo balance.
+- **Spend order:** every debit (Lyria, remix draft, remix part) spends the live
+  allowance first, then the balance, in one transaction under a per-person
+  advisory lock; a charge can use both. A failed generation's refund goes back
+  to the bucket it came from.
+- **Expiry:** computed at read and debit time; no job, and nothing is written
+  when a month ends. The live grant is the latest one started, while it is
+  unexpired and the subscription still gives `pro`. A later grant (a plan
+  change) ends the earlier one at its own start. Unused cents lapse
+  (`amountCents - consumedCents`), are never carried over and never become
+  bought credits; a refund to a grant whose month ended lapses with it.
+  `/usage/summary` reports what lapsed when the previous month ended.
+- **Never refunded in cash:** the withdrawal refund deducts the allowance
+  already used. `GenerationAllowanceService.spentThisBillingPeriodCents(userId)`
+  and `spentInBillingPeriodCents(subscriptionId, start, end)` return that value
+  (net of refunds) for the subscription's current billing period. Nothing
+  refunds money yet: there is no live charging.
+- **Web:** Usage & Billing shows "$2.40 of $3.00 Pro allowance left · resets
+  <date>" under the credit meter, with the spend order. The meters on Create
+  and in Remix Studio count the allowance in what can be spent
+  (`spendableCents`). The User Guide explains it in the Usage & Billing and
+  Artist Pro subscription sections.
+
 ## How to test
 
 - Unit: `billing_config.spec.ts` (live-key refusal, unconfigured, return
@@ -293,6 +349,11 @@ an informative unavailable state with no button.
   handled event, idempotency, retry after failure, ordering, adoption,
   live-mode events, erasure) and `usage-summary.integration.spec.ts` (the plan
   from a subscription).
+- Allowance (#2408): `generation-allowance.spec.ts` (slicing, which invoices
+  grant, split) and `generation-allowance.integration.spec.ts` (grant through
+  the webhook once per invoice, spend order, zero-balance block, refunds to the
+  original bucket, expiry, subscription gate, annual slices, plan change,
+  concurrent debits, registry parity, withdrawal helper, summary values).
 - Web: `PlanBilling.test.tsx` (every plan state and the consent step) and
   `UsageBillingPanel.test.tsx`.
 - Credit packs: `credit_packs.spec.ts` (catalogue, configuration, refunded

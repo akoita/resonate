@@ -272,6 +272,14 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "(ADR-BM-3); `reason` is an operator-set movement code, not the person's words.",
   },
   {
+    model: "GenerationAllowanceGrant",
+    disposition: "retain",
+    reason:
+      "The Artist Pro allowance bucket (#2408): what each paid month credited and how much of it was spent, "
+      + "retained with the credit ledger and the Subscription billing record it reconciles against; amounts, "
+      + "dates and a Stripe invoice id only, naming nobody once the id is rotated.",
+  },
+  {
     model: "GenerationCreditRequest",
     disposition: "anonymize",
     reason:

@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { getUsageSummary, requestGenerationCredits, type UsageSummary } from "../../lib/api";
+import {
+  getUsageSummary,
+  requestGenerationCredits,
+  type GenerationAllowance,
+  type GenerationCreditTransaction,
+  type UsageSummary,
+} from "../../lib/api";
 import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
 import { UsageLimitMeter } from "../credits/UsageLimitMeter";
 import { formatCents } from "../../lib/usage";
@@ -71,6 +77,56 @@ export function describePlan(plan: UsageSummary["plan"]): { label: string; note:
   };
 }
 
+function formatUtcDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+export type AllowanceCopy = {
+  /** "$2.40 of $3.00 Pro allowance left · resets Nov 19, 2026" */
+  headline: string;
+  /** 0-100: how much of this month's allowance is left. */
+  percentLeft: number;
+  /** What lapsed last month, when anything did. */
+  note: string | null;
+};
+
+/**
+ * How the Artist Pro monthly allowance reads next to the credit balance
+ * (#2408), or null when the person has none. With no live month but a paid
+ * subscription, it says when the next allowance arrives.
+ */
+export function describeAllowance(
+  allowance: GenerationAllowance | null | undefined,
+  monthlyAllowanceCents: number | null | undefined,
+): AllowanceCopy | null {
+  const lapsed =
+    allowance && allowance.previousExpiredCents > 0 && formatUtcDate(allowance.previousEndedAt)
+      ? `${formatCents(allowance.previousExpiredCents)} left unused expired on ${formatUtcDate(allowance.previousEndedAt)}.`
+      : null;
+  if (allowance && allowance.grantedCents > 0 && allowance.expiresAt) {
+    const resets = formatUtcDate(allowance.expiresAt);
+    const remaining = Math.max(0, allowance.remainingCents);
+    return {
+      headline: `${formatCents(remaining)} of ${formatCents(allowance.grantedCents)} Pro allowance left${resets ? ` · resets ${resets}` : ""}`,
+      percentLeft: Math.max(0, Math.min(100, Math.round((remaining / allowance.grantedCents) * 100))),
+      note: lapsed,
+    };
+  }
+  if (typeof monthlyAllowanceCents === "number" && monthlyAllowanceCents > 0) {
+    return {
+      headline: `${formatCents(monthlyAllowanceCents)} Pro allowance a month · arrives when your next month is paid`,
+      percentLeft: 0,
+      note: lapsed,
+    };
+  }
+  return null;
+}
+
+/** "Lyria generation · 10¢ from Pro allowance" for a ledger row the allowance paid (part of). */
+
 function humanizeType(type: string): string {
   return type.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -81,8 +137,11 @@ const LEDGER_REASON_LABELS: Record<string, string> = {
   top_up_refund: "Credit pack refund",
 };
 
-export function describeLedgerReason(reason: string): string {
-  return LEDGER_REASON_LABELS[reason] ?? (reason || "—");
+/** A ledger row's reason in plain words (#1422), noting any part paid from the Pro allowance (#2408). */
+export function describeLedgerReason(txn: Pick<GenerationCreditTransaction, "reason" | "allowanceCents">): string {
+  const label = LEDGER_REASON_LABELS[txn.reason] ?? (txn.reason || "—");
+  const allowanceCents = txn.allowanceCents ?? 0;
+  return allowanceCents > 0 ? `${label} · ${allowanceCents}¢ from Pro allowance` : label;
 }
 
 /**
@@ -114,6 +173,7 @@ export function UsageBillingView({
   const { credits, limits, breakdown, plan } = summary;
   const transactions = credits.recentTransactions ?? [];
   const planCopy = describePlan(plan);
+  const allowanceCopy = describeAllowance(credits.allowance, plan.monthlyAllowanceCents);
 
   return (
     <div className="usage-billing">
@@ -150,6 +210,27 @@ export function UsageBillingView({
           onRequestCredits={onRequestCredits}
           requesting={requesting}
         />
+        {allowanceCopy ? (
+          <div className="usage-allowance usage-limit-row" data-testid="usage-allowance">
+            <div className="usage-limit-head">
+              <span className="usage-limit-label">{allowanceCopy.headline}</span>
+            </div>
+            <div
+              className="usage-limit-bar"
+              role="progressbar"
+              aria-label="Pro allowance left"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={allowanceCopy.percentLeft}
+            >
+              <div className="usage-limit-bar-fill" style={{ width: `${allowanceCopy.percentLeft}%` }} />
+            </div>
+            <span className="usage-limit-reset">
+              Spent before your credits. Unused allowance expires at the end of each month and has
+              no cash value.{allowanceCopy.note ? ` ${allowanceCopy.note}` : ""}
+            </span>
+          </div>
+        ) : null}
         {creditsExtra}
         <div className="usage-grant-info">
           <strong>How credits are added</strong>
@@ -162,7 +243,11 @@ export function UsageBillingView({
               An operator can grant more. Use <em>Request credits</em> when you run low and
               you&rsquo;ll be notified once they&rsquo;re added.
             </li>
-            <li>A generation that fails is refunded automatically.</li>
+            <li>
+              With an Artist Pro subscription, each paid month adds a generation allowance. It is
+              spent first, then your credits, and it expires at the end of the month.
+            </li>
+            <li>A generation that fails is refunded automatically, to the allowance or credits it came from.</li>
             <li>
               Credit packs ($5, $10 or $25) are bought through Stripe, where the server has them set
               up. Bought credits do not expire. Automatic top-ups are not available yet.
@@ -285,7 +370,7 @@ export function UsageBillingView({
                   <tr key={txn.id}>
                     <td>{formatTxnDate(txn.createdAt)}</td>
                     <td>{humanizeType(txn.type)}</td>
-                    <td>{describeLedgerReason(txn.reason)}</td>
+                    <td>{describeLedgerReason(txn)}</td>
                     <td className="usage-num">{formatLedgerAmount(txn.type, txn.amountCents)}</td>
                     <td className="usage-num">{txn.balanceAfterCents}¢</td>
                   </tr>

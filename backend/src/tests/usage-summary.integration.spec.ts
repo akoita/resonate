@@ -83,6 +83,9 @@ describe("Usage summary (integration)", () => {
     expect(summary.credits.balanceCents).toBe(grantedCents);
     expect(typeof summary.credits.priceCentsPer30s).toBe("number");
     expect(Array.isArray(summary.credits.recentTransactions)).toBe(true);
+    // No Artist Pro allowance (#2408): what can be spent is the balance.
+    expect(summary.credits.allowance).toBeNull();
+    expect(summary.credits.spendableCents).toBe(grantedCents);
 
     // Limits: both metered kinds, with the registry limit values (50 / 10).
     const byKind = Object.fromEntries(
@@ -156,15 +159,21 @@ describe("Usage summary (integration)", () => {
       data: { userId, validUntil: grantUntil, reason: "usage summary test", createdByUserId: otherUserId },
     });
     try {
+      // A paid subscription carries the monthly allowance (#2408).
       expect((await usageService.getSummary(userId)).plan).toEqual({
         tier: "pro",
-        monthlyAllowanceCents: null,
+        monthlyAllowanceCents: 300,
         source: "stripe_subscription",
         validUntil: periodEnd.toISOString(),
       });
       // Once the subscription is canceled outright, the grant decides.
       await prisma.subscription.update({ where: { userId }, data: { status: "canceled" } });
-      expect((await usageService.getSummary(userId)).plan).toMatchObject({ tier: "pro", source: "operator_grant" });
+      // An operator grant gives Pro without an allowance.
+      expect((await usageService.getSummary(userId)).plan).toMatchObject({
+        tier: "pro",
+        source: "operator_grant",
+        monthlyAllowanceCents: null,
+      });
     } finally {
       await prisma.entitlementGrant.deleteMany({ where: { id: grant.id } });
       await prisma.subscription.deleteMany({ where: { userId } });

@@ -112,6 +112,15 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
   },
   {
+    model: "GenerationAllowanceGrant",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2408. The Artist Pro monthly generation allowance each paid invoice credited: the month it "
+      + "covers, how much it granted and how much was spent. The ledger rows that spent it are exported as "
+      + "GenerationCreditTransaction.",
+  },
+  {
     model: "GenerationCreditRequest",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

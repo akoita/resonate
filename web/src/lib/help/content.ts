@@ -2051,7 +2051,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Generate original tracks from a text prompt and publish them to your catalog, with AI provenance recorded automatically.",
     category: "create",
     audiences: ["artist"],
-    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe", "buy credits", "credit pack", "top up", "receipt", "refund"],
+    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe", "buy credits", "credit pack", "top up", "receipt", "refund", "allowance", "monthly allowance"],
     sections: [
       {
         id: "generate",
@@ -2112,7 +2112,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Usage limits are fair-use quotas, such as a number of generations per hour. They show how much is left as a percentage and when they reset. Reaching a limit just means waiting for the reset; it is not a credit problem and more credits will not change it.",
               "Spend by action shows what each kind of action cost you over the last 30 days, minus refunds for runs that failed. AI part takes in Remix Studio have their own line, separate from AI remix drafts.",
               "Plan shows Free, Pro when you subscribe to Artist Pro, or Pro (granted) with its last day when Resonate has given you Artist Pro, for example as a founding artist. Pro tools are free for everyone for now, so a subscription or a grant does not change what you can do yet.",
+              "With an Artist Pro subscription, a Pro allowance line sits under your credits, for example \"$2.40 of $3.00 Pro allowance left · resets Nov 19\". It is the monthly generation allowance that comes with each paid month.",
             ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Which is spent first",
+            text: "Every AI action spends your Pro allowance first and your credits only once the allowance runs out; one action can use a bit of both. A run that fails is refunded to where it came from. The allowance is not carried over: whatever is left at the end of the month expires, and the next paid month brings a new one. On a yearly plan it arrives month by month. It has no cash value and is never paid out or refunded in money.",
           },
           {
             kind: "callout",
@@ -2177,6 +2184,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Manage billing opens Stripe's billing page, where you can update your card, see invoices or cancel. After you cancel, Pro stays on until the end of the period you paid for.",
               "If a payment fails, the Plan section says so and asks you to update your card. Pro stays on for 7 days; after that your plan returns to Free. Nothing is deleted.",
+              "Each paid month adds a generation allowance to Usage & Billing. It is spent before your credits and expires at the end of the month; a yearly plan adds it month by month.",
               "You can withdraw within 14 days of subscribing. Because Artist Pro starts straight away at your request, you are then refunded for the unused time only, less any monthly generation allowance you have already used.",
             ],
           },

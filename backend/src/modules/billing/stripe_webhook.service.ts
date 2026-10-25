@@ -23,6 +23,7 @@
 import { BadRequestException, Inject, Injectable, Optional } from "@nestjs/common";
 import { Prisma, type Subscription } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { GenerationAllowanceService } from "../credits/allowance.service";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
 import { CreditTopUpService } from "./credit_topup.service";
@@ -88,11 +89,16 @@ function log(level: "info" | "warn" | "error", event: string, fields: Record<str
 
 @Injectable()
 export class StripeWebhookService {
+  private readonly allowance: GenerationAllowanceService;
+
   constructor(
     private readonly config: BillingConfig,
     @Optional() @Inject(STRIPE_GATEWAY) private readonly gateway: StripeGateway | null = null,
     @Optional() private readonly topUps: CreditTopUpService | null = null,
-  ) {}
+    @Optional() allowance?: GenerationAllowanceService,
+  ) {
+    this.allowance = allowance ?? new GenerationAllowanceService();
+  }
 
   /** Whether the webhook can verify events (billing configured). */
   isAvailable(): boolean {
@@ -162,8 +168,11 @@ export class StripeWebhookService {
         const invoice = event.data.object as StripeInvoice;
         const subscriptionId = idOf(invoice.parent?.subscription_details?.subscription);
         if (!subscriptionId) return "ignored_no_subscription";
-        // #2408: `invoice.paid` is where the monthly allowance will be granted.
-        return this.applyFromStripe(subscriptionId, createdAt, null);
+        const outcome = await this.applyFromStripe(subscriptionId, createdAt, null);
+        // #2408: a paid invoice credits the Artist Pro monthly allowance for
+        // the period it pays (idempotent per invoice; see allowance.service.ts).
+        if (event.type === "invoice.paid") await this.allowance.grantForInvoice(invoice);
+        return outcome;
       }
       case "checkout.session.async_payment_succeeded":
         return (
