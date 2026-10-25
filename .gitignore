@@ -20,6 +20,8 @@ backend/src/debug_*.ts
 backend/uploads/
 *.wav
 *.mp3
+# User Guide audio examples are small, project-generated and committed (#1943).
+!web/public/help/audio/*.mp3
 test_audio.*
 *.m4a
 music/
