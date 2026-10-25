@@ -678,6 +678,41 @@
   opacity: 0.85;
 }
 
+/* Audio examples (#1943) */
+.help-audio {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--r-chrome-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--r-radius-md, 14px);
+  background: var(--r-surface-lowest, #0b0b13);
+}
+
+.help-audio__caption {
+  margin: 0 0 8px;
+  color: var(--r-on-surface, #f3effa);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.help-audio__duration {
+  color: var(--r-on-surface-muted, #797295);
+  font-weight: 500;
+}
+
+.help-audio__player {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+}
+
+.help-audio__description {
+  margin: 8px 0 0;
+  color: var(--r-on-surface-muted, #b7b0cc);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 /* App links */
 .help-applinks,
 .help-related {

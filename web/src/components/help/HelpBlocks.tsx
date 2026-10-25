@@ -1,4 +1,5 @@
 import type { HelpBlock } from "../../lib/help/types";
+import { HelpAudio } from "./HelpAudio";
 import { HelpFigure } from "./HelpFigure";
 
 const CALLOUT_LABEL: Record<"tip" | "note" | "warning", string> = {
@@ -62,6 +63,9 @@ function HelpBlockView({ block }: { block: HelpBlock }) {
 
     case "figure":
       return <HelpFigure figure={block.figure} />;
+
+    case "audio":
+      return <HelpAudio audio={block} />;
 
     default:
       return null;

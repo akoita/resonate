@@ -30,6 +30,8 @@ function blockText(block: HelpBlock): string {
       return block.items.map((d) => `${d.term} ${d.description}`).join(" ");
     case "figure":
       return `${block.figure.alt} ${block.figure.caption}`;
+    case "audio":
+      return `${block.caption} ${block.description}`;
     default:
       return "";
   }

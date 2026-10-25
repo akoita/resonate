@@ -1093,6 +1093,12 @@ from the JWT, never the request body.
   artist profiles. The copy states the server policy consequence directly:
   disabling blocks new remix projects and generation, does not delete existing
   private drafts, and keeps existing drafts editable.
+- User Guide audio examples (#1943): the Remix Studio guide plays short
+  before/after clips (Slowed + reverb, echo on the vocals only, Short edit, an
+  added bass part) rendered through this page's own render graph from a
+  project-generated demo song, so the examples cannot drift from the studio.
+  The bass example uses the stub part generator and says so in the guide.
+  Generation and provenance: `docs/features/user_manual.md` (Audio examples).
 
 ## Planned Surfaces
 
