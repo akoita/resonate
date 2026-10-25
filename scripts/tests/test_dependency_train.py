@@ -440,6 +440,252 @@ class DependencyTrainTests(unittest.TestCase):
             self.assertFalse(any(arguments[:2] == ["pr", "edit"] for arguments in calls[calls_before_repeat:]))
             self.assertFalse(any(arguments[:2] == ["pr", "create"] for arguments in calls[calls_before_repeat:]))
 
+    def _init_repository(self, root: Path) -> Path:
+        git(root, "init", "-b", "main")
+        git(root, "config", "user.name", "Dependency Train Test")
+        git(root, "config", "user.email", "dependency-train@example.test")
+        return root
+
+    def test_is_already_on_base_detects_squash_applied_updates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._init_repository(Path(directory))
+            (root / "lock.txt").write_text("base\n", encoding="utf-8")
+            (root / "other.txt").write_text("base\n", encoding="utf-8")
+            git(root, "add", ".")
+            git(root, "commit", "-m", "base")
+            base = git(root, "rev-parse", "HEAD")
+
+            git(root, "switch", "-c", "applied", base)
+            (root / "lock.txt").write_text("update\n", encoding="utf-8")
+            git(root, "commit", "-am", "applied update")
+            git(root, "switch", "-c", "pending", base)
+            (root / "other.txt").write_text("pending update\n", encoding="utf-8")
+            git(root, "commit", "-am", "pending update")
+            git(root, "switch", "-c", "conflicting", base)
+            (root / "lock.txt").write_text("different update\n", encoding="utf-8")
+            git(root, "commit", "-am", "conflicting update")
+
+            # Squash-style: main gets a separate commit with identical content.
+            git(root, "switch", "main")
+            (root / "lock.txt").write_text("update\n", encoding="utf-8")
+            git(root, "commit", "-am", "squash of the applied update")
+            main_sha = git(root, "rev-parse", "HEAD")
+
+            self.assertTrue(dependency_train._is_already_on_base(root, main_sha, "applied"))
+            self.assertFalse(dependency_train._is_already_on_base(root, main_sha, "pending"))
+            self.assertFalse(dependency_train._is_already_on_base(root, main_sha, "conflicting"))
+            self.assertEqual(git(root, "status", "--porcelain"), "")
+            self.assertEqual(git(root, "rev-parse", "HEAD"), main_sha)
+            self.assertEqual((root / "lock.txt").read_text(encoding="utf-8"), "update\n")
+
+    def _superseded_fixture(self, root: Path) -> tuple[Path, str, dict[str, object], dict[str, object]]:
+        """Create origin and a work clone with PR 17 already on main and PR 18 pending."""
+
+        bare = root / "origin.git"
+        work = root / "work"
+        git(root, "init", "--bare", str(bare))
+        git(root, "init", "-b", "main", str(work))
+        git(work, "config", "user.name", "Dependency Train Test")
+        git(work, "config", "user.email", "dependency-train@example.test")
+        (work / "applied.txt").write_text("base\n", encoding="utf-8")
+        (work / "pending.txt").write_text("base\n", encoding="utf-8")
+        git(work, "add", ".")
+        git(work, "commit", "-m", "base")
+        git(work, "remote", "add", "origin", str(bare))
+        git(work, "push", "origin", "main")
+        base = git(work, "rev-parse", "HEAD")
+
+        raws: list[dict[str, object]] = []
+        for number, filename, content in (
+            (17, "applied.txt", "applied update\n"),
+            (18, "pending.txt", "pending update\n"),
+        ):
+            branch = f"dependabot/npm/example-{number}"
+            git(work, "switch", "-c", branch, base)
+            (work / filename).write_text(content, encoding="utf-8")
+            git(work, "commit", "-am", f"Bump example {number}")
+            head = git(work, "rev-parse", "HEAD")
+            git(work, "push", "origin", f"HEAD:refs/heads/{branch}")
+            git(bare, "update-ref", f"refs/pull/{number}/head", head)
+            git(work, "switch", "main")
+            raws.append(
+                {
+                    "number": number,
+                    "title": f"Bump example {number}",
+                    "html_url": f"https://github.com/akoita/resonate/pull/{number}",
+                    "state": "open",
+                    "user": {"login": "dependabot[bot]"},
+                    "base": {"ref": "main", "repo": {"full_name": "akoita/resonate"}},
+                    "head": {
+                        "ref": branch,
+                        "sha": head,
+                        "repo": {"full_name": "akoita/resonate"},
+                    },
+                    "draft": False,
+                    "labels": [],
+                }
+            )
+
+        # A separate squash-style commit puts PR 17's change on main.
+        (work / "applied.txt").write_text("applied update\n", encoding="utf-8")
+        git(work, "commit", "-am", "chore(deps): consolidate Dependabot updates (#99)")
+        git(work, "push", "origin", "main")
+        return work, git(work, "rev-parse", "HEAD"), raws[0], raws[1]
+
+    def _make_fake_gh(
+        self,
+        records: list[dict[str, object]],
+        calls: list[list[str]],
+        *,
+        close_error: str | None = None,
+        allow_checks: bool = True,
+    ):
+        def fake_gh(
+            _repository_root: Path,
+            arguments: list[str],
+            *,
+            check: bool = True,
+        ) -> dependency_train.CommandResult:
+            calls.append(list(arguments))
+            if any("/check-runs?" in argument for argument in arguments):
+                if not allow_checks:
+                    raise AssertionError("close-only mode must not query checks")
+                return dependency_train.CommandResult(
+                    0,
+                    json.dumps(
+                        [{"check_runs": [{"name": "source", "status": "completed", "conclusion": "success"}]}]
+                    ),
+                    "",
+                )
+            if any(argument.endswith("/status") for argument in arguments):
+                if not allow_checks:
+                    raise AssertionError("close-only mode must not query checks")
+                return dependency_train.CommandResult(0, json.dumps({"statuses": []}), "")
+            if arguments[0:2] == ["api", "--paginate"]:
+                return dependency_train.CommandResult(0, json.dumps([records]), "")
+            if arguments[:2] == ["pr", "close"]:
+                if close_error is not None:
+                    if check:
+                        raise dependency_train.DependencyTrainError(close_error)
+                    return dependency_train.CommandResult(1, "", close_error)
+                return dependency_train.CommandResult(0, "", "")
+            if arguments[:2] == ["pr", "create"] and allow_checks:
+                return dependency_train.CommandResult(
+                    0, "https://github.com/akoita/resonate/pull/99\n", ""
+                )
+            raise AssertionError(f"unexpected gh command: {arguments}")
+
+        return fake_gh
+
+    def _patched_rebuild(self, fake_gh, **keywords):
+        original_gh = dependency_train._gh
+        dependency_train._gh = fake_gh
+        try:
+            return dependency_train.rebuild_train(
+                repository_root=keywords.pop("work"),
+                repository="akoita/resonate",
+                **keywords,
+            )
+        finally:
+            dependency_train._gh = original_gh
+
+    @staticmethod
+    def _close_calls(calls: list[list[str]]) -> list[list[str]]:
+        return [arguments for arguments in calls if arguments[:2] == ["pr", "close"]]
+
+    def test_rebuild_train_closes_sources_already_on_main(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work, base, raw_17, raw_18 = self._superseded_fixture(Path(directory))
+            calls: list[list[str]] = []
+            fake_gh = self._make_fake_gh([raw_17, raw_18], calls)
+
+            result = self._patched_rebuild(fake_gh, work=work)
+
+            closes = self._close_calls(calls)
+            self.assertEqual(len(closes), 1)
+            self.assertEqual(closes[0][:6], ["pr", "close", "17", "--repo", "akoita/resonate", "--comment"])
+            self.assertIn("already on `main`", closes[0][6])
+            self.assertEqual([item.pull_request.number for item in result.superseded], [17])
+            self.assertEqual(result.superseded[0].category, "superseded")
+            self.assertEqual(result.superseded[0].reason, "already on main")
+            self.assertEqual([item.pull_request.number for item in result.included], [18])
+            self.assertNotIn(17, [item.pull_request.number for item in result.skipped])
+            body = dependency_train.render_train_section(
+                base_sha=base,
+                included=result.included,
+                skipped=result.skipped,
+                conflicting=result.conflicting,
+                risky=result.risky,
+                source_fingerprint=result.source_fingerprint,
+            )
+            self.assertNotIn("pull/17", body)
+            self.assertIn("pull/18", body)
+            self.assertEqual(
+                result.source_fingerprint,
+                dependency_train.source_set_fingerprint(result.included),
+            )
+            self.assertEqual(result.train_pr_number, 99)
+
+    def test_rebuild_train_dry_run_reports_superseded_without_closing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work, _base, raw_17, raw_18 = self._superseded_fixture(Path(directory))
+            calls: list[list[str]] = []
+            fake_gh = self._make_fake_gh([raw_17, raw_18], calls)
+
+            result = self._patched_rebuild(fake_gh, work=work, dry_run=True)
+
+            self.assertEqual([item.pull_request.number for item in result.superseded], [17])
+            self.assertEqual(self._close_calls(calls), [])
+            self.assertFalse(any(arguments[:2] == ["pr", "create"] for arguments in calls))
+
+    def test_close_superseded_only_never_builds_or_publishes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work, _base, raw_17, raw_18 = self._superseded_fixture(Path(directory))
+            calls: list[list[str]] = []
+            fake_gh = self._make_fake_gh([raw_17, raw_18], calls, allow_checks=False)
+            original_push = dependency_train._push_train_branch
+
+            def fail_if_pushed(*_arguments: object, **_keywords: object) -> None:
+                raise AssertionError("close-only mode must not push the train branch")
+
+            dependency_train._push_train_branch = fail_if_pushed
+            try:
+                result = self._patched_rebuild(fake_gh, work=work, close_superseded_only=True)
+            finally:
+                dependency_train._push_train_branch = original_push
+
+            self.assertEqual(len(self._close_calls(calls)), 1)
+            self.assertEqual(self._close_calls(calls)[0][2], "17")
+            self.assertEqual([item.pull_request.number for item in result.superseded], [17])
+            self.assertEqual(result.included, ())
+            self.assertEqual(result.conflicting, ())
+            self.assertEqual(result.skipped, ())
+            self.assertEqual(result.risky, ())
+            self.assertFalse(
+                any(arguments[:2] in (["pr", "create"], ["pr", "edit"]) for arguments in calls)
+            )
+            self.assertEqual(git(work, "branch", "--list", "automation/dependency-train"), "")
+
+    def test_failed_close_is_recorded_as_skipped_and_does_not_abort(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work, _base, raw_17, raw_18 = self._superseded_fixture(Path(directory))
+            calls: list[list[str]] = []
+            fake_gh = self._make_fake_gh(
+                [raw_17, raw_18],
+                calls,
+                close_error="command failed (gh pr…): HTTP 403",
+            )
+
+            result = self._patched_rebuild(fake_gh, work=work)
+
+            self.assertEqual(len(self._close_calls(calls)), 1)
+            self.assertEqual(result.superseded, ())
+            skipped = {item.pull_request.number: item for item in result.skipped}
+            self.assertIn(17, skipped)
+            self.assertTrue(skipped[17].reason.startswith("unable to close superseded pull request:"))
+            self.assertIn("HTTP 403", skipped[17].reason)
+            self.assertEqual([item.pull_request.number for item in result.included], [18])
+
     def test_branch_and_repository_validation_rejects_option_injection(self) -> None:
         with self.assertRaises(dependency_train.DependencyTrainError):
             dependency_train._validate_options("main; touch /tmp/x", "automation/dependency-train")

@@ -10,10 +10,17 @@ name: Dependency Train
 # DEPENDENCY_TRAIN_APP_ID and DEPENDENCY_TRAIN_APP_PRIVATE_KEY secrets. This
 # keeps the repository-wide "Actions can create pull requests" setting off and
 # still lets the app-authored review PR trigger CI.
+#
+# A push to main only runs the job when the pushed commit is a merged train PR
+# (its squash subject is the train title).  That run is close-only: it closes
+# the source Dependabot PRs whose update is now on main and neither builds nor
+# publishes a new train.
 on:
   schedule:
     - cron: "15 6 * * 1"
   workflow_dispatch:
+  push:
+    branches: [main]
 
 concurrency:
   group: dependency-train
@@ -31,7 +38,10 @@ env:
 jobs:
   rebuild:
     name: Rebuild dependency train
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'push' ||
+      contains(join(github.event.commits.*.message, ' '), 'chore(deps): consolidate Dependabot updates'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -80,13 +90,19 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.dependency-train-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          extra=()
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            extra+=(--close-superseded-only)
+          fi
           python3 scripts/dependency_train.py \
             --repository-root "${GITHUB_WORKSPACE}" \
             --repository "${REPOSITORY}" \
             --base-branch "${BASE_BRANCH}" \
-            --train-branch "${TRAIN_BRANCH}"
+            --train-branch "${TRAIN_BRANCH}" \
+            "${extra[@]}"
 
   report-failure:
     name: Report Dependency Train Failure
