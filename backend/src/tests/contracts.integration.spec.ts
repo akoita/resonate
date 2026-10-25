@@ -76,11 +76,35 @@ describe('ContractsService (integration)', () => {
   });
 
   afterAll(async () => {
-    // Clean up in reverse FK order
-    await prisma.royaltyPayment.deleteMany({}).catch(() => {});
-    await prisma.stemPurchase.deleteMany({}).catch(() => {});
-    await prisma.stemListing.deleteMany({}).catch(() => {});
-    await prisma.stemNftMint.deleteMany({}).catch(() => {});
+    // Clean up in reverse FK order. Every delete is scoped to rows this suite
+    // created: other integration suites share the same database in parallel.
+    const txPrefix = `0x${TEST_PREFIX}`;
+    await prisma.royaltyPayment
+      .deleteMany({ where: { transactionHash: { startsWith: txPrefix } } })
+      .catch(() => {});
+    await prisma.stemPurchase
+      .deleteMany({
+        where: {
+          OR: [
+            { transactionHash: { startsWith: txPrefix } },
+            { listing: { transactionHash: { startsWith: txPrefix } } },
+          ],
+        },
+      })
+      .catch(() => {});
+    await prisma.stemListing
+      .deleteMany({ where: { transactionHash: { startsWith: txPrefix } } })
+      .catch(() => {});
+    await prisma.stemNftMint
+      .deleteMany({
+        where: {
+          OR: [
+            { transactionHash: { startsWith: txPrefix } },
+            { stemId: { startsWith: TEST_PREFIX } },
+          ],
+        },
+      })
+      .catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});

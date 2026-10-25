@@ -43,6 +43,17 @@ Never make app deployment depend on copied console output. If an existing
 contract deploy path only uploads raw Foundry broadcasts, improve it to follow
 this pattern before adding more downstream automation.
 
+## Local Setup Matches CI
+
+Run `git submodule update --init --checkout` at the repository root, then
+`cd contracts && ./scripts/install-deps.sh`, before `forge build`. Plain
+`git submodule update --init --recursive` skips `lib/kernel` and
+`lib/kernel-v3` (`update = none` in `.gitmodules`), so `forge build` fails
+without the install step. Never add `--skip` flags to hide a missing
+dependency. The `lib/kernel` and `lib/kernel-v3` gitlinks are the Kernel pin
+source of truth (`install-deps.sh` reads them); change a pin by updating the
+gitlink and `foundry.lock` together. See `contracts/README.md`.
+
 ## Required Test Ladder
 
 Use the strongest practical layer for the risk of the change. Do not rely on

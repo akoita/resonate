@@ -29,6 +29,11 @@ describe('IndexerService (integration)', () => {
   let service: IndexerService;
   let eventBus: EventBus;
   const P = `indexer_${Date.now()}_`;
+  // The destructive reset-purge test runs on a chain id no other suite uses, so
+  // the purge (and this suite's cleanup) cannot touch rows that parallel suites
+  // keep under the shared local chain id 31337.
+  const PURGE_CHAIN_ID = 7_031_337;
+  const IDEMPOTENCY_TX_HASH = `0x${P}idem`;
 
   beforeAll(async () => {
     if (!anvilUrl()) {
@@ -50,19 +55,27 @@ describe('IndexerService (integration)', () => {
   afterAll(async () => {
     if (!anvilUrl()) return;
     await prisma.stemPurchase.deleteMany({
-      where: { listing: { chainId: 31337 } },
+      where: { listing: { chainId: PURGE_CHAIN_ID } },
     }).catch(() => {});
-    await prisma.stemListing.deleteMany({ where: { chainId: 31337 } }).catch(() => {});
-    await prisma.stemNftMint.deleteMany({ where: { chainId: 31337 } }).catch(() => {});
-    await prisma.contentProtectionStake.deleteMany({ where: { chainId: 31337 } }).catch(() => {});
-    await prisma.contentAttestation.deleteMany({ where: { chainId: 31337 } }).catch(() => {});
+    await prisma.royaltyPayment.deleteMany({ where: { chainId: PURGE_CHAIN_ID } }).catch(() => {});
+    await prisma.stemListing.deleteMany({ where: { chainId: PURGE_CHAIN_ID } }).catch(() => {});
+    await prisma.stemNftMint.deleteMany({ where: { chainId: PURGE_CHAIN_ID } }).catch(() => {});
+    await prisma.contentProtectionStake.deleteMany({ where: { chainId: PURGE_CHAIN_ID } }).catch(() => {});
+    await prisma.contentAttestation.deleteMany({ where: { chainId: PURGE_CHAIN_ID } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { id: { startsWith: P } } }).catch(() => {});
     await prisma.track.deleteMany({ where: { id: { startsWith: P } } }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: { startsWith: P } } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: { startsWith: P } } }).catch(() => {});
     await prisma.user.deleteMany({ where: { id: { startsWith: P } } }).catch(() => {});
-    await prisma.contractEvent.deleteMany({}).catch(() => {});
-    await prisma.indexerState.deleteMany({}).catch(() => {});
+    await prisma.contractEvent
+      .deleteMany({
+        where: {
+          OR: [{ chainId: PURGE_CHAIN_ID }, { transactionHash: IDEMPOTENCY_TX_HASH }],
+        },
+      })
+      .catch(() => {});
+    // The cursor test below owns the IndexerState row for chain 31337.
+    await prisma.indexerState.deleteMany({ where: { chainId: 31337 } }).catch(() => {});
   });
 
   it('connects to Anvil and reads block number', async () => {
@@ -95,7 +108,7 @@ describe('IndexerService (integration)', () => {
   it('stores contract events with idempotency', async () => {
     if (!anvilUrl()) return;
 
-    const txHash = '0x' + 'a'.repeat(64);
+    const txHash = IDEMPOTENCY_TX_HASH;
     const logIndex = 0;
 
     await prisma.contractEvent.create({
@@ -233,7 +246,7 @@ describe('IndexerService (integration)', () => {
       data: {
         stemId,
         tokenId: 77n,
-        chainId: 31337,
+        chainId: PURGE_CHAIN_ID,
         contractAddress: '0x' + '2'.repeat(40),
         creatorAddress: '0x' + '3'.repeat(40),
         royaltyBps: 500,
@@ -249,7 +262,7 @@ describe('IndexerService (integration)', () => {
         listingId: 9n,
         stemId,
         tokenId: 77n,
-        chainId: 31337,
+        chainId: PURGE_CHAIN_ID,
         contractAddress: '0x' + '5'.repeat(40),
         sellerAddress: '0x' + '6'.repeat(40),
         pricePerUnit: '10000000000000000',
@@ -279,7 +292,7 @@ describe('IndexerService (integration)', () => {
     await prisma.royaltyPayment.create({
       data: {
         tokenId: 77n,
-        chainId: 31337,
+        chainId: PURGE_CHAIN_ID,
         recipientAddress: '0x' + 'a'.repeat(40),
         amount: '500000000000000',
         transactionHash: '0x' + 'b'.repeat(64),
@@ -290,7 +303,7 @@ describe('IndexerService (integration)', () => {
     await prisma.contentProtectionStake.create({
       data: {
         tokenId: '77',
-        chainId: 31337,
+        chainId: PURGE_CHAIN_ID,
         stakerAddress: '0x' + 'c'.repeat(40),
         amount: '10000000000000000',
         depositedAt: new Date(),
@@ -301,7 +314,7 @@ describe('IndexerService (integration)', () => {
     await prisma.contentAttestation.create({
       data: {
         tokenId: '77',
-        chainId: 31337,
+        chainId: PURGE_CHAIN_ID,
         attesterAddress: '0x' + 'e'.repeat(40),
         contentHash: '0x' + 'f'.repeat(64),
         fingerprintHash: '0x' + '1'.repeat(64),
@@ -317,22 +330,22 @@ describe('IndexerService (integration)', () => {
         logIndex: 0,
         blockNumber: 7n,
         blockHash: '0x' + '4'.repeat(64),
-        chainId: 31337,
+        chainId: PURGE_CHAIN_ID,
         contractAddress: '0x' + '5'.repeat(40),
         eventName: 'Listed',
         args: {},
       },
     });
 
-    await (service as any).purgeEphemeralChainState(31337);
+    await (service as any).purgeEphemeralChainState(PURGE_CHAIN_ID);
 
-    expect(await prisma.stemNftMint.count({ where: { chainId: 31337 } })).toBe(0);
-    expect(await prisma.stemListing.count({ where: { chainId: 31337 } })).toBe(0);
-    expect(await prisma.stemPurchase.count({ where: { listing: { chainId: 31337 } } })).toBe(0);
-    expect(await prisma.royaltyPayment.count({ where: { chainId: 31337 } })).toBe(0);
-    expect(await prisma.contentProtectionStake.count({ where: { chainId: 31337 } })).toBe(0);
-    expect(await prisma.contentAttestation.count({ where: { chainId: 31337 } })).toBe(0);
-    expect(await prisma.contractEvent.count({ where: { chainId: 31337 } })).toBe(0);
+    expect(await prisma.stemNftMint.count({ where: { chainId: PURGE_CHAIN_ID } })).toBe(0);
+    expect(await prisma.stemListing.count({ where: { chainId: PURGE_CHAIN_ID } })).toBe(0);
+    expect(await prisma.stemPurchase.count({ where: { listing: { chainId: PURGE_CHAIN_ID } } })).toBe(0);
+    expect(await prisma.royaltyPayment.count({ where: { chainId: PURGE_CHAIN_ID } })).toBe(0);
+    expect(await prisma.contentProtectionStake.count({ where: { chainId: PURGE_CHAIN_ID } })).toBe(0);
+    expect(await prisma.contentAttestation.count({ where: { chainId: PURGE_CHAIN_ID } })).toBe(0);
+    expect(await prisma.contractEvent.count({ where: { chainId: PURGE_CHAIN_ID } })).toBe(0);
     expect((await prisma.stem.findUnique({ where: { id: stemId } }))?.ipnftId).toBeNull();
   });
 
