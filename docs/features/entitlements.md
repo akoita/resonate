@@ -20,7 +20,7 @@ The later slices are tracked separately:
 
 | Slice | Issue | What it adds |
 | --- | --- | --- |
-| 2 | [#2407](https://github.com/akoita/resonate/issues/2407) | Stripe subscriptions in test mode (a `Subscription` model, checked before grants) |
+| 2 | [#2407](https://github.com/akoita/resonate/issues/2407) | Stripe subscriptions in test mode (a `Subscription` model, checked before grants). Built: see [Artist Pro billing](artist_pro_billing.md) |
 | 3 | [#2408](https://github.com/akoita/resonate/issues/2408) | The monthly allowance (`credits.allowance`, `monthlyAllowanceCents`) |
 | 4 | [#1422](https://github.com/akoita/resonate/issues/1422) | Buying credits |
 | 5 | [#2409](https://github.com/akoita/resonate/issues/2409) | Pro gates on: the bump to rule `plan`, after the RFC's §8 gates |
@@ -37,8 +37,9 @@ Pro sells tools, never a share of fans' money and never exposure.
   and revoke it. This is on the Plan section of a person's record
   (`/admin/users/:id`).
 - **Artists, producers and DJs:** Settings › Usage & Billing shows
-  **Pro (granted)** and its last day when they hold a grant. Otherwise it shows
-  Free, with "Artist Pro — coming soon".
+  **Pro (granted)** and its last day when they hold a grant, **Pro** with a
+  subscription (#2407, [Artist Pro billing](artist_pro_billing.md)), or Free
+  with the Artist Pro subscription offer.
 - **Backend developers:** every gate is decided by
   `EntitlementsService.decide(userId, feature)`.
 
@@ -53,7 +54,10 @@ Pro sells tools, never a share of fans' money and never exposure.
   features are `remix.pro`, `crate.pro` and `cockpit.demand`.
   `credits.allowance` arrives with #2408.
 - `EntitlementsService.resolvePlan(userId)` looks for a plan in this order:
-  1. a subscription (#2407, not built yet; the seam is marked in the code);
+  1. the person's Stripe subscription (#2407, `subscription_plan.ts`): active
+     or trialing until the period end (with 3 days' slack for a late renewal
+     event), past due for 7 days from `pastDueSince`, or canceled at period
+     end until that end;
   2. an active grant;
   3. otherwise `free`.
 

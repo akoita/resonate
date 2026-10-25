@@ -115,10 +115,19 @@ describe("formatLedgerAmount", () => {
 });
 
 describe("UsageBillingView", () => {
-  it("renders the free plan tier and the Artist Pro note", () => {
+  it("renders the free plan tier and its note", () => {
     const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
     expect(html).toContain("Free");
-    expect(html).toContain("Artist Pro — coming soon");
+    expect(html).toContain("Uploading, selling and payouts are always free.");
+    expect(html).not.toContain("coming soon");
+  });
+
+  it("renders the subscription controls under the plan chip when given (#2407)", () => {
+    const html = renderToStaticMarkup(
+      <UsageBillingView summary={summary()} now={NOW} planExtra={<p>plan-extra-slot</p>} />,
+    );
+    const planSection = html.slice(html.indexOf("usage-plan-heading"), html.indexOf("usage-credits-heading"));
+    expect(planSection).toContain("plan-extra-slot");
   });
 
   it("renders a granted Pro plan with its end date and no upgrade prompt (#2406)", () => {
@@ -134,20 +143,25 @@ describe("UsageBillingView", () => {
     expect(html).toContain('data-tier="pro"');
     expect(html).toContain("2026");
     expect(html).toContain("Pro tools are free for everyone for now.");
-    expect(html).not.toContain("Artist Pro — coming soon");
     expect(html).not.toMatch(/upgrade|subscribe/i);
   });
 
-  it("describes plans: free, granted with an end, open-ended promo", () => {
+  it("describes plans: free, granted with an end, open-ended promo, subscription", () => {
     expect(describePlan({ tier: "free", monthlyAllowanceCents: null })).toEqual({
       label: "Free",
-      note: "Artist Pro — coming soon",
+      note: "Uploading, selling and payouts are always free.",
     });
     expect(describePlan({ tier: "pro", monthlyAllowanceCents: null, source: "promo" })).toEqual({
       label: "Pro (granted)",
       note: "No end date. Pro tools are free for everyone for now.",
     });
     expect(describePlan({ tier: "pro", monthlyAllowanceCents: null, source: "stripe_subscription" }).label).toBe("Pro");
+    expect(
+      describePlan({ tier: "pro", monthlyAllowanceCents: null, source: "stripe_subscription", validUntil: "2026-11-25T00:00:00.000Z" }),
+    ).toEqual({
+      label: "Pro",
+      note: "Artist Pro subscription, paid through Nov 25, 2026. Pro tools are free for everyone for now.",
+    });
   });
 
   it("renders the credits capacity via CreditBalanceMeter", () => {

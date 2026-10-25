@@ -8,8 +8,9 @@
  * unchanged. The policy itself is pure (`entitlements.policy.ts`).
  *
  * Plan resolution, in order:
- *   1. (#2407) an active or trialing Stripe subscription. Not built yet: it
- *      goes in {@link EntitlementsService.resolvePlan} ahead of grants.
+ *   1. (#2407) the person's Stripe subscription (`subscription_plan.ts`):
+ *      active or trialing, past due within the 7-day grace, or canceled at
+ *      period end before that end;
  *   2. a valid operator or promo `EntitlementGrant`;
  *   3. otherwise `free`.
  *
@@ -27,20 +28,25 @@ import {
   type EntitlementPolicy,
   type PlanResolution,
 } from "./entitlements.policy";
+import { SubscriptionPlanService } from "./subscription_plan";
 
 @Injectable()
 export class EntitlementsService {
   private readonly grants: EntitlementGrantsService;
+  private readonly subscriptions: SubscriptionPlanService;
   private readonly policy: EntitlementPolicy;
 
-  constructor(@Optional() grants?: EntitlementGrantsService) {
+  constructor(@Optional() grants?: EntitlementGrantsService, @Optional() subscriptions?: SubscriptionPlanService) {
     this.grants = grants ?? new EntitlementGrantsService();
+    this.subscriptions = subscriptions ?? new SubscriptionPlanService();
     this.policy = ENTITLEMENTS_POLICY;
   }
 
   /** `userId`'s plan right now (`GET /usage/summary` shows it). */
   async resolvePlan(userId: string, now: Date = new Date()): Promise<PlanResolution> {
-    // #2407: an active or trialing subscription is checked here first.
+    // #2407: the subscription first, then grants.
+    const fromSubscription = await this.subscriptions.resolvePlan(userId, now);
+    if (fromSubscription.plan === "pro") return fromSubscription;
     return this.grants.resolvePlan(userId, now);
   }
 

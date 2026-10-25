@@ -17,6 +17,7 @@ import {
 import { grantStatus, planFromGrants } from "../modules/entitlements/entitlement_grants.service";
 import { EntitlementsService } from "../modules/entitlements/entitlements.service";
 import type { EntitlementGrantsService } from "../modules/entitlements/entitlement_grants.service";
+import type { SubscriptionPlanService } from "../modules/entitlements/subscription_plan";
 
 const NOW = new Date("2026-10-25T12:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -157,7 +158,8 @@ describe("grants resolve to a plan (#2406)", () => {
 describe("EntitlementsService (#2406)", () => {
   it("decides from the plan the grants resolve, for that person only", async () => {
     const resolvePlan = jest.fn(async (userId: string) => (userId === "granted" ? GRANTED : FREE_PLAN));
-    const service = new EntitlementsService({ resolvePlan } as unknown as EntitlementGrantsService);
+    const noSubscription = { resolvePlan: async () => FREE_PLAN } as unknown as SubscriptionPlanService;
+    const service = new EntitlementsService({ resolvePlan } as unknown as EntitlementGrantsService, noSubscription);
     await expect(service.decide("granted", "cockpit.demand", NOW)).resolves.toMatchObject({
       allowed: true,
       reason: "free_for_everyone",
@@ -166,5 +168,19 @@ describe("EntitlementsService (#2406)", () => {
     await expect(service.decide("other", "cockpit.demand", NOW)).resolves.toMatchObject({ allowed: true, plan: "free" });
     expect(resolvePlan).toHaveBeenCalledWith("granted", NOW);
     expect(resolvePlan).toHaveBeenCalledWith("other", NOW);
+  });
+
+  it("reads the subscription first, and the grants only when it gives no Pro (#2407)", async () => {
+    const subscribed = { plan: "pro" as const, source: "stripe_subscription" as const, validUntil: "2026-11-25T00:00:00.000Z" };
+    const subscriptionPlan = jest.fn(async (userId: string) => (userId === "subscriber" ? subscribed : FREE_PLAN));
+    const grantPlan = jest.fn(async () => GRANTED);
+    const service = new EntitlementsService(
+      { resolvePlan: grantPlan } as unknown as EntitlementGrantsService,
+      { resolvePlan: subscriptionPlan } as unknown as SubscriptionPlanService,
+    );
+    await expect(service.resolvePlan("subscriber", NOW)).resolves.toEqual(subscribed);
+    expect(grantPlan).not.toHaveBeenCalled();
+    await expect(service.resolvePlan("granted", NOW)).resolves.toEqual(GRANTED);
+    expect(grantPlan).toHaveBeenCalledWith("granted", NOW);
   });
 });

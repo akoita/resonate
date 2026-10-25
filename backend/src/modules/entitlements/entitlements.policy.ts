@@ -27,8 +27,8 @@ export const ENTITLEMENT_PLANS = ["free", "pro"] as const;
 export type EntitlementPlan = (typeof ENTITLEMENT_PLANS)[number];
 
 /**
- * Where a `pro` plan comes from. `stripe_subscription` is reserved for #2407;
- * today only an operator or promo grant gives `pro`.
+ * Where a `pro` plan comes from: a Stripe subscription (#2407), or an operator
+ * or promo grant (#2406).
  */
 export const ENTITLEMENT_SOURCES = ["stripe_subscription", "operator_grant", "promo"] as const;
 export type EntitlementSource = (typeof ENTITLEMENT_SOURCES)[number];

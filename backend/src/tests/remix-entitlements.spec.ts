@@ -12,13 +12,15 @@ import {
 } from "../modules/remix/remix-entitlements";
 import { EntitlementsService } from "../modules/entitlements/entitlements.service";
 import type { EntitlementGrantsService } from "../modules/entitlements/entitlement_grants.service";
+import type { SubscriptionPlanService } from "../modules/entitlements/subscription_plan";
 import { FREE_PLAN } from "../modules/entitlements/entitlements.policy";
 
 /** No database here: the adapter is wired to a plan source with no grants. */
 const noGrants = { resolvePlan: async () => FREE_PLAN } as unknown as EntitlementGrantsService;
+const noSubscription = { resolvePlan: async () => FREE_PLAN } as unknown as SubscriptionPlanService;
 
 describe("RemixEntitlementsService (#1903)", () => {
-  const service = new RemixEntitlementsService(new EntitlementsService(noGrants));
+  const service = new RemixEntitlementsService(new EntitlementsService(noGrants, noSubscription));
 
   it("names the feature and the free-for-everyone policy", () => {
     expect(REMIX_PRO_FEATURE).toBe("remix.pro");

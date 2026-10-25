@@ -13,6 +13,7 @@ import {
   PURCHASE_CONSENT_NOTICE_CATEGORY,
   PURCHASE_CONSENT_SURFACES,
   PURCHASE_CONSENT_WORDING,
+  SUBSCRIPTION_CONSENT_WORDING,
   WITHDRAWAL_PERIOD_DAYS,
   WITHDRAWAL_PERIOD_MS,
   isPurchaseConsentSurface,
@@ -80,6 +81,13 @@ export class PurchaseConsentService {
       throw new BadRequestException({ code: "invalid_surface", message: "Unknown purchase surface." });
     }
     const surface = input.surface;
+    if (surface === "subscription") {
+      // Recorded by the subscription checkout itself, with its own wording.
+      throw new BadRequestException({
+        code: "use_subscription_checkout",
+        message: "A subscription consent is recorded when you start the subscription checkout.",
+      });
+    }
     const rules = PURCHASE_CONSENT_SURFACES[surface];
 
     if (input.textVersion !== PURCHASE_CONSENT_WORDING.version) {
@@ -132,6 +140,37 @@ export class PurchaseConsentService {
       },
     });
 
+    await this.confirm(userId, row);
+    return toPurchaseConsentView(row);
+  }
+
+  /**
+   * The immediate-start consent of an Artist Pro subscription (#2407), recorded
+   * by the subscription checkout BEFORE the Stripe Checkout Session exists. The
+   * caller has already checked that the person ticked the acknowledgement and
+   * saw the current wording. `consented` means "start now";
+   * `acknowledgedWaiver` means the person acknowledged that withdrawing within
+   * 14 days refunds only the unused time. There is no hold.
+   */
+  async recordSubscriptionStart(
+    userId: string,
+    input: { subjectId: string; subjectLabel: string },
+  ): Promise<PurchaseConsentView> {
+    const rules = PURCHASE_CONSENT_SURFACES.subscription;
+    const row = await prisma.purchaseConsent.create({
+      data: {
+        userId,
+        surface: "subscription",
+        subjectId: input.subjectId,
+        subjectLabel: input.subjectLabel.slice(0, 200),
+        licenseType: null,
+        deliveryKind: rules.deliveryKind,
+        consented: true,
+        acknowledgedWaiver: true,
+        textVersion: SUBSCRIPTION_CONSENT_WORDING.version,
+        deliveryAvailableAt: null,
+      },
+    });
     await this.confirm(userId, row);
     return toPurchaseConsentView(row);
   }
@@ -227,7 +266,14 @@ export class PurchaseConsentService {
     const wording = `Wording version ${row.textVersion}.`;
     let title: string;
     let body: string;
-    if (row.deliveryKind === "on_chain_mint") {
+    if (row.deliveryKind === "service") {
+      title = "Subscription start confirmed";
+      body =
+        `On ${when} UTC you asked for "${row.subjectLabel}" to start straight away, before the ` +
+        `${WITHDRAWAL_PERIOD_DAYS}-day withdrawal period ends, and you acknowledged that if you withdraw within ` +
+        `those ${WITHDRAWAL_PERIOD_DAYS} days you are refunded only for the unused time, less the value of any ` +
+        `monthly generation allowance you have already used. ${wording}`;
+    } else if (row.deliveryKind === "on_chain_mint") {
       title = "Immediate delivery confirmed";
       body =
         `On ${when} UTC you asked us to mint "${row.subjectLabel}" for you right away and you acknowledged ` +

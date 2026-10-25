@@ -79,6 +79,7 @@ class-typed before this change. "Converted" routes now take a class DTO.
 | maintenance (`/admin/*`) | stem and embedding backfills, erasure run-due, warehouse load and backfill, cohort generation, moderation resolve (7) | Converted (`maintenance.dto.ts`, #2362); types only, so `limit: "25"` and similar strings now answer 400. `erasure/run-due` still takes a numeric string, as its service does |
 | x402 refund reconciliation (`/admin/x402-refunds`) | mark refunded (1) | Converted (`x402-refund-reconciliation.dto.ts`, #2362); the service still owns the hash message |
 | entitlements (`/admin/entitlements/grants`) | create grant (1) | Class DTO from the start (`entitlements.dto.ts`, #2406); the list query is a class DTO too |
+| billing (`/billing`) | subscription checkout (1) | Class DTO from the start (`billing.dto.ts`, #2407). The Stripe webhook (`POST /billing/stripe/webhook`) declares no `@Body()`: it reads `req.rawBody`, because the `Stripe-Signature` check covers the raw bytes and must run before the payload is trusted; the SDK's `constructEvent` then parses it. Like `POST /email/webhook`, it needs no allowlist entry |
 | notices | broadcast, targeted (2) | Converted (`notice.dto.ts`, #2362); types and shape only, `notice_validation` still owns the value rules and its messages |
 
 Every "already validated" and "inline" row is an entry in the guard's allowlist

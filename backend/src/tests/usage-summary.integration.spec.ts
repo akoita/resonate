@@ -138,6 +138,38 @@ describe("Usage summary (integration)", () => {
       await prisma.entitlementGrant.deleteMany({ where: { id: grant.id } });
     }
   });
+
+  it("reads Pro from an active Stripe subscription first, with its period end (#2407)", async () => {
+    const periodEnd = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000);
+    const grantUntil = new Date(Date.now() + 40 * 24 * 60 * 60 * 1000);
+    await prisma.subscription.create({
+      data: {
+        userId,
+        stripeCustomerId: `cus_usage_${userId}`,
+        stripeSubscriptionId: `sub_usage_${userId}`,
+        interval: "month",
+        status: "active",
+        currentPeriodEnd: periodEnd,
+      },
+    });
+    const grant = await prisma.entitlementGrant.create({
+      data: { userId, validUntil: grantUntil, reason: "usage summary test", createdByUserId: otherUserId },
+    });
+    try {
+      expect((await usageService.getSummary(userId)).plan).toEqual({
+        tier: "pro",
+        monthlyAllowanceCents: null,
+        source: "stripe_subscription",
+        validUntil: periodEnd.toISOString(),
+      });
+      // Once the subscription is canceled outright, the grant decides.
+      await prisma.subscription.update({ where: { userId }, data: { status: "canceled" } });
+      expect((await usageService.getSummary(userId)).plan).toMatchObject({ tier: "pro", source: "operator_grant" });
+    } finally {
+      await prisma.entitlementGrant.deleteMany({ where: { id: grant.id } });
+      await prisma.subscription.deleteMany({ where: { userId } });
+    }
+  });
   it("breaks credit spend down per metered kind from the real ledger", async () => {
     // The debit's `kind` argument only decides whether a catalog job-outcome
     // row is created; the breakdown attributes by ledger reason, so a

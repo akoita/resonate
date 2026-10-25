@@ -129,7 +129,7 @@ When adding a new environment variable:
 | `AA_FUNDER_KEY` | Backend secret | Optional explicit 32-byte key for local/custom-chain account funding. The well-known Anvil key is used automatically only on chain `31337`; every other chain requires this explicit value or external funding. |
 | `AA_STRICT_MODE` | Backend | When `true`, disables all automatic local account funding so tests exercise production-style gas ownership. |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
-| `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |
+| `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, CORS allowlisting and (first entry) the Stripe Checkout and Customer Portal return pages (#2407; required for billing in production, `http://localhost:3001` in development) |
 | `PUBLIC_API_URL` | Backend / email job | Public base URL of this API, used for absolute links that must reach the API directly (the RFC 8058 one-click unsubscribe URL in notice emails). Required when `EMAIL_TRANSPORT=smtp`; the development `log` transport falls back to `http://localhost:3000` |
 | `EMAIL_TRANSPORT` | Backend / email job | `log` or `smtp`. Unset means `log` outside production and email **disabled** in production; `log` is refused in production. `log` sends nothing (it logs only that a message was accepted). The API's `available` flag and the job both follow this setting (#2169) |
 | `EMAIL_FROM` | Backend / email job | Sender address and display name for notice emails, e.g. `Name <address@domain>`. Required for `smtp` |
@@ -142,6 +142,12 @@ When adding a new environment variable:
 | `EMAIL_SNS_TOPIC_ARN` | Backend | The only topic ARN the SNS route accepts; other topics get 403. Required for the route |
 | `EMAIL_SNS_CONFIRM_HOSTS` | Backend | Comma-separated exact hostnames a subscription confirmation may go to: the provider's own confirmation host for the topic's region. The message's `SubscribeURL` is never fetched as given; the request is rebuilt from this host and `EMAIL_SNS_TOPIC_ARN`, keeping only the subscription token. Unset means confirmations are refused; notifications still work once the subscription is confirmed |
 | `EMAIL_SNS_EVENT_FORMAT` | Backend | Which provider event format the topic's messages carry. Supported: `scaleway-tem`. Unset or unknown keeps the route off (an unknown value logs one warning) |
+| `STRIPE_SECRET_KEY` | Backend secret | Stripe API secret key for Artist Pro subscriptions (#2407). A live key (`sk_live_`/`rk_live_`) is refused unless `BILLING_LIVE_MODE=true`; use a test key (`sk_test_`). Never logged. Billing is off (checkout, portal and webhook answer 503 `billing_unavailable`) until this and the three variables below are all set |
+| `STRIPE_WEBHOOK_SECRET` | Backend secret | Signing secret of the Stripe webhook endpoint for `POST /billing/stripe/webhook` (`whsec_…`); the `Stripe-Signature` header is checked against the raw body. Required for billing |
+| `STRIPE_PRICE_ARTIST_PRO_MONTHLY` | Backend | Stripe price id of the monthly Artist Pro price. Required for billing; the amount lives in Stripe |
+| `STRIPE_PRICE_ARTIST_PRO_ANNUAL` | Backend | Stripe price id of the yearly Artist Pro price. Required for billing |
+| `BILLING_LIVE_MODE` | Backend | `true` allows a live Stripe key. Default false (test mode only); live charging is out of scope until the Artist Pro RFC's pre-charge gates are met. While false the app shows a Test mode note |
+| `STRIPE_AUTOMATIC_TAX` | Backend | `true` turns on Stripe Tax in the subscription Checkout (`automatic_tax`, customer address collected). Default false; only enable it once Stripe Tax is configured on the account |
 | `CORS_ORIGIN` | Backend | Optional comma-separated browser origins allowed to call the backend. Defaults include local dev and also derives from `FRONTEND_URL` / `WEBAUTHN_ORIGIN` |
 | `CORS_ORIGINS` | Backend | Optional plural alias for `CORS_ORIGIN` |
 | `WEBAUTHN_RP_ID` | Backend | Optional relying-party ID for self-hosted passkey credentials. Usually the frontend hostname, without protocol |
