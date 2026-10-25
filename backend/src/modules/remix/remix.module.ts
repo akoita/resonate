@@ -11,6 +11,7 @@ import { StorageProvider } from "../storage/storage_provider";
 import { RemixController } from "./remix.controller";
 import { RemixService } from "./remix.service";
 import { RemixEligibilityService } from "./remix-eligibility.service";
+import { EntitlementsModule } from "../entitlements/entitlements.module";
 import { RemixEntitlementsService } from "./remix-entitlements";
 import {
   REMIX_GENERATION_QUEUE,
@@ -44,6 +45,7 @@ import {
 @Module({
   imports: [
     SharedModule,
+    EntitlementsModule,
     GenerationModule,
     CreditsModule,
     ModerationModule,

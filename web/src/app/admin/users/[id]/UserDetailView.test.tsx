@@ -51,6 +51,20 @@ describe("UserDetailView (#2166)", () => {
     expect(html).not.toContain("Only admins can suspend or close");
   });
 
+  it("gives admins the Pro grant controls on the Plan section (#2406)", () => {
+    const html = render({ isAdmin: true });
+    expect(html).toContain(">Plan<");
+    expect(html).toContain("Grant Pro");
+    expect(html).toContain("Loading Pro grants...");
+    expect(html).not.toContain("Only admins can see and grant Pro.");
+  });
+
+  it("shows operators that only admins grant Pro, with no grant controls (#2406)", () => {
+    const html = render({ isAdmin: false });
+    expect(html).toContain("Only admins can see and grant Pro.");
+    expect(html).not.toContain("Grant Pro<");
+  });
+
   it("shows operators the status read-only, with no controls", () => {
     const html = render({ isAdmin: false });
     expect(html).toContain("Only admins can suspend or close an account.");

@@ -19,6 +19,8 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "credit_requests.viewed", label: "Opened the credit requests" },
   { value: "credit_request.granted", label: "Granted a credit request" },
   { value: "credit_request.dismissed", label: "Dismissed a credit request" },
+  { value: "entitlement_grant.created", label: "Granted Pro" },
+  { value: "entitlement_grant.revoked", label: "Revoked a Pro grant" },
   { value: "dmca.reports_viewed", label: "Opened the takedown reports" },
   { value: "dmca.report_resolved", label: "Resolved a takedown report" },
   { value: "trust.artist_verified", label: "Verified an artist" },

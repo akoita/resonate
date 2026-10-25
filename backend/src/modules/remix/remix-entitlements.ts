@@ -13,13 +13,21 @@
  * must land in `docs/rfc/business-model.md` FIRST, then bump
  * {@link REMIX_PRO_POLICY}'s version here.
  *
+ * Since #2406 this is a thin adapter over the one `EntitlementsService`
+ * (`modules/entitlements`): the decision comes from `decide(userId,
+ * "remix.pro")`, under policy `entitlements/v1`. The project DTO keeps its
+ * shape (`allowed`, `reason`, `policyVersion`) and this seam's own policy
+ * version, so nothing a client reads changes. The plan the central decision
+ * carries is on `GET /usage/summary`, not here.
+ *
  * Enforcement (remix-project.service.ts): a PATCH `effects` that SETS a Pro
  * field (a new or changed value) is refused with 403 `pro_required` when the
  * entitlement is not allowed. Saved Pro fields always render and can always
  * be removed: an entitlement never silently changes stored audio.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { EntitlementsService } from "../entitlements/entitlements.service";
 
 /** The entitlement key for Remix Studio Pro mode. */
 export const REMIX_PRO_FEATURE = "remix.pro" as const;
@@ -46,15 +54,21 @@ export type RemixProjectEntitlements = {
 
 @Injectable()
 export class RemixEntitlementsService {
+  private readonly entitlements: EntitlementsService;
+
+  constructor(@Optional() entitlements?: EntitlementsService) {
+    this.entitlements = entitlements ?? new EntitlementsService();
+  }
+
   /**
-   * Whether `userId` may use Remix Studio Pro mode (`remix.pro`). Async so a
-   * future policy can look up a subscription or a payment receipt; today's
-   * policy ignores `userId`.
+   * Whether `userId` may use Remix Studio Pro mode (`remix.pro`), as the one
+   * entitlement service decides it. Today's policy allows everyone.
    */
   async pro(userId: string): Promise<RemixEntitlementDecision> {
+    const decision = await this.entitlements.decide(userId, REMIX_PRO_FEATURE);
     return {
-      allowed: true,
-      reason: "free_for_everyone",
+      allowed: decision.allowed,
+      reason: decision.reason,
       policyVersion: REMIX_PRO_POLICY.version,
     };
   }

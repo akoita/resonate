@@ -71,6 +71,7 @@ function UserDetail() {
       isAdmin={isAdmin}
       token={token}
       onStatusChanged={onStatusChanged}
+      onRecordChanged={() => setReloads((count) => count + 1)}
       onRetry={() => {
         setState({ status: "loading" });
         setReloads((count) => count + 1);

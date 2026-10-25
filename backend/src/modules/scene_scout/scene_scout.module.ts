@@ -4,10 +4,12 @@ import {
   SceneScoutEntitlementsService,
   SceneScoutService,
 } from "./scene_scout.service";
+import { EntitlementsModule } from "../entitlements/entitlements.module";
 import { UNMET_DEMAND_SOURCE } from "./unmet_demand.contracts";
 import { UnmetDemandService } from "./unmet_demand.service";
 
 @Module({
+  imports: [EntitlementsModule],
   providers: [
     SceneScoutService,
     UnmetDemandService,

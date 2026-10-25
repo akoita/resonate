@@ -4,6 +4,7 @@ import type { UsageSummary } from "../../lib/api";
 import {
   UsageBillingBody,
   UsageBillingView,
+  describePlan,
   formatLedgerAmount,
 } from "./UsageBillingPanel";
 
@@ -118,6 +119,35 @@ describe("UsageBillingView", () => {
     const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
     expect(html).toContain("Free");
     expect(html).toContain("Artist Pro — coming soon");
+  });
+
+  it("renders a granted Pro plan with its end date and no upgrade prompt (#2406)", () => {
+    const html = renderToStaticMarkup(
+      <UsageBillingView
+        summary={summary({
+          plan: { tier: "pro", monthlyAllowanceCents: null, source: "operator_grant", validUntil: "2026-12-31T23:59:59.000Z" },
+        })}
+        now={NOW}
+      />,
+    );
+    expect(html).toContain("Pro (granted)");
+    expect(html).toContain('data-tier="pro"');
+    expect(html).toContain("2026");
+    expect(html).toContain("Pro tools are free for everyone for now.");
+    expect(html).not.toContain("Artist Pro — coming soon");
+    expect(html).not.toMatch(/upgrade|subscribe/i);
+  });
+
+  it("describes plans: free, granted with an end, open-ended promo", () => {
+    expect(describePlan({ tier: "free", monthlyAllowanceCents: null })).toEqual({
+      label: "Free",
+      note: "Artist Pro — coming soon",
+    });
+    expect(describePlan({ tier: "pro", monthlyAllowanceCents: null, source: "promo" })).toEqual({
+      label: "Pro (granted)",
+      note: "No end date. Pro tools are free for everyone for now.",
+    });
+    expect(describePlan({ tier: "pro", monthlyAllowanceCents: null, source: "stripe_subscription" }).label).toBe("Pro");
   });
 
   it("renders the credits capacity via CreditBalanceMeter", () => {
