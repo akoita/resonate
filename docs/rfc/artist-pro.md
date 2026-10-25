@@ -1,6 +1,6 @@
 ---
 title: "Artist Pro: product, entitlements and billing"
-status: proposed
+status: accepted
 issues:
   - "https://github.com/akoita/resonate/issues/2385"
 related:
@@ -12,14 +12,25 @@ related:
   - "https://github.com/akoita/resonate/issues/1422"
   - "https://github.com/akoita/resonate/issues/1421"
 date: 2026-10-24
+updated: 2026-10-25
 ---
 
 # Artist Pro: product, entitlements and billing
 
-**Status: proposed, waiting on the owner's decisions (§9).** This document
-charges no money and changes no price. Prices stay in
-`docs/rfc/business-model.md`; nothing here becomes canonical until it is
-reconciled there.
+**Status: accepted on 2026-10-25.** The owner accepted every recommended
+default in §9 (#2385), and the plan is reconciled into
+`docs/rfc/business-model.md` (Layer 2b). This document still charges no money:
+charging waits for the §8 gates.
+
+The work ships in these slices, in order:
+
+1. #2406: one entitlement service.
+2. #2407: Stripe subscriptions, test mode (deployment half resonate-iac#325).
+3. #2408: the monthly allowance.
+4. #1422: buying credits.
+5. #2409: turning the Pro gates on, after §8.
+
+Later items are in #2410.
 
 **Revenue line (ADR-BM-6):** line 2, Artist Pro and generation credits,
 Phase 2 (Oct–Dec 2026). ADR-BM-4 is unaffected: Pro sells tools, never a share
@@ -289,7 +300,7 @@ Each of these must be true. None of them is code in this repository.
    real-user decision, because a feature is not production-ready because it is
    built.
 
-## 9. Owner decisions (each with a recommended default)
+## 9. Owner decisions (accepted 2026-10-25: all defaults)
 
 | # | Decision | Recommended default |
 | --- | --- | --- |
