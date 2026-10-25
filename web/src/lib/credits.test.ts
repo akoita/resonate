@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { canAffordGeneration, formatCreditCapacity } from "./credits";
+import { canAffordGeneration, formatCreditCapacity, spendableCents } from "./credits";
+
+describe("spendableCents (#2408)", () => {
+  it("counts the Pro allowance with the balance when the response reports it", () => {
+    expect(spendableCents({ balanceCents: 0, spendableCents: 300 })).toBe(300);
+    expect(spendableCents({ balanceCents: 50, spendableCents: 350 })).toBe(350);
+  });
+
+  it("falls back to the balance for a response without it", () => {
+    expect(spendableCents({ balanceCents: 70 })).toBe(70);
+  });
+
+  it("lets an allowance-only subscriber afford a generation", () => {
+    expect(canAffordGeneration(spendableCents({ balanceCents: 0, spendableCents: 300 }), 10)).toBe(true);
+  });
+});
 
 describe("formatCreditCapacity", () => {
   it("reports whole-minute capacity for a funded balance", () => {

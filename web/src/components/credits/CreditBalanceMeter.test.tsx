@@ -20,6 +20,14 @@ function balance(
 }
 
 describe("CreditBalanceMeter", () => {
+  it("counts the Artist Pro allowance in the remaining capacity (#2408)", () => {
+    const html = renderToStaticMarkup(
+      <CreditBalanceMeter variant="strip" balance={balance({ balanceCents: 0, spendableCents: 300 })} />,
+    );
+    expect(html).toContain("≈ 15 min · 15 tracks");
+    expect(html).not.toContain("0 — top up");
+  });
+
   it("renders remaining capacity for a funded balance (strip)", () => {
     const html = renderToStaticMarkup(
       <CreditBalanceMeter variant="strip" balance={balance()} />,

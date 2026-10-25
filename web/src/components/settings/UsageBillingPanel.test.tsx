@@ -4,6 +4,7 @@ import type { UsageSummary } from "../../lib/api";
 import {
   UsageBillingBody,
   UsageBillingView,
+  describeAllowance,
   describeLedgerReason,
   describePlan,
   formatLedgerAmount,
@@ -115,7 +116,87 @@ describe("formatLedgerAmount", () => {
   });
 });
 
+const LIVE_ALLOWANCE = {
+  remainingCents: 240,
+  grantedCents: 300,
+  spentCents: 60,
+  periodStart: "2026-10-19T14:00:00.000Z",
+  expiresAt: "2026-11-19T14:00:00.000Z",
+  previousExpiredCents: 0,
+  previousEndedAt: null,
+};
+
+describe("describeAllowance (#2408)", () => {
+  it("reads what is left of this month's Pro allowance and when it resets", () => {
+    expect(describeAllowance(LIVE_ALLOWANCE, 300)).toEqual({
+      headline: "$2.40 of $3.00 Pro allowance left · resets Nov 19, 2026",
+      percentLeft: 80,
+      note: null,
+    });
+  });
+
+  it("mentions what lapsed when the previous month ended", () => {
+    const copy = describeAllowance(
+      { ...LIVE_ALLOWANCE, previousExpiredCents: 60, previousEndedAt: "2026-10-19T14:00:00.000Z" },
+      300,
+    );
+    expect(copy?.note).toBe("$0.60 left unused expired on Oct 19, 2026.");
+  });
+
+  it("says when the next allowance arrives for a subscriber with no live month", () => {
+    const ended = { ...LIVE_ALLOWANCE, remainingCents: 0, grantedCents: 0, spentCents: 0, periodStart: null, expiresAt: null };
+    expect(describeAllowance(ended, 300)?.headline).toBe(
+      "$3.00 Pro allowance a month · arrives when your next month is paid",
+    );
+    expect(describeAllowance(null, 300)?.percentLeft).toBe(0);
+  });
+
+  it("is absent without an allowance", () => {
+    expect(describeAllowance(null, null)).toBeNull();
+    expect(describeAllowance(undefined, null)).toBeNull();
+  });
+});
+
+describe("describeLedgerReason (#2408)", () => {
+  it("marks the part of a charge the Pro allowance paid", () => {
+    expect(describeLedgerReason({ reason: "lyria_generation", allowanceCents: 10 })).toBe(
+      "lyria_generation · 10¢ from Pro allowance",
+    );
+    expect(describeLedgerReason({ reason: "lyria_generation", allowanceCents: 0 })).toBe("lyria_generation");
+    expect(describeLedgerReason({ reason: "", allowanceCents: undefined })).toBe("—");
+  });
+});
+
 describe("UsageBillingView", () => {
+  it("shows the Pro allowance next to the bought-credit balance, with the spend order (#2408)", () => {
+    const html = renderToStaticMarkup(
+      <UsageBillingView
+        summary={summary({
+          credits: {
+            ...summary().credits,
+            balanceCents: 100,
+            spendableCents: 340,
+            allowance: LIVE_ALLOWANCE,
+          },
+          plan: { tier: "pro", monthlyAllowanceCents: 300, source: "stripe_subscription" },
+        })}
+        now={NOW}
+      />,
+    );
+    const credits = html.slice(html.indexOf("usage-credits-heading"), html.indexOf("usage-limits-heading"));
+    expect(credits).toContain("$2.40 of $3.00 Pro allowance left · resets Nov 19, 2026");
+    expect(credits).toContain('aria-valuenow="80"');
+    expect(credits).toContain("Spent before your credits.");
+    // The capacity meter counts both buckets: 340¢ at 10¢ per 30 s is 17 minutes.
+    expect(credits).toContain("≈ 17 min · 17 tracks");
+  });
+
+  it("shows no allowance row on the free plan", () => {
+    const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
+    expect(html).not.toContain("usage-allowance");
+    expect(html).not.toContain("Pro allowance left");
+  });
+
   it("renders the free plan tier and its note", () => {
     const html = renderToStaticMarkup(<UsageBillingView summary={summary()} now={NOW} />);
     expect(html).toContain("Free");
@@ -216,10 +297,10 @@ describe("UsageBillingView", () => {
   it("signs a reversal negative and labels the credit pack reasons (#1422)", () => {
     expect(formatLedgerAmount("reversal", 300)).toBe("−300¢");
     expect(formatLedgerAmount("grant", 1000)).toBe("+1000¢");
-    expect(describeLedgerReason("top_up")).toBe("Credit pack");
-    expect(describeLedgerReason("top_up_refund")).toBe("Credit pack refund");
-    expect(describeLedgerReason("Signup starter")).toBe("Signup starter");
-    expect(describeLedgerReason("")).toBe("—");
+    expect(describeLedgerReason({ reason: "top_up", allowanceCents: 0 })).toBe("Credit pack");
+    expect(describeLedgerReason({ reason: "top_up_refund" })).toBe("Credit pack refund");
+    expect(describeLedgerReason({ reason: "Signup starter" })).toBe("Signup starter");
+    expect(describeLedgerReason({ reason: "" })).toBe("—");
   });
 
   it("renders an empty history state when there are no transactions", () => {

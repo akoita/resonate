@@ -6962,6 +6962,13 @@ a.listener-cohort-detail__action:focus-visible {
   color: #fca5a5;
 }
 
+/* Artist Pro monthly allowance next to the credit balance (#2408) */
+.usage-allowance {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .usage-grant-info {
   padding: var(--space-3);
   border: 1px solid var(--color-border);

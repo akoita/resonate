@@ -5,6 +5,7 @@ import {
   type GenerationCreditBalance,
 } from "../credits/generation-credits.service";
 import type { MeteredActionKind } from "../credits/metered-actions";
+import { GenerationAllowanceService } from "../credits/allowance.service";
 import { GenerationService } from "../generation/generation.service";
 import { RemixProjectService } from "../remix/remix-project.service";
 import { EntitlementsService } from "../entitlements/entitlements.service";
@@ -29,7 +30,8 @@ export type {
 /**
  * Canonical `GET /usage/summary` contract (#1422). The frontend codes to this.
  * Three deliberately separate concepts (RFC docs/rfc/usage-billing.md):
- *   - `credits`   — the prepaid monetary balance + recent ledger
+ *   - `credits`   — the prepaid monetary balance + recent ledger, and the
+ *                   Artist Pro allowance bucket (`credits.allowance`, #2408)
  *   - `limits`    — fair-use rate-quota windows (% left, reset time)
  *   - `breakdown` — what each metered kind cost over the last 30 days
  */
@@ -42,8 +44,10 @@ export interface UsageSummary {
 
 /**
  * The person's plan, from the one entitlement service (#2406). `source` and
- * `validUntil` are set only for `pro` (today: an operator or promo grant).
- * `monthlyAllowanceCents` stays null until the allowance lands (#2408).
+ * `validUntil` are set only for `pro`. `monthlyAllowanceCents` is the monthly
+ * generation allowance a paid Artist Pro subscription credits (#2408); null
+ * for the free plan and for Pro from an operator or promo grant, which carries
+ * no allowance.
  */
 export interface UsagePlan {
   tier: EntitlementPlan;
@@ -63,14 +67,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 @Injectable()
 export class UsageService {
   private readonly entitlements: EntitlementsService;
+  private readonly allowance: GenerationAllowanceService;
 
   constructor(
     private readonly credits: GenerationCreditsService,
     private readonly generation: GenerationService,
     private readonly remix: RemixProjectService,
     @Optional() entitlements?: EntitlementsService,
+    @Optional() allowance?: GenerationAllowanceService,
   ) {
     this.entitlements = entitlements ?? new EntitlementsService();
+    this.allowance = allowance ?? new GenerationAllowanceService();
   }
 
   async getSummary(userId: string): Promise<UsageSummary> {
@@ -96,11 +103,16 @@ export class UsageService {
         priceCentsPer30s: credits.priceCentsPer30s,
         since,
       }),
-      // The plan comes from the entitlement service (#2406): `pro` only for an
-      // operator or promo grant today. No allowance exists yet (#2408, ADR-BM-3).
+      // The plan comes from the entitlement service (#2406). Only a paid
+      // Artist Pro subscription credits the monthly allowance (#2408).
       plan: {
         tier: plan.plan,
-        monthlyAllowanceCents: null,
+        monthlyAllowanceCents:
+          plan.plan === "pro" &&
+          plan.source === "stripe_subscription" &&
+          this.allowance.monthlyAllowanceCents > 0
+            ? this.allowance.monthlyAllowanceCents
+            : null,
         ...(plan.source ? { source: plan.source } : {}),
         ...(plan.validUntil ? { validUntil: plan.validUntil } : {}),
       },

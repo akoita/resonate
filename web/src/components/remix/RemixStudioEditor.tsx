@@ -33,7 +33,7 @@ import {
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
 import { UsageLimitMeter } from "../credits/UsageLimitMeter";
-import { canAffordGeneration } from "../../lib/credits";
+import { canAffordGeneration, spendableCents } from "../../lib/credits";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
   activePresetLabel,
@@ -1937,7 +1937,7 @@ export function RemixStudioEditor({
     project.generationMetadata,
   );
   const canAffordDraft = credits
-    ? canAffordGeneration(credits.balanceCents, credits.priceCentsPer30s)
+    ? canAffordGeneration(spendableCents(credits), credits.priceCentsPer30s)
     : true;
 
   const handleRequestCredits = async () => {
@@ -2432,7 +2432,8 @@ export function RemixStudioEditor({
     bpm: sectionGrid && beatGridAvailable(sectionGrid) ? sectionGrid.bpm ?? null : null,
     credits: credits
       ? {
-          balanceCents: credits.balanceCents,
+          // The Artist Pro allowance is spendable too (#2408).
+          balanceCents: spendableCents(credits),
           priceCentsPer30s: credits.priceCentsPer30s,
         }
       : null,

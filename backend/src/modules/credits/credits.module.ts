@@ -1,11 +1,14 @@
 import { Module } from "@nestjs/common";
 import { CreditsController } from "./credits.controller";
+import { GenerationAllowanceService } from "./allowance.service";
 import { GenerationCreditsService } from "./generation-credits.service";
 
 /**
  * Generation-credit meter (#1334, ADR-BM-3). Exports GenerationCreditsService
  * so the generation and remix modules can debit/refund around their AI
- * generation paths.
+ * generation paths, and GenerationAllowanceService (#2408) for the Artist Pro
+ * monthly allowance bucket (granted from the Stripe webhook, reported by
+ * Usage & Billing).
  *
  * Deliberately imports NOTHING. The metering events are emitted on the EventBus
  * (provided by the @Global() SharedModule, so it is injectable without an
@@ -20,7 +23,7 @@ import { GenerationCreditsService } from "./generation-credits.service";
  */
 @Module({
   controllers: [CreditsController],
-  providers: [GenerationCreditsService],
-  exports: [GenerationCreditsService],
+  providers: [GenerationCreditsService, GenerationAllowanceService],
+  exports: [GenerationCreditsService, GenerationAllowanceService],
 })
 export class CreditsModule {}
