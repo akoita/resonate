@@ -1,12 +1,72 @@
 # Vision Sprint 44: Pro foundations, in test mode
 
-**Status:** owner-approved 2026-10-25, including the defaults; in progress. There
-is no due date: the sprint closes when its exit checks pass on staging.
+**Status:** ✅ Closed 2026-10-25. All seven slices shipped, and the exit checks
+pass on staging at `a2a803fc` (the test-mode purchase run waits for Stripe test
+keys, see below).
 **Milestone:** [46](https://github.com/akoita/resonate/milestone/46).
 **Goal:** On staging, in Stripe **test mode**, an artist can subscribe to Artist
 Pro, receive the monthly allowance and buy credits from start to finish, with
 access decided by one entitlement service. No real money is charged. The
 nightly security scan is trustworthy again, and local validation matches CI.
+
+## Outcome
+
+The Artist Pro foundations are on staging in test mode: one entitlement
+service, Stripe subscriptions, the monthly allowance, and credit packs. No
+money is charged, and the Pro gates are still off. The nightly security scan
+can be trusted again, and local validation matches CI.
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #2418 | The nightly evidence check records rejected workflow runs that started no job as `not_executed`, and still fails on any run that executed with an unexpected event or ref | #2422 |
+| #2420 | The kernel-v3 pin comes from the gitlink, so local `forge build` and `forge test` pass with no skips (563/563). Integration suites no longer wipe shared tables, and a guard test blocks unscoped wipes | #2424 |
+| #2406 | One `EntitlementsService` decides `remix.pro`, `crate.pro` and `cockpit.demand`. The policy is still `everyone`, so behaviour is unchanged. Operator grants require passkey step-up and are audited. `/usage` shows the plan | #2427 |
+| #2407 | Stripe subscriptions in test mode: Checkout and Portal, signed and idempotent webhooks applied in order, a 7-day grace period, the `subscription` consent step, and a plan page. Live keys are refused unless live mode is switched on, and it stays off | #2431 |
+| #1422 (slice) | $5 / $10 / $25 credit packs in test mode: consent before checkout, fulfilment exactly once, 14-day holds, and refunds that never take back spent credits. The issue stays open for live charging | #2432 |
+| #2408 | A $3 monthly allowance in its own bucket, granted once per paid invoice. It is spent first and expires at period end. $0 invoices grant nothing (ADR-BM-3), and spending it needs an active Pro subscription | #2435 |
+| #1943 | Five before/after audio examples in the Remix guide, rendered through the studio's own pipeline from a purpose-made demo song with recorded provenance. The owner listened and approved them | #2425 |
+
+**Unplanned:**
+
+- **#2439.** Dependency Train's deliberate push run (#2434) was missing from
+  the release-plane evidence allow-list. It is now allowed on `main` only.
+  After that change, a manual Security Scan run passed in full: Release Plane
+  Evidence, Supply Chain Baseline and the advisory scan.
+- **#2440.** An exploration of Stripe stablecoin and machine payments
+  (MPP/x402). USDC fits as a payment method for Artist Pro and credits (line 2).
+  It doesn't fit artist money, which must stay on-chain.
+- **#2423.** The OpenZeppelin and account-abstraction pin drift was filed as a
+  follow-up.
+
+**Staging verification (2026-10-25, `a2a803fc`):**
+
+- The billing, credits and grant routes answer 401 without a sign-in.
+- The Stripe webhook answers `503 billing_unavailable`, because staging has no
+  Stripe keys yet.
+- A read-only query confirmed that the migrations for entitlement grants,
+  Stripe subscriptions, the allowance and credit top-ups are applied, and that
+  their five tables exist.
+- The guide audio and the new help sections (Artist Pro subscription, Buying
+  credits, Which is spent first) are deployed.
+- **Not yet run on staging:** a full test-mode purchase. It needs the owner's
+  Stripe test account and keys (resonate-iac#325). The behaviour is covered by
+  the integration suites with a mocked Stripe client.
+
+**Carry-over and follow-ups:**
+
+- **Waiting on the owner:**
+  - Stripe test keys (resonate-iac#325).
+  - The #1421 pricing sign-off.
+  - Legal review of the subscription, credit and refund wording.
+  - The #2367 remix-challenge decision.
+- **Gates before any live charging (#2409):**
+  - RFC §8.
+  - #2430: cancel the Stripe subscription on account erasure or closure, sync
+    the billing email, and prune old Stripe events.
+- **Follow-ups:**
+  - #2423: dependency pin drift.
+  - #2410: auto-reload, USDC top-up and the annual plan.
+- #1422 leaves the milestone and stays open for live charging.
 
 ## Why this theme
 
