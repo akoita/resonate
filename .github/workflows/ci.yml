@@ -92,6 +92,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # GitHub refuses to parse a workflow whose step script exceeds 21,000
+      # characters, which actionlint does not catch (it broke contracts-deploy).
+      - name: Workflow step scripts stay under GitHub's length limit
+        run: python3 .github/scripts/check-workflow-step-size.py
+
       - name: No lint needed for docs-only changes
         if: needs.changes.outputs.docs_only == 'true'
         run: echo "Docs-only change detected; skipping backend/web lint."
