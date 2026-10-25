@@ -51,7 +51,7 @@ Latest closed: [Vision Sprint 42 — Sell with confidence](2026-10-24-vision-spr
 on 2026-10-24. Waiting on the owner: the #1421 pricing sign-off, the #2367
 remix-challenge decision and the legal review of the consent wording.
 Deployment halves: resonate-iac#320–#323.
-Current: [Vision Sprint 43 — Fair deposits, and the Artist Pro plan](2026-10-24-vision-sprint-43-fair-deposits-artist-pro-plan.md).
+Current: [Vision Sprint 44 — Pro foundations, in test mode](2026-10-25-vision-sprint-44-pro-foundations.md). Sprint 43 is closing: only the #1759 staging contract rollout remains.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -99,3 +99,4 @@ Current: [Vision Sprint 43 — Fair deposits, and the Artist Pro plan](2026-10-2
 | [2026-10-24](2026-10-24-vision-sprint-41-ready-to-charge.md) | Vision Sprint 41 — Ready to charge, with honest money (pricing proposal, money-reporting gaps, admin step-up, Usage & Billing line, validation, indexer worker) | ✅ Closed 2026-10-24 — 5 of 6 issues closed (#2344, #2173, #1933, #2197, #1608) plus the indexer-route auth fix (#2355); #1421 pricing proposal delivered, owner sign-off pending; verified on staging at `35a2ea14`; [milestone-43 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-43-vision-sprint-41-ready-to-charge) |
 | [2026-10-24](2026-10-24-vision-sprint-42-sell-with-confidence.md) | Vision Sprint 42 — Sell with confidence (immediate-delivery consent, official lossless stems, indexer lease, admin hardening, wallet amounts, optional email prompts) | ✅ Closed 2026-10-24 — all 6 issues closed (#1776, #1976, #2360, #2362, #2361, #2182); #1121 scope check → #2367; image-build heap fix (#2381); verified on staging at `4ec6e8a3`; [milestone-44 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-44-vision-sprint-42-sell-with-confidence) |
 | [2026-10-24](2026-10-24-vision-sprint-43-fair-deposits-artist-pro-plan.md) | Vision Sprint 43 — Fair deposits, and the Artist Pro plan (stake units, stake self-claim, Artist Pro design, money-release step-up, partial official packages, guide screenshots) | ◐ In progress — owner-approved 2026-10-24; milestone 45 |
+| [2026-10-25](2026-10-25-vision-sprint-44-pro-foundations.md) | Vision Sprint 44 — Pro foundations, in test mode (entitlement service, Stripe subscriptions, allowance, credit packs; nightly scan and local/CI fixes; Remix guide audio) | ◐ In progress — owner-approved 2026-10-25; milestone 46 |
