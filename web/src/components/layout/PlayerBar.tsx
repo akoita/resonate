@@ -99,9 +99,11 @@ export default function PlayerBar() {
               <div className="player-artwork-placeholder">🎵</div>
             )}
             <div className="player-details">
-              <MarqueeText text={currentTrack.title} className="player-title" />
+              {/* A paused player holds its titles still: no idle animation (#2436). */}
+              <MarqueeText text={currentTrack.title} className="player-title" paused={!isPlaying} />
               <MarqueeText
                 text={currentTrack.artist || "Unknown Artist"}
+                paused={!isPlaying}
                 className="player-artist clickable"
                 onClick={(e) => {
                   e.stopPropagation();

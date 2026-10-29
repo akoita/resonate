@@ -5,9 +5,13 @@
    ═══════════════════════════════════════════════════════ */
 
 /* ── Keyframes ──────────────────────────────────────────── */
+/* Orb pulse: a glow-coloured disc behind the orb grows by 12px of radius and
+ * fades, then shrinks back in (--aid-pulse-scale = (radius + 12) / radius).
+ * transform/opacity only, so it runs on the compositor; the old box-shadow
+ * version repainted the blurred command bar every frame, live or not (#2436). */
 @keyframes aid-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--r-secondary-glow); }
-  50%       { box-shadow: 0 0 0 12px rgba(139, 92, 246, 0); }
+  0%, 100% { transform: scale(1);                      opacity: 1; }
+  50%       { transform: scale(var(--aid-pulse-scale)); opacity: 0; }
 }
 @keyframes aid-spin {
   to { transform: rotate(360deg); }
@@ -81,7 +85,7 @@
   width: 44px;
   height: 44px;
   flex: 0 0 44px;
-  animation: aid-pulse 3s ease-in-out infinite;
+  --aid-pulse-scale: calc(34 / 22);
 }
 
 .aid-command-info {
@@ -137,8 +141,35 @@
   background: radial-gradient(circle at 35% 35%, var(--r-secondary-soft), var(--r-secondary) 60%, var(--r-on-secondary));
   box-shadow: 0 0 20px var(--r-secondary-glow), 0 0 40px rgba(139, 92, 246, 0.15);
 }
+.aid-orb-wrap {
+  isolation: isolate;
+}
 .aid-orb-wrap:has(+ *) .aid-orb,
 .aid-command-identity .aid-orb {
+  --aid-pulse-scale: calc(42 / 30);
+}
+.aid-orb-wrap--sm .aid-orb {
+  --aid-pulse-scale: calc(34 / 22);
+}
+/* Pulsing orbs: the ring replaces the static glow, as the box-shadow
+ * animation used to. It sits behind the orb (z-index -1 inside the nearest
+ * stacking context: the isolated wrap, or the blurred command bar). */
+.aid-command > .aid-orb,
+.aid-orb-wrap:has(+ *) .aid-orb,
+.aid-command-identity .aid-orb {
+  position: relative;
+  box-shadow: none;
+}
+.aid-command > .aid-orb::after,
+.aid-orb-wrap:has(+ *) .aid-orb::after,
+.aid-command-identity .aid-orb::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--r-secondary-glow);
+  pointer-events: none;
   animation: aid-pulse 3s ease-in-out infinite;
 }
 

@@ -33,6 +33,38 @@ See `docs/features/user_manual.md` for the full authoring and screenshot guide.
 Use `window.confirm()` sparingly; prefer the shared `ConfirmDialog` component
 for consistent user experience.
 
+## Animation and idle-cost budget
+
+People leave Resonate open for hours, so an idle tab must stay cheap (#2436).
+Keep the visuals; pay for them on the compositor.
+
+- An `infinite` animation may only animate `transform` and `opacity`. Do not
+  loop `box-shadow`, `background-*`, `filter`, `width`/`height`, colors, or
+  layout properties: each frame repaints that area, and re-blurs anything with
+  `backdrop-filter` above it. Pulse a dot with a scaling, fading ring
+  (pseudo-element) instead of a growing `box-shadow`; slide a pre-painted
+  gradient layer with `translate` instead of animating `background-position`.
+- Never animate an element *inside* an `<svg>`. SVG children are not
+  composited, so the whole SVG restyles, lays out, and repaints every frame.
+  Make the moving part its own `<svg>` or HTML box and animate that.
+- Prefer one long iteration over many short ones for always-on loops: every
+  iteration fires an `animationiteration` event that wakes the main thread
+  (put several cycles in one set of keyframes, as the Home tuner EQ does).
+- Do not loop decoration that cannot be seen (a rotation of concentric
+  circles), and hold animations still when the thing they illustrate is
+  paused (the player marquee stops with playback).
+- Pollers and countdowns use `registerVisibleInterval` from
+  `src/lib/visibleInterval.ts`: they pause, or back off, while the tab is
+  hidden and catch up once when it returns.
+- `prefers-reduced-motion: reduce` is handled globally at the end of
+  `src/app/globals.css`. Add an `animation: none !important` opt-out there only
+  when a loop's final frame is not a sensible resting state.
+
+`src/styles/animationBudget.test.ts` enforces the first rule: it fails on any
+new infinite animation that animates a paint/layout property. Its allowlist is
+legacy debt and may only shrink. Measure idle cost with `npm run perf:idle`
+(see `docs/engineering/idle-cost-harness.md`).
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

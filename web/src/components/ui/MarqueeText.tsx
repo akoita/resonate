@@ -7,9 +7,11 @@ interface MarqueeTextProps extends React.HTMLAttributes<HTMLDivElement> {
     className?: string;
     speed?: number; // pixels per second
     delay?: number; // seconds before animation starts
+    /** Hold the text still (e.g. while playback is paused) instead of scrolling. */
+    paused?: boolean;
 }
 
-export function MarqueeText({ text, className = "", speed = 40, delay = 2, ...props }: MarqueeTextProps) {
+export function MarqueeText({ text, className = "", speed = 40, delay = 2, paused = false, ...props }: MarqueeTextProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const textRef = useRef<HTMLDivElement>(null);
     const [isOverflowing, setIsOverflowing] = useState(false);
@@ -37,7 +39,7 @@ export function MarqueeText({ text, className = "", speed = 40, delay = 2, ...pr
     return (
         <div
             ref={containerRef}
-            className={`marquee-container ${isOverflowing ? "is-scrolling" : ""} ${className}`}
+            className={`marquee-container ${isOverflowing ? "is-scrolling" : ""} ${paused ? "is-paused" : ""} ${className}`}
             style={{
                 "--marquee-duration": `${duration}s`,
                 "--marquee-delay": `${delay}s`,

@@ -72,6 +72,7 @@ import {
   type Campaign,
 } from "../lib/shows";
 import { recordProductAnalytics } from "../lib/productAnalytics";
+import { registerVisibleInterval } from "../lib/visibleInterval";
 
 /*
  * Home page — "Home v3" (Resonance v3 visual system, 2026-09).
@@ -590,18 +591,18 @@ export default function Home() {
   );
   // Auto-rotate the featured campaign hero through the ranked campaigns so each
   // gets time in the main panel. The rail still selects manually; hover/focus
-  // pauses, and prefers-reduced-motion disables it.
+  // pauses, prefers-reduced-motion disables it, and a hidden tab stops it so a
+  // background tab does not keep re-rendering and fetching hero images (#2436).
   useEffect(() => {
     if (heroCampaigns.length <= 1 || heroPaused) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = window.setInterval(() => {
+    return registerVisibleInterval(() => {
       setActiveHeroCampaignId((currentId) => {
         const index = heroCampaigns.findIndex((campaign) => campaign.id === currentId);
         const next = heroCampaigns[((index < 0 ? 0 : index) + 1) % heroCampaigns.length];
         return next?.id ?? currentId;
       });
-    }, 9000);
-    return () => window.clearInterval(timer);
+    }, 9000, { runOnVisible: false });
   }, [heroCampaigns, heroPaused]);
   // `/agent` redirects to `/#ai-dj`. The browser anchors before the lazy
   // sections and the content above have settled, so re-anchor a few times

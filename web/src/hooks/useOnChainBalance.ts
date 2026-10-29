@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useZeroDev } from "../components/auth/ZeroDevProviderClient";
 import { formatEther } from "viem";
+import { registerVisibleInterval } from "../lib/visibleInterval";
 
 /**
  * Live on-chain ETH balance for any address.
@@ -39,12 +40,13 @@ export function useOnChainBalance(address: string | null | undefined) {
 
     fetch();
 
-    // Refresh balance every 30 seconds
-    const interval = setInterval(fetch, 30_000);
+    // Refresh every 30 seconds while the tab is visible; a hidden tab makes no
+    // RPC calls and refreshes once when it comes back (#2436).
+    const stop = registerVisibleInterval(() => void fetch(), 30_000);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stop();
     };
   }, [address, publicClient]);
 

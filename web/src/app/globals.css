@@ -162,26 +162,21 @@ video {
   --glass-saturate: saturate(140%);
 }
 
+/* Release-page ambient mesh (#2436). The gradients live on a pre-painted
+ * layer that drifts with a composited transform; animating background-position
+ * repainted the full viewport every frame. The blobs (3–6% alpha) now drift
+ * together rather than each on its own path — the same slow wander, without
+ * the repaint. The layer is oversized so the drift never exposes an edge, and
+ * gradient sizes/positions use viewport units so they match the old 200%
+ * background on a viewport-sized box (layers at 0%, 50% and 100%). */
 @keyframes mesh-drift {
-  0% {
-    background-position:
-      0% 0%,
-      50% 0%,
-      100% 0%;
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
   }
 
   50% {
-    background-position:
-      10% 20%,
-      60% 10%,
-      90% 20%;
-  }
-
-  100% {
-    background-position:
-      0% 0%,
-      50% 0%,
-      100% 0%;
+    transform: translate3d(-3.3vw, -16.7vh, 0);
   }
 }
 
@@ -189,12 +184,27 @@ video {
   position: fixed;
   inset: 0;
   z-index: -1;
+  overflow: hidden;
+  background-color: var(--r-canvas);
+  pointer-events: none;
+}
+
+.mesh-gradient-bg::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -10vw;
+  width: 120vw;
+  height: 120vh;
   background:
     radial-gradient(ellipse at 15% 5%, rgba(124, 92, 255, 0.06) 0%, transparent 50%),
     radial-gradient(ellipse at 85% 15%, rgba(196, 181, 253, 0.04) 0%, transparent 50%),
     radial-gradient(ellipse at 50% 95%, rgba(240, 237, 255, 0.03) 0%, transparent 40%);
-  background-color: var(--r-canvas);
-  background-size: 200% 200%;
+  background-size: 200vw 200vh;
+  background-position:
+    10vw 0,
+    -40vw 0,
+    -90vw 0;
   animation: mesh-drift 30s ease infinite;
 }
 
@@ -2150,6 +2160,11 @@ a {
 .is-scrolling .marquee-content {
   animation: marquee-scroll var(--marquee-duration) linear infinite;
   animation-delay: var(--marquee-delay);
+}
+
+/* Paused playback holds the title where it is; a paused animation costs nothing. */
+.is-scrolling.is-paused .marquee-content {
+  animation-play-state: paused;
 }
 
 .marquee-text-duplicate {
@@ -16551,4 +16566,28 @@ tr[draggable="true"]:hover {
 
 .home-ng .ng-section--prompt:empty {
   display: none;
+}
+
+/* ─────────────── Reduced motion kill-switch (#2436) ───────────────
+ * When the listener asks the OS for less motion, every CSS animation plays
+ * once, instantly, and settles on its final frame. That stops every
+ * decorative infinite loop (pulses, pings, shimmers, equalizers, spinners)
+ * without per-component rules, and makes entrance animations instant.
+ * Same approach as the scoped `.shows-surface` rule in styles/shows.css.
+ * A loop whose final frame is not a sensible resting state opts out below
+ * with `animation: none !important` (the more specific rule wins).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  /* The marquee's last frame is scrolled halfway; rest at the start instead. */
+  .is-scrolling .marquee-content {
+    animation: none !important;
+  }
 }

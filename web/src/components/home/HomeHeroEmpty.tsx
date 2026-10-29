@@ -11,35 +11,29 @@ import Link from "next/link";
  *   invitation to start one instead of sample campaigns dressed up as real.
  *
  * `HomeHeroMotif` is the purely decorative concentric motif shared with the
- * campaign hero.
+ * campaign hero. The rings are static and painted once; the ping ring is its
+ * own <svg> box so its scale/opacity animation runs on the compositor. An
+ * animated element *inside* an SVG forces style, layout and a repaint of the
+ * whole motif (and of the blurred card above it) on every frame (#2436).
  */
 
 export function HomeHeroMotif() {
   return (
-    <svg
-      className="ng-hero__motif"
-      viewBox="0 0 600 600"
-      aria-hidden
-      focusable="false"
-    >
-      <g fill="none" stroke="currentColor" strokeWidth="1">
-        <circle cx="300" cy="300" r="60" opacity="0.55" />
-        <circle cx="300" cy="300" r="120" opacity="0.40" />
-        <circle cx="300" cy="300" r="190" opacity="0.26" />
-        <circle cx="300" cy="300" r="270" opacity="0.16" />
-        <circle cx="300" cy="300" r="360" opacity="0.08" />
-      </g>
-      <circle
-        className="ng-hero__motif-ping"
-        cx="300"
-        cy="300"
-        r="60"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <circle cx="300" cy="300" r="6" fill="currentColor" opacity="0.9" />
-    </svg>
+    <span className="ng-hero__motif" aria-hidden>
+      <svg className="ng-hero__motif-rings" viewBox="0 0 600 600" focusable="false">
+        <g fill="none" stroke="currentColor" strokeWidth="1">
+          <circle cx="300" cy="300" r="60" opacity="0.55" />
+          <circle cx="300" cy="300" r="120" opacity="0.40" />
+          <circle cx="300" cy="300" r="190" opacity="0.26" />
+          <circle cx="300" cy="300" r="270" opacity="0.16" />
+          <circle cx="300" cy="300" r="360" opacity="0.08" />
+        </g>
+        <circle cx="300" cy="300" r="6" fill="currentColor" opacity="0.9" />
+      </svg>
+      <svg className="ng-hero__motif-ping" viewBox="0 0 600 600" focusable="false">
+        <circle cx="300" cy="300" r="60" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      </svg>
+    </span>
   );
 }
 

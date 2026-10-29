@@ -17,10 +17,16 @@ import { useAuth } from "../auth/AuthProvider";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useToast } from "../ui/Toast";
 import { usePlayer } from "../../lib/playerContext";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 
 const DEVICE_STORAGE_KEY = "resonate.playback.deviceId";
+// The heartbeat keeps running in a hidden tab: the backend drops a device that
+// has not been seen for 45 s, and an agent must still find a backgrounded player.
 const DEVICE_HEARTBEAT_MS = 20_000;
 const COMMAND_POLL_MS = 5_000;
+// A hidden tab that is not playing has no live audio to remote-control, so it
+// polls for commands less often and catches up when it becomes visible (#2436).
+const COMMAND_POLL_HIDDEN_IDLE_MS = 30_000;
 
 type PlaybackIntentStatusResponse =
   | PlaybackIntentCommand
@@ -261,15 +267,15 @@ export default function PlaybackIntentBridge() {
     };
 
     void poll();
-    const interval = window.setInterval(() => {
-      void poll();
-    }, COMMAND_POLL_MS);
+    const stopPolling = registerVisibleInterval(() => void poll(), COMMAND_POLL_MS, {
+      hiddenIntervalMs: isPlaying ? COMMAND_POLL_MS : COMMAND_POLL_HIDDEN_IDLE_MS,
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      stopPolling();
     };
-  }, [applyControlCommand, applyQueueCommand, deviceId, pendingCommand, status, token]);
+  }, [applyControlCommand, applyQueueCommand, deviceId, isPlaying, pendingCommand, status, token]);
 
   const pendingTitle = useMemo(() => {
     if (!pendingCommand) return "Start playback?";

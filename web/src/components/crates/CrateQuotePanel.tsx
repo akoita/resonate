@@ -51,6 +51,7 @@ import type {
   CrateStemType,
 } from "../../lib/crates";
 import type { CrateBatchLine } from "../../lib/onchainCheckout";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 import {
   CrateDroppedList,
   CrateQuoteReceipts,
@@ -169,10 +170,11 @@ export function CrateQuotePanel({
   }, [quote]);
 
   const live = quote !== null && quote.status === "open";
+  // The countdown re-renders every second only while someone can see it; a
+  // hidden tab catches up once when it becomes visible again (#2436).
   useEffect(() => {
     if (!live) return;
-    const timer = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(timer);
+    return registerVisibleInterval(() => setNowMs(Date.now()), 1000);
   }, [live]);
 
   const requote = useCallback(
