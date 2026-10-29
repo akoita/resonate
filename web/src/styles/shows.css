@@ -59,15 +59,12 @@
 
 /* ─── Keyframe Animations ────────────────────────────────────────── */
 
-@keyframes shows-progress-sheen {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
+/* A ring over a 7px dot that grows by 10px of radius (scale 27/7) and fades.
+ * Replaces a box-shadow animation, which repainted its section every frame. */
 @keyframes shows-dot-pulse {
-  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 80%, transparent); }
-  70%  { box-shadow: 0 0 0 10px color-mix(in srgb, var(--color-signal) 0%,  transparent); }
-  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 0%,  transparent); }
+  0%   { transform: scale(1);            opacity: 1; }
+  70%  { transform: scale(calc(27 / 7)); opacity: 0; }
+  100% { transform: scale(1);            opacity: 0; }
 }
 
 @keyframes shows-eq-pulse {
@@ -230,6 +227,7 @@
 /* ─── Kicker & Header Typography ─────────────────────────────────── */
 
 .shows-home-section__kicker {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -248,9 +246,23 @@
   height: 7px;
   border-radius: 50%;
   background: var(--color-signal);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-signal) 80%, transparent);
-  animation: shows-dot-pulse 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
   flex-shrink: 0;
+}
+
+.shows-page__intro .shows-home-section__kicker::after,
+.shows-home-section__kicker.pulsing::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-signal) 80%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: shows-dot-pulse 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
 }
 
 .shows-page__title {
@@ -1240,17 +1252,18 @@
     linear-gradient(90deg, transparent calc(75% - 0.5px), rgba(255, 255, 255, 0.08) calc(75% - 0.5px), rgba(255, 255, 255, 0.08) 75%, transparent 75%);
 }
 
+/* No sheen loop (#2436): the identity-refresh `background` below resets
+ * background-size, so the old background-position sweep never moved visibly —
+ * it only repainted every bar on every frame. */
 .campaign-progress__fill {
   position: absolute;
   inset: 0;
   transform-origin: left center;
   background: linear-gradient(90deg, var(--color-signal-deep) 0%, var(--color-signal) 50%, #a7f3d8 100%);
-  background-size: 200% 100%;
   border-radius: 999px;
   box-shadow:
     0 0 12px var(--color-signal-mid),
     inset 0 1px 1px rgba(255, 255, 255, 0.4);
-  animation: shows-progress-sheen 3.2s linear infinite;
 }
 
 .campaign-progress__stats {
@@ -1414,6 +1427,7 @@
 }
 
 .campaign-hero__eyebrow {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1436,7 +1450,21 @@
   height: 7px;
   border-radius: 50%;
   background: var(--color-signal);
-  box-shadow: 0 0 10px var(--color-signal);
+}
+
+/* Pulse ring over the dot, which sits at the start of the 16px padding. */
+.campaign-hero__eyebrow::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-signal) 80%, transparent);
+  opacity: 0;
+  pointer-events: none;
   animation: shows-dot-pulse 2s ease-out infinite;
 }
 
@@ -4136,18 +4164,30 @@
 }
 
 .artist-campaign-link__pulse {
+  position: relative;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #34d399;
-  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+}
+
+/* Ring that grows by 7px of radius (scale 3) and fades — transform/opacity
+ * only, so it never repaints the card (#2436). */
+.artist-campaign-link__pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(52, 211, 153, 0.55);
+  opacity: 0;
+  pointer-events: none;
   animation: artist-campaign-pulse 2s ease-out infinite;
 }
 
 @keyframes artist-campaign-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
-  70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+  0% { transform: scale(1); opacity: 1; }
+  70% { transform: scale(3); opacity: 0; }
+  100% { transform: scale(1); opacity: 0; }
 }
 
 .artist-campaign-link__title {
@@ -4248,7 +4288,7 @@
     transform: none;
   }
 
-  .artist-campaign-link__pulse {
+  .artist-campaign-link__pulse::after {
     animation: none;
   }
 }

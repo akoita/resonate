@@ -52,6 +52,17 @@ Playwright. They do not enable development login in a production server.
   position and volume are labelled native sliders, and keyboard seek commits
   immediately without requiring a pointer event.
 
+### Reduced motion
+
+When the operating system asks for reduced motion, a global rule at the end of
+`web/src/app/globals.css` makes every CSS animation play once, instantly, and
+rest on its final frame (#2436). That stops every decorative loop (pulses,
+pings, shimmers, equalizers, spinners) and makes entrance animations instant
+without per-component rules. A loop whose final frame is not a sensible
+resting state opts out there (the player title marquee rests at its start).
+JavaScript-driven motion checks the media query itself; the Home featured
+campaign does not auto-rotate under reduced motion.
+
 Use native HTML before adding ARIA. Custom composites follow the relevant
 [WAI-ARIA Authoring Practices](https://www.w3.org/WAI/ARIA/apg/); ARIA does not
 replace the required keyboard behavior.

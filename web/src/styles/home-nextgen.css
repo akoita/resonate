@@ -160,7 +160,12 @@
   z-index: 2;
 }
 
-/* Concentric motif on the right — slow drift makes it feel alive. */
+/* Concentric motif on the right; the expanding ping makes it feel alive.
+ * Performance (#2436): the rings are painted once. They used to spin, but
+ * concentric circles rotated about their own centre look identical, so the
+ * spin cost a frame every vsync for no visible change. The ping is a separate
+ * box animating only transform/opacity, so it never repaints the motif or the
+ * backdrop-blurred card on top of it. */
 .home-ng .ng-hero__motif {
   position: absolute;
   top: 50%;
@@ -172,17 +177,24 @@
   z-index: 2;
   opacity: 0.7;
   pointer-events: none;
-  animation: ngHeroMotifDrift 28s linear infinite;
+}
+
+.home-ng .ng-hero__motif-rings,
+.home-ng .ng-hero__motif-ping {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.home-ng .ng-hero__motif-rings {
   filter: drop-shadow(0 0 24px rgba(124, 92, 255, 0.25));
 }
 
 .home-ng .ng-hero__motif-ping {
-  transform-origin: 300px 300px;
   animation: ngHeroPing 3.4s ease-out infinite;
-}
-
-@keyframes ngHeroMotifDrift {
-  to { transform: translateY(-50%) rotate(360deg); }
 }
 
 @keyframes ngHeroPing {
@@ -192,7 +204,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-ng .ng-hero__motif,
   .home-ng .ng-hero__motif-ping { animation: none; }
 }
 
@@ -238,31 +249,48 @@
   pointer-events: none;
 }
 
-/* Live pulse dot before the FEATURED CAMPAIGN kicker. */
+/* Live pulse dot before the FEATURED CAMPAIGN kicker. The pulse is a ring
+ * (::after) over the dot that scales and fades, so it runs on the compositor;
+ * animating box-shadow repainted the backdrop-blurred card every frame
+ * (#2436). 8px of spread around a 3px radius is a scale of 11/3. */
 .home-ng .ng-hero__card .ng-kicker--primary {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.home-ng .ng-hero__card .ng-kicker--primary::before {
+.home-ng .ng-hero__card .ng-kicker--primary::before,
+.home-ng .ng-hero__card .ng-kicker--primary::after {
   content: "";
   width: 6px;
   height: 6px;
   border-radius: 999px;
+}
+
+.home-ng .ng-hero__card .ng-kicker--primary::before {
   background: var(--ds-primary);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ds-primary) 60%, transparent);
+}
+
+.home-ng .ng-hero__card .ng-kicker--primary::after {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  margin-top: -3px;
+  background: color-mix(in srgb, var(--ds-primary) 60%, transparent);
+  opacity: 0;
+  pointer-events: none;
   animation: ngHeroDotPulse 2.2s ease-out infinite;
 }
 
 @keyframes ngHeroDotPulse {
-  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--ds-primary) 60%, transparent); }
-  70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--ds-primary) 0%,  transparent); }
-  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--ds-primary) 0%,  transparent); }
+  0%   { transform: scale(1);              opacity: 1; }
+  70%  { transform: scale(calc(11 / 3));   opacity: 0; }
+  100% { transform: scale(1);              opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-ng .ng-hero__card .ng-kicker--primary::before { animation: none; }
+  .home-ng .ng-hero__card .ng-kicker--primary::after { animation: none; }
 }
 
 .home-ng .ng-hero__title {

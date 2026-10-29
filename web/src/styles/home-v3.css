@@ -577,7 +577,7 @@
   box-shadow: 0 0 10px -2px rgba(255, 107, 74, 0.55);
   transform-origin: bottom;
   transform: scaleY(calc(var(--eq-max) * var(--bar-k)));
-  animation: ng-tuner-eq var(--eq-duration) ease-in-out infinite alternate;
+  animation: ng-tuner-eq calc(var(--eq-duration) * 16) ease-in-out infinite;
 }
 
 .home-ng .ng-tuner__eq span:nth-child(1) { --bar-k: 0.55; animation-delay: -0.2s; }
@@ -592,9 +592,17 @@
 .home-ng .ng-tuner__eq[data-energy="medium"] { --eq-duration: 1s; --eq-max: 0.8; }
 .home-ng .ng-tuner__eq[data-energy="high"] { --eq-duration: 0.55s; --eq-max: 1; }
 
+/* Eight low → high → low swings (one --eq-duration per stroke, eased each
+ * way) per iteration. Same motion as a 1-stroke `alternate` loop, but each
+ * bar fires an `animationiteration` event — which wakes the main thread to
+ * dispatch it — every 16 strokes instead of every stroke (#2436). */
 @keyframes ng-tuner-eq {
-  from { transform: scaleY(calc(var(--eq-max) * var(--bar-k) * 0.3)); }
-  to { transform: scaleY(calc(var(--eq-max) * var(--bar-k))); }
+  0%, 12.5%, 25%, 37.5%, 50%, 62.5%, 75%, 87.5%, 100% {
+    transform: scaleY(calc(var(--eq-max) * var(--bar-k) * 0.3));
+  }
+  6.25%, 18.75%, 31.25%, 43.75%, 56.25%, 68.75%, 81.25%, 93.75% {
+    transform: scaleY(calc(var(--eq-max) * var(--bar-k)));
+  }
 }
 
 .home-ng .ng-tuner__energy {
