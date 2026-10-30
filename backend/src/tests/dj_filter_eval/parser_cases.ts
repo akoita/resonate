@@ -80,7 +80,7 @@ const STARTERS: ParserCase[] = [
     expect: want({ genres: ["Hip-Hop", "Rap", "Trap"] }),
   },
   { id: "starter-rnb", group: "starter", text: "R&B, soul, funk", expect: want({ genres: ["R&B", "Soul", "Funk"] }) },
-  { id: "starter-pop", group: "starter", text: "Pop, dance, synthpop", expect: want({ genres: ["Pop", "Dance", "Synthpop"] }) },
+  { id: "starter-pop", group: "starter", text: "Pop, synthpop", expect: want({ genres: ["Pop", "Synthpop"] }) },
   {
     id: "starter-afrobeats",
     group: "starter",

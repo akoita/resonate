@@ -106,7 +106,8 @@ export function gradePick(intent: Intent, truth: TrackTruth): Grade {
   const mismatches: string[] = [];
   const contradictions: string[] = [];
 
-  if (intent.families && intent.families.length > 0 && !intent.families.includes(truth.family)) {
+  const trackFamilies = [truth.family, ...(truth.alsoFamilies ?? [])];
+  if (intent.families && intent.families.length > 0 && !trackFamilies.some((family) => intent.families?.includes(family))) {
     contradictions.push(`genre: ${truth.family} is not ${intent.families.join("/")}`);
   }
 

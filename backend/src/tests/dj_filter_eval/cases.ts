@@ -255,7 +255,7 @@ const SOUNDS: Array<{
 }> = [
   { slug: "sound-hip-hop", starter: { intent: "Hip-Hop", name: "Hip-Hop & Rap", queueStyle: "Steady bounce" }, genres: ["Hip-Hop", "Rap", "Trap"], families: ["hiphop"] },
   { slug: "sound-rnb", starter: { intent: "R&B", name: "R&B & Soul", queueStyle: "Smooth blends" }, genres: ["R&B", "Soul", "Funk"], families: ["rnb"] },
-  { slug: "sound-pop", starter: { intent: "Pop", name: "Pop Hits", queueStyle: "Hit after hit" }, genres: ["Pop", "Dance", "Synthpop"], families: ["pop"] },
+  { slug: "sound-pop", starter: { intent: "Pop", name: "Pop Hits", queueStyle: "Hit after hit" }, genres: ["Pop", "Synthpop"], families: ["pop"] },
   { slug: "sound-afrobeats", starter: { intent: "Afrobeats", name: "Afrobeats & Amapiano", queueStyle: "Keep it moving" }, genres: ["Afrobeat", "Afro-Pop", "Amapiano"], families: ["afro"] },
   { slug: "sound-reggae", starter: { intent: "Reggae", name: "Reggae & Dancehall", queueStyle: "Easy rocking" }, genres: ["Reggae", "Dancehall", "Dub"], families: ["reggae"] },
   { slug: "sound-latin", starter: { intent: "Latin", name: "Latin & Reggaeton", queueStyle: "Party pace" }, genres: ["Latin", "Reggaeton"], families: ["latin"] },

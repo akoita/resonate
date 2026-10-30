@@ -2,8 +2,8 @@
 
 Status: `in-progress` (#2451). Stage A (parser) and stage B (deterministic
 selection) are the first slice. Stage C, the LLM-path guard, is #2454.
-Follow-up fixes measured here: #2452 (parser drops, comparison 2), #2453 (loose genre
-matching).
+Follow-up fixes measured here: #2452 (parser drops, comparison 2) and #2453
+(loose genre matching, comparison 3).
 
 Vision-neutral infrastructure/quality: no money, payout, ingestion-trust or
 billing surface is touched.
@@ -158,7 +158,8 @@ Failure classes, by size:
    hip-hop listener plays 12/12 contradicting tracks, all tier A.
 3. **Loose genre matching inside gated requests.** "Afro-Pop" in the
    Afrobeats starter admits every "Dance Pop" release through two-way phrase
-   containment. "Dance" in Pop Hits admits Techno and Deep House. These
+   containment. "Dance" in Pop Hits admits Techno and Deep House (fixed in
+   #2453, comparison 3). These
    picks are tier A.
 4. **Metadata gaps.** Tracks with no or vague genre are invisible to a genre
    request. Hip-Hop & Rap with explicit off finds 2 of the 4 clean hip-hop
@@ -234,6 +235,34 @@ One selection entry regressed on silent leaks, `typed-sad-slow` (0 → 1 per
 batch). "slow sad songs late night" now reads Late Night with low energy. The
 session went from 1 pick to 12, 92% of them on-request; the leak is one
 partial pick. **Decision: enable,** baseline re-pinned.
+
+## Comparison 3: exact-first genre matching (#2453)
+
+The eval changed first, as a separate commit: a grading correction, not a goal
+change. Truth labels can list further families, and "Latin Pop" (`lt03`) is
+Latin and Pop. That moved contradicting picks from 220 to 210 with no code
+change.
+
+Change: the genre matcher is exact first on both the request and the release
+side, and reverse containment is guarded. The Pop Hits starter drops "Dance".
+Details: `docs/features/agent_taste_intelligence.md`, "Exact-first genre
+matching".
+
+| | Before | After |
+| --- | ---: | ---: |
+| Contradicting picks | 210 | 98 |
+| Sounds starters: contradicting picks | 120 | 18 |
+| Sounds starters: on-request | 79% | 97% |
+| Silent leaks | 810 | 698 |
+| Held-out matcher decisions | — | 13/13 |
+
+The recall golden set did not regress, and neither did My Mix lanes or the
+other matcher users (67 suites).
+
+**Decision: enable.** One entry regressed: `sound-pop` batch 2, adherence
+0.33 → 0. It used to pad with three Techno and House tracks. It is now empty,
+because the remaining pop tracks have no usable genre label. The baseline is
+re-pinned.
 
 ## Out of scope for this slice
 
