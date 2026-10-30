@@ -22,6 +22,12 @@ export interface EmailSendResult {
  */
 export interface EmailTransport {
   send(message: EmailMessage): Promise<EmailSendResult>;
+  /**
+   * Check the connection and the login without sending anything. Throws a
+   * {@link TransientEmailError} carrying the transport's error code. Optional:
+   * transports with nothing to check (the dev log transport) omit it.
+   */
+  verify?(): Promise<void>;
 }
 
 /** Injection token for the active {@link EmailTransport}. */
@@ -47,6 +53,24 @@ export class TransientEmailError extends Error {
     super(message);
     this.name = "TransientEmailError";
   }
+}
+
+/**
+ * Whether a send failure is the recipient's address being refused. Only that is
+ * the person's to fix; auth, connection, timeout and provider faults are ours.
+ */
+export function isRecipientRejection(error: unknown): boolean {
+  return error instanceof PermanentEmailError;
+}
+
+/**
+ * A log-safe code for a mail failure: the transport code when there is one,
+ * else the error class name. Never the message, which can echo an address.
+ */
+export function emailErrorCode(error: unknown): string {
+  const code = (error as { code?: unknown })?.code;
+  const raw = typeof code === "string" && code ? code : error instanceof Error ? error.name : "unknown";
+  return raw.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
 }
 
 /**
@@ -132,6 +156,37 @@ export class SmtpEmailTransport implements EmailTransport {
       throw new TransientEmailError("send failed", code);
     }
   }
+
+  async verify(): Promise<void> {
+    try {
+      await this.transporter.verify();
+    } catch (error) {
+      // As in `send`: only the code leaves, the provider's text may echo credentials.
+      throw new TransientEmailError("verify failed", String((error as { code?: unknown })?.code ?? "smtp_error"));
+    }
+  }
+}
+
+/**
+ * Check the SMTP login once at startup without delaying or failing boot, so a
+ * refused login shows in the logs before the first person hits it. Never rejects.
+ */
+export function verifyEmailTransportInBackground(transport: EmailTransport | null): void {
+  if (!transport?.verify) return;
+  void transport.verify().then(
+    () => {
+      writeStructuredLog({ level: "info", event: "email.transport_verified", message: "SMTP login verified" });
+    },
+    (error: unknown) => {
+      writeStructuredLog({
+        level: "error",
+        event: "email.transport_verify_failed",
+        message: "SMTP connection or login failed; confirmation and notice emails will fail",
+        errorClass: error instanceof Error ? error.name : "unknown",
+        errorCode: emailErrorCode(error),
+      });
+    },
+  );
 }
 
 /** The transport for this deployment, or `null` when email is disabled. */

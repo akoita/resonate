@@ -219,6 +219,16 @@ How it works:
 - **Transport** is provider-neutral (`EMAIL_TRANSPORT` = `log` | `smtp`,
   nodemailer for SMTP). See `docs/deployment/environment.md` for the variables.
   If email is not configured it is disabled, not an error.
+- **Failure blame and logs.** Only a refused recipient is the person's to fix
+  (502 `email_send_failed`, logged at `warn`). A refused SMTP login, a dead
+  connection or a timeout is ours: the confirmation answers 503
+  `email_unavailable` and is logged at `error`. `email.confirmation_send_failed`
+  carries `errorClass` and a sanitized `errorCode` (for example `EAUTH` = the
+  SMTP credentials were refused, `ECONNECTION`, `timeout`), never the address or
+  the provider's text. At startup the backend also checks the SMTP connection
+  and login in the background (it never delays or fails boot) and logs
+  `email.transport_verified`, or `email.transport_verify_failed` with the same
+  `errorCode`.
 
 ### Deliverability
 
@@ -271,7 +281,7 @@ stays reachable):
 | Route | Who | Purpose |
 | --- | --- | --- |
 | `GET /me/contact-email` | signed-in | State: `available`, `address`, `status`, `disabledReason`, `confirmationSentAt`, per-category `required` / `enabled` |
-| `PUT /me/contact-email` | signed-in | Set or change the address and mail the confirmation; 503 `email_unavailable`, 502 `email_send_failed`, 429 `email_rate_limited` |
+| `PUT /me/contact-email` | signed-in | Set or change the address and mail the confirmation; 503 `email_unavailable` (email off, or our mail service failed: the address stays pending and Resend works later), 502 `email_send_failed` (the mail server refused the address), 429 `email_rate_limited` |
 | `POST /me/contact-email/resend` | signed-in | Resend the confirmation for a pending address; 409 otherwise, 429 `email_rate_limited` |
 | `DELETE /me/contact-email` | signed-in | Remove the address (204); works even when email is unavailable |
 | `PUT /me/contact-email/preferences` | signed-in | `{ optOuts: string[] }`; required categories are rejected with 400 |
@@ -310,7 +320,8 @@ address, separate from the account's own email. It reads and writes
   never includes a required category in the list.
 - **Remove** asks first, through the shared `ConfirmDialog`.
 - **Errors** map the server's `code` to plain sentences:
-  `email_unavailable`, `email_send_failed`, `invalid_or_expired` and `invalid`.
+  `email_unavailable` (also used when our mail service fails), `email_send_failed`
+  (the mail server refused the address), `invalid_or_expired` and `invalid`.
   A per-account confirmation limit (`email_rate_limited`) says how many
   minutes to wait. A failed send
   re-reads the state, because the server keeps the address pending so Resend
