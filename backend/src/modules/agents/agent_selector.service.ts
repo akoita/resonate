@@ -44,6 +44,8 @@ import {
 } from "./agent_hybrid_retrieval";
 import {
   requestTierOf,
+  constrainsCatalog,
+  effectiveEnergyBand,
   REQUEST_TIER_ORDER,
   type AgentRequestCapRelaxed,
   type AgentRequestCoveragePick,
@@ -222,6 +224,26 @@ function resolveSeeds(input: AgentSelectorInput): { artists: string[]; trackIds:
   };
 }
 
+/** Candidate budget of the legacy path's audio-range source (the hybrid source has its own). */
+const LEGACY_AUDIO_RANGE_CANDIDATES = 30;
+
+/**
+ * The energy and tempo the audio-range source retrieves by. A soft-gated
+ * request reads them from the request scope (the one definition tiering uses);
+ * every other session reads the selector input as before.
+ */
+function audioRangeRequestFor(input: AgentSelectorInput): {
+  energy: AgentSelectorInput["energy"];
+  tempoBpm: AgentSelectorInput["tempoBpm"];
+} {
+  const scope = input.requestScope;
+  if (!scope?.softGated) return { energy: input.energy, tempoBpm: input.tempoBpm };
+  return {
+    energy: scope.request.energy ?? input.energy,
+    tempoBpm: scope.request.bpm ?? input.tempoBpm,
+  };
+}
+
 /**
  * How retrieval treats the session's own tracks and the newest-tracks query for
  * a request-first session (#2316). Without a scope both are exactly as before.
@@ -236,7 +258,7 @@ function requestRetrieval(input: AgentSelectorInput, pass: SelectionPass) {
      * lack of queries: they would all be off-request. Padding and the widened
      * pass keep it.
      */
-    newestWhenNoQueries: !(scope?.gated && !scope.fillSimilar),
+    newestWhenNoQueries: !(constrainsCatalog(scope) && !scope?.fillSimilar),
     widened: pass === "widened",
   };
 }
@@ -418,7 +440,7 @@ export class AgentSelectorService {
     if (relaxed.selected.length > 0) return { ...relaxed, fallback: "relaxed_artist_window" as const };
     // A request that gates the catalog never widens to off-request tracks unless
     // the listener allowed similar sounds (#2316): the widened tracks would all be tier C.
-    if (input.requestScope?.gated && !input.requestScope.fillSimilar) return strict;
+    if (constrainsCatalog(input.requestScope) && !input.requestScope?.fillSimilar) return strict;
     if (input.recentTrackIds.length === 0) return strict;
     const widened = await this.selectPass(input, "widened");
     if (widened.selected.length > 0) return { ...widened, fallback: "widened" as const };
@@ -437,7 +459,7 @@ export class AgentSelectorService {
     // A session that names a catalog constraint (#2316) is answered from the
     // request: cohort hints and the learned or saved taste stay ranking signals
     // and are not searched, except as marked padding when the listener allows it.
-    const cohortQueries = scope?.gated ? [] : cohortContext.flatMap((cohort) => cohort.queryHints);
+    const cohortQueries = constrainsCatalog(scope) ? [] : cohortContext.flatMap((cohort) => cohort.queryHints);
     const padQueries =
       scope?.gated && scope.fillSimilar
         ? [
@@ -553,7 +575,7 @@ export class AgentSelectorService {
           ? "all_candidates_recently_played"
           : queries.length ? "no_matching_taste_candidates" : "empty_catalog",
         ...(sessionMatchesUsed ? { sessionMatchesUsed } : {}),
-        ...(scope?.gated && !scope.fillSimilar ? { shortfallReason: "catalog_short" as const } : {}),
+        ...(constrainsCatalog(scope) && !scope?.fillSimilar ? { shortfallReason: "catalog_short" as const } : {}),
         ...(retrieval ? { retrieval } : {}),
         ...(input.myMixPlan ? { mixCoverage: buildMixCoverage(input.myMixPlan, new Map()) } : {}),
       };
@@ -654,6 +676,9 @@ export class AgentSelectorService {
         aiDisclosureLevel: aiDisclosureLevelOf(track),
         // Stored descriptor families (#2240): a second source for genre requests.
         descriptorFamilies: track.descriptor?.families ?? [],
+        // The descriptor's own energy band: the fallback when the audio features
+        // only inferred energy (see `effectiveEnergyBand`).
+        descriptorEnergyBand: track.descriptor?.energyBand ?? null,
         release: {
           genre: track.release?.genre ?? null,
           title: track.release?.title ?? null,
@@ -724,7 +749,7 @@ export class AgentSelectorService {
             genre: candidate.release.genre,
             descriptorFamilies: candidate.descriptorFamilies,
             moods: candidate.release.moods ?? [],
-            energyBand: features?.energyBand,
+            energyBand: effectiveEnergyBand(features, candidate.descriptorEnergyBand),
             tempoBpm: features?.tempoBpm,
             tempoMeasured: features?.featureSources?.tempo === "measured",
             seedMatched: seedHitIds?.has(candidate.id) ?? false,
@@ -850,7 +875,7 @@ export class AgentSelectorService {
       priorSessionArtistKeys: pass === "strict" ? policyContext.priorSessionArtistKeys : undefined,
       priorExplorationCount: policyContext.priorExplorationCount,
       ...(scope
-        ? { requestFirst: { tierById, allowOffRequest: scope.gated && scope.fillSimilar } }
+        ? { requestFirst: { tierById, allowOffRequest: constrainsCatalog(scope) && scope.fillSimilar } }
         : {}),
       ...(input.myMixPlan
         ? {
@@ -915,14 +940,14 @@ export class AgentSelectorService {
     // The batch is shorter than the limit and the listener did not allow similar
     // sounds: say why, never pad silently.
     const shortfallReason: AgentRequestShortfallReason | undefined =
-      scope?.gated && !scope.fillSimilar && selected.length < limit ? "catalog_short" : undefined;
+      constrainsCatalog(scope) && !scope?.fillSimilar && selected.length < limit ? "catalog_short" : undefined;
     // Why nothing came back, told apart for a request that gates the catalog:
     // no track matches it at all (unmet demand), or every match is already this
     // session's or held back.
     const onRequestRanked = ranked.filter((entry) => tierById.get(entry.id) !== "C").length;
     const onRequestFresh = fresh.filter((entry) => tierById.get(entry.id) !== "C").length;
     const gatedReason =
-      scope?.gated && !scope.fillSimilar && selected.length === 0
+      constrainsCatalog(scope) && !scope?.fillSimilar && selected.length === 0
         ? onRequestFresh > 0
           ? "no_policy_eligible_candidates"
           : onRequestRanked > 0 || sessionMatchesUsed
@@ -1063,6 +1088,33 @@ export class AgentSelectorService {
           // No matchedQueries: no keyword query found this track.
           byId.set(item.id, { ...item, matchedQueries: [] });
         }
+      }
+    }
+
+    // A request with no genre but an energy or a tempo (soft-gated) retrieves by
+    // MEASURED sound too, so "calm" or "122 BPM" can reach a track no tag
+    // mentions. Fails open like the other additive sources.
+    const audioRequest = audioRangeRequestFor(input);
+    if (input.requestScope?.softGated && hasAudioRangeRequest(audioRequest)) {
+      const ranged = await this.tools
+        .get("catalog.audio_range")
+        .run({
+          ...audioRequest,
+          limit: LEGACY_AUDIO_RANGE_CANDIDATES,
+          allowExplicit: input.allowExplicit ?? false,
+          excludeTrackIds: retrievalRules.excludeTrackIds,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Audio-range retrieval failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return { items: [] as unknown[] };
+        });
+      for (const item of (ranged.items as any[]) ?? []) {
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
+        if (!byId.has(item.id)) byId.set(item.id, { ...item, matchedQueries: [] });
       }
     }
 
@@ -1285,7 +1337,7 @@ export class AgentSelectorService {
       // Only a request with no genre of its own is retrieved by audio: a genre
       // request must not be answered with unrelated tracks of that energy.
       const genreRequested = (input.requestedGenres ?? []).length > 0;
-      const audioRequest = { energy: input.energy, tempoBpm: input.tempoBpm };
+      const audioRequest = audioRangeRequestFor(input);
       if (genreRequested || !hasAudioRangeRequest(audioRequest)) return "skipped";
       const result = await this.tools.get("catalog.audio_range").run({
         ...audioRequest,

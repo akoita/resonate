@@ -187,6 +187,7 @@ describe("LLM runtime picks through the policy step (integration)", () => {
       artistId: A_OTHER,
       aiDisclosureLevel: "UNDECLARED",
       // #2316: descriptor families are loaded on the LLM path too (none stored here).
+      descriptorEnergyBand: null,
       descriptorFamilies: [],
       release: {
         genre: GENRE,

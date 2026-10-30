@@ -32,6 +32,7 @@ describe("deterministicSelectorInput (#2094)", () => {
       recentTrackIds: ["t1", "t2"],
       requestScope: {
         gated: true,
+        softGated: false,
         seeded: false,
         fillSimilar: false,
         request: { genres: ["Soul"], moods: ["Calm", "Dreamy"], energy: "low", bpm: { min: 90, max: 110 } },

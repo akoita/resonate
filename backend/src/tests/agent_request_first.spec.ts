@@ -12,9 +12,13 @@ import {
 } from "../modules/agents/deterministic_recommendation.adapter";
 import { expandAgentTasteQueries } from "../modules/agents/agent_taste_expansion";
 import {
+  constrainsCatalog,
+  effectiveEnergyBand,
   keepItemsOnRequest,
+  pickMatchesRequest,
   requestScopeFor,
   requestTierOf,
+  TEMPO_CONTRADICTION_BPM,
   withoutSeedEvidence,
   type AgentRequestCoveragePick,
 } from "../modules/agents/agent_session_request";
@@ -48,8 +52,8 @@ describe("requestScopeFor (#2316)", () => {
     expect(requestScopeFor({ artists: ["Nadia Okoro"] })).toMatchObject({ gated: true, seeded: true });
     expect(requestScopeFor({ seedTrackId: "t1" })).toMatchObject({ gated: true, seeded: true });
     expect(requestScopeFor({ seed: { kind: "playlist", id: "p1", label: "Mine" } })).toMatchObject({ gated: true });
-    // Mood, energy and tempo ask for every genre: a request, but nothing to gate on.
-    expect(requestScopeFor({ mood: "Focus", energy: "low" })).toMatchObject({ gated: false });
+    // Mood, energy and tempo ask for every genre: nothing to gate the genre on (they soft-gate instead).
+    expect(requestScopeFor({ mood: "Focus", energy: "low" })).toMatchObject({ gated: false, softGated: true });
     expect(requestScopeFor({ requestText: "something for cooking" })).toMatchObject({ gated: false });
   });
 
@@ -78,8 +82,12 @@ describe("requestTierOf (#2316)", () => {
 
   it("is A when every filter matches, B when only a soft filter is missed, C outside the genre", () => {
     expect(requestTierOf(scope, pick({ energyBand: "high" }))).toBe("A");
-    expect(requestTierOf(scope, pick({ energyBand: "low" }))).toBe("B");
+    expect(requestTierOf(scope, pick({ energyBand: "medium" }))).toBe("B");
     expect(requestTierOf(scope, pick({ genre: "Pop", energyBand: "high" }))).toBe("C");
+  });
+
+  it("is C for an on-genre pick that contradicts a soft filter", () => {
+    expect(requestTierOf(scope, pick({ energyBand: "low" }))).toBe("C");
   });
 
   it("reads a genre through the stored descriptor families too", () => {
@@ -96,10 +104,122 @@ describe("requestTierOf (#2316)", () => {
     expect(requestTierOf(withoutSeedEvidence(seeded), pick({ genre: "Neo Soul" }))).toBe("A");
   });
 
-  it("never produces C for a request that names no genre or seed", () => {
-    const mood = requestScopeFor({ mood: "Focus", energy: "low" })!;
-    expect(requestTierOf(mood, pick({ genre: "Pop", moods: ["Focus"], energyBand: "low" }))).toBe("A");
-    expect(requestTierOf(mood, pick({ genre: "Pop", energyBand: "high" }))).toBe("B");
+  it("never produces C for a request that sets no filter and names no genre or seed", () => {
+    const sentence = requestScopeFor({ requestText: "something for cooking" })!;
+    expect(sentence.gated).toBe(false);
+    expect(sentence.softGated).toBe(false);
+    expect(requestTierOf(sentence, pick({ genre: "Pop", moods: ["Dark"], energyBand: "high", tempoBpm: 200, tempoMeasured: true }))).toBe("A");
+  });
+});
+
+describe("soft-gated requests: mood, energy or tempo with no genre or seed", () => {
+  it("marks exactly the requests with a soft filter and no genre or seed", () => {
+    expect(requestScopeFor({ mood: "Zen", energy: "low" })).toMatchObject({ gated: false, softGated: true });
+    expect(requestScopeFor({ energy: "high" })).toMatchObject({ softGated: true });
+    expect(requestScopeFor({ tempoBpm: { min: 120, max: 125 } })).toMatchObject({ softGated: true });
+    expect(requestScopeFor({ sessionGenres: ["Rap"], energy: "high" })).toMatchObject({ gated: true, softGated: false });
+    expect(requestScopeFor({ artists: ["Nadia Okoro"], energy: "high" })).toMatchObject({ gated: true, softGated: false });
+    expect(requestScopeFor({ requestText: "cooking" })).toMatchObject({ gated: false, softGated: false });
+    expect(constrainsCatalog(requestScopeFor({ mood: "Zen" }))).toBe(true);
+    expect(constrainsCatalog(requestScopeFor({ sessionGenres: ["Rap"] }))).toBe(true);
+    expect(constrainsCatalog(requestScopeFor({ requestText: "cooking" }))).toBe(false);
+    expect(constrainsCatalog(undefined)).toBe(false);
+  });
+
+  it("withoutSeedEvidence turns a seed-only scope with soft filters into a soft-gated one", () => {
+    const seeded = requestScopeFor({ artists: ["Nadia Okoro"], energy: "low" })!;
+    expect(withoutSeedEvidence(seeded)).toMatchObject({ gated: false, softGated: true });
+    expect(withoutSeedEvidence(requestScopeFor({ artists: ["Nadia Okoro"] })!)).toMatchObject({ gated: false, softGated: false });
+    const soft = requestScopeFor({ energy: "low" })!;
+    expect(withoutSeedEvidence(soft)).toMatchObject({ gated: false, softGated: true });
+    expect(withoutSeedEvidence(requestScopeFor({ sessionGenres: ["Rap"], energy: "low" })!)).toMatchObject({ gated: true, softGated: false });
+  });
+
+  describe("energy", () => {
+    const zen = requestScopeFor({ energy: "low" })!;
+    it("A on the same band, C on the opposite band, C on a miss with no match", () => {
+      expect(requestTierOf(zen, pick({ energyBand: "low" }))).toBe("A");
+      expect(requestTierOf(zen, pick({ energyBand: "high" }))).toBe("C");
+      expect(requestTierOf(zen, pick({ energyBand: "medium" }))).toBe("C");
+      expect(requestTierOf(zen, pick({}))).toBe("C");
+    });
+    it("a medium request never contradicts", () => {
+      const medium = requestScopeFor({ energy: "medium" })!;
+      expect(requestTierOf(medium, pick({ energyBand: "medium" }))).toBe("A");
+      expect(requestTierOf(medium, pick({ energyBand: "high" }))).toBe("C");
+      expect(requestTierOf(medium, pick({ energyBand: "low" }))).toBe("C");
+    });
+  });
+
+  describe("tempo", () => {
+    const range = requestScopeFor({ tempoBpm: { min: 120, max: 125 } })!;
+    it("matches a measured tempo in the range, contradicts one more than 15 BPM outside it", () => {
+      expect(requestTierOf(range, pick({ tempoBpm: 122, tempoMeasured: true }))).toBe("A");
+      expect(requestTierOf(range, pick({ tempoBpm: 125 + TEMPO_CONTRADICTION_BPM, tempoMeasured: true }))).toBe("C");
+      expect(requestTierOf(range, pick({ tempoBpm: 120 - TEMPO_CONTRADICTION_BPM - 1, tempoMeasured: true }))).toBe("C");
+    });
+    it("a near miss or an unmeasured tempo is no match, and no match is outside a soft-gated request", () => {
+      expect(requestTierOf(range, pick({ tempoBpm: 135, tempoMeasured: true }))).toBe("C");
+      expect(requestTierOf(range, pick({ tempoBpm: 200, tempoMeasured: false }))).toBe("C");
+    });
+    it("an open side only contradicts on the bounded side", () => {
+      const under = requestScopeFor({ tempoBpm: { min: null, max: 100 } })!;
+      expect(requestTierOf(under, pick({ tempoBpm: 60, tempoMeasured: true }))).toBe("A");
+      expect(requestTierOf(under, pick({ tempoBpm: 140, tempoMeasured: true }))).toBe("C");
+    });
+  });
+
+  describe("mood", () => {
+    const zen = requestScopeFor({ mood: "Zen" })!;
+    it("matches a requested mood; other or missing moods never contradict but have no match", () => {
+      expect(requestTierOf(zen, pick({ moods: ["zen", "Calm"] }))).toBe("A");
+      expect(requestTierOf(zen, pick({ moods: ["Aggressive"] }))).toBe("C");
+      expect(requestTierOf(zen, pick({ moods: [] }))).toBe("C");
+    });
+  });
+
+  describe("several soft filters", () => {
+    const zen = requestScopeFor({ mood: "Zen", energy: "low" })!;
+    it("A when all match, B when some match, C when none match or any contradicts", () => {
+      expect(requestTierOf(zen, pick({ moods: ["Zen"], energyBand: "low" }))).toBe("A");
+      expect(requestTierOf(zen, pick({ moods: ["Zen"], energyBand: "medium" }))).toBe("B");
+      expect(requestTierOf(zen, pick({ moods: [], energyBand: "low" }))).toBe("B");
+      expect(requestTierOf(zen, pick({ moods: ["Zen"], energyBand: "high" }))).toBe("C");
+      expect(requestTierOf(zen, pick({ moods: ["Dark"], energyBand: "medium" }))).toBe("C");
+    });
+  });
+
+  describe("gated scopes (genre or seed) with a soft filter", () => {
+    it("a miss is B and a contradiction is C; the genre gate still comes first", () => {
+      const rap = requestScopeFor({ sessionGenres: ["Rap"], mood: "Dark", energy: "low" })!;
+      expect(requestTierOf(rap, pick({ moods: ["Dark"], energyBand: "low" }))).toBe("A");
+      expect(requestTierOf(rap, pick({ moods: ["Happy"], energyBand: "medium" }))).toBe("B");
+      expect(requestTierOf(rap, pick({ moods: ["Dark"], energyBand: "high" }))).toBe("C");
+      expect(requestTierOf(rap, pick({ genre: "Pop", moods: ["Dark"], energyBand: "low" }))).toBe("C");
+      const seeded = requestScopeFor({ artists: ["Nadia Okoro"], energy: "low" })!;
+      expect(requestTierOf(seeded, pick({ genre: "Neo Soul", seedMatched: true, energyBand: "high" }))).toBe("C");
+      expect(requestTierOf(seeded, pick({ genre: "Neo Soul", seedMatched: true, energyBand: "medium" }))).toBe("B");
+    });
+  });
+
+  it("coverage counts a soft predicate as a match only on the same outcome the tier reads", () => {
+    const scope = requestScopeFor({ mood: "Zen", energy: "low" })!;
+    const picks = [pick({ moods: ["Zen"], energyBand: "low" }), pick({ moods: ["Zen"], energyBand: "high" })];
+    expect(pickMatchesRequest(scope.request, picks[0])).toBe(true);
+    expect(pickMatchesRequest(scope.request, picks[1])).toBe(false);
+  });
+});
+
+describe("effectiveEnergyBand", () => {
+  it("prefers a measured feature band, then the descriptor band, then the inferred feature band", () => {
+    expect(effectiveEnergyBand({ energyBand: "high", featureSources: { energy: "measured" } }, "low")).toBe("high");
+    expect(effectiveEnergyBand({ energyBand: "high", featureSources: { energy: "inferred" } }, "low")).toBe("low");
+    expect(effectiveEnergyBand({ energyBand: "high", featureSources: { energy: "inferred" } }, null)).toBe("high");
+    expect(effectiveEnergyBand({ energyBand: "high" }, undefined)).toBe("high");
+    expect(effectiveEnergyBand(undefined, "medium")).toBe("medium");
+    expect(effectiveEnergyBand(undefined, undefined)).toBeUndefined();
+    // A measured source without a band falls through to the descriptor.
+    expect(effectiveEnergyBand({ featureSources: { energy: "measured" } }, "low")).toBe("low");
   });
 });
 

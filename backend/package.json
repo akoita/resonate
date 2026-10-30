@@ -18,6 +18,7 @@
     "test": "prisma generate && jest --runInBand",
     "test:integration": "prisma generate && jest --runInBand --forceExit --config jest.integration.config.js",
     "eval:golden": "jest --runInBand src/tests/agent_golden_eval.spec.ts",
+    "eval:dj-filters": "jest --runInBand src/tests/agent_dj_filter_eval",
     "eval:recommendations": "jest --runInBand src/tests/agent_recommendation_eval.spec.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

@@ -1043,7 +1043,8 @@ top-up carries the seed.
 **Interpretation and limits.** A sentence the parser read nothing from, with no
 seed, does not gate (its semantic similarity stays a ranking signal): gating it
 would empty a session whenever embeddings are unavailable. Mood, energy and
-tempo never gate. The widened fallback pass is skipped for a gating request
+tempo gate softly since the filter-adherence work (see "Mood, energy and tempo
+constrain the session (#2451)"). The widened fallback pass is skipped for a gating request
 without padding (its tracks would all be tier C).
 
 **Golden set.** Two small catalogs of their own (so the 21 cases above keep their
@@ -1067,6 +1068,90 @@ eight of the nine fail. Tests: `agent_request_first.spec.ts` (pure),
 (the panel state, sent with every start and pick, remembered by the server for
 the live session); a saved listener setting would need a schema change and is
 open. Hybrid retrieval and the default path both follow the same rules.
+
+## Mood, energy and tempo constrain the session (#2451)
+
+Vision-neutral quality (ADR-BM-6): no fee, split, price or payout change.
+Status: `partial`. The deterministic path and the LLM guard follow the new
+rules. Parser misreads and loose genre matching are measured but not fixed yet
+(see "Remaining").
+
+Owner testing showed "Zen, relaxed" (mood Zen, low energy) playing hard,
+high-energy rap. A request with no genre was never gated. Its picks came from
+saved vibes and learned genres, and every pick showed as in the request. The
+coverage line already said "None of the 12 picks matched Zen".
+
+**Evals first.** `npm run eval:dj-filters` (backend) measures precision: does
+anything that does not fit get played? The recall golden set (#2235) only asks
+whether the right tracks appear. The suite has two stages:
+
+- a parser stage: 57 sentences, graded against hand-written intent;
+- a selection stage: 141 requests over an invented two-layer catalog, where
+  truth labels sit beside sparse observed metadata. It covers 3 listener
+  profiles, 2 retrieval variants and 2 batches.
+
+An independent grader scores contradictions, silent leaks and adherence, and
+each case's numbers are pinned in a baseline. The method and the baselines are
+in `docs/engineering/ai-dj-filter-adherence-evals.md`.
+
+**Soft gate.** A request that names a mood, energy or tempo but no genre or seed
+is `softGated` (`AgentRequestScope`; `constrainsCatalog` covers both kinds of
+gate). For each soft filter, `requestTierOf` reads one outcome:
+
+| Filter | Outcomes |
+| --- | --- |
+| Energy | match (same band), contradict (low vs high), mismatch |
+| Tempo | match (measured, in range), contradict (measured, more than 15 BPM outside), mismatch (measured, closer), unknown (not measured) |
+| Mood | match, mismatch, unknown (no tags); moods never contradict |
+
+A contradiction is tier C for every request, so a genre request is affected
+too. With "Fill with similar sounds" off, the track is left out; with it on,
+the track is padded and marked. A soft-gated pick needs at least one soft match
+to be tier B; with no match it is C. Every soft filter matched is A. Requests
+without filters (a sentence only, My Mix) are unchanged.
+
+**Energy evidence.** `effectiveEnergyBand` decides in this order: measured
+audio-feature band, then the stored descriptor's band, then the inferred band
+(a genre and title guess). Tiers, coverage counts and the player mark all read
+it.
+
+**Retrieval.** A soft-gated session keeps searching taste genres, which now
+only order what fits. The default path also retrieves by measured sound
+(`catalog.audio_range`, 30 candidates), as the hybrid path already did. The
+widened fallback, cohort hints and the empty "newest" search are skipped
+without padding, and a short batch reports `catalog_short`. The web now offers
+"Fill with similar sounds" for mood, energy and tempo requests too
+(`offersFillSimilarFor`).
+
+**Measured effect** (selection stage, 282 runs, before -> after):
+
+| Measure | Before | After |
+| --- | --- | --- |
+| Contradicting picks | 1033 | 376 |
+| Moments starters, contradicting picks | 249 | 0 |
+| Single filters, contradicting picks | 194 | 0 |
+| Silent leaks | 1848 | 978 |
+| On-request share | 53% | 70% |
+
+Accepted trade-offs, recorded in the re-pinned baseline:
+
+- In a catalog with sparse metadata, some batches are now shorter or empty
+  (`catalog_short`) instead of padded with contradicting tracks.
+- Some contradictions became partial picks: the energy fits but the exact
+  moment does not.
+
+The recall golden set did not regress.
+
+**Remaining** (measured, not fixed):
+
+- Sentences the parser drops (typos, French, natural phrasing) still start an
+  unfiltered session (#2452). Parser stage: 46/57 exact.
+- Loose genre matching inside gated requests. "Afro-Pop" admits any
+  "Dance Pop" release; "Dance" in Pop Hits admits Techno and Deep House (#2453).
+- A medium-energy request accepts tracks whose energy defaulted to medium
+  because nothing was measured.
+- The LLM curation path is guarded by the same tiers, but its own picks are not
+  replayed offline yet (#2454).
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 

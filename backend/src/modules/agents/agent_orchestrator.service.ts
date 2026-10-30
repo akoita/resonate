@@ -12,6 +12,7 @@ import type { DiscoveryLevel } from "../recommendations/discovery-policy";
 import {
   requestCoverageFor,
   requestCoverageForScope,
+  effectiveEnergyBand,
   requestMatchesFor,
   requestScopeFor,
   tierMatchesRequest,
@@ -310,7 +311,7 @@ function buildRequestCoverage(
 
 type CoverageSource = {
   release?: { genre?: string | null; moods?: string[] | null };
-  descriptor?: { families?: string[] | null } | null;
+  descriptor?: { families?: string[] | null; energyBand?: string | null } | null;
   agentRecommendation?: { audioFeatures?: AgentAudioFeatures };
 };
 
@@ -325,7 +326,7 @@ function coverageFactsOf(track: CoverageSource): AgentRequestCoveragePick {
     genre: track.release?.genre ?? null,
     descriptorFamilies: track.descriptor?.families ?? [],
     moods: track.release?.moods ?? [],
-    energyBand: features?.energyBand,
+    energyBand: effectiveEnergyBand(features, track.descriptor?.energyBand),
     tempoBpm: features?.tempoBpm,
     tempoMeasured: features?.featureSources?.tempo === "measured",
   };

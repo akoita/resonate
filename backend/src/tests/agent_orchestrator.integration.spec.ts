@@ -62,7 +62,9 @@ describe('AgentOrchestratorService (integration)', () => {
       ],
     });
     await prisma.release.create({
-      data: { id: `${TEST_PREFIX}sparse_release`, title: 'Sparse Release', genre: SPARSE_GENRE, artistId: `${TEST_PREFIX}artist`, status: 'published' },
+      // Tagged calm: a mood or energy request plays only tracks with evidence that
+      // they fit it, and this test is about the shortfall, not the soft gate.
+      data: { id: `${TEST_PREFIX}sparse_release`, title: 'Sparse Release', genre: SPARSE_GENRE, moods: ['calm'], artistId: `${TEST_PREFIX}artist`, status: 'published' },
     });
     await prisma.track.createMany({
       data: [

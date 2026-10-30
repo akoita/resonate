@@ -1,0 +1,290 @@
+{
+  "schemaVersion": "dj-parser-baseline/v1",
+  "cases": {
+    "starter-focus": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-hype": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-chill": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-dark": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-zen": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-club": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-late-night": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-warm": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-hip-hop": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-rnb": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-pop": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-afrobeats": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-reggae": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-latin": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-world": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-electronic": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-jazz": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-rock": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-ambient": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "starter-classical": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "single-afrobeat-110-chill": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "single-techno": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "single-low-energy": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "single-128-bpm": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "single-between-90-100": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "single-dark": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-warm-deep-house-122": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-hip-hop-chill": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-jazz-late-night": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-dnb-high-energy": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-reggae-70-90": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-calm-to-read": {
+      "verdict": "miss",
+      "missing": 2,
+      "spurious": 0
+    },
+    "combo-music-to-focus": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-zen-relaxed": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "combo-pump-me-up-gym": {
+      "verdict": "miss",
+      "missing": 2,
+      "spurious": 0
+    },
+    "combo-relaxing-evening": {
+      "verdict": "miss",
+      "missing": 1,
+      "spurious": 0
+    },
+    "combo-party": {
+      "verdict": "miss",
+      "missing": 2,
+      "spurious": 0
+    },
+    "alias-hiphop": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "alias-lofi": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "alias-rnb": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "alias-drum-and-bass": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "alias-afrobeats": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "alias-electronica": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "typo-hip-hpo": {
+      "verdict": "miss",
+      "missing": 1,
+      "spurious": 0
+    },
+    "typo-afrobaet": {
+      "verdict": "miss",
+      "missing": 1,
+      "spurious": 0
+    },
+    "typo-techo": {
+      "verdict": "miss",
+      "missing": 1,
+      "spurious": 0
+    },
+    "typo-classicl": {
+      "verdict": "miss",
+      "missing": 1,
+      "spurious": 0
+    },
+    "french-rap-francais": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "french-classique-calme": {
+      "verdict": "miss",
+      "missing": 2,
+      "spurious": 0
+    },
+    "french-musiques-du-monde": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "french-electro-danser": {
+      "verdict": "miss",
+      "missing": 2,
+      "spurious": 0
+    },
+    "french-quelque-chose-calme": {
+      "verdict": "miss",
+      "missing": 1,
+      "spurious": 0
+    },
+    "artist-like": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "artist-more-lowercase": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "artist-style": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-for-cooking": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-asdf": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    }
+  }
+}
