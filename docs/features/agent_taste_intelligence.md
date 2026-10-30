@@ -1144,14 +1144,62 @@ The recall golden set did not regress.
 
 **Remaining** (measured, not fixed):
 
-- Sentences the parser drops (typos, French, natural phrasing) still start an
-  unfiltered session (#2452). Parser stage: 46/57 exact.
+- ~~Sentences the parser drops~~: fixed in #2452 (see "Everyday words, French
+  and typos in the session sentence").
 - Loose genre matching inside gated requests. "Afro-Pop" admits any
   "Dance Pop" release; "Dance" in Pop Hits admits Techno and Deep House (#2453).
 - A medium-energy request accepts tracks whose energy defaulted to medium
   because nothing was measured.
 - The LLM curation path is guarded by the same tiers, but its own picks are not
   replayed offline yet (#2454).
+
+## Everyday words, French and typos in the session sentence (#2452)
+
+Vision-neutral quality (ADR-BM-6). The session sentence went through Crate
+Digger's rules only. Those rules know DJ jargon ("peak-time", "warm-up",
+"bangers"), not listener words. A sentence like "pump me up for the gym",
+"musique classique calme" or "techo" read as nothing and started an unfiltered
+session.
+
+`ArtistAwareRulesParser` now applies a deterministic listener layer
+(`agent_session_listener_words.ts`) to what the crate rules leave unread. The
+crate parser itself is unchanged.
+
+**What the layer reads:**
+
+- Listener energy words in English and French (calm, relaxing, soothing,
+  calme, tranquille, doux).
+- Activity and mood words, with high energy implied only when the sentence
+  names no energy:
+  - workout, gym, salle de sport → Hype;
+  - party, fête → Club;
+  - dancing, danser → Club only, with no energy;
+  - reading, coding, travailler → Focus;
+  - yoga, meditation → Zen.
+- Guard phrases ("after work", "dinner party") so an activity word inside
+  them cannot fire.
+- French and adjectival genre forms: classique, électro (accented), jazzy,
+  funky, latino, ambiant.
+- One-typo tolerance for genre names only. It uses optimal-string-alignment
+  distance 1, with targets of at least 6 letters and tokens of at least 5.
+  A stoplist covers ordinary words one edit from a genre (france, horse,
+  county, medal, reggie…), and a tie between two genres reads nothing.
+  Moods and energy are never fuzzy-matched. Bare "running" is not a workout
+  ("running late"); "running playlist" and "for a run" are.
+
+Reading more by rules also means fewer calls to the optional model-assisted
+parser.
+
+**Measured** (parser stage of `npm run eval:dj-filters`):
+
+- Exact parses rose from 46/57 to 81/81. The suite gained 10 adversarial
+  no-match sentences, pinned clean before the change.
+- 16 held-out sentences were written before the change and kept from the
+  implementer. 15 of 16 passed first time; the miss ("running late again")
+  led to the "running" rule above.
+- In the selection stage, the `typed` group's contradicting picks fell from
+  174 to 18. Overall they fell from 376 to 220, and silent leaks from 978 to
+  820.
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 

@@ -20,6 +20,7 @@ import {
   type CrateModelClient,
 } from "../modules/crates/model_crate_request_parser";
 import { TASTE_EDIT_GENRES, TASTE_EDIT_MOODS } from "../modules/recommendations/taste_edit_vocabulary";
+import { deterministicCrateRequestParser, parseCrateRequestText } from "../modules/crates/crate_request_parser";
 
 const mockGenerateContent = jest.fn();
 const mockGetGenerativeModel = jest.fn((_config: unknown) => ({ generateContent: mockGenerateContent }));
@@ -126,6 +127,60 @@ describe("deterministic session parser with catalog artists", () => {
     const result = await new ArtistAwareRulesParser(down).parse("deep house like Nadia Okoro");
     expect(result.filters.genres).toEqual(["Deep House"]);
     expect(result.artists).toBeUndefined();
+  });
+});
+
+describe("session parser listener layer (#2452)", () => {
+  const parser = new ArtistAwareRulesParser(catalog);
+
+  it("reads natural, accented and misspelt sentences that the crate rules leave unread", async () => {
+    const calm = await parser.parse("something calm to read");
+    expect(calm.filters.moods).toEqual(["Focus"]);
+    expect(listeningRequestFromCrateParse(calm).request.energy).toBe("low");
+    expect(calm.unparsed).toEqual([]);
+
+    const french = await parser.parse("électro pour danser");
+    expect(french.filters.genres).toEqual(["Electronic"]);
+    expect(french.filters.moods).toEqual(["Club"]);
+
+    const typo = await parser.parse("hip hpo");
+    expect(typo.filters.genres).toEqual(["Hip-Hop"]);
+  });
+
+  it("never reads a cued artist's name as a genre", async () => {
+    // "Dubsetp" is one edit from Dubstep; the catalog names the artist first.
+    const index = buildArtistNameIndex(["Dubsetp Crew"]);
+    const resolver: SessionArtistResolver = {
+      mentionsIn: async (text) => findArtistMentions(text, index),
+      resolveNames: async () => [],
+    };
+    const result = await new ArtistAwareRulesParser(resolver).parse("like Dubsetp Crew");
+    expect(result.artists).toEqual(["Dubsetp Crew"]);
+    expect(result.filters.genres).toEqual([]);
+    expect(result.unparsed).toEqual([]);
+    // The same word with no artist behind it is a genre typo.
+    expect((await parser.parse("dubsetp")).filters.genres).toEqual(["Dubstep"]);
+  });
+
+  it("reads the listener words next to a cued artist", async () => {
+    const result = await parser.parse("calm, more Hana Mori");
+    expect(result.artists).toEqual(["Hana Mori"]);
+    expect(listeningRequestFromCrateParse(result).request.energy).toBe("low");
+    expect(result.unparsed).toEqual([]);
+  });
+
+  it("leaves Crate Digger's own parser untouched", async () => {
+    const crate = parseCrateRequestText("something calm to read");
+    expect(crate.filters.moods).toEqual([]);
+    expect(crate.filters.energy).toBeNull();
+    expect(crate.unparsed).toEqual(["calm to read"]);
+    expect(await deterministicCrateRequestParser.parse("hip hpo")).toEqual(parseCrateRequestText("hip hpo"));
+  });
+
+  it("still leaves a sentence it cannot read in Didn't catch", async () => {
+    const result = await parser.parse("for cooking");
+    expect(result.filters.genres).toEqual([]);
+    expect(result.unparsed).toEqual(["cooking"]);
   });
 });
 
