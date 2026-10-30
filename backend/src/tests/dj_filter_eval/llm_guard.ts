@@ -10,6 +10,11 @@
  * so this stage feeds SIMULATED model replies through the REAL guard and grades
  * what comes out with the same independent grader as stages A and B.
  *
+ * Seed-only requests (#2463): a request whose only constraint is a seed (the
+ * `artist` group) cannot be verified against a model pick, so `apply` throws
+ * `RuntimePolicyUnavailableError` ("unverifiable") for it in every mode; production
+ * routes it to the selector before any model call (`requiresSeedEvidence`).
+ *
  * Fail-closed (#2462): when the guard cannot verify a model reply (no ranking core,
  * or the candidate lookup throws) `apply` throws `RuntimePolicyUnavailableError` and
  * `AgentRuntimeService.run` serves the deterministic orchestrator's result instead.

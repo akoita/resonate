@@ -18,7 +18,7 @@ import {
 } from "./agent_my_mix";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import { isRightNowContext, resolveRightNow } from "./agent_right_now";
-import { requestScopeFor } from "./agent_session_request";
+import { requestScopeFor, requiresSeedEvidence } from "./agent_session_request";
 import { RuntimePolicyUnavailableError } from "./runtime/agent_runtime.errors";
 import { logDegradedFallback } from "../shared/degraded_fallback";
 
@@ -80,7 +80,9 @@ export class AgentRuntimeService {
       : assignment.sessionSource === "my_mix" && assignment.orderingVariant === "single_profile"
         ? await this.executor.runWithSingleProfile(safeInput)
         // "New artists" (#2249) needs the selector's played-artist lookup, which a model's picks never see.
-        : input.preferences?.newArtists === true
+        // A seed-only request (an artist, a seed track or playlist, nothing else; #2463) needs the
+        // selector's seed evidence, which a model's picks lack, so the guard could not verify them.
+        : input.preferences?.newArtists === true || requiresSeedEvidence(requestScopeFor(input.preferences))
           ? await this.executor.runDeterministic(safeInput)
           : await this.execute(safeInput);
     const final = await this.applyPolicy(input, safeInput, result);

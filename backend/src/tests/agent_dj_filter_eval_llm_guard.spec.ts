@@ -7,8 +7,9 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { getAgentTrackLimit } from "../modules/agents/agent_runtime.config";
+import { requestScopeFor, requiresSeedEvidence } from "../modules/agents/agent_session_request";
 import { EVAL_CATALOG } from "./dj_filter_eval/catalog";
-import { EVAL_CASES } from "./dj_filter_eval/cases";
+import { EVAL_CASES, profileFor } from "./dj_filter_eval/cases";
 import {
   applyGuard,
   applyGuardServing,
@@ -27,7 +28,7 @@ import {
   type GuardBaselineFile,
   type GuardRunResult,
 } from "./dj_filter_eval/llm_guard";
-import { BATCH_SIZE } from "./dj_filter_eval/harness";
+import { BATCH_SIZE, listenerPreferences } from "./dj_filter_eval/harness";
 
 const BASELINE_PATH = resolve(__dirname, "dj_filter_eval/llm_guard_baseline.json");
 
@@ -112,12 +113,34 @@ describe("AI DJ filter-adherence eval, stage C: LLM-path guard", () => {
     const normal = await runGuardCase(zen, "adversarial", "normal");
     expect(normal.fellBackToDeterministic).toBe(false);
     for (const run of results) {
-      const failOpen = run.mode !== "normal";
+      // The fail-open modes cannot verify any reply; a seed-only request (the artist group) can never be verified (#2463).
+      const unverifiable = run.mode !== "normal" || run.group === "artist";
       expect({ id: run.id, mode: run.mode, fellBack: run.fellBackToDeterministic }).toEqual({
         id: run.id,
         mode: run.mode,
-        fellBack: failOpen,
+        fellBack: unverifiable,
       });
+    }
+  });
+
+  it("serves a seed-only request from the selector: no model pick survives (#2463)", async () => {
+    const artistCases = EVAL_CASES.filter((item) => item.group === "artist");
+    expect(artistCases.length).toBeGreaterThan(0);
+    for (const item of artistCases) {
+      // Production routes this request to the deterministic selector before any model call.
+      const preferences = await listenerPreferences(item.request, profileFor(item), "start");
+      expect({ case: item.id, routed: requiresSeedEvidence(requestScopeFor(preferences as never)) }).toEqual({
+        case: item.id,
+        routed: true,
+      });
+    }
+    const artistRuns = results.filter((run) => run.group === "artist");
+    expect(artistRuns).toHaveLength(artistCases.length * RUN_MATRIX.length);
+    for (const run of artistRuns) {
+      expect(run.fellBackToDeterministic).toBe(true);
+      expect(run.finalPicks.every((pick) => pick.source === "deterministic")).toBe(true);
+      expect(run.survivingModelContradictions).toBe(0);
+      expect(run.final.contradictions).toBe(0);
     }
   });
 

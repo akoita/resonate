@@ -738,6 +738,18 @@ export function withoutSeedEvidence(scope: AgentRequestScope): AgentRequestScope
   return { ...scope, seeded: false, gated, softGated: !gated && hasSoftFilters(scope.request) };
 }
 
+/**
+ * Whether the request's ONLY constraint is a seed that just the deterministic
+ * selector can verify (#2463): an artist the sentence named, a seed track or a
+ * seed playlist, with no genre, mood, energy or tempo. A model's pick carries no
+ * seed evidence, so {@link withoutSeedEvidence} leaves such a scope neither
+ * gated nor soft-gated and the guard could not tell an on-request pick from a
+ * contradiction. These requests are served by the selector, never the model.
+ */
+export function requiresSeedEvidence(scope: AgentRequestScope | undefined | null): boolean {
+  return scope?.seeded === true && !constrainsCatalog(withoutSeedEvidence(scope));
+}
+
 /** Whether a pick belongs to the request: any tier but C. This is what the player's "Outside your request" mark reads. */
 export function tierMatchesRequest(tier: RequestTier): boolean {
   return tier !== "C";

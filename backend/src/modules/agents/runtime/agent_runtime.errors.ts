@@ -24,11 +24,12 @@ export function agentRuntimeFallbackReason(error: unknown): AgentRuntimeFallback
  * The runtime policy step could not verify a model reply (the ranking core or
  * policy context is not wired, or the candidate lookup failed). The model's
  * picks must not be served unchecked: the caller serves the deterministic path
- * instead (#2462). `cause` is categorical; the raw error text stays in the log.
+ * instead (#2462). `unverifiable` (#2463): the request's only constraint is a
+ * seed, which a model pick carries no evidence for. `cause` is categorical; the raw error text stays in the log.
  */
 export class RuntimePolicyUnavailableError extends Error {
   constructor(
-    readonly policyCause: "not_configured" | "error",
+    readonly policyCause: "not_configured" | "error" | "unverifiable",
     message: string,
   ) {
     super(message);

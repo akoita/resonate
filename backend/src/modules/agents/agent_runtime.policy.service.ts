@@ -39,6 +39,7 @@ import {
   requestScopeFor,
   requestTierOf,
   constrainsCatalog,
+  requiresSeedEvidence,
   effectiveEnergyBand,
   tierMatchesRequest,
   withoutSeedEvidence,
@@ -137,6 +138,15 @@ export class AgentRuntimePolicyService {
     result: AgentRuntimeResult,
   ): Promise<AgentRuntimeResult> {
     const picks = picksOf(result);
+    // A seed-only request cannot be verified against a model's picks (#2463): the
+    // runtime routes it to the selector, and a reply that still arrives is dropped.
+    if (picks.length > 0 && requiresSeedEvidence(requestScopeFor(input.preferences))) {
+      this.logger.warn("Request is constrained only by a seed; model picks are not served");
+      throw new RuntimePolicyUnavailableError(
+        "unverifiable",
+        "the request's only constraint is a seed the model picks cannot be checked against",
+      );
+    }
     if (!this.ranking || !this.policyContext) {
       // Nothing to verify in an empty reply; picks cannot be served unchecked.
       if (picks.length === 0) return result;

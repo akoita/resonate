@@ -317,8 +317,8 @@ faithful model). **Decision: enable.**
 Measured and still open:
 
 - ~~**The guard fails open (#2462).**~~ Fixed; see comparison 5.
-- **Artist-only and seed-only requests cannot be verified (#2463).** The
-  adversarial model's 48 picks all survive in the artist group.
+- ~~**Artist-only and seed-only requests cannot be verified (#2463).**~~ Fixed;
+  see comparison 6.
 - **Tier B partials survive.** That is by design: a tier B pick shares the
   genre or a soft filter.
 - **Over-blocking from metadata gaps.** The faithful model loses 319
@@ -356,6 +356,33 @@ selector's batch, as production does:
 The remaining contradictions and leaks belong to the deterministic selector,
 measured in stage B. No normal-mode entry changed (0 of 705). **Decision:
 enable.**
+
+### Comparison 6: seed-only requests are served by the selector (#2463)
+
+A request whose only constraint is a seed cannot be verified against a model's
+picks: a model pick carries no seed evidence. A seed here is a named artist
+("like X", "more from X"), a seed track or a seed playlist, with no genre,
+mood, energy or tempo.
+
+`requiresSeedEvidence(scope)` names that case. The runtime routes it to the
+deterministic selector before any model call, as it already did for "New
+artists" sessions. The selector retrieves the artist's own tracks and their
+close neighbours. As defence in depth, the guard refuses such a reply with
+`RuntimePolicyUnavailableError("unverifiable")`, and the fail-closed fallback
+serves the deterministic batch.
+
+| Stage C, normal mode | Before | After |
+| --- | ---: | ---: |
+| Artist group, adversarial: surviving contradictions | 40 | 0 |
+| Artist group, adversarial: on-request | 17% | 100% |
+| All cases, adversarial: surviving contradictions | 47 | 7 |
+| All cases, adversarial: final contradicting picks | 94 | 54 |
+| All cases, taste: surviving contradictions | 29 | 4 |
+
+**Decision: enable.** Only artist cases changed. Accepted: in 3 artist cases,
+the faithful model's `wronglyDropped` went from 1 to 3. Its own on-request
+picks are replaced by the selector's verified batch, which the listener hears
+as 100% on-request.
 
 ## Out of scope for this slice
 
