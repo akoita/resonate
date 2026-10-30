@@ -129,7 +129,10 @@ describe("admitTrendingTrack (tiers A and B only for a request)", () => {
 
   it("admits a track that misses a soft filter (tier B) but never a seed-only request's trending", () => {
     const scope = requestScopeFor({ sessionGenres: ["World"], energy: "high" })!;
-    expect(admitTrendingTrack(scope, { ...worldTrack, descriptor: { families: ["world"], energyBand: "low" } })).toBe(true);
+    // Medium sits next to high: a miss, not a contradiction.
+    expect(admitTrendingTrack(scope, { ...worldTrack, descriptor: { families: ["world"], energyBand: "medium" } })).toBe(true);
+    // Low against a high request contradicts it: outside the request, not admitted.
+    expect(admitTrendingTrack(scope, { ...worldTrack, descriptor: { families: ["world"], energyBand: "low" } })).toBe(false);
     expect(admitTrendingTrack(requestScopeFor({ artists: ["Nadia Okoro"] })!, worldTrack)).toBe(false);
   });
 });

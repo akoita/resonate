@@ -324,9 +324,82 @@ const COVERAGE_FILTER_ORDER: AgentRequestCoverageFilter[] = ["genres", "moods", 
 type PickPredicate = (pick: AgentRequestCoveragePick) => boolean;
 
 /**
+ * How one pick stands against ONE soft filter (mood, energy, tempo):
+ *  - match: the pick satisfies the filter;
+ *  - contradict: the pick is the opposite of what was asked (low vs high energy,
+ *    a measured tempo far outside the range): never on request;
+ *  - mismatch: the pick misses the filter without contradicting it;
+ *  - unknown: the pick has no data to judge by (no moods, tempo not measured).
+ */
+export type SoftFilterOutcome = "match" | "contradict" | "mismatch" | "unknown";
+
+/** A measured tempo further than this many BPM outside the requested range contradicts it. */
+export const TEMPO_CONTRADICTION_BPM = 15;
+
+const ENERGY_RANK: Record<AgentSessionEnergy, number> = { low: 0, medium: 1, high: 2 };
+
+/**
+ * The energy band a pick is judged by: the MEASURED audio-feature band when the
+ * features measured it, else the stored descriptor's band, else the feature
+ * band (inferred from genre and title words, a weaker guess). One definition,
+ * so tiering, coverage counts and the player's mark agree.
+ */
+export function effectiveEnergyBand(
+  features?: { energyBand?: string | null; featureSources?: { energy?: string | null } | null } | null,
+  descriptorEnergyBand?: string | null,
+): string | undefined {
+  if (features?.featureSources?.energy === "measured" && features.energyBand) return features.energyBand;
+  if (descriptorEnergyBand) return descriptorEnergyBand;
+  return features?.energyBand ?? undefined;
+}
+
+function isEnergy(value: unknown): value is AgentSessionEnergy {
+  return value === "low" || value === "medium" || value === "high";
+}
+
+function energyOutcome(requested: AgentSessionEnergy, band: string | undefined): SoftFilterOutcome {
+  if (!isEnergy(band)) return "mismatch";
+  if (band === requested) return "match";
+  return Math.abs(ENERGY_RANK[band] - ENERGY_RANK[requested]) >= 2 ? "contradict" : "mismatch";
+}
+
+function bpmOutcome(range: AgentSessionTempoRange, pick: AgentRequestCoveragePick): SoftFilterOutcome {
+  if (!pick.tempoMeasured || typeof pick.tempoBpm !== "number" || !Number.isFinite(pick.tempoBpm)) {
+    return "unknown";
+  }
+  const below = range.min !== null ? range.min - pick.tempoBpm : Number.NEGATIVE_INFINITY;
+  const above = range.max !== null ? pick.tempoBpm - range.max : Number.NEGATIVE_INFINITY;
+  const outside = Math.max(below, above);
+  if (outside <= 0) return "match";
+  return outside > TEMPO_CONTRADICTION_BPM ? "contradict" : "mismatch";
+}
+
+function moodOutcome(requestedMoods: ReadonlySet<string>, pick: AgentRequestCoveragePick): SoftFilterOutcome {
+  const moods = pick.moods ?? [];
+  if (moods.length === 0) return "unknown";
+  return moods.some((mood) => requestedMoods.has(normalizeTerm(mood))) ? "match" : "mismatch";
+}
+
+/** The outcome of every soft filter the request sets (mood, energy, tempo), for one pick. */
+function softOutcomes(request: AgentSessionRequest, pick: AgentRequestCoveragePick): SoftFilterOutcome[] {
+  const outcomes: SoftFilterOutcome[] = [];
+  const requestedMoods = new Set(request.moods.map(normalizeTerm));
+  if (requestedMoods.size > 0) outcomes.push(moodOutcome(requestedMoods, pick));
+  if (request.energy !== null) outcomes.push(energyOutcome(request.energy, pick.energyBand));
+  if (hasTempo(request.bpm)) outcomes.push(bpmOutcome(request.bpm, pick));
+  return outcomes;
+}
+
+/** True when the request sets a mood, an energy or a tempo (a soft filter). */
+function hasSoftFilters(request: AgentSessionRequest): boolean {
+  return request.moods.length > 0 || request.energy !== null || hasTempo(request.bpm);
+}
+
+/**
  * One predicate per filter the request actually sets. Coverage counts them and
  * {@link pickMatchesRequest} requires all of them, so the two can never
- * disagree about what "matches" means.
+ * disagree about what "matches" means. A soft predicate matches iff its
+ * {@link SoftFilterOutcome} is "match", the same outcome the tier reads.
  */
 function requestPredicates(
   request: AgentSessionRequest,
@@ -343,20 +416,15 @@ function requestPredicates(
       );
   }
   if (requestedMoods.size > 0) {
-    predicates.moods = (pick) => (pick.moods ?? []).some((mood) => requestedMoods.has(normalizeTerm(mood)));
+    predicates.moods = (pick) => moodOutcome(requestedMoods, pick) === "match";
   }
   if (request.energy !== null) {
     const energy = request.energy;
-    predicates.energy = (pick) => pick.energyBand === energy;
+    predicates.energy = (pick) => energyOutcome(energy, pick.energyBand) === "match";
   }
   if (hasTempo(request.bpm)) {
-    const { min, max } = request.bpm;
-    predicates.bpm = (pick) =>
-      pick.tempoMeasured &&
-      typeof pick.tempoBpm === "number" &&
-      Number.isFinite(pick.tempoBpm) &&
-      pick.tempoBpm >= (min ?? Number.NEGATIVE_INFINITY) &&
-      pick.tempoBpm <= (max ?? Number.POSITIVE_INFINITY);
+    const range = request.bpm;
+    predicates.bpm = (pick) => bpmOutcome(range, pick) === "match";
   }
   return predicates;
 }
@@ -544,12 +612,19 @@ export interface AgentRequestScope {
   /** A seed (an artist the sentence named, a seed track, a session seed) steers retrieval. */
   seeded: boolean;
   /**
-   * The request names a catalog constraint (a genre or a seed). Only a gated
-   * request makes an off-request track a tier C track; a request that names
-   * only mood, energy or tempo asks for every genre (ranked by taste), so its
-   * tracks are A or B and nothing is left out.
+   * The request names a catalog constraint (a genre or a seed). A gated request
+   * makes a track outside the genre or seed a tier C track. A request that names
+   * only mood, energy or tempo asks for every genre (ranked by taste) and is
+   * `softGated` instead.
    */
   gated: boolean;
+  /**
+   * Not gated (no genre, no seed) but the request sets a mood, energy or tempo.
+   * Such a request still asks for every genre, yet what it plays must fit the
+   * soft filters: a pick that contradicts one, or fits none, is outside the
+   * request (tier C). Genre-only paths (`gated`) are unchanged.
+   */
+  softGated: boolean;
   /** The listener allowed marked off-request tracks to fill a short batch. */
   fillSimilar: boolean;
 }
@@ -598,10 +673,12 @@ export function requestScopeFor(preferences: AgentRequestScopePreferences | unde
     sanitizeArtistNames(preferences.artists).length > 0;
   const sentence = sanitizeRequestText(preferences.requestText) !== undefined;
   if (!hasRequestFilters(request) && !seeded && !sentence) return undefined;
+  const gated = request.genres.length > 0 || seeded;
   return {
     request,
     seeded,
-    gated: request.genres.length > 0 || seeded,
+    gated,
+    softGated: !gated && hasSoftFilters(request),
     fillSimilar: preferences.fillSimilar === true,
   };
 }
@@ -611,27 +688,54 @@ function sanitizeEnergy(value: unknown): AgentSessionEnergy | null {
 }
 
 /**
- * The tier of one pick (#2316), by the same per-filter predicates the coverage
- * counts, so selection, display and the LLM path can never disagree about what
- * "matches" means. A request that is not gated never produces tier C.
+ * Whether the request constrains what the catalog may play: a genre or a seed
+ * (`gated`), or a mood, energy or tempo with no genre (`softGated`). Where this
+ * is true, off-request tracks are held back unless the listener allowed similar
+ * sounds to fill the batch.
+ */
+export function constrainsCatalog(scope: AgentRequestScope | undefined | null): boolean {
+  return !!scope && (scope.gated || scope.softGated);
+}
+
+/**
+ * The tier of one pick (#2316), by the same per-filter outcomes the coverage
+ * predicates read, so selection, display and the LLM path can never disagree
+ * about what "matches" means. Rules, in order:
+ *  1. gated (genre or seed): a pick that is neither on-genre nor seed-matched is C;
+ *  2. a soft filter the pick CONTRADICTS (low vs high energy, a measured tempo
+ *     more than {@link TEMPO_CONTRADICTION_BPM} outside the range) makes it C,
+ *     gated or not; moods never contradict;
+ *  3. every soft filter matched (or none set): A;
+ *  4. gated (genre or seed satisfied) but a soft filter missed: B;
+ *  5. soft-gated (no genre, no seed): B when at least one soft filter matched,
+ *     else C;
+ *  6. a scope without filters (a sentence only) is never C.
  */
 export function requestTierOf(scope: AgentRequestScope, pick: AgentRequestCoveragePick): RequestTier {
-  const { genres: genrePredicate, ...soft } = requestPredicates(scope.request);
   if (scope.gated) {
+    const genrePredicate = requestPredicates(scope.request).genres;
     const onGenre = genrePredicate ? genrePredicate(pick) : false;
     const onSeed = scope.seeded && pick.seedMatched === true;
     if (!onGenre && !onSeed) return "C";
   }
-  return Object.values(soft).every((matches) => matches(pick)) ? "A" : "B";
+  const outcomes = softOutcomes(scope.request, pick);
+  if (outcomes.includes("contradict")) return "C";
+  if (outcomes.every((outcome) => outcome === "match")) return "A";
+  if (scope.gated) return "B";
+  if (scope.softGated) return outcomes.includes("match") ? "B" : "C";
+  return "B";
 }
 
 /**
  * The scope as a path can verify it when it has no seed evidence for a pick
  * (an LLM pick): only a requested genre can gate. A seed-only request cannot be
  * checked there, so its picks pass (the rule-based top-up carries the seed).
+ * Soft filters still apply: a seed-only scope with a mood, energy or tempo
+ * becomes soft-gated.
  */
 export function withoutSeedEvidence(scope: AgentRequestScope): AgentRequestScope {
-  return { ...scope, seeded: false, gated: scope.request.genres.length > 0 };
+  const gated = scope.request.genres.length > 0;
+  return { ...scope, seeded: false, gated, softGated: !gated && hasSoftFilters(scope.request) };
 }
 
 /** Whether a pick belongs to the request: any tier but C. This is what the player's "Outside your request" mark reads. */

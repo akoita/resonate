@@ -212,7 +212,7 @@ export class DiscoveryPolicyContextService {
         aiDisclosureLevel: true,
         // Stored descriptor families (#2240): a second source for genre requests,
         // so an LLM pick is judged against the request like a ranked candidate.
-        descriptor: { select: { families: true } },
+        descriptor: { select: { families: true, energyBand: true } },
         release: {
           select: {
             title: true,
@@ -240,6 +240,7 @@ export class DiscoveryPolicyContextService {
             artistId: track.release.artistId,
             aiDisclosureLevel: track.aiDisclosureLevel,
             descriptorFamilies: track.descriptor?.families ?? [],
+            descriptorEnergyBand: track.descriptor?.energyBand ?? null,
             release: {
               genre: track.release.genre,
               title: track.release.title,

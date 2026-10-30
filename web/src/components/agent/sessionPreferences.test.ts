@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentSessionRequest } from "../../lib/api";
 import { SESSION_PRESETS } from "./AgentSessionPresets";
 import { requestFromPreset } from "../../lib/agentSessionRequest";
-import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
+import { buildPickPreferences, buildSessionPreferences, offersFillSimilarFor, toIntentPreferences } from "./sessionPreferences";
 
 const SAVED_VIBES = ["Chill", "Deep House"];
 
@@ -254,5 +254,26 @@ describe("Tempo (#2327)", () => {
     const adjusted = { ...requestFromPreset(jazz), bpm: { min: 80, max: 100 } };
     const preferences = buildSessionPreferences({ activePreset: jazz, request: adjusted });
     expect(preferences).toMatchObject({ sessionIntent: jazz.intent, request: { bpm: { min: 80, max: 100 } } });
+  });
+});
+
+describe("offersFillSimilarFor", () => {
+  const none = { myMix: false, request: null, artists: [] as string[], seed: null };
+
+  it("is not offered when nothing constrains the session", () => {
+    expect(offersFillSimilarFor(none)).toBe(false);
+    expect(offersFillSimilarFor({ ...none, request: request() })).toBe(false);
+  });
+
+  it("is offered for a genre, a mood, an energy, a tempo or an artist", () => {
+    expect(offersFillSimilarFor({ ...none, request: request({ genres: ["Jazz"] }) })).toBe(true);
+    expect(offersFillSimilarFor({ ...none, request: request({ moods: ["Zen"] }) })).toBe(true);
+    expect(offersFillSimilarFor({ ...none, request: request({ energy: "low" }) })).toBe(true);
+    expect(offersFillSimilarFor({ ...none, request: request({ bpm: { min: 90, max: 110 } }) })).toBe(true);
+    expect(offersFillSimilarFor({ ...none, artists: ["Nadia Okoro"] })).toBe(true);
+  });
+
+  it("is never offered inside My Mix", () => {
+    expect(offersFillSimilarFor({ ...none, myMix: true, request: request({ energy: "low" }) })).toBe(false);
   });
 });

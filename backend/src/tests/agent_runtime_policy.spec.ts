@@ -336,7 +336,8 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
       profileWeights: { House: 4 },
     });
     const input = baseInput({
-      preferences: { genres: ["House"], mood: "Hype", sessionIntent: "Hype" },
+      // Similar sounds allowed: a mood-only request would drop "nothing" as off-request.
+      preferences: { genres: ["House"], mood: "Hype", sessionIntent: "Hype", fillSimilar: true },
     });
     const result = await service.apply(input, {
       status: "approved",
@@ -681,12 +682,15 @@ describe("AgentRuntimePolicyService exploration share for LLM picks (rule 3)", (
   });
 
   it("swaps the model's last pick for the selector's discovery pick when none qualifies", async () => {
-    const { service, selector } = serviceFor([track("first"), track("second")], {
-      selectorPicks: [
-        { id: "ranked", artistId: "x", reasonCode: "taste_match" },
-        { id: "discover", artistId: "verified-new", reasonCode: "discovery_pick" },
-      ],
-    });
+    const { service, selector } = serviceFor(
+      [track("first", { moods: ["Calm"] }), track("second", { moods: ["Calm"] })],
+      {
+        selectorPicks: [
+          { id: "ranked", artistId: "x", reasonCode: "taste_match" },
+          { id: "discover", artistId: "verified-new", reasonCode: "discovery_pick" },
+        ],
+      },
+    );
     const input = baseInput({
       recentTrackIds: ["s-1"],
       preferences: { genres: ["House"], mood: "Calm", sessionIntent: "focus", energy: "low" },
@@ -1099,6 +1103,64 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
     expect(result.requestCoverage).toEqual({
       picks: 2,
       gaps: [{ filter: "bpm", matched: 1 }],
+      // A mood, energy or tempo request constrains the catalog: two picks of a longer target, no padding allowed.
+      shortfallReason: "catalog_short",
+    });
+  });
+
+  describe("soft-gated request (mood, energy or tempo with no genre)", () => {
+    const zen = { request: { genres: [], moods: [], energy: "low" as const, bpm: null } };
+    const measured = (energyBand: string) => ({ energyBand, featureSources: { energy: "measured" } });
+
+    it("drops a model pick that contradicts the energy and keeps the one that fits", async () => {
+      const { service } = serviceFor([track("calm"), track("loud")], {
+        audioFeatures: { calm: measured("low"), loud: measured("high") },
+      });
+      const result = await service.apply(baseInput({ preferences: zen }), {
+        status: "approved",
+        picks: [pick("calm"), pick("loud")],
+      });
+
+      expect(ids(result)).toEqual(["calm"]);
+      expect(result.policy?.dropped).toMatchObject({ offRequest: 1 });
+      expect(result.picks?.map((entry) => entry.requestMatch)).toEqual([true]);
+      expect(result.requestCoverage).toMatchObject({ picks: 1, shortfallReason: "catalog_short" });
+    });
+
+    it("keeps a contradicting pick, marked as outside the request, when similar sounds are allowed", async () => {
+      const { service } = serviceFor([track("calm"), track("loud")], {
+        audioFeatures: { calm: measured("low"), loud: measured("high") },
+      });
+      const result = await service.apply(baseInput({ preferences: { ...zen, fillSimilar: true } }), {
+        status: "approved",
+        picks: [pick("calm"), pick("loud")],
+      });
+
+      expect(ids(result)).toEqual(["calm", "loud"]);
+      expect(result.picks?.map((entry) => entry.requestMatch)).toEqual([true, false]);
+    });
+
+    it("judges energy by the descriptor band when the audio features only inferred it", async () => {
+      const { service } = serviceFor(
+        [
+          { ...track("inferred-high-but-calm"), descriptorEnergyBand: "low" },
+          { ...track("inferred-high-and-loud"), descriptorEnergyBand: "high" },
+        ],
+        {
+          audioFeatures: {
+            "inferred-high-but-calm": { energyBand: "high", featureSources: { energy: "inferred" } },
+            "inferred-high-and-loud": { energyBand: "high", featureSources: { energy: "inferred" } },
+          },
+        },
+      );
+      const result = await service.apply(baseInput({ preferences: zen }), {
+        status: "approved",
+        picks: [pick("inferred-high-but-calm"), pick("inferred-high-and-loud")],
+      });
+
+      expect(ids(result)).toEqual(["inferred-high-but-calm"]);
+      expect(result.requestCoverage).toMatchObject({ picks: 1 });
+      expect(result.requestCoverage?.gaps).toEqual([]);
     });
   });
 
@@ -1134,7 +1196,10 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
     const { service, audioFeatures } = serviceFor([track("a")], { audioFeatures: {} });
     audioFeatures!.getOrCreate.mockRejectedValueOnce(new Error("boom"));
     const result = await service.apply(
-      baseInput({ preferences: { request: { genres: [], moods: [], energy: "high", bpm: null } } }),
+      baseInput({
+        // Similar sounds allowed: an unknown energy is no match, and a mood, energy or tempo request would drop it.
+        preferences: { request: { genres: [], moods: [], energy: "high", bpm: null }, fillSimilar: true },
+      }),
       { status: "approved", picks: [pick("a")] },
     );
 

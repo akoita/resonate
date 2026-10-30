@@ -106,6 +106,8 @@ export interface DiscoveryCandidate {
    * for session genre requests, next to the free-text release genre.
    */
   descriptorFamilies?: readonly string[] | null;
+  /** The stored descriptor's energy band: the fallback when audio features only inferred energy. */
+  descriptorEnergyBand?: string | null;
   /** Which taste queries surfaced this candidate (caller-provided). */
   matchedQueries?: string[];
   /**

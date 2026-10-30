@@ -39,6 +39,8 @@ import {
   requestMatchesFor,
   requestScopeFor,
   requestTierOf,
+  constrainsCatalog,
+  effectiveEnergyBand,
   tierMatchesRequest,
   withoutSeedEvidence,
   type AgentRequestCapRelaxed,
@@ -450,7 +452,7 @@ export class AgentRuntimePolicyService {
     const targetCount = getAgentTrackLimit();
     const notes: AgentRequestCoverageNotes = {
       ...(topUp.capRelaxed ? { capRelaxed: topUp.capRelaxed } : {}),
-      ...(scope?.gated && !scope.fillSimilar && surviving.length < targetCount
+      ...(constrainsCatalog(scope) && !scope?.fillSimilar && surviving.length < targetCount
         ? { shortfallReason: "catalog_short" as const }
         : {}),
     };
@@ -914,9 +916,11 @@ function coverageFactsFor(
   track:
     | {
         release?: { genre?: string | null; moods?: string[] | null } | null;
-        descriptor?: { families?: string[] | null } | null;
+        descriptor?: { families?: string[] | null; energyBand?: string | null } | null;
         /** A ranking candidate (`loadTrackCandidates`) carries the families directly. */
         descriptorFamilies?: readonly string[] | null;
+        /** ... and the descriptor's energy band. */
+        descriptorEnergyBand?: string | null;
       }
     | undefined,
   features: AgentAudioFeatures | undefined,
@@ -925,7 +929,7 @@ function coverageFactsFor(
     genre: track?.release?.genre ?? null,
     descriptorFamilies: track?.descriptor?.families ?? track?.descriptorFamilies ?? [],
     moods: track?.release?.moods ?? [],
-    energyBand: features?.energyBand,
+    energyBand: effectiveEnergyBand(features, track?.descriptor?.energyBand ?? track?.descriptorEnergyBand),
     tempoBpm: features?.tempoBpm,
     tempoMeasured: features?.featureSources?.tempo === "measured",
   };

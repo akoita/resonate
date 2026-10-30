@@ -70,7 +70,7 @@ import { useDjUpNext } from "./useDjUpNext";
 import { pickNotesFromLicenses, pickNotesFromResponse } from "../../lib/agentUpNext";
 import AgentSessionPrompt from "./AgentSessionPrompt";
 import { SESSION_PRESETS, newArtistsPresetFor, soundPresetsForFamilies, type SessionPreset } from "./sessionPresetData";
-import { buildPickPreferences, buildSessionPreferences, toIntentPreferences } from "./sessionPreferences";
+import { buildPickPreferences, buildSessionPreferences, offersFillSimilarFor, toIntentPreferences } from "./sessionPreferences";
 import AgentSetupWizard from "./AgentSetupWizard";
 import AgentCommandBar from "./AgentCommandBar";
 import AgentEventsDebug from "./AgentEventsDebug";
@@ -204,10 +204,9 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
 
     myMixPreferencesRef.current = myMixPreferences;
 
-    // "Fill with similar sounds" only does something when the request names a genre, an
-    // artist or a seed (#2316), so the switch is offered only then: no dead control.
-    const offersFillSimilar =
-        !myMixPreferences && ((request?.genres.length ?? 0) > 0 || artists.length > 0 || seed !== null);
+    // "Fill with similar sounds" only does something when the request constrains the
+    // catalog (#2316), so the switch is offered only then: no dead control.
+    const offersFillSimilar = offersFillSimilarFor({ myMix: Boolean(myMixPreferences), request, artists, seed });
 
     // The "Right now" starter stands for the session only while nothing else steers it:
     // any starter, sentence, chip, seed or My Mix replaces it.

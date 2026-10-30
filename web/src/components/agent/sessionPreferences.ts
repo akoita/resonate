@@ -3,6 +3,26 @@ import type { AgentDiscoveryLevel, AgentNextPreferences, AgentSessionRequest } f
 import type { DjSeed } from "../../lib/djSeed";
 import type { SessionPreset } from "./sessionPresetData";
 
+/**
+ * Whether "Fill with similar sounds" is offered (#2316): only when the request
+ * constrains what the DJ plays, so the switch is never a dead control. A genre,
+ * an artist or a seed does; so does a mood, energy or tempo, which leaves out
+ * tracks that do not fit. My Mix has its own lanes and never offers it.
+ */
+export function offersFillSimilarFor({
+    myMix,
+    request,
+    artists,
+    seed,
+}: {
+    myMix: boolean;
+    request: AgentSessionRequest | null | undefined;
+    artists: readonly string[];
+    seed: DjSeed | null;
+}): boolean {
+    return !myMix && (hasFilters(request) || artists.length > 0 || seed !== null);
+}
+
 export function toIntentPreferences(preset: SessionPreset): AgentNextPreferences {
     return {
         ...preset.preferences,

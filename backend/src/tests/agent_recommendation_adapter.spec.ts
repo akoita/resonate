@@ -149,11 +149,13 @@ describe("agent recommendation adapters", () => {
       // The session described in words feeds catalog-wide semantic retrieval (#2088).
       semanticQuery: "Mood: Focus. Energy: medium.",
       // A mood and energy are a request (#2316), but name no genre or seed: the
-      // taste pool keeps searching (not gated) and nothing is left out.
+      // taste pool keeps searching (not genre-gated), yet what plays must fit the
+      // mood and energy (soft-gated).
       requestScope: {
         request: { genres: [], moods: ["Focus"], energy: "medium", bpm: null },
         seeded: false,
         gated: false,
+        softGated: true,
         fillSimilar: false,
       },
     });
