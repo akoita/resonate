@@ -1093,14 +1093,14 @@
       "adherence": 0.3333333333333333
     },
     "typed-calm-to-read@conflicting|default|1": {
-      "contradictions": 5,
-      "silentLeaks": 7,
-      "adherence": 0.4166666666666667
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
     },
     "typed-calm-to-read@conflicting|default|2": {
-      "contradictions": 4,
-      "silentLeaks": 10,
-      "adherence": 0.16666666666666666
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
     },
     "typed-rap-francais@conflicting|default|1": {
       "contradictions": 0,
@@ -1153,13 +1153,13 @@
       "adherence": 0
     },
     "typed-classique-calme@conflicting|default|1": {
-      "contradictions": 12,
-      "silentLeaks": 12,
-      "adherence": 0
+      "contradictions": 0,
+      "silentLeaks": 2,
+      "adherence": 0.7142857142857143
     },
     "typed-classique-calme@conflicting|default|2": {
-      "contradictions": 12,
-      "silentLeaks": 12,
+      "contradictions": 0,
+      "silentLeaks": 0,
       "adherence": 0
     },
     "typed-dnb-high-energy@conflicting|default|1": {
@@ -1173,8 +1173,8 @@
       "adherence": 0
     },
     "typed-rnb-slow-jams@conflicting|default|1": {
-      "contradictions": 1,
-      "silentLeaks": 3,
+      "contradictions": 0,
+      "silentLeaks": 2,
       "adherence": 0.4
     },
     "typed-rnb-slow-jams@conflicting|default|2": {
@@ -1210,16 +1210,16 @@
     "typed-workout@conflicting|default|2": {
       "contradictions": 0,
       "silentLeaks": 0,
-      "adherence": 0.5833333333333334
+      "adherence": 0.6666666666666666
     },
     "typed-jazzy-dinner@conflicting|default|1": {
-      "contradictions": 12,
-      "silentLeaks": 12,
-      "adherence": 0
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.6666666666666666
     },
     "typed-jazzy-dinner@conflicting|default|2": {
-      "contradictions": 12,
-      "silentLeaks": 12,
+      "contradictions": 0,
+      "silentLeaks": 0,
       "adherence": 0
     },
     "typed-dancehall@conflicting|default|1": {
@@ -1234,13 +1234,13 @@
     },
     "typed-sad-slow@conflicting|default|1": {
       "contradictions": 0,
-      "silentLeaks": 0,
-      "adherence": 0.08333333333333333
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
     },
     "typed-sad-slow@conflicting|default|2": {
       "contradictions": 0,
-      "silentLeaks": 0,
-      "adherence": 0
+      "silentLeaks": 1,
+      "adherence": 0.75
     },
     "typed-reggaeton-party@conflicting|default|1": {
       "contradictions": 0,
@@ -1263,13 +1263,13 @@
       "adherence": 0
     },
     "typed-ambiant-typo@conflicting|default|1": {
-      "contradictions": 12,
-      "silentLeaks": 12,
-      "adherence": 0
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.6666666666666666
     },
     "typed-ambiant-typo@conflicting|default|2": {
-      "contradictions": 12,
-      "silentLeaks": 12,
+      "contradictions": 0,
+      "silentLeaks": 0,
       "adherence": 0
     },
     "typed-electro-dark-130@conflicting|default|1": {
@@ -2503,14 +2503,14 @@
       "adherence": 0.3333333333333333
     },
     "typed-calm-to-read@conflicting|hybrid_rrf_v1|1": {
-      "contradictions": 5,
-      "silentLeaks": 7,
-      "adherence": 0.4166666666666667
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
     },
     "typed-calm-to-read@conflicting|hybrid_rrf_v1|2": {
-      "contradictions": 4,
-      "silentLeaks": 10,
-      "adherence": 0.16666666666666666
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
     },
     "typed-rap-francais@conflicting|hybrid_rrf_v1|1": {
       "contradictions": 0,
@@ -2563,13 +2563,13 @@
       "adherence": 0
     },
     "typed-classique-calme@conflicting|hybrid_rrf_v1|1": {
-      "contradictions": 12,
-      "silentLeaks": 12,
-      "adherence": 0
+      "contradictions": 0,
+      "silentLeaks": 2,
+      "adherence": 0.7142857142857143
     },
     "typed-classique-calme@conflicting|hybrid_rrf_v1|2": {
-      "contradictions": 12,
-      "silentLeaks": 12,
+      "contradictions": 0,
+      "silentLeaks": 0,
       "adherence": 0
     },
     "typed-dnb-high-energy@conflicting|hybrid_rrf_v1|1": {
@@ -2583,8 +2583,8 @@
       "adherence": 0
     },
     "typed-rnb-slow-jams@conflicting|hybrid_rrf_v1|1": {
-      "contradictions": 1,
-      "silentLeaks": 3,
+      "contradictions": 0,
+      "silentLeaks": 2,
       "adherence": 0.4
     },
     "typed-rnb-slow-jams@conflicting|hybrid_rrf_v1|2": {
@@ -2620,16 +2620,16 @@
     "typed-workout@conflicting|hybrid_rrf_v1|2": {
       "contradictions": 0,
       "silentLeaks": 0,
-      "adherence": 0.5833333333333334
+      "adherence": 0.6666666666666666
     },
     "typed-jazzy-dinner@conflicting|hybrid_rrf_v1|1": {
-      "contradictions": 12,
-      "silentLeaks": 12,
-      "adherence": 0
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.6666666666666666
     },
     "typed-jazzy-dinner@conflicting|hybrid_rrf_v1|2": {
-      "contradictions": 12,
-      "silentLeaks": 12,
+      "contradictions": 0,
+      "silentLeaks": 0,
       "adherence": 0
     },
     "typed-dancehall@conflicting|hybrid_rrf_v1|1": {
@@ -2644,13 +2644,13 @@
     },
     "typed-sad-slow@conflicting|hybrid_rrf_v1|1": {
       "contradictions": 0,
-      "silentLeaks": 0,
-      "adherence": 0.08333333333333333
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
     },
     "typed-sad-slow@conflicting|hybrid_rrf_v1|2": {
       "contradictions": 0,
-      "silentLeaks": 0,
-      "adherence": 0
+      "silentLeaks": 1,
+      "adherence": 0.75
     },
     "typed-reggaeton-party@conflicting|hybrid_rrf_v1|1": {
       "contradictions": 0,
@@ -2673,13 +2673,13 @@
       "adherence": 0
     },
     "typed-ambiant-typo@conflicting|hybrid_rrf_v1|1": {
-      "contradictions": 12,
-      "silentLeaks": 12,
-      "adherence": 0
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.6666666666666666
     },
     "typed-ambiant-typo@conflicting|hybrid_rrf_v1|2": {
-      "contradictions": 12,
-      "silentLeaks": 12,
+      "contradictions": 0,
+      "silentLeaks": 0,
       "adherence": 0
     },
     "typed-electro-dark-130@conflicting|hybrid_rrf_v1|1": {
