@@ -1,0 +1,4236 @@
+{
+  "schemaVersion": "dj-llm-guard-baseline/v1",
+  "note": "What the LLM-path guard does today, failures included. A change may lower these numbers, never raise them; an improvement regenerates this file in the same PR (UPDATE_DJ_FILTER_BASELINE=1 npm run eval:dj-filters).",
+  "entries": {
+    "moment-focus@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-focus@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-focus@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-focus@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-focus@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-focus@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-focus@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-focus@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-focus@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-focus@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-focus@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-focus@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-focus@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-focus@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-focus@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-hype@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "moment-hype@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "moment-hype@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "moment-hype@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-hype@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-hype@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "moment-hype@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "moment-hype@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-hype@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-hype@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-hype@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-hype@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-hype@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-hype@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-hype@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-chill@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-chill@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-chill@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-chill@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-chill@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-chill@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-chill@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-chill@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-chill@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-chill@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-chill@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-chill@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-chill@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-chill@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-chill@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-dark@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-dark@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-dark@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-dark@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-dark@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-dark@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-dark@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-dark@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-dark@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-dark@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-dark@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-dark@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-dark@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-dark@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-dark@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-zen@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-zen@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-zen@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-zen@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-zen@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-zen@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 8
+    },
+    "moment-zen@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 8
+    },
+    "moment-zen@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-zen@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-zen@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-zen@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-zen@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 5
+    },
+    "moment-zen@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-zen@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-zen@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-club@fresh|adversarial|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "moment-club@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-club@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-club@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-club@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-club@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "moment-club@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-club@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-club@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-club@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-club@aligned|adversarial|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "moment-club@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-club@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-club@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-club@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-late-night@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-late-night@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-late-night@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-late-night@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-late-night@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-late-night@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "moment-late-night@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "moment-late-night@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-late-night@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-late-night@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-late-night@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-late-night@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "moment-late-night@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "moment-late-night@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-late-night@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-warm@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 9
+    },
+    "moment-warm@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 10
+    },
+    "moment-warm@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-warm@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-warm@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-warm@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-warm@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-warm@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "moment-warm@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-warm@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-warm@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-warm@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "moment-warm@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "moment-warm@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "moment-warm@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-hip-hop@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-hip-hop@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-hip-hop@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-hip-hop@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-hip-hop@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-hip-hop@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-hip-hop@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rnb@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rnb@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rnb@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rnb@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rnb@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-rnb@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rnb@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-pop@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-pop@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-pop@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-pop@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-pop@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-pop@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-pop@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-afrobeats@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-afrobeats@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-afrobeats@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-afrobeats@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-afrobeats@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-afrobeats@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-afrobeats@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-reggae@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-reggae@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-reggae@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-reggae@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-reggae@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-reggae@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-reggae@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-latin@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-latin@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-latin@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-latin@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-latin@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-latin@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-latin@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-world@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-world@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-world@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-world@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-world@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-world@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-world@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-electronic@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-electronic@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-electronic@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-electronic@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-electronic@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-electronic@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-electronic@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-jazz@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-jazz@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-jazz@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-jazz@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-jazz@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-jazz@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-jazz@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rock@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rock@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rock@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rock@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rock@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "sound-rock@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-rock@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-ambient@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@fresh|taste|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-ambient@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-ambient@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-ambient@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-ambient@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 2
+    },
+    "sound-ambient@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-ambient@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-classical@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-classical@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-classical@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-classical@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-classical@aligned|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@aligned|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@aligned|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "sound-classical@aligned|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "sound-classical@aligned|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-low@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "single-energy-low@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "single-energy-low@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-low@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-low@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-low@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-low@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-low@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-low@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-low@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-medium@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "single-energy-medium@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "single-energy-medium@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-medium@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 9,
+      "wronglyDropped": 0,
+      "finalContradictions": 9,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-medium@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 9,
+      "wronglyDropped": 0,
+      "finalContradictions": 9,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-medium@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "single-energy-medium@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "single-energy-medium@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-medium@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 9,
+      "wronglyDropped": 0,
+      "finalContradictions": 9,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-medium@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 9,
+      "wronglyDropped": 0,
+      "finalContradictions": 9,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-high@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-high@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-high@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-high@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-high@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-high@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-high@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-high@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-energy-high@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-energy-high@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-70-90@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-70-90@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-70-90@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 5,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-70-90@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-70-90@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-70-90@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-70-90@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-70-90@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 5,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-70-90@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-70-90@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-95-115@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-95-115@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-95-115@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 8,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-95-115@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-95-115@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-95-115@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-95-115@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-95-115@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 8,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-95-115@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-95-115@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-118-128@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-118-128@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-118-128@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 5,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-118-128@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-118-128@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-118-128@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-118-128@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-118-128@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 5,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-118-128@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-118-128@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-135-175@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-135-175@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-135-175@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-135-175@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-135-175@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-135-175@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-135-175@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-135-175@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-tempo-135-175@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-tempo-135-175@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-off@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-off@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-off@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-off@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-off@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-off@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-off@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-off@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-off@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-off@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-on@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-on@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-on@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-on@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-on@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-on@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-on@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-on@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "single-hip-hop-explicit-on@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "single-hip-hop-explicit-on@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-afrobeat-110-chill@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-afrobeat-110-chill@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-afrobeat-110-chill@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-afrobeat-110-chill@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-afrobeat-110-chill@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-afrobeat-110-chill@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-afrobeat-110-chill@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-afrobeat-110-chill@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-afrobeat-110-chill@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-afrobeat-110-chill@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-low-energy@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-hip-hop-low-energy@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-hip-hop-low-energy@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-hip-hop-low-energy@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-low-energy@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-low-energy@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-hip-hop-low-energy@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-hip-hop-low-energy@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-hip-hop-low-energy@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-low-energy@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-electronic-124@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-electronic-124@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-electronic-124@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-electronic-124@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-electronic-124@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-electronic-124@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-electronic-124@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-electronic-124@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-electronic-124@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-electronic-124@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-jazz-late-night@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 4
+    },
+    "combo-jazz-late-night@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 4
+    },
+    "combo-jazz-late-night@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 4
+    },
+    "combo-jazz-late-night@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-jazz-late-night@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-jazz-late-night@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 4
+    },
+    "combo-jazz-late-night@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 4
+    },
+    "combo-jazz-late-night@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 4
+    },
+    "combo-jazz-late-night@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-jazz-late-night@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rock-high-energy@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rock-high-energy@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rock-high-energy@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rock-high-energy@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rock-high-energy@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rock-high-energy@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rock-high-energy@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rock-high-energy@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rock-high-energy@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rock-high-energy@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-ambient-focus@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "combo-ambient-focus@fresh|taste|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "combo-ambient-focus@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "combo-ambient-focus@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-ambient-focus@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-ambient-focus@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "combo-ambient-focus@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "combo-ambient-focus@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "combo-ambient-focus@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-ambient-focus@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-pop-warm@fresh|adversarial|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "combo-pop-warm@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "combo-pop-warm@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "combo-pop-warm@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-pop-warm@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-pop-warm@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "combo-pop-warm@conflicting|taste|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "combo-pop-warm@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "combo-pop-warm@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-pop-warm@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-reggae-70-90@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-reggae-70-90@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-reggae-70-90@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-reggae-70-90@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-reggae-70-90@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-reggae-70-90@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-reggae-70-90@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-reggae-70-90@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-reggae-70-90@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-reggae-70-90@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-dark-high-140@fresh|adversarial|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-dark-high-140@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "combo-dark-high-140@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-dark-high-140@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-dark-high-140@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-dark-high-140@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-dark-high-140@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "combo-dark-high-140@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-dark-high-140@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-dark-high-140@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-latin-high-energy@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-latin-high-energy@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-latin-high-energy@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-latin-high-energy@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-latin-high-energy@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-latin-high-energy@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-latin-high-energy@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-latin-high-energy@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 3
+    },
+    "combo-latin-high-energy@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-latin-high-energy@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-classical-focus@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-classical-focus@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-classical-focus@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-classical-focus@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-classical-focus@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-classical-focus@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-classical-focus@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-classical-focus@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "combo-classical-focus@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-classical-focus@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rnb-late-night@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rnb-late-night@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rnb-late-night@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rnb-late-night@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rnb-late-night@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rnb-late-night@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rnb-late-night@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rnb-late-night@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "combo-rnb-late-night@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-rnb-late-night@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-world-relaxed@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 6
+    },
+    "combo-world-relaxed@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 6
+    },
+    "combo-world-relaxed@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 6
+    },
+    "combo-world-relaxed@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-world-relaxed@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-world-relaxed@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 6
+    },
+    "combo-world-relaxed@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 6
+    },
+    "combo-world-relaxed@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 6
+    },
+    "combo-world-relaxed@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-world-relaxed@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-house-club-126@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-house-club-126@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-house-club-126@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-house-club-126@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-house-club-126@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-house-club-126@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-house-club-126@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-house-club-126@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "combo-house-club-126@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-house-club-126@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|taste|normal": {
+      "survivingModelContradictions": 1,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 1
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-zen-relaxed@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 8
+    },
+    "typed-zen-relaxed@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 8
+    },
+    "typed-zen-relaxed@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "typed-zen-relaxed@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-zen-relaxed@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-calm-to-read@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-calm-to-read@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-calm-to-read@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-calm-to-read@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-calm-to-read@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-rap-francais@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-rap-francais@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-rap-francais@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-rap-francais@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-rap-francais@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-afrobeats-chill@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "typed-afrobeats-chill@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "typed-afrobeats-chill@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "typed-afrobeats-chill@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-afrobeats-chill@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-lofi-study@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-lofi-study@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-lofi-study@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-lofi-study@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-lofi-study@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-hiphop@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-hiphop@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-hiphop@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-hiphop@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-hiphop@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-techno-128@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-techno-128@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-techno-128@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 5,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-techno-128@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-techno-128@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-classique-calme@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-classique-calme@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-classique-calme@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-classique-calme@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-classique-calme@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-dnb-high-energy@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-dnb-high-energy@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-dnb-high-energy@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 6,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-dnb-high-energy@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-dnb-high-energy@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-rnb-slow-jams@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-rnb-slow-jams@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-rnb-slow-jams@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-rnb-slow-jams@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-rnb-slow-jams@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-trap@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-trap@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-trap@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-trap@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-trap@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-chill-vibes@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-chill-vibes@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 2
+    },
+    "typed-chill-vibes@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-chill-vibes@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-chill-vibes@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-workout@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-workout@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-workout@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-workout@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-workout@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-jazzy-dinner@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-jazzy-dinner@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-jazzy-dinner@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-jazzy-dinner@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-jazzy-dinner@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-dancehall@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "typed-dancehall@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "typed-dancehall@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 3
+    },
+    "typed-dancehall@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-dancehall@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-sad-slow@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-sad-slow@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-sad-slow@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-sad-slow@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-sad-slow@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-reggaeton-party@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-reggaeton-party@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-reggaeton-party@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 1
+    },
+    "typed-reggaeton-party@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-reggaeton-party@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-metal@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-metal@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-metal@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-metal@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-metal@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-ambiant-typo@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-ambiant-typo@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-ambiant-typo@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 2,
+      "finalSilentLeaks": 3
+    },
+    "typed-ambiant-typo@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-ambiant-typo@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-electro-dark-130@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-electro-dark-130@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-electro-dark-130@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-electro-dark-130@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-electro-dark-130@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-focus-coding@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-focus-coding@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-focus-coding@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 12,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "typed-focus-coding@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-focus-coding@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-zen-fresh@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "typed-zen-fresh@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 7
+    },
+    "typed-zen-fresh@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "typed-zen-fresh@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "typed-zen-fresh@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-like-tavi-lindqvist@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 10,
+      "wronglyDropped": 0,
+      "finalContradictions": 10,
+      "finalSilentLeaks": 10
+    },
+    "artist-like-tavi-lindqvist@conflicting|taste|normal": {
+      "survivingModelContradictions": 6,
+      "wronglyDropped": 0,
+      "finalContradictions": 6,
+      "finalSilentLeaks": 6
+    },
+    "artist-like-tavi-lindqvist@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "artist-like-tavi-lindqvist@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-like-tavi-lindqvist@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-more-lowercase@fresh|adversarial|normal": {
+      "survivingModelContradictions": 10,
+      "wronglyDropped": 0,
+      "finalContradictions": 10,
+      "finalSilentLeaks": 10
+    },
+    "artist-more-lowercase@fresh|taste|normal": {
+      "survivingModelContradictions": 9,
+      "wronglyDropped": 0,
+      "finalContradictions": 9,
+      "finalSilentLeaks": 9
+    },
+    "artist-more-lowercase@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "artist-more-lowercase@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-more-lowercase@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-more-lowercase@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 10,
+      "wronglyDropped": 0,
+      "finalContradictions": 10,
+      "finalSilentLeaks": 10
+    },
+    "artist-more-lowercase@conflicting|taste|normal": {
+      "survivingModelContradictions": 6,
+      "wronglyDropped": 0,
+      "finalContradictions": 6,
+      "finalSilentLeaks": 6
+    },
+    "artist-more-lowercase@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "artist-more-lowercase@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-more-lowercase@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-typo-quilfeather@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 10,
+      "wronglyDropped": 0,
+      "finalContradictions": 10,
+      "finalSilentLeaks": 10
+    },
+    "artist-typo-quilfeather@conflicting|taste|normal": {
+      "survivingModelContradictions": 4,
+      "wronglyDropped": 0,
+      "finalContradictions": 4,
+      "finalSilentLeaks": 4
+    },
+    "artist-typo-quilfeather@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "artist-typo-quilfeather@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "artist-typo-quilfeather@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-country@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-country@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-country@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-country@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-country@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-country@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-country@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-country@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-country@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-country@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-classical-high-170@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "unmet-classical-high-170@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 3,
+      "finalSilentLeaks": 3
+    },
+    "unmet-classical-high-170@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-classical-high-170@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-classical-high-170@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-zen-drill@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "unmet-zen-drill@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 1,
+      "finalSilentLeaks": 2
+    },
+    "unmet-zen-drill@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "unmet-zen-drill@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "unmet-zen-drill@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "discovery-new-hip-hop@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "discovery-new-hip-hop@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "discovery-new-hip-hop@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 2,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "discovery-new-hip-hop@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "discovery-new-hip-hop@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "discovery-familiar-zen@conflicting|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 8
+    },
+    "discovery-familiar-zen@conflicting|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 1,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 8
+    },
+    "discovery-familiar-zen@conflicting|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 4,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 4
+    },
+    "discovery-familiar-zen@conflicting|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "discovery-familiar-zen@conflicting|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "discovery-new-jazz@fresh|adversarial|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "discovery-new-jazz@fresh|taste|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 0,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "discovery-new-jazz@fresh|faithful|normal": {
+      "survivingModelContradictions": 0,
+      "wronglyDropped": 3,
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
+    },
+    "discovery-new-jazz@fresh|adversarial|failOpenLookup": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    },
+    "discovery-new-jazz@fresh|adversarial|failOpenNoRanking": {
+      "survivingModelContradictions": 12,
+      "wronglyDropped": 0,
+      "finalContradictions": 12,
+      "finalSilentLeaks": 12
+    }
+  }
+}

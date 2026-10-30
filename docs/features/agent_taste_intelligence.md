@@ -1150,8 +1150,8 @@ The recall golden set did not regress.
   "Exact-first genre matching").
 - A medium-energy request accepts tracks whose energy defaulted to medium
   because nothing was measured.
-- The LLM curation path is guarded by the same tiers, but its own picks are not
-  replayed offline yet (#2454).
+- The LLM curation path's guard is now measured offline (#2454, see "The LLM
+  path's guard enforces explicit and is measured").
 
 ## Everyday words, French and typos in the session sentence (#2452)
 
@@ -1257,6 +1257,31 @@ Still graded as contradictions, but genuinely ambiguous labels:
 
 - "Indie Pop" for Rock & Indie (it matches the requested word "indie");
 - "Lo-fi Hip Hop" and "Downtempo" for Ambient & Lo-fi.
+
+## The LLM path's guard enforces explicit and is measured (#2454)
+
+Vision-neutral quality (ADR-BM-6). Stage C of `npm run eval:dj-filters`
+replays simulated model replies through `AgentRuntimePolicyService`. There are
+three models: adversarial, taste-following and faithful, plus the guard's two
+fail-open paths. It found that the guard never checked explicit content.
+
+The policy context now loads `Track.explicit`, and a model pick that is
+explicit is dropped when the listener has explicit off. The drop is counted in
+`policy.dropped.explicit`. The model's tools already hide explicit tracks; the
+guard now enforces it if a model names one anyway.
+
+| Adversarial model | Before | After |
+| --- | ---: | ---: |
+| Surviving contradicting picks | 111 | 47 |
+| Final contradicting picks | 158 | 94 |
+
+The faithful model loses no more picks than before.
+
+Still open:
+
+- #2462: the guard fails open. A failed lookup passes every model pick
+  unchecked.
+- #2463: model picks for artist-only or seed-only requests are not verified.
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 

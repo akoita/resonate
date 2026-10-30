@@ -210,6 +210,8 @@ export class DiscoveryPolicyContextService {
         title: true,
         artist: true,
         aiDisclosureLevel: true,
+        // The guard drops an explicit model pick when the listener has explicit off (#2454).
+        explicit: true,
         // Stored descriptor families (#2240): a second source for genre requests,
         // so an LLM pick is judged against the request like a ranked candidate.
         descriptor: { select: { families: true, energyBand: true } },
@@ -239,6 +241,7 @@ export class DiscoveryPolicyContextService {
             artist: track.artist,
             artistId: track.release.artistId,
             aiDisclosureLevel: track.aiDisclosureLevel,
+            explicit: track.explicit,
             descriptorFamilies: track.descriptor?.families ?? [],
             descriptorEnergyBand: track.descriptor?.energyBand ?? null,
             release: {

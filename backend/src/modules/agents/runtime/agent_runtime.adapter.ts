@@ -116,7 +116,7 @@ export interface AgentRuntimeResult {
   picks?: LlmTrackPick[];
   /** Runtime policy step accounting (rules 1 to 4), when it ran. */
   policy?: {
-    dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number; offRequest?: number };
+    dropped: { hidden: number; aiGenerated: number; diversity: number; unknown: number; offRequest?: number; explicit?: number };
     /** Rule 3; `injected` when the selector's discovery pick replaced the last model pick. */
     exploration?: { reserved: number; served: number; injected: boolean };
     /** Picks the selector added so the page reaches the selection target. */
