@@ -126,6 +126,8 @@ describe("Right now (integration)", () => {
     const executor = {
       run: jest.fn(async () => ({ status: "no_tracks", tracks: [], shortfall: 0 })),
       runWithMyMix: jest.fn(async () => ({ status: "no_tracks", tracks: [], shortfall: 0 })),
+      // A seed-only session (a named artist, a seed track) is served by the selector (#2463).
+      runDeterministic: jest.fn(async () => ({ status: "no_tracks", tracks: [], shortfall: 0 })),
     };
     const service = new AgentRuntimeService(executor as any, { enabled: false, required: false, run: jest.fn() } as any);
     return {
@@ -223,9 +225,11 @@ describe("Right now (integration)", () => {
     const filtered = run(OWNER, { genres: ["Ambient"], listeningContext: "evening:weekday", ...filters });
     await filtered.done;
     expect(filtered.executor.runWithMyMix).not.toHaveBeenCalled();
-    expect(filtered.executor.run).toHaveBeenCalledTimes(1);
+    // One path serves the session: the runtime, or the selector for a seed-only request (#2463).
+    const calls = [...filtered.executor.run.mock.calls, ...filtered.executor.runDeterministic.mock.calls];
+    expect(calls).toHaveLength(1);
     // The request, not the habit, decides: no request scope is created or removed by the bucket.
-    const [input] = filtered.executor.run.mock.calls[0] as unknown as [any];
+    const [input] = calls[0] as unknown as [any];
     expect(input.preferences).not.toHaveProperty("listeningContext");
   });
 
