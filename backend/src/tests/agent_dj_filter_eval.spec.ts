@@ -183,6 +183,12 @@ describe("AI DJ filter-adherence eval: grader", () => {
     expect(gradePick(intent, truth({ family: "rock", energy: "low", fits: ["Late Night"] })).verdict).toBe("contradiction");
   });
 
+  it("accepts a hybrid genre for any family it belongs to (#2453)", () => {
+    const intent = { families: ["pop" as const], explicitAllowed: false };
+    expect(gradePick(intent, truth({ family: "latin", alsoFamilies: ["pop"] })).verdict).not.toBe("contradiction");
+    expect(gradePick(intent, truth({ family: "latin" })).verdict).toBe("contradiction");
+  });
+
   it("accepts the named artist or one listed as similar, and nobody else", () => {
     const intent: Intent = { artist: "Tavi Lindqvist", explicitAllowed: false };
     expect(gradePick(intent, truth({ artist: "tavi lindqvist" })).verdict).toBe("on");

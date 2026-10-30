@@ -50,6 +50,11 @@ export interface TrackTruth {
   /** Credited artist (the same name the observed layer carries). */
   artist: string;
   family: EvalFamily;
+  /**
+   * Further families a hybrid genre genuinely belongs to ("Latin Pop" is Latin
+   * and Pop, #2453). A request for any of them is on-genre.
+   */
+  alsoFamilies?: EvalFamily[];
   energy: EvalEnergy;
   bpm: number;
   /** The moments a listener would say this track suits. */
@@ -73,6 +78,8 @@ const MEASURED_BY_BAND: Record<EvalEnergy, { energyRms: number; onsetDensity: nu
 
 type TruthSpec = {
   f: EvalFamily;
+  /** Further families of a hybrid genre (`TrackTruth.alsoFamilies`). */
+  also?: EvalFamily[];
   e: EvalEnergy;
   bpm: number;
   fits: Moment[];
@@ -104,6 +111,7 @@ function row(key: string, title: string, artist: string, t: TruthSpec, o: Observ
     truth: {
       artist,
       family: t.f,
+      ...(t.also ? { alsoFamilies: t.also } : {}),
       energy: t.e,
       bpm: t.bpm,
       fits: t.fits,
@@ -187,7 +195,7 @@ const REGGAE: EvalTrack[] = [
 const LATIN: EvalTrack[] = [
   row("lt01", "Fuego en la Plaza", "Rafael Montenegro-Ahn", { f: "latin", e: "high", bpm: 96, fits: ["Hype", "Club"], x: true }, { g: "Reggaeton", mood: ["Club"], meas: true }),
   row("lt02", "Dembow Domingo", "Rafael Montenegro-Ahn", { f: "latin", e: "high", bpm: 94, fits: ["Hype", "Club"] }, { g: "Reggaeton" }),
-  row("lt03", "Luna de Cobre", "Rafael Montenegro-Ahn", { f: "latin", e: "medium", bpm: 104, fits: ["Warm", "Late Night"] }, { g: "Latin Pop" }),
+  row("lt03", "Luna de Cobre", "Rafael Montenegro-Ahn", { f: "latin", also: ["pop"], e: "medium", bpm: 104, fits: ["Warm", "Late Night"] }, { g: "Latin Pop" }),
   row("lt04", "Salsa de la Esquina", "Itzel Barrientos", { f: "latin", e: "high", bpm: 128, fits: ["Hype", "Club", "Warm"] }, { g: "Salsa", meas: true }),
   row("lt05", "Bolero de Medianoche", "Itzel Barrientos", { f: "latin", e: "low", bpm: 72, fits: ["Late Night", "Warm", "Chill"] }, { g: "Música Latina", mood: ["Late Night"], meas: true }),
   row("lt06", "Bachata Azul", "Itzel Barrientos", { f: "latin", e: "medium", bpm: 126, fits: ["Warm"] }, { g: "Bachata" }),

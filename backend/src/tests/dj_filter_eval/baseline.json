@@ -303,9 +303,9 @@
       "adherence": 0
     },
     "sound-pop@fresh|default|1": {
-      "contradictions": 5,
-      "silentLeaks": 5,
-      "adherence": 0.7
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.7272727272727273
     },
     "sound-pop@fresh|default|2": {
       "contradictions": 3,
@@ -313,9 +313,9 @@
       "adherence": 0.3333333333333333
     },
     "sound-pop@conflicting|default|1": {
-      "contradictions": 5,
-      "silentLeaks": 5,
-      "adherence": 0.7
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.7272727272727273
     },
     "sound-pop@conflicting|default|2": {
       "contradictions": 3,
@@ -323,9 +323,9 @@
       "adherence": 0.3333333333333333
     },
     "sound-pop@aligned|default|1": {
-      "contradictions": 5,
-      "silentLeaks": 5,
-      "adherence": 0.7
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.7272727272727273
     },
     "sound-pop@aligned|default|2": {
       "contradictions": 3,
@@ -903,9 +903,9 @@
       "adherence": 0
     },
     "combo-pop-warm@fresh|default|1": {
-      "contradictions": 4,
-      "silentLeaks": 4,
-      "adherence": 0.8333333333333334
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.8571428571428571
     },
     "combo-pop-warm@fresh|default|2": {
       "contradictions": 0,
@@ -913,9 +913,9 @@
       "adherence": 0
     },
     "combo-pop-warm@conflicting|default|1": {
-      "contradictions": 4,
-      "silentLeaks": 4,
-      "adherence": 0.8333333333333334
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.8571428571428571
     },
     "combo-pop-warm@conflicting|default|2": {
       "contradictions": 0,
@@ -1713,9 +1713,9 @@
       "adherence": 0
     },
     "sound-pop@fresh|hybrid_rrf_v1|1": {
-      "contradictions": 5,
-      "silentLeaks": 5,
-      "adherence": 0.7
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.7272727272727273
     },
     "sound-pop@fresh|hybrid_rrf_v1|2": {
       "contradictions": 3,
@@ -1723,9 +1723,9 @@
       "adherence": 0.3333333333333333
     },
     "sound-pop@conflicting|hybrid_rrf_v1|1": {
-      "contradictions": 5,
-      "silentLeaks": 5,
-      "adherence": 0.7
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.7272727272727273
     },
     "sound-pop@conflicting|hybrid_rrf_v1|2": {
       "contradictions": 3,
@@ -1733,9 +1733,9 @@
       "adherence": 0.3333333333333333
     },
     "sound-pop@aligned|hybrid_rrf_v1|1": {
-      "contradictions": 5,
-      "silentLeaks": 5,
-      "adherence": 0.7
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.7272727272727273
     },
     "sound-pop@aligned|hybrid_rrf_v1|2": {
       "contradictions": 3,
@@ -2313,9 +2313,9 @@
       "adherence": 0
     },
     "combo-pop-warm@fresh|hybrid_rrf_v1|1": {
-      "contradictions": 4,
-      "silentLeaks": 4,
-      "adherence": 0.8333333333333334
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.8571428571428571
     },
     "combo-pop-warm@fresh|hybrid_rrf_v1|2": {
       "contradictions": 0,
@@ -2323,9 +2323,9 @@
       "adherence": 0
     },
     "combo-pop-warm@conflicting|hybrid_rrf_v1|1": {
-      "contradictions": 4,
-      "silentLeaks": 4,
-      "adherence": 0.8333333333333334
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.8571428571428571
     },
     "combo-pop-warm@conflicting|hybrid_rrf_v1|2": {
       "contradictions": 0,
