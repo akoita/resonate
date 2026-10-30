@@ -3903,20 +3903,20 @@
       "finalSilentLeaks": 7
     },
     "artist-like-tavi-lindqvist@conflicting|adversarial|normal": {
-      "survivingModelContradictions": 10,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 10,
-      "finalSilentLeaks": 10
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-like-tavi-lindqvist@conflicting|taste|normal": {
-      "survivingModelContradictions": 6,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 6,
-      "finalSilentLeaks": 6
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-like-tavi-lindqvist@conflicting|faithful|normal": {
       "survivingModelContradictions": 0,
-      "wronglyDropped": 1,
+      "wronglyDropped": 3,
       "finalContradictions": 0,
       "finalSilentLeaks": 0
     },
@@ -3933,20 +3933,20 @@
       "finalSilentLeaks": 0
     },
     "artist-more-lowercase@fresh|adversarial|normal": {
-      "survivingModelContradictions": 10,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 10,
-      "finalSilentLeaks": 10
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-more-lowercase@fresh|taste|normal": {
-      "survivingModelContradictions": 9,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 9,
-      "finalSilentLeaks": 9
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-more-lowercase@fresh|faithful|normal": {
       "survivingModelContradictions": 0,
-      "wronglyDropped": 1,
+      "wronglyDropped": 3,
       "finalContradictions": 0,
       "finalSilentLeaks": 0
     },
@@ -3963,20 +3963,20 @@
       "finalSilentLeaks": 0
     },
     "artist-more-lowercase@conflicting|adversarial|normal": {
-      "survivingModelContradictions": 10,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 10,
-      "finalSilentLeaks": 10
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-more-lowercase@conflicting|taste|normal": {
-      "survivingModelContradictions": 6,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 6,
-      "finalSilentLeaks": 6
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-more-lowercase@conflicting|faithful|normal": {
       "survivingModelContradictions": 0,
-      "wronglyDropped": 1,
+      "wronglyDropped": 3,
       "finalContradictions": 0,
       "finalSilentLeaks": 0
     },
@@ -3993,16 +3993,16 @@
       "finalSilentLeaks": 0
     },
     "artist-typo-quilfeather@conflicting|adversarial|normal": {
-      "survivingModelContradictions": 10,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 10,
-      "finalSilentLeaks": 10
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-typo-quilfeather@conflicting|taste|normal": {
-      "survivingModelContradictions": 4,
+      "survivingModelContradictions": 0,
       "wronglyDropped": 0,
-      "finalContradictions": 4,
-      "finalSilentLeaks": 4
+      "finalContradictions": 0,
+      "finalSilentLeaks": 0
     },
     "artist-typo-quilfeather@conflicting|faithful|normal": {
       "survivingModelContradictions": 0,

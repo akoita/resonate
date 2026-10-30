@@ -1285,7 +1285,13 @@ Still open:
   `degraded.fallback` with component `agent_runtime.policy` and reason
   `policy_unavailable`. In stage C's fail-open modes, contradicting picks fell
   from 1686 to 49.
-- #2463: model picks for artist-only or seed-only requests are not verified.
+- ~~#2463: model picks for artist-only or seed-only requests are not
+  verified~~: fixed. A request whose only constraint is a seed ("like X", a
+  seed track or a seed playlist, with no genre, mood, energy or tempo) is
+  served by the deterministic selector, as "New artists" sessions are, and
+  never by the model (`requiresSeedEvidence`). The guard refuses such a model
+  reply as `unverifiable` if one still arrives. In stage C's artist group,
+  surviving contradictions fell from 40 to 0.
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 

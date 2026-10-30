@@ -18,6 +18,7 @@ import {
   pickMatchesRequest,
   requestScopeFor,
   requestTierOf,
+  requiresSeedEvidence,
   TEMPO_CONTRADICTION_BPM,
   withoutSeedEvidence,
   type AgentRequestCoveragePick,
@@ -137,6 +138,23 @@ describe("soft-gated requests: mood, energy or tempo with no genre or seed", () 
     expect(constrainsCatalog(requestScopeFor({ sessionGenres: ["Rap"] }))).toBe(true);
     expect(constrainsCatalog(requestScopeFor({ requestText: "cooking" }))).toBe(false);
     expect(constrainsCatalog(undefined)).toBe(false);
+  });
+
+  it("requiresSeedEvidence is true only when a seed is the request's sole constraint (#2463)", () => {
+    expect(requiresSeedEvidence(requestScopeFor({ artists: ["Nadia Okoro"] }))).toBe(true);
+    expect(requiresSeedEvidence(requestScopeFor({ seedTrackId: "track-1" }))).toBe(true);
+    expect(requiresSeedEvidence(requestScopeFor({ seed: { kind: "track", id: "track-1", label: "A track" } }))).toBe(true);
+    expect(requiresSeedEvidence(requestScopeFor({ seed: { kind: "playlist", id: "pl-1", label: "A playlist" } }))).toBe(true);
+    // A genre or a soft filter next to the seed is something a model pick can be checked against.
+    expect(requiresSeedEvidence(requestScopeFor({ artists: ["Nadia Okoro"], sessionGenres: ["Rap"] }))).toBe(false);
+    expect(requiresSeedEvidence(requestScopeFor({ artists: ["Nadia Okoro"], energy: "low" }))).toBe(false);
+    expect(requiresSeedEvidence(requestScopeFor({ artists: ["Nadia Okoro"], mood: "Zen" }))).toBe(false);
+    // No seed: a sentence alone, a genre alone, nothing at all.
+    expect(requiresSeedEvidence(requestScopeFor({ requestText: "something for cooking" }))).toBe(false);
+    expect(requiresSeedEvidence(requestScopeFor({ sessionGenres: ["Rap"] }))).toBe(false);
+    expect(requiresSeedEvidence(requestScopeFor({}))).toBe(false);
+    expect(requiresSeedEvidence(undefined)).toBe(false);
+    expect(requiresSeedEvidence(null)).toBe(false);
   });
 
   it("withoutSeedEvidence turns a seed-only scope with soft filters into a soft-gated one", () => {

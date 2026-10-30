@@ -1007,6 +1007,38 @@ describe("AgentRuntimeService choke point", () => {
     expect(executor.runDeterministic).not.toHaveBeenCalled();
   });
 
+  it("serves a seed-only session from the selector and never asks the model or the worker (#2463)", async () => {
+    const deterministic = { status: "approved", tracks: [{ trackId: "d" }] };
+    const remoteClient = { enabled: true, required: true, run: jest.fn() };
+    const executor = {
+      run: jest.fn(),
+      runDeterministic: jest.fn().mockResolvedValue(deterministic),
+    };
+    const policy = { apply: jest.fn() };
+    const service = new AgentRuntimeService(executor as any, remoteClient as any, policy as any);
+    const seedOnly = baseInput({ preferences: { artists: ["Nadia Okoro"] } });
+
+    expect(await service.run(seedOnly)).toBe(deterministic);
+    expect(executor.runDeterministic).toHaveBeenCalledWith(seedOnly);
+    expect(executor.run).not.toHaveBeenCalled();
+    expect(remoteClient.run).not.toHaveBeenCalled();
+    expect(policy.apply).not.toHaveBeenCalled();
+  });
+
+  it("keeps an artist with a genre on the model path (#2463)", async () => {
+    const executor = {
+      run: jest.fn().mockResolvedValue({ status: "approved", picks: [pick("a")] }),
+      runDeterministic: jest.fn(),
+    };
+    const policy = { apply: jest.fn().mockResolvedValue({ status: "rejected" }) };
+    const service = new AgentRuntimeService(executor as any, remote, policy as any);
+    const input = baseInput({ preferences: { artists: ["Nadia Okoro"], sessionGenres: ["Soul"] } });
+
+    expect(await service.run(input)).toEqual({ status: "rejected" });
+    expect(executor.run).toHaveBeenCalledTimes(1);
+    expect(executor.runDeterministic).not.toHaveBeenCalled();
+  });
+
   it("applies it to remote worker results too", async () => {
     const remoteClient = {
       enabled: true,
@@ -1188,6 +1220,51 @@ describe("AgentRuntimePolicyService session request (#2037, #2059)", () => {
       gaps: [{ filter: "bpm", matched: 1 }],
       // A mood, energy or tempo request constrains the catalog: two picks of a longer target, no padding allowed.
       shortfallReason: "catalog_short",
+    });
+  });
+
+  describe("seed-only request (#2463)", () => {
+    const seedOnly = { artists: ["Nadia Okoro"] };
+
+    it("throws 'unverifiable' for a model reply with picks: a seed cannot be checked against a model pick", async () => {
+      const { service, policyContext } = serviceFor([track("a"), track("b")]);
+      const error = await service
+        .apply(baseInput({ preferences: seedOnly }), { status: "approved", picks: [pick("a"), pick("b")] })
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(RuntimePolicyUnavailableError);
+      expect((error as RuntimePolicyUnavailableError).policyCause).toBe("unverifiable");
+      expect(policyContext.loadTrackCandidates).not.toHaveBeenCalled();
+    });
+
+    it("also refuses a seed track and a seed playlist, but not an artist with a genre", async () => {
+      const seeds: Array<AgentRuntimeInput["preferences"]> = [
+        { seedTrackId: "t-1" },
+        { seed: { kind: "playlist", id: "pl-1", label: "Mine" } },
+      ];
+      for (const preferences of seeds) {
+        const { service } = serviceFor([track("a")]);
+        await expect(
+          service.apply(baseInput({ preferences }), { status: "approved", picks: [pick("a")] }),
+        ).rejects.toMatchObject({ policyCause: "unverifiable" });
+      }
+      const { service } = serviceFor([track("a", { genre: "Rap" })]);
+      const result = await service.apply(
+        baseInput({ preferences: { ...seedOnly, sessionGenres: ["Rap"] } }),
+        { status: "approved", picks: [pick("a")] },
+      );
+      expect(ids(result)).toEqual(["a"]);
+    });
+
+    it("still tops up an empty reply from the selector", async () => {
+      const { service } = serviceFor([track("a")], {
+        selectorPicks: [{ id: "a", artistId: "artist-a", reasonCode: "request_match" }],
+      });
+      const result = await service.apply(baseInput({ preferences: seedOnly }), {
+        status: "approved",
+        picks: [],
+        reason: "llm_no_track_selected",
+      });
+      expect(ids(result)).toEqual(["a"]);
     });
   });
 
