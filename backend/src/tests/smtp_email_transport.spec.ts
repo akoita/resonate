@@ -1,11 +1,21 @@
-import { PermanentEmailError, SmtpEmailTransport, TransientEmailError } from "../modules/email/email_transport";
+import * as structuredLogging from "../modules/shared/structured_logging";
+import {
+  LogEmailTransport,
+  PermanentEmailError,
+  SmtpEmailTransport,
+  TransientEmailError,
+  emailErrorCode,
+  isRecipientRejection,
+  verifyEmailTransportInBackground,
+} from "../modules/email/email_transport";
 
 const sendMail = jest.fn();
+const verify = jest.fn();
 const createTransport = jest.fn();
 jest.mock("nodemailer", () => ({
   createTransport: (...args: unknown[]) => {
     createTransport(...args);
-    return { sendMail: (...mailArgs: unknown[]) => sendMail(...mailArgs) };
+    return { sendMail: (...mailArgs: unknown[]) => sendMail(...mailArgs), verify: () => verify() };
   },
 }));
 
@@ -16,6 +26,7 @@ describe("SmtpEmailTransport", () => {
 
   beforeEach(() => {
     sendMail.mockReset();
+    verify.mockReset();
     createTransport.mockClear();
   });
 
@@ -92,5 +103,106 @@ describe("SmtpEmailTransport", () => {
     const error = await transport.send(MESSAGE).catch((e) => e);
     expect(error).toBeInstanceOf(TransientEmailError);
     expect(error.message).not.toContain("a@b.example");
+  });
+
+  it("keeps an auth failure on send transient with its code, so it is never blamed on the recipient", async () => {
+    sendMail.mockRejectedValue(Object.assign(new Error("535 5.7.8 Invalid credentials for a@b.example"), { code: "EAUTH", responseCode: 535 }));
+    const error = await transport.send(MESSAGE).catch((e) => e);
+    expect(error).toBeInstanceOf(TransientEmailError);
+    expect(error).not.toBeInstanceOf(PermanentEmailError);
+    expect(error.code).toBe("EAUTH");
+    expect(isRecipientRejection(error)).toBe(false);
+  });
+
+  describe("verify", () => {
+    it("resolves when the connection and login check out", async () => {
+      verify.mockResolvedValue(true);
+      await expect(transport.verify()).resolves.toBeUndefined();
+    });
+
+    it("rejects with a transient error carrying only the transport code", async () => {
+      verify.mockRejectedValue(Object.assign(new Error("Invalid login: 535 5.7.8 secret"), { code: "EAUTH", responseCode: 535 }));
+      const error = await transport.verify().catch((e) => e);
+      expect(error).toBeInstanceOf(TransientEmailError);
+      expect(error.code).toBe("EAUTH");
+      expect(error.message).not.toContain("secret");
+    });
+
+    it("falls back to a generic code when the failure has none", async () => {
+      verify.mockRejectedValue(new Error("boom"));
+      const error = await transport.verify().catch((e) => e);
+      expect(error.code).toBe("smtp_error");
+    });
+  });
+});
+
+describe("emailErrorCode", () => {
+  it("prefers a string code, else the error name, else unknown", () => {
+    expect(emailErrorCode(Object.assign(new Error("x"), { code: "EAUTH" }))).toBe("EAUTH");
+    expect(emailErrorCode(new TypeError("x"))).toBe("TypeError");
+    expect(emailErrorCode("nope")).toBe("unknown");
+    expect(emailErrorCode(null)).toBe("unknown");
+  });
+
+  it("strips anything outside a log-safe alphabet and caps the length", () => {
+    expect(emailErrorCode({ code: "a@b.example smtp://x" })).toBe("a_b.example_smtp___x");
+    expect(emailErrorCode({ code: "x".repeat(200) })).toHaveLength(64);
+  });
+});
+
+describe("isRecipientRejection", () => {
+  it("is true only for a permanent recipient refusal", () => {
+    expect(isRecipientRejection(new PermanentEmailError("rejected", "smtp_550"))).toBe(true);
+    expect(isRecipientRejection(new TransientEmailError("send failed", "EAUTH"))).toBe(false);
+    expect(isRecipientRejection(new Error("timeout"))).toBe(false);
+    expect(isRecipientRejection(undefined)).toBe(false);
+  });
+});
+
+describe("verifyEmailTransportInBackground", () => {
+  let log: jest.SpyInstance;
+
+  beforeEach(() => {
+    log = jest.spyOn(structuredLogging, "writeStructuredLog").mockImplementation(() => undefined);
+  });
+  afterEach(() => log.mockRestore());
+
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  it("logs a verified login", async () => {
+    verifyEmailTransportInBackground({ send: jest.fn(), verify: async () => undefined });
+    await flush();
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ level: "info", event: "email.transport_verified" }));
+  });
+
+  it("logs the transport code on failure and lets nothing escape", async () => {
+    const unhandled = jest.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const failing = new SmtpEmailTransport("smtp://user:secret@smtp.example.test", "Resonate <n@example.test>");
+      verify.mockRejectedValue(Object.assign(new Error("535 Invalid credentials a@b.example"), { code: "EAUTH", responseCode: 535 }));
+      expect(() => verifyEmailTransportInBackground(failing)).not.toThrow();
+      await flush();
+      await flush();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledTimes(1);
+    const entry = log.mock.calls[0][0];
+    expect(entry).toEqual(
+      expect.objectContaining({ level: "error", event: "email.transport_verify_failed", errorClass: "TransientEmailError", errorCode: "EAUTH" }),
+    );
+    const serialised = JSON.stringify(entry);
+    expect(serialised).not.toContain("a@b.example");
+    expect(serialised).not.toContain("smtp://");
+    expect(serialised).not.toContain("secret");
+  });
+
+  it("does nothing for a missing transport or one without verify", async () => {
+    verifyEmailTransportInBackground(null);
+    verifyEmailTransportInBackground(new LogEmailTransport());
+    await flush();
+    expect(log).not.toHaveBeenCalled();
   });
 });

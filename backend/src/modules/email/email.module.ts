@@ -6,7 +6,7 @@ import { EmailConfig } from "./email_config";
 import { EmailDeliveryService } from "./email_delivery.service";
 import { EmailPublicController } from "./email_public.controller";
 import { EmailSnsService } from "./email_sns.service";
-import { EMAIL_TRANSPORT, createEmailTransport } from "./email_transport";
+import { EMAIL_TRANSPORT, createEmailTransport, verifyEmailTransportInBackground } from "./email_transport";
 
 /**
  * Optional email for platform notices (#2169). The API only manages the
@@ -29,7 +29,11 @@ import { EMAIL_TRANSPORT, createEmailTransport } from "./email_transport";
     {
       provide: EMAIL_TRANSPORT,
       inject: [EmailConfig],
-      useFactory: (config: EmailConfig) => createEmailTransport(config),
+      useFactory: (config: EmailConfig) => {
+        const transport = createEmailTransport(config);
+        verifyEmailTransportInBackground(transport);
+        return transport;
+      },
     },
     ContactEmailService,
     EmailDeliveryService,

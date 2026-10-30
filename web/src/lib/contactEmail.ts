@@ -82,7 +82,7 @@ export function optOutsAfterToggle(
 export const CONTACT_EMAIL_ERROR_MESSAGES = {
   email_unavailable: "Email notices are not available right now. Notices still reach you in the app.",
   email_send_failed:
-    "We could not send the confirmation email. Check the address, then try again or use Resend.",
+    "The mail server refused that address. Check it, then try again or use Resend.",
   invalid_or_expired:
     "This confirmation link has expired or was already used. Ask for a new one in Settings.",
   invalid: "This unsubscribe link is not valid. You can change your email notices in Settings.",

@@ -25,7 +25,7 @@ import {
 } from "../modules/email/email_delivery.service";
 import { EmailSnsService } from "../modules/email/email_sns.service";
 import { signUnsubscribeToken } from "../modules/email/email_tokens";
-import { LogEmailTransport, PermanentEmailError } from "../modules/email/email_transport";
+import { LogEmailTransport, PermanentEmailError, TransientEmailError } from "../modules/email/email_transport";
 import { NoticeService } from "../modules/notifications/notice.service";
 import { EventBus } from "../modules/shared/event_bus";
 
@@ -252,9 +252,29 @@ describe("email notices integration", () => {
       await expect(contacts.resend(name("nobody"))).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it("keeps a pending row and answers 502 when the confirmation cannot be sent, then resend works", async () => {
-      transport.failWith = new Error("smtp down");
+    it("keeps a pending row and answers 502 when the mail server refuses the address, then resend works", async () => {
+      transport.failWith = new PermanentEmailError("recipient rejected", "smtp_550");
+      await expect(contacts.setAddress(U.hook, addressOf("hook"))).rejects.toMatchObject({
+        response: { code: "email_send_failed" },
+      });
       await expectRejects(contacts.setAddress(U.hook, addressOf("hook")), BadGatewayException);
+      expect(await contacts.getState(U.hook)).toMatchObject({ status: "pending", confirmationSentAt: null });
+      transport.failWith = null;
+      const state = await contacts.resend(U.hook);
+      expect(state.confirmationSentAt).not.toBeNull();
+      await contacts.remove(U.hook);
+    });
+
+    it.each([
+      ["a refused SMTP login", new TransientEmailError("send failed", "EAUTH")],
+      ["a dead connection", new TransientEmailError("send failed", "ECONNECTION")],
+      ["an unclassified error", new Error("smtp down")],
+    ])("answers 503 email_unavailable, not a bad-address error, on %s, and keeps the row pending", async (_name, failure) => {
+      transport.failWith = failure;
+      await expect(contacts.setAddress(U.hook, addressOf("hook"))).rejects.toMatchObject({
+        response: { code: "email_unavailable" },
+      });
+      await expectRejects(contacts.setAddress(U.hook, addressOf("hook")), ServiceUnavailableException);
       expect(await contacts.getState(U.hook)).toMatchObject({ status: "pending", confirmationSentAt: null });
       transport.failWith = null;
       const state = await contacts.resend(U.hook);

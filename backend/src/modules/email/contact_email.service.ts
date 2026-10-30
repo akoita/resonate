@@ -21,7 +21,13 @@ import { writeStructuredLog } from "../shared/structured_logging";
 import { EmailConfig } from "./email_config";
 import { renderConfirmationEmail } from "./email_templates";
 import { CONFIRM_TOKEN_TTL_MS, newConfirmToken, sha256Hex, verifyUnsubscribeToken } from "./email_tokens";
-import { EMAIL_TRANSPORT, type EmailTransport } from "./email_transport";
+import {
+  EMAIL_TRANSPORT,
+  TransientEmailError,
+  emailErrorCode,
+  isRecipientRejection,
+  type EmailTransport,
+} from "./email_transport";
 
 export type ContactEmailStatus = "none" | "pending" | "confirmed" | "disabled";
 export type ContactEmailDisabledReason = "hard_bounce" | "complaint";
@@ -53,7 +59,7 @@ export function normalizeAddress(address: string): string {
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("timeout")), ms);
+    timer = setTimeout(() => reject(new TransientEmailError("timeout", "timeout")), ms);
   });
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
@@ -231,15 +237,25 @@ export class ContactEmailService {
         CONFIRMATION_SEND_TIMEOUT_MS,
       );
     } catch (error) {
+      // Only a refused recipient is the person's to fix; a refused login, a dead
+      // connection or a timeout is ours, so it is logged as an error and not blamed on them.
+      const recipientRefused = isRecipientRejection(error);
       writeStructuredLog({
-        level: "warn",
+        level: recipientRefused ? "warn" : "error",
         event: "email.confirmation_send_failed",
         message: "Could not send an email confirmation",
         errorClass: error instanceof Error ? error.name : "unknown",
+        errorCode: emailErrorCode(error),
       });
-      throw new BadGatewayException({
-        code: "email_send_failed",
-        message: "We could not send the confirmation email. Try again in a moment.",
+      if (recipientRefused) {
+        throw new BadGatewayException({
+          code: "email_send_failed",
+          message: "That address was refused by the mail server. Check it, then try again.",
+        });
+      }
+      throw new ServiceUnavailableException({
+        code: "email_unavailable",
+        message: "Email is not available right now. Try again later.",
       });
     }
     const updated = await prisma.contactEmail.update({

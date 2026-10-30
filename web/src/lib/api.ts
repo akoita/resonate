@@ -8018,8 +8018,9 @@ export function getContactEmail(token: string) {
 
 /**
  * Sets or changes the address and sends the confirmation email. Fails with
- * code `email_unavailable` (503) or `email_send_failed` (502); in the second
- * case the address is kept pending so Resend can be tried.
+ * code `email_unavailable` (503) when email is off or our mail service is
+ * failing (the address is kept pending, so Resend works later), or
+ * `email_send_failed` (502) when the mail server refused the address.
  */
 export function setContactEmail(token: string, address: string) {
   return apiRequest<ContactEmailState>(

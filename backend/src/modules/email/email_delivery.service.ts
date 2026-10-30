@@ -7,7 +7,7 @@ import { writeStructuredLog } from "../shared/structured_logging";
 import { ContactEmailService, normalizeAddress } from "./contact_email.service";
 import { EmailConfig } from "./email_config";
 import { renderNoticeEmail } from "./email_templates";
-import { EMAIL_TRANSPORT, PermanentEmailError, type EmailTransport } from "./email_transport";
+import { EMAIL_TRANSPORT, PermanentEmailError, emailErrorCode, type EmailTransport } from "./email_transport";
 
 export const EMAIL_FAN_OUT_NOTICE_LIMIT = 100;
 export const EMAIL_SEND_LIMIT = 200;
@@ -49,12 +49,6 @@ export interface EmailWebhookEvent {
 }
 
 type NoticeForFanOut = { id: string; category: string; recipientUserId: string | null; audience: string; expiresAt: Date | null };
-
-function errorClassOf(error: unknown): string {
-  const code = (error as { code?: unknown })?.code;
-  const raw = typeof code === "string" && code ? code : error instanceof Error ? error.name : "unknown";
-  return raw.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
-}
 
 /** A user whose id or wallet (smart account or owner) address is on the list. */
 function allowlistWhere(addresses: string[]): Prisma.UserWhereInput | null {
@@ -332,7 +326,7 @@ export class EmailDeliveryService {
       counts.sent += 1;
     } catch (error) {
       const attempts = row.attempts + 1;
-      const lastErrorClass = errorClassOf(error);
+      const lastErrorClass = emailErrorCode(error);
       if (error instanceof PermanentEmailError) {
         await prisma.emailDelivery.update({
           where: { id: row.id },
