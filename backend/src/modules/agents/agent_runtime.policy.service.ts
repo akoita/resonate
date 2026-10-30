@@ -1,6 +1,5 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { CommunityCohortService } from "../community/community_cohort.service";
-import { DISCOVERY_EXPLANATIONS } from "../recommendations/discovery-explanations";
 import {
   applyFirstListenerReservationOutcome,
   applyDiscoveryPolicy,
@@ -55,6 +54,7 @@ import type {
   AgentRuntimeResult,
   LlmTrackPick,
 } from "./runtime/agent_runtime.adapter";
+import { RuntimePolicyUnavailableError } from "./runtime/agent_runtime.errors";
 
 /**
  * Policy step for LLM runtime picks (#1456 WS-9, ADR-TE-2,
@@ -106,8 +106,12 @@ import type {
  * swaps: its reserve is only the "at least one" floor, so it would replace
  * every single-track pick.
  *
- * Fail-open: when the ranking core or metadata lookup is unavailable, ordinary
- * model picks pass through; any unverified discovery annotations are stripped.
+ * Fail-closed (#2462): when the ranking core, the policy context or the
+ * metadata lookup is unavailable, a model reply with picks is never served
+ * unchecked. `apply` throws `RuntimePolicyUnavailableError` and the caller
+ * (`AgentRuntimeService.run`) serves the deterministic orchestrator's result,
+ * which applies every rule itself. An empty model reply has nothing to verify,
+ * so it is returned as is when its top-up fails.
  */
 @Injectable()
 export class AgentRuntimePolicyService {
@@ -132,10 +136,16 @@ export class AgentRuntimePolicyService {
     input: AgentRuntimeInput,
     result: AgentRuntimeResult,
   ): Promise<AgentRuntimeResult> {
-    if (!this.ranking || !this.policyContext) {
-      return stripUnverifiedDiscoveryAnnotations(result);
-    }
     const picks = picksOf(result);
+    if (!this.ranking || !this.policyContext) {
+      // Nothing to verify in an empty reply; picks cannot be served unchecked.
+      if (picks.length === 0) return result;
+      this.logger.warn("Runtime policy step not configured; model picks are not served");
+      throw new RuntimePolicyUnavailableError(
+        "not_configured",
+        "runtime policy step is not configured",
+      );
+    }
     // An empty model reply is still owed its target; any other empty result
     // (an error, a stub runtime) has nothing to filter or fill.
     const emptyReply = picks.length === 0 && result.reason === "llm_no_track_selected";
@@ -149,9 +159,12 @@ export class AgentRuntimePolicyService {
         return result;
       }
       this.logger.warn(
-        `Runtime policy step unavailable; passing picks through: ${String(error)}`,
+        `Runtime policy step unavailable; model picks are not served: ${String(error)}`,
       );
-      return stripUnverifiedDiscoveryAnnotations(result);
+      throw new RuntimePolicyUnavailableError(
+        "error",
+        "runtime policy step could not verify the model picks",
+      );
     }
   }
 
@@ -956,28 +969,6 @@ function picksOf(result: AgentRuntimeResult): LlmTrackPick[] {
     ];
   }
   return [];
-}
-
-/** The model cannot supply a discovery claim when the policy did not verify it. */
-function stripUnverifiedDiscoveryAnnotations(result: AgentRuntimeResult): AgentRuntimeResult {
-  if (!result.picks?.length) return result;
-  let changed = false;
-  const picks = result.picks.map((pick) => {
-    const containsDiscoveryExplanation = pick.explanation?.some(
-      (line) => line === DISCOVERY_EXPLANATIONS.discovery_pick,
-    );
-    if (pick.reasonCode !== "discovery_pick" && !containsDiscoveryExplanation) {
-      return pick;
-    }
-    changed = true;
-    const ordinary = { ...pick };
-    delete ordinary.score;
-    delete ordinary.explanation;
-    delete ordinary.reasonCode;
-    delete ordinary.signals;
-    return ordinary;
-  });
-  return changed ? { ...result, picks } : result;
 }
 
 /**

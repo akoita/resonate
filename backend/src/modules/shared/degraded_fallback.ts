@@ -9,6 +9,7 @@ export type DegradedFallbackComponent =
   | "agent_runtime.vertex"
   | "agent_runtime.langgraph"
   | "agent_runtime.remote_worker"
+  | "agent_runtime.policy"
   | "embeddings.vertex"
   | "embeddings.provider"
   | "taste_profile"

@@ -11,8 +11,10 @@ import { EVAL_CATALOG } from "./dj_filter_eval/catalog";
 import { EVAL_CASES } from "./dj_filter_eval/cases";
 import {
   applyGuard,
+  applyGuardServing,
   buildGuardReport,
   compareToGuardBaseline,
+  deterministicBatch,
   guardBaselineFromResults,
   guardInputFor,
   guardReportMarkdown,
@@ -85,28 +87,36 @@ describe("AI DJ filter-adherence eval, stage C: LLM-path guard", () => {
     }
   });
 
-  it("documents fail-open: with the lookup down or no ranking core, the model's picks pass through unchecked", async () => {
+  it("fails closed: the deterministic path serves the batch when the guard cannot verify the reply (#2462)", async () => {
     const zen = caseById("moment-zen@conflicting");
     const modelKeys = modelPicksFor(zen, "adversarial");
+    const { input } = await guardInputFor(zen);
+    // What the deterministic path serves for this case: the same golden selector and input as stage B.
+    const selectorKeys = (await deterministicBatch(input)).picks!.map((pick) => pick.trackId);
+    expect(selectorKeys.length).toBeGreaterThan(0);
     for (const mode of ["failOpenLookup", "failOpenNoRanking"] as const) {
-      const { input } = await guardInputFor(zen);
-      const result = await applyGuard(input, modelKeys, mode);
-      expect((result.picks ?? []).map((pick) => pick.trackId)).toEqual(modelKeys);
-      // No tier, no mark, no top-up.
-      expect((result.picks ?? []).some((pick) => pick.requestMatch !== undefined)).toBe(false);
-      expect(result.policy).toBeUndefined();
+      const served = await applyGuardServing(input, modelKeys, mode);
+      expect(served.fellBackToDeterministic).toBe(true);
+      expect((served.result.picks ?? []).map((pick) => pick.trackId)).toEqual(selectorKeys);
 
       const run = await runGuardCase(zen, "adversarial", mode);
-      expect(run.survivingModelContradictions).toBe(run.modelContradictions);
-      expect(run.wronglyDropped).toBe(0);
-      expect(run.final.count).toBe(modelKeys.length);
-      expect(run.final.contradictions).toBeGreaterThan(0);
+      expect(run.fellBackToDeterministic).toBe(true);
+      // No model pick that the selector did not also choose appears.
+      const selectorSet = new Set(selectorKeys);
+      const modelSet = new Set(modelKeys);
+      expect(run.finalPicks.filter((pick) => modelSet.has(pick.key) && !selectorSet.has(pick.key))).toEqual([]);
+      expect(run.finalPicks.every((pick) => pick.source === "deterministic")).toBe(true);
+      expect(run.finalPicks.map((pick) => pick.key)).toEqual(selectorKeys);
+      expect(run.final.contradictions).toBe(0);
     }
-    for (const run of results.filter((candidate) => candidate.mode !== "normal")) {
-      expect({ id: run.id, mode: run.mode, passed: run.survivingModelContradictions === run.modelContradictions }).toEqual({
+    const normal = await runGuardCase(zen, "adversarial", "normal");
+    expect(normal.fellBackToDeterministic).toBe(false);
+    for (const run of results) {
+      const failOpen = run.mode !== "normal";
+      expect({ id: run.id, mode: run.mode, fellBack: run.fellBackToDeterministic }).toEqual({
         id: run.id,
         mode: run.mode,
-        passed: true,
+        fellBack: failOpen,
       });
     }
   });

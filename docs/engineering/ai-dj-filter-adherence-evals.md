@@ -316,8 +316,7 @@ faithful model). **Decision: enable.**
 
 Measured and still open:
 
-- **The guard fails open (#2462).** With a failed lookup or no ranking core,
-  every model pick passes unchecked: 1686 of 1686.
+- ~~**The guard fails open (#2462).**~~ Fixed; see comparison 5.
 - **Artist-only and seed-only requests cannot be verified (#2463).** The
   adversarial model's 48 picks all survive in the artist group.
 - **Tier B partials survive.** That is by design: a tier B pick shares the
@@ -325,6 +324,38 @@ Measured and still open:
 - **Over-blocking from metadata gaps.** The faithful model loses 319
   on-request picks with no or vague genre labels. This is the same class as
   the stage-B metadata gaps.
+
+### Comparison 5: the guard fails closed (#2462)
+
+Before this change, a guard that could not verify a model reply passed every
+pick through unchecked. That happened when the track lookup threw, or when the
+ranking core or policy context was not wired. Those picks skipped:
+
+- the request tiers;
+- the explicit setting;
+- hidden artists;
+- the AI-generated policy;
+- the diversity cap.
+
+Now `AgentRuntimePolicyService.apply` throws
+`RuntimePolicyUnavailableError`, with a categorical cause. `AgentRuntimeService`
+then serves the deterministic orchestrator's batch, logging `degraded.fallback`
+with component `agent_runtime.policy` and reason `policy_unavailable`. An
+empty model reply is unchanged, because it has nothing to verify.
+
+In stage C's two fail-open modes, the eval now serves the deterministic
+selector's batch, as production does:
+
+| Fail-open mode (each) | Before | After |
+| --- | ---: | ---: |
+| Surviving model contradictions | 1686 | 2 |
+| Final contradicting picks | 1686 | 49 |
+| Final silent leaks | 1692 | 229 |
+| On-request share | 0% | 78% |
+
+The remaining contradictions and leaks belong to the deterministic selector,
+measured in stage B. No normal-mode entry changed (0 of 705). **Decision:
+enable.**
 
 ## Out of scope for this slice
 
