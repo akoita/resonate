@@ -1146,8 +1146,8 @@ The recall golden set did not regress.
 
 - ~~Sentences the parser drops~~: fixed in #2452 (see "Everyday words, French
   and typos in the session sentence").
-- Loose genre matching inside gated requests. "Afro-Pop" admits any
-  "Dance Pop" release; "Dance" in Pop Hits admits Techno and Deep House (#2453).
+- ~~Loose genre matching inside gated requests~~: fixed in #2453 (see
+  "Exact-first genre matching").
 - A medium-energy request accepts tracks whose energy defaulted to medium
   because nothing was measured.
 - The LLM curation path is guarded by the same tiers, but its own picks are not
@@ -1200,6 +1200,63 @@ parser.
 - In the selection stage, the `typed` group's contradicting picks fell from
   174 to 18. Overall they fell from 376 to 220, and silent leaks from 978 to
   820.
+
+## Exact-first genre matching (#2453)
+
+Vision-neutral quality (ADR-BM-6).
+
+**What went wrong.** Inside genre requests, the one genre matcher
+(`genre_families.ts`) was too loose:
+
+- **Afrobeats & Amapiano played Pop.** "Afro-Pop" resolved to the Pop family
+  through its inner word "pop", and a plain "Pop" release satisfied "Afro-Pop"
+  through reverse containment.
+- **Pop Hits played Techno and Deep House.** The starter included "Dance",
+  which names the whole Electronic family.
+- **Electronic played "Dance Pop".** A release labelled "Dance Pop" was
+  classified Electronic through "dance".
+
+**Rules now:**
+
+- **Exact first, on both sides.** A requested term, or a release label, that is
+  itself a member of a family resolves only to the families listing it (plus
+  names, for broad families on the request side). Its inner words are not
+  searched. Examples:
+  - "Afro-Pop" resolves to Afrobeats;
+  - "Latin Trap" resolves to Reggaeton;
+  - "Latin Pop" and "Baile Funk" resolve to no narrow family;
+  - a "Dance Pop" or "Indie Pop" release is Pop only.
+  Labels that are not members still classify by containment: "Psych-Rock" is
+  Rock, and "Lo-fi Hip Hop" is both Hip-Hop and Ambient/Lo-fi.
+- **Guarded reverse containment.** A generic release label inside a specific
+  request satisfies it only when the request is not a known label, or the
+  release belongs to a family that lists the request. "House" still satisfies
+  "Deep House" and "Jazz" still satisfies "Acid Jazz". "Pop" no longer
+  satisfies "Afro-Pop" or "Latin Pop", and "Funk" no longer satisfies "Baile
+  Funk".
+- **The Pop Hits starter** is "Pop, synthpop" (no "Dance"). Dance-pop releases
+  are still reached through the Pop family.
+
+Retrieval search terms, descriptor matching, coverage, My Mix lanes and the
+tiers share the matcher, so all of them follow.
+
+**Measured** (selection stage of `npm run eval:dj-filters`):
+
+- The eval first got a grading correction, pinned on its own: "Latin Pop"
+  counts as Latin and Pop. That moved contradicting picks from 220 to 210 with
+  no code change.
+- Contradicting picks then fell from 210 to 98. In the Sounds starters they
+  fell from 120 to 18, with 97% on-request.
+- 13 held-out matching decisions, written before the change and kept from the
+  implementer, all pass. The recall golden set does not regress.
+
+Accepted: Pop Hits' second batch is now empty instead of three Techno and
+House tracks. The remaining pop tracks have no usable genre label.
+
+Still graded as contradictions, but genuinely ambiguous labels:
+
+- "Indie Pop" for Rock & Indie (it matches the requested word "indie");
+- "Lo-fi Hip Hop" and "Downtempo" for Ambient & Lo-fi.
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 

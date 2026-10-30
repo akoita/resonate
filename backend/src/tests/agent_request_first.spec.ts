@@ -90,6 +90,19 @@ describe("requestTierOf (#2316)", () => {
     expect(requestTierOf(scope, pick({ energyBand: "low" }))).toBe("C");
   });
 
+  it("keeps a generic Pop or Dance Pop release out of an Afro-Pop request (#2453)", () => {
+    const afro = requestScopeFor({ sessionGenres: ["Afrobeat", "Afro-Pop", "Amapiano"] })!;
+    expect(requestTierOf(afro, pick({ genre: "Afro-Pop" }))).toBe("A");
+    expect(requestTierOf(afro, pick({ genre: "Amapiano" }))).toBe("A");
+    expect(requestTierOf(afro, pick({ genre: "Dance Pop" }))).toBe("C");
+    expect(requestTierOf(afro, pick({ genre: "Pop" }))).toBe("C");
+    // Dance Pop is still on-request for Pop Hits, through the pop family.
+    const pop = requestScopeFor({ sessionGenres: ["Pop", "Synthpop"] })!;
+    expect(requestTierOf(pop, pick({ genre: "Dance Pop" }))).toBe("A");
+    expect(requestTierOf(pop, pick({ genre: "Techno" }))).toBe("C");
+    expect(requestTierOf(pop, pick({ genre: "Deep House" }))).toBe("C");
+  });
+
   it("reads a genre through the stored descriptor families too", () => {
     const world = requestScopeFor({ sessionGenres: ["World"] })!;
     expect(requestTierOf(world, pick({ genre: "Senegal", descriptorFamilies: ["world"] }))).toBe("A");

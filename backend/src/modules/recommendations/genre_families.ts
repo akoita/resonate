@@ -16,6 +16,20 @@
  *    their own names, never through a member: asking for "Afrobeats" must not
  *    widen to everything under "World", while a "World" request does match an
  *    Afrobeats release.
+ *  - Exact first (#2453): a requested term that IS a member of some family
+ *    (broad or not) resolves only to the families that name it plus the narrow
+ *    families listing it exactly. Member containment is NOT applied, so "Afro
+ *    Pop" reaches afrobeats and not pop (through its inner word "pop"), and
+ *    "Latin Pop" or "Baile Funk" reach no narrow family. Containment still
+ *    resolves terms that are not members ("psych rock" -> rock).
+ *  - The release side is exact first as well: a release labelled "Dance Pop"
+ *    belongs to pop (which lists it), not also to electronic through "dance".
+ *    Labels that are not members ("Lo-fi Hip Hop") still classify by every
+ *    member they contain.
+ *  - Reverse containment (a generic release label inside a specific request,
+ *    "House" for "Deep House") is guarded the same way: when the request is an
+ *    exact member of some family, the release must belong to a family listing
+ *    it, so a "Pop" release no longer satisfies "Afro-Pop".
  *
  * `genreMatchesRequest` is the ONE genre matcher (#2236): ordinary sessions,
  * My Mix lanes (membership and ordering), request coverage and the ranking
@@ -212,8 +226,26 @@ function containsWholePhrase(normalized: string, member: string): boolean {
   return ` ${normalized} `.includes(` ${member} `);
 }
 
+/** Every family (broad or not) listing a normalized label exactly, by member or name. */
+const EXACT_MEMBER_INDEX: ReadonlyMap<string, readonly IndexedFamily[]> = (() => {
+  const index = new Map<string, IndexedFamily[]>();
+  for (const entry of INDEXED_FAMILIES) {
+    for (const member of entry.members) {
+      const list = index.get(member);
+      if (list) list.push(entry);
+      else index.set(member, [entry]);
+    }
+  }
+  return index;
+})();
+
 function releaseSideFamilies(normalized: string): IndexedFamily[] {
   if (!normalized) return [];
+  // Exact first on the release side too (#2453): a release labelled with a
+  // known label ("Dance Pop", "Indie Pop") belongs to the families listing it,
+  // not to every family one of its inner words names ("dance" -> electronic).
+  const exact = EXACT_MEMBER_INDEX.get(normalized);
+  if (exact) return INDEXED_FAMILIES.filter((entry) => exact.includes(entry));
   return INDEXED_FAMILIES.filter((entry) =>
     [...entry.members].some((member) => containsWholePhrase(normalized, member)),
   );
@@ -221,9 +253,12 @@ function releaseSideFamilies(normalized: string): IndexedFamily[] {
 
 function requestSideFamilies(normalized: string): IndexedFamily[] {
   if (!normalized) return [];
+  const exact = EXACT_MEMBER_INDEX.get(normalized);
   return INDEXED_FAMILIES.filter((entry) => {
     if (entry.names.has(normalized)) return true;
     if (entry.family.broad) return false;
+    // Exact first (#2453): a known label never widens through an inner word.
+    if (exact) return exact.includes(entry);
     return [...entry.members].some((member) => containsWholePhrase(normalized, member));
   });
 }
@@ -297,7 +332,8 @@ function canonicalVocabularyGenre(normalized: string): string | undefined {
 /**
  * Whether a catalog genre satisfies a requested genre: same label modulo
  * spacing, hyphens and accents; one contains the other as whole words ("Deep
- * House" satisfies "house", but "Dubstep" does not satisfy "dub"); or the
+ * House" satisfies "house", but "Dubstep" does not satisfy "dub", and a generic
+ * "Pop" release does not satisfy the specific "Afro-Pop"); or the
  * release genre belongs to a family the request names.
  */
 export function genreMatchesRequest(
@@ -313,7 +349,14 @@ export function genreMatchesRequest(
   const canonical = canonicalVocabularyGenre(genre);
   if (canonical !== undefined && canonical === canonicalVocabularyGenre(term)) return true;
   if (containsWholePhrase(genre, term)) return true;
-  if (genre.length >= 3 && containsWholePhrase(term, genre)) return true;
+  if (genre.length >= 3 && containsWholePhrase(term, genre)) {
+    // A generic release label inside a specific request satisfies it only when
+    // the request is not a known label, or the release sits in a family that
+    // lists it ("House" for "Deep House", not "Pop" for "Afro-Pop") (#2453).
+    const listing = EXACT_MEMBER_INDEX.get(term);
+    if (!listing) return true;
+    if (releaseSideFamilies(genre).some((entry) => listing.includes(entry))) return true;
+  }
   const requested = new Set(requestSideFamilies(term).map((entry) => entry.family.id));
   if (requested.size === 0) return false;
   return releaseSideFamilies(genre).some((entry) => requested.has(entry.family.id));

@@ -2,6 +2,7 @@ import {
   expandGenreSearchTerms,
   firstMatchingGenreTerm,
   genreFamiliesFor,
+  descriptorMatchesRequest,
   genreMatchesRequest,
   normalizeGenreTerm,
   primaryGenreFamily,
@@ -167,5 +168,86 @@ describe("genre families (#2088)", () => {
         expect(genreMatchesRequest(genre, id)).toBe(true);
       }
     });
+  });
+
+  describe("exact first, and a guarded reverse containment (#2453)", () => {
+    const ids = (term: string) => genreFamiliesFor(term).map((f) => f.id).sort();
+
+    it("resolves a known label to its own families, not through an inner word", () => {
+      expect(ids("afro pop")).toEqual(["afrobeats"]);
+      expect(ids("Afro-Pop")).toEqual(["afrobeats"]);
+      expect(ids("latin pop")).toEqual([]);
+      expect(ids("baile funk")).toEqual([]);
+      expect(ids("latin trap")).toEqual(["reggaeton"]);
+      expect(ids("french rap")).toEqual(["hip-hop"]);
+      expect(ids("deep house")).toEqual([]);
+      expect(ids("world")).toEqual(["world"]);
+    });
+
+    it("still resolves a term that is not a member through containment", () => {
+      expect(ids("psych rock")).toEqual(["rock"]);
+    });
+
+    it("does not let Pop releases satisfy Afro-Pop, Latin Pop or Baile Funk requests", () => {
+      expect(genreMatchesRequest("Pop", "Afro-Pop")).toBe(false);
+      expect(genreMatchesRequest("Dance Pop", "Afro-Pop")).toBe(false);
+      expect(genreMatchesRequest("Synthpop", "Afro-Pop")).toBe(false);
+      expect(genreMatchesRequest("Pop", "Latin Pop")).toBe(false);
+      expect(genreMatchesRequest("Funk", "Baile Funk")).toBe(false);
+      expect(genreMatchesRequest("Trap", "Latin Trap")).toBe(false);
+    });
+
+    it("still satisfies those requests with the right releases", () => {
+      expect(genreMatchesRequest("Afro-Pop", "Afro-Pop")).toBe(true);
+      expect(genreMatchesRequest("Afrobeats", "Afro-Pop")).toBe(true);
+      expect(genreMatchesRequest("Amapiano", "Afro-Pop")).toBe(true);
+      expect(genreMatchesRequest("Latin Pop", "Latin Pop")).toBe(true);
+      expect(genreMatchesRequest("Reggaeton", "Latin Trap")).toBe(true);
+      expect(genreMatchesRequest("Afro-Pop", "Pop")).toBe(true);
+    });
+
+    it("keeps reverse containment for a generic label in the same family", () => {
+      expect(genreMatchesRequest("House", "Deep House")).toBe(true);
+      expect(genreMatchesRequest("Jazz", "Acid Jazz")).toBe(true);
+      expect(genreMatchesRequest("Rock", "Psych-Rock")).toBe(true);
+      expect(genreMatchesRequest("Deep House", "House")).toBe(true);
+    });
+
+    it("keeps Techno and Deep House out of a Pop request, and Dance Pop in", () => {
+      expect(genreMatchesRequest("Techno", "Pop")).toBe(false);
+      expect(genreMatchesRequest("Deep House", "Synthpop")).toBe(false);
+      expect(genreMatchesRequest("EDM", "Pop")).toBe(false);
+      expect(genreMatchesRequest("Dance Pop", "Pop")).toBe(true);
+      expect(genreMatchesRequest("Synthpop", "Pop")).toBe(true);
+    });
+
+    it("gives the search expansion and the descriptor match the same exact-first reading", () => {
+      const afro = expandGenreSearchTerms("Afro-Pop").map((t) => t.toLowerCase());
+      expect(afro).toContain("amapiano");
+      expect(afro).not.toContain("dance pop");
+      expect(afro).not.toContain("synthpop");
+      expect(descriptorMatchesRequest(["pop"], "Afro-Pop")).toBe(false);
+      expect(descriptorMatchesRequest(["afrobeats"], "Afro-Pop")).toBe(true);
+      expect(descriptorMatchesRequest(["pop"], "Pop")).toBe(true);
+    });
+  });
+});
+
+describe("release side is exact first too (#2453)", () => {
+  const ids = (label: string) => releaseGenreFamilies(label).map((family) => family.id).sort();
+
+  it("classifies a known compound label only by the families listing it", () => {
+    expect(ids("Dance Pop")).toEqual(["pop"]);
+    expect(ids("Indie Pop")).toEqual(["pop"]);
+    expect(ids("Afro House").sort()).toEqual(["african", "electronic"]);
+  });
+
+  it("still classifies an unlisted label by every member it contains", () => {
+    expect(ids("Lo-fi Hip Hop")).toEqual(["ambient-lofi", "hip-hop"]);
+  });
+
+  it("no longer lets a Dance Pop release into an Electronic request", () => {
+    expect(genreMatchesRequest("Dance Pop", "Electronic")).toBe(false);
+    expect(genreMatchesRequest("Techno", "Electronic")).toBe(true);
   });
 });
