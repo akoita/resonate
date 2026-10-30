@@ -19,6 +19,7 @@ import {
 import { getAgentTrackLimit } from "./agent_runtime.config";
 import { isRightNowContext, resolveRightNow } from "./agent_right_now";
 import { requestScopeFor } from "./agent_session_request";
+import { RuntimePolicyUnavailableError } from "./runtime/agent_runtime.errors";
 import { logDegradedFallback } from "../shared/degraded_fallback";
 
 export interface MyMixLaneDemandObservation {
@@ -82,13 +83,40 @@ export class AgentRuntimeService {
         : input.preferences?.newArtists === true
           ? await this.executor.runDeterministic(safeInput)
           : await this.execute(safeInput);
-    const final =
-      this.policy && !("tracks" in result) ? await this.policy.apply(input, result) : result;
+    const final = await this.applyPolicy(input, safeInput, result);
     if (plan && !rightNowPlan && "tracks" in final) {
       this.rememberMyMixSession(input.userId, input.sessionId, plan, final);
     }
     this.recordVariant(input, final, plan?.orderingVariant ?? "single_profile", assignment);
     return final;
+  }
+
+  /**
+   * LLM picks go through the policy step. When it cannot verify them (#2462) the
+   * model's reply is dropped and the deterministic orchestrator serves the batch:
+   * that path applies every rule itself. A My Mix plan returns `tracks`, so it
+   * never reaches the policy step.
+   */
+  private async applyPolicy(
+    input: AgentRuntimeInput,
+    safeInput: AgentRuntimeInput,
+    result: AgentRuntimeRunResult,
+  ): Promise<AgentRuntimeRunResult> {
+    if (!this.policy || "tracks" in result) return result;
+    try {
+      return await this.policy.apply(input, result);
+    } catch (error) {
+      if (!(error instanceof RuntimePolicyUnavailableError)) throw error;
+      logDegradedFallback({
+        component: "agent_runtime.policy",
+        reason: "policy_unavailable",
+        error,
+      });
+      this.logger.warn(
+        `runtime policy step unavailable (${error.policyCause}) - serving the deterministic result`,
+      );
+      return this.executor.runDeterministic(safeInput);
+    }
   }
 
   getInitialMixCoverage(userId: string, sessionId: string): MixCoverage | undefined {

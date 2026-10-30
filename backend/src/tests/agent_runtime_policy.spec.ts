@@ -12,6 +12,7 @@ import { AgentRuntimePolicyService } from "../modules/agents/agent_runtime.polic
 import { AgentRuntimeService } from "../modules/agents/agent_runtime.service";
 import { normalizeAgentRuntimeResult } from "../modules/agents/agent_runtime.types";
 import type { AgentRuntimeInput } from "../modules/agents/runtime/agent_runtime.adapter";
+import { RuntimePolicyUnavailableError } from "../modules/agents/runtime/agent_runtime.errors";
 
 function tastePolicy(hidden: Partial<Record<string, string[]>> = {}): TasteMemoryPolicy {
   return {
@@ -448,14 +449,18 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
     expect(await service.apply(baseInput(), rejection)).toBe(rejection);
   });
 
-  it("fails open: a metadata lookup error passes the model's picks through", async () => {
+  it("fails closed: a metadata lookup error throws RuntimePolicyUnavailableError, never the model's picks (#2462)", async () => {
     const { service, policyContext } = serviceFor([track("x")]);
     policyContext.loadTrackCandidates.mockRejectedValue(new Error("db down"));
     const original = { status: "approved" as const, picks: [pick("x")] };
-    expect(await service.apply(baseInput(), original)).toBe(original);
+    const error = await service.apply(baseInput(), original).catch((e) => e);
+    expect(error).toBeInstanceOf(RuntimePolicyUnavailableError);
+    expect(error.policyCause).toBe("error");
+    // Categorical: the raw error text is not on the thrown error.
+    expect(error.message).not.toContain("db down");
   });
 
-  it("strips forged discovery annotations when the policy fails open", async () => {
+  it("fails closed for forged discovery annotations too: the model's claim is not served (#2462)", async () => {
     const { service, policyContext } = serviceFor([track("x")]);
     policyContext.loadTrackCandidates.mockRejectedValue(new Error("db down"));
     const original = {
@@ -470,27 +475,37 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
         },
       ],
     };
-
-    const result = await service.apply(baseInput(), original);
-
-    expect(result).not.toBe(original);
-    expect(result.picks).toEqual([
-      expect.objectContaining({ trackId: "x", licenseType: "personal", priceUsd: 0.05 }),
-    ]);
-    expect(result.picks?.[0]).not.toHaveProperty("score");
-    expect(result.picks?.[0]).not.toHaveProperty("reasonCode");
-    expect(result.picks?.[0]).not.toHaveProperty("explanation");
-    expect(result.picks?.[0]).not.toHaveProperty("signals");
-    const commerce = normalizeAgentRuntimeResult(result);
-    expect(commerce.primaryTrack).not.toHaveProperty("reasonCode");
-    expect(commerce.primaryTrack).not.toHaveProperty("explanation");
-    expect(commerce.primaryTrack).not.toHaveProperty("signals");
+    await expect(service.apply(baseInput(), original)).rejects.toBeInstanceOf(
+      RuntimePolicyUnavailableError,
+    );
   });
 
-  it("passes through untouched when the ranking core is not wired", async () => {
+  it("fails closed when the ranking core is not wired (#2462)", async () => {
     const service = new AgentRuntimePolicyService();
     const original = { status: "approved" as const, picks: [pick("x")] };
-    expect(await service.apply(baseInput(), original)).toBe(original);
+    const error = await service.apply(baseInput(), original).catch((e) => e);
+    expect(error).toBeInstanceOf(RuntimePolicyUnavailableError);
+    expect(error.policyCause).toBe("not_configured");
+  });
+
+  it("fails closed when only the policy context is missing (#2462)", async () => {
+    const service = new AgentRuntimePolicyService(new DiscoveryRankingService());
+    await expect(
+      service.apply(baseInput(), { status: "approved", picks: [pick("x")] }),
+    ).rejects.toMatchObject({ policyCause: "not_configured" });
+  });
+
+  it("returns an empty reply as is when the policy step is not wired: nothing to verify (#2462)", async () => {
+    const service = new AgentRuntimePolicyService();
+    const rejection = { status: "rejected" as const, reason: "llm_no_track_selected" };
+    expect(await service.apply(baseInput(), rejection)).toBe(rejection);
+  });
+
+  it("returns an empty reply as is when its top-up lookup throws (#2462)", async () => {
+    const { service, policyContext } = serviceFor([track("x")]);
+    policyContext.loadTrackCandidates.mockRejectedValue(new Error("db down"));
+    const rejection = { status: "rejected" as const, reason: "llm_no_track_selected" };
+    expect(await service.apply(baseInput(), rejection)).toBe(rejection);
   });
 });
 
@@ -944,6 +959,52 @@ describe("AgentRuntimeService choke point", () => {
     const service = new AgentRuntimeService(executor as any, remote, policy as any);
     expect(await service.run(baseInput())).toBe(orchestrated);
     expect(policy.apply).not.toHaveBeenCalled();
+  });
+
+  it("serves the deterministic result when the policy step cannot verify the picks (#2462)", async () => {
+    const deterministic = { status: "approved", tracks: [{ trackId: "d" }] };
+    const executor = {
+      run: jest.fn().mockResolvedValue({ status: "approved", picks: [pick("a")] }),
+      runDeterministic: jest.fn().mockResolvedValue(deterministic),
+    };
+    const policy = {
+      apply: jest.fn().mockRejectedValue(new RuntimePolicyUnavailableError("error", "db down")),
+    };
+    const lines: string[] = [];
+    const spy = jest.spyOn(console, "info").mockImplementation((line: unknown) => {
+      lines.push(String(line));
+    });
+    let result;
+    try {
+      const service = new AgentRuntimeService(executor as any, remote, policy as any);
+      result = await service.run(baseInput());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result).toBe(deterministic);
+    expect(executor.runDeterministic).toHaveBeenCalledTimes(1);
+    const event = lines
+      .map((line) => { try { return JSON.parse(line); } catch { return undefined; } })
+      .find((entry) => entry?.event === "degraded.fallback");
+    expect(event).toEqual(
+      expect.objectContaining({
+        component: "agent_runtime.policy",
+        reason: "policy_unavailable",
+        errorClass: "RuntimePolicyUnavailableError",
+      }),
+    );
+    expect(JSON.stringify(event)).not.toContain("db down");
+  });
+
+  it("lets any other policy error propagate (#2462)", async () => {
+    const executor = {
+      run: jest.fn().mockResolvedValue({ status: "approved", picks: [pick("a")] }),
+      runDeterministic: jest.fn(),
+    };
+    const policy = { apply: jest.fn().mockRejectedValue(new Error("boom")) };
+    const service = new AgentRuntimeService(executor as any, remote, policy as any);
+    await expect(service.run(baseInput())).rejects.toThrow("boom");
+    expect(executor.runDeterministic).not.toHaveBeenCalled();
   });
 
   it("applies it to remote worker results too", async () => {
@@ -1477,7 +1538,7 @@ describe("AgentRuntimePolicyService top-up to the selection target (#2094)", () 
     expect(result.policy?.toppedUp).toBe(0);
   });
 
-  it("fails open: a selector error returns the model's picks unchanged", async () => {
+  it("keeps the verified model picks when only the top-up selector errors", async () => {
     const { service, selector } = serviceFor([track("m1"), track("m2")]);
     selector.select.mockRejectedValue(new Error("catalog down"));
     const result = await service.apply(baseInput(), {

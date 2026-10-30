@@ -1279,8 +1279,12 @@ The faithful model loses no more picks than before.
 
 Still open:
 
-- #2462: the guard fails open. A failed lookup passes every model pick
-  unchecked.
+- ~~#2462: the guard fails open~~: fixed. When the guard cannot verify a model
+  reply (a failed lookup, or no ranking core or policy context), the runtime
+  serves the deterministic orchestrator's batch instead. It logs
+  `degraded.fallback` with component `agent_runtime.policy` and reason
+  `policy_unavailable`. In stage C's fail-open modes, contradicting picks fell
+  from 1686 to 49.
 - #2463: model picks for artist-only or seed-only requests are not verified.
 
 ## "Right now": a session with no filters follows the time of day (#2245)

@@ -122,13 +122,16 @@ at `level: "warn"` (`severity: "WARNING"`).
 Fields:
 
 - `component`: closed set, one of `agent_runtime.adk`, `agent_runtime.vertex`,
-  `agent_runtime.langgraph`, `agent_runtime.remote_worker`, `embeddings.vertex`,
+  `agent_runtime.langgraph`, `agent_runtime.remote_worker`,
+  `agent_runtime.policy`, `embeddings.vertex`,
   `embeddings.provider`, `taste_profile`, `served_history`,
   `discovery_policy_context`.
 - `reason`: bounded category matching `^[a-z][a-z0-9_]{0,47}$`; anything else is
   recorded as `other`. Values in use:
   - `agent_runtime.*` adapters: `not_configured`, `timeout`, `error`.
   - `agent_runtime.remote_worker`: `error`.
+  - `agent_runtime.policy`: `policy_unavailable`. The LLM-path guard could not
+    verify a model reply, so the deterministic batch was served instead (#2462).
   - `embeddings.vertex`: `rate_limited` (HTTP 429), `upstream_unavailable`
     (HTTP 5xx), `http_error` (other non-OK statuses), `malformed_response`,
     `timeout`, `request_failed`.

@@ -10,6 +10,13 @@
  * so this stage feeds SIMULATED model replies through the REAL guard and grades
  * what comes out with the same independent grader as stages A and B.
  *
+ * Fail-closed (#2462): when the guard cannot verify a model reply (no ranking core,
+ * or the candidate lookup throws) `apply` throws `RuntimePolicyUnavailableError` and
+ * `AgentRuntimeService.run` serves the deterministic orchestrator's result instead.
+ * The two fail-open modes keep their names and model that: they catch the error and
+ * grade the deterministic selector's batch for the case (the stage-B golden selector,
+ * limit 12), and flag the run as `fellBackToDeterministic`.
+ *
  * Measurement only: nothing here changes production code.
  *
  * Collaborators of the guard (see {@link buildEvalPolicyService}):
@@ -34,10 +41,13 @@ import {
   effectiveEnergyBand,
   requestScopeFor,
   requestTierOf,
+  tierMatchesRequest,
   withoutSeedEvidence,
   type RequestTier,
 } from "../../modules/agents/agent_session_request";
+import { deterministicSelectorInput } from "../../modules/agents/deterministic_recommendation.adapter";
 import type { AgentRuntimeInput, AgentRuntimeResult, LlmTrackPick } from "../../modules/agents/runtime/agent_runtime.adapter";
+import { RuntimePolicyUnavailableError } from "../../modules/agents/runtime/agent_runtime.errors";
 import { discoveryArtistKey } from "../../modules/recommendations/discovery-policy";
 import { DiscoveryRankingService, type DiscoveryCandidate } from "../../modules/recommendations/discovery-ranking.service";
 import { resolveCreditedArtistName, resolveCreditedArtistNames } from "../../modules/shared/artist_attribution";
@@ -133,7 +143,7 @@ const audioFeatures = new FixtureAudioFeatureService(new InMemoryGoldenTools(OBS
 /**
  * The real guard over the eval collaborators. `ranking: false` builds the
  * fail-open variant with no ranking core; `lookupFails` the one whose candidate
- * lookup throws. Both make `apply` pass the model's picks through.
+ * lookup throws. Both make `apply` throw `RuntimePolicyUnavailableError`.
  */
 export function buildEvalPolicyService(options: { ranking?: boolean; lookupFails?: boolean } = {}): AgentRuntimePolicyService {
   return new AgentRuntimePolicyService(
@@ -273,9 +283,59 @@ export async function guardInputFor(evalCase: EvalCase, overrides: Partial<Agent
   };
 }
 
-/** Runs the real guard on a model reply. */
+/**
+ * The deterministic path's batch for a case, as production serves it when the
+ * guard cannot verify a model reply: the golden selector, the same
+ * `deterministicSelectorInput` as stage B, limit 12. Each pick carries
+ * `requestMatch` from its tier, as the orchestrator's tracks do.
+ */
+export async function deterministicBatch(input: AgentRuntimeInput): Promise<AgentRuntimeResult> {
+  const selection = await evalSelector().select(
+    deterministicSelectorInput({
+      userId: input.userId,
+      recentTrackIds: input.recentTrackIds,
+      preferences: input.preferences,
+      limit: BATCH_SIZE,
+    }),
+  );
+  const picks: LlmTrackPick[] = selection.selected.map((track) => ({
+    trackId: track.id,
+    licenseType: "personal",
+    priceUsd: 0,
+    ...(track.requestTier ? { requestMatch: tierMatchesRequest(track.requestTier) } : {}),
+  }));
+  return {
+    status: "approved",
+    trackId: picks[0]?.trackId,
+    licenseType: picks[0]?.licenseType,
+    priceUsd: picks[0]?.priceUsd,
+    reason: "deterministic_orchestrator",
+    latencyMs: 0,
+    picks,
+  };
+}
+
+/**
+ * Runs the real guard on a model reply, and serves what production serves: when
+ * the guard cannot verify the reply it throws `RuntimePolicyUnavailableError`
+ * and the deterministic batch stands in. `fellBackToDeterministic` says which.
+ */
+export async function applyGuardServing(
+  input: AgentRuntimeInput,
+  trackIds: readonly string[],
+  mode: GuardMode,
+): Promise<{ result: AgentRuntimeResult; fellBackToDeterministic: boolean }> {
+  try {
+    return { result: await services[mode].apply(input, modelReply(trackIds)), fellBackToDeterministic: false };
+  } catch (error) {
+    if (!(error instanceof RuntimePolicyUnavailableError)) throw error;
+    return { result: await deterministicBatch(input), fellBackToDeterministic: true };
+  }
+}
+
+/** Runs the real guard on a model reply and returns what the listener is served. */
 export async function applyGuard(input: AgentRuntimeInput, trackIds: readonly string[], mode: GuardMode): Promise<AgentRuntimeResult> {
-  return services[mode].apply(input, modelReply(trackIds));
+  return (await applyGuardServing(input, trackIds, mode)).result;
 }
 
 export interface SurvivingPick {
@@ -297,7 +357,8 @@ export interface SurvivingPick {
 
 export interface FinalPick {
   key: string;
-  source: "model" | "topup";
+  /** "deterministic": the batch served because the guard could not verify the model's reply (#2462). */
+  source: "model" | "topup" | "deterministic";
   verdict: Verdict;
   requestMatch: boolean | null;
 }
@@ -312,6 +373,8 @@ export interface GuardRunResult {
   modelPicks: number;
   modelContradictions: number;
   survivingModelContradictions: number;
+  /** The guard could not verify the model's reply, so the deterministic path served the batch (#2462). */
+  fellBackToDeterministic: boolean;
   /** Model picks graded on-request that are absent from the output (over-blocking). */
   wronglyDropped: number;
   /** Of those, the ones the request guard (tier C) dropped; the rest were lost to the artist cap or the discovery swap. */
@@ -360,7 +423,7 @@ export async function runGuardCase(evalCase: EvalCase, strategy: ModelStrategy, 
   const { input, scope } = await guardInputFor(evalCase);
   const modelKeys = modelPicksFor(evalCase, strategy);
   const modelSet = new Set(modelKeys);
-  const result = await applyGuard(input, modelKeys, mode);
+  const { result, fellBackToDeterministic } = await applyGuardServing(input, modelKeys, mode);
   const outPicks = result.picks ?? [];
   const outKeys = outPicks.map((pick) => pick.trackId);
   const outSet = new Set(outKeys);
@@ -380,7 +443,7 @@ export async function runGuardCase(evalCase: EvalCase, strategy: ModelStrategy, 
 
   const finalPicks: FinalPick[] = outPicks.map((pick) => ({
     key: pick.trackId,
-    source: modelSet.has(pick.trackId) ? "model" : "topup",
+    source: fellBackToDeterministic ? "deterministic" : modelSet.has(pick.trackId) ? "model" : "topup",
     verdict: gradeKey(evalCase.intent, pick.trackId).verdict,
     requestMatch: pick.requestMatch ?? null,
   }));
@@ -415,6 +478,7 @@ export async function runGuardCase(evalCase: EvalCase, strategy: ModelStrategy, 
     modelPicks: modelKeys.length,
     modelContradictions: modelContradictions.length,
     survivingModelContradictions: survivors.length,
+    fellBackToDeterministic,
     wronglyDropped: droppedOnRequest.length,
     wronglyDroppedByGuard,
     policy: {
@@ -453,6 +517,8 @@ export interface GuardAggregate {
   modelPicks: number;
   modelContradictions: number;
   survivingModelContradictions: number;
+  /** Runs where the deterministic path served the batch (#2462). */
+  fellBackToDeterministic: number;
   wronglyDropped: number;
   wronglyDroppedByGuard: number;
   finalCount: number;
@@ -472,6 +538,7 @@ function aggregate(runs: readonly GuardRunResult[]): GuardAggregate {
     modelPicks: sum((run) => run.modelPicks),
     modelContradictions: sum((run) => run.modelContradictions),
     survivingModelContradictions: sum((run) => run.survivingModelContradictions),
+    fellBackToDeterministic: sum((run) => Number(run.fellBackToDeterministic)),
     wronglyDropped: sum((run) => run.wronglyDropped),
     wronglyDroppedByGuard: sum((run) => run.wronglyDroppedByGuard),
     finalCount,
@@ -566,6 +633,7 @@ export function buildGuardReport(results: GuardRunResult[]): GuardReport {
     note:
       "Simulated model replies (12 picks from the whole eval catalog) through the real AgentRuntimePolicyService.apply, over an in-memory policy context " +
       "and the stage-B golden selector for the top-up, graded by the independent grader. Batch 1, default retrieval. " +
+      "In the fail-open modes the guard cannot verify the reply and fails closed (#2462): the deterministic selector's batch for the case is served and graded instead (fellBackToDeterministic). " +
       "wronglyDropped counts model picks graded on-request that are absent from the output (the guard's tier-C drop, the artist cap or the discovery swap). " +
       "The baseline is what the guard does today, not a goal.",
     batchSize: BATCH_SIZE,
@@ -589,11 +657,11 @@ function aggregateTable(title: string, rows: Record<string, GuardAggregate>): st
   return [
     `### ${title}`,
     "",
-    "| | Runs | Model contradictions | Surviving | Wrongly dropped (by guard) | Final picks | On-request | Final contradictions | Final silent leaks |",
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| | Runs | Fell back to deterministic | Model contradictions | Surviving | Wrongly dropped (by guard) | Final picks | On-request | Final contradictions | Final silent leaks |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ...Object.entries(rows).map(
       ([name, row]) =>
-        `| ${name} | ${row.runs} | ${row.modelContradictions} | ${row.survivingModelContradictions} | ${row.wronglyDropped} (${row.wronglyDroppedByGuard}) | ${row.finalCount} | ${pct(row.onRequestShare)} | ${row.finalContradictions} | ${row.finalSilentLeaks} |`,
+        `| ${name} | ${row.runs} | ${row.fellBackToDeterministic} | ${row.modelContradictions} | ${row.survivingModelContradictions} | ${row.wronglyDropped} (${row.wronglyDroppedByGuard}) | ${row.finalCount} | ${pct(row.onRequestShare)} | ${row.finalContradictions} | ${row.finalSilentLeaks} |`,
     ),
     "",
   ];
