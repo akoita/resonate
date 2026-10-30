@@ -298,6 +298,36 @@ const NOISE: ParserCase[] = [
   { id: "noise-reggie-birthday", group: "noise", text: "reggie's birthday", expect: want({}), note: "Reggie is one letter from Reggae." },
   { id: "noise-classic-car", group: "noise", text: "classic car road trip", expect: want({}), note: "Classic is two letters from Classical." },
   { id: "noise-model-train", group: "noise", text: "building a model train", expect: want({}) },
+  // Held out (#2452): written before the fix and kept out of the implementer's
+  // view, then added after it, to measure whether the reader generalises
+  // beyond the eleven sentences it was built against.
+  { id: "holdout-typo-reggea", group: "typo", text: "reggea", expect: want({ genres: ["Reggae"] }) },
+  { id: "holdout-typo-amapinao", group: "typo", text: "amapinao", expect: want({ genres: ["Amapiano"] }) },
+  { id: "holdout-typo-dubstpe", group: "typo", text: "dubstpe please", expect: want({ genres: ["Dubstep"] }) },
+  { id: "holdout-typo-ambiant-chill", group: "typo", text: "ambiant chill", expect: want({ genres: ["Ambient"], energy: "low" }) },
+  { id: "holdout-french-musique-douce", group: "french", text: "musique douce", expect: want({ energy: "low" }) },
+  {
+    id: "holdout-french-rap-salle-de-sport",
+    group: "french",
+    text: "rap pour la salle de sport",
+    expect: want({ genres: ["Rap"], moods: ["Hype"], energy: "high" }),
+    note: "La salle de sport is the gym.",
+  },
+  { id: "holdout-french-jazz-tranquille", group: "french", text: "jazz tranquille", expect: want({ genres: ["Jazz"], energy: "low" }) },
+  { id: "holdout-french-fete", group: "french", text: "fête", expect: want({ moods: ["Club"], energy: "high" }) },
+  {
+    id: "holdout-phrase-sunday-morning",
+    group: "combo",
+    text: "something relaxing for sunday morning",
+    expect: want({ energy: "low" }),
+  },
+  { id: "holdout-phrase-workout-mix", group: "combo", text: "workout mix", expect: want({ moods: ["Hype"], energy: "high" }) },
+  { id: "holdout-phrase-music-for-reading", group: "combo", text: "music for reading", expect: want({ moods: ["Focus"] }) },
+  { id: "holdout-phrase-party-bangers", group: "combo", text: "party bangers", expect: want({ moods: ["Club"], energy: "high" }) },
+  { id: "holdout-phrase-soothing-classical", group: "combo", text: "soothing classical", expect: want({ genres: ["Classical"], energy: "low" }) },
+  { id: "holdout-noise-dinner-friends", group: "noise", text: "dinner with friends", expect: want({}) },
+  { id: "holdout-noise-running-late", group: "noise", text: "running late again", expect: want({}) },
+  { id: "holdout-noise-trance-france", group: "noise", text: "a road trip through france", expect: want({}) },
 ];
 
 export const PARSER_CASES: readonly ParserCase[] = [

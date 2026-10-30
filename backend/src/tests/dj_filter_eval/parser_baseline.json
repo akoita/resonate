@@ -157,8 +157,8 @@
       "spurious": 0
     },
     "combo-calm-to-read": {
-      "verdict": "miss",
-      "missing": 2,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "combo-music-to-focus": {
@@ -172,18 +172,18 @@
       "spurious": 0
     },
     "combo-pump-me-up-gym": {
-      "verdict": "miss",
-      "missing": 2,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "combo-relaxing-evening": {
-      "verdict": "miss",
-      "missing": 1,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "combo-party": {
-      "verdict": "miss",
-      "missing": 2,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "alias-hiphop": {
@@ -217,23 +217,23 @@
       "spurious": 0
     },
     "typo-hip-hpo": {
-      "verdict": "miss",
-      "missing": 1,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "typo-afrobaet": {
-      "verdict": "miss",
-      "missing": 1,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "typo-techo": {
-      "verdict": "miss",
-      "missing": 1,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "typo-classicl": {
-      "verdict": "miss",
-      "missing": 1,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "french-rap-francais": {
@@ -242,8 +242,8 @@
       "spurious": 0
     },
     "french-classique-calme": {
-      "verdict": "miss",
-      "missing": 2,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "french-musiques-du-monde": {
@@ -252,13 +252,13 @@
       "spurious": 0
     },
     "french-electro-danser": {
-      "verdict": "miss",
-      "missing": 2,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "french-quelque-chose-calme": {
-      "verdict": "miss",
-      "missing": 1,
+      "verdict": "exact",
+      "missing": 0,
       "spurious": 0
     },
     "artist-like": {
@@ -322,6 +322,86 @@
       "spurious": 0
     },
     "noise-model-train": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-typo-reggea": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-typo-amapinao": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-typo-dubstpe": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-typo-ambiant-chill": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-french-musique-douce": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-french-rap-salle-de-sport": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-french-jazz-tranquille": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-french-fete": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-phrase-sunday-morning": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-phrase-workout-mix": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-phrase-music-for-reading": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-phrase-party-bangers": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-phrase-soothing-classical": {
+      "verdict": "exact",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-noise-dinner-friends": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-noise-running-late": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "holdout-noise-trance-france": {
       "verdict": "clean",
       "missing": 0,
       "spurious": 0

@@ -2,7 +2,7 @@
 
 Status: `in-progress` (#2451). Stage A (parser) and stage B (deterministic
 selection) are the first slice. Stage C, the LLM-path guard, is #2454.
-Follow-up fixes measured here: #2452 (parser drops), #2453 (loose genre
+Follow-up fixes measured here: #2452 (parser drops, comparison 2), #2453 (loose genre
 matching).
 
 Vision-neutral infrastructure/quality: no money, payout, ingestion-trust or
@@ -202,6 +202,38 @@ re-pinned in the same change:
 
 Both retrieval variants now give the same totals. The remaining contradictions
 come from parser drops (class 2) and loose genre matching (class 3).
+
+## Comparison 2: listener words, French and typos in the sentence (#2452)
+
+Change: a deterministic listener layer reads what Crate Digger's rules leave
+unread. It covers listener energy and activity words in English and French,
+French and adjectival genre forms, and one-typo tolerance for genre names
+behind a length guard and a stoplist.
+
+Before the change, the parser stage gained:
+
+- 10 adversarial no-match sentences, words one edit from a genre such as
+  "songs from france" and "horse riding playlist". All were pinned clean.
+- 16 held-out sentences, written before the change and kept out of the
+  implementer's view: 13 positive and 3 no-match.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Parser exact (visible cases) | 54/65 | 65/65 |
+| Parser exact (held-out, first run) | — | 15/16 |
+| Parser exact (all, final) | — | 81/81 |
+| Selection: contradicting picks | 376 | 220 |
+| Selection: `typed` contradicting picks | 174 | 18 |
+| Selection: silent leaks | 978 | 820 |
+| Selection: on-request | 70% | 73% |
+
+The one held-out miss, "running late again", read as Hype with high energy.
+Bare "running" was then narrowed to workout contexts.
+
+One selection entry regressed on silent leaks, `typed-sad-slow` (0 → 1 per
+batch). "slow sad songs late night" now reads Late Night with low energy. The
+session went from 1 pick to 12, 92% of them on-request; the leak is one
+partial pick. **Decision: enable,** baseline re-pinned.
 
 ## Out of scope for this slice
 
