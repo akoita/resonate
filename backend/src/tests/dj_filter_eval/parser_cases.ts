@@ -282,6 +282,22 @@ const NOISE: ParserCase[] = [
     note: "An activity the vocabulary does not know: the right reading is no filter at all, not a wrong one.",
   },
   { id: "noise-asdf", group: "noise", text: "asdf", expect: want({}) },
+  // Adversarial (#2452): ordinary words one edit away from a genre. A typo-
+  // tolerant reader must leave them alone; a filter here is an invented one.
+  {
+    id: "noise-songs-from-france",
+    group: "noise",
+    text: "songs from france",
+    expect: want({}),
+    note: "France is one letter from Trance.",
+  },
+  { id: "noise-horse-riding", group: "noise", text: "horse riding playlist", expect: want({}), note: "Horse is one letter from House." },
+  { id: "noise-trace-the-night", group: "noise", text: "trace the night", expect: want({}), note: "Trace is one letter from Trance." },
+  { id: "noise-county-fair", group: "noise", text: "county fair afternoon", expect: want({}), note: "County is one letter from Country." },
+  { id: "noise-medal-ceremony", group: "noise", text: "a medal ceremony", expect: want({}), note: "Medal is one letter from Metal." },
+  { id: "noise-reggie-birthday", group: "noise", text: "reggie's birthday", expect: want({}), note: "Reggie is one letter from Reggae." },
+  { id: "noise-classic-car", group: "noise", text: "classic car road trip", expect: want({}), note: "Classic is two letters from Classical." },
+  { id: "noise-model-train", group: "noise", text: "building a model train", expect: want({}) },
 ];
 
 export const PARSER_CASES: readonly ParserCase[] = [

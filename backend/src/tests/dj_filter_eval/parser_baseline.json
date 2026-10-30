@@ -285,6 +285,46 @@
       "verdict": "clean",
       "missing": 0,
       "spurious": 0
+    },
+    "noise-songs-from-france": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-horse-riding": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-trace-the-night": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-county-fair": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-medal-ceremony": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-reggie-birthday": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-classic-car": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
+    },
+    "noise-model-train": {
+      "verdict": "clean",
+      "missing": 0,
+      "spurious": 0
     }
   }
 }
