@@ -88,6 +88,7 @@ export function candidateRow(track: GoldenTrack, performerCap: boolean): Discove
     artist: trackArtist,
     artistId: UPLOADER_ID,
     aiDisclosureLevel: "UNDECLARED",
+    explicit: Boolean(track.explicit),
     descriptorFamilies: descriptor.families,
     descriptorEnergyBand: descriptor.energyBand ?? null,
     release: {

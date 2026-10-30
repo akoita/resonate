@@ -204,7 +204,14 @@ export class AgentRuntimePolicyService {
       : false;
 
     // Unknown ids (the model invented one) cannot be ranked or explained.
-    const known = ordered.filter((pick) => candidatesById.has(pick.trackId));
+    const recognised = ordered.filter((pick) => candidatesById.has(pick.trackId));
+    // The listener's explicit setting holds for model picks too (#2454): the
+    // model's tools hide explicit tracks, and this enforces it if a model names
+    // one anyway. Dropped picks are counted in `policy.dropped.explicit`.
+    const known =
+      input.preferences.allowExplicit === true
+        ? recognised
+        : recognised.filter((pick) => candidatesById.get(pick.trackId)?.explicit !== true);
     let freshCandidates: Awaited<ReturnType<FirstListenerDiscoveryService["getFreshCandidates"]>> = [];
     let freshLookupFailed = false;
     if (userId && this.firstListenerDiscovery && known.length > FIRST_LISTENER_CANDIDATE_LIMIT) {
@@ -410,7 +417,8 @@ export class AgentRuntimePolicyService {
 
     const dropped = {
       ...policyResult.dropped,
-      unknown: ordered.length - known.length,
+      unknown: ordered.length - recognised.length,
+      ...(recognised.length > known.length ? { explicit: recognised.length - known.length } : {}),
       ...(scope ? { offRequest: offRequestDropped } : {}),
     };
     const explorationAccounting = {

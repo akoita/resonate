@@ -377,6 +377,28 @@ describe("AgentRuntimePolicyService (LLM picks, rules 1, 2, 4, 5)", () => {
     expect(result.picks?.[0].reasonCode).not.toBe("discovery_pick");
   });
 
+  it("drops an explicit model pick when the listener has explicit off, and counts it (#2454)", async () => {
+    const explicitTrack = { ...track("explicit"), explicit: true };
+    const { service } = serviceFor([explicitTrack, track("clean")]);
+    const result = await service.apply(baseInput({ preferences: { genres: ["House"], allowExplicit: false } }), {
+      status: "approved",
+      picks: [pick("explicit"), pick("clean")],
+    });
+    expect(result.picks?.map((entry) => entry.trackId)).toEqual(["clean"]);
+    expect(result.policy?.dropped).toMatchObject({ explicit: 1, unknown: 0 });
+  });
+
+  it("keeps an explicit model pick when the listener allows explicit tracks (#2454)", async () => {
+    const explicitTrack = { ...track("explicit"), explicit: true };
+    const { service } = serviceFor([explicitTrack, track("clean")]);
+    const result = await service.apply(baseInput({ preferences: { genres: ["House"], allowExplicit: true } }), {
+      status: "approved",
+      picks: [pick("explicit"), pick("clean")],
+    });
+    expect(result.picks?.map((entry) => entry.trackId)).toEqual(["explicit", "clean"]);
+    expect(result.policy?.dropped).not.toHaveProperty("explicit");
+  });
+
   it("returns the no-pick shape with a clear reason when every pick is dropped", async () => {
     const { service } = serviceFor([track("ai", { ai: "ALL" })]);
     const result = await service.apply(baseInput(), {

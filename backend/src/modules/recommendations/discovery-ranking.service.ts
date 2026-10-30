@@ -87,6 +87,8 @@ export interface DiscoveryCandidate {
   firstListenerEligible?: boolean;
   /** Track AI disclosure level ("NONE" | "PARTLY" | "ALL" | "UNDECLARED"). */
   aiDisclosureLevel?: string | null;
+  /** The track is explicit; the LLM-path guard enforces the listener's explicit setting with it (#2454). */
+  explicit?: boolean;
   release?: {
     genre?: string | null;
     title?: string | null;

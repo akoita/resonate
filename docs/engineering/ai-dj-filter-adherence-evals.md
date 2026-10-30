@@ -1,7 +1,7 @@
 # AI DJ filter-adherence evals
 
-Status: `in-progress` (#2451). Stage A (parser) and stage B (deterministic
-selection) are the first slice. Stage C, the LLM-path guard, is #2454.
+Status: `in-progress` (#2451). Stage A (parser), stage B (deterministic
+selection) and stage C (the LLM-path guard, #2454) are in place.
 Follow-up fixes measured here: #2452 (parser drops, comparison 2) and #2453
 (loose genre matching, comparison 3).
 
@@ -264,12 +264,70 @@ other matcher users (67 suites).
 because the remaining pop tracks have no usable genre label. The baseline is
 re-pinned.
 
+## Stage C: the LLM-path guard (#2454)
+
+The LLM curation path (`AGENT_RUNTIME=adk`, the default where a model key is
+configured) cannot be replayed offline. Stage C asks a different question
+instead: whatever the model returns, what does the guard let through? Simulated
+model replies of 12 picks go through the real `AgentRuntimePolicyService`. It
+runs with:
+
+- the real ranking core;
+- the stage-B selector for the top-up;
+- a policy context returning rows shaped like
+  `DiscoveryPolicyContextService.loadTrackCandidates`.
+
+The output is graded by the same independent grader.
+
+Three simulated models run per case (batch 1, default variant):
+
+- **adversarial**: the worst tracks for the request first;
+- **taste**: the listener's saved and learned taste genres, ignoring the
+  request (the "Zen played rap" failure mode);
+- **faithful**: on-request tracks only. This is the control for over-blocking:
+  a good pick the guard drops counts as `wronglyDropped`.
+
+The adversarial model also runs through the guard's two fail-open paths: a
+failing track lookup, and no ranking core.
+
+`llm_guard_baseline.json` pins, per case, strategy and mode:
+
+- surviving model contradictions;
+- wrongly dropped picks;
+- final contradictions;
+- final silent leaks.
+
+### Comparison 4: the guard enforces the explicit setting (#2454)
+
+Stage C found that the guard never checked explicit content. Explicit
+filtering lived only in the selector and the model's tools, so an explicit
+track named by a model reached a listener who had explicit off. The guard now
+drops it (`policy.dropped.explicit`).
+
+| Model / mode | Contradicting picks offered | Surviving before | Surviving after | Final contradictions before | Final contradictions after |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| adversarial / normal | 1686 | 111 | 47 | 158 | 94 |
+| taste / normal | 1162 | 76 | 29 | 121 | 74 |
+| faithful / normal | 0 | 0 | 0 | 45 | 45 |
+| adversarial / fail-open (both) | 1686 | 1686 | 1686 | 1686 | 1686 |
+
+No entry regressed, and wrongly dropped picks are unchanged (371 for the
+faithful model). **Decision: enable.**
+
+Measured and still open:
+
+- **The guard fails open (#2462).** With a failed lookup or no ranking core,
+  every model pick passes unchecked: 1686 of 1686.
+- **Artist-only and seed-only requests cannot be verified (#2463).** The
+  adversarial model's 48 picks all survive in the artist group.
+- **Tier B partials survive.** That is by design: a tier B pick shares the
+  genre or a soft filter.
+- **Over-blocking from metadata gaps.** The faithful model loses 319
+  on-request picks with no or vague genre labels. This is the same class as
+  the stage-B metadata gaps.
+
 ## Out of scope for this slice
 
-- **Stage C, the LLM curation path** (`AGENT_RUNTIME=adk`, the default where
-  a model key is configured). Model picks cannot be replayed offline. The
-  follow-up feeds adversarial model picks to `AgentRuntimePolicyService.apply`
-  and measures what its guard lets through.
 - Embedding-backed semantic retrieval and trending, which are off in the
   twin, as in the recall golden set.
 - Real-catalog distribution. The fixture's sparsity ratios are assumptions.
