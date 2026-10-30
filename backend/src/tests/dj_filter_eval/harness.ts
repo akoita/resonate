@@ -353,6 +353,11 @@ function engine() {
   return sharedEngine.selector;
 }
 
+/** The shared eval selector, for stage C: the guard tops its batches up from this same selector. */
+export function evalSelector(): ReturnType<typeof buildGoldenSelector> {
+  return engine();
+}
+
 const USER_ID = "eval-listener";
 
 function severity(pick: PickResult): number {
