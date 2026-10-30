@@ -1,0 +1,2826 @@
+{
+  "schemaVersion": "dj-filter-adherence-baseline/v1",
+  "note": "What the selector does today, failures included. A change may raise these numbers, never lower them; an improvement regenerates this file in the same PR (UPDATE_DJ_FILTER_BASELINE=1 npm run eval:dj-filters).",
+  "entries": {
+    "moment-focus@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 2,
+      "adherence": 0.5833333333333334
+    },
+    "moment-focus@fresh|default|2": {
+      "contradictions": 1,
+      "silentLeaks": 9,
+      "adherence": 0.2727272727272727
+    },
+    "moment-focus@conflicting|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "moment-focus@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-focus@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-focus@aligned|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 8,
+      "adherence": 0.4
+    },
+    "moment-hype@fresh|default|1": {
+      "contradictions": 8,
+      "silentLeaks": 9,
+      "adherence": 0
+    },
+    "moment-hype@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
+    },
+    "moment-hype@conflicting|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "moment-hype@conflicting|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "moment-hype@aligned|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "moment-hype@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.08333333333333333
+    },
+    "moment-chill@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 2,
+      "adherence": 0.5833333333333334
+    },
+    "moment-chill@fresh|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-chill@conflicting|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "moment-chill@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-chill@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-chill@aligned|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 7,
+      "adherence": 0.16666666666666666
+    },
+    "moment-dark@fresh|default|1": {
+      "contradictions": 8,
+      "silentLeaks": 9,
+      "adherence": 0
+    },
+    "moment-dark@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 8,
+      "adherence": 0.5
+    },
+    "moment-dark@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "moment-dark@conflicting|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 11,
+      "adherence": 0.125
+    },
+    "moment-dark@aligned|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 8,
+      "adherence": 0.5
+    },
+    "moment-dark@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0
+    },
+    "moment-zen@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 5,
+      "adherence": 0.3333333333333333
+    },
+    "moment-zen@fresh|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "moment-zen@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-zen@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-zen@aligned|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "moment-zen@aligned|default|2": {
+      "contradictions": 1,
+      "silentLeaks": 4,
+      "adherence": 0.36363636363636365
+    },
+    "moment-club@fresh|default|1": {
+      "contradictions": 9,
+      "silentLeaks": 9,
+      "adherence": 0
+    },
+    "moment-club@fresh|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 5,
+      "adherence": 0.6363636363636364
+    },
+    "moment-club@conflicting|default|1": {
+      "contradictions": 7,
+      "silentLeaks": 9,
+      "adherence": 0.2727272727272727
+    },
+    "moment-club@conflicting|default|2": {
+      "contradictions": 8,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "moment-club@aligned|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 7,
+      "adherence": 0.45454545454545453
+    },
+    "moment-club@aligned|default|2": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.16666666666666666
+    },
+    "moment-late-night@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 3,
+      "adherence": 0.5
+    },
+    "moment-late-night@fresh|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-late-night@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-late-night@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "moment-late-night@aligned|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-late-night@aligned|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-warm@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 9,
+      "adherence": 0
+    },
+    "moment-warm@fresh|default|2": {
+      "contradictions": 1,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "moment-warm@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-warm@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-warm@aligned|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "moment-warm@aligned|default|2": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 0
+    },
+    "sound-hip-hop@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "sound-hip-hop@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-hip-hop@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "sound-hip-hop@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-hip-hop@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "sound-hip-hop@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rnb@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5555555555555556
+    },
+    "sound-rnb@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rnb@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5555555555555556
+    },
+    "sound-rnb@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rnb@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5555555555555556
+    },
+    "sound-rnb@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-pop@fresh|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.7
+    },
+    "sound-pop@fresh|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.3333333333333333
+    },
+    "sound-pop@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.7
+    },
+    "sound-pop@conflicting|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.3333333333333333
+    },
+    "sound-pop@aligned|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.7
+    },
+    "sound-pop@aligned|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.3333333333333333
+    },
+    "sound-afrobeats@fresh|default|1": {
+      "contradictions": 7,
+      "silentLeaks": 7,
+      "adherence": 0.5
+    },
+    "sound-afrobeats@fresh|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0
+    },
+    "sound-afrobeats@conflicting|default|1": {
+      "contradictions": 7,
+      "silentLeaks": 7,
+      "adherence": 0.5
+    },
+    "sound-afrobeats@conflicting|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0
+    },
+    "sound-afrobeats@aligned|default|1": {
+      "contradictions": 7,
+      "silentLeaks": 7,
+      "adherence": 0.5
+    },
+    "sound-afrobeats@aligned|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0
+    },
+    "sound-reggae@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-reggae@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-reggae@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-reggae@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-reggae@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-reggae@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-latin@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6666666666666666
+    },
+    "sound-latin@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-latin@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6666666666666666
+    },
+    "sound-latin@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-latin@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6666666666666666
+    },
+    "sound-latin@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-world@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "sound-world@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.25
+    },
+    "sound-world@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "sound-world@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.25
+    },
+    "sound-world@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "sound-world@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.25
+    },
+    "sound-electronic@fresh|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7
+    },
+    "sound-electronic@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-electronic@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7
+    },
+    "sound-electronic@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-electronic@aligned|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7
+    },
+    "sound-electronic@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-jazz@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-jazz@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-jazz@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-jazz@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-jazz@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-jazz@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rock@fresh|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "sound-rock@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rock@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "sound-rock@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rock@aligned|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "sound-rock@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-ambient@fresh|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.7
+    },
+    "sound-ambient@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-ambient@conflicting|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.7
+    },
+    "sound-ambient@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-ambient@aligned|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.7
+    },
+    "sound-ambient@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-classical@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.8
+    },
+    "sound-classical@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-classical@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.8
+    },
+    "sound-classical@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-classical@aligned|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.8
+    },
+    "sound-classical@aligned|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-energy-low@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.6666666666666666
+    },
+    "single-energy-low@fresh|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.8333333333333334
+    },
+    "single-energy-low@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "single-energy-low@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "single-energy-medium@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 8,
+      "adherence": 0.08333333333333333
+    },
+    "single-energy-medium@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "single-energy-medium@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "single-energy-medium@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "single-energy-high@fresh|default|1": {
+      "contradictions": 8,
+      "silentLeaks": 9,
+      "adherence": 0
+    },
+    "single-energy-high@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-energy-high@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "single-energy-high@conflicting|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "single-tempo-70-90@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 5,
+      "adherence": 0.3333333333333333
+    },
+    "single-tempo-70-90@fresh|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "single-tempo-70-90@conflicting|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "single-tempo-70-90@conflicting|default|2": {
+      "contradictions": 6,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "single-tempo-95-115@fresh|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 8,
+      "adherence": 0.08333333333333333
+    },
+    "single-tempo-95-115@fresh|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "single-tempo-95-115@conflicting|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "single-tempo-95-115@conflicting|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "single-tempo-118-128@fresh|default|1": {
+      "contradictions": 9,
+      "silentLeaks": 9,
+      "adherence": 0
+    },
+    "single-tempo-118-128@fresh|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "single-tempo-118-128@conflicting|default|1": {
+      "contradictions": 8,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "single-tempo-118-128@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "single-tempo-135-175@fresh|default|1": {
+      "contradictions": 9,
+      "silentLeaks": 9,
+      "adherence": 0
+    },
+    "single-tempo-135-175@fresh|default|2": {
+      "contradictions": 8,
+      "silentLeaks": 10,
+      "adherence": 0.3333333333333333
+    },
+    "single-tempo-135-175@conflicting|default|1": {
+      "contradictions": 10,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "single-tempo-135-175@conflicting|default|2": {
+      "contradictions": 10,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-off@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "single-hip-hop-explicit-off@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-off@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "single-hip-hop-explicit-off@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-on@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6
+    },
+    "single-hip-hop-explicit-on@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-on@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6
+    },
+    "single-hip-hop-explicit-on@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-afrobeat-110-chill@fresh|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 4,
+      "adherence": 1
+    },
+    "combo-afrobeat-110-chill@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "combo-afrobeat-110-chill@conflicting|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 4,
+      "adherence": 1
+    },
+    "combo-afrobeat-110-chill@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "combo-hip-hop-low-energy@fresh|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.5
+    },
+    "combo-hip-hop-low-energy@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-hip-hop-low-energy@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.5
+    },
+    "combo-hip-hop-low-energy@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-electronic-124@fresh|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.75
+    },
+    "combo-electronic-124@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-electronic-124@conflicting|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.75
+    },
+    "combo-electronic-124@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-jazz-late-night@fresh|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 4,
+      "adherence": 0.6
+    },
+    "combo-jazz-late-night@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-jazz-late-night@conflicting|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 4,
+      "adherence": 0.6
+    },
+    "combo-jazz-late-night@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rock-high-energy@fresh|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.75
+    },
+    "combo-rock-high-energy@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rock-high-energy@conflicting|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.75
+    },
+    "combo-rock-high-energy@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-ambient-focus@fresh|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "combo-ambient-focus@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-ambient-focus@conflicting|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "combo-ambient-focus@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-pop-warm@fresh|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.8333333333333334
+    },
+    "combo-pop-warm@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-pop-warm@conflicting|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.8333333333333334
+    },
+    "combo-pop-warm@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-reggae-70-90@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 3,
+      "adherence": 0.5714285714285714
+    },
+    "combo-reggae-70-90@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-reggae-70-90@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 3,
+      "adherence": 0.5714285714285714
+    },
+    "combo-reggae-70-90@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-dark-high-140@fresh|default|1": {
+      "contradictions": 9,
+      "silentLeaks": 9,
+      "adherence": 1
+    },
+    "combo-dark-high-140@fresh|default|2": {
+      "contradictions": 5,
+      "silentLeaks": 12,
+      "adherence": 1
+    },
+    "combo-dark-high-140@conflicting|default|1": {
+      "contradictions": 11,
+      "silentLeaks": 12,
+      "adherence": 1
+    },
+    "combo-dark-high-140@conflicting|default|2": {
+      "contradictions": 10,
+      "silentLeaks": 12,
+      "adherence": 1
+    },
+    "combo-latin-high-energy@fresh|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "combo-latin-high-energy@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-latin-high-energy@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "combo-latin-high-energy@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-classical-focus@fresh|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 0.8571428571428571
+    },
+    "combo-classical-focus@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-classical-focus@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 0.8571428571428571
+    },
+    "combo-classical-focus@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rnb-late-night@fresh|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.4
+    },
+    "combo-rnb-late-night@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rnb-late-night@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.4
+    },
+    "combo-rnb-late-night@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-world-relaxed@fresh|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 8,
+      "adherence": 0.8
+    },
+    "combo-world-relaxed@fresh|default|2": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 1
+    },
+    "combo-world-relaxed@conflicting|default|1": {
+      "contradictions": 4,
+      "silentLeaks": 8,
+      "adherence": 0.8
+    },
+    "combo-world-relaxed@conflicting|default|2": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 1
+    },
+    "combo-house-club-126@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.3333333333333333
+    },
+    "combo-house-club-126@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-house-club-126@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.3333333333333333
+    },
+    "combo-house-club-126@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.625
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.625
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-zen-relaxed@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "typed-zen-relaxed@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "typed-calm-to-read@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "typed-calm-to-read@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "typed-rap-francais@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "typed-rap-francais@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-afrobeats-chill@conflicting|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 4,
+      "adherence": 0.5
+    },
+    "typed-afrobeats-chill@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-lofi-study@conflicting|default|1": {
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "typed-lofi-study@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-hiphop@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "typed-hiphop@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-techno-128@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.16666666666666666
+    },
+    "typed-techno-128@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-classique-calme@conflicting|default|1": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-classique-calme@conflicting|default|2": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-dnb-high-energy@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.14285714285714285
+    },
+    "typed-dnb-high-energy@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-rnb-slow-jams@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.4
+    },
+    "typed-rnb-slow-jams@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-trap@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "typed-trap@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-chill-vibes@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "typed-chill-vibes@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "typed-workout@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "typed-workout@conflicting|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "typed-jazzy-dinner@conflicting|default|1": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-jazzy-dinner@conflicting|default|2": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-dancehall@conflicting|default|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 1
+    },
+    "typed-dancehall@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "typed-sad-slow@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "typed-sad-slow@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "typed-reggaeton-party@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.3333333333333333
+    },
+    "typed-reggaeton-party@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-metal@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "typed-metal@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-ambiant-typo@conflicting|default|1": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-ambiant-typo@conflicting|default|2": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-electro-dark-130@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-electro-dark-130@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-focus-coding@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "typed-focus-coding@conflicting|default|2": {
+      "contradictions": 3,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "typed-zen-fresh@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 5,
+      "adherence": 0.3333333333333333
+    },
+    "typed-zen-fresh@fresh|default|2": {
+      "contradictions": 2,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "artist-like-tavi-lindqvist@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "artist-like-tavi-lindqvist@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "artist-more-lowercase@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "artist-more-lowercase@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "artist-more-lowercase@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "artist-more-lowercase@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "artist-typo-quilfeather@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "artist-typo-quilfeather@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-classical-high-170@conflicting|default|1": {
+      "contradictions": 8,
+      "silentLeaks": 8,
+      "adherence": 1
+    },
+    "unmet-classical-high-170@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-zen-drill@conflicting|default|1": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 1
+    },
+    "unmet-zen-drill@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "discovery-new-hip-hop@conflicting|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "discovery-new-hip-hop@conflicting|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "discovery-familiar-zen@conflicting|default|1": {
+      "contradictions": 5,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "discovery-familiar-zen@conflicting|default|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "discovery-new-jazz@fresh|default|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "discovery-new-jazz@fresh|default|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "moment-focus@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-focus@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 8,
+      "adherence": 0.4
+    },
+    "moment-focus@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 4,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "moment-focus@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-focus@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-focus@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 8,
+      "adherence": 0.4
+    },
+    "moment-hype@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 7,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-hype@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 0.8333333333333334
+    },
+    "moment-hype@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "moment-hype@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "moment-hype@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "moment-hype@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "moment-chill@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 2,
+      "adherence": 0.8333333333333334
+    },
+    "moment-chill@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 2,
+      "adherence": 0.8333333333333334
+    },
+    "moment-chill@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 4,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "moment-chill@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-chill@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-chill@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-dark@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 7,
+      "silentLeaks": 9,
+      "adherence": 0.375
+    },
+    "moment-dark@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 1,
+      "silentLeaks": 8,
+      "adherence": 0.8
+    },
+    "moment-dark@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 9,
+      "adherence": 0.375
+    },
+    "moment-dark@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 5,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "moment-dark@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 6,
+      "adherence": 0.75
+    },
+    "moment-dark@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 11,
+      "adherence": 0.5
+    },
+    "moment-zen@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "moment-zen@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-zen@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-zen@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 5,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-zen@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "moment-zen@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 1,
+      "silentLeaks": 7,
+      "adherence": 0.45454545454545453
+    },
+    "moment-club@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 9,
+      "silentLeaks": 9,
+      "adherence": 0.18181818181818182
+    },
+    "moment-club@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 7,
+      "adherence": 0.5555555555555556
+    },
+    "moment-club@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 6,
+      "silentLeaks": 8,
+      "adherence": 0.36363636363636365
+    },
+    "moment-club@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 9,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "moment-club@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 7,
+      "adherence": 0.45454545454545453
+    },
+    "moment-club@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.16666666666666666
+    },
+    "moment-late-night@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "moment-late-night@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
+    },
+    "moment-late-night@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "moment-late-night@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "moment-late-night@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "moment-late-night@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "moment-warm@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "moment-warm@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 6,
+      "adherence": 0.5
+    },
+    "moment-warm@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 4,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "moment-warm@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "moment-warm@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "moment-warm@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 1,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "sound-hip-hop@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "sound-hip-hop@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-hip-hop@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "sound-hip-hop@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-hip-hop@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "sound-hip-hop@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rnb@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5555555555555556
+    },
+    "sound-rnb@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rnb@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5555555555555556
+    },
+    "sound-rnb@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rnb@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5555555555555556
+    },
+    "sound-rnb@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-pop@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.7
+    },
+    "sound-pop@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.3333333333333333
+    },
+    "sound-pop@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.7
+    },
+    "sound-pop@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.3333333333333333
+    },
+    "sound-pop@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.7
+    },
+    "sound-pop@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 3,
+      "adherence": 0.3333333333333333
+    },
+    "sound-afrobeats@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 7,
+      "silentLeaks": 7,
+      "adherence": 0.5
+    },
+    "sound-afrobeats@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0
+    },
+    "sound-afrobeats@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 7,
+      "silentLeaks": 7,
+      "adherence": 0.5
+    },
+    "sound-afrobeats@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0
+    },
+    "sound-afrobeats@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 7,
+      "silentLeaks": 7,
+      "adherence": 0.5
+    },
+    "sound-afrobeats@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0
+    },
+    "sound-reggae@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-reggae@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-reggae@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-reggae@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-reggae@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-reggae@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-latin@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6666666666666666
+    },
+    "sound-latin@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-latin@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6666666666666666
+    },
+    "sound-latin@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-latin@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6666666666666666
+    },
+    "sound-latin@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-world@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "sound-world@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.25
+    },
+    "sound-world@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "sound-world@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.25
+    },
+    "sound-world@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "sound-world@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.25
+    },
+    "sound-electronic@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7
+    },
+    "sound-electronic@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-electronic@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7
+    },
+    "sound-electronic@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-electronic@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7
+    },
+    "sound-electronic@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-jazz@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-jazz@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-jazz@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-jazz@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-jazz@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "sound-jazz@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rock@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "sound-rock@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rock@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "sound-rock@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-rock@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "sound-rock@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-ambient@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.7
+    },
+    "sound-ambient@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-ambient@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.7
+    },
+    "sound-ambient@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-ambient@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.7
+    },
+    "sound-ambient@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-classical@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.8
+    },
+    "sound-classical@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-classical@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.8
+    },
+    "sound-classical@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "sound-classical@aligned|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.8
+    },
+    "sound-classical@aligned|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-energy-low@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
+    },
+    "single-energy-low@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-energy-low@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-energy-low@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.8333333333333334
+    },
+    "single-energy-medium@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
+    },
+    "single-energy-medium@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 7,
+      "adherence": 0.16666666666666666
+    },
+    "single-energy-medium@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "single-energy-medium@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "single-energy-high@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-energy-high@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "single-energy-high@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-energy-high@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "single-tempo-70-90@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-tempo-70-90@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 5,
+      "adherence": 0.3333333333333333
+    },
+    "single-tempo-70-90@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-tempo-70-90@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "single-tempo-95-115@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-tempo-95-115@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 5,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "single-tempo-95-115@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "single-tempo-95-115@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "single-tempo-118-128@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "single-tempo-118-128@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0
+    },
+    "single-tempo-118-128@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "single-tempo-118-128@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 5,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "single-tempo-135-175@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 9,
+      "silentLeaks": 9,
+      "adherence": 0.5
+    },
+    "single-tempo-135-175@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 10,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "single-tempo-135-175@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 8,
+      "silentLeaks": 9,
+      "adherence": 0.5
+    },
+    "single-tempo-135-175@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 10,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-off@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "single-hip-hop-explicit-off@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-off@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "single-hip-hop-explicit-off@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-on@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6
+    },
+    "single-hip-hop-explicit-on@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "single-hip-hop-explicit-on@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.6
+    },
+    "single-hip-hop-explicit-on@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-afrobeat-110-chill@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 4,
+      "adherence": 1
+    },
+    "combo-afrobeat-110-chill@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "combo-afrobeat-110-chill@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 4,
+      "adherence": 1
+    },
+    "combo-afrobeat-110-chill@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "combo-hip-hop-low-energy@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.5
+    },
+    "combo-hip-hop-low-energy@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-hip-hop-low-energy@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.5
+    },
+    "combo-hip-hop-low-energy@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-electronic-124@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.75
+    },
+    "combo-electronic-124@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-electronic-124@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.75
+    },
+    "combo-electronic-124@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-jazz-late-night@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 4,
+      "adherence": 0.6
+    },
+    "combo-jazz-late-night@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-jazz-late-night@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 4,
+      "adherence": 0.6
+    },
+    "combo-jazz-late-night@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rock-high-energy@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.75
+    },
+    "combo-rock-high-energy@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rock-high-energy@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.75
+    },
+    "combo-rock-high-energy@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-ambient-focus@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "combo-ambient-focus@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-ambient-focus@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "combo-ambient-focus@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-pop-warm@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.8333333333333334
+    },
+    "combo-pop-warm@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-pop-warm@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 4,
+      "silentLeaks": 4,
+      "adherence": 0.8333333333333334
+    },
+    "combo-pop-warm@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-reggae-70-90@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 3,
+      "adherence": 0.5714285714285714
+    },
+    "combo-reggae-70-90@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-reggae-70-90@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 3,
+      "adherence": 0.5714285714285714
+    },
+    "combo-reggae-70-90@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-dark-high-140@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 9,
+      "silentLeaks": 10,
+      "adherence": 1
+    },
+    "combo-dark-high-140@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 6,
+      "silentLeaks": 12,
+      "adherence": 1
+    },
+    "combo-dark-high-140@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 11,
+      "silentLeaks": 12,
+      "adherence": 1
+    },
+    "combo-dark-high-140@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 10,
+      "silentLeaks": 12,
+      "adherence": 1
+    },
+    "combo-latin-high-energy@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "combo-latin-high-energy@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-latin-high-energy@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 4,
+      "adherence": 0.6666666666666666
+    },
+    "combo-latin-high-energy@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-classical-focus@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 0.8571428571428571
+    },
+    "combo-classical-focus@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-classical-focus@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 0.8571428571428571
+    },
+    "combo-classical-focus@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rnb-late-night@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.4
+    },
+    "combo-rnb-late-night@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-rnb-late-night@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.4
+    },
+    "combo-rnb-late-night@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-world-relaxed@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 4,
+      "silentLeaks": 8,
+      "adherence": 0.8
+    },
+    "combo-world-relaxed@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 1
+    },
+    "combo-world-relaxed@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 4,
+      "silentLeaks": 8,
+      "adherence": 0.8
+    },
+    "combo-world-relaxed@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 1
+    },
+    "combo-house-club-126@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.3333333333333333
+    },
+    "combo-house-club-126@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-house-club-126@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.3333333333333333
+    },
+    "combo-house-club-126@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.625
+    },
+    "combo-hip-hop-hype-explicit-on@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.625
+    },
+    "combo-hip-hop-hype-explicit-on@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-zen-relaxed@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "typed-zen-relaxed@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 5,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "typed-calm-to-read@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "typed-calm-to-read@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "typed-rap-francais@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "typed-rap-francais@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-afrobeats-chill@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 4,
+      "adherence": 0.5
+    },
+    "typed-afrobeats-chill@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-lofi-study@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 3,
+      "adherence": 0.75
+    },
+    "typed-lofi-study@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-hiphop@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "typed-hiphop@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-techno-128@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.16666666666666666
+    },
+    "typed-techno-128@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-classique-calme@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-classique-calme@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-dnb-high-energy@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.14285714285714285
+    },
+    "typed-dnb-high-energy@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-rnb-slow-jams@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 3,
+      "adherence": 0.4
+    },
+    "typed-rnb-slow-jams@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-trap@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "typed-trap@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-chill-vibes@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 2,
+      "adherence": 0.8333333333333334
+    },
+    "typed-chill-vibes@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 2,
+      "silentLeaks": 2,
+      "adherence": 0.8333333333333334
+    },
+    "typed-workout@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.9166666666666666
+    },
+    "typed-workout@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 0.5833333333333334
+    },
+    "typed-jazzy-dinner@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-jazzy-dinner@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-dancehall@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 3,
+      "silentLeaks": 5,
+      "adherence": 1
+    },
+    "typed-dancehall@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "typed-sad-slow@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "typed-sad-slow@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 4,
+      "silentLeaks": 10,
+      "adherence": 0.16666666666666666
+    },
+    "typed-reggaeton-party@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 1,
+      "adherence": 0.3333333333333333
+    },
+    "typed-reggaeton-party@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-metal@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 1,
+      "adherence": 0.7777777777777778
+    },
+    "typed-metal@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-ambiant-typo@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-ambiant-typo@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 12,
+      "silentLeaks": 12,
+      "adherence": 0
+    },
+    "typed-electro-dark-130@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-electro-dark-130@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "typed-focus-coding@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 5,
+      "silentLeaks": 9,
+      "adherence": 0.25
+    },
+    "typed-focus-coding@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 3,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "typed-zen-fresh@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 7,
+      "adherence": 0.4166666666666667
+    },
+    "typed-zen-fresh@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "artist-like-tavi-lindqvist@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "artist-like-tavi-lindqvist@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "artist-more-lowercase@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "artist-more-lowercase@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "artist-more-lowercase@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "artist-more-lowercase@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "artist-typo-quilfeather@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "artist-typo-quilfeather@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-country@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-classical-high-170@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 8,
+      "silentLeaks": 8,
+      "adherence": 1
+    },
+    "unmet-classical-high-170@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "unmet-zen-drill@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 1,
+      "silentLeaks": 2,
+      "adherence": 1
+    },
+    "unmet-zen-drill@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 1
+    },
+    "discovery-new-hip-hop@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.5
+    },
+    "discovery-new-hip-hop@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    },
+    "discovery-familiar-zen@conflicting|hybrid_rrf_v1|1": {
+      "contradictions": 2,
+      "silentLeaks": 8,
+      "adherence": 0.3333333333333333
+    },
+    "discovery-familiar-zen@conflicting|hybrid_rrf_v1|2": {
+      "contradictions": 5,
+      "silentLeaks": 11,
+      "adherence": 0.08333333333333333
+    },
+    "discovery-new-jazz@fresh|hybrid_rrf_v1|1": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0.7
+    },
+    "discovery-new-jazz@fresh|hybrid_rrf_v1|2": {
+      "contradictions": 0,
+      "silentLeaks": 0,
+      "adherence": 0
+    }
+  }
+}
