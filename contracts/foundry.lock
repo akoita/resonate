@@ -1,14 +1,17 @@
 {
+  "lib/ExcessivelySafeCall": {
+    "rev": "81cd99ce3e69117d665d7601c330ea03b97acce0"
+  },
   "lib/account-abstraction": {
     "tag": {
-      "name": "v0.9.0",
-      "rev": "b36a1ed52ae00da6f8a4c8d50181e2877e4fa410"
+      "name": "v0.7.0",
+      "rev": "7af70c8993a6f42973f520ae0752386a5032abe7"
     }
   },
   "lib/forge-std": {
     "tag": {
-      "name": "v1.15.0",
-      "rev": "0844d7e1fc5e60d77b68e469bff60265f236c398"
+      "name": "v1.16.2",
+      "rev": "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b"
     }
   },
   "lib/halmos-cheatcodes": {
@@ -24,15 +27,12 @@
     }
   },
   "lib/openzeppelin-contracts": {
-    "tag": {
-      "name": "v5.6.1",
-      "rev": "5fd1781b1454fd1ef8e722282f86f9293cacf256"
-    }
+    "rev": "fddac901ccdbdb06be90536822936ea765dd9218"
+  },
+  "lib/openzeppelin-contracts-upgradeable": {
+    "rev": "d8c717774cfa3a0396dd3e94db58b7580218651e"
   },
   "lib/solady": {
-    "tag": {
-      "name": "v0.1.26",
-      "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
-    }
+    "rev": "cedd7936a11807acd819c9f6acf48fdcefee3f73"
   }
 }

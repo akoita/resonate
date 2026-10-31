@@ -97,6 +97,12 @@ that exact EntryPoint v0.7/Kernel v3.1 boundary. App SDK calls use Kernel
 version `0.3.1`, the explicit implementation and factory addresses, and direct
 factory mode on repository-owned networks.
 
+Every `lib/` dependency is pinned by its root gitlink, which
+`scripts/install-deps.sh` reads (with the URL from `.gitmodules`), so Dependabot
+submodule bumps are exactly what CI builds. The `lib/account-abstraction`
+gitlink is held on v0.7.0: Dependabot ignores it and `install-deps.sh` refuses
+any other commit. See `docs/operations/supply_chain_updates.md`.
+
 Run the isolated checks after installing dependencies with:
 
 ```bash
