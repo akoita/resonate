@@ -115,7 +115,12 @@ Checkout, in order:
 
 `SubscriptionLifecycleService` (`subscription_lifecycle.service.ts`, provided
 with the config and gateway by `BillingCoreModule`) is what the account
-lifecycle does at Stripe. Defaults (sprint 45, for owner and legal review):
+lifecycle does at Stripe. Before #2492 Nest never injected it into its four
+consumers (`AccountStatusService`, `ContactEmailService`, `MaintenanceService`,
+`PrivacyController`). Their `SubscriptionLifecycleService | null = null`
+parameters were recorded as `Object` in the decorator metadata, so the hooks
+those consumers call did nothing. `billing_lifecycle_wiring.spec.ts` now pins
+the wiring. Defaults (sprint 45, for owner and legal review):
 
 | Account event | At Stripe | When it fails |
 | --- | --- | --- |
@@ -267,6 +272,11 @@ Checkout Session id). Stripe Tax as for subscriptions.
 `checkout.session.completed` (and `checkout.session.async_payment_succeeded`)
 for a `payment` session is handed to `CreditTopUpService.fulfilFromCheckout`;
 the webhook's event-id idempotency and live-mode refusal apply as above.
+`CreditTopUpService` is a required dependency of the webhook. Before #2492 it
+was declared optional and was never injected, so every pack event was
+acknowledged as `ignored_unavailable` without crediting anyone.
+`stripe_webhook_wiring.integration.spec.ts` now boots `BillingModule` and
+checks fulfilment and refunds through the real wiring.
 
 - Only `payment_status: paid` is fulfilled (an asynchronous method waits for
   `async_payment_succeeded`).

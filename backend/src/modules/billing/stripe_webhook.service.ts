@@ -94,7 +94,10 @@ export class StripeWebhookService {
   constructor(
     private readonly config: BillingConfig,
     @Optional() @Inject(STRIPE_GATEWAY) private readonly gateway: StripeGateway | null = null,
-    @Optional() private readonly topUps: CreditTopUpService | null = null,
+    // Required (#2492): a union-with-null type serializes as `Object` in the
+    // decorator metadata, so Nest found no provider and every credit-pack
+    // event was silently ignored. `BillingModule` always provides it.
+    private readonly topUps: CreditTopUpService,
     @Optional() allowance?: GenerationAllowanceService,
   ) {
     this.allowance = allowance ?? new GenerationAllowanceService();
@@ -149,7 +152,7 @@ export class StripeWebhookService {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as StripeCheckoutSession;
-        if (session.mode === "payment") return this.topUps?.fulfilFromCheckout(session, createdAt) ?? "ignored_unavailable";
+        if (session.mode === "payment") return this.topUps.fulfilFromCheckout(session, createdAt);
         if (session.mode !== "subscription") return "ignored_not_subscription";
         const subscriptionId = idOf(session.subscription);
         if (!subscriptionId) return "ignored_no_subscription";
@@ -175,11 +178,9 @@ export class StripeWebhookService {
         return outcome;
       }
       case "checkout.session.async_payment_succeeded":
-        return (
-          this.topUps?.fulfilFromCheckout(event.data.object as StripeCheckoutSession, createdAt) ?? "ignored_unavailable"
-        );
+        return this.topUps.fulfilFromCheckout(event.data.object as StripeCheckoutSession, createdAt);
       case "charge.refunded":
-        return this.topUps?.reverseFromRefund(event.data.object as StripeCharge) ?? "ignored_unavailable";
+        return this.topUps.reverseFromRefund(event.data.object as StripeCharge);
       default:
         return "ignored_unhandled_type";
     }

@@ -14,6 +14,8 @@ import { prisma } from "../db/prisma";
 import { AuditService } from "../modules/audit/audit.service";
 import { BillingConfig } from "../modules/billing/billing_config";
 import { BillingService } from "../modules/billing/billing.service";
+import { CreditPackConfig } from "../modules/billing/credit_packs";
+import { CreditTopUpService } from "../modules/billing/credit_topup.service";
 import type { StripeEvent, StripeGateway, StripeSubscription } from "../modules/billing/stripe_gateway";
 import { StripeWebhookService } from "../modules/billing/stripe_webhook.service";
 import { EntitlementsService } from "../modules/entitlements/entitlements.service";
@@ -68,7 +70,14 @@ const gateway = {
 } satisfies StripeGateway;
 
 const billing = new BillingService(config, consents, gateway, entitlements);
-const webhooks = new StripeWebhookService(config, gateway);
+const topUps = new CreditTopUpService(
+  config,
+  consents,
+  new NoticeService(new EventBus(), new AuditService()),
+  gateway,
+  new CreditPackConfig({}),
+);
+const webhooks = new StripeWebhookService(config, gateway, topUps);
 
 function stripeSub(
   id: string,

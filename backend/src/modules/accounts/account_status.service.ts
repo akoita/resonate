@@ -88,7 +88,7 @@ export class AccountStatusService {
     private readonly standing: AccountStandingService,
     // #2430: suspension pauses Stripe collection, lifting it resumes, and a
     // closure cancels the subscription. Absent in tests that do not bill.
-    @Optional() private readonly billing: SubscriptionLifecycleService | null = null,
+    @Optional() private readonly billing?: SubscriptionLifecycleService,
   ) {}
 
   // ============ Enforcement read ============

@@ -97,7 +97,7 @@ export class ContactEmailService {
     @Optional() @Inject(EMAIL_TRANSPORT) private readonly transport: EmailTransport | null,
     private readonly notices: NoticeService,
     // #2430: a newly confirmed address becomes the Stripe billing email.
-    @Optional() private readonly billing: SubscriptionLifecycleService | null = null,
+    @Optional() private readonly billing?: SubscriptionLifecycleService,
   ) {}
 
   // ============ Reading ============

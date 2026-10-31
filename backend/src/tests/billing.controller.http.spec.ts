@@ -13,6 +13,7 @@ import { BillingService } from "../modules/billing/billing.service";
 import { STRIPE_GATEWAY, createStripeGateway, type StripeGateway } from "../modules/billing/stripe_gateway";
 import { StripeWebhookController } from "../modules/billing/stripe_webhook.controller";
 import { StripeWebhookService } from "../modules/billing/stripe_webhook.service";
+import { CreditTopUpService } from "../modules/billing/credit_topup.service";
 import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
 import { SUBSCRIPTION_CONSENT_TEXT_VERSION } from "../modules/purchase_consent/purchase_consent.constants";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
@@ -25,6 +26,8 @@ const CONFIGURED = {
   STRIPE_PRICE_ARTIST_PRO_ANNUAL: "price_year",
 };
 const consents = { recordSubscriptionStart: jest.fn(), link: jest.fn() };
+// The webhook requires the credit-pack service (#2492); this spec covers subscriptions only.
+const topUps = { fulfilFromCheckout: jest.fn(), reverseFromRefund: jest.fn() };
 const bearer = (userId = "user-1") => ({ Authorization: `Bearer ${authToken(userId)}` });
 const validCheckout = { interval: "month", acknowledgedImmediateStart: true, textVersion: SUBSCRIPTION_CONSENT_TEXT_VERSION };
 
@@ -35,6 +38,7 @@ async function appWith(config: BillingConfig, gateway: StripeGateway | null) {
       { provide: BillingConfig, useValue: config },
       { provide: STRIPE_GATEWAY, useValue: gateway },
       { provide: PurchaseConsentService, useValue: consents },
+      { provide: CreditTopUpService, useValue: topUps },
       BillingService,
       StripeWebhookService,
     ],

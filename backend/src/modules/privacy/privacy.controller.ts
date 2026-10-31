@@ -64,7 +64,7 @@ export class PrivacyController {
     private readonly exportService: PersonalDataExportService,
     private readonly closureService: AccountClosureService,
     private readonly closureStepUp: AccountClosureStepUpService,
-    @Optional() private readonly billing: SubscriptionLifecycleService | null = null,
+    @Optional() private readonly billing?: SubscriptionLifecycleService,
   ) {}
 
   /**

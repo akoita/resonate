@@ -17,6 +17,8 @@ import { AccountStatusService } from "../modules/accounts/account_status.service
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
 import { AuditService } from "../modules/audit/audit.service";
 import { BillingConfig } from "../modules/billing/billing_config";
+import { CreditPackConfig } from "../modules/billing/credit_packs";
+import { CreditTopUpService } from "../modules/billing/credit_topup.service";
 import { runBillingRetention } from "../modules/billing/billing_retention";
 import type { StripeGateway, StripeSubscription } from "../modules/billing/stripe_gateway";
 import { StripeWebhookService } from "../modules/billing/stripe_webhook.service";
@@ -29,6 +31,7 @@ import { EmailConfig } from "../modules/email/email_config";
 import { sha256Hex } from "../modules/email/email_tokens";
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
 import { NoticeService } from "../modules/notifications/notice.service";
+import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
 import { EventBus } from "../modules/shared/event_bus";
@@ -219,7 +222,8 @@ describe("Billing account lifecycle (integration, #2430)", () => {
     it("keeps a canceled subscription canceled when an older webhook arrives afterwards", async () => {
       const { userId, customer, subscriptionId } = await subscriber("late_webhook");
       await lifecycle.endForAccount(userId, "account_closure");
-      const webhooks = new StripeWebhookService(config, gateway);
+      const topUps = new CreditTopUpService(config, new PurchaseConsentService(notices), notices, gateway, new CreditPackConfig({}));
+      const webhooks = new StripeWebhookService(config, gateway, topUps);
       const outcome = await webhooks.applySnapshot(
         {
           stripeSubscriptionId: subscriptionId,
