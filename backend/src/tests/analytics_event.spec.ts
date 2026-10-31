@@ -261,6 +261,8 @@ describe("analytics event envelope", () => {
       "player.track_shared",
       "playlist.shared",
       "shows.campaign_shared",
+      "marketplace.license_shared",
+      "remix.published_shared",
       "recommendation.generated",
       "recommendation.served",
       "recommendation.clicked",

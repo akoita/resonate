@@ -152,6 +152,36 @@ describe("PurchaseSuccessPanel (#2042)", () => {
     expect(html).not.toContain("Pay ");
   });
 
+  it("offers a tailored license share once the purchase finished (#1915)", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{
+          method: "onchain",
+          licenseType: "remix",
+          txHash: "0xabc",
+          share: { tokenId: "42", listingId: "7", artistSale: true },
+        }}
+        stemType="vocals"
+        trackTitle="Night Drive"
+        artistName="Nadia Okoro"
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain('data-share="license"');
+    expect(html).toContain("Share what you licensed");
+    expect(html).toContain('aria-label="Share on X"');
+  });
+
+  it("offers no license share without a stem token to link", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseSuccessPanel
+        completed={{ method: "onchain", licenseType: "personal", txHash: "0xabc" }}
+        onDone={() => {}}
+      />,
+    );
+    expect(html).not.toContain('data-share="license"');
+  });
+
   it("says the download is held when the buyer chose to wait (#1776)", () => {
     const html = renderToStaticMarkup(
       <PurchaseSuccessPanel

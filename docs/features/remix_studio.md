@@ -184,6 +184,9 @@ from the JWT, never the request body.
     autosave (roughly per editing pause), not per explicit Save click.
   - `remix.published` — successful in-Resonate publish; `projectId`,
     `releaseId`, `mode`.
+  - `remix.published_shared` (#1915) — the owner shared a published remix
+    from the "Published on Resonate" panel; `releaseId`, `projectId`,
+    `channel` (x/facebook/reddit/native/copy), `trigger=after_publish`.
   - `remix.studio_action_unavailable` — click on a gated publish control or a
     locked export control; `projectId`, `action`, stable `reasonCode`
     (publish gates: `publish_needs_completed_draft` | `publish_dirty` |
@@ -1085,7 +1088,13 @@ from the JWT, never the request body.
   `aiGenerated` (`grounding !== "stem_audio"`, #1164), and policy version.
   Published projects reject PATCH edits and generation while staying readable.
   Emits `remix.published` (artistId-attributed for the cockpit, #1121;
-  bridge-whitelisted in the same change). `GET /remix/releases/...` is served
+  bridge-whitelisted in the same change). The "Published on Resonate" panel
+  offers **Share your remix** (#1915; publish had no share before): X,
+  Facebook, Reddit, the native share sheet and copy link, with copy from
+  `web/src/lib/fanActionShare.ts` ("I just published "<remix>", my remix of
+  "<track>" by <artist>, on Resonate.") linking the remix release with
+  `utm_campaign=remix_share`. No money claim is made; X posts fit 280
+  characters with links counted as 23. `GET /remix/releases/...` is served
   by the catalog; `getRelease` returns a focused `remix` provenance summary
   for `type: "remix"` releases.
 - API (#1323, backlog E export slice): `POST /remix/projects/:id/export` —

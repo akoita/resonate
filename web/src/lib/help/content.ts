@@ -1711,7 +1711,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Preview and collect licensed audio stems from artists worldwide, choosing the license tier that fits how you'll use them.",
     category: "marketplace",
     audiences: ["listener", "producer"],
-    keywords: ["marketplace", "buy", "collect", "stem", "official stems", "separated", "lossless", "wav", "flac", "stem source", "license", "personal", "remix", "commercial", "purchase", "checkout", "x402", "receipt", "nft", "library", "my purchased stems", "my purchases", "where are my stems", "upgrade"],
+    keywords: ["marketplace", "buy", "collect", "stem", "official stems", "separated", "lossless", "wav", "flac", "stem source", "license", "personal", "remix", "commercial", "purchase", "checkout", "x402", "receipt", "nft", "library", "my purchased stems", "my purchases", "where are my stems", "upgrade", "share", "share license"],
     sections: [
       {
         id: "browse",
@@ -1817,6 +1817,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Each stem shows a badge with the license you hold: Personal, Remix, or Commercial. Use the filter to see only your remix-ready stems or only your personal ones. If you bought a stem at Personal and now want to remix it, choose Upgrade to Remix license on that stem to buy the Remix tier.",
+          },
+          {
+            kind: "paragraph",
+            text: "The confirmation also offers Share what you licensed: X, Facebook, Reddit, your device's share sheet, or Copy link. The post is written for you (for example, \"I licensed the vocals stem of \u201cNight Drive\u201d by Nadia Okoro on Resonate\") and links the stem's public page, so friends can hear it and license it too. You can edit it before posting, or skip it. It never mentions what you paid, how you paid, or your wallet. It says the artist keeps at least 85% of the sale only when the artist sold you the stem; a resale from another holder leaves that line out.",
           },
           {
             kind: "callout",
@@ -2234,7 +2238,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade", "share", "share remix"],
     levelIntros: {
       beginner: {
         title: "Your first remix in 3 minutes",
@@ -2689,6 +2693,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Commercial license: also lets you download your remix with \"Export audio\" and use it elsewhere, and sell it. The Export button tells you when a commercial license is what's missing.",
               "Publishing: \"Publish on Resonate\" asks you to confirm, then makes your remix a public release that credits the original song and artist. Resonate checks your rights again at that moment. After publishing, the studio is locked so the release stays as published.",
               "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it for sale. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
+              "Sharing: the \"Published on Resonate\" panel also offers Share your remix (X, Facebook, Reddit, your device's share sheet, or Copy link). The post names your remix and the song and artist it remixes, and links your release page. Nothing is posted unless you choose to share.",
             ],
           },
           {

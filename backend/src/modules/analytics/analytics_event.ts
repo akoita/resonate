@@ -433,6 +433,29 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["campaignId", "channel", "trigger", "source"],
   },
   {
+    // #1915: a fan shared a stem license from the purchase success view. The
+    // link is the public stem page tagged utm_campaign=license_share. Only the
+    // on-chain token id, the listing id, and two enums (channel
+    // x|facebook|reddit|native|copy, trigger after_purchase): no price,
+    // payment method, receipt, transaction, or wallet.
+    eventName: "marketplace.license_shared",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["tokenId", "listingId", "channel", "trigger", "source"],
+  },
+  {
+    // #1915: a remixer shared a remix they just published from Remix Studio.
+    // The link is the public remix release tagged utm_campaign=remix_share.
+    // Only the release and project ids and two enums (channel, trigger
+    // after_publish).
+    eventName: "remix.published_shared",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "projectId", "channel", "trigger", "source"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",

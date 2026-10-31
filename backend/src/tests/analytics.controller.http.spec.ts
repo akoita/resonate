@@ -819,6 +819,52 @@ describe("AnalyticsController (HTTP)", () => {
     expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
   });
 
+  it('accepts license shares and keeps only tokenId, listingId, channel and trigger (#1915)', async () => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'marketplace.license_shared', source: 'buy_modal', subjectType: 'stem_token', subjectId: '42',
+        payload: { tokenId: '42', listingId: '7', channel: 'reddit', trigger: 'after_purchase', priceUsd: '4.99', txHash: '0xdead', walletAddress: '0xabc', text: 'I licensed it' } }).expect(201);
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: 'marketplace.license_shared', source: 'buy_modal', subjectType: 'stem_token', subjectId: '42',
+      payload: { tokenId: '42', listingId: '7', channel: 'reddit', trigger: 'after_purchase' },
+    }));
+  });
+  it.each([
+    { tokenId: '42', trigger: 'after_purchase' },
+    { tokenId: '42', channel: 'email', trigger: 'after_purchase' },
+    { tokenId: '42', channel: 'x', trigger: 'page' },
+    { channel: 'x', trigger: 'after_purchase' },
+    { tokenId: 'vocals of my track', channel: 'x', trigger: 'after_purchase' },
+    { tokenId: '42', listingId: '0xabc', channel: 'x', trigger: 'after_purchase' },
+  ])('rejects license shares with an invalid payload (%j)', async payload => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'marketplace.license_shared', subjectType: 'stem_token', subjectId: '42', payload }).expect(400);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
+
+  it('accepts remix publish shares and keeps only releaseId, projectId, channel and trigger (#1915)', async () => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'remix.published_shared', source: 'remix_studio', subjectType: 'release', subjectId: 'rel_1',
+        payload: { releaseId: 'rel_1', projectId: 'prj_1', channel: 'copy', trigger: 'after_publish', title: 'My remix', prompt: 'darker' } }).expect(201);
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: 'remix.published_shared', subjectType: 'release', subjectId: 'rel_1',
+      payload: { releaseId: 'rel_1', projectId: 'prj_1', channel: 'copy', trigger: 'after_publish' },
+    }));
+  });
+  it.each([
+    { releaseId: 'rel_1', trigger: 'after_publish' },
+    { releaseId: 'rel_1', channel: 'x', trigger: 'after_purchase' },
+    { channel: 'x', trigger: 'after_publish' },
+    { releaseId: 'my remix title', channel: 'x', trigger: 'after_publish' },
+  ])('rejects remix publish shares with an invalid payload (%j)', async payload => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'remix.published_shared', subjectType: 'release', subjectId: 'rel_1', payload }).expect(400);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
+
   it("accepts artist action cockpit product analytics events", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")
