@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 import { EntitlementsModule } from "../entitlements/entitlements.module";
 import { NotificationModule } from "../notifications/notification.module";
 import { PurchaseConsentModule } from "../purchase_consent/purchase_consent.module";
+import { BillingReconciliationController } from "./billing_reconciliation.controller";
+import { BillingReconciliationService } from "./billing_reconciliation.service";
 import { BillingController } from "./billing.controller";
 import { BillingCoreModule } from "./billing_core.module";
 import { BillingService } from "./billing.service";
@@ -21,12 +23,13 @@ import { StripeWebhookService } from "./stripe_webhook.service";
  */
 @Module({
   imports: [BillingCoreModule, EntitlementsModule, PurchaseConsentModule, NotificationModule],
-  controllers: [BillingController, StripeWebhookController, CreditTopUpController],
+  controllers: [BillingController, StripeWebhookController, CreditTopUpController, BillingReconciliationController],
   providers: [
     BillingService,
     StripeWebhookService,
     { provide: CreditPackConfig, useFactory: () => new CreditPackConfig() },
     CreditTopUpService,
+    BillingReconciliationService,
   ],
 })
 export class BillingModule {}

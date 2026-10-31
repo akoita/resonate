@@ -369,7 +369,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "account",
     audiences: ["operator"],
     status: "partial",
-    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan"],
+    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan", "billing", "reconciliation", "month end", "stripe", "refunds", "invoices", "csv"],
     sections: [
       {
         id: "who-can-use-it",
@@ -508,6 +508,42 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "billing-reconciliation",
+        heading: "Monthly billing reconciliation (operators)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Admins and operators can open Billing Reconciliation in the sidebar to see one month of money in one place: credit packs people bought, credit packs refunded, packs that were paid but never credited, the generation credits people hold, and the Artist Pro invoices that were paid. It is meant for closing the books: the totals at the top, per currency, are the figures to tie out against Stripe's own balance report for the same month.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Open Billing Reconciliation. It starts on last month, because that is the month you normally close. Choose another month from the list to look back; the current month is in the list too, marked in progress.",
+              "Read the checks at the top. Each green mark means a figure ties out; a yellow one means look closer before relying on the numbers.",
+              "Scroll for the details: what is held back for packs not yet credited, the pooled balance of bought and free credits, the Artist Pro allowance, and a table each for purchases, refunds, packs that need review and subscription invoices.",
+              "Choose Download CSV on a section to save it as a spreadsheet, named with the month and the section. Choose Download JSON at the top to save the whole report as you see it.",
+            ],
+          },
+          {
+            kind: "list",
+            items: [
+              "In progress: the month has not ended, so its totals can still change. Run the report again once it is over.",
+              "Does not balance: the opening figure plus the movements does not equal the closing figure for that section. Do not use that section until the difference is explained.",
+              "Ledger and account balances differ: the record of every credit movement and the balances people see add up to different amounts right now. Ask engineering to look before you rely on the credit balance.",
+              "Need review: someone paid for a credit pack and never received the credits. Each one needs a decision before the month is closed.",
+              "Without a recorded charge amount: no charged amount was saved for that payment, so the total may be short; check it in Stripe.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What it shows",
+            text: "The report holds identifiers, amounts, codes and dates only: no names, email addresses or notes, and an operator's typed reason for a credit grant appears only as the label operator grant. The Artist Pro allowance is shown on its own because it is included with the plan and is not something Resonate owes anyone. Because every number comes from dated records, a past month gives the same figures each time you run it. Opening a month or downloading a section is recorded in the admin audit log.",
+          },
+        ],
+      },
+      {
         id: "agent-session-events",
         heading: "What the AI DJ decided in a session (admins)",
         audience: "operator",
@@ -529,6 +565,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Users (operators)", href: "/admin/users", description: "The overview, search and filters, and each person's record." },
       { label: "DJ Session Events (admins)", href: "/admin/agent-sessions", description: "Look up one AI DJ session and see what it decided.", audience: "operator" },
       { label: "Audit Log (admins)", href: "/admin/audit", description: "See what operators did, newest first.", audience: "operator" },
+      { label: "Billing Reconciliation (operators)", href: "/admin/billing-reconciliation", description: "Open one month of credit pack payments, credits and Artist Pro invoices, and download each section.", audience: "operator" },
     ],
     related: ["account-suspension", "platform-notices", "settings-privacy"],
   },

@@ -8312,7 +8312,8 @@ export type AdminAuditAction =
   | "show_campaign.operator_accessed"
   | "show_pledge.operator_acted"
   | "community_campaign_update.operator_posted"
-  | "community_benefit_rule.operator_managed";
+  | "community_benefit_rule.operator_managed"
+  | "billing.reconciliation_viewed";
 
 export type AdminAuditOutcome = "success" | "denied";
 
@@ -8358,6 +8359,186 @@ export function listAdminAuditEvents(token: string, query: AdminAuditEventsQuery
     { cache: "no-store" },
     token,
   );
+}
+
+// ============ Billing reconciliation report (#2497) ============
+
+export const BILLING_RECONCILIATION_SECTIONS = [
+  "purchases",
+  "refunds",
+  "needs_review",
+  "held_purchases",
+  "credit_balance",
+  "allowance",
+  "subscription_invoices",
+  "control_totals",
+] as const;
+export type BillingReconciliationSection = (typeof BILLING_RECONCILIATION_SECTIONS)[number];
+
+export type BillingPurchaseRow = {
+  creditTopUpId: string;
+  accountId: string;
+  stripeCheckoutSessionId: string;
+  stripePaymentIntentId: string | null;
+  packId: string;
+  currency: string;
+  priceCents: number;
+  amountTotalCents: number | null;
+  creditsCents: number;
+  delivery: string;
+  paidAt: string;
+  creditedAt: string | null;
+  creditedInMonthCents: number;
+  currentStatus: string;
+};
+
+export type BillingRefundRow = {
+  refundId: string;
+  creditTopUpId: string;
+  accountId: string;
+  stripePaymentIntentId: string | null;
+  currency: string;
+  amountCents: number;
+  withdrawnCreditsCents: number;
+  reversedCents: number;
+  spentNotReversedCents: number;
+  heldReductionCents: number;
+  statusBefore: string;
+  refundedAt: string;
+  backfilled: boolean;
+};
+
+export type BillingInvoiceRow = {
+  stripeInvoiceId: string;
+  subscriptionId: string;
+  accountId: string;
+  stripeSubscriptionId: string;
+  currency: string;
+  amountPaidCents: number;
+  amountExcludingTaxCents: number | null;
+  billingReason: string | null;
+  interval: string;
+  periodStart: string;
+  periodEnd: string;
+  paidAt: string;
+};
+
+export type BillingLabelledTotal = { label: string; count: number; cents: number };
+export type BillingCountCents = { count: number; cents: number };
+export type BillingChargedTotals = {
+  count: number;
+  priceCents: number;
+  chargedCents: number;
+  chargedUnknownCount: number;
+};
+
+export type BillingCurrencyControlTotals = {
+  currency: string;
+  creditPackPurchases: BillingChargedTotals;
+  creditPackRefunds: { count: number; amountCents: number };
+  needsReview: BillingChargedTotals;
+  subscriptionInvoices: { count: number; amountPaidCents: number };
+  netCollectedCents: number;
+};
+
+/** The monthly billing reconciliation report (`GET /admin/billing/reconciliation/:month`). */
+export type BillingReconciliationReport = {
+  reportVersion: string;
+  month: string;
+  periodStart: string;
+  periodEnd: string;
+  /** False while the month is still running: totals can still change. */
+  complete: boolean;
+  generatedAt: string;
+  creditPacks: {
+    purchases: BillingPurchaseRow[];
+    refunds: BillingRefundRow[];
+    needsReview: BillingPurchaseRow[];
+  };
+  heldPurchases: {
+    unit: "credit_cents";
+    openingCents: number;
+    purchasedCents: number;
+    creditedCents: number;
+    refundWithdrawnCents: number;
+    closingCents: number;
+    computedClosingCents: number;
+    balanced: boolean;
+  };
+  creditBalance: {
+    unit: "credit_cents";
+    openingCents: number;
+    grants: BillingLabelledTotal[];
+    topUpGrantsCents: number;
+    freeGrantsCents: number;
+    spends: BillingCountCents;
+    spendsByReason: BillingLabelledTotal[];
+    jobRefunds: BillingCountCents;
+    jobRefundsByReason: BillingLabelledTotal[];
+    topUpRefundReversals: BillingCountCents;
+    unclassified: { count: number };
+    closingCents: number;
+    computedClosingCents: number;
+    balanced: boolean;
+  };
+  allowance: {
+    unit: "credit_cents";
+    note: string;
+    grantedCount: number;
+    grantedCents: number;
+    usedCents: number;
+    returnedCents: number;
+    lapsedCents: number;
+  };
+  subscriptionInvoices: BillingInvoiceRow[];
+  controlTotals: BillingCurrencyControlTotals[];
+  integrity: {
+    ledgerBalanceNowCents: number;
+    accountsBalanceNowCents: number;
+    matches: boolean;
+  };
+};
+
+/** Operator/admin: the whole report for one UTC month (`YYYY-MM`). Opening it is audit-logged. */
+export function getBillingReconciliation(token: string, month: string) {
+  return apiRequest<BillingReconciliationReport>(
+    `/admin/billing/reconciliation/${encodeURIComponent(month)}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+/**
+ * Operator/admin: one section of the report as CSV, fetched with the bearer
+ * token (a plain link cannot send it) and returned as a Blob to download.
+ */
+export async function downloadBillingReconciliationCsv(
+  token: string,
+  month: string,
+  section: BillingReconciliationSection,
+): Promise<Blob> {
+  const query = `format=csv&section=${encodeURIComponent(section)}`;
+  const response = await fetch(
+    `${API_BASE}/admin/billing/reconciliation/${encodeURIComponent(month)}?${query}`,
+    { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    let errorDetail = "";
+    try {
+      errorDetail = await response.text();
+    } catch {
+      // ignore
+    }
+    if (response.status === 401) invalidateStoredAuthSession();
+    let details: unknown;
+    try { details = JSON.parse(errorDetail); } catch { details = undefined; }
+    throw new ApiRequestError(
+      formatApiErrorMessage(response.status, response.statusText, errorDetail),
+      response.status,
+      details,
+    );
+  }
+  return response.blob();
 }
 
 // ============ Admin Pro grants (#2406) ============
