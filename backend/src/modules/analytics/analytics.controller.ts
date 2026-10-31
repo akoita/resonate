@@ -152,6 +152,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "shows.pledge_submitted",
   "shows.pledge_confirmed",
   "shows.pledge_failed",
+  "shows.campaign_shared",
   "punchline.drop_viewed",
   "punchline.preview_played",
   "punchline.collect_started",
@@ -534,7 +535,9 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
         ? normalizeTrackSharePayload(sanitizeProductPayload(body.payload))
         : eventName === "playlist.shared"
           ? normalizePlaylistSharePayload(sanitizeProductPayload(body.payload))
-          : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
+          : eventName === "shows.campaign_shared"
+            ? normalizeCampaignSharePayload(sanitizeProductPayload(body.payload))
+            : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
 }
@@ -664,6 +667,28 @@ function normalizePlaylistSharePayload(payload: Record<string, unknown>) {
     throw new BadRequestException("playlistId is required");
   }
   return { playlistId, channel: payload.channel };
+}
+
+const CAMPAIGN_SHARE_TRIGGERS = new Set(["page", "after_signal", "after_pledge"]);
+// Campaign ids are cuids/uuids; an id-shaped token keeps prose out of the field.
+const CAMPAIGN_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * #1916: `shows.campaign_shared` carries the campaign id, an enum channel, and
+ * an enum trigger only. No amounts, tier, wallet, or location.
+ */
+function normalizeCampaignSharePayload(payload: Record<string, unknown>) {
+  if (typeof payload.channel !== "string" || !TRACK_SHARE_CHANNELS.has(payload.channel)) {
+    throw new BadRequestException("Invalid share channel");
+  }
+  if (typeof payload.trigger !== "string" || !CAMPAIGN_SHARE_TRIGGERS.has(payload.trigger)) {
+    throw new BadRequestException("Invalid share trigger");
+  }
+  const campaignId = typeof payload.campaignId === "string" ? payload.campaignId.trim() : "";
+  if (!CAMPAIGN_ID_PATTERN.test(campaignId)) {
+    throw new BadRequestException("campaignId is required");
+  }
+  return { campaignId, channel: payload.channel, trigger: payload.trigger };
 }
 
 function normalizePlayerControlPayload(eventName: string, payload: Record<string, unknown>) {

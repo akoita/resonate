@@ -3697,7 +3697,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "shows",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["shows", "campaign", "pledge", "back", "fund", "escrow", "refund", "concert", "demand", "signal", "tickets", "fee"],
+    keywords: ["shows", "campaign", "pledge", "back", "fund", "escrow", "refund", "concert", "demand", "signal", "tickets", "fee", "share", "share campaign", "invite friends"],
     sections: [
       {
         id: "how-it-works",
@@ -3763,6 +3763,28 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 1500,
               source: LOCAL_PUBLIC,
             },
+          },
+        ],
+      },
+      {
+        id: "sharing",
+        heading: "Sharing a campaign",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A campaign only reaches its goal if enough fans hear about it. The pledge card on every campaign page has a Share this campaign row: the share button of your phone or browser, X, Facebook, Reddit, and Copy link. The link opens the campaign page, with the campaign's picture as the preview.",
+          },
+          {
+            kind: "paragraph",
+            text: "Right after you pledge, or join the city demand group, the page offers to share again with a message that fits what you just did, for example \"I want Nadia Okoro in Paris. Add your signal\" or \"I backed this campaign: 42% funded, 12 days left. If the show isn't booked, everyone is refunded automatically.\" Nothing is posted until you choose a channel, and on X or Reddit you can still edit the message before posting.",
+          },
+          {
+            kind: "list",
+            items: [
+              "The message never includes your pledge amount, your tier, your receipt or your wallet.",
+              "It never promises that the show or a ticket will happen. A message that says you backed the campaign always says that everyone is refunded automatically if the show isn't booked.",
+              "Once a campaign is closed, cancelled or refunding, the message no longer asks anyone to back it.",
+            ],
           },
         ],
       },

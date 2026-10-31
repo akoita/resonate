@@ -795,6 +795,30 @@ describe("AnalyticsController (HTTP)", () => {
     expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
   });
 
+  it.each(['page', 'after_signal', 'after_pledge'])('accepts campaign shares (%s) and keeps only campaignId, channel and trigger', async trigger => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'shows.campaign_shared', source: 'shows_campaign_page', subjectType: 'show_campaign', subjectId: 'cmp_1',
+        payload: { campaignId: 'cmp_1', channel: 'x', trigger, amountUnits: '25000000', walletAddress: '0xabc', tierId: 'patron', text: 'I backed it' } }).expect(201);
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: 'shows.campaign_shared', source: 'shows_campaign_page', subjectType: 'show_campaign', subjectId: 'cmp_1',
+      payload: { campaignId: 'cmp_1', channel: 'x', trigger },
+    }));
+  });
+  it.each([
+    { campaignId: 'cmp_1', trigger: 'page' },
+    { campaignId: 'cmp_1', channel: 'email', trigger: 'page' },
+    { campaignId: 'cmp_1', channel: 'x' },
+    { campaignId: 'cmp_1', channel: 'x', trigger: 'after_refund' },
+    { channel: 'x', trigger: 'page' },
+    { campaignId: 'my favourite show in paris', channel: 'x', trigger: 'page' },
+  ])('rejects campaign shares with an invalid payload (%j)', async payload => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'shows.campaign_shared', subjectType: 'show_campaign', subjectId: 'cmp_1', payload }).expect(400);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
+
   it("accepts artist action cockpit product analytics events", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")

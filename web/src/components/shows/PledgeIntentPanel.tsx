@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import EmailPromptCard from "../email/EmailPromptCard";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { CampaignShare } from "./CampaignShare";
 import {
   useShowPledgeExecution,
   useShowRefundExecution,
@@ -339,6 +340,16 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         </div>
       ) : null}
 
+      {/* #1916: after a confirmed pledge, offer a tailored share (never the amount). */}
+      {execution ? (
+        <CampaignShare
+          campaign={{ ...campaign, rawStatus: execution.confirmation.pledge.campaign?.status ?? campaign.rawStatus }}
+          trigger="after_pledge"
+          label="Share this campaign. Your pledge amount stays private."
+          className="show-share--prompt"
+        />
+      ) : null}
+
       {/* #2182: after a confirmed pledge, offer the optional email for refund notices. */}
       <EmailPromptCard context="pledge" enabled={Boolean(execution)} />
 
@@ -347,6 +358,8 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
           {activeError}
         </p>
       ) : null}
+
+      {!execution ? <CampaignShare campaign={campaign} trigger="page" /> : null}
 
       {pledgingOpen && selectedTier ? (
         <ConfirmDialog

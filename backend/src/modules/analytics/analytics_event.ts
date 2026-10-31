@@ -421,6 +421,18 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["playlistId", "channel", "source"],
   },
   {
+    // #1916: a fan shared a show campaign from its page or right after a
+    // demand signal or pledge. The link is the public campaign page tagged
+    // utm_campaign=show_campaign_share. Only the campaign id and two enums
+    // (channel x|facebook|reddit|native|copy, trigger
+    // page|after_signal|after_pledge): no amounts, tier, wallet, or location.
+    eventName: "shows.campaign_shared",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["campaignId", "channel", "trigger", "source"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",

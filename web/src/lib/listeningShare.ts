@@ -300,7 +300,8 @@ function shrinkToFit(
   return text;
 }
 
-function truncate(value: string, max: number) {
+/** Cut to `max` characters, ending with "…" when shortened. */
+export function truncate(value: string, max: number) {
   if (value.length <= max) return value;
   if (max <= 1) return "…";
   return `${value.slice(0, max - 1).trimEnd()}…`;
