@@ -151,8 +151,9 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
     note:
       "Added by #1422. The person's credit pack purchases: pack, price, credits, the Stripe Checkout Session and "
-      + "payment intent ids, the delivery choice, the 14-day hold and its release, and refunds. No card data is held "
-      + "here; receipts and payment details are at Stripe.",
+      + "payment intent ids, the delivery choice, the 14-day hold and its release, refunds and (#2497) the total "
+      + "charged including tax (`amountTotalCents`). No card data is held here; receipts and payment details are at "
+      + "Stripe.",
   },
   {
     model: "GenerationJobOutcome",
@@ -860,6 +861,10 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
   ArtistClaimDecisionEvent:
     "Internal artist-claim audit history; `actorUserId` identifies a reviewer whose decisions may concern another claimant, so historical free-text review notes are not exposed through an operator's personal export. The claimant's own current request and decision remain in the ArtistClaimRequest export.",
   IndexerState: "Per-chain block cursor for the indexer; operator infrastructure with no personal column.",
+  CreditTopUpRefund:
+    "One dated refund of a credit pack (#2497): amounts, a status code and the Stripe event time, with no column naming a person; the purchase it belongs to is exported as CreditTopUp, which carries the cumulative refund totals.",
+  SubscriptionInvoice:
+    "One paid Artist Pro invoice (#2497): Stripe invoice id, amounts, currency and service period, with no column naming a person; the subscription it belongs to is exported as Subscription, and the invoices themselves are at Stripe, reachable from the Customer Portal.",
   StripeEvent:
     "Stripe webhook idempotency log (#2407): an event id, its type and when it was received and processed, with no payload and no column naming a person; the subscription it changed is exported as Subscription.",
   ShowEscrowIndexerState:

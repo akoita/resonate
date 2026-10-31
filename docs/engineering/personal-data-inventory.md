@@ -249,6 +249,18 @@ exported). Webhook logs carry the event id and type only. The retention job
 deletes rows processed more than 90 days ago (#2430); rows never processed are
 kept as evidence of a failed delivery.
 
+`SubscriptionInvoice` (#2497) records each paid Artist Pro invoice once, from
+the verified `invoice.paid` webhook, for the monthly billing reconciliation
+report: the Stripe invoice and subscription ids, currency, amount paid, amount
+excluding tax, billing reason, interval, the service period and the paid time.
+It has no person column, no card data and no free text; it is reached only
+through its `Subscription` (cascade on delete and update). Erasure: `retain`,
+as a billing record kept with the subscription. Export: not a separate section;
+the row names nobody and is listed in the export manifest's `NOT_EXPORTED_MODELS`
+and the erasure manifest's `RETAINED_BUT_NOT_EXPORTED`, with the invoices
+themselves at Stripe. No new export path is added by this record (the report
+route is added separately and holds opaque ids only).
+
 The subscription start consent is a `PurchaseConsent` row with surface
 `subscription` (see "Immediate-delivery consent" below).
 
@@ -267,6 +279,19 @@ Export: the whole row. Erasure: `retain`, as a billing record; the person is
 named only through `userId`, which rotates. `GenerationCreditTransaction`
 gains `paymentRef`, the payment intent id behind a `top_up` grant or its
 `top_up_refund` reversal (already exported with the ledger).
+
+`CreditTopUp` also holds `amountTotalCents` (#2497): the total charged,
+including tax, from the Checkout Session (null for earlier purchases). It is
+exported with the rest of the row. `CreditTopUpRefund` (#2497) records each
+refund applied to a pack, append-only: the cumulative and incremental refunded
+amount, the credits withdrawn and actually reversed, the purchase status when
+the refund arrived, and the Stripe event time. It has no person column, no card
+data and no free text; it is reached only through its `CreditTopUp` (cascade on
+delete and update). Erasure: `retain`, with the purchase. Export: not a separate
+section (listed in `NOT_EXPORTED_MODELS` and `RETAINED_BUT_NOT_EXPORTED`); the
+purchase's cumulative refund totals are in the exported `CreditTopUp` row. No
+new export path is added by these records (the monthly billing reconciliation
+report route is added separately and holds opaque ids only).
 
 ## The problem this exists to prevent
 

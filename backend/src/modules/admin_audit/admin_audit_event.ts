@@ -114,6 +114,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   "show_pledge.operator_acted",
   "community_campaign_update.operator_posted",
   "community_benefit_rule.operator_managed",
+  /** #2497: an operator opened the monthly billing reconciliation report (month, format and section only). */
+  "billing.reconciliation_viewed",
 ] as const;
 
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];

@@ -331,6 +331,27 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "`consentId` points at the person's own PurchaseConsent, which is retained alongside.",
   },
   {
+    model: "CreditTopUpRefund",
+    disposition: "retain",
+    reason:
+      "A billing record (#2497): one dated refund applied to a credit pack, kept with the CreditTopUp it belongs to "
+      + "for the monthly billing reconciliation and for as long as accounting and tax rules require.",
+    note:
+      "Has no person column and no free text: it is reached only through its CreditTopUp, which is retained "
+      + "alongside. Amounts, a status code and the Stripe event time only.",
+  },
+  {
+    model: "SubscriptionInvoice",
+    disposition: "retain",
+    reason:
+      "A billing record (#2497): one paid Artist Pro invoice (amount, currency, service period, Stripe invoice id), "
+      + "kept with the Subscription it belongs to for the monthly billing reconciliation and for as long as "
+      + "accounting and tax rules require.",
+    note:
+      "Has no person column and no free text: it is reached only through its Subscription, which is retained "
+      + "alongside. The Stripe invoice id is the link to the invoice held at Stripe.",
+  },
+  {
     model: "StripeEvent",
     disposition: "untouched",
     reason:
@@ -1094,6 +1115,10 @@ export const ERASURE_RULES_BY_MODEL: Readonly<Record<string, ErasureRule>> = Obj
  * rather than quietly allowed.
  */
 export const RETAINED_BUT_NOT_EXPORTED: Readonly<Record<string, string>> = {
+  CreditTopUpRefund:
+    "Retained as a billing record (#2497), but not exported: it has no column naming the person and is reached only through its CreditTopUp, which is exported; it adds no personal data (amounts, a status code and the Stripe event time).",
+  SubscriptionInvoice:
+    "Retained as a billing record (#2497), but not exported: it has no column naming the person and is reached only through its Subscription, which is exported; invoices themselves are at Stripe, reachable from the Customer Portal.",
   ArtistClaimDecisionEvent:
     "Retained as internal operator audit history, but not exported: `actorUserId` identifies a reviewer whose actions may concern another claimant, and the claimant's current request and decision remain in the ArtistClaimRequest export.",
   ContractEvent:

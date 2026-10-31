@@ -261,13 +261,48 @@ model CreditTopUp {
   refundedCreditsCents    Int       @default(0)
   /// Credits actually taken back from the balance for those refunds.
   reversedCents           Int       @default(0)
+  /// #2497: what the buyer was charged, tax included (`session.amount_total`),
+  /// in the minor unit of `currency`. Null on purchases recorded before #2497.
+  amountTotalCents        Int?
   paidAt                  DateTime
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
   user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  refunds                 CreditTopUpRefund[]
 
   @@index([userId, status, heldUntil])
   @@index([userId, createdAt])
+  @@index([paidAt])
+}
+
+// One refund applied to a credit pack (#2497): the append-only record behind
+// the cumulative refund columns on `CreditTopUp`, so the monthly
+// reconciliation report can date each refund. Written in the same transaction
+// as the `CreditTopUp` update; `(creditTopUpId, cumulativeRefundedAmountCents)`
+// makes it exactly-once per `charge.amount_refunded` value. `createdAt` is the
+// Stripe event time. Rows with `backfilled` were derived by the migration from
+// the cumulative columns of purchases refunded before #2497 (one row per
+// purchase, dated by its last update). Names nobody: the person is reached only
+// through the purchase. A billing record, kept with it.
+model CreditTopUpRefund {
+  id                            String      @id @default(uuid())
+  creditTopUpId                 String
+  /// `charge.amount_refunded` after this refund, in the minor unit of the purchase currency.
+  cumulativeRefundedAmountCents Int
+  /// Money this refund returned (the increase in `charge.amount_refunded`).
+  amountCents                   Int
+  /// Credits this refund withdrew from the purchase (the increase in `refundedCreditsCents`).
+  withdrawnCreditsCents         Int
+  /// Credits actually taken back from the balance (0 unless the purchase was credited).
+  reversedCents                 Int
+  /// The purchase status when the refund arrived: held | credited | needs_review.
+  statusBefore                  String
+  backfilled                    Boolean     @default(false)
+  createdAt                     DateTime    @default(now())
+  creditTopUp                   CreditTopUp @relation(fields: [creditTopUpId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([creditTopUpId, cumulativeRefundedAmountCents])
+  @@index([createdAt])
 }
 
 // Artist Pro monthly generation allowance (#2408, docs/rfc/artist-pro.md §5,
@@ -402,9 +437,43 @@ model Subscription {
   updatedAt            DateTime              @updatedAt
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   allowanceGrants      GenerationAllowanceGrant[]
+  invoices             SubscriptionInvoice[]
 
   @@index([status])
   @@index([billingEmailStale])
+}
+
+// A paid Artist Pro invoice (#2497), recorded from the verified `invoice.paid`
+// webhook so the monthly reconciliation report can list subscription revenue
+// with its service period (the accountant spreads an annual plan over its 12
+// months). One row per Stripe invoice, exactly once. Amounts are in the minor
+// unit of `currency`. `interval` is the subscription's interval when the
+// invoice was recorded; the period is the invoice's first non-proration
+// subscription line. Invoices paid before #2497 are not backfilled (they are
+// at Stripe). Names nobody: the person is reached only through the
+// subscription. A billing record, kept with it.
+model SubscriptionInvoice {
+  id                      String               @id @default(uuid())
+  subscriptionId          String
+  stripeInvoiceId         String               @unique
+  stripeSubscriptionId    String
+  currency                String
+  /// `amount_paid`: what was collected, tax included.
+  amountPaidCents         Int
+  /// `total_excluding_tax`; null when Stripe gives none.
+  amountExcludingTaxCents Int?
+  /// `billing_reason` (subscription_create, subscription_cycle, subscription_update, …).
+  billingReason           String?
+  interval                SubscriptionInterval
+  periodStart             DateTime
+  periodEnd               DateTime
+  /// `status_transitions.paid_at`, or the event time when Stripe gives none.
+  paidAt                  DateTime
+  createdAt               DateTime             @default(now())
+  subscription            Subscription         @relation(fields: [subscriptionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([paidAt])
+  @@index([subscriptionId, paidAt])
 }
 
 /// #2430: why Resonate cancelled a subscription at Stripe.

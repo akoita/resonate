@@ -410,6 +410,7 @@ export class CreditTopUpService {
             creditedAt: status === "credited" ? paidAt : null,
             releaseBasis: status === "credited" ? "consent" : null,
             creditedCents: status === "credited" ? pack.creditsCents : 0,
+            amountTotalCents: typeof session.amount_total === "number" ? session.amount_total : null,
             paidAt,
           },
         });
@@ -432,7 +433,7 @@ export class CreditTopUpService {
   }
 
   /** `charge.refunded`: withdraw the refunded share of a pack, never below a zero balance. */
-  async reverseFromRefund(charge: StripeCharge): Promise<string> {
+  async reverseFromRefund(charge: StripeCharge, refundedAt: Date = new Date()): Promise<string> {
     const paymentIntentId = idOf(charge.payment_intent);
     if (!paymentIntentId) return "ignored_no_payment_intent";
 
@@ -463,15 +464,30 @@ export class CreditTopUpService {
         });
         if (claimed.count !== 1) return null;
         // Only credits already in the balance are taken back; a held pack simply releases less.
-        if (row.status !== "credited" || delta <= 0) return { reversedCents: 0 };
-        const reversal = await reverseTopUpInTx(tx, { userId: row.userId, wantedCents: delta, paymentRef: paymentIntentId });
-        if (reversal.reversedCents > 0) {
-          await tx.creditTopUp.update({
-            where: { id: row.id },
-            data: { reversedCents: { increment: reversal.reversedCents } },
-          });
+        let reversedCents = 0;
+        if (row.status === "credited" && delta > 0) {
+          const reversal = await reverseTopUpInTx(tx, { userId: row.userId, wantedCents: delta, paymentRef: paymentIntentId });
+          reversedCents = reversal.reversedCents;
+          if (reversedCents > 0) {
+            await tx.creditTopUp.update({
+              where: { id: row.id },
+              data: { reversedCents: { increment: reversedCents } },
+            });
+          }
         }
-        return { reversedCents: reversal.reversedCents };
+        // #2497: the dated, append-only record of this refund for the monthly reconciliation report.
+        await tx.creditTopUpRefund.create({
+          data: {
+            creditTopUpId: row.id,
+            cumulativeRefundedAmountCents: amountRefunded,
+            amountCents: amountRefunded - row.refundedAmountCents,
+            withdrawnCreditsCents: delta,
+            reversedCents,
+            statusBefore: row.status,
+            createdAt: refundedAt,
+          },
+        });
+        return { reversedCents };
       });
       if (!result) continue;
 

@@ -298,6 +298,8 @@ describe("Credit packs (integration, #1422)", () => {
       ]);
       const row = await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } });
       expect(row).toMatchObject({ status: "credited", delivery: "deliver_now", releaseBasis: "consent", creditedCents: 1000, heldUntil: null });
+      // #2497: the total charged (tax included) is kept for the reconciliation report.
+      expect(row.amountTotalCents).toBe(1000);
 
       const notice = await prisma.notice.findFirstOrThrow({ where: { dedupeKey: `credit-topup:${row.id}`, recipientUserId: U.buyer } });
       expect(notice).toMatchObject({ category: "purchase", title: "Credits bought: $10.00", link: "/settings?section=usage" });
@@ -524,19 +526,42 @@ describe("Credit packs (integration, #1422)", () => {
       expect(notice.body).toContain("$7.00 had already been used");
     });
 
-    it("withdraws the refunded share on partial refunds, cumulatively", async () => {
+    it("withdraws the refunded share on partial refunds, cumulatively, and records each refund once (#2497)", async () => {
       const started = await checkout(U.refunds, "credits_10", deliverNow);
       await webhooks.handle(event("checkout.session.completed", completedSession(started)));
       expect(await balance(U.refunds)).toBe(1000);
-      await webhooks.handle(event("charge.refunded", charge(started.sessionId, 1000, 250)));
+      const firstAt = new Date("2026-10-05T10:00:00.000Z");
+      const secondAt = new Date("2026-10-20T15:30:00.000Z");
+      await webhooks.handle(event("charge.refunded", charge(started.sessionId, 1000, 250), firstAt));
       expect(await balance(U.refunds)).toBe(750);
-      await webhooks.handle(event("charge.refunded", charge(started.sessionId, 1000, 600)));
+      await webhooks.handle(event("charge.refunded", charge(started.sessionId, 1000, 600), secondAt));
       expect(await balance(U.refunds)).toBe(400);
-      expect(await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } })).toMatchObject({
-        status: "credited",
-        refundedCreditsCents: 600,
-        reversedCents: 600,
+      const topUp = await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } });
+      expect(topUp).toMatchObject({ status: "credited", refundedCreditsCents: 600, reversedCents: 600 });
+      // A redelivery of the same cumulative refund (new event id) writes no extra row.
+      await webhooks.handle(event("charge.refunded", charge(started.sessionId, 1000, 600), new Date("2026-10-21T00:00:00.000Z")));
+      const refunds = await prisma.creditTopUpRefund.findMany({
+        where: { creditTopUpId: topUp.id },
+        orderBy: { cumulativeRefundedAmountCents: "asc" },
       });
+      expect(refunds).toHaveLength(2);
+      expect(refunds[0]).toMatchObject({
+        cumulativeRefundedAmountCents: 250,
+        amountCents: 250,
+        withdrawnCreditsCents: 250,
+        reversedCents: 250,
+        statusBefore: "credited",
+        backfilled: false,
+      });
+      expect(refunds[0].createdAt.toISOString()).toBe(firstAt.toISOString());
+      expect(refunds[1]).toMatchObject({
+        cumulativeRefundedAmountCents: 600,
+        amountCents: 350,
+        withdrawnCreditsCents: 350,
+        reversedCents: 350,
+        statusBefore: "credited",
+      });
+      expect(refunds[1].createdAt.toISOString()).toBe(secondAt.toISOString());
       await prisma.generationCreditAccount.update({ where: { userId: U.refunds }, data: { balanceCents: 0 } });
     });
 
@@ -548,6 +573,16 @@ describe("Credit packs (integration, #1422)", () => {
       });
       const row = await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } });
       expect(row).toMatchObject({ status: "refunded", reversedCents: 0 });
+      // #2497: the refund is recorded even though no credit was in the balance to take back.
+      expect(await prisma.creditTopUpRefund.findMany({ where: { creditTopUpId: row.id } })).toEqual([
+        expect.objectContaining({
+          cumulativeRefundedAmountCents: 500,
+          amountCents: 500,
+          withdrawnCreditsCents: 500,
+          reversedCents: 0,
+          statusBefore: "held",
+        }),
+      ]);
       expect(await releaseDueTopUpHolds(U.refunds, new Date(Date.now() + 15 * DAY))).toBe(0);
       expect(await balance(U.refunds)).toBe(0);
     });

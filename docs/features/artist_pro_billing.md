@@ -463,6 +463,78 @@ rest of billing.
   (`spendableCents`). The User Guide explains it in the Usage & Billing and
   Artist Pro subscription sections.
 
+## Monthly reconciliation report (#2497)
+
+**Revenue line (ADR-BM-6):** line 2, Phase 2. Reporting only: it changes no
+fee and moves no money; ADR-BM-4 is unaffected.
+
+The operator reconciles Stripe against the credit ledger every month from this
+read-only report, and the accountant reviews it each quarter and at year end.
+The procedure and the accounting treatment are operator documents kept with
+the deployment, not here.
+
+**Route:** `GET /admin/billing/reconciliation/:month` (JWT, role `admin` or
+`operator`, recorded in the admin audit log as
+`billing.reconciliation_viewed` with the month, format and section only).
+`:month` is a UTC month, `YYYY-MM`; a future month answers
+`400 month_in_future`, a malformed one `400 invalid_month`. The current month
+can be read, with `complete: false`. `?format=json` (the default) returns the
+whole report; `?format=csv&section=<section>` returns one section as a CSV
+download (`400 section_required` without a section). Responses are
+`Cache-Control: no-store`. Code: `backend/src/modules/billing/billing_reconciliation*.ts`.
+
+**Admin page:** `/admin/billing-reconciliation` (sidebar › Billing
+Reconciliation, admins and operators;
+`web/src/app/admin/billing-reconciliation/`). Pick a month (the previous UTC
+month by default; the current one is marked in progress). The control totals
+per currency and the checks (each roll-forward balanced, ledger against
+balances, `needs_review` count) are shown first, then the roll-forwards, the
+allowance and the row tables. Each section has a CSV download, and the whole
+report a JSON download. The User Guide covers it in "Finding people and opening
+their record (operators)".
+
+**Sections** (`reportVersion: billing-reconciliation/v1`):
+
+| Section | What it holds |
+| --- | --- |
+| `purchases` | Credit packs paid in the month (`paidAt`), except `needs_review`: Checkout Session and payment intent ids, pack, currency, price before tax, the amount charged (`amountTotalCents`, null on purchases before #2497), credits, delivery, and the credits that reached the balance in the month |
+| `refunds` | Each pack refund applied in the month (`CreditTopUpRefund`, dated by the Stripe event): money refunded, credits withdrawn, credits taken back from the balance, credits already spent, and the reduction of a held purchase |
+| `needs_review` | Packs paid in the month whose amount did not match the catalogue; nothing was credited. Each one needs a refund or an audited operator grant |
+| `held_purchases` | Roll-forward, in credit cents, of credits paid for but not yet in the balance (the 14-day hold): opening, purchased, credited, withdrawn by refunds, closing |
+| `credit_balance` | Roll-forward, in credit cents, of the pooled bought and free balance: opening, grants by reason (`top_up`, `signup_starter`, `credit_request`, `operator_grant`), spends and job refunds (the balance part only), `top_up_refund` reversals, closing |
+| `allowance` | The Artist Pro allowance, apart: granted, used, returned and lapsed. It expires, has no cash value and is never a liability |
+| `subscription_invoices` | Paid Artist Pro invoices in the month (`SubscriptionInvoice`): amount paid, amount before tax, currency, interval, billing reason and service period, so annual plans can be spread over their 12 months |
+| `control_totals` | Per currency: pack purchases, pack refunds, `needs_review` and invoice totals, and the net collected, to set against Stripe's balance report for the month |
+
+The JSON also carries an `integrity` check: the whole ledger's signed sum
+against the cached balances, now.
+
+**Bought-credit liability.** Bought and free credits share one balance with no
+per-purchase lots, so the report does not split spends between them. It gives
+the inputs: held purchases, the bought flows into and out of the balance, and
+grants by reason. The accountant applies the allocation rule. Each roll-forward
+states `computedClosingCents` beside the closing balance and `balanced` when
+they agree.
+
+**Reproducible:** every total comes from dates and append-only rows, never
+from a purchase's current status, so two runs for a past month give the same
+totals, and later refunds or spends do not change it.
+
+**Personal data:** account ids are opaque user ids. The report holds no
+emails, names, notes or consent ids. A free-text reason an operator typed for a
+grant is reported only as `operator_grant`.
+
+**Records added for it:**
+
+- `CreditTopUpRefund`: one row per applied refund, written in the refund's
+  transaction, exactly once per `charge.amount_refunded` value. Purchases
+  refunded before #2497 got one backfilled row each (`backfilled: true`), dated
+  by the purchase's last update.
+- `SubscriptionInvoice`: one row per paid invoice, written by `invoice.paid`
+  after the subscription row is updated (`backend/src/modules/billing/subscription_invoices.ts`).
+  Invoices paid before #2497 are not backfilled; they are at Stripe.
+- `CreditTopUp.amountTotalCents`: what the buyer was charged, tax included.
+
 ## How to test
 
 - Unit: `billing_config.spec.ts` (live-key refusal, unconfigured, return
@@ -490,6 +562,16 @@ rest of billing.
   concurrent deliveries, asynchronous payments, amount mismatch, live-mode
   events, the hold and its lazy and requested release, refunds floored at
   zero), and `BuyCredits.test.tsx`.
+- Reconciliation report (#2497): `billing_reconciliation.spec.ts` (month
+  parsing, CSV quoting and formula guard, reason labels),
+  `billing_reconciliation.controller.http.spec.ts` (roles, `400`s, CSV
+  headers, audit) and `billing_reconciliation.integration.spec.ts` (a seeded
+  month with a purchase, a partial refund, a held release, spends, a
+  `needs_review` purchase and monthly and annual invoices: exact totals per
+  currency, balanced roll-forwards, no personal data, the same totals on a
+  second run and after later activity). The refund and invoice records are
+  covered in `credit_topup.integration.spec.ts` and the `invoice.paid` tests.
+  The admin page: `reconciliation.test.ts` and `ReconciliationView.test.tsx`.
 - Manually, in Stripe test mode: set the variables with test keys, forward
   webhooks with the Stripe CLI to `/billing/stripe/webhook`, and pay with a
   Stripe test card.

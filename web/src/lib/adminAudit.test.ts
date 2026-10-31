@@ -19,8 +19,8 @@ describe("admin audit helpers (#2173)", () => {
       expect(adminAuditActionLabel(option.value)).toBe(option.label);
       expect(isAdminAuditAction(option.value)).toBe(true);
     }
-    expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(87);
-    expect(new Set(ADMIN_AUDIT_ACTION_OPTIONS.map((option) => option.value)).size).toBe(87);
+    expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(88);
+    expect(new Set(ADMIN_AUDIT_ACTION_OPTIONS.map((option) => option.value)).size).toBe(88);
     expect(adminAuditActionLabel("something.new")).toBe("something.new");
     expect(isAdminAuditAction("something.new")).toBe(false);
     expect(adminAuditOutcomeLabel("success")).toBe("Done");
@@ -52,6 +52,14 @@ describe("admin audit helpers (#2173)", () => {
     expect(adminAuditDetailSummary({ action: "wallet.support_changed", detail: { change: "fund" } })).toBe("fund");
     expect(adminAuditDetailSummary({ action: "rights_evidence.privileged_submitted", detail: { evidenceRole: "trusted_source", subjectId: "r-1" } }))
       .toBe("trusted source");
+    // #2497: the billing report records the month and, for a download, the format and section.
+    expect(adminAuditActionLabel("billing.reconciliation_viewed")).toBe("Opened the billing reconciliation report");
+    expect(adminAuditDetailSummary({ action: "billing.reconciliation_viewed", detail: { month: "2026-09" } }))
+      .toBe("2026-09");
+    expect(adminAuditDetailSummary({
+      action: "billing.reconciliation_viewed",
+      detail: { month: "2026-09", format: "csv", section: "needs_review" },
+    })).toBe("2026-09 · CSV · needs review");
     expect(adminAuditDetailSummary({ action: "user.detail_viewed", detail: null })).toBeNull();
   });
 

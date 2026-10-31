@@ -94,6 +94,7 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "show_pledge.operator_acted", label: "Acted on a backer's pledge" },
   { value: "community_campaign_update.operator_posted", label: "Posted a show campaign update" },
   { value: "community_benefit_rule.operator_managed", label: "Managed an artist's community benefits" },
+  { value: "billing.reconciliation_viewed", label: "Opened the billing reconciliation report" },
 ];
 
 export const ADMIN_AUDIT_OUTCOME_OPTIONS: ReadonlyArray<{ value: AdminAuditOutcome; label: string }> = [
@@ -154,6 +155,13 @@ export function adminAuditDetailSummary(event: Pick<AdminAuditEvent, "action" | 
   }
   const cents = count("amountCents");
   if (cents !== null) parts.push(`$${(cents / 100).toFixed(2)}`);
+  // #2497: the billing reconciliation report records the month and, for a download, the section.
+  const month = text("month");
+  if (month) parts.push(month);
+  const format = text("format");
+  if (format) parts.push(format.toUpperCase());
+  const section = text("section");
+  if (section) parts.push(section.replace(/_/g, " "));
   const sessionId = text("sessionId");
   if (sessionId) parts.push(`session ${sessionId}`);
   const noticeId = text("noticeId");

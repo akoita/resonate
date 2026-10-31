@@ -376,6 +376,68 @@ describe("Billing (integration, #2407)", () => {
       expect(await row(U.hooks)).toMatchObject({ status: "active", pastDueSince: null, currentPeriodEnd: new Date(sec(nextEnd) * 1000) });
     });
 
+    it("invoice.paid records the paid invoice once for the reconciliation report (#2497)", async () => {
+      const periodStart = new Date(sec(at(30)) * 1000);
+      const periodEnd = new Date(periodStart.getTime() + 30 * DAY);
+      const paidAt = new Date(periodStart.getTime() + 60_000);
+      const invoiceId = `in_${P}hooks_1`;
+      const invoice = {
+        id: invoiceId,
+        object: "invoice",
+        amount_paid: 1499,
+        total_excluding_tax: 1249,
+        currency: "EUR",
+        billing_reason: "subscription_cycle",
+        status_transitions: { paid_at: sec(paidAt) },
+        parent: { type: "subscription_details", subscription_details: { subscription: subId } },
+        lines: {
+          data: [
+            {
+              period: { start: sec(periodStart), end: sec(periodEnd) },
+              parent: { type: "subscription_item_details", subscription_item_details: { proration: false } },
+            },
+          ],
+        },
+      };
+      const subscriptionRow = await row(U.hooks);
+      expect(await webhooks.handle(event("invoice.paid", invoice, at(30.2)))).toMatchObject({ outcome: "applied" });
+      // A redelivery under a new event id writes no second row.
+      await webhooks.handle(event("invoice.paid", invoice, at(30.3)));
+      const recorded = await prisma.subscriptionInvoice.findMany({ where: { stripeInvoiceId: invoiceId } });
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]).toMatchObject({
+        subscriptionId: subscriptionRow?.id,
+        stripeSubscriptionId: subId,
+        currency: "eur",
+        amountPaidCents: 1499,
+        amountExcludingTaxCents: 1249,
+        billingReason: "subscription_cycle",
+        interval: "month",
+        periodStart,
+        periodEnd,
+        paidAt,
+      });
+    });
+
+    it("invoice.paid for a subscription Resonate does not know records nothing (#2497)", async () => {
+      const invoiceId = `in_${P}unknown_1`;
+      const unknownSub = `sub_${P}unknown`;
+      remote.set(unknownSub, stripeSub(unknownSub, `cus_${P}unknown`, "active"));
+      const invoice = {
+        id: invoiceId,
+        object: "invoice",
+        amount_paid: 1499,
+        currency: "usd",
+        billing_reason: "subscription_create",
+        parent: { type: "subscription_details", subscription_details: { subscription: unknownSub } },
+        lines: { data: [] },
+        period_start: sec(at(30.4)),
+        period_end: sec(new Date(at(30.4).getTime() + 30 * DAY)),
+      };
+      await webhooks.handle(event("invoice.paid", invoice, at(30.4)));
+      expect(await prisma.subscriptionInvoice.count({ where: { stripeInvoiceId: invoiceId } })).toBe(0);
+    });
+
     it("retries an event whose processing failed, then applies it", async () => {
       const invoice = { object: "invoice", parent: { subscription_details: { subscription: subId } } };
       const evt = event("invoice.paid", invoice, at(31));

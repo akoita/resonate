@@ -14,7 +14,8 @@
  *   `checkout.session.async_payment_succeeded` and `charge.refunded` are credit
  *   packs (#1422), handed to `CreditTopUpService`. Checkout and invoice events re-read the
  *   subscription from Stripe, so the row mirrors the current state rather than
- *   the event's partial view.
+ *   the event's partial view. `invoice.paid` also records the invoice once
+ *   (`subscription_invoices.ts`, #2497) for the billing reconciliation report.
  *
  * Logs carry the event id and type only: never a payload, an email, a card
  * detail or a customer id.
@@ -27,6 +28,7 @@ import { GenerationAllowanceService } from "../credits/allowance.service";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
 import { CreditTopUpService } from "./credit_topup.service";
+import { recordPaidInvoice } from "./subscription_invoices";
 import {
   STRIPE_GATEWAY,
   type StripeCharge,
@@ -172,6 +174,8 @@ export class StripeWebhookService {
         const subscriptionId = idOf(invoice.parent?.subscription_details?.subscription);
         if (!subscriptionId) return "ignored_no_subscription";
         const outcome = await this.applyFromStripe(subscriptionId, createdAt, null);
+        // #2497: every paid invoice is recorded once for the billing reconciliation report.
+        if (event.type === "invoice.paid") await recordPaidInvoice(invoice, createdAt);
         // #2408: a paid invoice credits the Artist Pro monthly allowance for
         // the period it pays (idempotent per invoice; see allowance.service.ts).
         if (event.type === "invoice.paid") await this.allowance.grantForInvoice(invoice);
@@ -180,7 +184,7 @@ export class StripeWebhookService {
       case "checkout.session.async_payment_succeeded":
         return this.topUps.fulfilFromCheckout(event.data.object as StripeCheckoutSession, createdAt);
       case "charge.refunded":
-        return this.topUps.reverseFromRefund(event.data.object as StripeCharge);
+        return this.topUps.reverseFromRefund(event.data.object as StripeCharge, createdAt);
       default:
         return "ignored_unhandled_type";
     }
