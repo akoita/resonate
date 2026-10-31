@@ -354,7 +354,14 @@ schemas, APIs, Discord sync, or contracts.
 Recommended follow-up issues:
 
 1. [#1106](https://github.com/akoita/resonate/issues/1106): off-chain public
-   supporter and collector badge visibility controls;
+   supporter and collector badge visibility controls — **implemented**: two
+   per-type consent flags (`showSupporterBadges`, `showCollectorBadges`,
+   default off), a read-time projection in
+   `backend/src/modules/community/community_public_badges.ts` that emits one
+   `public-community-credential/v1`-shaped badge per artist on
+   `GET /community/profile/:userId`, live lifecycle re-checks, `expiresAt` on
+   `CommunityBadge`, and moderation (banned/removed membership in an artist or
+   campaign room) overriding display;
 2. [#1107](https://github.com/akoita/resonate/issues/1107): privacy-safe public
    credential verifier API;
 3. [#1108](https://github.com/akoita/resonate/issues/1108): Discord or

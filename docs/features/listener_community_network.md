@@ -291,7 +291,8 @@ The M1 profile foundation provides:
   URL, and `private`, `community`, `followers`, or `public` profile visibility;
 - `CommunityVisibilitySettings` persistence with opt-in flags for taste badges,
   owned items, campaign support, show attendance, playlists, wallet address,
-  future taste matching, and future city/scene matching;
+  supporter badges, collector badges, future taste matching, and future
+  city/scene matching;
 - authenticated self-profile APIs:
   - `GET /community/profile/me`
   - `PATCH /community/profile/me`
@@ -307,12 +308,39 @@ Public profile reads currently expose only profiles with
 redacted unless the listener explicitly enables each section. Ownership-based
 eligibility for future benefits remains separate from public ownership display.
 
+Public supporter and collector badges
+([#1106](https://github.com/akoita/resonate/issues/1106), following the
+[public credential rules RFC](../rfc/public-supporter-collector-credential-rules.md)):
+
+- display needs its own consent flag per type — `showSupporterBadges` and
+  `showCollectorBadges`, both off by default and separate from holding the
+  badge, owning the NFT, backing a campaign, or `showCampaignSupport`;
+- proof inputs are existing facts only: campaign supporter badges (re-checked
+  live against confirmed pledges on active-lifecycle campaigns), manual
+  artist grants (`CommunityBadge` with `sourceType = "artist"`), owned
+  Punchline collectibles, and indexed stem NFT holdings net of resales;
+- the public profile emits `showcase.supporterBadges` / `showcase.collectorBadges`
+  only under consent (absent otherwise, with `supporter_badges_hidden` /
+  `collector_badges_hidden` redactions); each badge is one per artist, capped
+  at 24 per type, with an opaque `cred_…` id, credited artist name, coarse tier,
+  optional expiry, and proof-method category — never a wallet, spend, pledge
+  amount, refund state, campaign or room id, token ids, counts, or editions;
+- revoked badges, badges past `CommunityBadge.expiresAt`, campaigns that leave
+  the active lifecycle, resold ownership, and a `banned`/`removed` membership
+  in that artist's (or campaign's) room all suppress display regardless of
+  consent;
+- deferred: the partner verifier API (#1107) and Discord/artist-site pilot
+  (#1108); a membership `removed` by eligibility reconciliation is treated the
+  same as a moderator removal (conservative) because the schema does not
+  record the removal reason.
+
 The active M2 holder-benefits slice is tracked in
 [Community Badges, Roles, And Holder Benefits Plan](community_holder_benefits_plan.md).
 It adds private badge, role, benefit-rule, and redemption foundations plus
 artist/operator rule management. Listener-facing unlocked-benefit discovery and
-redemption now live on `/community`; public profile benefit showcase badges are
-still deferred. Managed rule and listener benefit responses continue to hide raw
+redemption now live on `/community`. Opt-in public supporter and collector
+badges ([#1106](https://github.com/akoita/resonate/issues/1106)) are described
+above; other benefit showcase badges are still deferred. Managed rule and listener benefit responses continue to hide raw
 proof details and wallet addresses.
 
 The M3 artist-community slice is tracked in

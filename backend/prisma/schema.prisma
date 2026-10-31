@@ -548,6 +548,13 @@ model CommunityVisibilitySettings {
   showShowAttendance  Boolean  @default(false)
   showPlaylists       Boolean  @default(false)
   showWalletAddress   Boolean  @default(false)
+  /// Public display consent for artist supporter badges (#1106). Separate from
+  /// holding the badge: a supporter badge stays a private eligibility proof
+  /// until this is on.
+  showSupporterBadges Boolean  @default(false)
+  /// Public display consent for artist collector badges (#1106). Separate
+  /// from owning the underlying NFT or collectible.
+  showCollectorBadges Boolean  @default(false)
   allowTasteMatching  Boolean  @default(false)
   allowCityScenes     Boolean  @default(false)
   createdAt           DateTime @default(now())
@@ -564,6 +571,9 @@ model CommunityBadge {
   visibility String    @default("private")
   grantedAt  DateTime  @default(now())
   revokedAt  DateTime?
+  /// Optional time-box (season, campaign window, manual grant term). A badge
+  /// past its expiry stops counting for public display (#1106).
+  expiresAt  DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)

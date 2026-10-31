@@ -47,6 +47,16 @@ const SHOWCASE_TOGGLES: {
     description: "Allow future campaign support proofs to appear on your profile.",
   },
   {
+    key: "showSupporterBadges",
+    label: "Supporter badges",
+    description: "Show a \"Supporter of\" badge for artists you back. Never shows amounts, refunds, or private rooms.",
+  },
+  {
+    key: "showCollectorBadges",
+    label: "Collector badges",
+    description: "Show a \"Collector of\" badge for artists you collect. Never shows your wallet or what you hold.",
+  },
+  {
     key: "showShowAttendance",
     label: "Show attendance",
     description: "Allow future attendance proofs and city show moments to appear.",

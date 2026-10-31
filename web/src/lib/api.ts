@@ -4206,8 +4206,29 @@ export type CommunityVisibilitySettings = {
   showShowAttendance: boolean;
   showPlaylists: boolean;
   showWalletAddress: boolean;
+  showSupporterBadges: boolean;
+  showCollectorBadges: boolean;
   allowTasteMatching: boolean;
   allowCityScenes: boolean;
+};
+
+/**
+ * Opt-in public supporter/collector badge (#1106). One per artist; carries no
+ * wallet, spend, pledge, refund, holdings, or room membership by design.
+ */
+export type PublicCommunityBadge = {
+  schemaVersion: "public-community-credential/v1";
+  credentialId: string;
+  credentialType: "artist_supporter" | "artist_collector";
+  displayLabel: string;
+  artistId: string | null;
+  artistDisplayName: string;
+  tier: "supporter" | "collector";
+  status: "active";
+  visibility: "public_profile";
+  issuedAt: string | null;
+  expiresAt: string | null;
+  proofMethod: "campaign_support" | "manual_grant" | "indexed_ownership";
 };
 
 export type CommunityProfile = {
@@ -4265,6 +4286,11 @@ export type PublicCommunityProfileResponse = {
         artistName: string | null;
       };
     }>;
+    supporterBadgesVisible?: boolean;
+    // Present only under the matching opt-in; absent when hidden.
+    supporterBadges?: PublicCommunityBadge[];
+    collectorBadgesVisible?: boolean;
+    collectorBadges?: PublicCommunityBadge[];
     campaignSupportVisible: boolean;
     campaignSupport: Array<{
       campaignId: string;

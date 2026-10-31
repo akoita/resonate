@@ -8,6 +8,7 @@ import {
   ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES,
   ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES,
 } from "./community_eligibility.service";
+import { loadPublicCommunityBadges, type PublicCommunityBadgeDto } from "./community_public_badges";
 
 // The public owned-moments showcase (#1477 slice 1) surfaces at most this many
 // of the collector's newest owned moments — a curated highlight, not the full
@@ -25,6 +26,8 @@ export interface CommunityVisibilitySettingsDto {
   showShowAttendance: boolean;
   showPlaylists: boolean;
   showWalletAddress: boolean;
+  showSupporterBadges: boolean;
+  showCollectorBadges: boolean;
   allowTasteMatching: boolean;
   allowCityScenes: boolean;
 }
@@ -51,7 +54,7 @@ type ProfileRecord = {
   updatedAt: Date;
 };
 
-type VisibilityRecord = CommunityVisibilitySettingsDto;
+type VisibilityRecord = Partial<CommunityVisibilitySettingsDto>;
 
 type PublicProfileRecord = {
   profile: ProfileRecord;
@@ -59,6 +62,8 @@ type PublicProfileRecord = {
   wallet?: { address: string | null } | null;
   campaignSupport?: PublicCampaignSupportRecord[];
   ownedMoments?: PublicOwnedMomentRecord[];
+  supporterBadges?: PublicCommunityBadgeDto[];
+  collectorBadges?: PublicCommunityBadgeDto[];
 };
 
 type PublicCampaignSupportRecord = {
@@ -109,6 +114,8 @@ const DEFAULT_VISIBILITY_SETTINGS: CommunityVisibilitySettingsDto = {
   showShowAttendance: false,
   showPlaylists: false,
   showWalletAddress: false,
+  showSupporterBadges: false,
+  showCollectorBadges: false,
   allowTasteMatching: false,
   allowCityScenes: false,
 };
@@ -129,7 +136,8 @@ export class CommunityService {
       visibility: visibilityDto(visibility),
       privacy: {
         notes: [
-          "Wallet address, ownership, taste badges, playlists, campaign support, and show attendance are hidden unless explicitly enabled.",
+          "Wallet address, ownership, taste badges, supporter badges, collector badges, playlists, campaign support, and show attendance are hidden unless explicitly enabled.",
+          "Supporter and collector badges show only the artist name and badge type — never spend, pledge amounts, refunds, holdings, wallets, or private room membership.",
           "Eligibility for future holder benefits can remain private even when public showcase display is disabled.",
         ],
       },
@@ -216,13 +224,14 @@ export class CommunityService {
       throw new NotFoundException("Community profile is not public");
     }
     const visibility = visibilityDto(record.user.communityVisibilitySettings);
-    const [campaignSupport, ownedMoments] = await Promise.all([
+    const [campaignSupport, ownedMoments, publicBadges] = await Promise.all([
       visibility.showCampaignSupport
         ? this.publicCampaignSupportFromPledges(userId, record.user.wallet?.address ?? null)
         : Promise.resolve([]),
       visibility.showOwnedItems
         ? this.publicOwnedMoments(userId)
         : Promise.resolve([]),
+      loadPublicCommunityBadges(userId, visibility),
     ]);
 
     return publicProfileDto({
@@ -231,6 +240,8 @@ export class CommunityService {
       wallet: record.user.wallet,
       campaignSupport,
       ownedMoments,
+      supporterBadges: publicBadges.supporterBadges,
+      collectorBadges: publicBadges.collectorBadges,
     });
   }
 
@@ -427,6 +438,8 @@ export function publicProfileDto(record: PublicProfileRecord) {
     showShowAttendance: "show_attendance_hidden",
     showPlaylists: "playlists_hidden",
     showWalletAddress: "wallet_address_hidden",
+    showSupporterBadges: "supporter_badges_hidden",
+    showCollectorBadges: "collector_badges_hidden",
   };
 
   for (const [field, reason] of Object.entries(hiddenFlags)) {
@@ -480,6 +493,12 @@ export function publicProfileDto(record: PublicProfileRecord) {
           })),
         }
         : {}),
+      // Supporter/collector badges (#1106): emitted only under their own
+      // consent flag; absent when hidden (the redaction is the signal).
+      supporterBadgesVisible: visibility.showSupporterBadges,
+      ...(visibility.showSupporterBadges ? { supporterBadges: record.supporterBadges ?? [] } : {}),
+      collectorBadgesVisible: visibility.showCollectorBadges,
+      ...(visibility.showCollectorBadges ? { collectorBadges: record.collectorBadges ?? [] } : {}),
       campaignSupportVisible: visibility.showCampaignSupport,
       campaignSupport: visibility.showCampaignSupport
         ? (record.campaignSupport ?? []).map((support) => ({
