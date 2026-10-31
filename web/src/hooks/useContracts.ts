@@ -53,6 +53,7 @@ import {
   type RelistItem,
   type RelistTerms,
 } from "../lib/batchRelist";
+import { planListingEdit, type ListingEditPlan } from "../lib/listingEdit";
 
 // Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2453,6 +2454,30 @@ async function preflightRelistChunk(
 }
 
 /**
+ * True unless the marketplace is known to be approved to move the owner's
+ * stems. An unknown approval state includes the (idempotent) approval call.
+ */
+async function marketplaceNeedsApproval(
+  publicClient: PublicClient,
+  chainId: number,
+  owner: Address | null
+): Promise<boolean> {
+  if (!owner) return true;
+  const addresses = getContractAddresses(chainId);
+  try {
+    const approved = await publicClient.readContract({
+      address: addresses.stemNFT as Address,
+      abi: IS_APPROVED_FOR_ALL_ABI,
+      functionName: "isApprovedForAll",
+      args: [owner, addresses.marketplace as Address],
+    });
+    return !approved;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Relist several stems with one confirmation per chunk (#2030). planRelist
  * checks the marketplace approval once and splits the selection into chunks;
  * sendRelistChunk sends one chunk as a single batched UserOperation and reads
@@ -2467,21 +2492,7 @@ export function useRelistMany() {
   const planRelist = useCallback(
     async (items: RelistItem[], terms: RelistTerms): Promise<RelistChunk[]> => {
       const addresses = getContractAddresses(chainId);
-      let needsApproval = true;
-      if (owner) {
-        try {
-          const approved = await publicClient.readContract({
-            address: addresses.stemNFT as Address,
-            abi: IS_APPROVED_FOR_ALL_ABI,
-            functionName: "isApprovedForAll",
-            args: [owner, addresses.marketplace as Address],
-          });
-          needsApproval = !approved;
-        } catch {
-          // Unknown approval state: include the (idempotent) approval call.
-          needsApproval = true;
-        }
-      }
+      const needsApproval = await marketplaceNeedsApproval(publicClient, chainId, owner);
       return planRelistChunks(items, {
         terms,
         needsApproval,
@@ -2532,6 +2543,71 @@ export function useRelistMany() {
   );
 
   return { planRelist, sendRelistChunk, pending };
+}
+
+/**
+ * Edit a live listing in one confirmation (#2480): cancel(oldListingId) and the
+ * new list() travel in one batched UserOperation, so a failure (including a
+ * dismissed passkey prompt) leaves the old listing active. The new list() is
+ * simulated first, like a relist chunk, so a failing new price is reported
+ * before the seller signs; cancel() does not affect it (listings are not escrowed).
+ */
+export function useEditListing() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount, smartAccountAddress } = useAuth();
+  const [pending, setPending] = useState(false);
+  const owner = (smartAccountAddress || address || null) as Address | null;
+
+  const editListing = useCallback(
+    async (
+      listingId: bigint,
+      item: RelistItem,
+      terms: RelistTerms
+    ): Promise<{ plan: ListingEditPlan; hash: string; listingIdsByToken: Map<string, bigint[]> }> => {
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+      setPending(true);
+      try {
+        const addresses = getContractAddresses(chainId);
+        const needsApproval = await marketplaceNeedsApproval(publicClient, chainId, owner);
+        const plan = planListingEdit({
+          listingId,
+          item,
+          terms,
+          needsApproval,
+          stemNFT: addresses.stemNFT as Address,
+          marketplace: addresses.marketplace as Address,
+        });
+        if (!plan.relist.includeApproval && owner) {
+          await preflightRelistChunk(publicClient, owner, plan.relist);
+        }
+        const hash = await sendBatchContractTransactions(
+          publicClient,
+          chainId,
+          plan.calls,
+          address as Address,
+          kernelAccount
+        );
+        let logs: Parameters<typeof listingIdsFromReceipt>[0] = [];
+        try {
+          const receipt = await publicClient.getTransactionReceipt({ hash: hash as Hex });
+          logs = receipt.logs;
+        } catch {
+          // Best-effort: the notify falls back to the ordinal without a listing id.
+        }
+        const listingIdsByToken = new Map([
+          [item.tokenId.toString(), listingIdsFromReceipt(logs, item.tokenId, addresses.marketplace as Address)],
+        ]);
+        return { plan, hash, listingIdsByToken };
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, address, status, chainId, kernelAccount, owner]
+  );
+
+  return { editListing, pending };
 }
 
 /**

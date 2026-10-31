@@ -6,7 +6,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
-import { RelistPreflightError, useCancelListing, useProtocolFee, useRelistMany } from "../../../hooks/useContracts";
+import {
+  RelistPreflightError,
+  useCancelListing,
+  useEditListing,
+  useProtocolFee,
+  useRelistMany,
+} from "../../../hooks/useContracts";
 import { useWebSockets, type MarketplaceUpdate } from "../../../hooks/useWebSockets";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import {
@@ -15,6 +21,7 @@ import {
   markListingsCancelled,
   reconcileCancelledListings,
 } from "../../../lib/listingCancellation";
+import { describeEditFailure, isListingEditable, listingEditChanges } from "../../../lib/listingEdit";
 import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import {
   findPaymentAssetForToken,
@@ -167,6 +174,7 @@ function MarketplaceListingManagerPageContent() {
   const { chainId } = useZeroDev();
   const { planRelist, sendRelistChunk, pending } = useRelistMany();
   const { cancel: cancelListingOnChain } = useCancelListing();
+  const { editListing: editListingOnChain, pending: editPending } = useEditListing();
   const { feeBps: protocolFeeBps, loading: protocolFeeLoading } = useProtocolFee();
   const {
     assets: paymentAssets,
@@ -198,6 +206,12 @@ function MarketplaceListingManagerPageContent() {
   const [cancellingIds, setCancellingIds] = useState<Set<string>>(() => new Set());
   const [cancelFailure, setCancelFailure] = useState<string | null>(null);
   const confirmedCancelledRef = useRef<Set<string>>(new Set());
+  // #2480: "Edit listing" reuses the relist dialog for one live listing; saving
+  // sends cancel(old) + list(new) as one confirmation. `editingIds` are rows
+  // whose edit is being signed/confirmed. A confirmed edit shares the cancel
+  // overlay above for the replaced row; the new listing arrives with the indexer.
+  const [dialogMode, setDialogMode] = useState<"relist" | "edit">("relist");
+  const [editingIds, setEditingIds] = useState<Set<string>>(() => new Set());
 
   const marketplaceAssets = useMemo(
     () => paymentAssets.filter((asset) => {
@@ -368,6 +382,7 @@ function MarketplaceListingManagerPageContent() {
     const [firstListing] = nextListings;
     if (!firstListing) return;
     const asset = resolveListingAsset(paymentAssets, chainId, firstListing.paymentToken);
+    setDialogMode("relist");
     setRelistingListings(nextListings);
     setPrice(priceInputFromListing(firstListing, asset));
     setAmount(firstListing.amount || "1");
@@ -378,9 +393,104 @@ function MarketplaceListingManagerPageContent() {
     setRelistFailure(null);
   };
 
+  const openEdit = (listing: OwnerListing) => {
+    openRelist([listing]);
+    setDialogMode("edit");
+  };
+
   const closeRelist = () => {
     setRelistingListings([]);
     setRelistFailure(null);
+    setDialogMode("relist");
+  };
+
+  const buildRelistTerms = (): RelistTerms => ({
+    amount: BigInt(amount),
+    pricePerUnit: parseListingPriceUnits({ price, asset: selectedAsset }),
+    paymentToken: listingPaymentToken(selectedAsset) as Address,
+    durationSeconds: BigInt(parseInt(duration) * 24 * 60 * 60),
+  });
+
+  const toRelistItem = (listing: OwnerListing): RelistItem => ({
+    key: listing.id,
+    tokenId: BigInt(listing.tokenId),
+    licenseType: normalizeRelistLicense(listing.licenseType),
+    label: listingLabel(listing),
+    stemId: listing.stem?.id ?? null,
+  });
+
+  const isEditDialog = dialogMode === "edit" && relistingListings.length === 1;
+  const dialogBusy = Boolean(batchProgress) || editingIds.size > 0;
+
+  // What the edit dialog will change, for its summary line (#2480).
+  const editChanges = useMemo(() => {
+    const [target] = relistingListings;
+    if (dialogMode !== "edit" || !target || !price || !amount) return null;
+    try {
+      return listingEditChanges(
+        {
+          pricePerUnit: BigInt(target.price),
+          amount: BigInt(target.amount),
+          paymentToken: target.paymentToken || ZERO_PAYMENT_TOKEN,
+        },
+        {
+          pricePerUnit: parseListingPriceUnits({ price, asset: selectedAsset }),
+          amount: BigInt(amount),
+          paymentToken: listingPaymentToken(selectedAsset),
+        },
+      );
+    } catch {
+      return null;
+    }
+  }, [amount, dialogMode, price, relistingListings, selectedAsset]);
+
+  // #2480: cancel(old) + list(new terms) in one batched confirmation. A batch
+  // reverts as a whole, so any failure leaves the old listing active.
+  const submitEdit = async (listing: OwnerListing) => {
+    setRelistFailure(null);
+    setCancelFailure(null);
+    setSuccess(null);
+    let terms: RelistTerms;
+    try {
+      terms = buildRelistTerms();
+    } catch (err) {
+      setRelistFailure(describeEditFailure(err));
+      return;
+    }
+    const item = toRelistItem(listing);
+    setEditingIds((current) => new Set(current).add(listing.id));
+    try {
+      const sent = await editListingOnChain(BigInt(listing.listingId), item, terms);
+      // The old listing is cancelled on-chain: same overlay as a manual cancel.
+      confirmedCancelledRef.current.add(listing.id);
+      setListings((current) => markListingsCancelled(current, new Set([listing.id])));
+      setRelistingListings([]);
+      setDialogMode("relist");
+
+      // Best-effort and non-blocking, as for a relist (#2041).
+      const notified = await Promise.all(
+        buildRelistNotifyPayloads(sent.plan.relist, {
+          terms,
+          chainId,
+          seller: sellerAddress,
+          transactionHash: sent.hash,
+          listingIdsByToken: sent.listingIdsByToken,
+        }).map((payload) => postNotifyListing(payload, token)),
+      );
+      setSuccess(
+        `${listingLabel(listing)} was updated with one confirmation: the old listing is closed and the new terms are live. The indexer will attach the new listing shortly.` +
+          (notified.some((result) => !result.ok) ? " Its license tier may take a moment to show." : ""),
+      );
+      await fetchListings();
+    } catch (err) {
+      setRelistFailure(describeEditFailure(err));
+    } finally {
+      setEditingIds((current) => {
+        const next = new Set(current);
+        next.delete(listing.id);
+        return next;
+      });
+    }
   };
 
   // One confirmation per chunk of up to RELIST_CHUNK_SIZE stems; each
@@ -388,19 +498,8 @@ function MarketplaceListingManagerPageContent() {
   const submitRelist = async () => {
     if (relistingListings.length === 0) return;
     setRelistFailure(null);
-    const terms: RelistTerms = {
-      amount: BigInt(amount),
-      pricePerUnit: parseListingPriceUnits({ price, asset: selectedAsset }),
-      paymentToken: listingPaymentToken(selectedAsset) as Address,
-      durationSeconds: BigInt(parseInt(duration) * 24 * 60 * 60),
-    };
-    const items: RelistItem[] = relistingListings.map((listing) => ({
-      key: listing.id,
-      tokenId: BigInt(listing.tokenId),
-      licenseType: normalizeRelistLicense(listing.licenseType),
-      label: listingLabel(listing),
-      stemId: listing.stem?.id ?? null,
-    }));
+    const terms = buildRelistTerms();
+    const items: RelistItem[] = relistingListings.map(toRelistItem);
     const relistCount = relistingListings.length;
     const succeededKeys = new Set<string>();
     let chunks: RelistChunk[] = [];
@@ -692,6 +791,7 @@ function MarketplaceListingManagerPageContent() {
             const symbol = listingAssetSymbol(asset);
             const isHighlighted = highlightedListingId === listing.id;
             const isCancelling = cancellingIds.has(listing.id);
+            const isEditing = editingIds.has(listing.id);
             const proceedsLine = protocolFeeLoading
               ? null
               : sellerNetProceedsLine({
@@ -750,14 +850,25 @@ function MarketplaceListingManagerPageContent() {
                 </div>
                 <div className="marketplace-manager-row__actions">
                   <span className={`listing-status-pill listing-status-pill--${listing.lifecycleStatus}`}>
-                    {isCancelling ? "cancelling" : statusLabel(listing.lifecycleStatus)}
+                    {isCancelling ? "cancelling" : isEditing ? "updating" : statusLabel(listing.lifecycleStatus)}
                   </span>
+                  {isListingEditable(listing) && (
+                    <button
+                      type="button"
+                      className="marketplace-action-btn"
+                      onClick={() => openEdit(listing)}
+                      disabled={isCancelling || isEditing}
+                      aria-label={`Edit listing for ${listingLabel(listing)}`}
+                    >
+                      {isEditing ? "Updating..." : "Edit listing"}
+                    </button>
+                  )}
                   {isListingCancellable(listing) && (
                     <button
                       type="button"
                       className="marketplace-clear-btn"
                       onClick={() => setCancelTarget(listing)}
-                      disabled={isCancelling}
+                      disabled={isCancelling || isEditing}
                       aria-label={`Cancel listing for ${listingLabel(listing)}`}
                     >
                       {isCancelling ? "Cancelling..." : "Cancel listing"}
@@ -783,15 +894,27 @@ function MarketplaceListingManagerPageContent() {
               className="marketplace-manager-modal__close"
               onClick={closeRelist}
               aria-label="Close"
-              disabled={Boolean(batchProgress)}
+              disabled={dialogBusy}
             >
               ×
             </button>
             <h2>
-              {relistingListings.length === 1
-                ? `Relist ${relistingListings[0].stem?.title ?? `Token #${relistingListings[0].tokenId}`}`
-                : `Relist ${relistingListings.length} selected stems`}
+              {isEditDialog
+                ? `Edit listing for ${listingLabel(relistingListings[0])}`
+                : relistingListings.length === 1
+                  ? `Relist ${relistingListings[0].stem?.title ?? `Token #${relistingListings[0].tokenId}`}`
+                  : `Relist ${relistingListings.length} selected stems`}
             </h2>
+            {isEditDialog && (
+              <div className="marketplace-manager-modal__selection">
+                <p>
+                  Listings cannot be changed in place, so saving closes the current listing and lists the stem again
+                  with these terms, with one confirmation. If anything fails, nothing changes and the current listing
+                  stays on sale. The new listing keeps the {relistingListings[0].licenseType} license and starts a fresh
+                  duration.
+                </p>
+              </div>
+            )}
             {relistingListings.length > 1 && (
               <div className="marketplace-manager-modal__selection">
                 <p>
@@ -814,7 +937,7 @@ function MarketplaceListingManagerPageContent() {
                 min="0"
                 step="0.000001"
                 onChange={(event) => setPrice(event.target.value)}
-                disabled={Boolean(batchProgress)}
+                disabled={dialogBusy}
               />
             </label>
             <label>
@@ -822,7 +945,7 @@ function MarketplaceListingManagerPageContent() {
               <select
                 value={paymentToken}
                 onChange={(event) => setPaymentToken(event.target.value)}
-                disabled={Boolean(batchProgress)}
+                disabled={dialogBusy}
               >
                 <option value={ZERO_PAYMENT_TOKEN}>Native ETH</option>
                 {marketplaceAssets.map((asset) => (
@@ -839,7 +962,7 @@ function MarketplaceListingManagerPageContent() {
                 type="number"
                 min="1"
                 onChange={(event) => setAmount(event.target.value)}
-                disabled={Boolean(batchProgress)}
+                disabled={dialogBusy}
               />
             </label>
             <label>
@@ -847,7 +970,7 @@ function MarketplaceListingManagerPageContent() {
               <select
                 value={duration}
                 onChange={(event) => setDuration(event.target.value)}
-                disabled={Boolean(batchProgress)}
+                disabled={dialogBusy}
               >
                 <option value="1">1 day</option>
                 <option value="3">3 days</option>
@@ -887,6 +1010,18 @@ function MarketplaceListingManagerPageContent() {
                 {relistFailure}
               </div>
             )}
+            {isEditDialog && editChanges && (
+              <div className="marketplace-manager-modal__summary">
+                {editChanges.length > 0
+                  ? `Changing the ${editChanges.join(", ")}.`
+                  : "Same terms: saving renews the listing for the chosen duration."}
+              </div>
+            )}
+            {dialogBusy && !batchProgress && (
+              <div className="marketplace-manager-modal__progress" role="status">
+                Updating the listing... Confirm once to continue.
+              </div>
+            )}
             {batchProgress && (
               <div className="marketplace-manager-modal__progress" role="status">
                 {batchProgress.total === 0
@@ -901,19 +1036,21 @@ function MarketplaceListingManagerPageContent() {
                 type="button"
                 className="marketplace-clear-btn"
                 onClick={closeRelist}
-                disabled={pending || Boolean(batchProgress)}
+                disabled={pending || dialogBusy}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 className="marketplace-action-btn"
-                onClick={() => void submitRelist()}
-                disabled={pending || Boolean(batchProgress) || paymentAssetsLoading || !price || !amount}
+                onClick={() => void (isEditDialog ? submitEdit(relistingListings[0]) : submitRelist())}
+                disabled={pending || editPending || dialogBusy || paymentAssetsLoading || !price || !amount}
               >
-                {pending || batchProgress
+                {pending || editPending || dialogBusy
                   ? "Submitting..."
-                  : relistingListings.length === 1
+                  : isEditDialog
+                    ? "Save changes"
+                    : relistingListings.length === 1
                     ? "Create new listing"
                     : `Relist ${relistingListings.length} stems`}
               </button>

@@ -1924,7 +1924,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "marketplace",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["sell", "list", "listing", "official stems", "lossless", "wav", "flac", "upload stems", "mint", "manage listings", "relist", "cancel listing", "unlist", "stop selling", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
+    keywords: ["sell", "list", "listing", "official stems", "lossless", "wav", "flac", "upload stems", "mint", "manage listings", "relist", "cancel listing", "edit listing", "change price", "unlist", "stop selling", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
     sections: [
       {
         id: "listing",
@@ -2028,7 +2028,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Cancel an active or expiring listing with Cancel listing to stop selling it right away. You confirm once; the row shows Cancelling while it goes through, then Cancelled. Editions already sold are not affected, and if you close the confirmation nothing changes.",
-              "To change a listing's price, cancel it and then relist it with the new terms.",
+              "To change a live listing's price, quantity, payment asset or duration, choose Edit listing on its row, adjust the terms and save. You confirm once: the current listing closes and the new one goes live together, keeping the same license tier. If you close the confirmation or anything fails, nothing changes and the current listing stays on sale.",
               "Relist an eligible expired or cancelled listing in one step.",
               "Use batch relist to bring several listings back at once: select them, set the terms once, and confirm once (one confirmation for each group of up to 10 stems). Each listing keeps its license tier.",
               "If a group can't be relisted, you'll see which stems were not listed and why; stems in earlier groups stay listed, and you can retry the rest.",
