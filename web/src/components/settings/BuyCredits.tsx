@@ -6,10 +6,18 @@ import {
   deliverHeldCreditsNow,
   getCreditTopUpState,
   startCreditCheckout,
+  type CreditPack,
   type CreditPackId,
   type CreditPurchase,
   type CreditTopUpState,
 } from "../../lib/api";
+import {
+  formatMoney,
+  formatWholeMoney,
+  priceNote,
+  resolveBillingCurrency,
+  type BillingCurrency,
+} from "../../lib/billingCurrency";
 import { formatCents } from "../../lib/usage";
 import { DeliveryConsentStep } from "../consent/DeliveryConsentStep";
 import {
@@ -18,6 +26,7 @@ import {
   type DeliveryConsentState,
 } from "../consent/deliveryConsent";
 import { Button } from "../ui/Button";
+import { BillingCurrencyChoice, useBillingCurrencyPreference } from "./BillingCurrencyChoice";
 
 type ToastFn = (toast: {
   type: "success" | "error" | "info" | "warning";
@@ -57,6 +66,11 @@ export function findReturnedPurchase(
   return latest && Date.parse(latest.paidAt) >= returnedAt - 10 * 60 * 1000 ? latest : null;
 }
 
+/** A pack's name in a currency, for example "€10 credit pack". */
+export function creditPackLabel(pack: CreditPack, currency: BillingCurrency): string {
+  return `${formatWholeMoney(pack.prices[currency], currency)} credit pack`;
+}
+
 /** The pack the checkout starts on: the server's default ($10). */
 export function defaultPackId(state: CreditTopUpState | null): CreditPackId | null {
   if (!state) return null;
@@ -92,6 +106,9 @@ export type BuyCreditsViewProps = {
   consentOpen: boolean;
   consent: DeliveryConsentState;
   busy?: boolean;
+  /** The currency prices are shown and charged in (default USD). */
+  currency?: BillingCurrency;
+  onCurrencyChange?: (currency: BillingCurrency) => void;
   returnNotice?: string | null;
   /** The held purchase whose "Deliver now" confirmation is open. */
   releaseId?: string | null;
@@ -121,6 +138,8 @@ export function BuyCreditsView({
   consentOpen,
   consent,
   busy = false,
+  currency = "usd",
+  onCurrencyChange,
   returnNotice,
   releaseId = null,
   releaseAcknowledged = false,
@@ -178,6 +197,12 @@ export function BuyCreditsView({
 
       {kind === "buy" && state ? (
         <div className="buy-credits-offer">
+          <BillingCurrencyChoice
+            currency={currency}
+            offered={state.currencies ?? ["usd"]}
+            disabled={consentOpen || busy}
+            onChange={onCurrencyChange}
+          />
           <div className="buy-credits-packs" role="radiogroup" aria-label="Credit pack">
             {state.packs.map((pack) => (
               <label key={pack.id} className="buy-credits-pack" data-selected={pack.id === selectedPackId}>
@@ -188,14 +213,13 @@ export function BuyCreditsView({
                   disabled={consentOpen || busy}
                   onChange={() => onSelectPack?.(pack.id)}
                 />
-                <span className="buy-credits-pack-price">{formatCents(pack.priceCents)}</span>
+                <span className="buy-credits-pack-price">{formatMoney(pack.prices[currency], currency)}</span>
                 <span className="usage-muted-note">{formatCents(pack.creditsCents)} of credits</span>
               </label>
             ))}
           </div>
           <p className="usage-muted-note">
-            Prices are before any tax: Stripe&rsquo;s secure checkout page shows the exact amount before you pay.
-            Bought credits do not expire.
+            {priceNote(currency)} Bought credits do not expire.
           </p>
 
           {!state.contactEmailConfirmed ? (
@@ -206,14 +230,14 @@ export function BuyCreditsView({
           ) : !consentOpen ? (
             <div className="plan-billing-actions">
               <Button onClick={onOpenConsent} disabled={!selected || busy}>
-                {selected ? `Buy ${formatCents(selected.priceCents)} of credits` : "Choose a pack"}
+                {selected ? `Buy ${formatMoney(selected.prices[currency], currency)} of credits` : "Choose a pack"}
               </Button>
             </div>
           ) : (
             <div className="buy-credits-consent">
               {selected ? (
                 <p>
-                  You chose the <strong>{selected.label}</strong>: {formatCents(selected.creditsCents)} of generation
+                  You chose the <strong>{creditPackLabel(selected, currency)}</strong>: {formatCents(selected.creditsCents)} of generation
                   credits.
                 </p>
               ) : null}
@@ -338,13 +362,21 @@ export function BuyCreditsSection({
   addToast,
   onCreditsChanged,
   refreshKey = 0,
+  currencyPreference,
+  onCurrencyChange,
 }: {
   token: string | null | undefined;
   addToast: ToastFn;
   onCreditsChanged?: () => void;
   /** Bumped by the page's Refresh to re-read the packs and purchases. */
   refreshKey?: number;
+  /** The shared currency choice (null = automatic). Kept here when the page does not pass it. */
+  currencyPreference?: BillingCurrency | null;
+  onCurrencyChange?: (currency: BillingCurrency) => void;
 }) {
+  const [ownPreference, setOwnPreference] = useBillingCurrencyPreference();
+  const preference = currencyPreference !== undefined ? currencyPreference : ownPreference;
+  const changeCurrency = onCurrencyChange ?? setOwnPreference;
   const [state, setState] = useState<CreditTopUpState | null>(null);
   const [error, setError] = useState(false);
   const [selectedPackId, setSelectedPackId] = useState<CreditPackId | null>(null);
@@ -417,12 +449,15 @@ export function BuyCreditsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read the return once per token.
   }, [token]);
 
+  const currency = resolveBillingCurrency(state?.currencies ?? ["usd"], preference);
+
   const handleContinue = async () => {
     if (!token || !state || !selectedPackId || !isDeliveryConsentComplete(consent) || busy || !consent.choice) return;
     setBusy(true);
     try {
       const { url } = await startCreditCheckout(token, {
         packId: selectedPackId,
+        currency,
         consent: {
           choice: consent.choice,
           acknowledgedWaiver: consent.choice === "deliver_now" && consent.acknowledged,
@@ -440,7 +475,9 @@ export function BuyCreditsSection({
             ? "The delivery terms changed. Read them again and choose."
             : code === "billing_unavailable"
               ? "Buying credits is not available on this server yet."
-              : "Could not open the checkout. Please try again.";
+              : code === "currency_unavailable"
+                ? "Prices in this currency are not available yet. Reload and try again."
+                : "Could not open the checkout. Please try again.";
       addToast({ type: "error", title: "Checkout not started", message });
       setConsent(INITIAL_DELIVERY_CONSENT);
       void load();
@@ -487,6 +524,8 @@ export function BuyCreditsSection({
       consentOpen={consentOpen}
       consent={consent}
       busy={busy}
+      currency={currency}
+      onCurrencyChange={changeCurrency}
       returnNotice={returnNotice}
       releaseId={releaseId}
       releaseAcknowledged={releaseAcknowledged}

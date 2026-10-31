@@ -102,6 +102,8 @@ describe("Credit packs (HTTP, #1422)", () => {
       for (const body of [
         { ...validCheckout, packId: "credits_1" },
         { ...validCheckout, packId: 1000 },
+        { ...validCheckout, currency: "gbp" },
+        { ...validCheckout, currency: 978 },
         { packId: "credits_10" },
         { ...validCheckout, consent: "deliver_now" },
         { ...validCheckout, consent: { ...consent, choice: null } },

@@ -6,7 +6,8 @@
  *   Stripe billing email); the immediate-start consent is recorded on the
  *   `subscription` surface BEFORE the Checkout Session is created; the person
  *   gets one Stripe customer (metadata `userId`) that every later checkout
- *   reuses.
+ *   reuses. The session is in the currency the price was shown in (#2496:
+ *   USD before tax, or EUR with VAT included for the EU; `billing_currency.ts`).
  * - `openPortal`: the Stripe Customer Portal for card updates, cancellation
  *   and invoices. Resonate never handles card data.
  * - `getState`: what Usage & Billing shows.
@@ -37,6 +38,7 @@ import {
 import { PurchaseConsentService } from "../purchase_consent/purchase_consent.service";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig, type BillingInterval } from "./billing_config";
+import { DEFAULT_BILLING_CURRENCY, type BillingCurrency } from "./billing_currency";
 import type { StartSubscriptionCheckoutDto } from "./billing.dto";
 import { STRIPE_GATEWAY, type StripeGateway } from "./stripe_gateway";
 import { isLiveStatus } from "./subscription_state";
@@ -47,6 +49,7 @@ export const BILLING_ERROR_CODES = {
   consentRequired: "subscription_consent_required",
   consentOutdated: "consent_text_outdated",
   alreadySubscribed: "already_subscribed",
+  currencyUnavailable: "currency_unavailable",
   noBillingAccount: "no_billing_account",
 } as const;
 
@@ -54,6 +57,17 @@ export const PLAN_LABELS: Readonly<Record<BillingInterval, string>> = {
   month: "Artist Pro (monthly)",
   year: "Artist Pro (yearly)",
 };
+
+/**
+ * The Artist Pro prices the app shows, in cents (#2496; `docs/rfc/business-model.md`
+ * Layer 2b): $14.99 a month before tax, or €14.99 with VAT included; the year
+ * is two months free. Stripe's prices are what is charged.
+ */
+export const ARTIST_PRO_PRICES: Readonly<Record<BillingInterval, Readonly<Record<BillingCurrency, number>>>> =
+  Object.freeze({
+    month: Object.freeze({ usd: 1499, eur: 1499 }),
+    year: Object.freeze({ usd: 14990, eur: 14990 }),
+  });
 
 export type BillingSubscriptionView = {
   status: string;
@@ -73,6 +87,10 @@ export type BillingState = {
   contactEmailConfirmed: boolean;
   /** A Stripe customer exists, so the Customer Portal can open. */
   hasBillingAccount: boolean;
+  /** The currencies checkout offers (#2496): USD, plus EUR once enabled. */
+  currencies: BillingCurrency[];
+  /** The Artist Pro price per interval and currency, in cents (display only). */
+  prices: Record<BillingInterval, Record<BillingCurrency, number>>;
   plan: PlanResolution;
   subscription: BillingSubscriptionView | null;
   consent: SubscriptionConsentWording;
@@ -114,6 +132,8 @@ export class BillingService {
       testMode: this.config.testMode,
       contactEmailConfirmed: contact?.status === "confirmed",
       hasBillingAccount: Boolean(row?.stripeCustomerId),
+      currencies: [...this.config.currencies],
+      prices: { month: { ...ARTIST_PRO_PRICES.month }, year: { ...ARTIST_PRO_PRICES.year } },
       plan,
       subscription:
         row && row.stripeSubscriptionId
@@ -167,6 +187,14 @@ export class BillingService {
       });
     }
 
+    const currency = input.currency ?? DEFAULT_BILLING_CURRENCY;
+    if (!this.config.currencies.includes(currency)) {
+      throw new ConflictException({
+        code: BILLING_ERROR_CODES.currencyUnavailable,
+        message: "Prices in this currency are not available on this server yet.",
+      });
+    }
+
     const interval = input.interval;
     // 1. The consent, before anything exists at Stripe.
     const consent = await this.consents.recordSubscriptionStart(userId, {
@@ -177,10 +205,11 @@ export class BillingService {
     // 2. One Stripe customer per person, reused by every later checkout.
     const customerId = existing?.stripeCustomerId ?? (await this.createCustomer(gateway, userId, contact.address, interval));
 
-    // 3. The Checkout Session.
+    // 3. The Checkout Session, in the currency the price was shown in.
     const session = await gateway.createCheckoutSession(
       {
         mode: "subscription",
+        currency,
         customer: customerId,
         client_reference_id: userId,
         line_items: [{ price: this.config.priceFor(interval), quantity: 1 }],

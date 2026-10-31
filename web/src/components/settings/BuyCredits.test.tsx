@@ -15,6 +15,7 @@ import { INITIAL_DELIVERY_CONSENT } from "../consent/deliveryConsent";
 import {
   BuyCreditsView,
   buyCreditsKind,
+  creditPackLabel,
   defaultPackId,
   describeCreditPurchase,
   findReturnedPurchase,
@@ -39,6 +40,7 @@ function purchase(overrides: Partial<CreditPurchase> = {}): CreditPurchase {
     packId: "credits_10",
     label: "$10 credit pack",
     priceCents: 1000,
+    currency: "usd",
     creditsCents: 1000,
     delivery: "deliver_now",
     status: "credited",
@@ -59,10 +61,11 @@ function state(overrides: Partial<CreditTopUpState> = {}): CreditTopUpState {
     available: true,
     testMode: true,
     contactEmailConfirmed: true,
+    currencies: ["usd"],
     packs: [
-      { id: "credits_5", label: "$5 credit pack", priceCents: 500, creditsCents: 500, isDefault: false },
-      { id: "credits_10", label: "$10 credit pack", priceCents: 1000, creditsCents: 1000, isDefault: true },
-      { id: "credits_25", label: "$25 credit pack", priceCents: 2500, creditsCents: 2500, isDefault: false },
+      { id: "credits_5", prices: { usd: 500, eur: 500 }, creditsCents: 500, isDefault: false },
+      { id: "credits_10", prices: { usd: 1000, eur: 1000 }, creditsCents: 1000, isDefault: true },
+      { id: "credits_25", prices: { usd: 2500, eur: 2500 }, creditsCents: 2500, isDefault: false },
     ],
     defaultPackId: "credits_10",
     heldCents: 0,
@@ -146,8 +149,38 @@ describe("BuyCredits (#1422)", () => {
     expect(html).toMatch(/data-selected="true"[^>]*><input type="radio"[^>]*checked=""/);
     expect(html).toContain("Buy $10.00 of credits");
     expect(html).toContain("Bought credits do not expire.");
+    expect(html).toContain("plus any applicable tax");
+    expect(html).not.toContain("before any tax");
+    expect(html).not.toContain("VAT included");
+    expect(html).not.toContain("Where is your billing address?");
+    expect(html).not.toContain("€");
     // The delivery choice is not shown until Buy is pressed.
     expect(html).not.toContain("Delivery and your right to withdraw");
+  });
+
+  it("USD and EUR offered, euros chosen: euro prices with VAT included, credits still in dollars, and the choice", () => {
+    const html = render(state({ currencies: ["usd", "eur"] }), { currency: "eur" });
+    expect(html).toContain("€5.00");
+    expect(html).toContain("€10.00");
+    expect(html).toContain("€25.00");
+    expect(html).toContain("$10.00 of credits");
+    expect(html).toContain("Buy €10.00 of credits");
+    expect(html).toContain("VAT included");
+    expect(html).toContain("Bought credits do not expire.");
+    expect(html).toContain("Where is your billing address?");
+    expect(html).toContain("In the EU — prices in euros, VAT included");
+    expect(html).toMatch(/<input(?=[^>]*value="eur")(?=[^>]*checked="")/);
+  });
+
+  it("names the chosen pack in its currency and locks the currency choice while the delivery choice is open", () => {
+    const html = render(state({ currencies: ["usd", "eur"] }), {
+      currency: "eur",
+      consentOpen: true,
+      selectedPackId: "credits_25",
+    });
+    expect(html).toContain("You chose the <strong>€25 credit pack</strong>: $25.00 of generation credits.");
+    expect(html).toMatch(/<input(?=[^>]*value="eur")(?=[^>]*disabled="")/);
+    expect(creditPackLabel(state().packs[0], "usd")).toBe("$5 credit pack");
   });
 
   it("asks for a confirmed contact email instead of a Buy button", () => {

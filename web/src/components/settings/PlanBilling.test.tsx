@@ -10,8 +10,8 @@ vi.mock("../../lib/api", () => ({
 
 import type { BillingState } from "../../lib/api";
 import {
-  ARTIST_PRO_PRICE_HEADLINE,
   PlanBillingView,
+  artistProPriceHeadline,
   planBillingKind,
   readBillingReturn,
   type PlanBillingViewProps,
@@ -34,6 +34,8 @@ function billing(overrides: Partial<BillingState> = {}): BillingState {
     available: true,
     testMode: true,
     contactEmailConfirmed: true,
+    currencies: ["usd"],
+    prices: { month: { usd: 1499, eur: 1499 }, year: { usd: 14990, eur: 14990 } },
     hasBillingAccount: false,
     plan: { plan: "free" },
     subscription: null,
@@ -96,14 +98,50 @@ describe("planBillingKind (#2407)", () => {
 describe("PlanBillingView (#2407)", () => {
   it("free: offers monthly and yearly with the price and the test-mode note, nothing pre-selected", () => {
     const html = render(billing());
-    expect(html).toContain(ARTIST_PRO_PRICE_HEADLINE);
-    expect(html).toContain("$14.99/month or yearly");
+    expect(html).toContain("Artist Pro — $14.99/month or $149.90/year");
+    expect(html).toContain("plus any applicable tax");
+    expect(html).not.toContain("VAT included");
+    expect(html).not.toContain("Where is your billing address?");
+    expect(html).not.toContain("€");
     expect(html).toContain("Subscribe monthly");
     expect(html).toContain("Subscribe yearly");
     expect(html).toContain("Test mode.");
     expect(html).toContain("no real card is");
     expect(html).not.toContain("Continue to secure checkout");
     expect(html).not.toContain("Manage billing");
+  });
+
+  it("USD and EUR offered, euros chosen: euro prices, VAT included, and the currency choice", () => {
+    const html = render(billing({ currencies: ["usd", "eur"] }), { currency: "eur" });
+    expect(html).toContain("Artist Pro — €14.99/month or €149.90/year");
+    expect(html).toContain("VAT included");
+    expect(html).not.toContain("$14.99");
+    expect(html).toContain("Where is your billing address?");
+    expect(html).toContain("In the EU — prices in euros, VAT included");
+    expect(html).toContain("Outside the EU — prices in US dollars, plus any applicable tax");
+    expect(html.match(/type="radio"[^>]*checked=""/g)).toHaveLength(1);
+    expect(html).toMatch(/<input(?=[^>]*value="eur")(?=[^>]*checked="")/);
+  });
+
+  it("USD chosen while both are offered: dollar prices, tax added at checkout", () => {
+    const html = render(billing({ currencies: ["usd", "eur"] }), { currency: "usd" });
+    expect(html).toContain("$14.99/month");
+    expect(html).toContain("plus any applicable tax");
+    expect(html).toMatch(/<input(?=[^>]*value="usd")(?=[^>]*checked="")/);
+  });
+
+  it("consent step: names the chosen price with its tax wording and locks the currency choice", () => {
+    const eur = render(billing({ currencies: ["usd", "eur"] }), { currency: "eur", chosenInterval: "month" });
+    expect(eur).toContain("Artist Pro · Monthly</strong> — €14.99/month, VAT included.");
+    expect(eur).toMatch(/<input type="radio"[^>]*disabled=""/);
+    const usdYear = render(billing(), { chosenInterval: "year" });
+    expect(usdYear).toContain("Artist Pro · Yearly</strong> — $149.90/year, plus any applicable tax.");
+  });
+
+  it("builds the price headline per currency", () => {
+    const prices = billing().prices;
+    expect(artistProPriceHeadline(prices, "usd")).toBe("Artist Pro — $14.99/month or $149.90/year");
+    expect(artistProPriceHeadline(prices, "eur")).toBe("Artist Pro — €14.99/month or €149.90/year");
   });
 
   it("consent step: shows the server wording with an unticked box and a disabled continue", () => {
@@ -137,6 +175,7 @@ describe("PlanBillingView (#2407)", () => {
 
   it("billing unavailable: says so, with no button", () => {
     const html = render(billing({ available: false }));
+    expect(html).toContain("Artist Pro — $14.99/month or $149.90/year. Subscriptions are not available");
     expect(html).toContain("Subscriptions are not available on this server yet");
     expect(html).not.toContain("<button");
     expect(html).not.toContain("Test mode.");

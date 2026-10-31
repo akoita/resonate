@@ -2057,7 +2057,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Generate original tracks from a text prompt and publish them to your catalog, with AI provenance recorded automatically.",
     category: "create",
     audiences: ["artist"],
-    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe", "cancel subscription", "close account", "suspended billing", "buy credits", "credit pack", "top up", "receipt", "refund", "allowance", "monthly allowance"],
+    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe", "cancel subscription", "close account", "suspended billing", "buy credits", "credit pack", "top up", "vat", "euro", "eur", "currency", "tax", "billing address", "prices", "receipt", "refund", "allowance", "monthly allowance"],
     sections: [
       {
         id: "generate",
@@ -2141,7 +2141,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "In Settings, Usage & Billing, the Credits section offers packs of $5, $10 and $25. Each pack adds the same amount of generation credits as its price, before any tax. Payment happens on Stripe's secure checkout page, which shows the exact amount with any tax; Resonate never sees your card. Bought credits do not expire.",
+            text: "In Settings, Usage & Billing, the Credits section offers packs of $5, $10 and $25, or €5, €10 and €25 with VAT included for an EU billing address (see Prices, currency and tax below). Each pack adds the same amount of generation credits as its price, in dollars, whichever currency you pay in. Payment happens on Stripe's secure checkout page, which shows the exact amount before you pay; Resonate never sees your card. Bought credits do not expire.",
           },
           {
             kind: "steps",
@@ -2169,12 +2169,32 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "prices-currency-and-tax",
+        heading: "Prices, currency and tax",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Artist Pro and credit packs are priced in the currency you will be charged in. If your billing address is in the European Union, prices are in euros and VAT is included. Anywhere else, prices are in US dollars, plus any applicable tax. A pack or plan costs the same number in both currencies, for example €10 or $10 for the middle credit pack.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Where there is a choice, Plan and Credits ask \"Where is your billing address?\" with two answers: in the EU (euros, VAT included) or outside the EU (US dollars, plus any applicable tax). If only dollars are offered on your server, you do not see the question.",
+              "The app picks an answer for you from your device's time zone. It is only a starting point: change it any time and the new choice applies to both Plan and Credits and is remembered in this browser. The choice is locked while you are in the middle of a purchase.",
+              "The exact tax is worked out by Stripe from the billing address you enter at checkout, and Stripe's page shows the final amount before you pay.",
+              "A credit pack gives the same credits in either currency: a 10 euro pack and a 10 dollar pack both add $10.00 of generation credits. Credits are always shown in dollars.",
+              "Your purchase list shows each pack in the currency you paid in.",
+            ],
+          },
+        ],
+      },
+      {
         id: "artist-pro-subscription",
         heading: "Artist Pro subscription",
         blocks: [
           {
             kind: "paragraph",
-            text: "Artist Pro is one plan for artists, producers and DJs, at $14.99 a month or yearly. Subscribe from Settings, Usage & Billing, in the Plan section. Payment happens on Stripe's secure checkout page, which shows the exact price with any tax; Resonate never sees your card.",
+            text: "Artist Pro is one plan for artists, producers and DJs, at $14.99 a month or $149.90 a year plus any applicable tax, or €14.99 and €149.90 with VAT included for an EU billing address (see Prices, currency and tax below). Subscribe from Settings, Usage & Billing, in the Plan section. Payment happens on Stripe's secure checkout page, which shows the exact price before you pay; Resonate never sees your card.",
           },
           {
             kind: "steps",

@@ -7,7 +7,8 @@
  * and reused; the portal; the state route; each handled webhook event's state
  * transition; idempotency on the event id (and a retry after a failure);
  * ordering (an older event after a newer one); the entitlement plan from the
- * subscription; and erasure keeping the billing record.
+ * subscription; erasure keeping the billing record; and the checkout currency
+ * (#2496: USD by default, EUR only when offered).
  */
 import { BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
@@ -206,6 +207,7 @@ describe("Billing (integration, #2407)", () => {
       const customer = (await row(U.buyer))!.stripeCustomerId;
       expect(params).toMatchObject({
         mode: "subscription",
+        currency: "usd",
         customer,
         client_reference_id: U.buyer,
         line_items: [{ price: "price_month", quantity: 1 }],
@@ -229,6 +231,36 @@ describe("Billing (integration, #2407)", () => {
       expect(gateway.createCustomer).not.toHaveBeenCalled();
       const [params] = gateway.createCheckoutSession.mock.calls[0] as unknown as [Record<string, any>];
       expect(params).toMatchObject({ customer: before, line_items: [{ price: "price_year", quantity: 1 }] });
+    });
+
+    it("checks out in the currency the price was shown in: EUR only when offered (#2496)", async () => {
+      const refused = await billing.startCheckout(U.buyer, checkoutBody({ currency: "eur" })).catch((e) => e);
+      expect(refused).toBeInstanceOf(ConflictException);
+      expect(refused.getResponse()).toMatchObject({ code: "currency_unavailable" });
+      expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
+      const usdState = await billing.getState(U.buyer);
+      expect(usdState.currencies).toEqual(["usd"]);
+      expect(usdState.prices).toEqual({ month: { usd: 1499, eur: 1499 }, year: { usd: 14990, eur: 14990 } });
+
+      const eurConfig = new BillingConfig({
+        STRIPE_SECRET_KEY: "sk_test_integration",
+        STRIPE_WEBHOOK_SECRET: "whsec_integration",
+        STRIPE_PRICE_ARTIST_PRO_MONTHLY: "price_month",
+        STRIPE_PRICE_ARTIST_PRO_ANNUAL: "price_year",
+        FRONTEND_URL: "https://app.example.test",
+        STRIPE_EUR_PRICES: "true",
+      });
+      const eurBilling = new BillingService(eurConfig, consents, gateway, entitlements);
+      expect((await eurBilling.getState(U.buyer)).currencies).toEqual(["usd", "eur"]);
+      const consentsBefore = await prisma.purchaseConsent.count({ where: { userId: U.buyer, surface: "subscription" } });
+      await eurBilling.startCheckout(U.buyer, checkoutBody({ interval: "year", currency: "eur" }));
+      const [params] = gateway.createCheckoutSession.mock.calls[0] as unknown as [Record<string, any>];
+      expect(params).toMatchObject({ mode: "subscription", currency: "eur", line_items: [{ price: "price_year", quantity: 1 }] });
+      expect(await prisma.purchaseConsent.count({ where: { userId: U.buyer, surface: "subscription" } })).toBe(consentsBefore + 1);
+      // No currency named: USD, as before.
+      gateway.createCheckoutSession.mockClear();
+      await eurBilling.startCheckout(U.buyer, checkoutBody());
+      expect((gateway.createCheckoutSession.mock.calls[0] as unknown as [Record<string, any>])[0].currency).toBe("usd");
     });
 
     it("never takes the subscription consent through the generic consent route", async () => {

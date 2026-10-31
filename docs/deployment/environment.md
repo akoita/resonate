@@ -154,6 +154,7 @@ When adding a new environment variable:
 | `ARTIST_PRO_MONTHLY_ALLOWANCE_CENTS` | Backend | Monthly generation allowance (USD cents, at sell prices) each paid Artist Pro invoice credits, per month of the paid period (#2408). Default `300` (= $3.00, `docs/rfc/artist-pro.md` §5); `0` turns grants off. Spent before bought credits, expires at the end of each month, never refunded in cash |
 | `BILLING_LIVE_MODE` | Backend | `true` allows a live Stripe key. Default false (test mode only); live charging is out of scope until the Artist Pro RFC's pre-charge gates are met. While false the app shows a Test mode note |
 | `STRIPE_AUTOMATIC_TAX` | Backend | `true` turns on Stripe Tax in the subscription and credit pack Checkouts (`automatic_tax`, customer address collected). Default false; only enable it once Stripe Tax is configured on the account |
+| `STRIPE_EUR_PRICES` | Backend | `true` offers EUR prices with VAT included to buyers with an EU billing address, alongside USD (#2496). Default false: every checkout is USD. Only set it once every Artist Pro and credit pack Stripe price carries a tax-inclusive EUR currency option, or EUR checkouts fail at Stripe |
 | `CORS_ORIGIN` | Backend | Optional comma-separated browser origins allowed to call the backend. Defaults include local dev and also derives from `FRONTEND_URL` / `WEBAUTHN_ORIGIN` |
 | `CORS_ORIGINS` | Backend | Optional plural alias for `CORS_ORIGIN` |
 | `WEBAUTHN_RP_ID` | Backend | Optional relying-party ID for self-hosted passkey credentials. Usually the frontend hostname, without protocol |

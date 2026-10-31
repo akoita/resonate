@@ -34,6 +34,7 @@ const U = {
   waiter: `${P}waiter`,
   refunds: `${P}refunds`,
   misc: `${P}misc`,
+  euro: `${P}euro`,
 };
 const USERS = Object.values(U);
 const DAY = 24 * 60 * 60 * 1000;
@@ -73,6 +74,7 @@ const gateway = {
 } satisfies StripeGateway;
 
 const topUps = new CreditTopUpService(config, consents, notices, gateway, packs);
+const eurTopUps = new CreditTopUpService(new BillingConfig({ ...BILLING_ENV, STRIPE_EUR_PRICES: "true" }), consents, notices, gateway, packs);
 const webhooks = new StripeWebhookService(config, gateway, topUps);
 const billing = new BillingService(config, consents, gateway, new EntitlementsService());
 
@@ -87,9 +89,10 @@ const body = (packId: string, consent: Record<string, unknown>, extra: Record<st
   ({ packId, consent, ...extra }) as any;
 
 /** Run a checkout and return the Checkout Session the fake gateway was asked for. */
-async function checkout(userId: string, packId: string, consent: Record<string, unknown>) {
+async function checkout(userId: string, packId: string, consent: Record<string, unknown>, currency?: "usd" | "eur") {
   gateway.createCheckoutSession.mockClear();
-  await topUps.startCheckout(userId, body(packId, consent));
+  const service = currency === "eur" ? eurTopUps : topUps;
+  await service.startCheckout(userId, body(packId, consent, currency ? { currency } : {}));
   const [params] = gateway.createCheckoutSession.mock.calls[0] as unknown as [Record<string, any>];
   const sessionId = (await gateway.createCheckoutSession.mock.results[0].value).id as string;
   return { params, sessionId };
@@ -112,7 +115,7 @@ function completedSession(
     metadata: started.params.metadata,
     amount_subtotal: price,
     amount_total: price,
-    currency: "usd",
+    currency: started.params.currency ?? "usd",
     ...overrides,
   };
 }
@@ -124,7 +127,7 @@ async function balance(userId: string) {
 describe("Credit packs (integration, #1422)", () => {
   beforeAll(async () => {
     for (const id of USERS) await prisma.user.create({ data: { id, email: `${id}@test.resonate` } });
-    for (const id of [U.buyer, U.waiter, U.refunds, U.misc]) {
+    for (const id of [U.buyer, U.waiter, U.refunds, U.misc, U.euro]) {
       await prisma.contactEmail.create({
         data: { userId: id, address: `${id}@mail.test`, addressNormalized: `${id}@mail.test`, status: "confirmed", confirmedAt: new Date() },
       });
@@ -213,6 +216,7 @@ describe("Credit packs (integration, #1422)", () => {
       const metadata = { purpose: "credit_topup", userId: U.buyer, packId: "credits_10", consentId: consent.id };
       expect(params).toEqual({
         mode: "payment",
+        currency: "usd",
         customer,
         client_reference_id: U.buyer,
         line_items: [{ price: "price_c10", quantity: 1 }],
@@ -249,11 +253,27 @@ describe("Credit packs (integration, #1422)", () => {
         heldCents: 0,
         consent: { version: CONSENT_TEXT_VERSION },
       });
-      expect(state.packs.map((pack) => [pack.id, pack.priceCents, pack.isDefault])).toEqual([
-        ["credits_5", 500, false],
-        ["credits_10", 1000, true],
-        ["credits_25", 2500, false],
+      expect(state.packs.map((pack) => [pack.id, pack.prices, pack.creditsCents, pack.isDefault])).toEqual([
+        ["credits_5", { usd: 500, eur: 500 }, 500, false],
+        ["credits_10", { usd: 1000, eur: 1000 }, 1000, true],
+        ["credits_25", { usd: 2500, eur: 2500 }, 2500, false],
       ]);
+      expect(state.currencies).toEqual(["usd"]);
+      expect((await eurTopUps.getState(U.buyer)).currencies).toEqual(["usd", "eur"]);
+    });
+
+    it("opens the session in the currency shown: EUR only when offered (#2496)", async () => {
+      const consentsBefore = await prisma.purchaseConsent.count({ where: { userId: U.euro } });
+      const refused = await topUps.startCheckout(U.euro, body("credits_10", deliverNow, { currency: "eur" })).catch((e) => e);
+      expect(refused).toBeInstanceOf(ConflictException);
+      expect(refused.getResponse()).toMatchObject({ code: "currency_unavailable" });
+      expect(await prisma.purchaseConsent.count({ where: { userId: U.euro } })).toBe(consentsBefore);
+      expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
+
+      const { params } = await checkout(U.euro, "credits_10", wait, "eur");
+      expect(params).toMatchObject({ mode: "payment", currency: "eur", line_items: [{ price: "price_c10", quantity: 1 }] });
+      const consent = await prisma.purchaseConsent.findFirstOrThrow({ where: { id: params.metadata.consentId } });
+      expect(consent.subjectLabel).toBe("€10 credit pack");
     });
   });
 
@@ -314,11 +334,56 @@ describe("Credit packs (integration, #1422)", () => {
       expect(outcome).toBe("needs_review");
       expect(await balance(U.misc)).toBe(before);
       const other = await checkout(U.misc, "credits_5", deliverNow);
-      expect(await topUps.fulfilFromCheckout(completedSession(other, { currency: "eur" }) as any, new Date())).toBe("needs_review");
+      const gbp = completedSession(other, { currency: "gbp", amount_subtotal: 430, amount_total: 430 });
+      expect(await topUps.fulfilFromCheckout(gbp as any, new Date())).toBe("needs_review");
+      // The review row keeps what Stripe reported, in its currency.
+      expect(await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: other.sessionId } })).toMatchObject({
+        status: "needs_review",
+        currency: "gbp",
+        priceCents: 430,
+        creditedCents: 0,
+      });
+      const euroShort = await checkout(U.misc, "credits_10", deliverNow, "eur");
+      const short = completedSession(euroShort, { amount_subtotal: 900, amount_total: 900 });
+      expect(await topUps.fulfilFromCheckout(short as any, new Date())).toBe("needs_review");
+      expect(await balance(U.misc)).toBe(before);
       const row = await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } });
       expect(row).toMatchObject({ status: "needs_review", creditedCents: 0 });
       const notice = await prisma.notice.findFirstOrThrow({ where: { dedupeKey: `credit-topup:${row.id}` } });
       expect(notice.title).toBe("Credit purchase received: under review");
+    });
+
+    it("EUR, VAT included: credits the same credits as USD and records the currency paid (#2496)", async () => {
+      const started = await checkout(U.euro, "credits_10", deliverNow, "eur");
+      const before = await balance(U.euro);
+      // Stripe reports the included VAT inside the subtotal; the total is still the price.
+      const session = completedSession(started, { total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 167 } });
+      expect(await webhooks.handle(event("checkout.session.completed", session))).toMatchObject({ outcome: "credited" });
+      expect(await balance(U.euro)).toBe(before + 1000);
+      const row = await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } });
+      expect(row).toMatchObject({ status: "credited", currency: "eur", priceCents: 1000, creditsCents: 1000, creditedCents: 1000 });
+
+      const view = (await eurTopUps.getState(U.euro)).purchases.find((p) => p.checkoutSessionId === started.sessionId);
+      expect(view).toMatchObject({ label: "€10 credit pack", priceCents: 1000, currency: "eur", creditsCents: 1000 });
+      const notice = await prisma.notice.findFirstOrThrow({ where: { dedupeKey: `credit-topup:${row.id}` } });
+      expect(notice.title).toBe("Credits bought: $10.00");
+      expect(notice.body).toContain("the €10 credit pack for €10.00 (VAT included)");
+    });
+
+    it("EUR: also credits when Stripe reports the VAT beside a net subtotal", async () => {
+      const started = await checkout(U.euro, "credits_5", wait, "eur");
+      const session = completedSession(started, {
+        amount_subtotal: 417,
+        amount_total: 500,
+        total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 83 },
+      });
+      expect(await topUps.fulfilFromCheckout(session as any, new Date())).toBe("held");
+      expect(await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } })).toMatchObject({
+        status: "held",
+        currency: "eur",
+        priceCents: 500,
+        creditsCents: 500,
+      });
     });
 
     it("ignores a live-mode event on a test deployment, and sessions that are not credit packs", async () => {
@@ -493,6 +558,20 @@ describe("Credit packs (integration, #1422)", () => {
       await webhooks.handle(event("charge.refunded", charge(started.sessionId, 1000, 400)));
       expect(await releaseDueTopUpHolds(U.refunds, new Date(Date.now() + 15 * DAY))).toBe(600);
       expect(await balance(U.refunds)).toBe(600);
+    });
+
+    it("refunds an EUR purchase proportionally, and says so in euros", async () => {
+      const started = await checkout(U.euro, "credits_25", deliverNow, "eur");
+      await webhooks.handle(event("checkout.session.completed", completedSession(started)));
+      const before = await balance(U.euro);
+      const eurCharge = { ...charge(started.sessionId, 2500, 1000), currency: "eur" };
+      expect(await webhooks.handle(event("charge.refunded", eurCharge))).toMatchObject({ outcome: "reversed" });
+      expect(await balance(U.euro)).toBe(before - 1000);
+      const row = await prisma.creditTopUp.findUniqueOrThrow({ where: { stripeCheckoutSessionId: started.sessionId } });
+      expect(row).toMatchObject({ currency: "eur", refundedAmountCents: 1000, refundedCreditsCents: 1000, reversedCents: 1000 });
+      const notice = await prisma.notice.findFirstOrThrow({ where: { dedupeKey: `credit-topup-refund:${row.id}:1000` } });
+      expect(notice.body).toContain("€25 credit pack was refunded (€10.00 in total)");
+      expect(notice.body).toContain("$10.00 of credits were removed");
     });
 
     it("ignores a refund of a payment that is not a credit pack", async () => {

@@ -236,10 +236,11 @@ model CreditTopUp {
   id                      String    @id @default(uuid())
   userId                  String
   packId                  String
-  /// What the pack costs, before tax, in USD cents (the server catalogue price).
+  /// What the pack cost, in cents of `currency` (the catalogue price: before tax in USD, VAT included in EUR; #2496).
   priceCents              Int
+  /// The currency paid: usd or eur (another value only on a needs_review row).
   currency                String    @default("usd")
-  /// Generation credits the pack buys, in USD cents.
+  /// Generation credits the pack buys, in USD cents, at face value in either currency.
   creditsCents            Int
   stripeCheckoutSessionId String    @unique
   stripePaymentIntentId   String?   @unique

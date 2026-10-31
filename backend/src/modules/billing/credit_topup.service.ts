@@ -7,18 +7,22 @@
  * - **Checkout** (`startCheckout`): 503 when billing is off; a confirmed
  *   contact address is required (it becomes the Stripe billing email); the
  *   buyer's `credit_topup` delivery choice (#1776) is recorded BEFORE the
- *   one-time Checkout Session is created for the pack's catalogue price. The
- *   Stripe customer is the person's one customer (shared with the
- *   subscription).
+ *   one-time Checkout Session is created for the pack's catalogue price, in
+ *   the currency the buyer was shown (#2496: USD, or EUR with VAT included
+ *   for the EU; `billing_currency.ts`). The Stripe customer is the person's
+ *   one customer (shared with the subscription).
  * - **Fulfilment** (`fulfilFromCheckout`, from the webhook): one
  *   `CreditTopUp` per Checkout Session (unique session and payment intent
- *   ids), so a replayed or duplicated event credits once. "Deliver now"
+ *   ids), so a replayed or duplicated event credits once. The pack is
+ *   credited only when Stripe reports its catalogue price in USD or EUR
+ *   (`paidCurrency`), at face value in either; anything else waits for
+ *   review. The row records the currency actually paid. "Deliver now"
  *   credits the ledger at once (`top_up`, with the payment intent id); "wait"
  *   holds the credits for 14 days, released lazily on the next balance read
  *   or debit (`credits/top_up_ledger.ts`) or earlier on request
  *   (`deliverHeldNow`). A `purchase` notice confirms it.
  * - **Refunds** (`reverseFromRefund`, `charge.refunded`): the refunded share of
- *   the credits is withdrawn, taking back only what is unspent: the balance
+ *   the credits (refunded over charged, in the charge's currency) is withdrawn, taking back only what is unspent: the balance
  *   never goes negative.
  *
  * Logs carry ids only: never an email, a card detail or a payload.
@@ -49,12 +53,20 @@ import { PurchaseConsentService } from "../purchase_consent/purchase_consent.ser
 import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
 import {
+  DEFAULT_BILLING_CURRENCY,
+  formatMoney,
+  isBillingCurrency,
+  taxPhrase,
+  type BillingCurrency,
+} from "./billing_currency";
+import {
   CREDIT_PACKS,
-  CREDIT_PACK_CURRENCY,
   CreditPackConfig,
   DEFAULT_CREDIT_PACK_ID,
+  creditPackLabel,
   findCreditPack,
   formatUsd,
+  paidCurrency,
   type CreditPack,
   type CreditPackId,
 } from "./credit_packs";
@@ -71,6 +83,7 @@ export const CREDIT_TOPUP_ERROR_CODES = {
   unavailable: "billing_unavailable",
   contactEmailRequired: "contact_email_required",
   unknownPack: "unknown_credit_pack",
+  currencyUnavailable: "currency_unavailable",
   notHeld: "credit_purchase_not_held",
   notFound: "credit_purchase_not_found",
 } as const;
@@ -79,8 +92,9 @@ export type CreditTopUpStatus = "held" | "credited" | "refunded" | "needs_review
 
 export type CreditPackView = {
   id: CreditPackId;
-  label: string;
-  priceCents: number;
+  /** The price in each currency, in cents: before tax in USD, VAT included in EUR. */
+  prices: Record<BillingCurrency, number>;
+  /** Credits at face value, in USD cents, whichever currency pays. */
   creditsCents: number;
   isDefault: boolean;
 };
@@ -89,7 +103,9 @@ export type CreditPurchaseView = {
   id: string;
   packId: string;
   label: string;
+  /** What was paid for the pack, in cents of `currency`. */
   priceCents: number;
+  currency: string;
   creditsCents: number;
   delivery: string;
   status: string;
@@ -109,6 +125,8 @@ export type CreditTopUpState = {
   available: boolean;
   testMode: boolean;
   contactEmailConfirmed: boolean;
+  /** The currencies checkout offers (#2496): USD, plus EUR once enabled. */
+  currencies: BillingCurrency[];
   packs: CreditPackView[];
   defaultPackId: CreditPackId;
   /** Credits bought but held for the 14-day withdrawal period. */
@@ -151,12 +169,20 @@ function log(level: "info" | "warn" | "error", event: string, fields: Record<str
   writeStructuredLog({ level, event, message: event, ...fields });
 }
 
+/** The pack's label in the currency it was bought in. */
+function purchaseLabel(packId: string, currency: string): string {
+  const pack = findCreditPack(packId);
+  if (!pack) return packId;
+  return creditPackLabel(pack, isBillingCurrency(currency) ? currency : DEFAULT_BILLING_CURRENCY);
+}
+
 function toPurchaseView(row: CreditTopUp): CreditPurchaseView {
   return {
     id: row.id,
     packId: row.packId,
-    label: findCreditPack(row.packId)?.label ?? row.packId,
+    label: purchaseLabel(row.packId, row.currency),
     priceCents: row.priceCents,
+    currency: row.currency,
     creditsCents: row.creditsCents,
     delivery: row.delivery,
     status: row.status,
@@ -233,10 +259,10 @@ export class CreditTopUpService {
       available: this.isAvailable(),
       testMode: this.config.testMode,
       contactEmailConfirmed: contact?.status === "confirmed",
+      currencies: [...this.config.currencies],
       packs: CREDIT_PACKS.map((pack) => ({
         id: pack.id,
-        label: pack.label,
-        priceCents: pack.priceCents,
+        prices: { ...pack.prices },
         creditsCents: pack.creditsCents,
         isDefault: pack.id === DEFAULT_CREDIT_PACK_ID,
       })),
@@ -256,6 +282,13 @@ export class CreditTopUpService {
     if (!pack) {
       throw new BadRequestException({ code: CREDIT_TOPUP_ERROR_CODES.unknownPack, message: "Unknown credit pack." });
     }
+    const currency = input.currency ?? DEFAULT_BILLING_CURRENCY;
+    if (!this.config.currencies.includes(currency)) {
+      throw new ConflictException({
+        code: CREDIT_TOPUP_ERROR_CODES.currencyUnavailable,
+        message: "Prices in this currency are not available on this server yet.",
+      });
+    }
 
     const contact = await prisma.contactEmail.findUnique({
       where: { userId },
@@ -274,7 +307,7 @@ export class CreditTopUpService {
     const consent = await this.consents.record(userId, {
       surface: "credit_topup",
       subjectId: pack.id,
-      subjectLabel: pack.label,
+      subjectLabel: creditPackLabel(pack, currency),
       consented: choice.choice === "deliver_now",
       acknowledgedWaiver: choice.acknowledgedWaiver,
       textVersion: choice.textVersion,
@@ -284,11 +317,12 @@ export class CreditTopUpService {
     const existing = await prisma.subscription.findUnique({ where: { userId }, select: { stripeCustomerId: true } });
     const customerId = existing?.stripeCustomerId ?? (await this.createCustomer(gateway, userId, contact.address));
 
-    // 3. The one-time Checkout Session for the pack's price.
+    // 3. The one-time Checkout Session for the pack's price, in the currency shown.
     const metadata = { purpose: CREDIT_TOPUP_PURPOSE, userId, packId: pack.id, consentId: consent.id };
     const session = await gateway.createCheckoutSession(
       {
         mode: "payment",
+        currency,
         customer: customerId,
         client_reference_id: userId,
         line_items: [{ price: this.packs.priceFor(pack.id), quantity: 1 }],
@@ -351,10 +385,12 @@ export class CreditTopUpService {
       : null;
     // No recorded consent counts as "wait" (#1776): delivery is held.
     const deliverNow = Boolean(consent?.consented && consent.acknowledgedWaiver);
-    const amountMatches =
-      session.amount_subtotal === pack.priceCents && (session.currency ?? "").toLowerCase() === CREDIT_PACK_CURRENCY;
+    // The catalogue price in USD or EUR; anything else is recorded as Stripe reported it, for review.
+    const paid = paidCurrency(pack, session);
+    const currency = paid ?? ((session.currency ?? "").toLowerCase() || DEFAULT_BILLING_CURRENCY);
+    const priceCents = paid ? pack.prices[paid] : Math.max(0, Math.floor(session.amount_subtotal ?? 0));
 
-    const status: CreditTopUpStatus = !amountMatches ? "needs_review" : deliverNow ? "credited" : "held";
+    const status: CreditTopUpStatus = !paid ? "needs_review" : deliverNow ? "credited" : "held";
     let row: CreditTopUp;
     try {
       row = await prisma.$transaction(async (tx) => {
@@ -362,8 +398,8 @@ export class CreditTopUpService {
           data: {
             userId,
             packId: pack.id,
-            priceCents: pack.priceCents,
-            currency: CREDIT_PACK_CURRENCY,
+            priceCents,
+            currency,
             creditsCents: pack.creditsCents,
             stripeCheckoutSessionId: session.id,
             stripePaymentIntentId: paymentIntentId,
@@ -462,7 +498,7 @@ export class CreditTopUpService {
     const consent = await this.consents.record(userId, {
       surface: "credit_topup",
       subjectId: row.packId,
-      subjectLabel: pack?.label ?? row.packId,
+      subjectLabel: pack ? purchaseLabel(row.packId, row.currency) : row.packId,
       consented: true,
       acknowledgedWaiver: input.acknowledgedWaiver,
       textVersion: input.textVersion,
@@ -506,26 +542,28 @@ export class CreditTopUpService {
     const when = utcMinute(row.paidAt);
     const receipt = row.stripePaymentIntentId ? ` Receipt reference: ${row.stripePaymentIntentId}.` : "";
     const credits = formatUsd(row.creditsCents);
+    const label = purchaseLabel(pack.id, row.currency);
+    const paid = `${formatMoney(row.priceCents, row.currency)} (${taxPhrase(row.currency)})`;
     let title: string;
     let body: string;
     if (row.status === "credited") {
       title = `Credits bought: ${credits}`;
       body =
-        `On ${when} UTC you bought the ${pack.label} for ${formatUsd(row.priceCents)} (before any tax). ` +
+        `On ${when} UTC you bought the ${label} for ${paid}. ` +
         `You asked for immediate delivery, so ${credits} of generation credits are in your balance now and you ` +
         `gave up your right to withdraw for the credits you use. Bought credits do not expire.${receipt}`;
     } else if (row.status === "held") {
       const until = row.heldUntil ? utcMinute(row.heldUntil) : "14 days after your purchase";
       title = `Credits bought: ${credits}, on hold for 14 days`;
       body =
-        `On ${when} UTC you bought the ${pack.label} for ${formatUsd(row.priceCents)} (before any tax). ` +
+        `On ${when} UTC you bought the ${label} for ${paid}. ` +
         `You chose to keep your right to withdraw, so the ${credits} of credits are held until ${until} UTC and then ` +
         `added to your balance automatically. You can ask for them sooner from Usage & Billing, which ends your ` +
         `right to withdraw from this purchase. Bought credits do not expire.${receipt}`;
     } else {
       title = "Credit purchase received: under review";
       body =
-        `On ${when} UTC we received your payment for the ${pack.label}, but the amount did not match the pack, so ` +
+        `On ${when} UTC we received your payment for the ${label}, but the amount did not match the pack, so ` +
         `no credits were added automatically. We will review it and add the credits or refund you.${receipt}`;
     }
     await this.sendNotice(row.userId, title, body, `credit-topup:${row.id}`);
@@ -535,10 +573,10 @@ export class CreditTopUpService {
     row: CreditTopUp,
     refund: { amountRefunded: number; withdrawnCents: number; reversedCents: number },
   ): Promise<void> {
-    const pack = findCreditPack(row.packId);
+    const label = findCreditPack(row.packId) ? purchaseLabel(row.packId, row.currency) : "credit pack";
     const spent = row.status === "credited" ? refund.withdrawnCents - refund.reversedCents : 0;
     const body =
-      `Your payment for the ${pack?.label ?? "credit pack"} was refunded (${formatUsd(refund.amountRefunded)} in total). ` +
+      `Your payment for the ${label} was refunded (${formatMoney(refund.amountRefunded, row.currency)} in total). ` +
       (row.status === "credited"
         ? `${formatUsd(refund.reversedCents)} of credits were removed from your balance` +
           (spent > 0 ? `; ${formatUsd(spent)} had already been used and stays spent.` : ".")

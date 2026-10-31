@@ -13,6 +13,7 @@ import { UsageLimitMeter } from "../credits/UsageLimitMeter";
 import { formatCents } from "../../lib/usage";
 import { Button } from "../ui/Button";
 import { BuyCreditsSection } from "./BuyCredits";
+import { useBillingCurrencyPreference } from "./BillingCurrencyChoice";
 import { PlanBillingSection } from "./PlanBilling";
 
 type ToastFn = (toast: {
@@ -461,6 +462,8 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
   const [creditRequestState, setCreditRequestState] = useState<CreditRequestState>("idle");
   // Bumped by Refresh so the Plan and Credits sections re-read their own state (#2494).
   const [refreshKey, setRefreshKey] = useState(0);
+  // One currency choice for the Plan and Credits sections, remembered in this browser (#2496).
+  const [currencyPreference, setCurrencyPreference] = useBillingCurrencyPreference();
 
   const load = async () => {
     if (!token) return;
@@ -534,6 +537,8 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
             addToast={addToast}
             onPlanChanged={() => void load()}
             refreshKey={refreshKey}
+            currencyPreference={currencyPreference}
+            onCurrencyChange={setCurrencyPreference}
           />
         }
         creditsExtra={
@@ -542,6 +547,8 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
             addToast={addToast}
             onCreditsChanged={() => void load()}
             refreshKey={refreshKey}
+            currencyPreference={currencyPreference}
+            onCurrencyChange={setCurrencyPreference}
           />
         }
       />

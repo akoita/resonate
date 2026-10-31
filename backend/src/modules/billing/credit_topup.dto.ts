@@ -1,5 +1,6 @@
 import { Type } from "class-transformer";
-import { IsBoolean, IsIn, IsObject, IsString, MaxLength, ValidateNested } from "class-validator";
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
+import { BILLING_CURRENCIES, type BillingCurrency } from "./billing_currency";
 import { CREDIT_PACK_IDS, type CreditPackId } from "./credit_packs";
 
 export const CREDIT_DELIVERY_CHOICES = ["deliver_now", "wait"] as const;
@@ -24,12 +25,17 @@ export class CreditCheckoutConsentDto {
 }
 
 /**
- * `POST /billing/credits/checkout` (#1422). The client names a pack; the price
- * and the credits come from the server catalogue, never from the request.
+ * `POST /billing/credits/checkout` (#1422). The client names a pack and the
+ * currency the buyer was shown (#2496; USD when absent); the price and the
+ * credits come from the server catalogue, never from the request.
  */
 export class StartCreditCheckoutDto {
   @IsIn(CREDIT_PACK_IDS)
   packId!: CreditPackId;
+
+  @IsOptional()
+  @IsIn(BILLING_CURRENCIES)
+  currency?: BillingCurrency;
 
   @IsObject()
   @ValidateNested()
