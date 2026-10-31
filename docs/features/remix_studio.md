@@ -819,7 +819,8 @@ from the JWT, never the request body.
     ever a prompt fragment. The seed is stored per take.
   - **Providers.** An optional `createPartClip` capability: Lyria (one 30 s
     generation, Lyria 2 on Vertex) and a deterministic stub (a synthesized
-    clip at the tempo ± a seeded 3 % drift, so the conform has real work).
+    clip at the tempo ± a seeded 1–3 % drift, never near zero, so the
+    conform always has measurable work).
     The audio-conditioned provider answers `parts_unsupported`.
   - **Conform** (`remix-part-conform/v1`, `remix-part-conform.ts`),
     deterministic and run in a worker thread: decode to 48 kHz stereo;

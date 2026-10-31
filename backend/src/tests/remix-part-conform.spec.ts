@@ -33,6 +33,9 @@ import {
 import {
   encodeStubWav,
   parseStubPartPrompt,
+  STUB_PART_MAX_DEVIATION,
+  STUB_PART_MIN_DEVIATION,
+  stubPartDeviation,
   synthesizeStubPartClip,
 } from "../modules/remix/remix-part-stub-clip";
 import { sha256Of } from "./remix-stretch-test-signals";
@@ -109,6 +112,30 @@ describe("remix part conform (#1901)", () => {
         expect(downbeatSec - c.downbeat).toBeLessThan(0.02);
       },
     );
+
+    it("the stub's seeded drift is 1–3 % (never near 1) and is what the clip plays (#2461)", () => {
+      for (let i = 0; i < 20_000; i += 1) {
+        const seed = Math.imul(i + 1, 2654435761) >>> 1;
+        const magnitude = Math.abs(stubPartDeviation(seed));
+        expect(magnitude).toBeGreaterThanOrEqual(STUB_PART_MIN_DEVIATION);
+        expect(magnitude).toBeLessThan(STUB_PART_MAX_DEVIATION);
+      }
+      // Seed 1929714705 used to drift by −0.016 %, which the estimator
+      // (correctly) read as exactly 1; it now drifts measurably.
+      const seed = 1929714705;
+      const clip = synthesizeStubPartClip({
+        role: "keys",
+        bpm: 120,
+        key: { tonic: "A", mode: "minor" },
+        seed,
+      });
+      const trueRatio = 1 + stubPartDeviation(seed);
+      expect(clip.actualBpm).toBeCloseTo(120 * trueRatio, 9);
+      const tempo = estimateTempoRatio(onsetEnvelope(mixToMono(clip.channels)), 120);
+      expect(tempo.confidence).toBeGreaterThanOrEqual(PART_TEMPO_CONFIDENCE_MIN);
+      expect(Math.abs(tempo.ratio / trueRatio - 1)).toBeLessThan(0.005);
+      expect(tempo.ratio).not.toBe(1);
+    });
 
     it("keeps r = 1 for a sustained texture (low tempo confidence)", async () => {
       const n = PART_SAMPLE_RATE * 30;
