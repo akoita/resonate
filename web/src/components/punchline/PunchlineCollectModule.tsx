@@ -29,7 +29,10 @@ import {
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
 import { MomentShareButton } from "./MomentShareButton";
 import { DROP_KIND_LABEL, formatPriceCents } from "./punchlineDropHelpers";
-import { momentShareText } from "../../lib/momentShare";
+import {
+  collectedMomentShareMessage,
+  dropShareMessage,
+} from "../../lib/collectibleShare";
 import {
   collectableDrops,
   describeCollectError,
@@ -69,6 +72,14 @@ export interface PunchlineCollectModuleProps {
 
 type DropsByTrack = Map<string, PunchlineDrop[]>;
 
+/** The viewer's own edition of a moment, for the tailored after-collect share (#1917). */
+export type OwnedEdition = {
+  collectibleId: string;
+  editionNumber: number;
+  pricePaidCents: number;
+  held: boolean;
+};
+
 export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectModuleProps) {
   const {
     token,
@@ -93,6 +104,13 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   const [ownedMomentIds, setOwnedMomentIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  // momentId → the viewer's edition, so the share links the pride view and
+  // names the edition number (#1917).
+  const [ownedEditions, setOwnedEditions] = useState<Map<string, OwnedEdition>>(
+    new Map(),
+  );
+  // The moment collected in this visit: its share is offered prominently.
+  const [justCollectedId, setJustCollectedId] = useState<string | null>(null);
   // Granted set rewards by dropId (#488) — drives the bonus reveal.
   const [rewardsByDrop, setRewardsByDrop] = useState<
     Map<string, PunchlineUnlockReward | null>
@@ -159,6 +177,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   useEffect(() => {
     if (!token) {
       setOwnedMomentIds(new Set());
+      setOwnedEditions(new Map());
       return;
     }
     let cancelled = false;
@@ -170,6 +189,19 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
         ]);
         if (!cancelled) {
           setOwnedMomentIds(new Set(mine.items.map((item) => item.moment.id)));
+          setOwnedEditions(
+            new Map(
+              mine.items.map((item) => [
+                item.moment.id,
+                {
+                  collectibleId: item.id,
+                  editionNumber: item.editionNumber,
+                  pricePaidCents: item.pricePaidCents,
+                  held: item.delivery?.state === "held" || item.status === "pending",
+                },
+              ]),
+            ),
+          );
           setRewardsByDrop(
             new Map(unlocks.items.map((g) => [g.drop.id, g.reward])),
           );
@@ -338,6 +370,15 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
             ? await runPaidCollect(moment)
             : await collectPunchlineMoment(moment.id, token);
         setOwnedMomentIds((prev) => new Set([...prev, moment.id]));
+        setOwnedEditions((prev) =>
+          new Map(prev).set(moment.id, {
+            collectibleId: result.collectible.id,
+            editionNumber: result.collectible.editionNumber,
+            pricePaidCents: result.collectible.pricePaidCents,
+            held: result.delivery?.state === "held",
+          }),
+        );
+        setJustCollectedId(moment.id);
         setCollectedCounts((prev) => {
           const next = new Map(prev);
           next.set(moment.id, effectiveCollectedCount(moment) + 1);
@@ -474,6 +515,11 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                     )}
                   </div>
                   <div className="punchline-collect-head-chips">
+                    <DropShareAction
+                      drop={drop}
+                      track={track}
+                      collectedCount={effectiveCollectedCount}
+                    />
                     {drop.unlock && !rewardsByDrop.has(drop.id) && (
                       <span className="punchline-collect-bonus-chip">
                         🎁 Collect the set to unlock a bonus
@@ -598,15 +644,13 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                               }}
                             />
                             {state === "owned" && (
-                              <MomentShareButton
-                                momentId={moment.id}
-                                dropId={drop.id}
-                                context="collect_module"
-                                shareTitle="A moment I collected on Resonate"
-                                shareText={momentShareText({
-                                  lyricText: moment.lyricText,
-                                })}
-                                label="Share"
+                              <CollectedShareAction
+                                drop={drop}
+                                moment={moment}
+                                track={track}
+                                edition={ownedEditions.get(moment.id) ?? null}
+                                editionsLeft={Math.max(0, moment.editionSize - collectedCount)}
+                                prominent={justCollectedId === moment.id}
                               />
                             )}
                           </div>
@@ -658,6 +702,98 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
         </div>
       ))}
     </section>
+  );
+}
+
+/**
+ * The tailored after-collect share (#1917): the moment permalink, upgraded to
+ * the edition-pride view when the viewer's edition is known, with paid/free
+ * honest copy. Exported for static-markup tests.
+ */
+export function CollectedShareAction({
+  drop,
+  moment,
+  track,
+  edition,
+  editionsLeft,
+  prominent,
+}: {
+  drop: Pick<PunchlineDrop, "id">;
+  moment: PunchlineMoment;
+  track: Pick<Track, "title" | "artist">;
+  edition: OwnedEdition | null;
+  editionsLeft: number;
+  prominent: boolean;
+}) {
+  const input = {
+    lyricText: moment.lyricText,
+    artistName: track.artist,
+    trackTitle: track.title,
+    editionNumber: edition?.editionNumber ?? null,
+    editionSize: moment.editionSize,
+    // Without the edition record, the moment's price is what was paid.
+    pricePaidCents: edition?.pricePaidCents ?? moment.priceCents,
+    held: edition?.held ?? false,
+    editionsLeft,
+  };
+  const native = collectedMomentShareMessage(input, "native");
+  return (
+    <MomentShareButton
+      momentId={moment.id}
+      dropId={drop.id}
+      collectibleId={edition?.collectibleId ?? null}
+      context="collect_module"
+      trigger="after_collect"
+      shareTitle={native.title}
+      shareText={native.text}
+      xText={collectedMomentShareMessage(input, "x").text}
+      className={prominent ? "punchline-btn-primary" : undefined}
+      label={
+        prominent && edition ? `Share edition №${edition.editionNumber}` : "Share"
+      }
+    />
+  );
+}
+
+/**
+ * "Share this drop" (#1917): invites people to collect, stating the price or
+ * that it is free honestly. Links the drop on its release page. Exported for
+ * static-markup tests.
+ */
+export function DropShareAction({
+  drop,
+  track,
+  collectedCount,
+}: {
+  drop: Pick<PunchlineDrop, "id" | "title" | "moments">;
+  track: Pick<Track, "title" | "artist" | "releaseId">;
+  collectedCount: (moment: PunchlineMoment) => number;
+}) {
+  if (!track.releaseId) return null;
+  const input = {
+    dropTitle: drop.title,
+    trackTitle: track.title,
+    artistName: track.artist,
+    moments: drop.moments.map((moment) => ({
+      priceCents: moment.priceCents,
+      editionSize: moment.editionSize,
+      collectedCount: collectedCount(moment),
+    })),
+  };
+  const native = dropShareMessage(input, "native");
+  return (
+    <span className="punchline-collect-actions punchline-drop-share">
+      <MomentShareButton
+        dropId={drop.id}
+        releaseId={track.releaseId}
+        context="drop_share"
+        trigger="drop_page"
+        shareTitle={native.title}
+        shareText={native.text}
+        xText={dropShareMessage(input, "x").text}
+        label="Share this drop"
+      />
+    </span>
   );
 }
 

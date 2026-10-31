@@ -282,7 +282,8 @@ interface NavigatorShareLike {
  * cancellation (`AbortError`) for the caller to ignore via {@link isShareCancel}.
  */
 export async function performMomentShare(
-  data: { url: string; title: string; text: string },
+  /** `copyUrl` (optional) is the link copied on the clipboard fallback. */
+  data: { url: string; title: string; text: string; copyUrl?: string },
   nav: NavigatorShareLike | undefined = typeof navigator !== "undefined"
     ? (navigator as NavigatorShareLike)
     : undefined,
@@ -292,7 +293,7 @@ export async function performMomentShare(
     return "web_share";
   }
   if (nav?.clipboard && typeof nav.clipboard.writeText === "function") {
-    await nav.clipboard.writeText(data.url);
+    await nav.clipboard.writeText(data.copyUrl ?? data.url);
     return "clipboard";
   }
   throw new Error("no_share_available");

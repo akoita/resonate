@@ -130,6 +130,37 @@ OG-ingredient, and share helpers live in `web/src/lib/momentShare.ts` (unit
 tested), and the OG image never broadcasts a socially-weighted word the in-app
 card masks.
 
+### Tailored collectible shares (#1917, parent #1915)
+
+Collectible and drop details stay out of the player's "Now playing" listening
+share (`web/src/lib/listeningShare.ts`, regression-tested in
+`listeningShare.test.ts`). Instead, every collect surface offers a tailored
+share built by `web/src/lib/collectibleShare.ts`:
+
+| Surface | Share | Trigger | Link |
+| --- | --- | --- | --- |
+| Release collect module, after a free or paid collect (including a held paid edition) | **Share edition №N** (prominent) + X post | `after_collect` | `/moments/[id]?c=<collectibleId>` (edition-pride view, consent-gated) |
+| Release collect module, a moment the viewer already owns | **Share** + X post | `after_collect` | same, when the viewer's edition is known |
+| Library Moments tab (`/library?tab=moments`) | **Share** + X post | `after_collect` | `/moments/[id]?c=<collectibleId>` |
+| Release collect module, each drop (any visitor) | **Share this drop** + X post | `drop_page` | `/release/[id]?focus=moments` |
+| Public moment permalink `/moments/[id]` (any visitor) | **Share this moment** + X post | `drop_page` | `/moments/[id]` (never the collector's edition) |
+
+The `/drops` gallery has no collect action (cards open the release's collect
+section), so it has no share of its own.
+
+Copy rules (unit-tested in `collectibleShare.test.ts`): collectibles are
+utility, not yield, so no investment, value, appreciation, royalty, or income
+wording (ADR-BM-4). "The artist keeps at least 85% of the sale" appears only
+for a paid collect, and "…of each sale" on a drop share only while paid
+editions are still available; free claims never carry it. Drop shares state
+the price honestly ("Free to collect while editions last.", "$2.00 an
+edition.", "Editions from $1.50.", mixed free/paid, or "Every edition has been
+collected." with no invitation). After-collect copy names the fan's edition
+number (a held paid edition reads "is reserved for me"). Every lyric runs
+through `maskSensitiveLyric`, X posts fit the 280 budget with links counted as
+23, Reddit titles fit 300. Every link carries `utm_source=<channel>`,
+`utm_medium=share|social`, and `utm_campaign=collectible_share`.
+
 ### Artist UI (so far)
 
 The first artist-facing surface ships on the release page (#483). When the
@@ -205,8 +236,11 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   `punchline.collect_completed` flow through the product-analytics rail
   (allowlisted + declared; pseudonymous tier); the `punchline` event family is
   registered in the warehouse export matrix. The share event
-  `punchline.moment_shared` `{ momentId, dropId, context, method }` (#1477 slice 2)
-  is declared, allowlisted, and covered by the shared fixture on both the TS
+  `punchline.moment_shared` `{ momentId, dropId, context, method, trigger }`
+  (#1477 slice 2; #1917 adds `trigger` = `after_collect` | `drop_page`,
+  `context` = `inventory` | `collect_module` | `drop_share` | `permalink`,
+  `method` = `web_share` | `clipboard` | `x`, and `momentId: null` for a
+  drop-level share) is declared, allowlisted, and covered by the shared fixture on both the TS
   warehouse and Python dataflow sides.
 
 ### Services, code, and tests

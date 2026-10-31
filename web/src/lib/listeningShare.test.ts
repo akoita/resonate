@@ -293,3 +293,26 @@ describe("releaseIdFromStreamUrl", () => {
     expect(releaseIdFromStreamUrl(undefined)).toBeNull();
   });
 });
+
+describe("listening share stays a listening signal (#1915, #1917)", () => {
+  it("never gains collectible or drop details, even when the track has drops", () => {
+    // Collectible fields a caller might pass through must never reach the
+    // copy or the link: collectible shares live in collectibleShare.ts and are
+    // offered after collecting or on a drop.
+    const withDrop = {
+      ...forSaleTrack,
+      hasStems: true,
+      drop: { id: "drop_1", title: "Hooks of the Summer" },
+      moment: { id: "mom_1", editionNumber: 7, editionSize: 50, priceCents: 250 },
+    } as ShareableTrack;
+    for (const channel of CHANNELS) {
+      const { title, text } = listeningShareMessage(withDrop, channel, { origin: ORIGIN });
+      const url = listeningShareUrl(ORIGIN, withDrop, channel) ?? "";
+      for (const value of [title, text, url]) {
+        expect(value).not.toMatch(/collect|drop|edition|moment|№|claim/i);
+        expect(value).not.toContain("collectible_share");
+      }
+      expect(new URL(url).searchParams.get("utm_campaign")).toBe("listening_share");
+    }
+  });
+});

@@ -389,11 +389,14 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     // the release collect module, attributable back into the #489 funnel via
     // the share URL's drop_viewed(source:"share").
     // #1743: `artistId` is resolved server-side at ingest from the dropId.
+    // #1917: `trigger` is why the share was offered (after_collect |
+    // drop_page); `context` adds drop_share | permalink, `method` adds x, and
+    // a drop-level share carries `momentId: null`. Compact ids only.
     eventName: "punchline.moment_shared",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["momentId", "dropId", "artistId", "context", "method"],
+    payloadFields: ["momentId", "dropId", "artistId", "context", "method", "trigger"],
   },
   {
     // A listener shared the playing track from the player. The share link is
