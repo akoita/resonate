@@ -5,6 +5,7 @@ import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
 import { auditRef } from "../admin_audit/admin_audit.interceptor";
 import { normalizeUserId } from "../identity/user_id";
 import { EventBus } from "../shared/event_bus";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 export const COMMUNITY_BENEFIT_TYPES = [
   "room_access",
@@ -400,7 +401,7 @@ export class CommunityEligibilityService {
     if (!wallet?.address) {
       return { eligible: false, reasons: ["wallet_missing"] };
     }
-    const walletAddresses = await this.ownershipWalletAddresses(userId, wallet);
+    const walletAddresses = await resolveOwnershipWalletAddresses(userId, wallet);
 
     const listingWhere: Prisma.StemListingWhereInput = {};
     const chainId = optionalNumberField(policy, "chainId");
@@ -437,88 +438,16 @@ export class CommunityEligibilityService {
       };
     }
 
-    const purchases = await prisma.stemPurchase.findMany({
-      where: {
-        OR: walletAddresses.map((address) => ({
-          buyerAddress: { equals: address, mode: Prisma.QueryMode.insensitive },
-        })),
-        amount: { gt: 0n },
-        listing: listingWhere,
-      },
-      select: {
-        amount: true,
-        listing: { select: { chainId: true, tokenId: true } },
-      },
-    });
-    const indexedBalances = new Map<string, bigint>();
-    for (const purchase of purchases) {
-      const key = indexedOwnershipKey(purchase.listing);
-      indexedBalances.set(key, (indexedBalances.get(key) ?? 0n) + purchase.amount);
-    }
-
-    if (indexedBalances.size === 0) {
+    const holdings = await netIndexedStemHoldings(walletAddresses, listingWhere);
+    if (holdings.size === 0) {
       return { eligible: false, reasons: ["ownership_missing"] };
     }
 
-    const sales = await prisma.stemPurchase.findMany({
-      where: {
-        amount: { gt: 0n },
-        listing: {
-          ...listingWhere,
-          OR: walletAddresses.map((address) => ({
-            sellerAddress: { equals: address, mode: Prisma.QueryMode.insensitive },
-          })),
-        },
-      },
-      select: {
-        amount: true,
-        listing: { select: { chainId: true, tokenId: true } },
-      },
-    });
-    for (const sale of sales) {
-      const key = indexedOwnershipKey(sale.listing);
-      indexedBalances.set(key, (indexedBalances.get(key) ?? 0n) - sale.amount);
-    }
-
-    return [...indexedBalances.values()].some((amount) => amount > 0n)
+    return [...holdings.values()].some((holding) => holding.amount > 0n)
       ? { eligible: true, reasons: ["stem_nft_holder"] }
       : { eligible: false, reasons: ["ownership_missing"] };
   }
 
-  private async ownershipWalletAddresses(
-    userId: string,
-    wallet: { address: string; ownerAddress: string | null },
-  ) {
-    const addresses = new Set([wallet.address.toLowerCase()]);
-    if (wallet.ownerAddress) {
-      addresses.add(wallet.ownerAddress.toLowerCase());
-    }
-
-    const linkedWallets = await prisma.wallet.findMany({
-      where: {
-        OR: [
-          { userId },
-          { address: { equals: wallet.address, mode: Prisma.QueryMode.insensitive } },
-          { ownerAddress: { equals: wallet.address, mode: Prisma.QueryMode.insensitive } },
-          ...(wallet.ownerAddress
-            ? [
-                { address: { equals: wallet.ownerAddress, mode: Prisma.QueryMode.insensitive } },
-                { ownerAddress: { equals: wallet.ownerAddress, mode: Prisma.QueryMode.insensitive } },
-              ]
-            : []),
-        ],
-      },
-      select: { address: true, ownerAddress: true },
-    });
-    for (const linked of linkedWallets) {
-      addresses.add(linked.address.toLowerCase());
-      if (linked.ownerAddress) {
-        addresses.add(linked.ownerAddress.toLowerCase());
-      }
-    }
-
-    return [...addresses];
-  }
 
   private async evaluateCampaignSupportPolicy(userId: string, policy: PolicyObject): Promise<EvaluationResult> {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
@@ -1228,6 +1157,127 @@ function optionalNumberField(policy: PolicyObject, field: string): number | unde
     throw new BadRequestException(`Eligibility policy ${field} must be an integer`);
   }
   return number;
+}
+
+/**
+ * Every wallet address that speaks for this listener for indexed ownership
+ * proof: the primary wallet, its owner (smart-account signer), and any linked
+ * wallets. Shared by eligibility policies and public collector badges (#1106).
+ */
+export async function resolveOwnershipWalletAddresses(
+  userId: string,
+  wallet: { address: string; ownerAddress: string | null },
+) {
+  const addresses = new Set([wallet.address.toLowerCase()]);
+  if (wallet.ownerAddress) {
+    addresses.add(wallet.ownerAddress.toLowerCase());
+  }
+
+  const linkedWallets = await prisma.wallet.findMany({
+    where: {
+      OR: [
+        { userId },
+        { address: { equals: wallet.address, mode: Prisma.QueryMode.insensitive } },
+        { ownerAddress: { equals: wallet.address, mode: Prisma.QueryMode.insensitive } },
+        ...(wallet.ownerAddress
+          ? [
+              { address: { equals: wallet.ownerAddress, mode: Prisma.QueryMode.insensitive } },
+              { ownerAddress: { equals: wallet.ownerAddress, mode: Prisma.QueryMode.insensitive } },
+            ]
+          : []),
+      ],
+    },
+    select: { address: true, ownerAddress: true },
+  });
+  for (const linked of linkedWallets) {
+    addresses.add(linked.address.toLowerCase());
+    if (linked.ownerAddress) {
+      addresses.add(linked.ownerAddress.toLowerCase());
+    }
+  }
+
+  return [...addresses];
+}
+
+export type IndexedStemHolding = {
+  amount: bigint;
+  /** Release-level artist id of the stem; null when the listing has no stem. */
+  artistId: string | null;
+  /** Credited artist name (#1492 order), for display; null when uncredited. */
+  artistName: string | null;
+};
+
+/**
+ * Net indexed stem NFT balances per `chainId:tokenId` for the given wallets:
+ * indexed purchases minus indexed resales. Positive amounts mean the wallets
+ * still hold the token. Shared by eligibility and collector badges (#1106) so
+ * both read ownership the same way.
+ */
+export async function netIndexedStemHoldings(
+  walletAddresses: string[],
+  listingWhere: Prisma.StemListingWhereInput = {},
+): Promise<Map<string, IndexedStemHolding>> {
+  const holdings = new Map<string, IndexedStemHolding>();
+  if (walletAddresses.length === 0) return holdings;
+  const listingSelect = {
+    chainId: true,
+    tokenId: true,
+    stem: {
+      select: {
+        track: {
+          select: {
+            artist: true,
+            release: { select: { artistId: true, primaryArtist: true, artist: { select: { displayName: true } } } },
+          },
+        },
+      },
+    },
+  } as const;
+
+  const purchases = await prisma.stemPurchase.findMany({
+    where: {
+      OR: walletAddresses.map((address) => ({
+        buyerAddress: { equals: address, mode: Prisma.QueryMode.insensitive },
+      })),
+      amount: { gt: 0n },
+      listing: listingWhere,
+    },
+    select: { amount: true, listing: { select: listingSelect } },
+  });
+  for (const purchase of purchases) {
+    const key = indexedOwnershipKey(purchase.listing);
+    const current = holdings.get(key);
+    holdings.set(key, {
+      amount: (current?.amount ?? 0n) + purchase.amount,
+      artistId: purchase.listing.stem?.track?.release?.artistId ?? current?.artistId ?? null,
+      artistName: resolveCreditedArtistName({
+        trackArtist: purchase.listing.stem?.track?.artist,
+        primaryArtist: purchase.listing.stem?.track?.release?.primaryArtist,
+        accountDisplayName: purchase.listing.stem?.track?.release?.artist?.displayName,
+      }) ?? current?.artistName ?? null,
+    });
+  }
+  if (holdings.size === 0) return holdings;
+
+  const sales = await prisma.stemPurchase.findMany({
+    where: {
+      amount: { gt: 0n },
+      listing: {
+        ...listingWhere,
+        OR: walletAddresses.map((address) => ({
+          sellerAddress: { equals: address, mode: Prisma.QueryMode.insensitive },
+        })),
+      },
+    },
+    select: { amount: true, listing: { select: listingSelect } },
+  });
+  for (const sale of sales) {
+    const key = indexedOwnershipKey(sale.listing);
+    const current = holdings.get(key);
+    if (!current) continue;
+    holdings.set(key, { ...current, amount: current.amount - sale.amount });
+  }
+  return holdings;
 }
 
 function indexedOwnershipKey(listing: { chainId: number; tokenId: bigint }) {

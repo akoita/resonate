@@ -3940,7 +3940,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "community",
     audiences: ["listener", "artist"],
     status: "partial",
-    keywords: ["community", "cohort", "rooms", "artist room", "holder benefits", "city scene", "discord", "profile", "supporters", "collectors"],
+    keywords: ["community", "cohort", "rooms", "artist room", "holder benefits", "city scene", "discord", "profile", "supporters", "collectors", "badges", "supporter badge", "collector badge"],
     sections: [
       {
         id: "profile",
@@ -3949,6 +3949,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Set up a community profile and decide exactly what's visible. Wallet, ownership, taste, and support details are hidden unless you choose to show them.",
+          },
+          {
+            kind: "paragraph",
+            text: "Supporter and collector badges are off until you turn them on. In your community profile settings, \"Supporter badges\" adds a \"Supporter of\" badge for each artist whose show campaign you back, and \"Collector badges\" adds a \"Collector of\" badge for each artist whose stems or moments you own. You can turn each type on or off on its own, and turning one off removes those badges from your public profile straight away. A badge only names the artist: never how much you paid or pledged, a refund, your wallet, what or how much you own, or which private rooms you are in.",
+          },
+          {
+            kind: "paragraph",
+            text: "A badge also disappears on its own when what earned it ends: a campaign is refunded or cancelled, you sell what you owned, a badge's time runs out, or a moderator bans or removes you from that artist's community.",
           },
         ],
       },

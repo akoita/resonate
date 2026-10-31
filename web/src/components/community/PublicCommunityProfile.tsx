@@ -40,6 +40,22 @@ export function publicCommunityShowcaseItems(profile: PublicCommunityProfileResp
       value: profile.showcase.playlistsVisible ? "Ready for future playlist cards" : "Hidden by listener",
     },
     {
+      key: "supporter-badges",
+      label: "Supporter badges",
+      status: profile.showcase.supporterBadgesVisible ? "visible" : "hidden",
+      value: profile.showcase.supporterBadgesVisible
+        ? badgeSummary(profile.showcase.supporterBadges?.length ?? 0, "supporter")
+        : "Hidden by listener",
+    },
+    {
+      key: "collector-badges",
+      label: "Collector badges",
+      status: profile.showcase.collectorBadgesVisible ? "visible" : "hidden",
+      value: profile.showcase.collectorBadgesVisible
+        ? badgeSummary(profile.showcase.collectorBadges?.length ?? 0, "collector")
+        : "Hidden by listener",
+    },
+    {
       key: "campaign-support",
       label: "Campaign support",
       status: profile.showcase.campaignSupportVisible ? "visible" : "hidden",
@@ -77,6 +93,10 @@ export function PublicCommunityProfile({
   }
 
   const items = publicCommunityShowcaseItems(profile);
+  const publicBadges = [
+    ...(profile.showcase.supporterBadges ?? []),
+    ...(profile.showcase.collectorBadges ?? []),
+  ];
   const visibleCount = items.filter((item) => item.status === "visible").length;
   const initial = profile.profile.displayName.trim().charAt(0).toUpperCase() || "R";
 
@@ -161,6 +181,21 @@ export function PublicCommunityProfile({
         </section>
       ) : null}
 
+      {publicBadges.length > 0 ? (
+        <section className="community-profile-support" aria-label="Supporter and collector badges">
+          <span className="community-profile-kicker">Badges</span>
+          <div className="community-profile-support__grid">
+            {publicBadges.map((badge) => (
+              <article key={badge.credentialId} className="community-profile-support-card">
+                <span>{badge.tier === "supporter" ? "Supporter" : "Collector"}</span>
+                <strong>{badge.displayLabel}</strong>
+                {badge.expiresAt ? <p>Until {formatBadgeDate(badge.expiresAt)}</p> : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {profile.showcase.campaignSupportVisible && profile.showcase.campaignSupport.length > 0 ? (
         <section className="community-profile-support" aria-label="Campaign support badges">
           <span className="community-profile-kicker">Campaign support</span>
@@ -177,6 +212,17 @@ export function PublicCommunityProfile({
       ) : null}
     </main>
   );
+}
+
+function badgeSummary(count: number, kind: "supporter" | "collector") {
+  if (count === 0) return `No public ${kind} badges yet`;
+  return `${count} public ${kind} badge${count === 1 ? "" : "s"}`;
+}
+
+function formatBadgeDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 function campaignSupportSummary(count: number) {

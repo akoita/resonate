@@ -97,8 +97,10 @@ Implemented in [#1128](https://github.com/akoita/resonate/issues/1128):
 
 Remaining:
 
-- Public profile benefit showcase badges remain deferred until the publication
-  rules for public badges and ownership display are implemented.
+- Public supporter and collector badges shipped in
+  [#1106](https://github.com/akoita/resonate/issues/1106) (opt-in per type,
+  one badge per artist, redacted, lifecycle/expiry/moderation aware). Other
+  benefit showcase badges (taste, attendance, roles) remain deferred.
 - New NFT-backed credentials and on-chain settlement remain out of scope for M2.
 
 ## Verification

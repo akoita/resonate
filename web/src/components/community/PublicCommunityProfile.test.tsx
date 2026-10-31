@@ -181,4 +181,46 @@ describe("PublicCommunityProfile", () => {
     expect(html).not.toContain("250000");
     expect(html).not.toContain("0xabc123");
   });
+
+  it("renders opted-in supporter and collector badges and hides the hidden type (#1106)", () => {
+    const badgeProfile: PublicCommunityProfileResponse = {
+      ...profile,
+      showcase: {
+        ...profile.showcase,
+        supporterBadgesVisible: false,
+        collectorBadgesVisible: true,
+        collectorBadges: [
+          {
+            schemaVersion: "public-community-credential/v1",
+            credentialId: "cred_abc",
+            credentialType: "artist_collector",
+            displayLabel: "Collector of Nova",
+            artistId: "artist-1",
+            artistDisplayName: "Nova",
+            tier: "collector",
+            status: "active",
+            visibility: "public_profile",
+            issuedAt: null,
+            expiresAt: null,
+            proofMethod: "indexed_ownership",
+          },
+        ],
+      },
+    };
+    const items = publicCommunityShowcaseItems(badgeProfile);
+    const html = renderToStaticMarkup(
+      <PublicCommunityProfile profile={badgeProfile} requestedUserId="listener-1" />,
+    );
+
+    expect(items.find((item) => item.key === "collector-badges")).toMatchObject({
+      status: "visible",
+      value: "1 public collector badge",
+    });
+    expect(items.find((item) => item.key === "supporter-badges")).toMatchObject({
+      status: "hidden",
+      value: "Hidden by listener",
+    });
+    expect(html).toContain("Collector of Nova");
+    expect(html).not.toContain("Supporter of");
+  });
 });
