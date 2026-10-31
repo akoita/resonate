@@ -51,7 +51,7 @@ Latest closed: [Vision Sprint 44 — Pro foundations, in test mode](2026-10-25-v
 on 2026-10-25. Waiting on the owner: Stripe test keys (resonate-iac#325), the
 #1421 pricing sign-off, legal review of the consent and refund wording, and the
 #2367 remix-challenge decision.
-Current: none selected. Sprint 43 is closing: only the #1759 staging contract rollout remains.
+Current: [Vision Sprint 45 — Cheap to run, ready to charge, easy to share](2026-10-31-vision-sprint-45-cheap-ready-shareable.md), started 2026-10-31. Sprint 43 is closing: only the #1759 staging contract rollout remains.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -100,3 +100,4 @@ Current: none selected. Sprint 43 is closing: only the #1759 staging contract ro
 | [2026-10-24](2026-10-24-vision-sprint-42-sell-with-confidence.md) | Vision Sprint 42 — Sell with confidence (immediate-delivery consent, official lossless stems, indexer lease, admin hardening, wallet amounts, optional email prompts) | ✅ Closed 2026-10-24 — all 6 issues closed (#1776, #1976, #2360, #2362, #2361, #2182); #1121 scope check → #2367; image-build heap fix (#2381); verified on staging at `4ec6e8a3`; [milestone-44 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-44-vision-sprint-42-sell-with-confidence) |
 | [2026-10-24](2026-10-24-vision-sprint-43-fair-deposits-artist-pro-plan.md) | Vision Sprint 43 — Fair deposits, and the Artist Pro plan (stake units, stake self-claim, Artist Pro design, money-release step-up, partial official packages, guide screenshots) | ◐ In progress — owner-approved 2026-10-24; milestone 45 |
 | [2026-10-25](2026-10-25-vision-sprint-44-pro-foundations.md) | Vision Sprint 44 — Pro foundations, in test mode (entitlement service, Stripe subscriptions, allowance, credit packs; nightly scan and local/CI fixes; Remix guide audio) | ✅ Closed 2026-10-25 — all 7 slices shipped (#2418, #2420, #2406, #2407, #2408, #1943, #1422 test-mode slice); test mode only, no live charging; verified on staging at `a2a803fc`; [milestone-46 changelog-only release](https://github.com/akoita/resonate/releases/tag/milestone-46-vision-sprint-44-pro-foundations) |
+| [2026-10-31](2026-10-31-vision-sprint-45-cheap-ready-shareable.md) | Vision Sprint 45 — Cheap to run, ready to charge, easy to share (idle cost, Stripe cancel on erasure, campaign and collectible shares, flaky remix-parts test) | ◐ In progress — started 2026-10-31 |
