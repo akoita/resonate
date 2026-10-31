@@ -155,8 +155,10 @@ describe("Admin step-up (integration)", () => {
 
     const mine = await answer(ADMIN);
     const [body, mac] = mine.challenge.challengeToken.split(".");
+    // Change the first MAC character, which is never padding, to a different value.
+    const tamperedMac = `${mac[0] === "A" ? "B" : "A"}${mac.slice(1)}`;
     await expect(
-      service.verify(ADMIN, { ...mine.input, challengeToken: `${body}.${mac.slice(0, -2)}AA` }),
+      service.verify(ADMIN, { ...mine.input, challengeToken: `${body}.${tamperedMac}` }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
       service.verify(ADMIN, { ...mine.input, challengeToken: "garbage-garbage" }),
