@@ -383,6 +383,50 @@ describe("BillingReconciliationService (integration)", () => {
     });
   });
 
+  it("keeps EUR and USD purchases apart, in the currency each was paid (#2496)", async () => {
+    // August 1993: an EU buyer pays a €10 pack with VAT included (total = price), a US buyer a $10
+    // pack plus tax (total > price); half the EUR pack is refunded and taken back.
+    const eurPack = await purchase({ id: "pe1", userId: U.euro, currency: "eur", priceCents: 1000, amountTotalCents: 1000, creditsCents: 1000, delivery: "deliver_now", status: "credited", paidAt: at(8, 2), creditedAt: at(8, 2), creditedCents: 1000 });
+    await ledger(U.euro, "grant", 1000, "top_up", at(8, 2), { paymentRef: `pi_${eurPack}` });
+    const usdPack = await purchase({ id: "pu1", userId: U.buyer, priceCents: 1000, amountTotalCents: 1080, creditsCents: 1000, delivery: "deliver_now", status: "credited", paidAt: at(8, 3), creditedAt: at(8, 3), creditedCents: 1000 });
+    await ledger(U.buyer, "grant", 1000, "top_up", at(8, 3), { paymentRef: `pi_${usdPack}` });
+    await refund(eurPack, 500, 500, 500, 500, "credited", at(8, 9));
+    await ledger(U.euro, "reversal", 500, "top_up_refund", at(8, 9), { paymentRef: `pi_${eurPack}` });
+
+    const august = await service.build("1993-08", NOW);
+    expect(august.creditPacks.purchases.map((p) => [p.creditTopUpId, p.currency, p.priceCents, p.amountTotalCents])).toEqual([
+      [eurPack, "eur", 1000, 1000],
+      [usdPack, "usd", 1000, 1080],
+    ]);
+    expect(august.creditPacks.refunds).toEqual([
+      expect.objectContaining({ creditTopUpId: eurPack, currency: "eur", amountCents: 500, withdrawnCreditsCents: 500, reversedCents: 500 }),
+    ]);
+    expect(august.controlTotals).toEqual([
+      {
+        currency: "eur",
+        creditPackPurchases: { count: 1, priceCents: 1000, chargedCents: 1000, chargedUnknownCount: 0 },
+        creditPackRefunds: { count: 1, amountCents: 500 },
+        needsReview: { count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 },
+        subscriptionInvoices: { count: 0, amountPaidCents: 0 },
+        netCollectedCents: 500,
+      },
+      {
+        currency: "usd",
+        creditPackPurchases: { count: 1, priceCents: 1000, chargedCents: 1080, chargedUnknownCount: 0 },
+        creditPackRefunds: { count: 0, amountCents: 0 },
+        needsReview: { count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 },
+        subscriptionInvoices: { count: 0, amountPaidCents: 0 },
+        netCollectedCents: 1080,
+      },
+    ]);
+    // Credits are currency-less credit cents at face value: €10 and $10 both buy 1,000.
+    expect(august.creditBalance.topUpGrantsCents).toBe(2000);
+    expect(august.creditBalance.topUpRefundReversals).toEqual({ count: 1, cents: 500 });
+    expect(august.creditBalance.closingCents - august.creditBalance.openingCents).toBe(1500);
+    expect(august.creditBalance.balanced).toBe(true);
+    expect(sectionToCsv(august, "control_totals").split("\r\n").filter(Boolean)).toHaveLength(3);
+  });
+
   it("refuses a bad or future month", async () => {
     await expect(service.build("1993-6", NOW)).rejects.toMatchObject({ response: { code: "invalid_month" } });
     await expect(service.build("2999-01", NOW)).rejects.toMatchObject({ response: { code: "month_in_future" } });

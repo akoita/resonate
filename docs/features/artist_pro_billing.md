@@ -497,14 +497,14 @@ their record (operators)".
 
 | Section | What it holds |
 | --- | --- |
-| `purchases` | Credit packs paid in the month (`paidAt`), except `needs_review`: Checkout Session and payment intent ids, pack, currency, price before tax, the amount charged (`amountTotalCents`, null on purchases before #2497), credits, delivery, and the credits that reached the balance in the month |
+| `purchases` | Credit packs paid in the month (`paidAt`), except `needs_review`: Checkout Session and payment intent ids, pack, the currency paid, the catalogue price in that currency (before tax in USD, VAT included in EUR), the amount charged with any tax (`amountTotalCents`, null on purchases before #2497), credits, delivery, and the credits that reached the balance in the month |
 | `refunds` | Each pack refund applied in the month (`CreditTopUpRefund`, dated by the Stripe event): money refunded, credits withdrawn, credits taken back from the balance, credits already spent, and the reduction of a held purchase |
 | `needs_review` | Packs paid in the month whose amount did not match the catalogue; nothing was credited. Each one needs a refund or an audited operator grant |
 | `held_purchases` | Roll-forward, in credit cents, of credits paid for but not yet in the balance (the 14-day hold): opening, purchased, credited, withdrawn by refunds, closing |
 | `credit_balance` | Roll-forward, in credit cents, of the pooled bought and free balance: opening, grants by reason (`top_up`, `signup_starter`, `credit_request`, `operator_grant`), spends and job refunds (the balance part only), `top_up_refund` reversals, closing |
 | `allowance` | The Artist Pro allowance, apart: granted, used, returned and lapsed. It expires, has no cash value and is never a liability |
 | `subscription_invoices` | Paid Artist Pro invoices in the month (`SubscriptionInvoice`): amount paid, amount before tax, currency, interval, billing reason and service period, so annual plans can be spread over their 12 months |
-| `control_totals` | Per currency: pack purchases, pack refunds, `needs_review` and invoice totals, and the net collected, to set against Stripe's balance report for the month |
+| `control_totals` | Per currency (USD and EUR are never added together): pack purchases, pack refunds, `needs_review` and invoice totals, and the net collected, to set against Stripe's balance report for the month. Amounts charged use `amountTotalCents`, so a USD purchase counts its tax and an EUR one its included VAT |
 
 The JSON also carries an `integrity` check: the whole ledger's signed sum
 against the cached balances, now.
