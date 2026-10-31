@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 
 interface ExpiryBadgeProps {
     expiresAt: string;
@@ -27,10 +28,8 @@ export function ExpiryBadge({ expiresAt }: ExpiryBadgeProps) {
     const [time, setTime] = useState(() => getTimeRemaining(expiresAt));
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            setTime(getTimeRemaining(expiresAt));
-        }, 60_000); // update every minute
-        return () => clearInterval(interval);
+        // Every minute while visible; paused in a hidden tab, refreshed on return (#2436).
+        return registerVisibleInterval(() => setTime(getTimeRemaining(expiresAt)), 60_000);
     }, [expiresAt]);
 
     return (

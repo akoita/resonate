@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { CampaignProgress } from "./CampaignProgress";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 import {
   campaignDisplayInitial,
   campaignDisplayTitle,
@@ -22,8 +23,7 @@ export function CampaignHero({ campaign }: Props) {
   useEffect(() => {
     const tick = () => setDaysLeft(daysUntil(campaign.deadline));
     tick();
-    const id = setInterval(tick, 60_000);
-    return () => clearInterval(id);
+    return registerVisibleInterval(tick, 60_000);
   }, [campaign.deadline]);
 
   const targetDateFmt = new Date(campaign.targetDate).toLocaleDateString("en-GB", {

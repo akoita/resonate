@@ -122,6 +122,39 @@ anti-aliasing (8 px above 16/255), the Shows progress bars are identical, and
 the Shows kicker ring differs by about 130 px (at most 27/255), from the
 ring-for-shadow substitution.
 
+### Follow-up: off-screen and hidden-tab loops
+
+The first pass made each loop cheap; the second stops paying for loops nobody
+can see. `IdleAnimationGuard` (mounted in the root layout, logic in
+`web/src/lib/idleAnimationGuard.ts`) finds every element running an infinite
+animation, at start-up and through the bubbling `animationstart` event, and
+marks it `data-idle-paused` while an IntersectionObserver reports it out of
+view (96px margin) or the tab is hidden. One rule in `globals.css` maps the
+attribute to `animation-play-state: paused` for the element and its
+pseudo-elements. It uses an attribute, not `Animation.pause()`, so a
+component's own CSS pause (the player marquee) keeps working once the mark is
+removed, and it leaves one-shot animations alone.
+
+The remaining bare timers that ran in hidden tabs (Home tuner clock, campaign
+countdowns on Shows, marketplace expiry badges, the release-page rights poll,
+the playlist sidebar refresh) moved to `registerVisibleInterval`, and
+`web/src/lib/visibleIntervalBudget.test.ts` now fails on a new bare
+`setInterval`.
+
+Same container, production builds of `main` and the branch, same probe
+(the probe now also reports running infinite animations during the hidden
+phase):
+
+| Measure | Home | Player | Library | Shows |
+| --- | --- | --- | --- | --- |
+| Infinite animations still running while hidden | 9 → 0 | 2 → 0 | 0 → 0 | 3 → 0 |
+| Home scrolled to the bottom: off-screen loops still running | 9 → 0 | | | |
+
+Scrolling back resumes all of them (11 running, none marked). Visible idle
+numbers are unchanged within noise (Home 0.8 → 1.2 paints/s is whether the 9 s
+campaign rotation lands once or twice in the 10 s window); on-screen loops
+are untouched, so nothing a person can see changes.
+
 ### Remaining
 
 - **Laptop and GPU numbers.** The acceptance criteria ask for idle CPU %, GPU %,
@@ -131,13 +164,14 @@ ring-for-shadow substitution.
 - **Backdrop-filter over motion.** Composited motion under a blurred surface
   still costs GPU work per frame. On Home, the ping ring passes behind the
   blurred campaign rail. On Shows, the two intro stat cards float while
-  carrying `backdrop-filter`. Decide on the laptop GPU numbers whether
-  these need a solid fill or a pause when off-screen.
+  carrying `backdrop-filter`. Both now hold still when off-screen or hidden;
+  while on-screen they still move. Decide on the laptop GPU numbers whether
+  they need a solid fill (a visible change, so it needs a design call).
 - **Allowlisted legacy loops.** The allowlist in `animationBudget.test.ts`
   lists the paint-property loops that remain: loading skeletons, plus active
   states such as live-session pulses, mixer glows, Sonic Radar, and Punchline.
-  None runs on idle Home, Player, Library, or Shows. Convert them as those
-  surfaces are touched.
+  None runs on idle Home, Player, Library, or Shows, and the guard now holds
+  them while off-screen or hidden. Convert them as those surfaces are touched.
 - **RAM over time.** The 10 s windows show a flat heap. A 10-minute heap-snapshot
   comparison (AI DJ history, long queues) has not been done.
 

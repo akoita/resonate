@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 
 /*
  * Home v3 Tuner — the genre/mood filter and the one-tap vibe session in one
@@ -31,10 +32,12 @@ const ENERGY_LABEL: Record<"low" | "medium" | "high", string> = {
 
 const EQ_BARS = [0, 1, 2, 3, 4, 5, 6];
 
-/** Re-check the hour once a minute so a long-open tab keeps the right greeting. */
+/**
+ * Re-check the hour once a minute so a long-open tab keeps the right greeting;
+ * paused while the tab is hidden, re-checked on return (#2436).
+ */
 function subscribeToClock(onChange: () => void): () => void {
-  const timer = window.setInterval(onChange, 60_000);
-  return () => window.clearInterval(timer);
+  return registerVisibleInterval(onChange, 60_000);
 }
 
 function readLocalHour(): number {

@@ -16591,3 +16591,15 @@ tr[draggable="true"]:hover {
     animation: none !important;
   }
 }
+
+/* ─────────────── Idle animation guard (#2436) ───────────────
+ * `IdleAnimationGuard` (src/lib/idleAnimationGuard.ts) sets this attribute on
+ * an element that runs an infinite animation while it is off-screen or the
+ * tab is hidden. Nobody can see those frames, so hold them. Removing the
+ * attribute hands play-state back to the component's own CSS.
+ */
+[data-idle-paused],
+[data-idle-paused]::before,
+[data-idle-paused]::after {
+  animation-play-state: paused !important;
+}

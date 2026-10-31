@@ -16,6 +16,7 @@ import {
     deletePlaylist,
 } from "../../lib/playlistStore";
 import { useToast } from "../ui/Toast";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 import { PromptModal } from "../ui/PromptModal";
 
 interface PlaylistSidebarProps {
@@ -52,10 +53,8 @@ export function PlaylistSidebar({
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         void loadData();
-        const interval = setInterval(() => {
-            void loadData();
-        }, 3000);
-        return () => clearInterval(interval);
+        // Paused while the tab is hidden, reloaded once on return (#2436).
+        return registerVisibleInterval(() => void loadData(), 3000);
     }, []);
 
     const toggleFolder = (folderId: string) => {

@@ -23,6 +23,7 @@ import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";
 import { ToastProvider } from "../components/ui/Toast";
 import { AppStateGuard } from "../components/system/AppStateGuard";
 import UpdateAvailablePrompt from "../components/system/UpdateAvailablePrompt";
+import { IdleAnimationGuard } from "../components/system/IdleAnimationGuard";
 import {
   DEFAULT_SOCIAL_IMAGE,
   SITE_NAME,
@@ -143,6 +144,7 @@ export default function RootLayout({
             </AuthProvider>
           </ZeroDevProviderClient>
           <UpdateAvailablePrompt />
+          <IdleAnimationGuard />
         </ToastProvider>
       </body>
     </html>

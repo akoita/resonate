@@ -61,7 +61,10 @@ pings, shimmers, equalizers, spinners) and makes entrance animations instant
 without per-component rules. A loop whose final frame is not a sensible
 resting state opts out there (the player title marquee rests at its start).
 JavaScript-driven motion checks the media query itself; the Home featured
-campaign does not auto-rotate under reduced motion.
+campaign does not auto-rotate under reduced motion. Independently of the
+preference, decorative loops hold still while they are scrolled out of view
+or the tab is hidden (`IdleAnimationGuard`, #2436), so nobody pays for motion
+they cannot see.
 
 Use native HTML before adding ARIA. Custom composites follow the relevant
 [WAI-ARIA Authoring Practices](https://www.w3.org/WAI/ARIA/apg/); ARIA does not
