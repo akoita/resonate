@@ -21,16 +21,28 @@
  * entitlement seam (remix-entitlements.ts), never here: saved Pro fields
  * always render.
  *
+ * v4 (#1903 S6b, Pro mode) adds a per-stem `punch` (0..1): a downward
+ * compressor, the last Pro stage (gain → EQ → pan → punch → gate → tone →
+ * echo → sends), inserted only when punch is above 0 so renders without it
+ * stay byte-identical. The render runs ffmpeg's `acompressor`; the preview
+ * runs a faithful port of it (remix-punch-compressor.ts) in an AudioWorklet.
+ * The mapping {@link punchCompressor} is versioned as
+ * {@link REMIX_FX_DYN_DSP_VERSION} and pinned, together with ffmpeg's own
+ * output for a deterministic signal, by `remix-fx-dyn-v1.parity.json`. v1,
+ * v2 and v3 recipes still read and are rewritten as v4 with the same values.
+ *
  * Effects are deterministic DSP, not AI: they never change a render's
  * grounding, cost nothing, and never interpolate user strings into a graph.
  */
 
 import { writeFile } from "fs/promises";
 
-export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v3";
-/** The pre-#1903 recipe version: still read, rewritten as v3. */
+export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v4";
+/** The pre-#1903 S6b recipe version (EQ and pan): still read, rewritten as v4. */
+export const REMIX_FX_V3_SCHEMA_VERSION = "remix-fx/v3";
+/** The pre-#1903 recipe version: still read, rewritten as v4. */
 export const REMIX_FX_V2_SCHEMA_VERSION = "remix-fx/v2";
-/** The pre-#1898 recipe version: still read, rewritten as v3. */
+/** The pre-#1898 recipe version: still read, rewritten as v4. */
 export const REMIX_FX_V1_SCHEMA_VERSION = "remix-fx/v1";
 /** The v1 mapping (tone, echo, space, warmth); unchanged by v2 and v3. */
 export const REMIX_FX_DSP_VERSION = "remix-fx-dsp/v1";
@@ -39,17 +51,24 @@ export const REMIX_FX_DSP_VERSION = "remix-fx-dsp/v1";
  * metadata whenever a rendered recipe carries a Pro field.
  */
 export const REMIX_FX_PRO_DSP_VERSION = "remix-fx-pro-dsp/v1";
+/**
+ * The Pro dynamics mapping (#1903 S6b): the per-stem punch compressor.
+ * Recorded in render metadata whenever a rendered recipe carries a punch.
+ */
+export const REMIX_FX_DYN_DSP_VERSION = "remix-fx-dyn-dsp/v1";
 /** Key shift bounds (integer semitones). */
 export const REMIX_FX_SEMITONES_MIN = -6;
 export const REMIX_FX_SEMITONES_MAX = 6;
 
 export type RemixFxSchemaVersion =
   | typeof REMIX_FX_SCHEMA_VERSION
+  | typeof REMIX_FX_V3_SCHEMA_VERSION
   | typeof REMIX_FX_V2_SCHEMA_VERSION
   | typeof REMIX_FX_V1_SCHEMA_VERSION;
 
 const READABLE_SCHEMA_VERSIONS: readonly string[] = [
   REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V3_SCHEMA_VERSION,
   REMIX_FX_V2_SCHEMA_VERSION,
   REMIX_FX_V1_SCHEMA_VERSION,
 ];
@@ -90,19 +109,22 @@ export type RemixFxStem = {
   eqHigh?: number;
   /** v3 Pro (#1903): stereo pan −1 (left) .. 1 (right), step 0.01; default 0. */
   pan?: number;
+  /** v4 Pro (#1903 S6b): punch compressor amount 0..1, step 0.01; default 0. */
+  punch?: number;
 };
 
-/** The v3 Pro fields of a stem (#1903 S6a), in chain order. */
+/** The Pro fields of a stem (#1903 S6a EQ/pan, S6b punch), in chain order. */
 export const REMIX_FX_PRO_STEM_KEYS = [
   "eqLow",
   "eqMid",
   "eqHigh",
   "pan",
+  "punch",
 ] as const;
 export type RemixFxProStemKey = (typeof REMIX_FX_PRO_STEM_KEYS)[number];
 
 export type RemixFxRecipe = {
-  /** Normalized recipes are always v3; v1/v2 literals type stored shapes. */
+  /** Normalized recipes are always v4; v1–v3 literals type stored shapes. */
   schemaVersion: RemixFxSchemaVersion;
   master?: RemixFxMaster;
   /** Keyed by project stem id (the `stemId` of a RemixProjectStem row). */
@@ -149,6 +171,7 @@ const STEM_FIELDS: Record<keyof RemixFxStem, FieldSpec> = {
   eqMid: EQ_FIELD,
   eqHigh: EQ_FIELD,
   pan: { min: -1, max: 1, defaultValue: 0 },
+  punch: { min: 0, max: 1, defaultValue: 0 },
 };
 
 /** Round to 2 decimals; −0 collapses to 0 so it reads as the default. */
@@ -253,8 +276,8 @@ function normalizeMaster(
 }
 
 /**
- * Validate + normalize a PATCH `effects` payload. Accepts a v1, v2 or v3
- * recipe (or none) and always writes v3. EQ gains round to 0.5 dB. Values round to 2 decimals, defaults are
+ * Validate + normalize a PATCH `effects` payload. Accepts a v1, v2, v3 or
+ * v4 recipe (or none) and always writes v4. EQ gains round to 0.5 dB. Values round to 2 decimals, defaults are
  * omitted, stems left with no non-default value are dropped, and an
  * all-default recipe normalizes to null (untouched). Callers must skip this
  * for `undefined` (field absent = unchanged).
@@ -282,7 +305,7 @@ export function normalizeRemixFxInput(
     !READABLE_SCHEMA_VERSIONS.includes(value.schemaVersion as string)
   ) {
     return {
-      error: `effects.schemaVersion must be "${REMIX_FX_SCHEMA_VERSION}", "${REMIX_FX_V2_SCHEMA_VERSION}" or "${REMIX_FX_V1_SCHEMA_VERSION}"`,
+      error: `effects.schemaVersion must be "${REMIX_FX_SCHEMA_VERSION}", "${REMIX_FX_V3_SCHEMA_VERSION}", "${REMIX_FX_V2_SCHEMA_VERSION}" or "${REMIX_FX_V1_SCHEMA_VERSION}"`,
     };
   }
 
@@ -651,6 +674,68 @@ export function panGains(pan: number): RemixFxPanGains | null {
       ? { ll: 1, lr: gL, rl: 0, rr: gR }
       : { ll: gL, lr: 0, rl: gR, rr: 1 };
   return { x, gL, gR, matrix };
+}
+
+// --- Pro: per-stem punch compressor (v4, #1903 S6b; remix-fx-dyn-dsp/v1) -----
+
+/**
+ * The ffmpeg `acompressor` settings of one punch amount (all but the
+ * fixed `mode=downward:link=average:detection=rms:level_in=1:level_sc=1:mix=1`).
+ * Every value is rounded to 6 decimals, the precision the render graph
+ * prints, so the preview's port runs on exactly the doubles ffmpeg parses.
+ */
+export type RemixFxPunchCompressor = {
+  /** −10 − 20·punch dB. */
+  thresholdDb: number;
+  /** 10^(thresholdDb/20), rounded. */
+  threshold: number;
+  /** 1.5 + 4.5·punch. */
+  ratio: number;
+  /** 15 − 10·punch ms. */
+  attackMs: number;
+  /** 150 ms. */
+  releaseMs: number;
+  /** 6·punch dB. */
+  makeupDb: number;
+  /** 10^(makeupDb/20), rounded. */
+  makeup: number;
+  /** ffmpeg's default soft knee, √8 (about 9 dB), rounded. */
+  knee: number;
+};
+
+function round6(value: number): number {
+  const rounded = Math.round(value * 1e6) / 1e6;
+  return rounded === 0 ? 0 : rounded;
+}
+
+/**
+ * The punch mapping: punch p in (0, 1] → threshold −10 − 20p dB, ratio
+ * 1.5 + 4.5p, attack 15 − 10p ms, release 150 ms, makeup 6p dB, knee √8.
+ * Null at 0 (no stage), for a non-finite value, or outside 0..1.
+ */
+export function punchCompressor(punch: number): RemixFxPunchCompressor | null {
+  if (!Number.isFinite(punch) || punch <= 0 || punch > 1) return null;
+  const thresholdDb = round6(-10 - 20 * punch);
+  const makeupDb = round6(6 * punch);
+  return {
+    thresholdDb,
+    threshold: round6(Math.pow(10, thresholdDb / 20)),
+    ratio: round6(1.5 + 4.5 * punch),
+    attackMs: round6(15 - 10 * punch),
+    releaseMs: 150,
+    makeupDb,
+    makeup: round6(Math.pow(10, makeupDb / 20)),
+    knee: round6(Math.sqrt(8)),
+  };
+}
+
+/** Whether any stem of a recipe carries a punch (#1903 S6b). */
+export function remixFxUsesPunch(
+  effects: RemixFxRecipe | null | undefined,
+): boolean {
+  return Object.values(effects?.stems ?? {}).some(
+    (stem) => punchCompressor(stem.punch ?? 0) !== null,
+  );
 }
 
 // --- Reverb impulse response -------------------------------------------------

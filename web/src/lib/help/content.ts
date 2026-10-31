@@ -2774,11 +2774,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         id: "pro-mode",
         level: "pro",
-        heading: "Pro mode: EQ and pan",
+        heading: "Pro mode: EQ, pan and punch",
         blocks: [
           {
             kind: "paragraph",
-            text: "The Pro switch at the top of the Session (\"Show engineer tools: per-stem EQ and pan\") adds a Pro strip under Space, Echo, and Tone in each stem's Effects row. Your device remembers the switch; turning it on or off never changes your remix.",
+            text: "The Pro switch at the top of the Session (\"Show engineer tools: per-stem EQ, pan and punch\") adds a Pro strip under Space, Echo, and Tone in each stem's Effects row. Your device remembers the switch; turning it on or off never changes your remix.",
           },
           {
             kind: "definitions",
@@ -2787,13 +2787,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
               { term: "Mid 1 kHz", description: "Peaking band (Q 0.707), −12 to +12 dB. Pushes a part forward or back." },
               { term: "High 4 kHz", description: "High shelf, −12 to +12 dB. Brightness and air." },
               { term: "Pan", description: "L 100 to C to R 100, an equal-power (sine/cosine) law. Mono stems are spread to both sides at full level first." },
+              { term: "Punch", description: "Off to 100%: a compressor that evens out the stem's peaks and lifts it back up, so drums hit harder and vocals sit steadier. Higher settings squeeze more (up to about 6:1) and add up to +6 dB of makeup gain." },
             ],
           },
           {
             kind: "list",
             items: [
-              "Double-click a slider to reset it to 0. Edits save automatically, and the preview and render use the same filters.",
-              "With Pro off, your EQ and pan still play and render; a \"Pro\" badge on the row (\"Pro EQ/pan active — turn on Pro to edit\") says so.",
+              "Double-click a slider to reset it to 0. Edits save automatically, and the preview and render use the same filters and the same compressor.",
+              "Punch needs a browser that supports audio worklets to be heard in the preview. Where it can't play, the strip says so and your render still applies it.",
+              "With Pro off, your EQ, pan and punch still play and render; a \"Pro\" badge on the row (\"Pro EQ/pan/punch active — turn on Pro to edit\") says so.",
               "Vibes keep Pro settings. No effects removes them with every other effect (Key and Keep original pitch stay). \"Reset to original\" clears everything.",
               "Pro mode is free for now and uses no credits.",
             ],
@@ -2878,7 +2880,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               { term: "Loop", description: "One section repeating while you work on it." },
               { term: "Volume", description: "How loud the studio plays on your device. Not saved to your remix." },
               { term: "Reset to original", description: "Clear every change except your drafts." },
-              { term: "Pro", description: "The switch that shows per-stem EQ and pan." },
+              { term: "Pro", description: "The switch that shows per-stem EQ, pan and punch." },
               { term: "EQ", description: "Turning low, middle, or high frequencies up or down." },
               { term: "Pan", description: "Where a part sits between left and right." },
               { term: "Beat", description: "A drum pattern made in the studio, locked to the song's tempo." },

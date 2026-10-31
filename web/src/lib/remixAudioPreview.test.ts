@@ -28,6 +28,8 @@ import {
   stretchedSpan,
   stretchVariantKey,
   wrapLoopPosition,
+  REMIX_PUNCH_WORKLET_NAME,
+  REMIX_PUNCH_WORKLET_URL,
 } from "./remixAudioPreview";
 import {
   StretchCancelledError,
@@ -36,6 +38,7 @@ import {
 } from "./remixStretchPool";
 import {
   biquadQDb,
+  punchCompressor,
   REMIX_FX_SCHEMA_VERSION,
   warmthCurve,
   type RemixFxRecipe,
@@ -1075,6 +1078,149 @@ describe("createStemPreviewEngine Pro EQ and pan (#1903)", () => {
     expect(
       handle.updateEffects(fxRecipe({ stems: { vocals: { eqLow: 3, eqHigh: 2 } } })),
     ).toBe("restart");
+  });
+});
+
+/** A fake AudioWorkletNode (#1903 S6b): records its options and messages. */
+class FakeWorkletNode extends FakeNode {
+  port = { postMessage: vi.fn() };
+  constructor(
+    public context: unknown,
+    public name: string,
+    public options: { processorOptions?: { params?: unknown } },
+  ) {
+    super();
+  }
+}
+
+/** A context whose AudioWorklet loads the module. */
+class FakeWorkletContext extends FakeAudioContext {
+  audioWorklet = { addModule: vi.fn(async (url: string) => void url) };
+}
+
+function setupWorklet(options: { worklet: boolean }) {
+  const contexts: FakeWorkletContext[] = [];
+  const engine = createStemPreviewEngine({
+    urlForStem: (stemId) => `/stems/${stemId}`,
+    fetchImpl: vi.fn(async () => okResponse()) as unknown as typeof fetch,
+    audioContextFactory: () => {
+      const context = new FakeWorkletContext();
+      contexts.push(context);
+      return context as unknown as AudioContext;
+    },
+  });
+  vi.stubGlobal("AudioWorkletNode", options.worklet ? FakeWorkletNode : undefined);
+  return { engine, contexts };
+}
+
+describe("createStemPreviewEngine Pro punch compressor (#1903 S6b)", () => {
+  it("loads the worklet and wires gain → pan → punch → section gain", async () => {
+    try {
+      const { engine, contexts } = setupWorklet({ worklet: true });
+      await engine.play({
+        stems,
+        soloStemId: null,
+        effects: fxRecipe({ stems: { vocals: { pan: 0.4, punch: 0.5 } } }),
+      });
+      const context = contexts[0];
+      expect(context.audioWorklet.addModule).toHaveBeenCalledWith(REMIX_PUNCH_WORKLET_URL);
+      const manual = context.sources[0].connections[0] as FakeGain;
+      const upmix = manual.connections[0] as FakeGain;
+      const panner = upmix.connections[0] as FakeStereoPanner;
+      const punch = panner.connections[0] as FakeWorkletNode;
+      expect(punch).toBeInstanceOf(FakeWorkletNode);
+      expect(punch.name).toBe(REMIX_PUNCH_WORKLET_NAME);
+      expect(punch.options.processorOptions?.params).toEqual(punchCompressor(0.5));
+      expect(punch.connections[0]).toBeInstanceOf(FakeGain); // → section gain
+      // The drums (no punch) keep gain → section gain.
+      const drumsManual = context.sources[1].connections[0] as FakeGain;
+      expect(drumsManual.connections[0]).toBeInstanceOf(FakeGain);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not load the worklet for recipes without a punch", async () => {
+    try {
+      const { engine, contexts } = setupWorklet({ worklet: true });
+      await engine.play({
+        stems,
+        soloStemId: null,
+        effects: fxRecipe({ stems: { vocals: { eqLow: 3 } } }),
+      });
+      expect(contexts[0].audioWorklet.addModule).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("updates the punch live, passes through at 0 and ends the processor on stop", async () => {
+    try {
+      const { engine, contexts } = setupWorklet({ worklet: true });
+      const handle = await engine.play({
+        stems: [stems[0]],
+        soloStemId: null,
+        effects: fxRecipe({ stems: { vocals: { punch: 0.3 } } }),
+      });
+      const manual = contexts[0].sources[0].connections[0] as FakeGain;
+      const punch = manual.connections[0] as FakeWorkletNode;
+      expect(punch).toBeInstanceOf(FakeWorkletNode);
+      expect(
+        handle.updateEffects(fxRecipe({ stems: { vocals: { punch: 0.8 } } })),
+      ).toBe("applied");
+      expect(punch.port.postMessage).toHaveBeenLastCalledWith({
+        params: punchCompressor(0.8),
+      });
+      expect(handle.updateEffects(fxRecipe({ stems: { vocals: { echo: 0.1 } } }))).toBe(
+        "applied",
+      );
+      expect(punch.port.postMessage).toHaveBeenLastCalledWith({ params: null });
+      const sent = punch.port.postMessage.mock.calls.length;
+      // An unchanged punch sends nothing.
+      handle.updateEffects(fxRecipe({ stems: { vocals: { echo: 0.2 } } }));
+      expect(punch.port.postMessage.mock.calls.length).toBe(sent);
+      handle.stop();
+      expect(punch.port.postMessage).toHaveBeenLastCalledWith({ dispose: true });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a punch turned on mid-play restarts so its node is built", async () => {
+    try {
+      const { engine } = setupWorklet({ worklet: true });
+      const handle = await engine.play({
+        stems: [stems[0]],
+        soloStemId: null,
+        effects: fxRecipe({ stems: { vocals: { eqLow: 3 } } }),
+      });
+      expect(
+        handle.updateEffects(fxRecipe({ stems: { vocals: { eqLow: 3, punch: 0.4 } } })),
+      ).toBe("restart");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("bypasses the punch without AudioWorklet, without restart loops", async () => {
+    try {
+      const { engine, contexts } = setupWorklet({ worklet: false });
+      const handle = await engine.play({
+        stems: [stems[0]],
+        soloStemId: null,
+        effects: fxRecipe({ stems: { vocals: { punch: 0.6 } } }),
+      });
+      const context = contexts[0];
+      expect(context.audioWorklet.addModule).not.toHaveBeenCalled();
+      // gain → section gain: no punch node.
+      const manual = context.sources[0].connections[0] as FakeGain;
+      expect(manual.connections[0]).toBeInstanceOf(FakeGain);
+      expect(
+        handle.updateEffects(fxRecipe({ stems: { vocals: { punch: 0.9 } } })),
+      ).toBe("applied");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

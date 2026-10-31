@@ -2915,14 +2915,14 @@ describe("tempo & key in the studio (#1898)", () => {
     expect(html).not.toContain("Preparing tempo");
   });
 
-  it("autosaves the pitch fields as a remix-fx/v3 recipe", () => {
+  it("autosaves the pitch fields as a remix-fx/v4 recipe", () => {
     const p = project();
     const edits = {
       ...initialEdits(p),
       effects: withRemixFxPitch(null, { keepPitch: true, semitones: 2 }),
     };
     expect(buildProjectPatch(p, edits).effects).toEqual({
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       master: { keepPitch: true, semitones: 2 },
     });
   });
@@ -3228,7 +3228,7 @@ describe("Pro mode (#1903 S6a)", () => {
     const html = renderToStaticMarkup(
       <RemixStudioEditor project={project({ entitlements: allowed })} />,
     );
-    expect(html).toMatch(/role="switch" aria-checked="false" title="Show engineer tools: per-stem EQ and pan"[^>]*remix-pro-switch/);
+    expect(html).toMatch(/role="switch" aria-checked="false" title="Show engineer tools: per-stem EQ, pan and punch"[^>]*remix-pro-switch/);
     // Not offered: absent or denied entitlements (never hard-coded).
     expect(renderToStaticMarkup(<RemixStudioEditor project={project()} />)).not.toContain(
       "remix-pro-switch",
@@ -3265,13 +3265,13 @@ describe("Pro mode (#1903 S6a)", () => {
     expect(on).toContain(">Pro<");
   });
 
-  it("autosaves Pro EQ and pan through the effects PATCH as remix-fx/v3", () => {
+  it("autosaves Pro EQ and pan through the effects PATCH as remix-fx/v4", () => {
     const p = project();
     const stemId = p.stems[0].stemId;
     const effects = withStemProFx(withStemProFx(null, stemId, "eqLow", 3), stemId, "pan", -0.3);
     const edits = { ...initialEdits(p), effects };
     expect(buildProjectPatch(p, edits).effects).toEqual({
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       stems: { [stemId]: { eqLow: 3, pan: -0.3 } },
     });
   });

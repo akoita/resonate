@@ -4,6 +4,8 @@ import {
   echoTapSpacing,
   generateReverbImpulse,
   normalizeRemixFx,
+  punchCompressor,
+  remixFxHasPunch,
   remixFxMaster,
   remixFxPitch,
   remixFxStem,
@@ -1004,17 +1006,69 @@ function createToneStage(context: AudioContext, input: AudioNode, nodes: AudioNo
   return { output, filter, dry, wet, set };
 }
 
+// --- Pro punch compressor worklet (#1903 S6b) ---------------------------------
+
+/** The punch compressor AudioWorklet module (served from `public/`). */
+export const REMIX_PUNCH_WORKLET_URL = "/worklets/remix-punch-compressor.js";
+/** The processor name the module registers. */
+export const REMIX_PUNCH_WORKLET_NAME = "remix-punch-compressor";
+
+const punchWorkletLoads = new WeakMap<BaseAudioContext, Promise<boolean>>();
+const punchWorkletReady = new WeakMap<BaseAudioContext, boolean>();
+/** A module load failed: the preview bypasses the punch from then on. */
+let punchWorkletFailed = false;
+
 /**
- * Pro stages of one source stem (#1903 S6a), in chain order EQ low → mid →
- * high → (2-channel up-mix) → pan, between the stem's gain and its section
- * gain. Each node exists only when its value was non-default at play: a stem
- * without Pro fields gets none, so such previews stay byte-identical.
+ * Whether this browser can run the punch compressor in the preview. Without
+ * AudioWorklet the preview bypasses it (the studio says so); the render
+ * still applies it.
+ */
+export function punchPreviewSupported(): boolean {
+  return typeof globalThis.AudioWorkletNode === "function";
+}
+
+/**
+ * Load the punch worklet module on `context` once; resolves to whether the
+ * processor can be created (false when AudioWorklet is missing or the
+ * module failed to load, so the preview bypasses the punch).
+ */
+export function loadPunchWorklet(context: BaseAudioContext): Promise<boolean> {
+  const pending = punchWorkletLoads.get(context);
+  if (pending) return pending;
+  const load: Promise<boolean> =
+    punchPreviewSupported() && context.audioWorklet
+      ? context.audioWorklet.addModule(REMIX_PUNCH_WORKLET_URL).then(
+          () => true,
+          () => false,
+        )
+      : Promise.resolve(false);
+  const tracked = load.then((ready) => {
+    punchWorkletReady.set(context, ready);
+    if (!ready && punchPreviewSupported()) punchWorkletFailed = true;
+    return ready;
+  });
+  punchWorkletLoads.set(context, tracked);
+  return tracked;
+}
+
+/**
+ * Pro stages of one source stem (#1903 S6a/S6b), in chain order EQ low →
+ * mid → high → (2-channel up-mix) → pan → punch compressor, between the
+ * stem's gain and its section gain. Each node exists only when its value was
+ * non-default at play: a stem without Pro fields gets none, so such previews
+ * stay byte-identical.
  */
 export type StemProStage = {
   input: AudioNode;
   output: AudioNode;
   eq: Partial<Record<RemixEqBandId, BiquadFilterNode>>;
   panner: StereoPannerNode | null;
+  /** The punch worklet (#1903 S6b); null without a punch at play. */
+  punch: AudioWorkletNode | null;
+  /** A punch was set but the worklet is unavailable: bypassed in preview. */
+  punchBypassed: boolean;
+  /** The punch amount last sent to the worklet. */
+  punchAmount: number;
 };
 
 /**
@@ -1052,6 +1106,23 @@ export function createStemProStage(
     panner = context.createStereoPanner();
     chain.push(upmix, panner);
   }
+  // Punch (#1903 S6b): the ffmpeg acompressor port, once its module loaded
+  // (play() awaits loadPunchWorklet); otherwise bypassed in the preview.
+  let punch: AudioWorkletNode | null = null;
+  let punchBypassed = false;
+  const punchParams = punchCompressor(pro.punch);
+  if (punchParams) {
+    if (punchWorkletReady.get(context) === true) {
+      punch = new AudioWorkletNode(context, REMIX_PUNCH_WORKLET_NAME, {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        processorOptions: { params: punchParams },
+      });
+      chain.push(punch);
+    } else {
+      punchBypassed = true;
+    }
+  }
   if (chain.length === 0) return null;
   for (let index = 1; index < chain.length; index += 1) {
     chain[index - 1].connect(chain[index]);
@@ -1062,6 +1133,9 @@ export function createStemProStage(
     output: chain[chain.length - 1],
     eq,
     panner,
+    punch,
+    punchBypassed,
+    punchAmount: punch ? pro.punch : 0,
   };
   applyStemProValues(stage, effects, stemId);
   return stage;
@@ -1079,6 +1153,16 @@ export function applyStemProValues(
     if (filter) filter.gain.value = pro[REMIX_FX_EQ_BANDS[band].key];
   }
   if (stage.panner) stage.panner.pan.value = pro.pan;
+  if (stage.punch && stage.punchAmount !== pro.punch) {
+    // 0 passes audio through; the envelope carries across changes.
+    stage.punch.port.postMessage({ params: punchCompressor(pro.punch) });
+    stage.punchAmount = pro.punch;
+  }
+}
+
+/** End a released stage's punch processor so the browser can collect it. */
+export function disposeStemProStage(stage: StemProStage): void {
+  stage.punch?.port.postMessage({ dispose: true });
 }
 
 /**
@@ -1095,7 +1179,15 @@ export function stemProStageCovers(
   for (const band of REMIX_FX_EQ_BAND_ORDER) {
     if (pro[REMIX_FX_EQ_BANDS[band].key] !== 0 && !stage?.eq[band]) return false;
   }
-  return pro.pan === 0 || !!stage?.panner;
+  if (pro.pan !== 0 && !stage?.panner) return false;
+  // A bypassed punch (no AudioWorklet) never needs a restart.
+  return (
+    pro.punch === 0 ||
+    !!stage?.punch ||
+    !!stage?.punchBypassed ||
+    !punchPreviewSupported() ||
+    punchWorkletFailed
+  );
 }
 
 type StemFxChain = {
@@ -1594,6 +1686,10 @@ export function createStemPreviewEngine(input: {
         request.stems.map((stem) => loadBuffer(audioContext, stem.stemId)),
       ),
       resuming,
+      // Pro punch (#1903 S6b): its worklet module, before the graph is built.
+      remixFxHasPunch(normalizeRemixFx(request.effects ?? null))
+        ? loadPunchWorklet(audioContext)
+        : null,
     ]);
     // A newer play() (or dispose) superseded this one while loading: start
     // nothing and hand back an inert handle.
@@ -1765,6 +1861,7 @@ export function createStemPreviewEngine(input: {
       for (const gain of gains.values()) gain.disconnect();
       for (const gain of sectionGains.values()) gain.disconnect();
       for (const node of fx?.nodes ?? []) node.disconnect();
+      for (const stage of fx?.pro.values() ?? []) disposeStemProStage(stage);
       for (const node of structureNodes) node.disconnect();
       beatGain?.disconnect();
       for (const gain of partGains.values()) gain.disconnect();

@@ -484,7 +484,7 @@ describe("FfmpegStemAudioMixer decrypt-for-render boundary (integration)", () =>
         encryptionService,
       );
       const effects = {
-        schemaVersion: "remix-fx/v3" as const,
+        schemaVersion: "remix-fx/v4" as const,
         stems: { [E2E_STEM]: { eqLow: 3, eqHigh: -2, pan: -0.3 } },
       };
       const before = remixMixTempDirs();
@@ -534,7 +534,7 @@ describe("FfmpegStemAudioMixer decrypt-for-render boundary (integration)", () =>
           authorizedStemIds: new Set([E2E_STEM]),
         },
         {
-          effects: { schemaVersion: "remix-fx/v3", stems: { [E2E_STEM]: { echo: 0.2 } } },
+          effects: { schemaVersion: "remix-fx/v4", stems: { [E2E_STEM]: { echo: 0.2 } } },
           bpm: null,
         },
       );

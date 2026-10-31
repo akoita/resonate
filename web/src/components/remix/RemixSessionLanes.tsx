@@ -25,6 +25,7 @@ import {
   formatFxAmount,
   formatFxEqGain,
   formatFxPan,
+  formatFxPunch,
   formatFxTone,
   REMIX_FX_STEM_PRO_RANGES,
   REMIX_FX_STEM_RANGES,
@@ -33,6 +34,7 @@ import {
   type RemixFxStemPro,
 } from "../../lib/remixFx";
 import { PRO_BADGE_LABEL } from "../../lib/remixProMode";
+import { punchPreviewSupported } from "../../lib/remixAudioPreview";
 import {
   isIdentityTimeline,
   moveBlock,
@@ -1869,12 +1871,15 @@ export const LANE_PRO_CONTROLS: readonly LaneProControl[] = [
   { key: "eqMid", label: "Mid 1 kHz", name: "EQ Mid 1 kHz", format: formatFxEqGain },
   { key: "eqHigh", label: "High 4 kHz", name: "EQ High 4 kHz", format: formatFxEqGain },
   { key: "pan", label: "Pan", name: "pan", format: formatFxPan },
+  { key: "punch", label: "Punch", name: "punch compressor", format: formatFxPunch },
 ];
 
 /**
- * The compact Pro channel strip (#1903 S6a) inside a lane's FX row: a 3-band
- * EQ (dB readouts) and a pan slider ("L 30" / "C" / "R 30"). Double-click a
- * slider to reset it to 0; edits autosave like the other effects.
+ * The compact Pro channel strip (#1903 S6a/S6b) inside a lane's FX row: a
+ * 3-band EQ (dB readouts), a pan slider ("L 30" / "C" / "R 30") and a punch
+ * compressor ("Off" / "40%"). Double-click a slider to reset it to 0; edits
+ * autosave like the other effects. Where the browser has no AudioWorklet,
+ * a set punch is bypassed in the preview and a note says so.
  */
 export function LaneProStrip({
   stem,
@@ -1894,6 +1899,11 @@ export function LaneProStrip({
       <span className="text-[10px] font-semibold uppercase tracking-wide text-purple-300">
         Pro
       </span>
+      {(stem.pro?.punch ?? 0) > 0 && !punchPreviewSupported() && (
+        <span className="text-[10px] text-amber-300 remix-lane-pro-punch-note">
+          This browser can&apos;t preview Punch; your render still applies it.
+        </span>
+      )}
       {LANE_PRO_CONTROLS.map((control) => {
         const range = REMIX_FX_STEM_PRO_RANGES[control.key];
         const value = stem.pro?.[control.key] ?? range.default;

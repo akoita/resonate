@@ -24,7 +24,9 @@ import {
 import {
   echoTaps,
   panGains,
+  punchCompressor,
   REMIX_FX_DSP_VERSION,
+  REMIX_FX_DYN_DSP_VERSION,
   REMIX_FX_EQ_BANDS,
   REMIX_FX_FILTER_Q,
   REMIX_FX_IMPULSE,
@@ -32,6 +34,7 @@ import {
   REMIX_FX_SCHEMA_VERSION,
   remixFxSpeed,
   remixFxUsesPro,
+  remixFxUsesPunch,
   stemEqStages,
   remixFxStretchPlan,
   remixFxVarispeedRate,
@@ -372,15 +375,18 @@ function fxToneFilter(tone: number | undefined): string | null {
 }
 
 /**
- * Pro stages of one source stem (#1903 S6a, remix-fx-pro-dsp/v1), in chain
- * order: EQ low → mid → high → pan. Each is inserted only when its value is
+ * Pro stages of one source stem (#1903 S6a, remix-fx-pro-dsp/v1; S6b,
+ * remix-fx-dyn-dsp/v1), in chain order: EQ low → mid → high → pan → punch
+ * compressor. Each is inserted only when its value is
  * non-default, so a stem without Pro fields gets none. The biquads are the
  * Audio EQ Cookbook filters the preview's BiquadFilterNodes compute (shelves
  * with slope 1, the peaking band with a linear Q). The pan applies the
  * StereoPannerNode stereo law as an explicit matrix with '=' (no
  * renormalization); a mono input is first duplicated to both channels at
  * unity, like the preview's explicit 2-channel "speakers" up-mix (ffmpeg's
- * automatic mono up-mix would be −3 dB).
+ * automatic mono up-mix would be −3 dB). The punch is ffmpeg's `acompressor`
+ * with every option spelled out ({@link punchCompressor}); the preview runs
+ * a faithful port of the same filter (remix-punch-compressor.ts).
  */
 export function stemProFilters(
   stemFx: RemixFxStem,
@@ -403,7 +409,25 @@ export function stemProFilters(
       `pan=stereo|c0=${fxNum(ll)}*c0+${fxNum(lr)}*c1|c1=${fxNum(rl)}*c0+${fxNum(rr)}*c1`,
     );
   }
+  const punch = punchCompressor(stemFx.punch ?? 0);
+  if (punch) filters.push(punchCompressorFilter(punch));
   return filters;
+}
+
+/** The render's `acompressor` stage for one punch mapping (#1903 S6b). */
+export function punchCompressorFilter(
+  punch: NonNullable<ReturnType<typeof punchCompressor>>,
+): string {
+  return [
+    "acompressor=level_in=1:mode=downward",
+    `threshold=${fxNum(punch.threshold)}`,
+    `ratio=${fxNum(punch.ratio)}`,
+    `attack=${fxNum(punch.attackMs)}`,
+    `release=${fxNum(punch.releaseMs)}`,
+    `makeup=${fxNum(punch.makeup)}`,
+    `knee=${fxNum(punch.knee)}`,
+    "link=average:detection=rms:level_sc=1:mix=1",
+  ].join(":");
 }
 
 function stemFxFor(
@@ -628,7 +652,8 @@ function structureFrontEnd(
  * remix-fx render graph (#1897, #1903), in the contract order:
  *  - per input: aresample=48000 (float) → varispeed (asetrate=48000·s,
  *    aresample=48000) → gain dB → [source stems only, v3 Pro, each only when
- *    non-default] EQ low → EQ mid → EQ high → pan ({@link stemProFilters}) →
+ *    non-default] EQ low → EQ mid → EQ high → pan → punch
+ *    ({@link stemProFilters}) →
  *    section gate with intervals ÷ s (output time) → [stems only] tone → echo
  *    (aecho, feed-forward taps) → asplit into dry + a reverb send scaled by
  *    its wet level;
@@ -1028,6 +1053,10 @@ function renderMetadata(
           // field.
           ...(remixFxUsesPro(fx.effects)
             ? { effectsProDspVersion: REMIX_FX_PRO_DSP_VERSION }
+            : {}),
+          // #1903 S6b: the punch compressor mapping, whenever a stem has one.
+          ...(remixFxUsesPunch(fx.effects)
+            ? { effectsDynDspVersion: REMIX_FX_DYN_DSP_VERSION }
             : {}),
         }
       : {}),

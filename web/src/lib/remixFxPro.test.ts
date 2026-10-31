@@ -16,6 +16,7 @@ import {
   REMIX_FX_EQ_BANDS,
   REMIX_FX_PRO_DSP_VERSION,
   REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V3_SCHEMA_VERSION,
   REMIX_VIBES,
   stemEqStages,
   stemHasPro,
@@ -26,7 +27,7 @@ import {
 } from "./remixFx";
 
 /**
- * remix-fx/v3 Pro fields (#1903 S6a): the preview's EQ/pan mapping replays
+ * remix-fx/v4 Pro fields (#1903 S6a): the preview's EQ/pan mapping replays
  * the backend's committed Pro parity fixture within 1e-12.
  */
 
@@ -66,8 +67,9 @@ function expectClose(actual: number, expected: number) {
 
 describe("remix-fx-pro-dsp/v1 parity fixture (#1903)", () => {
   it("shares the versions and band definitions", () => {
-    expect(fixture.schemaVersion).toBe(REMIX_FX_SCHEMA_VERSION);
-    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v3");
+    // The fixture pins the v3 (S6a) EQ/pan mapping; v4 (S6b) only adds punch.
+    expect(fixture.schemaVersion).toBe(REMIX_FX_V3_SCHEMA_VERSION);
+    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v4");
     expect(fixture.dspVersion).toBe(REMIX_FX_PRO_DSP_VERSION);
     for (const band of ["low", "mid", "high"] as const) {
       expect(REMIX_FX_EQ_BANDS[band]).toEqual({
@@ -105,7 +107,11 @@ describe("remix-fx-pro-dsp/v1 parity fixture (#1903)", () => {
 
   it("normalizes like the backend", () => {
     for (const { input, output } of fixture.normalize) {
-      expect(normalizeRemixFx(input, ["a", "b"])).toEqual(output);
+      expect(normalizeRemixFx(input, ["a", "b"])).toEqual(
+        output === null
+          ? null
+          : { ...(output as object), schemaVersion: REMIX_FX_SCHEMA_VERSION },
+      );
     }
   });
 });
@@ -117,15 +123,15 @@ describe("Pro normalization and helpers (#1903)", () => {
         stems: { s: { eqLow: 20, eqMid: -3.3, eqHigh: 0.2, pan: -1.7 } },
       }),
     ).toEqual({
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       stems: { s: { eqLow: 12, eqMid: -3.5, pan: -1 } },
     });
     expect(normalizeRemixFx({ stems: { s: { pan: 0.004, eqLow: "3" } } })).toBeNull();
     // v1 / v2 read as v3 with the same values.
     expect(
       normalizeRemixFx({ schemaVersion: "remix-fx/v2", stems: { s: { echo: 0.2 } } }),
-    ).toEqual({ schemaVersion: "remix-fx/v3", stems: { s: { echo: 0.2 } } });
-    expect(normalizeRemixFx({ schemaVersion: "remix-fx/v4", stems: { s: { pan: 1 } } })).toBeNull();
+    ).toEqual({ schemaVersion: "remix-fx/v4", stems: { s: { echo: 0.2 } } });
+    expect(normalizeRemixFx({ schemaVersion: "remix-fx/v5", stems: { s: { pan: 1 } } })).toBeNull();
   });
 
   it("edits Pro values beside the FX row's values", () => {
@@ -133,7 +139,7 @@ describe("Pro normalization and helpers (#1903)", () => {
     recipe = withStemProFx(recipe, "bass", "pan", -0.3);
     recipe = withStemFx(recipe, "bass", "echo", 0.4);
     expect(recipe).toEqual({
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       stems: { bass: { echo: 0.4, eqLow: 3, pan: -0.3 } },
     });
     expect(remixFxStem(recipe, "bass")).toEqual({ space: 0, echo: 0.4, tone: 0 });
@@ -142,6 +148,7 @@ describe("Pro normalization and helpers (#1903)", () => {
       eqMid: 0,
       eqHigh: 0,
       pan: -0.3,
+      punch: 0,
     });
     expect(stemHasPro(recipe, "bass")).toBe(true);
     expect(stemHasPro(recipe, "drums")).toBe(false);
@@ -176,7 +183,7 @@ describe("vibes and Pro fields (#1903)", () => {
     { stemId: "bass", type: "bass" },
   ];
   const withPro: RemixFxRecipe = {
-    schemaVersion: "remix-fx/v3",
+    schemaVersion: "remix-fx/v4",
     master: { semitones: 2 },
     stems: { vox: { eqHigh: 3 }, bass: { eqLow: 4, pan: -0.3 } },
   };
@@ -193,12 +200,12 @@ describe("vibes and Pro fields (#1903)", () => {
 
   it("'No effects' clears the Pro EQ and pan too (they are effects), keeping the key", () => {
     const none = applyVibe("none", withPro, stems);
-    expect(none).toEqual({ schemaVersion: "remix-fx/v3", master: { semitones: 2 } });
+    expect(none).toEqual({ schemaVersion: "remix-fx/v4", master: { semitones: 2 } });
     expect(remixFxHasPro(none)).toBe(false);
     expect(REMIX_VIBES.find((vibe) => vibe.id === "none")?.description).toMatch(
-      /Pro EQ and pan included/,
+      /Pro EQ, pan and punch included/,
     );
     // A Pro-only recipe is not "No effects".
-    expect(activeVibeId({ schemaVersion: "remix-fx/v3", stems: { bass: { pan: 0.5 } } })).toBeNull();
+    expect(activeVibeId({ schemaVersion: "remix-fx/v4", stems: { bass: { pan: 0.5 } } })).toBeNull();
   });
 });
