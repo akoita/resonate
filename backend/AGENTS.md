@@ -121,3 +121,12 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    neither `@AdminAudit` nor a listed reason; specs of audited controllers mock
    `writeAdminAuditEvent` (see `credits.controller.http.spec.ts`) and use
    `confirmedBearer` / `expectStepUpRequired` from `e2e-helpers` for gated routes.
+
+10. **Inject by a plain class type (#2492).** With `emitDecoratorMetadata`,
+    a constructor parameter typed as a union (`Foo | null = null`,
+    `Foo | undefined`, `A | B`) is recorded as `Object`. Nest cannot resolve
+    it, and `@Optional()` silently passes `undefined`, so the dependency never
+    arrives even though the module provides it. Use `@Optional() foo?: Foo`
+    for an optional dependency, or `@Inject(TOKEN)` for a token.
+    `src/tests/nest_injection_metadata_guard.spec.ts` fails on any union-typed
+    parameter of a Nest-managed class that has no `@Inject`.

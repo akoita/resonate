@@ -10,7 +10,10 @@
  * Billing summary values. Stripe is a fake gateway: nothing here calls Stripe.
  */
 import { prisma } from "../db/prisma";
+import { AuditService } from "../modules/audit/audit.service";
 import { BillingConfig } from "../modules/billing/billing_config";
+import { CreditPackConfig } from "../modules/billing/credit_packs";
+import { CreditTopUpService } from "../modules/billing/credit_topup.service";
 import type { StripeEvent, StripeGateway, StripeInvoice, StripeSubscription } from "../modules/billing/stripe_gateway";
 import { StripeWebhookService } from "../modules/billing/stripe_webhook.service";
 import { addUtcMonthsClamped, monthlySlices } from "../modules/credits/allowance";
@@ -23,6 +26,9 @@ import { METERED_ACTIONS, METERED_ACTION_KINDS, unitCostCents } from "../modules
 import { EntitlementsService } from "../modules/entitlements/entitlements.service";
 import type { GenerationService } from "../modules/generation/generation.service";
 import type { RemixProjectService } from "../modules/remix/remix-project.service";
+import { NoticeService } from "../modules/notifications/notice.service";
+import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
+import { EventBus } from "../modules/shared/event_bus";
 import { UsageService } from "../modules/usage/usage.service";
 
 const P = `allowance_${Date.now()}_`;
@@ -34,6 +40,12 @@ const at = (ms: number) => new Date(Math.floor(ms / 1000) * 1000);
 const credits = new GenerationCreditsService();
 // No ConfigService and no env override in the test environment: the $3.00 default.
 const allowance = new GenerationAllowanceService({ get: () => undefined } as any);
+
+/** The webhook needs a credit-pack handler (#2492); these tests only exercise subscription events. */
+function topUpsFor(config: BillingConfig, gateway: StripeGateway | null) {
+  const notices = new NoticeService(new EventBus(), new AuditService());
+  return new CreditTopUpService(config, new PurchaseConsentService(notices), notices, gateway, new CreditPackConfig({}));
+}
 
 const users: string[] = [];
 let seq = 0;
@@ -179,7 +191,7 @@ describe("Generation allowance (integration, #2408)", () => {
         STRIPE_PRICE_ARTIST_PRO_ANNUAL: "price_year",
         FRONTEND_URL: "https://app.example.test",
       });
-      const webhooks = new StripeWebhookService(config, gateway, null, allowance);
+      const webhooks = new StripeWebhookService(config, gateway, topUpsFor(config, gateway), allowance);
       const invoice = paidInvoice(`in_${userId}`, subId, start, end, "subscription_create");
       const event = (id: string) =>
         ({ id, object: "event", type: "invoice.paid", created: sec(new Date()), livemode: false, data: { object: invoice } }) as unknown as StripeEvent;
@@ -200,7 +212,7 @@ describe("Generation allowance (integration, #2408)", () => {
     it("a payment_failed event grants nothing", async () => {
       const userId = await newUser("failed");
       await subscribe(userId);
-      const webhooks = new StripeWebhookService(new BillingConfig({}), null, null, allowance);
+      const webhooks = new StripeWebhookService(new BillingConfig({}), null, topUpsFor(new BillingConfig({}), null), allowance);
       const invoice = paidInvoice(`in_${userId}`, `sub_${userId}`, at(Date.now()), at(Date.now() + 30 * DAY));
       await webhooks.handle({
         id: `evt_${P}${userId}`,

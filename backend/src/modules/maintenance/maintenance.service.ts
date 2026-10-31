@@ -27,7 +27,7 @@ export class MaintenanceService {
     private readonly communityCohortQualityService: CommunityCohortQualityService,
     private readonly communityRoomsService: CommunityRoomsService,
     private readonly personalDataErasureService: PersonalDataErasureService,
-    @Optional() private readonly billingLifecycle: SubscriptionLifecycleService | null = null,
+    @Optional() private readonly billingLifecycle?: SubscriptionLifecycleService,
   ) {}
 
   async runRetentionCleanup() {
