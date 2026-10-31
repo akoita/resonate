@@ -3503,7 +3503,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist", "listener"],
     status: "partial",
-    keywords: ["punchline", "drops", "browse", "gallery", "genre", "sold out", "availability", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc", "share", "share drop", "share edition"],
+    keywords: ["punchline", "drops", "browse", "gallery", "genre", "sold out", "availability", "collectible", "moments", "vocal", "clip", "hook", "full mix", "stem", "source", "drums", "guitar", "piano", "instrumental", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc", "share", "share drop", "share edition"],
     sections: [
       {
         id: "what",
@@ -3511,13 +3511,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "A Drop is a small collection of \"moments\" cut from your track — each a short clip (a few seconds) with a title, the lyric, optional artwork, a limited edition size, and a price you choose (including free). The first kind of drop is the Punchline drop, cut from your vocals: the hook, the punchline, the line fans scream back at you. More kinds — like epic orchestral moments — are on the way, and every drop shows its kind.",
+            text: "A Drop is a small collection of \"moments\" cut from your track — each a short clip (a few seconds) with a title, the lyric, optional artwork, a limited edition size, and a price you choose (including free). The first kind of drop is the Punchline drop: the hook, the punchline, the line fans scream back at you. A moment can be cut from your vocals (the default), from any other stem such as drums, bass, guitar or piano, or from the full mix, so instrumental and orchestral tracks can have drops too.",
           },
           {
             kind: "callout",
             tone: "note",
             title: "Available on rights-clean tracks",
-            text: "Drops are only available on published tracks you own with a processed vocals stem and a clean rights status. If a track isn't eligible, the panel tells you exactly why.",
+            text: "Drops are only available on published tracks you own with processed audio (a stem or the full mix) and a clean rights status. If a track isn't eligible, the panel tells you exactly why, and names the missing source.",
           },
         ],
       },
@@ -3530,7 +3530,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Open one of your releases — as the owner you'll see a Punchline Drops panel below your tracks.",
               "Pick a track, then create a drop (or resume the draft you started earlier).",
-              "Select the moment on the vocal timeline by dragging the start and end handles, and hit Preview to hear exactly what fans will get.",
+              "Choose the source of the moment: Vocals, another stem, or Full mix. A full-mix moment can be at most 10 seconds long, a stem moment at most 15 seconds, because the full mix carries more of the recording.",
+              "Select the moment on the timeline by dragging the start and end handles, and hit Preview to hear exactly what fans will get.",
               "Add the title, the lyric line, optional artwork, the edition size, and the price — the live card shows exactly how the collectible will look.",
               "Add more moments if you like (they can become a set), and optionally add a Set bonus — an extra vocal clip and a note that only fans who collect the whole set will unlock.",
               "Hit Publish when everything looks right.",

@@ -6,7 +6,10 @@
  *   (a) clean + published + vocals stem + allowed rights route → eligible
  *   (b) quarantined track → content_quarantined
  *   (c) dmca_removed track → content_removed
- *   (d) track with no vocals stem → no_vocals_stem
+ *   (d) track with only a drums stem → eligible on drums; asking for vocals
+ *       → no_source_stem naming the layer (#1476)
+ *   (h) full mix (`original` row) is a source layer; a track with no source
+ *       audio at all → no_source_stem (#1476)
  *   (e) unpublished (processing) release → track_not_published
  *   (f) low-trust rights route (LIMITED_MONITORING) → rights_not_allowed
  *   (g) missing track → track_not_found (no track snapshot)
@@ -38,6 +41,8 @@ const REMOVED = `${TEST_PREFIX}removed`;
 const NO_VOCALS = `${TEST_PREFIX}no_vocals`;
 const UNPUBLISHED = `${TEST_PREFIX}unpublished`;
 const LOW_TRUST = `${TEST_PREFIX}low_trust`;
+const FULL_MIX = `${TEST_PREFIX}full_mix`;
+const NO_SOURCE = `${TEST_PREFIX}no_source`;
 
 async function seedCase(input: {
   key: string;
@@ -45,6 +50,10 @@ async function seedCase(input: {
   contentStatus: string;
   rightsRoute: string;
   withVocalsStem: boolean;
+  /** Extra stem rows to seed (e.g. the `original` full mix). */
+  extraStemTypes?: string[];
+  /** Seed no stems at all. */
+  noStems?: boolean;
 }) {
   await prisma.release.create({
     data: {
@@ -66,6 +75,19 @@ async function seedCase(input: {
       rightsRoute: input.rightsRoute,
     },
   });
+  for (const type of input.extraStemTypes ?? []) {
+    await prisma.stem.create({
+      data: {
+        id: `${input.key}_stem_${type}`,
+        trackId: `${input.key}_track`,
+        type,
+        uri: `local://${input.key}-${type}`,
+      },
+    });
+  }
+  if (input.noStems) {
+    return;
+  }
   if (input.withVocalsStem) {
     await prisma.stem.create({
       data: {
@@ -132,6 +154,22 @@ describe("Punchline eligibility (integration)", () => {
       contentStatus: "clean",
       rightsRoute: "STANDARD_ESCROW",
       withVocalsStem: false,
+    });
+    await seedCase({
+      key: FULL_MIX,
+      releaseStatus: "ready",
+      contentStatus: "clean",
+      rightsRoute: "STANDARD_ESCROW",
+      withVocalsStem: true,
+      extraStemTypes: ["original"],
+    });
+    await seedCase({
+      key: NO_SOURCE,
+      releaseStatus: "ready",
+      contentStatus: "clean",
+      rightsRoute: "STANDARD_ESCROW",
+      withVocalsStem: false,
+      noStems: true,
     });
     await seedCase({
       key: UNPUBLISHED,
@@ -208,12 +246,42 @@ describe("Punchline eligibility (integration)", () => {
     expect(codesOf(result)).toContain("content_removed");
   });
 
-  it("(d) denies a track with no vocals stem with no_vocals_stem", async () => {
+  it("(d) accepts a drums-only track and names the layer when vocals is missing", async () => {
     const result = await service.checkEligibility(`${NO_VOCALS}_track`);
 
-    expect(result.eligible).toBe(false);
-    expect(codesOf(result)).toContain("no_vocals_stem");
+    expect(result.eligible).toBe(true);
+    expect(result.availableSourceLayers).toEqual(["drums"]);
     expect(result.track?.hasVocalsStem).toBe(false);
+
+    const vocals = await service.checkEligibility(`${NO_VOCALS}_track`, {
+      sourceLayer: "vocals",
+    });
+    expect(vocals.eligible).toBe(false);
+    expect(codesOf(vocals)).toEqual(["no_source_stem"]);
+    expect(vocals.reasons[0].message).toContain("vocals stem");
+    expect(vocals.sourceLayer).toBe("vocals");
+  });
+
+  it("(h) treats the stored full mix as a source layer with a tighter cap", async () => {
+    const result = await service.checkEligibility(`${FULL_MIX}_track`, {
+      sourceLayer: "full",
+    });
+    expect(result.eligible).toBe(true);
+    expect(result.availableSourceLayers).toEqual(["vocals", "full"]);
+    expect(result.clipBoundsMsByLayer.full.maxMs).toBeLessThan(
+      result.clipBoundsMsByLayer.vocals.maxMs,
+    );
+
+    const noFull = await service.checkEligibility(`${ELIGIBLE}_track`, {
+      sourceLayer: "full",
+    });
+    expect(codesOf(noFull)).toEqual(["no_source_stem"]);
+    expect(noFull.reasons[0].message).toContain("full mix");
+
+    const none = await service.checkEligibility(`${NO_SOURCE}_track`);
+    expect(none.eligible).toBe(false);
+    expect(codesOf(none)).toEqual(["no_source_stem"]);
+    expect(none.availableSourceLayers).toEqual([]);
   });
 
   it("(e) denies an unpublished release with track_not_published", async () => {

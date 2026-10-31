@@ -13,6 +13,11 @@ import {
 import { StorageProvider } from "../storage/storage_provider";
 import { PUNCHLINE_SOURCE_STEM_TYPE } from "./punchline-rights";
 import {
+  normalizeSourceLayer,
+  sourceLayerLabel,
+  stemTypesForSourceLayer,
+} from "./punchline-source";
+import {
   PUNCHLINE_CLIP_AUDIO_POLICY,
   PUNCHLINE_CLIP_SOURCE_TOLERANCE_MS,
   resolvePunchlineClipBounds,
@@ -31,7 +36,7 @@ export type PunchlineClipErrorCode =
   | "invalid_range"
   | "clip_too_short"
   | "clip_too_long"
-  | "no_vocals_stem"
+  | "no_source_stem"
   | "source_asset_missing"
   | "range_exceeds_source"
   | "extraction_failed";
@@ -57,6 +62,12 @@ export type PunchlineClipInput = {
   trackId: string;
   startMs: number;
   endMs: number;
+  /**
+   * Source layer to clip (#1476): a stem type such as `vocals`/`drums`, or
+   * `full` for the full mix. Defaults to `vocals`. The caller (#482 boundary)
+   * checks the layer against the allowlist before calling.
+   */
+  sourceLayer?: string;
 };
 
 /**
@@ -67,7 +78,8 @@ export type PunchlineClipResult = {
   clipAssetUri: string;
   storageProvider: string;
   sourceStemId: string;
-  sourceStemType: typeof PUNCHLINE_SOURCE_STEM_TYPE;
+  /** The source layer clipped (e.g. `vocals`, `full`). */
+  sourceStemType: string;
   startMs: number;
   endMs: number;
   durationMs: number;
@@ -76,7 +88,8 @@ export type PunchlineClipResult = {
 };
 
 /**
- * Extracts a short MP3 clip from a track's `vocals` stem (#481).
+ * Extracts a short MP3 clip from one source layer of a track (#481): the
+ * `vocals` stem by default, any other stem, or the full mix (#1476).
  *
  * This is the media primitive behind Punchline Drops: given a validated
  * [startMs, endMs) range it trims + re-encodes the vocal stem into a stored
@@ -98,6 +111,8 @@ export class PunchlineClipService {
 
   async extractClip(input: PunchlineClipInput): Promise<PunchlineClipResult> {
     const { trackId } = input;
+    const sourceLayer =
+      normalizeSourceLayer(input.sourceLayer) || PUNCHLINE_SOURCE_STEM_TYPE;
     const startMs = input.startMs;
     const endMs = input.endMs;
 
@@ -116,7 +131,10 @@ export class PunchlineClipService {
 
     // 2. Length bounds.
     const durationMs = endMs - startMs;
-    const { minMs, maxMs } = resolvePunchlineClipBounds(this.configService);
+    const { minMs, maxMs } = resolvePunchlineClipBounds(
+      this.configService,
+      sourceLayer,
+    );
     if (durationMs < minMs) {
       throw new PunchlineClipException(
         "clip_too_short",
@@ -130,9 +148,10 @@ export class PunchlineClipService {
       );
     }
 
-    // 3. Resolve the vocals stem.
+    // 3. Resolve the source layer's stem (the current row first).
     const stem = await prisma.stem.findFirst({
-      where: { trackId, type: PUNCHLINE_SOURCE_STEM_TYPE },
+      where: { trackId, type: { in: stemTypesForSourceLayer(sourceLayer) } },
+      orderBy: { isCurrent: "desc" },
       select: {
         id: true,
         uri: true,
@@ -145,8 +164,8 @@ export class PunchlineClipService {
     });
     if (!stem) {
       throw new PunchlineClipException(
-        "no_vocals_stem",
-        `Track ${trackId} has no ${PUNCHLINE_SOURCE_STEM_TYPE} stem to clip.`,
+        "no_source_stem",
+        `Track ${trackId} has no ${sourceLayerLabel(sourceLayer)} to clip.`,
       );
     }
 
@@ -156,7 +175,7 @@ export class PunchlineClipService {
     if (!hasInlineBytes && !hasUri) {
       throw new PunchlineClipException(
         "source_asset_missing",
-        `Vocals stem ${stem.id} has no stored audio to clip.`,
+        `Source stem ${stem.id} has no stored audio to clip.`,
       );
     }
 
@@ -187,7 +206,12 @@ export class PunchlineClipService {
 
     // 7. Store under a flat, deterministic filename so the same range maps to a
     //    stable asset (LocalStorageProvider cannot create subdirectories).
-    const filename = `punchline-clip-${trackId}-${startMs}-${endMs}.mp3`;
+    //    Vocals keeps the pre-#1476 name so existing clips stay stable; other
+    //    layers carry the layer so two layers on one range never collide.
+    const filename =
+      sourceLayer === PUNCHLINE_SOURCE_STEM_TYPE
+        ? `punchline-clip-${trackId}-${startMs}-${endMs}.mp3`
+        : `punchline-clip-${trackId}-${sourceLayer}-${startMs}-${endMs}.mp3`;
     let stored;
     try {
       stored = await this.storageProvider.upload(
@@ -212,7 +236,7 @@ export class PunchlineClipService {
       clipAssetUri: stored.uri,
       storageProvider: stored.provider,
       sourceStemId: stem.id,
-      sourceStemType: PUNCHLINE_SOURCE_STEM_TYPE,
+      sourceStemType: sourceLayer,
       startMs,
       endMs,
       durationMs,
@@ -241,7 +265,7 @@ export class PunchlineClipService {
     if (!audio || audio.length === 0) {
       throw new PunchlineClipException(
         "source_asset_missing",
-        `Vocals stem ${stem.id} audio could not be loaded.`,
+        `Source stem ${stem.id} audio could not be loaded.`,
       );
     }
 
@@ -351,7 +375,7 @@ export class PunchlineClipService {
       // Do not log provider messages: they can contain bucket names, local
       // paths, or signed URLs.
       this.logger.warn(
-        `Storage download failed for punchline vocals stem ${stem.id}`,
+        `Storage download failed for punchline source stem ${stem.id}`,
       );
       this.logger.debug?.(
         error instanceof Error ? error.message : String(error),

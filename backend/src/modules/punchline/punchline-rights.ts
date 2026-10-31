@@ -28,5 +28,8 @@ export const PUNCHLINE_PUBLISHED_RELEASE_STATUSES = [
   "published",
 ] as const;
 
-/** The only stem type a Punchline Drop can be sourced from in the MVP. */
+/**
+ * The default source layer of a moment (the MVP's only one). Since #1476 a
+ * moment may use any allowed layer; see punchline-source.ts.
+ */
 export const PUNCHLINE_SOURCE_STEM_TYPE = "vocals";

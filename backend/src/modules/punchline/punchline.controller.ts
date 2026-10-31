@@ -49,11 +49,17 @@ export class PunchlineController {
    */
   @UseGuards(AuthGuard("jwt"))
   @Get("eligibility")
-  checkEligibility(@Query("trackId") trackId?: string) {
+  checkEligibility(
+    @Query("trackId") trackId?: string,
+    @Query("sourceLayer") sourceLayer?: string,
+  ) {
     if (!trackId) {
       throw new BadRequestException("trackId query parameter is required");
     }
-    return this.eligibilityService.checkEligibility(trackId);
+    return this.eligibilityService.checkEligibility(
+      trackId,
+      sourceLayer ? { sourceLayer } : {},
+    );
   }
 
   // ---------------------------------------------------------------------------

@@ -48,6 +48,7 @@ This section tracks what is actually built.
 | Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | ✅ done | Full funnel instrumentation: the 4 domain events registered + bridged into the analytics fact store, 4 client funnel events (`drop_viewed` → `preview_played` → `collect_started` → `collect_completed`) through the product-analytics rail, and an owner metrics endpoint + builder strip (views/previews/collected/conversion/sets completed, per drop and per moment). |
 | Home "Drops" shelf | [#1479](https://github.com/akoita/resonate/issues/1479) | ✅ done | First-class Home discovery surface: public `GET /punchline/featured` ranks published drops by a deterministic momentum heuristic (sold-out excluded → 7-day collect activity from `PunchlineCollectible.acquiredAt` → scarcity urgency → `publishedAt` desc, ≤2 drops per artist). The shelf (umbrella-named "Drops", per-card kind chip) reuses the living collectible card + a context footer (artist · track · scarcity · price) and deep-links to `/release/[id]?focus=moments`, which scroll-pulses the collect module. Renders nothing when no collectable drops exist. Emits `punchline.drop_viewed` with `source: "home"` for Home-vs-release funnel comparison. |
 | Full Drops browse gallery | [#1510](https://github.com/akoita/resonate/issues/1510) | ✅ done | Public `/drops` collection gallery with momentum-ranked cards, URL-shareable kind/genre/price/availability filters (Tuner-style link chips that apply instantly, reset to page 1, and work without JavaScript), 24-item paging, explicit empty/error/loading states, and sold-out visibility. Each gallery card can preview its selected moment in place without navigation, while the rest of the card deep-links to the release collect module. Sidebar, Home, and release collect-module links expose it. Browse impressions emit `punchline.drop_viewed`; successful gallery previews emit `punchline.preview_played`; both use `source: "drops_browse"`. |
+| Golden Moments: source layers (slice 1) | [#1476](https://github.com/akoita/resonate/issues/1476) | 🟡 partial | A moment's source is any allowed layer: the `vocals` stem (default), another separated stem (`drums`, `bass`, `guitar`, `piano`, `other`), or the full mix (`full`, the track's stored `original`/`master` row). The allowlist is `PUNCHLINE_SOURCE_LAYERS`. Eligibility returns `availableSourceLayers`, `allowedSourceLayers` and `clipBoundsMsByLayer`; a missing layer is `no_source_stem` naming the layer (replaces `no_vocals_stem`; the web reads both). Full-mix moments are capped at 10 s (`PUNCHLINE_FULL_MIX_CLIP_MAX_MS`) against 15 s for a stem. The builder has a **Source** picker. Set bonus clips stay on the vocals stem. Slice 2 (`momentKind` skins) and slice 3 (suggested ranges) are open. |
 | Owned-moments profile showcase (slice 1) | [#1477](https://github.com/akoita/resonate/issues/1477) | 🟡 partial | Public listener profile (`/community/profile/[userId]`) surfaces a collector's newest owned moments (≤12, newest-first) as living collectible cards with edition line, credited artist, acquired date, and a `/release/[id]?focus=moments` link. Strictly behind the existing `showOwnedItems` community-visibility opt-in and the `public` profile gate: consent off → field absent + `owned_items_hidden` redaction; non-public profile → 404. The public shape carries **no wallet and no payment provenance** (`paymentRail`/`pricePaidCents`/`paymentRef` excluded). Slice 2 (shareable moment cards / share buttons) is pending. |
 
 Epic: [#490](https://github.com/akoita/resonate/issues/490). Sprint plan:
@@ -165,7 +166,8 @@ through `maskSensitiveLyric`, X posts fit the 280 budget with links counted as
 
 The first artist-facing surface ships on the release page (#483). When the
 signed-in owner views their own release, a **Punchline Drops** panel appears for
-any track that has a processed `vocals` stem:
+any track that has a processed source layer: a stem or the full mix (#1476;
+before that, only a `vocals` stem):
 
 - pick a track (auto-selected when only one qualifies), which runs the #480
   eligibility check and renders it explainably — the rights summary plus the
@@ -184,6 +186,10 @@ eligibility overview the artist creates a drop (or resumes the newest draft —
 drafts survive reloads via the owner-scoped `GET /punchline/me/track-drops`):
 
 - drop title/description with an explicit Save;
+- a **Source** picker (#1476) above the moment editor when the track has more
+  than one source: Vocals (default when present), any other stem, or Full mix.
+  The timeline, preview and bounds follow the chosen layer; the moment stores
+  it as `sourceStemType` and the moment list names non-vocals sources;
 - a **moment editor** composing the #483 clip selector per moment plus title
   and lyric (live character counters), optional artwork URL (http(s)/ipfs, live
   thumbnail), edition size ("Limited edition" is the only MVP edition model),
@@ -209,7 +215,9 @@ All builder validation mirrors the backend limits exactly (shared helpers in
 | Var | Default | Purpose |
 | --- | --- | --- |
 | `PUNCHLINE_CLIP_MIN_MS` | `2000` | Minimum moment/clip length. |
-| `PUNCHLINE_CLIP_MAX_MS` | `15000` | Maximum moment/clip length (keeps a collectible a punchline, not a song). |
+| `PUNCHLINE_CLIP_MAX_MS` | `15000` | Maximum moment/clip length for a stem moment (keeps a collectible a punchline, not a song). |
+| `PUNCHLINE_FULL_MIX_CLIP_MAX_MS` | `10000` | Maximum length of a full-mix moment (#1476). Never above `PUNCHLINE_CLIP_MAX_MS`; ignored if at or below the minimum. |
+| `PUNCHLINE_SOURCE_LAYERS` | all: `vocals,drums,bass,guitar,piano,other,full` | Comma-separated allowlist of moment source layers (#1476). Unknown names are dropped; a list that keeps nothing falls back to `vocals`. |
 | `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` | Absolute public origin; sets Next `metadataBase` so the moment OG image URL resolves for crawlers, and the server-side base for shareable moment permalinks (#1477). |
 
 ### Events

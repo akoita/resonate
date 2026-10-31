@@ -11,7 +11,15 @@ import {
 import {
   PunchlineClipBounds,
   resolvePunchlineClipBounds,
+  resolvePunchlineClipBoundsByLayer,
 } from "./punchline-clip.config";
+import {
+  normalizeSourceLayer,
+  resolvePunchlineSourceLayers,
+  sourceLayerForStemType,
+  sourceLayerLabel,
+  stemTypesForSourceLayer,
+} from "./punchline-source";
 
 /**
  * A single, explainable failure reason. Every gate that denies a track adds one
@@ -26,6 +34,11 @@ export interface PunchlineEligibilityReason {
 export type PunchlineEligibilityReasonCode =
   | "track_not_found"
   | "track_not_published"
+  | "no_source_stem"
+  /**
+   * Legacy (pre-#1476) code for a missing vocals stem. No longer emitted; kept
+   * in the union so stored or cached results still type-check.
+   */
   | "no_vocals_stem"
   | "content_quarantined"
   | "content_removed"
@@ -46,6 +59,17 @@ export interface PunchlineEligibilityResult {
    * accepts is always publishable.
    */
   clipBoundsMs: PunchlineClipBounds;
+  /**
+   * Clip bounds per allowed source layer (#1476). A full-mix moment has a
+   * tighter max than a stem moment.
+   */
+  clipBoundsMsByLayer: Record<string, PunchlineClipBounds>;
+  /** Source layers the configured allowlist accepts. */
+  allowedSourceLayers: string[];
+  /** Allowed layers this track has processed audio for (empty if none). */
+  availableSourceLayers: string[];
+  /** The layer that was checked, when the caller asked for one. */
+  sourceLayer?: string;
   /** Minimal source snapshot; omitted when the track does not exist. */
   track?: {
     id: string;
@@ -58,11 +82,21 @@ export interface PunchlineEligibilityResult {
   };
 }
 
+export interface PunchlineEligibilityOptions {
+  /**
+   * Check one source layer. Omitted → the track passes if ANY allowed layer
+   * has processed audio (the drop-level gate; each moment's layer is checked
+   * at add and publish time).
+   */
+  sourceLayer?: string;
+}
+
 /**
  * Punchline Drops eligibility + rights gate (#480).
  *
  * Explainable allow/deny for whether a track may become a Punchline Drop. Only
- * safe, publishable, artist-approved tracks with a usable vocal stem pass. The
+ * safe, publishable, artist-approved tracks with a usable source layer pass
+ * (any allowed stem or the full mix since #1476; vocals stays the default). The
  * later create/publish APIs (#482) re-run this server-side before mutating.
  *
  * The rights-route gate does NOT reinvent policy: it defers to
@@ -80,8 +114,21 @@ export class PunchlineEligibilityService {
 
   async checkEligibility(
     trackId: string,
+    options: PunchlineEligibilityOptions = {},
   ): Promise<PunchlineEligibilityResult> {
     const clipBoundsMs = resolvePunchlineClipBounds(this.configService);
+    const allowedSourceLayers = resolvePunchlineSourceLayers(this.configService);
+    const clipBoundsMsByLayer = resolvePunchlineClipBoundsByLayer(
+      this.configService,
+      allowedSourceLayers,
+    );
+    const requestedLayer =
+      options.sourceLayer !== undefined
+        ? normalizeSourceLayer(options.sourceLayer)
+        : undefined;
+    const candidateStemTypes = allowedSourceLayers.flatMap(
+      stemTypesForSourceLayer,
+    );
     const track = await prisma.track.findUnique({
       where: { id: trackId },
       select: {
@@ -96,7 +143,7 @@ export class PunchlineEligibilityService {
           },
         },
         stems: {
-          where: { type: PUNCHLINE_SOURCE_STEM_TYPE, isCurrent: true },
+          where: { type: { in: candidateStemTypes }, isCurrent: true },
           select: { id: true, type: true, uri: true },
         },
       },
@@ -106,12 +153,16 @@ export class PunchlineEligibilityService {
       rightsLabel: PUNCHLINE_RIGHTS_LABEL,
       rightsSummary: PUNCHLINE_RIGHTS_SUMMARY,
       clipBoundsMs,
+      clipBoundsMsByLayer,
+      allowedSourceLayers,
+      ...(requestedLayer !== undefined ? { sourceLayer: requestedLayer } : {}),
     };
 
     if (!track) {
       return {
         ...base,
         eligible: false,
+        availableSourceLayers: [],
         reasons: [
           {
             code: "track_not_found",
@@ -137,16 +188,36 @@ export class PunchlineEligibilityService {
       });
     }
 
-    // 2) A usable vocal stem must exist. "Available" = a `vocals` stem whose
-    //    audio has been written (non-empty uri), i.e. stem separation finished.
-    const hasVocalsStem = track.stems.some(
-      (stem) => stem.type === PUNCHLINE_SOURCE_STEM_TYPE && !!stem.uri?.trim(),
+    // 2) A usable source layer must exist. "Available" = a current stem row of
+    //    that layer whose audio has been written (non-empty uri), i.e. stem
+    //    separation (or the upload, for the full mix) finished.
+    const availableSet = new Set<string>();
+    for (const stem of track.stems) {
+      const layer = sourceLayerForStemType(stem.type);
+      if (layer && allowedSourceLayers.includes(layer) && !!stem.uri?.trim()) {
+        availableSet.add(layer);
+      }
+    }
+    const availableSourceLayers = allowedSourceLayers.filter((layer) =>
+      availableSet.has(layer),
     );
-    if (!hasVocalsStem) {
+    const hasVocalsStem = availableSet.has(PUNCHLINE_SOURCE_STEM_TYPE);
+    if (requestedLayer !== undefined) {
+      if (!allowedSourceLayers.includes(requestedLayer)) {
+        reasons.push({
+          code: "no_source_stem",
+          message: `"${requestedLayer}" is not an allowed source for a moment. Allowed sources: ${allowedSourceLayers.join(", ")}.`,
+        });
+      } else if (!availableSet.has(requestedLayer)) {
+        reasons.push({
+          code: "no_source_stem",
+          message: `No processed ${sourceLayerLabel(requestedLayer)} is available for this track. Pick another source for this moment.`,
+        });
+      }
+    } else if (availableSourceLayers.length === 0) {
       reasons.push({
-        code: "no_vocals_stem",
-        message:
-          "No processed vocal stem is available for this track. Punchline Drops can only be created from the vocals stem.",
+        code: "no_source_stem",
+        message: `No processed source audio is available for this track. Moments can be clipped from: ${allowedSourceLayers.map(sourceLayerLabel).join(", ")}.`,
       });
     }
 
@@ -184,6 +255,7 @@ export class PunchlineEligibilityService {
       ...base,
       eligible: reasons.length === 0,
       reasons,
+      availableSourceLayers,
       track: {
         id: track.id,
         releaseId: track.releaseId,
