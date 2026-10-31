@@ -53,9 +53,24 @@ buyer and machine-commerce surfaces strict about availability.
   when the `marketplace.listing_cancelled` websocket event names a row on
   screen. A dismissed passkey prompt, a listing created by another account
   (`NotSeller`), or any other failure leaves the row active with a
-  plain-language error. A price change is done as cancel then relist; a
-  one-step "Edit listing" that batches both is not built yet. Business model:
-  ADR-BM-6 Line 3 (marketplace); no fee, price, or payout change.
+  plain-language error. Business model: ADR-BM-6 Line 3 (marketplace); no
+  fee, price, or payout change.
+- Owners can edit a live listing in one step (#2480): active and expiring-soon
+  rows have **Edit listing**, which opens the relist dialog prefilled with the
+  listing's terms (price, payment asset, quantity, duration). Listings are
+  immutable on-chain, so saving sends `cancel(oldListingId)`, the marketplace
+  approval when it is missing, and `list(...)` as **one** batched smart-account
+  UserOperation (`useEditListing`, planned by
+  `web/src/lib/listingEdit.ts` on top of the batch relist planner). The new
+  listing keeps the old license tier and gets the same notify-listing intent
+  as a relist; the new `list()` is simulated first so a failing price is
+  reported before the passkey prompt. The batch reverts as a whole, so a
+  dismissed prompt, `NotSeller`, or any other failure leaves the old listing
+  active with a plain-language error in the dialog. While it is signed the row
+  shows `updating`; once it confirms the old row gets the same cancelled
+  overlay as a manual cancel and the inventory reloads, and the new listing
+  appears when the indexer records it. Business model: ADR-BM-6 Line 3; no fee,
+  price-policy, or payout change.
 - Expired and cancelled listings can be relisted from the owner view by creating
   a new on-chain listing transaction.
 - The owner view supports selecting relistable stems and applying shared relist
@@ -132,6 +147,9 @@ buyer and machine-commerce surfaces strict about availability.
 2. Filter by Active, Expiring, Expired, Sold, or Cancelled.
 3. To stop selling a live listing, choose **Cancel listing** on its row and
    confirm; the row turns Cancelled once the transaction confirms.
+   To change its price or other terms instead, choose **Edit listing**, adjust
+   the terms, and save; one confirmation closes the old listing and opens the
+   new one (#2480).
 4. Select eligible expired or cancelled rows, or use Relist on a single row.
 5. Apply price, payment asset, quantity, and duration once for the selection.
 6. Confirm once per group of up to 10 stems; the indexer attaches the new
@@ -252,7 +270,7 @@ buyer and machine-commerce surfaces strict about availability.
 | --- | --- |
 | Public stem browsing (`/crates?tab=stems`) | Excludes expired and sold-out listings; sellers manage theirs from **Listings**. One card per stem: a stem listed under several tiers shows a chip per tier with its price, opening checkout on that tier (#2041). |
 | Storefront/x402/MCP/agent commerce | Storefront, x402 settlement lookup, MCP catalog search, player actions, and AI DJ catalog search treat expired and sold-out listings as unavailable. |
-| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist with one confirmation per group of up to 10 stems (#2030). Its empty state points buyers to Library › Stems (#2042). |
+| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, batch relist with one confirmation per group of up to 10 stems (#2030), Cancel listing (#284), and one-step Edit listing that batches cancel + relist into one confirmation (#2480). Its empty state points buyers to Library › Stems (#2042). |
 | Buyer purchases (`/library?tab=stems`) | Purchased stems with their best license tier, a license filter, Remix / Upgrade to Remix license actions, and a multi-stem Remix action per source track (#2042). Reached from **My purchased stems** on Browse stems (signed in) and the buy modal's success view. |
 | Notification bell | Routes listing lifecycle notifications to `/artist/listings`. |
 
