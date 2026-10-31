@@ -140,8 +140,10 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
     note:
       "Added by #2407. The person's Artist Pro subscription as mirrored from Stripe: the Stripe customer and "
-      + "subscription ids, plan, interval, status, billing period, cancellation and past-due dates. No card data is "
-      + "held here; invoices and payment details are at Stripe, reachable from the Customer Portal.",
+      + "subscription ids, plan, interval, status, billing period, cancellation and past-due dates, and (#2430) "
+      + "whether Resonate cancelled it for an account erasure or closure, paused collection for a suspension, or has "
+      + "a billing email still to send to Stripe. No card data is held here; invoices and payment details are at "
+      + "Stripe, reachable from the Customer Portal.",
   },
   {
     model: "CreditTopUp",

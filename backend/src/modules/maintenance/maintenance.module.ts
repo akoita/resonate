@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { BullModule } from "@nestjs/bullmq";
 import { ConfigModule } from "@nestjs/config";
 import { AnalyticsModule } from "../analytics/analytics.module";
+import { BillingCoreModule } from "../billing/billing_core.module";
 import { CommunityModule } from "../community/community.module";
 import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { IngestionModule } from "../ingestion/ingestion.module";
@@ -26,6 +27,8 @@ import { MaintenanceService } from "./maintenance.service";
     // #1771 slice 3: the due-erasure route's engine. There is no @Cron in this
     // codebase — scheduled work is driven externally by hitting these routes.
     PrivacyModule,
+    // #2430: the retention run prunes StripeEvent and retries billing lifecycle steps.
+    BillingCoreModule,
   ],
   controllers: [MaintenanceController],
   providers: [MaintenanceService],

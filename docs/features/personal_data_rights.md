@@ -221,7 +221,13 @@ erased after its owner tried to save it.
 
 ### The 30-day window
 
-Nothing happens for 30 days (`ACCOUNT_CLOSURE_WINDOW_DAYS`). One active request
+Nothing happens for 30 days (`ACCOUNT_CLOSURE_WINDOW_DAYS`), except that an
+Artist Pro subscription stops renewing (`cancel_at_period_end`, #2430) so the
+person is not charged again while the window runs. When the window ends the
+erasure engine first cancels a live Stripe subscription immediately and does not
+erase anything until Stripe confirms it; until then the request stays pending
+and is retried (see
+[Artist Pro billing](artist_pro_billing.md#account-closure-erasure-and-suspension-2430)). One active request
 per person, enforced by a partial unique index rather than an application check,
 because a double-submitted request racing itself would schedule the engine twice
 against the same account and the second run would find a person who no longer

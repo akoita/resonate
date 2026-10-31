@@ -10,6 +10,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { SubscriptionLifecycleService } from "../billing/subscription_lifecycle.service";
 import { NoticeService } from "../notifications/notice.service";
 import {
   EMAIL_REQUIRED_NOTICE_CATEGORIES,
@@ -95,6 +96,8 @@ export class ContactEmailService {
     private readonly config: EmailConfig,
     @Optional() @Inject(EMAIL_TRANSPORT) private readonly transport: EmailTransport | null,
     private readonly notices: NoticeService,
+    // #2430: a newly confirmed address becomes the Stripe billing email.
+    @Optional() private readonly billing: SubscriptionLifecycleService | null = null,
   ) {}
 
   // ============ Reading ============
@@ -277,12 +280,15 @@ export class ContactEmailService {
   async confirm(token: unknown): Promise<{ status: "confirmed" }> {
     if (typeof token !== "string" || token.length < 16 || token.length > 256) throw invalidOrExpired();
     const now = new Date();
+    const where = {
+      confirmTokenHash: sha256Hex(token),
+      status: "pending" as const,
+      confirmTokenExpiresAt: { gt: now },
+    };
+    const target = await prisma.contactEmail.findFirst({ where, select: { id: true, userId: true } });
+    if (!target) throw invalidOrExpired();
     const result = await prisma.contactEmail.updateMany({
-      where: {
-        confirmTokenHash: sha256Hex(token),
-        status: "pending",
-        confirmTokenExpiresAt: { gt: now },
-      },
+      where: { ...where, id: target.id },
       data: {
         status: "confirmed",
         confirmedAt: now,
@@ -291,6 +297,9 @@ export class ContactEmailService {
       },
     });
     if (result.count !== 1) throw invalidOrExpired();
+    // #2430: best effort; a failure leaves the billing row stale and the
+    // retention job pushes the address later. Never fails the confirmation.
+    await this.billing?.syncCustomerEmail(target.userId).catch(() => undefined);
     return { status: "confirmed" };
   }
 

@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { BillingCoreModule } from "../billing/billing_core.module";
 import { NotificationModule } from "../notifications/notification.module";
 import { ContactEmailController } from "./contact_email.controller";
 import { ContactEmailService } from "./contact_email.service";
@@ -15,7 +16,8 @@ import { EMAIL_TRANSPORT, createEmailTransport, verifyEmailTransportInBackground
  * repository).
  */
 @Module({
-  imports: [NotificationModule],
+  // BillingCoreModule (#2430): a confirmed address becomes the Stripe billing email.
+  imports: [NotificationModule, BillingCoreModule],
   controllers: [ContactEmailController, EmailPublicController],
   providers: [
     {

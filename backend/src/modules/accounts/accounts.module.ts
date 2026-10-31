@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { BillingCoreModule } from "../billing/billing_core.module";
 import { NotificationModule } from "../notifications/notification.module";
 import { PrivacyModule } from "../privacy/privacy.module";
 import { AccountController, AdminAccountsController } from "./accounts.controller";
@@ -13,7 +14,7 @@ import { AccountStatusService } from "./account_status.service";
  * is covered without per-route checks.
  */
 @Module({
-  imports: [AuditModule, NotificationModule, PrivacyModule, AccountStandingModule],
+  imports: [AuditModule, NotificationModule, PrivacyModule, AccountStandingModule, BillingCoreModule],
   controllers: [AccountController, AdminAccountsController],
   providers: [AccountStatusService, AccountStatusInterceptor],
   exports: [AccountStatusService, AccountStatusInterceptor],

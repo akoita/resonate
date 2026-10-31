@@ -382,12 +382,34 @@ model Subscription {
   pastDueSince         DateTime?
   /// `created` of the last Stripe event applied to this row.
   lastEventCreatedAt   DateTime?
+  /// #2430: why Resonate itself ended the subscription at Stripe; null when it never had to.
+  endReason            SubscriptionEndReason?
+  /// #2430: when Resonate first asked Stripe to cancel it (immediately, no proration).
+  endRequestedAt       DateTime?
+  /// #2430: when Stripe confirmed the cancellation. Erasure does not run before this is set.
+  endConfirmedAt       DateTime?
+  /// #2430: cancellation attempts made, and the last failure as a short code (never a message or a payload).
+  endAttempts          Int                   @default(0)
+  endLastError         String?               @db.VarChar(64)
+  /// #2430: when Stripe confirmed that collection is paused for an account suspension; null while collecting.
+  collectionPausedAt   DateTime?
+  /// #2430: the self-service closure request whose period-end cancellation was set at Stripe.
+  closureRequestId     String?
+  /// #2430: the confirmed contact address changed and the Stripe customer email is not updated yet.
+  billingEmailStale    Boolean               @default(false)
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   allowanceGrants      GenerationAllowanceGrant[]
 
   @@index([status])
+  @@index([billingEmailStale])
+}
+
+/// #2430: why Resonate cancelled a subscription at Stripe.
+enum SubscriptionEndReason {
+  account_erasure
+  account_closure
 }
 
 enum SubscriptionProvider {
@@ -424,6 +446,7 @@ model StripeEvent {
   processedAt DateTime?
 
   @@index([receivedAt])
+  @@index([processedAt])
 }
 
 // Durable lifecycle evidence for each metered catalogue-generation debit.

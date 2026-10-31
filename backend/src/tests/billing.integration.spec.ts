@@ -62,6 +62,9 @@ const gateway = {
     return sub;
   }),
   constructEvent: jest.fn(),
+  cancelSubscription: jest.fn(),
+  updateSubscription: jest.fn(),
+  updateCustomerEmail: jest.fn(),
 } satisfies StripeGateway;
 
 const billing = new BillingService(config, consents, gateway, entitlements);

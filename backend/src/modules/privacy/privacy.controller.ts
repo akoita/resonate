@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Optional,
   Post,
   Request,
   Res,
@@ -22,6 +23,7 @@ import { PersonalDataExportService } from "./personal_data_export.service";
 import { hours } from "../shared/rate_limits";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
+import { SubscriptionLifecycleService } from "../billing/subscription_lifecycle.service";
 import { AccountClosureRequestDto } from "./privacy.dto";
 
 type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
@@ -62,6 +64,7 @@ export class PrivacyController {
     private readonly exportService: PersonalDataExportService,
     private readonly closureService: AccountClosureService,
     private readonly closureStepUp: AccountClosureStepUpService,
+    @Optional() private readonly billing: SubscriptionLifecycleService | null = null,
   ) {}
 
   /**
@@ -193,6 +196,11 @@ export class PrivacyController {
     });
 
     const request = await this.closureService.request(userId, body?.reason);
+    // #2430: no renewal is charged while the window runs. Best effort; the
+    // retention job retries, and the erasure cancels immediately either way.
+    const subscription = await this.billing
+      ?.scheduleEndForClosureRequest(userId, request.id)
+      .catch(() => "deferred" as const);
 
     writeStructuredLog({
       level: "info",
@@ -201,6 +209,7 @@ export class PrivacyController {
       userId,
       stepUpMode,
       dueAt: request.dueAt.toISOString(),
+      subscription: subscription ?? "none",
     });
 
     return { request: closureView(request), windowDays: ACCOUNT_CLOSURE_WINDOW_DAYS };

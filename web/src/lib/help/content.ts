@@ -2051,7 +2051,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Generate original tracks from a text prompt and publish them to your catalog, with AI provenance recorded automatically.",
     category: "create",
     audiences: ["artist"],
-    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe", "buy credits", "credit pack", "top up", "receipt", "refund", "allowance", "monthly allowance"],
+    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits", "usage", "billing", "plan", "artist pro", "subscription", "subscribe", "manage billing", "payment failed", "stripe", "cancel subscription", "close account", "suspended billing", "buy credits", "credit pack", "top up", "receipt", "refund", "allowance", "monthly allowance"],
     sections: [
       {
         id: "generate",
@@ -2186,6 +2186,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "If a payment fails, the Plan section says so and asks you to update your card. Pro stays on for 7 days; after that your plan returns to Free. Nothing is deleted.",
               "Each paid month adds a generation allowance to Usage & Billing. It is spent before your credits and expires at the end of the month; a yearly plan adds it month by month.",
               "You can withdraw within 14 days of subscribing. Because Artist Pro starts straight away at your request, you are then refunded for the unused time only, less any monthly generation allowance you have already used.",
+              "If you ask to close your account, renewal stops at once, so you are not charged again while the 30-day closure window runs. Signing in during the window cancels the closure but not this: renew from Manage billing if you want to keep Pro.",
+              "When your account is erased or closed, your subscription is cancelled immediately, before anything is deleted. The rest of the period is not refunded beyond what the refund policy already gives you.",
+              "While your account is suspended you are not charged: billing is paused and starts again when the suspension ends.",
+              "When you confirm a new contact email, it also becomes the email on your Stripe receipts.",
             ],
           },
           {

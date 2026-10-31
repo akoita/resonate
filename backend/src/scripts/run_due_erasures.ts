@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
 import { assertAnalyticsActorIdSaltConfiguration } from "../modules/analytics/analytics_identity";
+import { createSubscriptionLifecycleFromEnv } from "../modules/billing/subscription_lifecycle.service";
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import {
@@ -85,6 +86,10 @@ export function buildErasureService(): PersonalDataErasureService {
     new PersonalDataResolverService(),
     new AnalyticsGovernanceService(),
     new AccountClosureService(),
+    // #2430: a live Stripe subscription is cancelled before the erasure runs.
+    // Without the Stripe settings in the job's environment such an erasure
+    // stays pending (retried) instead of running with the subscription live.
+    createSubscriptionLifecycleFromEnv(),
   );
 }
 
