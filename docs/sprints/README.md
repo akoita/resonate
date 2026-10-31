@@ -51,7 +51,7 @@ Latest closed: [Vision Sprint 44 — Pro foundations, in test mode](2026-10-25-v
 on 2026-10-25. Waiting on the owner: Stripe test keys (resonate-iac#325), the
 #1421 pricing sign-off, legal review of the consent and refund wording, and the
 #2367 remix-challenge decision.
-Current: [Vision Sprint 47 — Share what you did, show who you back](2026-10-31-vision-sprint-47-share-and-show-support.md), started 2026-10-31; Vision Sprint 46 is finishing. Sprint 43 is closing: only the #1759 staging contract rollout remains.
+Current: [Vision Sprint 48 — Golden moments in every genre](2026-10-31-vision-sprint-48-golden-moments.md), started 2026-10-31; Vision Sprints 45–47 are closing. Sprint 43 is closing: only the #1759 staging contract rollout remains.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -103,3 +103,4 @@ Current: [Vision Sprint 47 — Share what you did, show who you back](2026-10-31
 | [2026-10-31](2026-10-31-vision-sprint-45-cheap-ready-shareable.md) | Vision Sprint 45 — Cheap to run, ready to charge, easy to share (idle cost, Stripe cancel on erasure, campaign and collectible shares, flaky remix-parts test) | ◐ In progress — started 2026-10-31 |
 | [2026-10-31](2026-10-31-vision-sprint-46-remix-goes-further.md) | Vision Sprint 46 — Remix goes further, dependencies stay honest (build-ups, Pro mode slice 1, contract pin source of truth, security dependency bumps) | ◐ In progress — started 2026-10-31 |
 | [2026-10-31](2026-10-31-vision-sprint-47-share-and-show-support.md) | Vision Sprint 47 — Share what you did, show who you back (licence and remix shares, supporter/collector badges, listing cancellation) | ◐ In progress — started 2026-10-31 |
+| [2026-10-31](2026-10-31-vision-sprint-48-golden-moments.md) | Vision Sprint 48 — Golden moments in every genre (any source layer and the full mix for collectible moments, genre skins) | ◐ In progress — started 2026-10-31 |
