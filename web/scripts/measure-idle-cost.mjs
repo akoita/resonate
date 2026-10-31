@@ -13,7 +13,8 @@
  *   - running infinite animations (document.getAnimations()), split into
  *     on-screen and off-screen targets
  *   - JS heap used at the start and end of the window
- *   - requests and timer callbacks while the tab reports `hidden`
+ *   - requests, timer callbacks and running infinite animations while the tab
+ *     reports `hidden`
  *   - running infinite animations under prefers-reduced-motion: reduce
  *
  * The "hidden" phase overrides document.visibilityState / document.hidden and
@@ -272,6 +273,7 @@ async function measureHidden(page) {
   page.on("request", onRequest);
   await page.waitForTimeout(WINDOW_MS);
   page.off("request", onRequest);
+  const runningAnimations = (await animationSnapshot(page)).running;
   const timerCalls = await page.evaluate(() => {
     const calls = window.__idleProbeTimerCalls;
     window.__idleProbeHidden = false;
@@ -282,6 +284,7 @@ async function measureHidden(page) {
     requests: requests.length,
     requestPaths: [...new Set(requests.map((url) => new URL(url).pathname))].slice(0, 10),
     timerCalls,
+    runningAnimations,
   };
 }
 
@@ -366,6 +369,7 @@ async function main() {
       "heap MB": `${r.heapStartMB}→${r.heapEndMB}`,
       "hidden req": r.hidden.requests,
       "hidden timers": r.hidden.timerCalls,
+      "hidden anims": r.hidden.runningAnimations,
       "reduced-motion anims": r.reducedMotion?.running,
     })),
   );

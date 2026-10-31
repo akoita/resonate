@@ -53,9 +53,17 @@ Keep the visuals; pay for them on the compositor.
 - Do not loop decoration that cannot be seen (a rotation of concentric
   circles), and hold animations still when the thing they illustrate is
   paused (the player marquee stops with playback).
+- Off-screen and hidden-tab loops are held still for you: the root layout
+  mounts `IdleAnimationGuard` (`src/lib/idleAnimationGuard.ts`), which marks
+  any element running an infinite animation with `data-idle-paused` while it
+  is out of view or the tab is hidden. Pause a loop for your own reasons with
+  CSS (`animation-play-state` or a class), never with `Animation.pause()`,
+  which would fight the guard.
 - Pollers and countdowns use `registerVisibleInterval` from
   `src/lib/visibleInterval.ts`: they pause, or back off, while the tab is
-  hidden and catch up once when it returns.
+  hidden and catch up once when it returns. `src/lib/visibleIntervalBudget.test.ts`
+  fails on a new bare `setInterval`; its allowlist (task-scoped or
+  background-critical timers) may only shrink.
 - `prefers-reduced-motion: reduce` is handled globally at the end of
   `src/app/globals.css`. Add an `animation: none !important` opt-out there only
   when a loop's final frame is not a sensible resting state.

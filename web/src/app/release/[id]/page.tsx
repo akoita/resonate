@@ -44,6 +44,7 @@ import { QueueActionsButton } from "../../../components/player/QueueActionsButto
 import { ArtistCampaignLink } from "../../../components/shows/ArtistCampaignLink";
 import { releaseCampaignArtistIdentity } from "../../../lib/shows";
 import { useQueueActions } from "../../../lib/useQueueActions";
+import { registerVisibleInterval } from "../../../lib/visibleInterval";
 import { ownedDemandTrack, stemDemandContext } from "../../../lib/stemDemandContext";
 
 import { useToast } from "../../../components/ui/Toast";
@@ -1197,11 +1198,12 @@ function ReleaseDetailsContent() {
       }
     };
 
-    const interval = window.setInterval(poll, 10000);
+    // Paused while the tab is hidden; one catch-up poll on return (#2436).
+    const stopPolling = registerVisibleInterval(() => void poll(), 10000);
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      stopPolling();
     };
   }, [isOwner, release?.id, rightsUpgradeStatus, token]);
 
