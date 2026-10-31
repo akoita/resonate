@@ -40,6 +40,22 @@ buyer and machine-commerce surfaces strict about availability.
 - Sellers can receive idempotent `listing_expiring_soon` and `listing_expired`
   notifications.
 - Notification preferences include marketplace lifecycle controls.
+- Owners can cancel a live listing (#284): active and expiring-soon rows in the
+  owner view have **Cancel listing**, which asks for confirmation
+  (`ConfirmDialog`) and calls `StemMarketplaceV2.cancel(listingId)` through the
+  same smart-account (passkey) transaction path as other listing writes
+  (`useCancelListing`). The row shows `cancelling` while the transaction is
+  signed and confirmed, then flips to `cancelled` (and relistable when editions
+  remain) as soon as it confirms. The indexer's `Cancelled` event
+  (`contract.listing_cancelled`) persists the same state; until the owner API
+  reports it, reloads keep the confirmed row cancelled
+  (`web/src/lib/listingCancellation.ts`), and the page reloads its inventory
+  when the `marketplace.listing_cancelled` websocket event names a row on
+  screen. A dismissed passkey prompt, a listing created by another account
+  (`NotSeller`), or any other failure leaves the row active with a
+  plain-language error. A price change is done as cancel then relist; a
+  one-step "Edit listing" that batches both is not built yet. Business model:
+  ADR-BM-6 Line 3 (marketplace); no fee, price, or payout change.
 - Expired and cancelled listings can be relisted from the owner view by creating
   a new on-chain listing transaction.
 - The owner view supports selecting relistable stems and applying shared relist
@@ -114,9 +130,11 @@ buyer and machine-commerce surfaces strict about availability.
 1. Open **Listings** in the sidebar (`/artist/listings`)
    with the listing seller wallet or smart account.
 2. Filter by Active, Expiring, Expired, Sold, or Cancelled.
-3. Select eligible expired or cancelled rows, or use Relist on a single row.
-4. Apply price, payment asset, quantity, and duration once for the selection.
-5. Confirm once per group of up to 10 stems; the indexer attaches the new
+3. To stop selling a live listing, choose **Cancel listing** on its row and
+   confirm; the row turns Cancelled once the transaction confirms.
+4. Select eligible expired or cancelled rows, or use Relist on a single row.
+5. Apply price, payment asset, quantity, and duration once for the selection.
+6. Confirm once per group of up to 10 stems; the indexer attaches the new
    listing rows after the chain events are observed.
 
 ### Artist: offering several license tiers (#2041)

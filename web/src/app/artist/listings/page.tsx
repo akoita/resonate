@@ -6,7 +6,15 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
-import { RelistPreflightError, useProtocolFee, useRelistMany } from "../../../hooks/useContracts";
+import { RelistPreflightError, useCancelListing, useProtocolFee, useRelistMany } from "../../../hooks/useContracts";
+import { useWebSockets, type MarketplaceUpdate } from "../../../hooks/useWebSockets";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import {
+  describeCancelFailure,
+  isListingCancellable,
+  markListingsCancelled,
+  reconcileCancelledListings,
+} from "../../../lib/listingCancellation";
 import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import {
   findPaymentAssetForToken,
@@ -158,6 +166,7 @@ function MarketplaceListingManagerPageContent() {
   const { address, smartAccountAddress, token } = useAuth();
   const { chainId } = useZeroDev();
   const { planRelist, sendRelistChunk, pending } = useRelistMany();
+  const { cancel: cancelListingOnChain } = useCancelListing();
   const { feeBps: protocolFeeBps, loading: protocolFeeLoading } = useProtocolFee();
   const {
     assets: paymentAssets,
@@ -182,6 +191,13 @@ function MarketplaceListingManagerPageContent() {
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; count: number } | null>(null);
   const [relistFailure, setRelistFailure] = useState<string | null>(null);
   const lastInventoryAnalyticsKeyRef = useRef<string | null>(null);
+  // #284: manual cancellation. `cancellingIds` are rows whose cancel is being
+  // signed/confirmed; `confirmedCancelledRef` holds rows cancelled on-chain that
+  // the indexer has not reported yet, so a reload never shows them active again.
+  const [cancelTarget, setCancelTarget] = useState<OwnerListing | null>(null);
+  const [cancellingIds, setCancellingIds] = useState<Set<string>>(() => new Set());
+  const [cancelFailure, setCancelFailure] = useState<string | null>(null);
+  const confirmedCancelledRef = useRef<Set<string>>(new Set());
 
   const marketplaceAssets = useMemo(
     () => paymentAssets.filter((asset) => {
@@ -253,9 +269,14 @@ function MarketplaceListingManagerPageContent() {
       });
       if (!res.ok) throw new Error(`Failed to load listings (${res.status})`);
       const data = await res.json();
-      setListings(data.listings || []);
+      const reconciled = reconcileCancelledListings(
+        (data.listings || []) as OwnerListing[],
+        confirmedCancelledRef.current,
+      );
+      confirmedCancelledRef.current = reconciled.stillPending;
+      const nextListings = reconciled.listings;
+      setListings(nextListings);
       setSelectedListingIds((current) => {
-        const nextListings = (data.listings || []) as OwnerListing[];
         const validIds = new Set(nextListings.filter((listing) => listing.relistable).map((listing) => listing.id));
         return new Set([...current].filter((id) => validIds.has(id)));
       });
@@ -271,6 +292,22 @@ function MarketplaceListingManagerPageContent() {
   useEffect(() => {
     void fetchListings();
   }, [fetchListings]);
+
+  // Reconcile with the indexer: when a Cancelled event for one of the rows on
+  // screen is indexed (by this page or anywhere else), reload the inventory.
+  const listingsRef = useRef<OwnerListing[]>([]);
+  useEffect(() => {
+    listingsRef.current = listings;
+  }, [listings]);
+  const handleMarketplaceUpdate = useCallback(
+    (update: MarketplaceUpdate) => {
+      if (update.type !== "cancelled") return;
+      if (!listingsRef.current.some((listing) => listing.listingId === update.listingId)) return;
+      void fetchListings();
+    },
+    [fetchListings],
+  );
+  useWebSockets(undefined, undefined, undefined, handleMarketplaceUpdate);
 
   useEffect(() => {
     if (loading || !token || listings.length === 0) return;
@@ -432,6 +469,34 @@ function MarketplaceListingManagerPageContent() {
     }
   };
 
+  const submitCancel = async (listing: OwnerListing) => {
+    setCancelFailure(null);
+    setSuccess(null);
+    setCancellingIds((current) => new Set(current).add(listing.id));
+    try {
+      await cancelListingOnChain(BigInt(listing.listingId));
+      confirmedCancelledRef.current.add(listing.id);
+      setListings((current) => markListingsCancelled(current, new Set([listing.id])));
+      setSuccess(
+        `${listingLabel(listing)} is no longer for sale. You can relist it whenever you are ready.`,
+      );
+    } catch (err) {
+      setCancelFailure(`${listingLabel(listing)}: ${describeCancelFailure(err)}`);
+    } finally {
+      setCancellingIds((current) => {
+        const next = new Set(current);
+        next.delete(listing.id);
+        return next;
+      });
+    }
+  };
+
+  const confirmCancel = () => {
+    const target = cancelTarget;
+    setCancelTarget(null);
+    if (target) void submitCancel(target);
+  };
+
   const toggleListingSelection = (listing: OwnerListing) => {
     if (!listing.relistable) return;
     setSelectedListingIds((current) => {
@@ -582,6 +647,11 @@ function MarketplaceListingManagerPageContent() {
 
       {success && <div className="marketplace-manager-alert marketplace-manager-alert--success">{success}</div>}
       {loadError && <div className="marketplace-manager-alert marketplace-manager-alert--error">{loadError}</div>}
+      {cancelFailure && (
+        <div className="marketplace-manager-alert marketplace-manager-alert--error" role="alert">
+          {cancelFailure}
+        </div>
+      )}
 
       {/* #2182: once there is a first listing (any state, sold included), offer the
           optional email for account notices. Dismissible; never blocks the page. */}
@@ -621,6 +691,7 @@ function MarketplaceListingManagerPageContent() {
             const asset = resolveListingAsset(paymentAssets, chainId, listing.paymentToken);
             const symbol = listingAssetSymbol(asset);
             const isHighlighted = highlightedListingId === listing.id;
+            const isCancelling = cancellingIds.has(listing.id);
             const proceedsLine = protocolFeeLoading
               ? null
               : sellerNetProceedsLine({
@@ -679,8 +750,19 @@ function MarketplaceListingManagerPageContent() {
                 </div>
                 <div className="marketplace-manager-row__actions">
                   <span className={`listing-status-pill listing-status-pill--${listing.lifecycleStatus}`}>
-                    {statusLabel(listing.lifecycleStatus)}
+                    {isCancelling ? "cancelling" : statusLabel(listing.lifecycleStatus)}
                   </span>
+                  {isListingCancellable(listing) && (
+                    <button
+                      type="button"
+                      className="marketplace-clear-btn"
+                      onClick={() => setCancelTarget(listing)}
+                      disabled={isCancelling}
+                      aria-label={`Cancel listing for ${listingLabel(listing)}`}
+                    >
+                      {isCancelling ? "Cancelling..." : "Cancel listing"}
+                    </button>
+                  )}
                   {listing.relistable && (
                     <button type="button" className="marketplace-action-btn" onClick={() => openRelist([listing])}>
                       Relist
@@ -839,6 +921,18 @@ function MarketplaceListingManagerPageContent() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={cancelTarget !== null}
+        title="Cancel this listing?"
+        message={cancelTarget
+          ? `${listingLabel(cancelTarget)} will stop being for sale right away and buyers can no longer purchase it. Editions already sold are not affected. You can relist it later with new terms.`
+          : ""}
+        confirmLabel="Cancel listing"
+        cancelLabel="Keep listing"
+        variant="warning"
+        onConfirm={confirmCancel}
+        onCancel={() => setCancelTarget(null)}
+      />
     </main>
   );
 }
