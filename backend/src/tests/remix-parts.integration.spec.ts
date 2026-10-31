@@ -43,6 +43,8 @@ import {
   REMIX_PART_TAKE_JOB,
   REMIX_PARTS_SCHEMA_VERSION,
 } from "../modules/remix/remix-parts";
+import { PART_TEMPO_CONFIDENCE_MIN } from "../modules/remix/remix-part-conform";
+import { stubPartDeviation } from "../modules/remix/remix-part-stub-clip";
 
 jest.setTimeout(240_000);
 
@@ -336,6 +338,15 @@ describe("Remix AI parts (#1901, integration)", () => {
         await prisma.generationCostRecord.count({ where: { jobId: { in: takeIds } } }),
       ).toBe(3);
 
+      // Each take's seed fixes the stub's true tempo ratio (1 + deviation).
+      const seeds = new Map(
+        (
+          await prisma.remixPartTake.findMany({
+            where: { id: { in: takeIds } },
+            select: { id: true, seed: true },
+          })
+        ).map((row) => [row.id, row.seed]),
+      );
       const read = await service.getProject(OWNER_ID, project.id);
       expect(read.partTakes).toHaveLength(3);
       for (const take of read.partTakes) {
@@ -349,9 +360,16 @@ describe("Remix AI parts (#1901, integration)", () => {
         expect(conform.targetBpm).toBe(120);
         expect(conform.lengthFrames).toBe(384000); // 4 bars at 120 BPM, 48 kHz
         expect(take.durationSec).toBeCloseTo(8, 6);
-        // The stub's seeded ±3 % drift is measured and removed.
-        expect(Math.abs((conform.estimatedRatio as number) - 1)).toBeLessThanOrEqual(0.031);
-        expect(conform.estimatedRatio).not.toBe(1);
+        // The stub's seeded 1–3 % drift is measured (a confident estimate, not
+        // the low-confidence ratio-1 fallback) and matches the true ratio.
+        const trueRatio = 1 + stubPartDeviation(seeds.get(take.id) as number);
+        expect(conform.tempoConfidence as number).toBeGreaterThanOrEqual(
+          PART_TEMPO_CONFIDENCE_MIN,
+        );
+        expect(
+          Math.abs((conform.estimatedRatio as number) / trueRatio - 1),
+        ).toBeLessThan(0.005);
+        expect(Math.abs((conform.estimatedRatio as number) - 1)).toBeGreaterThan(0.004);
       }
       expect(JSON.stringify(read)).not.toContain("mem://");
 

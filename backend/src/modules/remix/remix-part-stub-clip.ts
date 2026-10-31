@@ -2,9 +2,10 @@
  * Deterministic stand-in for a model part clip (#1901), used by the stub
  * provider (dev/test) and the conform specs.
  *
- * A 30 s, 48 kHz stereo clip at the requested tempo × a seeded ±3 %
- * deviation, starting on a seeded downbeat offset, so the conform has real
- * tempo and phase work to do: drums get clear onsets (accented kick on the
+ * A 30 s, 48 kHz stereo clip at the requested tempo × a seeded 1–3 %
+ * deviation (either sign, never near zero), starting on a seeded downbeat
+ * offset, so the conform always has real, measurable tempo and phase work to
+ * do: drums get clear onsets (accented kick on the
  * downbeat, snare on 2 and 4, eighth hats); pitched roles get a line in the
  * requested key (plucked for bass/keys/guitar, slow-attack chords for
  * pad/strings). No samples, no randomness beyond the seed.
@@ -18,6 +19,13 @@ import {
 
 export const STUB_PART_CLIP_SECONDS = 30;
 export const STUB_PART_MAX_DEVIATION = 0.03;
+/**
+ * The seeded deviation's floor (#2461). A near-zero drift is a correct
+ * ratio-1 estimate, indistinguishable in the record from "no tempo work",
+ * so the stub never produces one: |deviation| ∈ [1 %, 3 %], which keeps the
+ * true ratio at least twice the conform's 0.5 % tolerance away from 1.
+ */
+export const STUB_PART_MIN_DEVIATION = 0.01;
 
 export type StubPartClipInput = {
   role: string;
@@ -25,7 +33,7 @@ export type StubPartClipInput = {
   /** "A minor" style key; null/unknown = C major. */
   key?: { tonic: string; mode: "major" | "minor" } | null;
   seed: number;
-  /** Explicit tempo deviation (tests); default = seeded ±3 %. */
+  /** Explicit tempo deviation (tests); default = {@link stubPartDeviation}. */
   deviation?: number;
   /** Explicit first downbeat (tests); default = seeded 0.3 s … 0.3 s + 1 beat. */
   firstDownbeatSec?: number;
@@ -49,6 +57,23 @@ function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Map one uniform draw u ∈ [0, 1) to a signed deviation, |d| ∈ [min, max). */
+function deviationFromDraw(u: number): number {
+  const signed = u * 2 - 1;
+  const magnitude =
+    STUB_PART_MIN_DEVIATION +
+    Math.abs(signed) * (STUB_PART_MAX_DEVIATION - STUB_PART_MIN_DEVIATION);
+  return signed < 0 ? -magnitude : magnitude;
+}
+
+/**
+ * The tempo deviation {@link synthesizeStubPartClip} applies for `seed` when
+ * none is given explicitly (the take's true ratio is 1 + this).
+ */
+export function stubPartDeviation(seed: number): number {
+  return deviationFromDraw(mulberry32(seed)());
 }
 
 const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
@@ -77,8 +102,7 @@ export function synthesizeStubPartClip(input: StubPartClipInput): StubPartClip {
   const sampleRate = input.sampleRate ?? PART_SAMPLE_RATE;
   const durationSec = input.durationSec ?? STUB_PART_CLIP_SECONDS;
   const rng = mulberry32(input.seed);
-  const deviation =
-    input.deviation ?? (rng() * 2 - 1) * STUB_PART_MAX_DEVIATION;
+  const deviation = input.deviation ?? deviationFromDraw(rng());
   const actualBpm = input.bpm * (1 + deviation);
   const beatSec = 60 / actualBpm;
   const firstDownbeatSec = input.firstDownbeatSec ?? 0.3 + rng() * beatSec;

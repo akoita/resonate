@@ -732,8 +732,8 @@ export class StubRemixGenerationProvider implements RemixGenerationProvider {
 
   /**
    * Deterministic part clip (#1901): synthesized from the template's tempo,
-   * key and role at a seeded ±3 % tempo deviation and downbeat offset, so the
-   * conform has real work to do. Same master gate as drafts.
+   * key and role at a seeded 1–3 % (either sign) tempo deviation and downbeat
+   * offset, so the conform has real work to do. Same master gate as drafts.
    */
   async createPartClip(request: RemixPartClipRequest): Promise<RemixPartClip> {
     if (process.env.REMIX_GENERATION_ENABLED !== "true") {
