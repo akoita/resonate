@@ -315,8 +315,10 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "kept as long as accounting and tax rules require the invoices it backs to be kept.",
     note:
       "Names the person only through `userId`, which rotates with the cascade; holds no card data and no free text. "
-      + "The Stripe customer id is the link to the invoices held at Stripe. Erasure does not cancel a live Stripe "
-      + "subscription: that is an account-closure step (tracked as a follow-up).",
+      + "The Stripe customer id is the link to the invoices held at Stripe. Before anything is erased, the engine "
+      + "cancels a live Stripe subscription immediately and waits for Stripe to confirm it (#2430): the erasure stays "
+      + "pending and is retried until then. The cancellation record (`endReason`, `endRequestedAt`, `endConfirmedAt`, "
+      + "`endAttempts`, `endLastError` as a short code) is retained with the row.",
   },
   {
     model: "CreditTopUp",
@@ -331,7 +333,9 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
   {
     model: "StripeEvent",
     disposition: "untouched",
-    reason: "Stripe webhook idempotency log (#2407): event ids and types with no payload and no column naming a person.",
+    reason:
+      "Stripe webhook idempotency log (#2407): event ids and types with no payload and no column naming a person. "
+      + "Pruned by the retention job 90 days after processing (#2430).",
   },
   {
     model: "GenerationJobOutcome",

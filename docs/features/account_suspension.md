@@ -80,6 +80,18 @@ Purchases, uploads, listings, pledges and posting stay blocked.
 - Plays already recorded before the suspension are not removed; this is a
   forward-looking rule.
 
+### Artist Pro billing (#2430)
+
+- **Suspension pauses collection** at Stripe (`pause_collection`, behavior
+  `void`, resuming at the suspension's end when it has one): invoices due
+  during a suspension are voided, so a suspended person is not charged.
+  Lifting it resumes collection. The audit record carries
+  `billingCollection: paused | resumed | deferred | none`.
+- **Closure cancels the subscription immediately**; the audit record carries
+  `subscription: canceled | pending | none`. A Stripe failure never blocks the
+  status change: the retention job retries it. See
+  [Artist Pro billing](artist_pro_billing.md#account-closure-erasure-and-suspension-2430).
+
 ### Known limits
 
 - The HTTP API only. A transaction the person signs directly with their own

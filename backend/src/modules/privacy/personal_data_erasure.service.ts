@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
   AccountClosureRequest,
   ManagementGrantStatus,
@@ -8,6 +8,11 @@ import {
 import { randomUUID } from "crypto";
 import { prisma } from "../../db/prisma";
 import { AnalyticsGovernanceService } from "../analytics/analytics_governance.service";
+import { BillingConfig } from "../billing/billing_config";
+import {
+  SubscriptionCancellationPendingError,
+  SubscriptionLifecycleService,
+} from "../billing/subscription_lifecycle.service";
 import {
   RELEASE_STATUS_WITHDRAWN,
   WITHDRAWABLE_RELEASE_STATUSES,
@@ -403,7 +408,15 @@ export class PersonalDataErasureService {
     private readonly resolver: PersonalDataResolverService,
     private readonly analyticsGovernance: AnalyticsGovernanceService,
     private readonly closures: AccountClosureService,
-  ) {}
+    // #2430. Without one (a test or script that does not pass it) there is no
+    // Stripe gateway, so an account with a live subscription is never erased:
+    // the cancellation cannot be confirmed and the request stays pending.
+    @Optional() billing?: SubscriptionLifecycleService,
+  ) {
+    this.billing = billing ?? new SubscriptionLifecycleService(new BillingConfig({}), null);
+  }
+
+  private readonly billing: SubscriptionLifecycleService;
 
   /**
    * Erase one person, in the order the file header explains.
@@ -426,6 +439,12 @@ export class PersonalDataErasureService {
       // completion never got written must find a no-op here, not a throw.
       return alreadyErasedSummary(account.id, account.erasedAt);
     }
+
+    // 0. A live Stripe subscription is cancelled first, and nothing below runs
+    //    until Stripe confirms it (#2430): an erased account must never keep
+    //    being charged. A failure throws `SubscriptionCancellationPendingError`,
+    //    which leaves the closure pending for the next scheduled run.
+    await this.billing.endForAccount(userId, "account_erasure");
 
     // 1. Every identifier, captured before anything changes. `oldUserId` is the
     //    value the analytics store and the dangling columns hold, and after the
@@ -538,7 +557,7 @@ export class PersonalDataErasureService {
       // a failure survives the process that logged it and is readable from the
       // database rather than only from a log search.
       try {
-        if (error instanceof RetryableAnalyticsErasureError) {
+        if (error instanceof RetryableAnalyticsErasureError || error instanceof SubscriptionCancellationPendingError) {
           await this.closures.recordAttemptFailure(request.id, message);
         } else {
           await this.closures.markFailed(request.id, message);

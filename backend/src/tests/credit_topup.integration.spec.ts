@@ -67,6 +67,9 @@ const gateway = {
     throw new Error("not used");
   }),
   constructEvent: jest.fn(),
+  cancelSubscription: jest.fn(),
+  updateSubscription: jest.fn(),
+  updateCustomerEmail: jest.fn(),
 } satisfies StripeGateway;
 
 const topUps = new CreditTopUpService(config, consents, notices, gateway, packs);

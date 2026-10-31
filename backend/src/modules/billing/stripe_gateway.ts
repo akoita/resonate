@@ -35,6 +35,22 @@ export interface StripeGateway {
   ): Promise<{ id: string; url: string | null }>;
   createPortalSession(params: { customer: string; return_url: string }): Promise<{ url: string }>;
   retrieveSubscription(id: string): Promise<StripeSubscription>;
+  /**
+   * Cancel now, with no proration credit and no final invoice (#2430). Only
+   * called for a subscription that is not already canceled.
+   */
+  cancelSubscription(id: string, idempotencyKey: string): Promise<StripeSubscription>;
+  /**
+   * Pause or resume collection, or set `cancel_at_period_end` (#2430). Setting
+   * a state is idempotent, so no idempotency key: a reused key would replay an
+   * earlier, opposite answer.
+   */
+  updateSubscription(
+    id: string,
+    params: Pick<Stripe.SubscriptionUpdateParams, "pause_collection" | "cancel_at_period_end">,
+  ): Promise<StripeSubscription>;
+  /** Update the customer's billing email (#2430). */
+  updateCustomerEmail(id: string, email: string): Promise<void>;
   /** Verifies the `Stripe-Signature` header over the raw body; throws when it does not match. */
   constructEvent(rawBody: Buffer, signature: string, secret: string): StripeEvent;
 }
@@ -63,6 +79,15 @@ export function createStripeGateway(config: BillingConfig): StripeGateway | null
     },
     retrieveSubscription(id) {
       return stripe.subscriptions.retrieve(id);
+    },
+    cancelSubscription(id, idempotencyKey) {
+      return stripe.subscriptions.cancel(id, { prorate: false, invoice_now: false }, { idempotencyKey });
+    },
+    updateSubscription(id, params) {
+      return stripe.subscriptions.update(id, params);
+    },
+    async updateCustomerEmail(id, email) {
+      await stripe.customers.update(id, { email });
     },
     constructEvent(rawBody, signature, secret) {
       return stripe.webhooks.constructEvent(rawBody, signature, secret);

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AnalyticsModule } from "../analytics/analytics.module";
+import { BillingCoreModule } from "../billing/billing_core.module";
 import { IdentityModule } from "../identity/identity.module";
 import { AccountClosureService } from "./account_closure.service";
 import { AccountClosureStepUpService } from "./account_closure_step_up.service";
@@ -20,7 +21,9 @@ import { PrivacyController } from "./privacy.controller";
  * it rather than reimplementing any of it.
  */
 @Module({
-  imports: [IdentityModule, AnalyticsModule],
+  // BillingCoreModule (#2430): erasure cancels a live Stripe subscription first,
+  // and a closure request stops its renewals.
+  imports: [IdentityModule, AnalyticsModule, BillingCoreModule],
   controllers: [PrivacyController],
   providers: [
     PersonalDataExportService,

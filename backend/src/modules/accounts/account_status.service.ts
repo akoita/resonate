@@ -4,11 +4,17 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { AccountStatus, AccountStatusReason } from "@prisma/client";
 import { parseEnvList } from "../../config/env";
 import { prisma } from "../../db/prisma";
 import { AuditService } from "../audit/audit.service";
+import { writeStructuredLog } from "../shared/structured_logging";
+import {
+  SubscriptionCancellationPendingError,
+  SubscriptionLifecycleService,
+} from "../billing/subscription_lifecycle.service";
 import { NoticeService } from "../notifications/notice.service";
 import { AccountClosureService } from "../privacy/account_closure.service";
 import { AccountStandingService, EffectiveAccountStatus } from "./account_standing.service";
@@ -80,6 +86,9 @@ export class AccountStatusService {
     private readonly notices: NoticeService,
     private readonly closures: AccountClosureService,
     private readonly standing: AccountStandingService,
+    // #2430: suspension pauses Stripe collection, lifting it resumes, and a
+    // closure cancels the subscription. Absent in tests that do not bill.
+    @Optional() private readonly billing: SubscriptionLifecycleService | null = null,
   ) {}
 
   // ============ Enforcement read ============
@@ -178,10 +187,12 @@ export class AccountStatusService {
       },
     });
     this.invalidate(userId);
+    const billingCollection = await this.billingStep(() => this.billing?.pauseForSuspension(userId, until));
 
     await this.record(actor, userId, "account.suspended", reason, changedAt, {
       until: until?.toISOString() ?? null,
       note,
+      billingCollection,
     });
     await this.tell(userId, changedAt, {
       title: "Your account has been suspended",
@@ -217,8 +228,9 @@ export class AccountStatusService {
       },
     });
     this.invalidate(userId);
+    const billingCollection = await this.billingStep(() => this.billing?.resumeAfterSuspension(userId));
 
-    await this.record(actor, userId, "account.unsuspended", null, changedAt, { note });
+    await this.record(actor, userId, "account.unsuspended", null, changedAt, { note, billingCollection });
     await this.tell(userId, changedAt, {
       title: "Your account is active again",
       body: "The suspension on your account has been lifted. You can use Resonate normally again.",
@@ -262,10 +274,16 @@ export class AccountStatusService {
       ? await this.closures.request(userId, `operator closure: ${reason}`)
       : null;
 
+    // #2430: a closed account cannot use Pro, so its subscription is cancelled
+    // now. A Stripe failure does not undo the closure: the request is recorded
+    // on the subscription row and the retention job retries it.
+    const subscription = await this.billingStep(() => this.billing?.endForAccount(userId, "account_closure"));
+
     await this.record(actor, userId, "account.closed", reason, changedAt, {
       note,
       scheduleErasure,
       erasureDueAt: closure?.dueAt.toISOString() ?? null,
+      subscription,
     });
     await this.tell(userId, changedAt, {
       title: "Your account has been closed",
@@ -284,6 +302,22 @@ export class AccountStatusService {
   }
 
   // ============ Internals ============
+
+  /** The billing outcome recorded in the audit trail; a Stripe failure is "pending", retried later. */
+  private async billingStep(step: () => Promise<string> | undefined): Promise<string> {
+    try {
+      return (await step()) ?? "none";
+    } catch (error) {
+      if (error instanceof SubscriptionCancellationPendingError) return "pending";
+      writeStructuredLog({
+        level: "error",
+        event: "billing.account_status_step_failed",
+        message: "Could not apply an account status change to the subscription; the retention job retries it",
+        error: error instanceof Error ? error.name : "error",
+      });
+      return "pending";
+    }
+  }
 
   /** Stored status straight from the database: transitions must not use a cached read. */
   private async currentStatus(userId: string): Promise<AccountStatus> {

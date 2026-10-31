@@ -20,6 +20,13 @@ describe("scheduled retention runner", () => {
     it("treats any unrecognised status as a failure, not a success", () => {
       expect(exitCodeFor({ status: "something_new" })).toBe(1);
     });
+
+    // #2430: a cancellation, pause or email push Stripe has not confirmed is
+    // retried next run, but the run must not look clean while one is owed.
+    it("fails when a billing lifecycle step did not complete", () => {
+      expect(exitCodeFor({ status: "ok", billing: { failed: 0 } })).toBe(0);
+      expect(exitCodeFor({ status: "ok", billing: { failed: 2 } })).toBe(1);
+    });
   });
 
   describe("scheduled run log", () => {

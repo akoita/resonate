@@ -1,5 +1,10 @@
 import "dotenv/config";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
+import { type BillingRetentionResult, runBillingRetention } from "../modules/billing/billing_retention";
+import {
+  STRIPE_EVENT_RETENTION_DAYS,
+  createSubscriptionLifecycleFromEnv,
+} from "../modules/billing/subscription_lifecycle.service";
 import { writeStructuredLog } from "../modules/shared/structured_logging";
 import { prisma } from "../db/prisma";
 
@@ -38,6 +43,17 @@ import { prisma } from "../db/prisma";
  * governance action the system will take, and `--dry-run` exists to size it
  * before committing to it.
  *
+ * ## Billing (#2430)
+ *
+ * The same run prunes `StripeEvent` rows processed more than 90 days ago and
+ * retries the billing lifecycle steps Stripe has not confirmed (cancelling the
+ * subscription of a closed or erased account, pausing collection for a
+ * suspension and resuming it, stopping renewals during a closure window,
+ * pushing a changed billing email). Those retries need the Stripe settings
+ * (`STRIPE_SECRET_KEY` and the rest of `BillingConfig`) in the job's
+ * environment; without them pruning still runs and any step that needs Stripe
+ * is counted as failed, so the exit code says so.
+ *
  * Usage: `node dist/scripts/run_retention_cleanup.js [--dry-run]`
  */
 export function isDryRun(argv: string[]): boolean {
@@ -49,8 +65,8 @@ export function isDryRun(argv: string[]): boolean {
  * because the mapping is the contract with the scheduler, and because getting
  * it backwards is how a governance job goes years without anyone noticing.
  */
-export function exitCodeFor(result: { status: string }): 0 | 1 {
-  return result.status === "ok" ? 0 : 1;
+export function exitCodeFor(result: { status: string; billing?: { failed: number } | null }): 0 | 1 {
+  return result.status === "ok" && (result.billing?.failed ?? 0) === 0 ? 0 : 1;
 }
 
 /**
@@ -82,7 +98,11 @@ export async function previewRetention(governance = new AnalyticsGovernanceServi
     });
   }
 
-  return { ranAt: now.toISOString(), policy, tiers: expired };
+  const stripeEventsExpired = await prisma.stripeEvent.count({
+    where: { processedAt: { lt: new Date(now.getTime() - STRIPE_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000) } },
+  });
+
+  return { ranAt: now.toISOString(), policy, tiers: expired, stripeEventsExpired };
 }
 
 type RetentionRunResult = Awaited<ReturnType<AnalyticsGovernanceService["runRetentionCleanup"]>>;
@@ -107,6 +127,15 @@ export function scheduledRunLogFields(result: RetentionRunResult) {
   };
 }
 
+/** Counts only: never a subscription, a customer or an address. */
+export function scheduledBillingLogFields(billing: BillingRetentionResult) {
+  return {
+    stripeEventsPruned: billing.stripeEventsPruned,
+    failed: billing.failed,
+    ...(billing.reconciled ?? {}),
+  };
+}
+
 export async function runRetentionCleanupScript(argv: string[] = process.argv.slice(2)) {
   try {
     const governance = new AnalyticsGovernanceService();
@@ -122,15 +151,20 @@ export async function runRetentionCleanupScript(argv: string[] = process.argv.sl
       return { status: "ok" as const, dryRun: true, preview };
     }
 
-    const result = await governance.runRetentionCleanup();
+    const analytics = await governance.runRetentionCleanup();
+    const billing = await runBillingRetention(createSubscriptionLifecycleFromEnv());
+    const result = { ...analytics, billing };
 
     writeStructuredLog({
-      level: result.status === "ok" ? "info" : "error",
+      level: exitCodeFor(result) === 0 ? "info" : "error",
       event: "analytics.retention.scheduled_run",
       message:
-        result.status === "ok"
-          ? `Retention run completed: ${result.deleted} deleted, ${result.redacted} redacted`
-          : `Retention run cleared Postgres but the warehouse did not complete`,
+        result.status !== "ok"
+          ? `Retention run cleared Postgres but the warehouse did not complete`
+          : billing.failed > 0
+            ? `Retention run completed, but ${billing.failed} billing step(s) did not; the next run retries them`
+            : `Retention run completed: ${result.deleted} deleted, ${result.redacted} redacted`,
+      billing: scheduledBillingLogFields(billing),
       ...scheduledRunLogFields(result),
     });
 

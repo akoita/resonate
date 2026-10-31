@@ -29,7 +29,8 @@ What remains:
 | The Stripe account, prices, Stripe Tax, webhook endpoint and secrets | The deployment half, in the private infrastructure repository |
 | Refunding money on withdrawal, less the allowance used | Needs live charging; the "allowance spent this period" value is ready (`GenerationAllowanceService.spentThisBillingPeriodCents`, #2408) |
 | Pro gates on | [#2409](https://github.com/akoita/resonate/issues/2409) |
-| Cancelling a live Stripe subscription when an account is closed or erased | Follow-up: erasure keeps the billing record but does not cancel at Stripe |
+| Stripe settings on the scheduled erasure and retention jobs, so they can cancel, pause and resume at Stripe (#2430) | The deployment half, in the private infrastructure repository (with the Stripe keys) |
+| Legal review of the closure, erasure and suspension wording (#2430) | `docs/legal/refund-policy.md`, question 6, before live charging |
 | Credit pack prices in Stripe (`STRIPE_PRICE_CREDITS_5/10/25`) | The deployment half, in the private infrastructure repository |
 | Auto-reload and USDC top-up of credits | [#2410](https://github.com/akoita/resonate/issues/2410) |
 | Legal review of the credit refund policy and the delivery wording for credits | RFC §8, before live charging |
@@ -72,7 +73,11 @@ version is pinned there (`2026-09-30.endive`).
   `interval` `month | year`, `status` (Stripe's statuses, including `paused`),
   the current period, `cancelAtPeriodEnd`, `pastDueSince` and
   `lastEventCreatedAt`. Created at checkout with status `incomplete`.
-- `StripeEvent`: webhook idempotency (event id, type, received, processed).
+- `StripeEvent`: webhook idempotency (event id, type, received, processed),
+  pruned 90 days after processing (#2430).
+- `Subscription` lifecycle columns (#2430): `endReason`, `endRequestedAt`,
+  `endConfirmedAt`, `endAttempts`, `endLastError`, `collectionPausedAt`,
+  `closureRequestId`, `billingEmailStale`.
 
 Both are classified in the personal-data manifests: `Subscription` is exported
 and retained on erasure as a billing record kept for accounting; `StripeEvent`
@@ -105,6 +110,52 @@ Checkout, in order:
    (`/settings?section=usage&billing=success|cancel`) and the consent id in
    the session and subscription metadata. Stripe Tax is added when
    `STRIPE_AUTOMATIC_TAX=true`. The consent is linked to the session id.
+
+### Account closure, erasure and suspension (#2430)
+
+`SubscriptionLifecycleService` (`subscription_lifecycle.service.ts`, provided
+with the config and gateway by `BillingCoreModule`) is what the account
+lifecycle does at Stripe. Defaults (sprint 45, for owner and legal review):
+
+| Account event | At Stripe | When it fails |
+| --- | --- | --- |
+| Erasure (the due-erasure run, `eraseAccount`) | Cancelled **immediately** (`prorate: false`, no final invoice), before anything is erased. The erasure does not run until Stripe answers with a canceled subscription | `SubscriptionCancellationPendingError`: the closure request stays `pending` with the reason, and the next due-erasure run retries |
+| Operator closure (`POST /admin/accounts/:id/close`) | Cancelled immediately; the audit record carries `subscription: canceled \| pending \| none` | The closure still applies; the retention job retries the cancellation |
+| Self-service closure request (`POST /privacy/account/closure`) | `cancel_at_period_end`, so no renewal is charged during the 30-day window. Signing in to cancel the closure does not undo it: the person renews in the Customer Portal | The retention job retries |
+| Suspension (`POST /admin/accounts/:id/suspend`) | `pause_collection` with behavior `void` and `resumes_at` = the suspension's end when set; audit `billingCollection` | The retention job retries |
+| Suspension lifted (or past its end) | `pause_collection` cleared | The retention job retries |
+| Contact address confirmed (#2169) | The Stripe customer email is updated | `billingEmailStale` stays set; the retention job retries |
+
+No extra pro-rata refund is made on cancellation; the refund policy
+(`docs/legal/refund-policy.md`) says what a person gets back. Cancellation is
+idempotent: a subscription already ended (or one Stripe no longer has) is
+recorded as ended without a second cancel call, and the cancel call carries
+the idempotency key `resonate-cancel-<subscription id>`. Every request is
+audited on the row: `endReason` (`account_erasure | account_closure`),
+`endRequestedAt`, `endConfirmedAt`, `endAttempts` and `endLastError` (a Stripe
+error code, never a message). Logs carry the row id, the reason and the code.
+A canceled row is final, so a late webhook never reopens it.
+
+Without a Stripe gateway (billing not configured), an account with a live
+subscription is never erased: the erasure stays pending. The scheduled jobs
+(`run_due_erasures`, `run_retention_cleanup`) build the real gateway from the
+same `BillingConfig` environment as the API.
+
+**The retention job** (`POST /admin/retention/cleanup` and
+`run_retention_cleanup`) runs `runBillingRetention` (`billing_retention.ts`)
+after analytics retention:
+
+- deletes `StripeEvent` rows processed more than 90 days ago (5,000 per run;
+  unprocessed rows are kept as evidence of a failed delivery);
+- `reconcile()`: cancels the live subscription of every erased or closed
+  account and every requested cancellation not yet confirmed; pauses
+  suspended accounts still collecting; resumes reinstated ones still paused;
+  stops renewal for pending closures; pushes stale billing emails (100 rows
+  per step per run).
+
+The result is under `billing` (`stripeEventsPruned`, the reconcile counts,
+`failed`). The scheduled job exits `1` when any billing step failed, so a
+cancellation still owed is never a clean run.
 
 ### The subscription consent
 

@@ -167,6 +167,29 @@ will say what happens to unused balances before the change takes effect —
 subject to the same missing notice workflow the terms of service records in
 section 11.
 
+## Artist Pro subscription: closing, erasing or suspending an account
+
+> **Wording for legal review before production** ([#2430](https://github.com/akoita/resonate/issues/2430)).
+> The rules below are what the system does; the wording has not been reviewed
+> by anyone qualified in the operator's jurisdiction.
+
+- **You ask to close your account.** Renewal stops straight away, so you are
+  not charged again while the 30-day closure window runs. Your plan stays on
+  until the end of the period you already paid for. Cancelling the closure
+  (by signing in) does not turn renewal back on; you can do that yourself from
+  Manage billing.
+- **Your account is erased, or closed by us.** Your subscription is cancelled
+  immediately, before any of your data is erased. We do not refund the rest of
+  the current period beyond what this policy already gives you (for example,
+  withdrawing within 14 days of subscribing). Your data is not erased until
+  the payment provider has confirmed the cancellation; until then we keep
+  trying.
+- **Your account is suspended.** We stop charging you while the suspension
+  lasts: invoices that fall due during a suspension are voided, not collected
+  later. Billing starts again when the suspension ends.
+- **Your billing email.** When you confirm a new contact email, it becomes the
+  email on your receipts.
+
 ## What we cannot reverse
 
 A transaction confirmed on a blockchain is final. Where a refund is possible it
@@ -224,7 +247,18 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
    #1595 still carries "support channel for real users" as an open box. A
    published response window with nobody staffing the inbox is a commitment
    that fails quietly.
-6. **Gas costs.** Refunds are claimed by the backer (`claimRefund` on
+6. **Artist Pro on closure, erasure and suspension**
+   ([#2430](https://github.com/akoita/resonate/issues/2430)). Defaults chosen
+   for review: (a) erasure and operator closure cancel at once with no
+   proration credit beyond this policy, on the reasoning that a closed account
+   cannot use the rest of the period; is a pro-rata refund owed in the
+   operator's jurisdiction, in particular when the operator closed the account;
+   (b) a self-service closure request stops renewal at once and leaves the paid
+   period running; (c) suspension voids the invoices that fall due while it
+   lasts, so a suspended person is not charged and is not back-billed; confirm
+   that is acceptable, and whether a suspension for fraud should be treated
+   differently.
+7. **Gas costs.** Refunds are claimed by the backer (`claimRefund` on
    `ShowCampaignEscrow`), so the backer initiates the transaction. Sponsorship
    is conditional: the paymaster only sponsors when one is configured and only
    up to a per-user limit (`AA_SPONSOR_MAX_USD`, default 5). The draft

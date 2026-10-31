@@ -234,12 +234,20 @@ contract; the records are kept for accounting and tax obligations.
 The model has a `User` relation on `userId` (cascade on update and delete).
 Export: the whole row. Erasure: `retain`, as a billing record kept for as long
 as accounting requires; the person is named only through `userId`, which
-rotates. Erasure does not cancel a live Stripe subscription; cancelling it on
-account closure is a tracked follow-up.
+rotates. Before anything is erased, a live Stripe subscription is cancelled
+immediately and the erasure waits for Stripe to confirm it (#2430); the
+cancellation record (`endReason`, `endRequestedAt`, `endConfirmedAt`,
+`endAttempts`, `endLastError` as a short code) stays on the row. The row also
+holds `collectionPausedAt` (collection paused during a suspension),
+`closureRequestId` (the closure request whose renewal was stopped) and
+`billingEmailStale` (a newly confirmed contact address not yet sent to Stripe).
+None of these hold free text.
 
 `StripeEvent` is the webhook idempotency log: event id, type, received and
 processed times. It stores no payload and names nobody (`untouched`, not
-exported). Webhook logs carry the event id and type only.
+exported). Webhook logs carry the event id and type only. The retention job
+deletes rows processed more than 90 days ago (#2430); rows never processed are
+kept as evidence of a failed delivery.
 
 The subscription start consent is a `PurchaseConsent` row with surface
 `subscription` (see "Immediate-delivery consent" below).

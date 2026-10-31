@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { AnalyticsGovernanceService } from "../analytics/analytics_governance.service";
 import { AnalyticsPipelineObservabilityService } from "../analytics/analytics_observability.service";
@@ -10,6 +10,8 @@ import {
 import { CommunityCohortQualityService } from "../community/community_cohort_quality.service";
 import { CommunityRoomsService } from "../community/community_rooms.service";
 import { PersonalDataErasureService } from "../privacy/personal_data_erasure.service";
+import { runBillingRetention } from "../billing/billing_retention";
+import { SubscriptionLifecycleService } from "../billing/subscription_lifecycle.service";
 
 const prisma = new PrismaClient();
 
@@ -25,10 +27,13 @@ export class MaintenanceService {
     private readonly communityCohortQualityService: CommunityCohortQualityService,
     private readonly communityRoomsService: CommunityRoomsService,
     private readonly personalDataErasureService: PersonalDataErasureService,
+    @Optional() private readonly billingLifecycle: SubscriptionLifecycleService | null = null,
   ) {}
 
   async runRetentionCleanup() {
     const analytics = await this.analyticsGovernanceService.runRetentionCleanup();
+    // #2430: StripeEvent pruning and the billing lifecycle retries.
+    const billing = await runBillingRetention(this.billingLifecycle);
     return {
       // Carried from the governance run, not hardcoded. Retention reaches the
       // warehouse as of #1789, and a run that cleared Postgres while BigQuery
@@ -44,6 +49,7 @@ export class MaintenanceService {
       redacted: {
         analytics: analytics.redacted,
       },
+      billing,
       lineageRecords: {
         analytics: analytics.lineageRecords,
       },
