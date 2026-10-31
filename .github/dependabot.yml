@@ -63,7 +63,15 @@ updates:
     patterns: ["*"]
     multi-ecosystem-group: monthly-routine-updates
 
+  # contracts/scripts/install-deps.sh builds exactly the commit each gitlink
+  # records, so a submodule bump here is what CI builds and tests.
+  # account-abstraction is held on v0.7.0 while the application profile targets
+  # EntryPoint v0.7 (install-deps.sh also refuses any other commit); Dependabot
+  # submodule updates follow the default branch, so the submodule is ignored
+  # outright rather than by version.
   - package-ecosystem: gitsubmodule
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: monthly-routine-updates
+    ignore:
+      - dependency-name: contracts/lib/account-abstraction

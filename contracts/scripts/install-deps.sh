@@ -5,16 +5,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACTS_DIR="$(dirname "$SCRIPT_DIR")"
 
-KERNEL_REPO_URL="https://github.com/zerodevapp/kernel"
 KERNEL_V4_AA_COMMIT="86fcd84cf7263fe384d61d078ee747b16e69a496"
+# The application profile targets EntryPoint v0.7. This literal is a guard, not
+# a pin: the lib/account-abstraction gitlink must equal it, so a gitlink moved
+# off v0.7 (for example by a Dependabot submodule bump) fails here instead of
+# silently building a different EntryPoint.
 ACCOUNT_ABSTRACTION_V07_COMMIT="7af70c8993a6f42973f520ae0752386a5032abe7"
 
 cd "$CONTRACTS_DIR"
 
-# The root repository gitlink is the single source of truth for the Kernel
-# pins (Kernel v4 in lib/kernel, Kernel v3.1 in lib/kernel-v3), so this script
-# and `git submodule update --init --checkout` can never disagree. Bump a pin
-# with `git -C contracts/lib/<dep> checkout <sha> && git add contracts/lib/<dep>`
+# The root repository gitlinks are the single source of truth for every pin in
+# lib/ (and .gitmodules for every repository URL), so this script, Dependabot's
+# submodule bumps and `git submodule update --init --checkout` can never
+# disagree: what a gitlink records is exactly what CI builds and tests. Bump a
+# pin with `git -C contracts/lib/<dep> checkout <sha> && git add contracts/lib/<dep>`
 # and update contracts/foundry.lock to match.
 gitlink_commit() {
   local path="$1"
@@ -27,13 +31,23 @@ gitlink_commit() {
   echo "$commit"
 }
 
-KERNEL_V4_COMMIT="$(gitlink_commit "lib/kernel")"
-KERNEL_V3_COMMIT="$(gitlink_commit "lib/kernel-v3")"
+gitmodules_url() {
+  local path="$1"
+  local url
+  url="$(git config --file ../.gitmodules --get "submodule.contracts/$path.url" || true)"
+  if [[ -z "$url" ]]; then
+    echo "Error: no url for contracts/$path in .gitmodules." >&2
+    return 1
+  fi
+  echo "$url"
+}
 
 install_pinned_dep() {
   local path="$1"
-  local repo_url="$2"
-  local expected_commit="$3"
+  local repo_url
+  local expected_commit
+  repo_url="$(gitmodules_url "$path")"
+  expected_commit="$(gitlink_commit "$path")"
   local absolute_path="$CONTRACTS_DIR/$path"
   local actual_root=""
   local actual_commit=""
@@ -86,30 +100,25 @@ install_kernel_v4_dependencies() {
 }
 
 # Installing exact SHAs avoids Foundry silently following a newer default branch
-# in clean runners. The Kernel pins above come from the root gitlinks; the
-# remaining pins are literal here.
-install_pinned_dep "lib/forge-std" \
-  "https://github.com/foundry-rs/forge-std" \
-  "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b"
-install_pinned_dep "lib/openzeppelin-contracts" \
-  "https://github.com/OpenZeppelin/openzeppelin-contracts" \
-  "fddac901ccdbdb06be90536822936ea765dd9218"
-install_pinned_dep "lib/openzeppelin-contracts-upgradeable" \
-  "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable" \
-  "d8c717774cfa3a0396dd3e94db58b7580218651e"
-install_pinned_dep "lib/kernel" "$KERNEL_REPO_URL" "$KERNEL_V4_COMMIT"
-install_pinned_dep "lib/kernel-v3" "$KERNEL_REPO_URL" "$KERNEL_V3_COMMIT"
-install_pinned_dep "lib/solady" \
-  "https://github.com/Vectorized/solady" \
-  "cedd7936a11807acd819c9f6acf48fdcefee3f73"
-install_pinned_dep "lib/ExcessivelySafeCall" \
-  "https://github.com/nomad-xyz/ExcessivelySafeCall" \
-  "81cd99ce3e69117d665d7601c330ea03b97acce0"
-install_pinned_dep "lib/account-abstraction" \
-  "https://github.com/eth-infinitism/account-abstraction" \
-  "$ACCOUNT_ABSTRACTION_V07_COMMIT"
-install_pinned_dep "lib/halmos-cheatcodes" \
-  "https://github.com/a16z/halmos-cheatcodes" \
-  "6da4e692c357ba6d641a2e677a28298cac9f76ab"
+# in clean runners. Every SHA comes from the root gitlink of the same path.
+AA_GITLINK_COMMIT="$(gitlink_commit "lib/account-abstraction")"
+if [[ "$AA_GITLINK_COMMIT" != "$ACCOUNT_ABSTRACTION_V07_COMMIT" ]]; then
+  echo "Error: lib/account-abstraction gitlink is $AA_GITLINK_COMMIT; the EntryPoint v0.7 profile requires $ACCOUNT_ABSTRACTION_V07_COMMIT (v0.7.0)." >&2
+  echo "Restore it with: git -C contracts/lib/account-abstraction checkout $ACCOUNT_ABSTRACTION_V07_COMMIT && git add contracts/lib/account-abstraction" >&2
+  exit 1
+fi
+
+for dep in \
+  lib/forge-std \
+  lib/openzeppelin-contracts \
+  lib/openzeppelin-contracts-upgradeable \
+  lib/kernel \
+  lib/kernel-v3 \
+  lib/solady \
+  lib/ExcessivelySafeCall \
+  lib/account-abstraction \
+  lib/halmos-cheatcodes; do
+  install_pinned_dep "$dep"
+done
 
 install_kernel_v4_dependencies

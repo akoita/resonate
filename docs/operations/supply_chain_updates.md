@@ -115,6 +115,23 @@ Build the affected worker image as well. Re-run platform-specific Python lock
 generation inside the new base whenever its Python, CUDA, Torch, OS, or ABI
 surface changed.
 
+## Contract submodules
+
+The root gitlinks under `contracts/lib/` are the single source of truth for
+every Foundry dependency pin, and `.gitmodules` for every repository URL.
+`contracts/scripts/install-deps.sh` reads both, so a Dependabot `gitsubmodule`
+bump is exactly the commit CI builds and tests. After `install-deps.sh`,
+`git status` must show no modified submodules.
+
+- `contracts/lib/account-abstraction` stays on v0.7.0 while the application
+  profile targets EntryPoint v0.7. Dependabot ignores that submodule, and
+  `install-deps.sh` fails if its gitlink names any other commit.
+- An OpenZeppelin bump (`openzeppelin-contracts` or
+  `openzeppelin-contracts-upgradeable`) runs the full contract test ladder and
+  `contracts/scripts/check-storage-layout.sh`: a storage-layout or behaviour
+  change in the upgradeable library affects the UUPS proxies.
+- Update `contracts/foundry.lock` together with any gitlink you move.
+
 ## npm lifecycle and Python lock changes
 
 - Use the hardened npm installer. A new `hasInstallScript` tuple fails until it

@@ -50,9 +50,13 @@ Run `git submodule update --init --checkout` at the repository root, then
 `git submodule update --init --recursive` skips `lib/kernel` and
 `lib/kernel-v3` (`update = none` in `.gitmodules`), so `forge build` fails
 without the install step. Never add `--skip` flags to hide a missing
-dependency. The `lib/kernel` and `lib/kernel-v3` gitlinks are the Kernel pin
-source of truth (`install-deps.sh` reads them); change a pin by updating the
-gitlink and `foundry.lock` together. See `contracts/README.md`.
+dependency. Every `lib/` gitlink is the pin source of truth (`install-deps.sh`
+reads each one, and its URL from `.gitmodules`); change a pin by updating the
+gitlink and `foundry.lock` together, and expect a clean `git status` after
+`install-deps.sh`. `lib/account-abstraction` must stay on v0.7.0 (EntryPoint
+v0.7); the script refuses any other commit. An OpenZeppelin move needs the full
+test ladder plus `scripts/check-storage-layout.sh`. See `contracts/README.md`
+and `docs/operations/supply_chain_updates.md`.
 
 ## Required Test Ladder
 
