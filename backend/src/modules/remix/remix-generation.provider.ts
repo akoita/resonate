@@ -471,6 +471,11 @@ export type RemixRenderMetadata = {
    */
   effectsProDspVersion?: string;
   /**
+   * The punch compressor mapping version (#1903 S6b); present only when a
+   * stem of the recipe has a punch.
+   */
+  effectsDynDspVersion?: string;
+  /**
    * Time-stretch stage (#1898) of a `remix-fx/v2` keepPitch / key-shift
    * render: the engine build and its tempo/semitones. Absent when no stretch
    * ran (no fx, varispeed only, or an identity stage).
@@ -513,6 +518,8 @@ export type RemixConditioningEffects = {
   effectsDspVersion: string;
   /** The Pro EQ/pan mapping version (#1903), when the recipe uses Pro. */
   effectsProDspVersion?: string;
+  /** The punch compressor mapping version (#1903 S6b), when used. */
+  effectsDynDspVersion?: string;
   /** The time-stretch stage of the conditioning mix (#1898), if any. */
   stretch?: RemixStretchMetadata;
 };

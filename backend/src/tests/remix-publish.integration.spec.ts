@@ -529,7 +529,7 @@ describe("Remix publish (integration)", () => {
       aiGenerated: false,
       sourceArrangement: [{ stemId: LICENSED_STEM_ID, gainDb: 0, muted: false }],
       // A v1 render recipe is recorded with its values, read as v3 (#1898, #1903).
-      effects: { ...effects, schemaVersion: "remix-fx/v3" },
+      effects: { ...effects, schemaVersion: "remix-fx/v4" },
       effectsDspVersion: "remix-fx-dsp/v1",
     });
     expect("stretch" in (track.generationMetadata as object)).toBe(false);
@@ -537,7 +537,7 @@ describe("Remix publish (integration)", () => {
 
   it("records the Pro EQ/pan mapping version in the publish lineage (#1903)", async () => {
     const effects = {
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       stems: { [LICENSED_STEM_ID]: { eqLow: 3, pan: -0.3 } },
     };
     const project = await createProjectRow({
@@ -569,7 +569,7 @@ describe("Remix publish (integration)", () => {
 
   it("records the time-stretch stage of a tempo/key render in the lineage (#1898)", async () => {
     const effects = {
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       master: { speed: 0.85, keepPitch: true, semitones: 2 },
     };
     const stretch = {
@@ -608,7 +608,7 @@ describe("Remix publish (integration)", () => {
 
   it("records the conditioning mix's stretch and drops a malformed one (#1898)", async () => {
     const effects = {
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       master: { semitones: -3 },
     };
     const stretch = {
@@ -690,7 +690,7 @@ describe("Remix publish (integration)", () => {
       grounding: "audio_conditioned",
       aiGenerated: true,
       conditioningEffects: {
-        effects: { ...effects, schemaVersion: "remix-fx/v3" },
+        effects: { ...effects, schemaVersion: "remix-fx/v4" },
         effectsDspVersion: "remix-fx-dsp/v1",
       },
     });

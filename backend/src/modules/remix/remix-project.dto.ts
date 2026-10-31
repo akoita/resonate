@@ -92,7 +92,7 @@ export class UpdateRemixProjectDto {
   // Validated in full by the service; no decorators here.
   /** Persisted variation AI target (#1882). */
   aiTarget?: { kind: string; stemId?: string | null } | null;
-  /** Shared effects recipe remix-fx/v3 (#1897, #1903); Pro fields need `remix.pro`. */
+  /** Shared effects recipe remix-fx/v4 (#1897, #1903); Pro fields need `remix.pro`. */
   effects?: unknown;
   /** Structure blocks remix-structure/v1 (#1899). */
   structure?: unknown;

@@ -21,6 +21,7 @@ import {
   REMIX_FX_EQ_BANDS,
   REMIX_FX_PRO_DSP_VERSION,
   REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V3_SCHEMA_VERSION,
   remixFxProFieldsSet,
   remixFxUsesPro,
   stemEqStages,
@@ -74,8 +75,10 @@ function expectClose(actual: number, expected: number) {
 
 describe("remix-fx-pro-dsp/v1 parity fixture (#1903)", () => {
   it("pins the versions and the band definitions", () => {
-    expect(fixture.schemaVersion).toBe(REMIX_FX_SCHEMA_VERSION);
-    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v3");
+    // The fixture pins the v3 (S6a) EQ/pan mapping; v4 (#1903 S6b) only adds
+    // the punch field, so its numbers still hold.
+    expect(fixture.schemaVersion).toBe(REMIX_FX_V3_SCHEMA_VERSION);
+    expect(REMIX_FX_SCHEMA_VERSION).toBe("remix-fx/v4");
     expect(fixture.dspVersion).toBe(REMIX_FX_PRO_DSP_VERSION);
     expect(REMIX_FX_PRO_DSP_VERSION).toBe("remix-fx-pro-dsp/v1");
     // The v1 mapping is unchanged by v3.
@@ -122,7 +125,10 @@ describe("remix-fx-pro-dsp/v1 parity fixture (#1903)", () => {
     "normalize case $index",
     ({ input, output }) => {
       expect(normalizeRemixFxInput(input, ["a", "b"])).toEqual({
-        value: output,
+        value:
+          output === null
+            ? null
+            : { ...(output as object), schemaVersion: REMIX_FX_SCHEMA_VERSION },
       });
     },
   );
@@ -135,7 +141,7 @@ describe("normalizeRemixFxInput Pro fields (#1903)", () => {
     expect(
       normalizeRemixFxInput(
         {
-          schemaVersion: "remix-fx/v3",
+          schemaVersion: "remix-fx/v4",
           stems: {
             s1: { eqLow: -12, eqMid: 12, eqHigh: 2.74, pan: -1 },
             s2: { eqLow: 0.24, pan: 0.996 },
@@ -145,7 +151,7 @@ describe("normalizeRemixFxInput Pro fields (#1903)", () => {
       ),
     ).toEqual({
       value: {
-        schemaVersion: "remix-fx/v3",
+        schemaVersion: "remix-fx/v4",
         stems: {
           s1: { eqLow: -12, eqMid: 12, eqHigh: 2.5, pan: -1 },
           s2: { pan: 1 },
@@ -175,7 +181,7 @@ describe("normalizeRemixFxInput Pro fields (#1903)", () => {
       ),
     ).toEqual({
       value: {
-        schemaVersion: "remix-fx/v3",
+        schemaVersion: "remix-fx/v4",
         master: { speed: 0.9, semitones: -1 },
         stems: { s1: { echo: 0.3, eqMid: -3, pan: 0.25 } },
       },
@@ -189,9 +195,9 @@ describe("normalizeRemixFxInput Pro fields (#1903)", () => {
     ["NaN pan", { stems: { s1: { pan: Number.NaN } } }, /pan must be a finite number/],
     ["pan beyond left", { stems: { s1: { pan: -1.01 } } }, /pan must be between -1 and 1/],
     ["pan beyond right", { stems: { s1: { pan: 2 } } }, /pan must be between -1 and 1/],
-    ["an unknown stem field", { stems: { s1: { eq: 3 } } }, /allowed: space, echo, tone, eqLow, eqMid, eqHigh, pan/],
+    ["an unknown stem field", { stems: { s1: { eq: 3 } } }, /allowed: space, echo, tone, eqLow, eqMid, eqHigh, pan, punch/],
     ["a Pro field on the master", { master: { pan: 0.5 } }, /effects\.master\.pan/],
-    ["a future schema version", { schemaVersion: "remix-fx/v4" }, /schemaVersion must be "remix-fx\/v3", "remix-fx\/v2" or "remix-fx\/v1"/],
+    ["a future schema version", { schemaVersion: "remix-fx/v5" }, /schemaVersion must be "remix-fx\/v4", "remix-fx\/v3", "remix-fx\/v2" or "remix-fx\/v1"/],
   ])("rejects %s", (_label, input, message) => {
     const result = normalizeRemixFxInput(input, stems);
     expect("error" in result).toBe(true);
@@ -201,25 +207,25 @@ describe("normalizeRemixFxInput Pro fields (#1903)", () => {
   it("reads stored v1/v2/v3 rows tolerantly (bad Pro values read as null)", () => {
     expect(
       readStoredRemixFx({
-        schemaVersion: "remix-fx/v3",
+        schemaVersion: "remix-fx/v4",
         stems: { s1: { eqLow: 3, pan: -0.3 } },
       }),
     ).toEqual({
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       stems: { s1: { eqLow: 3, pan: -0.3 } },
     });
     expect(
       readStoredRemixFx({ schemaVersion: "remix-fx/v2", stems: { s1: { echo: 0.2 } } }),
-    ).toEqual({ schemaVersion: "remix-fx/v3", stems: { s1: { echo: 0.2 } } });
+    ).toEqual({ schemaVersion: "remix-fx/v4", stems: { s1: { echo: 0.2 } } });
     expect(
-      readStoredRemixFx({ schemaVersion: "remix-fx/v3", stems: { s1: { pan: 4 } } }),
+      readStoredRemixFx({ schemaVersion: "remix-fx/v4", stems: { s1: { pan: 4 } } }),
     ).toBeNull();
   });
 });
 
 describe("Pro field helpers (#1903)", () => {
   const recipe = (stems: RemixFxRecipe["stems"]): RemixFxRecipe => ({
-    schemaVersion: "remix-fx/v3",
+    schemaVersion: "remix-fx/v4",
     stems,
   });
 
@@ -324,7 +330,7 @@ describe("render: Pro filter strings (#1903)", () => {
       "/tmp/mix.mp3",
       {
         effects: {
-          schemaVersion: "remix-fx/v3",
+          schemaVersion: "remix-fx/v4",
           master: { speed: 0.85 },
           stems: {
             a: { eqLow: 3, eqMid: -2, eqHigh: 1.5, pan: -0.3, tone: 0.5, echo: 0.5 },
@@ -359,7 +365,7 @@ describe("render: Pro filter strings (#1903)", () => {
 
   it("never gives Pro stages to AI layers, the beat or AI parts", () => {
     const effects: RemixFxRecipe = {
-      schemaVersion: "remix-fx/v3",
+      schemaVersion: "remix-fx/v4",
       stems: { a: { eqLow: 6, pan: 0.4 } },
     };
     const inputs: StemMixFfmpegInput[] = [
@@ -391,7 +397,7 @@ describe("render: Pro filter strings (#1903)", () => {
     const asV3 = normalizeRemixFxInput(
       {
         ...classic,
-        schemaVersion: "remix-fx/v3",
+        schemaVersion: "remix-fx/v4",
         stems: {
           a: { echo: 0.4, tone: 0.3, eqLow: 0, pan: 0 },
           b: { eqMid: 0.2, pan: -0.004 },

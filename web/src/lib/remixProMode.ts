@@ -1,6 +1,6 @@
 /**
  * Remix Studio Pro switch (#1903 S6a): whether THIS device shows the
- * engineer tools (per-stem EQ and pan). A view preference only — it never
+ * engineer tools (per-stem EQ, pan and punch). A view preference only — it never
  * changes the remix, and saved Pro settings keep playing and rendering with
  * the switch off. Off by default; remembered in localStorage, and every
  * storage access fails silently. Whether the switch is offered at all comes
@@ -12,10 +12,10 @@ import type { RemixProject } from "./api";
 export const PRO_MODE_STORAGE_KEY = "resonate.remixStudio.proMode";
 
 /** The switch's tooltip. */
-export const PRO_MODE_TOOLTIP = "Show engineer tools: per-stem EQ and pan";
+export const PRO_MODE_TOOLTIP = "Show engineer tools: per-stem EQ, pan and punch";
 
 /** The lane badge shown for saved Pro settings while the switch is off. */
-export const PRO_BADGE_LABEL = "Pro EQ/pan active — turn on Pro to edit";
+export const PRO_BADGE_LABEL = "Pro EQ/pan/punch active — turn on Pro to edit";
 
 type ProStorage = Pick<Storage, "getItem" | "setItem">;
 

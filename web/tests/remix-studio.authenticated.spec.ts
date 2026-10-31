@@ -493,7 +493,7 @@ test.describe("Remix Studio session view (#1879)", () => {
           patches.some((patch) => {
             const effects = effectsOf(patch);
             return (
-              effects?.schemaVersion === "remix-fx/v3" &&
+              effects?.schemaVersion === "remix-fx/v4" &&
               effects.master?.keepPitch === true &&
               effects.master?.semitones === 2
             );
@@ -566,7 +566,7 @@ test.describe("Remix Studio session view (#1879)", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("pro mode: per-stem EQ and pan autosave a remix-fx/v3 recipe; a badge shows them with Pro off (#1903)", async ({
+  test("pro mode: per-stem EQ, pan and punch autosave a remix-fx/v4 recipe; a badge shows them with Pro off (#1903)", async ({
     authenticatedPage: page,
   }) => {
     const { patches } = await mockRemixApi(page);
@@ -575,7 +575,7 @@ test.describe("Remix Studio session view (#1879)", () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`/remix/studio/${PROJECT_ID}`);
     await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
-    const badge = page.getByTitle("Pro EQ/pan active — turn on Pro to edit");
+    const badge = page.getByTitle("Pro EQ/pan/punch active — turn on Pro to edit");
     await expect(badge).toHaveCount(0);
 
     // The Pro switch is off by default and offered by the server.
@@ -590,10 +590,13 @@ test.describe("Remix Studio session view (#1879)", () => {
     await expect(strip).toBeVisible();
     const low = strip.getByRole("slider", { name: "Bass EQ Low 200 Hz" });
     const pan = strip.getByRole("slider", { name: "Bass pan" });
+    const punch = strip.getByRole("slider", { name: "Bass punch compressor" });
     await low.fill("3");
     await pan.fill("-0.3");
+    await punch.fill("0.4");
     await expect(low).toHaveAttribute("aria-valuetext", "+3 dB");
     await expect(pan).toHaveAttribute("aria-valuetext", "L 30");
+    await expect(punch).toHaveAttribute("aria-valuetext", "40%");
     await expect
       .poll(
         () =>
@@ -601,14 +604,15 @@ test.describe("Remix Studio session view (#1879)", () => {
             const effects = patch.effects as
               | {
                   schemaVersion?: string;
-                  stems?: Record<string, { eqLow?: number; pan?: number }>;
+                  stems?: Record<string, { eqLow?: number; pan?: number; punch?: number }>;
                 }
               | null
               | undefined;
             return (
-              effects?.schemaVersion === "remix-fx/v3" &&
+              effects?.schemaVersion === "remix-fx/v4" &&
               effects.stems?.["stem-bass"]?.eqLow === 3 &&
-              effects.stems?.["stem-bass"]?.pan === -0.3
+              effects.stems?.["stem-bass"]?.pan === -0.3 &&
+              effects.stems?.["stem-bass"]?.punch === 0.4
             );
           }),
         { timeout: 10_000 },

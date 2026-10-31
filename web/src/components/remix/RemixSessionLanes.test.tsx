@@ -361,7 +361,7 @@ describe("Pro channel strip and badge (#1903)", () => {
       stems: [stem({ name: "Bass", pro: { eqLow: 3, eqMid: 0, eqHigh: 0, pan: -0.3 } })],
     });
     expect(off).toContain("remix-lane-pro-badge");
-    expect(off).toContain('title="Pro EQ/pan active — turn on Pro to edit"');
+    expect(off).toContain('title="Pro EQ/pan/punch active — turn on Pro to edit"');
     // The FX dot stays about the FX row's own effects.
     expect(off).not.toContain("remix-lane-fx-dot");
 
@@ -383,7 +383,7 @@ describe("Pro channel strip and badge (#1903)", () => {
     const withPro = renderToStaticMarkup(
       <LaneFxRow
         id="fx-row"
-        stem={{ stemId: "stem-bass", name: "Bass", pro: { eqLow: 3, eqMid: -4.5, pan: -0.3 } }}
+        stem={{ stemId: "stem-bass", name: "Bass", pro: { eqLow: 3, eqMid: -4.5, pan: -0.3, punch: 0.4 } }}
         disabled={false}
         onFxChange={noop}
         onProChange={noop}
@@ -398,9 +398,12 @@ describe("Pro channel strip and badge (#1903)", () => {
     expect(withPro).toContain('aria-valuetext="\u22124.5 dB"');
     expect(withPro).toContain('aria-valuetext="0 dB"');
     expect(withPro).toContain('aria-valuetext="L 30"');
+    expect(withPro).toContain('aria-label="Bass punch compressor"');
+    expect(withPro).toContain('aria-valuetext="40%"');
+    expect(withPro).toMatch(/min="0" max="1" step="0.01"/);
     expect(withPro).toMatch(/min="-12" max="12" step="0.5"/);
     expect(withPro).toMatch(/min="-1" max="1" step="0.01"/);
-    expect(countMatches(withPro, /type="range"/g)).toBe(3 + 4);
+    expect(countMatches(withPro, /type="range"/g)).toBe(3 + 5);
 
     const withoutPro = renderToStaticMarkup(
       <LaneFxRow
@@ -443,11 +446,27 @@ describe("Pro channel strip and badge (#1903)", () => {
     expect(onProChange).not.toHaveBeenCalled();
   });
 
+  it("notes that a set punch is bypassed in a preview without AudioWorklet (#1903 S6b)", () => {
+    vi.stubGlobal("AudioWorkletNode", undefined);
+    try {
+      const strip = (punch: number) =>
+        renderToStaticMarkup(
+          <LaneProStrip stem={{ stemId: "s", name: "Bass", pro: { punch } }} disabled={false} onProChange={noop} />,
+        );
+      expect(strip(0.5)).toContain("remix-lane-pro-punch-note");
+      expect(strip(0)).not.toContain("remix-lane-pro-punch-note");
+      vi.stubGlobal("AudioWorkletNode", class {});
+      expect(strip(0.5)).not.toContain("remix-lane-pro-punch-note");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("locks the strip under the published lock", () => {
     const html = renderToStaticMarkup(
       <LaneProStrip stem={{ stemId: "s", name: "Bass" }} disabled onProChange={noop} />,
     );
-    expect(countMatches(html, /type="range"[^>]*disabled=""/g)).toBe(4);
+    expect(countMatches(html, /type="range"[^>]*disabled=""/g)).toBe(5);
   });
 });
 

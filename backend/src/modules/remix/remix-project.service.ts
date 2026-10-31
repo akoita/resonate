@@ -890,9 +890,9 @@ export class RemixProjectService {
        */
       aiTarget?: { kind: string; stemId?: string | null } | null;
       /**
-       * Shared effects recipe remix-fx/v3 (#1897, #1898, #1903; v1/v2
+       * Shared effects recipe remix-fx/v4 (#1897, #1898, #1903; v1–v3
        * accepted): undefined leaves it unchanged, null clears it, an
-       * all-default recipe normalizes to null. Setting a Pro field (EQ, pan)
+       * all-default recipe normalizes to null. Setting a Pro field (EQ, pan, punch)
        * needs the `remix.pro` entitlement (403 `pro_required`).
        */
       effects?: unknown;
@@ -3153,6 +3153,13 @@ export class RemixProjectService {
                     renderMetadataRecord.effectsProDspVersion,
                 }
               : {}),
+            // #1903 S6b: the punch compressor mapping, when recorded.
+            ...(typeof renderMetadataRecord.effectsDynDspVersion === "string"
+              ? {
+                  effectsDynDspVersion:
+                    renderMetadataRecord.effectsDynDspVersion,
+                }
+              : {}),
             ...(renderedStretch ? { stretch: renderedStretch } : {}),
           }
         : {}),
@@ -3170,6 +3177,12 @@ export class RemixProjectService {
                 ? {
                     effectsProDspVersion:
                       conditioningRecord.effectsProDspVersion,
+                  }
+                : {}),
+              ...(typeof conditioningRecord.effectsDynDspVersion === "string"
+                ? {
+                    effectsDynDspVersion:
+                      conditioningRecord.effectsDynDspVersion,
                   }
                 : {}),
               ...(conditioningStretch ? { stretch: conditioningStretch } : {}),

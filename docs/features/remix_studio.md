@@ -940,9 +940,9 @@ from the JWT, never the request body.
     existing `remix_draft` meter kind with reason `remix_part`).
 - Pro mode, S6a (#1903, the first slice of S6 in epic #1896). S6 is
   **partial**: S6a ships the Pro switch, the entitlement seam and per-stem EQ
-  and pan; the remaining slices (S6b dynamics, S6c grid correction, S6d cue
-  and loop points with a DJ export, S6e automation lanes, S6f stem export and
-  mashups) are listed on #1903.
+  and pan, and S6b (below) the per-stem punch compressor; the remaining
+  slices (S6c grid correction, S6d cue and loop points with a DJ export, S6e
+  automation lanes, S6f stem export and mashups) are listed on #1903.
   - **Money.** Vision-neutral today: Pro is free for everyone and has no
     price. The entitlement seam (`remix.pro`,
     `backend/src/modules/remix/remix-entitlements.ts`, policy
@@ -997,6 +997,49 @@ from the JWT, never the request body.
     fields; "No effects" removes them with every other effect (Key and Keep
     original pitch stay); "Reset to original" clears everything. The User
     Guide has a "Pro mode" section.
+- Pro mode, S6b (#1903): a per-stem "Punch" compressor. **Partial** like the
+  rest of S6 (see S6a above for what remains).
+  - **Money.** Same seam as S6a: `punch` is a Pro field, so setting it needs
+    `remix.pro` (free for everyone, no price; ADR-BM-6 line (2) seam only,
+    any price lands in `docs/rfc/business-model.md` first).
+  - **Recipe `remix-fx/v4`.** Per stem: `punch` 0..1 (step 0.01), omitted
+    at 0. v1, v2 and v3 recipes read and normalize to v4 with the same
+    values; the server rejects out-of-range values with 400. The mapping is
+    `remix-fx-dyn-dsp/v1`, recorded as `renderMetadata.effectsDynDspVersion`
+    (and in the conditioning and publish lineage) whenever a stem has a punch.
+    Lineage stays `stem_audio`.
+  - **DSP.** `punchCompressor(p)`: threshold −10 − 20p dB, ratio 1.5 + 4.5p,
+    attack 15 − 10p ms, release 150 ms, makeup 6p dB, knee √8 (about 9 dB),
+    with RMS detection, linked channels (average) and downward mode; every
+    value is rounded to 6 decimals, the precision the render graph prints.
+    The render runs ffmpeg `acompressor` with every option spelled out. The
+    preview runs a faithful port of ffmpeg's compressor
+    (`remix-punch-compressor.ts`, mirrored in
+    `web/src/lib/remixPunchCompressor.ts`) inside an AudioWorklet
+    (`web/public/worklets/remix-punch-compressor.js`). Chain per source stem,
+    in both engines: (varispeed) → gain → EQ → pan → punch → section gate →
+    tone → echo → sends; the stage exists only when punch is above 0, so
+    recipes without it render and preview exactly as before.
+  - **Parity.** `remix-fx-dyn-v1.parity.json` pins the mapping and live
+    ffmpeg output (double precision) for a deterministic signal: three punch
+    amounts at 48 kHz, one at 44.1 kHz and a mono case. The backend port and
+    both web implementations (the TypeScript core and the worklet, run in
+    128-frame quanta) replay it within 1e-9 (measured ~1e-16). An
+    ffmpeg-gated backend test compares the port with a live ffmpeg run and
+    the render's own per-stem chain with the port (within 1e-6, float32 I/O).
+    The fixture records the ffmpeg build it came from; regenerating it
+    (`UPDATE_REMIX_FX_DYN_FIXTURE=1`) needs a new DSP version.
+  - **Preview.** The worklet module loads once per audio context, only when a
+    recipe has a punch. Punch changes apply live (the envelope carries on); a
+    punch turned on while playing restarts the preview once. Where the
+    browser has no AudioWorklet, the preview bypasses the punch, the strip
+    says "This browser can't preview Punch; your render still applies it.",
+    and edits never loop restarts. The preview processes in float32 and from
+    the play position, so it is a faithful preview rather than a
+    sample-identical one; the render is the reference.
+  - **UI.** A "Punch" slider (Off / 40%) closes the Pro strip; the Pro switch
+    tooltip and the badge now name punch. The User Guide's Pro mode section
+    explains it.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

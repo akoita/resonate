@@ -1,5 +1,5 @@
 /**
- * Remix Studio effects recipe `remix-fx/v3` (#1897, #1898, #1903): the pure math
+ * Remix Studio effects recipe `remix-fx/v4` (#1897, #1898, #1903): the pure math
  * shared by the WebAudio preview and (mirrored in the backend) the ffmpeg
  * render.
  *
@@ -18,23 +18,36 @@
  * 3-band EQ in dB, −12..12 step 0.5) and `pan` (−1..1 step 0.01). Their
  * mapping (`remix-fx-pro-dsp/v1`) is pinned by
  * `backend/src/modules/remix/remix-fx-pro-v1.parity.json` (within 1e-12).
- * v1 and v2 recipes still read and normalize to v3 with the same values.
+ *
+ * v4 (#1903 S6b, Pro mode) adds a per-stem `punch` (0..1 step 0.01): a
+ * downward compressor after the pan, mapped by {@link punchCompressor}
+ * (`remix-fx-dyn-dsp/v1`) and run in the preview by a faithful port of
+ * ffmpeg's `acompressor` (`remixPunchCompressor.ts`, in an AudioWorklet);
+ * the render runs ffmpeg itself. Pinned by
+ * `backend/src/modules/remix/remix-fx-dyn-v1.parity.json`. v1, v2 and v3
+ * recipes still read and normalize to v4 with the same values.
  */
 
-export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v3" as const;
-/** The pre-#1903 recipe version: still read, normalized to v3. */
+export const REMIX_FX_SCHEMA_VERSION = "remix-fx/v4" as const;
+/** The pre-#1903 S6b recipe version (EQ and pan): still read, normalized to v4. */
+export const REMIX_FX_V3_SCHEMA_VERSION = "remix-fx/v3" as const;
+/** The pre-#1903 recipe version: still read, normalized to v4. */
 export const REMIX_FX_V2_SCHEMA_VERSION = "remix-fx/v2" as const;
-/** The pre-#1898 recipe version: still read, normalized to v3. */
+/** The pre-#1898 recipe version: still read, normalized to v4. */
 export const REMIX_FX_V1_SCHEMA_VERSION = "remix-fx/v1" as const;
 export type RemixFxSchemaVersion =
   | typeof REMIX_FX_SCHEMA_VERSION
+  | typeof REMIX_FX_V3_SCHEMA_VERSION
   | typeof REMIX_FX_V2_SCHEMA_VERSION
   | typeof REMIX_FX_V1_SCHEMA_VERSION;
 /** The Pro EQ/pan mapping version (mirrors the backend). */
 export const REMIX_FX_PRO_DSP_VERSION = "remix-fx-pro-dsp/v1" as const;
+/** The Pro punch compressor mapping version (mirrors the backend). */
+export const REMIX_FX_DYN_DSP_VERSION = "remix-fx-dyn-dsp/v1" as const;
 
 const READABLE_SCHEMA_VERSIONS: readonly unknown[] = [
   REMIX_FX_SCHEMA_VERSION,
+  REMIX_FX_V3_SCHEMA_VERSION,
   REMIX_FX_V2_SCHEMA_VERSION,
   REMIX_FX_V1_SCHEMA_VERSION,
 ];
@@ -87,10 +100,12 @@ export type RemixFxStemPro = {
   eqHigh?: number;
   /** Stereo pan −1 (left) .. 1 (right), step 0.01, default 0. */
   pan?: number;
+  /** v4 (#1903 S6b): punch compressor amount 0..1, step 0.01, default 0. */
+  punch?: number;
 };
 
 export type RemixFxRecipe = {
-  /** Normalized recipes are always v3; v1/v2 type stored/legacy shapes. */
+  /** Normalized recipes are always v4; v1–v3 type stored/legacy shapes. */
   schemaVersion: RemixFxSchemaVersion;
   master?: RemixFxMaster & RemixFxMasterPitch;
   /** Keyed by project stem id. */
@@ -120,12 +135,13 @@ export const REMIX_FX_STEM_PRO_RANGES: Record<keyof RemixFxStemPro, SteppedRange
   eqMid: { min: -12, max: 12, default: 0, step: 0.5 },
   eqHigh: { min: -12, max: 12, default: 0, step: 0.5 },
   pan: { min: -1, max: 1, default: 0, step: 0.01 },
+  punch: { min: 0, max: 1, default: 0, step: 0.01 },
 };
 
 const MASTER_KEYS = ["speed", "space", "tone", "warmth"] as const;
 const STEM_KEYS = ["space", "echo", "tone"] as const;
-/** The Pro fields in chain order: EQ low → mid → high → pan. */
-export const REMIX_FX_STEM_PRO_KEYS = ["eqLow", "eqMid", "eqHigh", "pan"] as const;
+/** The Pro fields in chain order: EQ low → mid → high → pan → punch. */
+export const REMIX_FX_STEM_PRO_KEYS = ["eqLow", "eqMid", "eqHigh", "pan", "punch"] as const;
 
 /** Round to 2 decimals; -0 becomes 0. */
 function round2(value: number): number {
@@ -201,7 +217,7 @@ function normalizePitch(raw: unknown): RemixFxMasterPitch | null {
 }
 
 /**
- * Normalize any stored or edited recipe (v1, v2 or v3; always returns v3). The
+ * Normalize any stored or edited recipe (v1–v4; always returns v4). The
  * client clamps instead of rejecting (the backend rejects out-of-range
  * input); for valid input the output equals the backend normalization. A
  * recipe of another schema version normalizes to null. `projectStemIds`,
@@ -352,6 +368,7 @@ export function remixFxStemPro(
     eqMid: stem.eqMid ?? 0,
     eqHigh: stem.eqHigh ?? 0,
     pan: stem.pan ?? 0,
+    punch: stem.punch ?? 0,
   };
 }
 
@@ -598,6 +615,58 @@ export function panGains(pan: number): RemixPanGains | null {
   return { x, gL, gR, matrix };
 }
 
+// Pro: per-stem punch compressor (#1903 S6b, remix-fx-dyn-dsp/v1).
+
+/**
+ * The ffmpeg `acompressor` settings of one punch amount (mirrors the
+ * backend's `punchCompressor`; the fixed options are mode=downward,
+ * link=average, detection=rms, mix=1). Values are rounded to 6 decimals,
+ * the precision the render graph prints.
+ */
+export type RemixPunchCompressor = {
+  thresholdDb: number;
+  threshold: number;
+  ratio: number;
+  attackMs: number;
+  releaseMs: number;
+  makeupDb: number;
+  makeup: number;
+  knee: number;
+};
+
+function round6(value: number): number {
+  const rounded = Math.round(value * 1e6) / 1e6;
+  return rounded === 0 ? 0 : rounded;
+}
+
+/**
+ * punch p in (0, 1] → threshold −10 − 20p dB, ratio 1.5 + 4.5p, attack
+ * 15 − 10p ms, release 150 ms, makeup 6p dB, knee √8. Null at 0 (no stage),
+ * non-finite or out of range.
+ */
+export function punchCompressor(punch: number): RemixPunchCompressor | null {
+  if (!Number.isFinite(punch) || punch <= 0 || punch > 1) return null;
+  const thresholdDb = round6(-10 - 20 * punch);
+  const makeupDb = round6(6 * punch);
+  return {
+    thresholdDb,
+    threshold: round6(Math.pow(10, thresholdDb / 20)),
+    ratio: round6(1.5 + 4.5 * punch),
+    attackMs: round6(15 - 10 * punch),
+    releaseMs: 150,
+    makeupDb,
+    makeup: round6(Math.pow(10, makeupDb / 20)),
+    knee: round6(Math.sqrt(8)),
+  };
+}
+
+/** Whether any stem of a recipe carries a punch (#1903 S6b). */
+export function remixFxHasPunch(recipe: RemixFxRecipe | null | undefined): boolean {
+  return Object.values(recipe?.stems ?? {}).some(
+    (stem) => punchCompressor(stem.punch ?? 0) !== null,
+  );
+}
+
 export type RemixEchoTap = { delaySec: number; gain: number };
 
 export const REMIX_FX_ECHO_TAPS = 4;
@@ -778,7 +847,7 @@ export const REMIX_VIBES: readonly RemixVibe[] = [
     id: "none",
     label: "No effects",
     description:
-      "Remove every effect, Pro EQ and pan included (your Key and Keep original pitch settings stay).",
+      "Remove every effect, Pro EQ, pan and punch included (your Key and Keep original pitch settings stay).",
     master: null,
   },
 ];
@@ -795,7 +864,7 @@ function pitchFields(recipe: RemixFxRecipe | null | undefined): RemixFxMasterPit
 /**
  * Apply a vibe: replaces the master controls and sets only the vibe's
  * per-stem entries (merged into those stems' fx); other stems keep their fx.
- * "No effects" clears every effect, the Pro EQ and pan included (#1903):
+ * "No effects" clears every effect, the Pro EQ, pan and punch included (#1903):
  * they are effects. Other vibes keep every stem's Pro fields. Either way the
  * tempo/key choices (Keep
  * original pitch, Key; #1898) are kept: a vibe is a sound, not a key, so
@@ -899,6 +968,12 @@ export function formatFxPan(pan: number): string {
   const amount = Math.round(Math.abs(pan) * 100);
   if (amount === 0) return "C";
   return `${pan < 0 ? "L" : "R"} ${amount}`;
+}
+
+/** Punch as "Off" or "40%". */
+export function formatFxPunch(punch: number): string {
+  const amount = Math.round(punch * 100);
+  return amount === 0 ? "Off" : `${amount}%`;
 }
 
 /** Tone as "Neutral", "Darker 25%" or "Brighter 40%". */

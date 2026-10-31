@@ -7322,8 +7322,8 @@ export type RemixProject = {
   /** Saved Studio AI intent (#1882); null/absent = whole track. */
   aiTarget?: RemixAiTarget | null;
   /**
-   * Effects recipe `remix-fx/v3` (#1897, #1898, #1903; stored v1/v2 read as
-   * v3); null/absent = untouched.
+   * Effects recipe `remix-fx/v4` (#1897, #1898, #1903; stored v1–v3 read as
+   * v4); null/absent = untouched.
    */
   effects?: RemixFxRecipe | null;
   /**
@@ -7406,8 +7406,8 @@ export type RemixProjectPatch = {
   /** Saved Studio AI intent (#1882); null (or kind "whole") clears it. */
   aiTarget?: { kind: RemixAiTargetKind; stemId?: string | null } | null;
   /**
-   * Effects recipe `remix-fx/v3` (#1897, #1898, #1903; v1/v2 accepted); null
-   * clears it. Setting a Pro field (EQ, pan) needs the `pro` entitlement.
+   * Effects recipe `remix-fx/v4` (#1897, #1898, #1903; v1–v3 accepted); null
+   * clears it. Setting a Pro field (EQ, pan, punch) needs the `pro` entitlement.
    */
   effects?: RemixFxRecipe | null;
   /**
