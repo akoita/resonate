@@ -80,6 +80,13 @@ authenticated pseudonymous user playback lifecycle events through
   (`channel` enum x/facebook/reddit/native/copy, `trackId`, `releaseId`) at
   pseudonymous tier; no free text. Arrivals from the share link carry
   `utm_campaign=listening_share`.
+- `shows.campaign_shared` — a fan shared a show campaign from its page or
+  right after joining city demand or pledging (#1916): `campaignId`, `channel`
+  enum x/facebook/reddit/native/copy, `trigger` enum
+  page/after_signal/after_pledge, at pseudonymous tier. The backend keeps only
+  those three fields and rejects unknown enums or a non-id-shaped
+  `campaignId`; no amount, tier, wallet, or location. Arrivals carry
+  `utm_campaign=show_campaign_share`.
 - `playlist.shared` — a listener copied a public playlist link from the owner
   share control or the public playlist page (`channel` enum `copy_link`,
   `playlistId`) at pseudonymous tier. The backend keeps only those two fields

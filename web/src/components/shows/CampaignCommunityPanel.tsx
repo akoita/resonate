@@ -8,6 +8,7 @@ import {
   type CommunityMessage,
 } from "../../lib/api";
 import { RoomCard } from "../community/RoomCard";
+import { CampaignShare } from "./CampaignShare";
 import { campaignRoomAccessModel, roomAccessLockedReason } from "../community/roomAccess";
 import {
   createShowCampaignCommunityUpdate,
@@ -77,6 +78,8 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
   const [loading, setLoading] = useState(false);
   const [joining, setJoining] = useState(false);
   const [joiningCity, setJoiningCity] = useState(false);
+  // #1916: a fan who just joined city demand is offered a tailored share.
+  const [cityJustJoined, setCityJustJoined] = useState(false);
   const [posting, setPosting] = useState(false);
   const [messageBody, setMessageBody] = useState("");
   const [updateBody, setUpdateBody] = useState("");
@@ -177,6 +180,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
       const result = await joinShowCampaignCityDemand({ campaign, token });
       setCityDemandRoom(result.room);
       setNotice({ type: "success", message: `${campaign.city} demand group joined.` });
+      setCityJustJoined(true);
     } catch (err) {
       setNotice({ type: "error", message: err instanceof Error ? err.message : "Could not join city demand." });
     } finally {
@@ -263,6 +267,14 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
                   ? "Checking your city demand state..."
                   : "Signal interest in this city without making a pledge yet."}
               </p>
+              {cityJustJoined && cityJoined ? (
+                <CampaignShare
+                  campaign={campaign}
+                  trigger="after_signal"
+                  label="Bring more fans: share this campaign"
+                  className="show-share--prompt"
+                />
+              ) : null}
             </RoomCard>
           ) : null}
 

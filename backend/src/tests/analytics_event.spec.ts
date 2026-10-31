@@ -260,6 +260,7 @@ describe("analytics event envelope", () => {
       "punchline.moment_shared",
       "player.track_shared",
       "playlist.shared",
+      "shows.campaign_shared",
       "recommendation.generated",
       "recommendation.served",
       "recommendation.clicked",

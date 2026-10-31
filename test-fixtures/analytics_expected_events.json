@@ -215,6 +215,15 @@
     }
   },
   {
+    "eventName": "shows.campaign_shared",
+    "payload": {
+      "campaignId": "campaign-1",
+      "channel": "x",
+      "trigger": "after_pledge",
+      "source": "shows_campaign_page"
+    }
+  },
+  {
     "eventName": "artist.upload_step_completed",
     "payload": {
       "releaseId": "release-1",
