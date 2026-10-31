@@ -328,8 +328,8 @@ const CONFIRM_POLL_MS = 3000;
 const CONFIRM_POLL_TRIES = 5;
 
 /**
- * Container for {@link BuyCreditsView}: reads `GET /billing/credits`, handles
- * the `?credits=success|cancel` return (refreshing the balance until the
+ * Container for {@link BuyCreditsView}: reads `GET /billing/credits` (again
+ * whenever `refreshKey` changes, #2494), handles the `?credits=success|cancel` return (refreshing the balance until the
  * webhook lands), records the delivery choice and redirects to Stripe Checkout,
  * and releases a held purchase on request.
  */
@@ -337,10 +337,13 @@ export function BuyCreditsSection({
   token,
   addToast,
   onCreditsChanged,
+  refreshKey = 0,
 }: {
   token: string | null | undefined;
   addToast: ToastFn;
   onCreditsChanged?: () => void;
+  /** Bumped by the page's Refresh to re-read the packs and purchases. */
+  refreshKey?: number;
 }) {
   const [state, setState] = useState<CreditTopUpState | null>(null);
   const [error, setError] = useState(false);
@@ -369,7 +372,7 @@ export function BuyCreditsSection({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   // The return from Stripe: show the outcome once, then drop the parameter.
   useEffect(() => {
