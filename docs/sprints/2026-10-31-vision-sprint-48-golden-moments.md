@@ -1,12 +1,28 @@
 # Vision Sprint 48: Golden moments in every genre
 
-**Status:** ◐ In progress — started 2026-10-31 under the owner's delegated
-authority for the night of 2026-10-31 (plan, build and merge until 07:00).
+**Status:** ✅ Closed 2026-10-31. Slices 1 and 2 of #1476 merged in #2489;
+slice 3 stays open on the issue.
 **Milestone:** none created (the session cannot create milestones); the issue
 is tracked from this doc.
 **Goal:** An artist in any genre can turn a track's best moment into a
 collectible: the source can be any separated stem or the full mix, and the
 moment carries a genre-appropriate name (Punchline, Crescendo, Hook, Solo).
+
+## Outcome
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #1476 slice 1 | A moment can be clipped from vocals (still the default), any other separated stem, or the full mix. `PUNCHLINE_SOURCE_LAYERS` sets the allowed layers. `no_vocals_stem` became `no_source_stem` and names the missing layer. The builder has a Source picker. Full-mix clips are capped at 10 s against 15 s for stems (`PUNCHLINE_FULL_MIX_CLIP_MAX_MS`) | #2489 |
+| #1476 slice 2 | `PunchlineMoment.momentKind` (Punchline, Crescendo, Hook, Solo; "drop" is rejected), defaulted from the release genre and shown on the collectible card | #2489 |
+
+**Carry-over:**
+
+- Slice 3 (suggested ranges from measured audio features) stays open on #1476.
+- The set-bonus clip is still cut from vocals.
+- The Library Moments tab and public profile cards don't receive `momentKind`
+  yet, so they show every moment as a Punchline.
+- The caption field is still a required "lyric"; instrumental moments need a
+  short caption there.
 
 ## Why this theme
 

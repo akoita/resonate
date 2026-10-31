@@ -47,13 +47,13 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest closed: [Vision Sprint 47 — Share what you did, show who you back](2026-10-31-vision-sprint-47-share-and-show-support.md)
-on 2026-10-31, together with Vision Sprints 45 and 46, all run the same night
-under the owner's delegated authority. Waiting on the owner: Stripe test keys
+Latest closed: [Vision Sprint 48 — Golden moments in every genre](2026-10-31-vision-sprint-48-golden-moments.md)
+on 2026-10-31, after Vision Sprints 45–47, all run the same night under the
+owner's delegated authority. Waiting on the owner: Stripe test keys
 (resonate-iac#325), the #1421 pricing sign-off, legal review of the consent,
 refund and cancellation wording, the #2367 remix-challenge decision, and the
 #2436 laptop check.
-Current: [Vision Sprint 48 — Golden moments in every genre](2026-10-31-vision-sprint-48-golden-moments.md), started 2026-10-31. Sprint 43 is closing: only the #1759 staging contract rollout remains.
+Current: none. Sprint 43 is closing: only the #1759 staging contract rollout remains.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -105,4 +105,4 @@ Current: [Vision Sprint 48 — Golden moments in every genre](2026-10-31-vision-
 | [2026-10-31](2026-10-31-vision-sprint-45-cheap-ready-shareable.md) | Vision Sprint 45 — Cheap to run, ready to charge, easy to share (idle cost, Stripe cancel on erasure, campaign and collectible shares, flaky remix-parts test) | ✅ Closed 2026-10-31 — all 5 items merged (#2473, #2472, #2471, #2470, #2475); #2436 open for the owner's laptop check |
 | [2026-10-31](2026-10-31-vision-sprint-46-remix-goes-further.md) | Vision Sprint 46 — Remix goes further, dependencies stay honest (build-ups, Pro mode slice 1, contract pin source of truth, security dependency bumps) | ✅ Closed 2026-10-31 — #1908 (#2484), #1903 S6b punch (#2481), #2423 (#2477), dependency bumps (#2456, #2476); #1903 open for its remaining slices |
 | [2026-10-31](2026-10-31-vision-sprint-47-share-and-show-support.md) | Vision Sprint 47 — Share what you did, show who you back (licence and remix shares, supporter/collector badges, listing cancellation) | ✅ Closed 2026-10-31 — #1915 closed (#2485), #1106 (#2483), #284 (#2479) and follow-up #2480 edit listing (#2482) |
-| [2026-10-31](2026-10-31-vision-sprint-48-golden-moments.md) | Vision Sprint 48 — Golden moments in every genre (any source layer and the full mix for collectible moments, genre skins) | ◐ In progress — started 2026-10-31 |
+| [2026-10-31](2026-10-31-vision-sprint-48-golden-moments.md) | Vision Sprint 48 — Golden moments in every genre (any source layer and the full mix for collectible moments, genre skins) | ✅ Closed 2026-10-31 — #1476 slices 1 and 2 (#2489): any stem or the full mix (10 s cap), moment kinds; slice 3 open |
