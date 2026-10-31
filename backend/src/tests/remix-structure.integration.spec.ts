@@ -313,7 +313,7 @@ describe("Remix structure blocks (#1899, integration)", () => {
       { blocks: [{ section: 4 }] },
       { blocks: [{ section: 1, fadeIn: "yes" }] },
       { blocks: Array.from({ length: 97 }, () => ({ section: 0 })) },
-      { schemaVersion: "remix-structure/v2", blocks: [{ section: 0 }] },
+      { schemaVersion: "remix-structure/v3", blocks: [{ section: 0 }] },
     ];
     for (const structure of invalid) {
       await expect(

@@ -567,6 +567,7 @@ describe("structure blocks (#1899)", () => {
       "Move later",
       "Fade in",
       "Fade out",
+      "Build-up",
     ]);
     expect(first.find((entry) => entry.action === "earlier")).toMatchObject({
       enabled: false,
@@ -578,6 +579,7 @@ describe("structure blocks (#1899)", () => {
     expect(blockMenuEntries(state, 3, grid).slice(4)).toMatchObject([
       { action: "fade_in", checked: true, enabled: true },
       { action: "fade_out", checked: true, enabled: true },
+      { action: "build_up", checked: false, enabled: true },
     ]);
     const single = structureEditState(grid, { blocks: [{ section: 2 }] }, {});
     expect(
@@ -610,6 +612,33 @@ describe("structure blocks (#1899)", () => {
     expect(blockActionResult(state, 0, "earlier", grid)).toBeNull();
   });
 
+  it("toggles a build-up (#1908) and refuses past the build-up cap", () => {
+    const built = blockActionResult(state, 2, "build_up", grid)!;
+    expect(built.blocks[2]).toEqual({ section: 1, buildUp: true });
+    expect(built.structure?.schemaVersion).toBe("remix-structure/v2");
+    expect(
+      blockMenuEntries({ ...state, blocks: built.blocks }, 2, grid).find(
+        (entry) => entry.action === "build_up",
+      ),
+    ).toMatchObject({ checked: true, enabled: true });
+    const full = structureEditState(
+      grid,
+      {
+        blocks: Array.from({ length: 25 }, (_, index) => ({
+          section: index % 2,
+          ...(index < 24 ? { buildUp: true } : {}),
+        })),
+      },
+      {},
+    );
+    expect(
+      blockMenuEntries(full, 24, grid).find((entry) => entry.action === "build_up"),
+    ).toMatchObject({
+      enabled: false,
+      reason: "A remix can have at most 24 build-ups",
+    });
+  });
+
   it("renders an accessible menu with checkable fades and inert refused entries", () => {
     const html = renderToStaticMarkup(
       <LaneBlockMenu
@@ -623,9 +652,9 @@ describe("structure blocks (#1899)", () => {
     expect(html).toContain('role="menu"');
     expect(html).toContain('aria-label="Options for bar 1"');
     expect(countMatches(html, /role="menuitem"/g)).toBe(4);
-    expect(countMatches(html, /role="menuitemcheckbox"/g)).toBe(2);
-    expect(countMatches(html, /aria-checked="false"/g)).toBe(2);
-    expect(countMatches(html, /tabindex="-1"/g)).toBe(6);
+    expect(countMatches(html, /role="menuitemcheckbox"/g)).toBe(3);
+    expect(countMatches(html, /aria-checked="false"/g)).toBe(3);
+    expect(countMatches(html, /tabindex="-1"/g)).toBe(7);
     expect(html).toMatch(
       /role="menuitem" aria-disabled="true" tabindex="-1" title="This is already the first section"/,
     );

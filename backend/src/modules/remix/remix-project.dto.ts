@@ -94,7 +94,7 @@ export class UpdateRemixProjectDto {
   aiTarget?: { kind: string; stemId?: string | null } | null;
   /** Shared effects recipe remix-fx/v4 (#1897, #1903); Pro fields need `remix.pro`. */
   effects?: unknown;
-  /** Structure blocks remix-structure/v1 (#1899). */
+  /** Structure blocks remix-structure/v1 or v2 (#1899, #1908 build-ups). */
   structure?: unknown;
   /** Beat maker remix-beat/v1 (#1902). */
   beat?: unknown;

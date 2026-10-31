@@ -23,7 +23,7 @@ import {
   remixFxUsesPunch,
 } from "./remix-fx";
 import { remixStretchMetadata } from "./remix-stretch";
-import { REMIX_STRUCTURE_DSP_VERSION } from "./remix-structure";
+import { remixStructureDspVersion } from "./remix-structure";
 import { REMIX_BEAT_DSP_VERSION } from "./remix-beat";
 import { REMIX_PARTS_DSP_VERSION } from "./remix-parts";
 
@@ -217,7 +217,9 @@ export class AudioConditionedRemixGenerationProvider
         ? {
             conditioningStructure: {
               structure: input.renderStructure.structure,
-              structureVersion: REMIX_STRUCTURE_DSP_VERSION,
+              structureVersion: remixStructureDspVersion(
+                input.renderStructure.structure,
+              ),
             },
           }
         : {}),

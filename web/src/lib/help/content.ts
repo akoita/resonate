@@ -2512,6 +2512,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "One-click arrangements, at the bottom of the Create panel: Acapella (only the vocals), Instrumental (everything except the vocals), Drums & bass, and Breakdown → drop (drums, bass and percussion drop out for the first half, then come back). They set mutes and sections you can keep editing, and they work with any vibe.",
               "Song length & shape: Original length (as released), Extended mix (a longer intro and outro, handy for DJs), or Short edit (about a third shorter, fading out). Each shows the length change, like \"1:04 → 1:36\".",
               "Open the ⋯ menu on any section in the ruler to Repeat this section, Remove it, Move earlier, Move later, Fade in, or Fade out.",
+              "Build-up, in the same menu, turns a section into a lead-in to the next one: the sound gets thinner as the bass is filtered away little by little, and a little louder, until the next section drops in at full sound. It's free, works in the preview and the render, and a section with a build-up shows ↗ in the ruler. A remix can have up to 24 build-ups. While a section loops, you hear it without its build-up or fades.",
             ],
           },
           {

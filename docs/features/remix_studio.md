@@ -603,11 +603,11 @@ from the JWT, never the request body.
     - A parity fixture
       (`backend/src/modules/remix/remix-structure-v1.parity.json`) holds both
       engines to the same timeline, join fades, gate intervals and fade
-      ramps.
+      ramps (`remix-structure-v2.parity.json` adds build-ups, #1908).
     - With no structure, the render graph is byte-identical.
   - **Controls.**
     - Each block header has a menu: Repeat, Remove, Move earlier, Move later,
-      Fade in, Fade out. Clicking a header still loops that block.
+      Fade in, Fade out, Build-up. Clicking a header still loops that block.
     - Create → Mix stems adds one-click **Structure** options: Original
       length; **Extended mix** (drops the pickup, doubles the first full
       section and the last section, fades out); **Short edit** (about the
@@ -620,8 +620,42 @@ from the JWT, never the request body.
     - A stored over-limit structure renders in the original order.
     - Renders use one ffmpeg input per block, which keeps memory bounded
       (the single-decode split held pending blocks in memory).
-  - **Deferred.** Build-ups (a filter sweep plus a gain ramp) are a follow-up
-    (#1908).
+  - **Build-ups (#1908).** Any block can carry `buildUp: true`
+    (`remix-structure/v2`): across the block the whole mix runs through a
+    high-pass whose cutoff rises exponentially from 30 Hz to 1.5 kHz, times a
+    gain rising linearly from −6 dB to 0 dB; at the next block (the drop) the
+    filter is switched out.
+    - **Versions.** v2 only adds the field. A structure without build-ups
+      still normalises (and is recorded) as `remix-structure/v1`, so existing
+      recipes, timelines and render graphs are byte-identical. Stored v1 rows
+      read unchanged. Renders with build-ups record
+      `structureVersion: remix-structure-dsp/v2`.
+    - **Where.** On the master sum after the user fades, before master
+      tone/warmth/loudness, in output time. Build-up edges snap to a 1 ms
+      output-time grid in both engines.
+    - **Preview.** A dry gain plus one `BiquadFilterNode` highpass (Q 1/√2)
+      → wet gain. Inside a build-up the frequency ramps with
+      `exponentialRampToValueAtTime` and the wet gain ramps linearly; the
+      dry path returns at the drop. While looping, the stage is bypassed (as
+      are the fades).
+    - **Render.** ffmpeg has no time-varying biquad, so the stage runs at
+      48-sample (1 ms) frames: `asplit` → dry `volume` mask, and wet
+      `asendcmd` → `highpass@bu` (RBJ, direct form I) → `volume` gain.
+      `asendcmd` steps the cutoff through 48 equal steps per build-up (each
+      at its midpoint value) and resets it at the drop.
+    - **Measured parity.** `remix-structure-buildup.spec.ts` runs the ffmpeg
+      stage on pink noise and compares it with a per-sample model of the
+      WebAudio graph (50 ms RMS windows). On ffmpeg 6.1: inside sweeps ≤ 0.2
+      dB, mean ≤ 0.02 dB; the window at a drop (where the cutoff jumps back
+      and the filter rings) ≤ 1.3 dB. The test asserts 0.5 / 0.05 / 2.0 dB.
+      The math (timeline, ramps, snapped spans, sweep steps, normalisation)
+      is pinned to 1e-9 by `remix-structure-v2.parity.json`, read by both the
+      backend and web tests.
+    - **Limits.** At most 24 build-ups per structure (bounds the render's
+      command list); the PATCH returns 400 past that and the studio disables
+      the menu entry with the reason.
+    - **Controls.** The block menu has a checkable **Build-up** entry; a
+      block with one shows ↗ in its header.
   - **Provenance.** Stays `stem_audio`. `renderMetadata` and publish lineage
     record the structure.
 - "Describe it" (#1900, slice S3 of epic #1896). At the top of Create → Mix

@@ -43,9 +43,15 @@ import {
   type RemixPartSpan,
 } from "./remixParts";
 import {
+  buildUpCutoffHzAt,
+  buildUpGainAt,
+  buildUpOutputRamps,
   isIdentityTimeline,
   masterFadeValueAt,
+  REMIX_BUILDUP_FILTER_Q,
+  REMIX_BUILDUP_START_HZ,
   REMIX_STRUCTURE_JOIN_FADE_SECONDS,
+  type RemixBuildUpRamp,
   type RemixMasterFadeRamp,
   type RemixStructureSegment,
   type RemixStructureTimeline,
@@ -632,6 +638,56 @@ export function scheduleMasterFades(
   });
 }
 
+/** A frequency param: linear and exponential automation (#1908). */
+type SweepParam = SchedulableParam & {
+  exponentialRampToValueAtTime(value: number, time: number): unknown;
+};
+
+/**
+ * Schedule the build-up stage (#1908) from timeline position `offsetSec`.
+ * `ramps` are the OUTPUT-time spans (`buildUpOutputRamps`, 1 ms grid) the
+ * render uses too. The stage is a dry gain (1 outside build-ups, 0 inside)
+ * plus a high-pass → wet gain path: inside a build-up the cutoff ramps
+ * exponentially fromHz → toHz and the wet gain linearly fromGain → toGain;
+ * at the drop the dry path returns, the wet gain drops to 0 and the cutoff
+ * resets (unless the next build-up starts right there). A position inside
+ * a build-up starts at that build-up's current values.
+ */
+export function scheduleBuildUps(
+  params: { dry: SchedulableParam; wet: SchedulableParam; frequency: SweepParam },
+  ramps: RemixBuildUpRamp[],
+  input: { startAt: number; offsetSec: number; speed: number },
+): void {
+  const { dry, wet, frequency } = params;
+  const offsetOut = input.offsetSec / input.speed;
+  const toContext = (outSec: number) => input.startAt + (outSec - offsetOut);
+  const active = ramps.find(
+    (ramp) => offsetOut >= ramp.startSec && offsetOut < ramp.endSec,
+  );
+  dry.setValueAtTime(active ? 0 : 1, input.startAt);
+  wet.setValueAtTime(active ? buildUpGainAt(active, offsetOut) : 0, input.startAt);
+  frequency.setValueAtTime(
+    active ? buildUpCutoffHzAt(active, offsetOut) : (ramps[0]?.fromHz ?? REMIX_BUILDUP_START_HZ),
+    input.startAt,
+  );
+  ramps.forEach((ramp, index) => {
+    if (ramp.endSec <= offsetOut) return;
+    if (ramp.startSec >= offsetOut) {
+      dry.setValueAtTime(0, toContext(ramp.startSec));
+      wet.setValueAtTime(ramp.fromGain, toContext(ramp.startSec));
+      frequency.setValueAtTime(ramp.fromHz, toContext(ramp.startSec));
+    }
+    wet.linearRampToValueAtTime(ramp.toGain, toContext(ramp.endSec));
+    frequency.exponentialRampToValueAtTime(ramp.toHz, toContext(ramp.endSec));
+    const next = ramps[index + 1];
+    if (!next || next.startSec > ramp.endSec + 1e-9) {
+      dry.setValueAtTime(1, toContext(ramp.endSec));
+      wet.setValueAtTime(0, toContext(ramp.endSec));
+      frequency.setValueAtTime(ramp.fromHz, toContext(ramp.endSec));
+    }
+  });
+}
+
 /** Post-limiter output level for the studio meter. */
 export type PreviewLevel = {
   /** Peak absolute sample value after the limiter, linear 0..1. */
@@ -728,7 +784,7 @@ export type StemPreviewEngine = {
     /** Bar-grid tempo for tempo-synced echo; null = the 0.375 s fallback. */
     bpm?: number | null;
     /**
-     * Structure timeline `remix-structure/v1` (#1899). Null/absent (or an
+     * Structure timeline `remix-structure/v1`/v2 (#1899, #1908 build-ups). Null/absent (or an
      * identity timeline) keeps the plain single-source-per-stem graph.
      * Otherwise `offsetSec`, `loop`, `position()`, `duration()` and the
      * stems' `activeIntervals` (from `gateIntervalsForBlocks`) are all in
@@ -2000,8 +2056,36 @@ export function createStemPreviewEngine(input: {
       masterFade = audioContext.createGain();
       structureNodes.push(masterFade);
     }
+    // Build-ups (#1908), structure only: right after the master fade. A dry
+    // gain plus a high-pass → wet gain path, summed; only built when the
+    // timeline has build-ups, so other graphs are unchanged.
+    let buildUpStage: {
+      dry: GainNode;
+      wet: GainNode;
+      filter: BiquadFilterNode;
+      out: GainNode;
+    } | null = null;
+    if (masterFade && (structure?.buildUps?.length ?? 0) > 0) {
+      const dry = audioContext.createGain();
+      const wet = audioContext.createGain();
+      const out = audioContext.createGain();
+      const filter = audioContext.createBiquadFilter();
+      filter.type = "highpass";
+      // WebAudio's lowpass/highpass Q is in dB; see biquadQDb.
+      filter.Q.value = biquadQDb(REMIX_BUILDUP_FILTER_Q);
+      filter.frequency.value = REMIX_BUILDUP_START_HZ;
+      wet.gain.value = 0;
+      masterFade.connect(dry);
+      masterFade.connect(filter);
+      filter.connect(wet);
+      dry.connect(out);
+      wet.connect(out);
+      structureNodes.push(dry, wet, filter, out);
+      buildUpStage = { dry, wet, filter, out };
+    }
+    const masterFadeOut: AudioNode | null = buildUpStage?.out ?? masterFade;
     let stemInput: (stemId: string) => AudioNode = () => masterFade ?? output;
-    if (masterFade && !effects) masterFade.connect(output);
+    if (masterFadeOut && !effects) masterFadeOut.connect(output);
     if (effects) {
       const nodes: AudioNode[] = [];
       const masterBus = audioContext.createGain();
@@ -2013,7 +2097,7 @@ export function createStemPreviewEngine(input: {
       if (masterFade) masterBus.connect(masterFade);
       const masterTone = createToneStage(
         audioContext,
-        masterFade ?? masterBus,
+        masterFadeOut ?? masterBus,
         nodes,
       );
       const warmthDry = audioContext.createGain();
@@ -2337,6 +2421,23 @@ export function createStemPreviewEngine(input: {
         masterFade.gain.setValueAtTime(1, startAt);
       } else {
         scheduleMasterFades(masterFade.gain, structure?.masterFades ?? [], timing);
+      }
+    }
+    if (buildUpStage) {
+      if (loop) {
+        // Like the fades: a loop auditions the block's audio, unprocessed.
+        buildUpStage.dry.gain.setValueAtTime(1, startAt);
+        buildUpStage.wet.gain.setValueAtTime(0, startAt);
+      } else {
+        scheduleBuildUps(
+          {
+            dry: buildUpStage.dry.gain,
+            wet: buildUpStage.wet.gain,
+            frequency: buildUpStage.filter.frequency,
+          },
+          buildUpOutputRamps(structure?.buildUps ?? [], speed),
+          timing,
+        );
       }
     }
     for (const start of starts) start();

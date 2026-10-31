@@ -41,8 +41,10 @@ import {
   removeBlock,
   repeatBlock,
   REMIX_STRUCTURE_MAX_BLOCKS,
+  REMIX_STRUCTURE_MAX_BUILDUPS,
   structureTimeline,
   structureTooLongReason,
+  toggleBuildUp,
   toggleFade,
   type RemixStructureEditResult,
   type RemixStructureEditState,
@@ -193,12 +195,13 @@ export type LaneBlockAction =
   | "earlier"
   | "later"
   | "fade_in"
-  | "fade_out";
+  | "fade_out"
+  | "build_up";
 
 export type LaneBlockMenuEntry = {
   action: LaneBlockAction;
   label: string;
-  /** Fade entries only: whether the fade is on (a checkable entry). */
+  /** Fade / build-up entries only: whether it is on (a checkable entry). */
   checked?: boolean;
   enabled: boolean;
   /** Honest reason the entry is unavailable; null when enabled. */
@@ -225,6 +228,8 @@ export function blockActionResult(
       return toggleFade(state, index, "in");
     case "fade_out":
       return toggleFade(state, index, "out");
+    case "build_up":
+      return toggleBuildUp(state, index);
   }
 }
 
@@ -244,6 +249,8 @@ function refusalReason(
       return "This is already the first section";
     case "later":
       return "This is already the last section";
+    case "build_up":
+      return `A remix can have at most ${REMIX_STRUCTURE_MAX_BUILDUPS} build-ups`;
     default:
       return "This section can't fade";
   }
@@ -256,6 +263,7 @@ const BLOCK_MENU_ITEMS: readonly { action: LaneBlockAction; label: string }[] = 
   { action: "later", label: "Move later" },
   { action: "fade_in", label: "Fade in" },
   { action: "fade_out", label: "Fade out" },
+  { action: "build_up", label: "Build-up" },
 ];
 
 /**
@@ -275,6 +283,7 @@ export function blockMenuEntries(
       label,
       ...(action === "fade_in" ? { checked: block?.fadeIn === true } : {}),
       ...(action === "fade_out" ? { checked: block?.fadeOut === true } : {}),
+      ...(action === "build_up" ? { checked: block?.buildUp === true } : {}),
       enabled,
       reason: enabled ? null : refusalReason(state, action, grid),
     };
@@ -896,6 +905,7 @@ export function RemixSessionLanes({
                     repeat ? `repeat of ${place}` : null,
                     column.fadeIn ? "fades in" : null,
                     column.fadeOut ? "fades out" : null,
+                    column.buildUp ? "builds up" : null,
                   ].filter((note): note is string => note !== null);
                   const menuOpen = openMenu?.index === index;
                   const menuId = `${fxIdPrefix}-block-menu-${index}`;
@@ -936,6 +946,15 @@ export function RemixSessionLanes({
                             className="mr-0.5 text-sky-300 remix-lane-fade-in-mark"
                           >
                             ◢
+                          </span>
+                        )}
+                        {column.buildUp && (
+                          <span
+                            aria-hidden="true"
+                            title="Builds up"
+                            className="mr-0.5 text-amber-300 remix-lane-build-up-mark"
+                          >
+                            ↗
                           </span>
                         )}
                         {labels[column.section]}

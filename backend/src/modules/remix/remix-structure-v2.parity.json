@@ -1,0 +1,942 @@
+{
+  "schemaVersion": "remix-structure/v2",
+  "dspVersion": "remix-structure-dsp/v2",
+  "note": "Parity fixture for #1908 build-ups: backend (ffmpeg render) and web (WebAudio preview) must reproduce these values within 1e-9. Regenerate with backend/scripts/remix/generate-structure-v2-parity.ts. `parity` holds the measured ffmpeg-vs-WebAudio-model level error (50 ms RMS windows, pink noise) and the tolerances the ffmpeg-gated test asserts.",
+  "constants": {
+    "startHz": 30,
+    "endHz": 1500,
+    "startGain": 0.5,
+    "filterQ": 0.7071067811865476,
+    "sweepSteps": 48,
+    "edgeGridPerSecond": 1000,
+    "maxBuildUps": 24,
+    "stageFrameSamples": 48
+  },
+  "grid": {
+    "kind": "bars",
+    "sectionSeconds": 16,
+    "bpm": 120,
+    "durationSeconds": 58,
+    "sections": [
+      {
+        "startSec": 0,
+        "endSec": 6
+      },
+      {
+        "startSec": 6,
+        "endSec": 22
+      },
+      {
+        "startSec": 22,
+        "endSec": 38
+      },
+      {
+        "startSec": 38,
+        "endSec": 54
+      },
+      {
+        "startSec": 54,
+        "endSec": 58
+      }
+    ]
+  },
+  "timelines": [
+    {
+      "name": "build-up into the drop",
+      "blocks": [
+        {
+          "section": 0
+        },
+        {
+          "section": 1
+        },
+        {
+          "section": 2,
+          "buildUp": true
+        },
+        {
+          "section": 3
+        },
+        {
+          "section": 4
+        }
+      ],
+      "segments": [
+        {
+          "index": 0,
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 6,
+          "srcStartSec": 0,
+          "srcEndSec": 6,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 1,
+          "section": 1,
+          "outStartSec": 6,
+          "outEndSec": 22,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 2,
+          "section": 2,
+          "outStartSec": 22,
+          "outEndSec": 38,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false,
+          "buildUp": true
+        },
+        {
+          "index": 3,
+          "section": 3,
+          "outStartSec": 38,
+          "outEndSec": 54,
+          "srcStartSec": 38,
+          "srcEndSec": 54,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 4,
+          "section": 4,
+          "outStartSec": 54,
+          "outEndSec": 58,
+          "srcStartSec": 54,
+          "srcEndSec": 58,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false
+        }
+      ],
+      "buildUps": [
+        {
+          "startSec": 22,
+          "endSec": 38,
+          "fromHz": 30,
+          "toHz": 1500,
+          "fromGain": 0.5,
+          "toGain": 1
+        }
+      ],
+      "output": [
+        {
+          "speed": 1,
+          "ramps": [
+            {
+              "startSec": 22,
+              "endSec": 38,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        },
+        {
+          "speed": 0.8,
+          "ramps": [
+            {
+              "startSec": 27.5,
+              "endSec": 47.5,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        },
+        {
+          "speed": 1.17,
+          "ramps": [
+            {
+              "startSec": 18.803,
+              "endSec": 32.479,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "adjacent build-ups + fades",
+      "blocks": [
+        {
+          "section": 1,
+          "fadeIn": true
+        },
+        {
+          "section": 2,
+          "buildUp": true
+        },
+        {
+          "section": 2,
+          "buildUp": true,
+          "fadeOut": true
+        },
+        {
+          "section": 3
+        }
+      ],
+      "segments": [
+        {
+          "index": 0,
+          "section": 1,
+          "outStartSec": 0,
+          "outEndSec": 16,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": true,
+          "joinFadeOut": false,
+          "fadeIn": true,
+          "fadeOut": false
+        },
+        {
+          "index": 1,
+          "section": 2,
+          "outStartSec": 16,
+          "outEndSec": 32,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": false,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false,
+          "buildUp": true
+        },
+        {
+          "index": 2,
+          "section": 2,
+          "outStartSec": 32,
+          "outEndSec": 48,
+          "srcStartSec": 22,
+          "srcEndSec": 38,
+          "joinFadeIn": true,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": true,
+          "buildUp": true
+        },
+        {
+          "index": 3,
+          "section": 3,
+          "outStartSec": 48,
+          "outEndSec": 64,
+          "srcStartSec": 38,
+          "srcEndSec": 54,
+          "joinFadeIn": false,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        }
+      ],
+      "buildUps": [
+        {
+          "startSec": 16,
+          "endSec": 32,
+          "fromHz": 30,
+          "toHz": 1500,
+          "fromGain": 0.5,
+          "toGain": 1
+        },
+        {
+          "startSec": 32,
+          "endSec": 48,
+          "fromHz": 30,
+          "toHz": 1500,
+          "fromGain": 0.5,
+          "toGain": 1
+        }
+      ],
+      "output": [
+        {
+          "speed": 1,
+          "ramps": [
+            {
+              "startSec": 16,
+              "endSec": 32,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            },
+            {
+              "startSec": 32,
+              "endSec": 48,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        },
+        {
+          "speed": 0.8,
+          "ramps": [
+            {
+              "startSec": 20,
+              "endSec": 40,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            },
+            {
+              "startSec": 40,
+              "endSec": 60,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        },
+        {
+          "speed": 1.17,
+          "ramps": [
+            {
+              "startSec": 13.675,
+              "endSec": 27.35,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            },
+            {
+              "startSec": 27.35,
+              "endSec": 41.026,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pickup build-up",
+      "blocks": [
+        {
+          "section": 0,
+          "buildUp": true
+        },
+        {
+          "section": 1
+        },
+        {
+          "section": 3
+        }
+      ],
+      "segments": [
+        {
+          "index": 0,
+          "section": 0,
+          "outStartSec": 0,
+          "outEndSec": 6,
+          "srcStartSec": 0,
+          "srcEndSec": 6,
+          "joinFadeIn": false,
+          "joinFadeOut": false,
+          "fadeIn": false,
+          "fadeOut": false,
+          "buildUp": true
+        },
+        {
+          "index": 1,
+          "section": 1,
+          "outStartSec": 6,
+          "outEndSec": 22,
+          "srcStartSec": 6,
+          "srcEndSec": 22,
+          "joinFadeIn": false,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        },
+        {
+          "index": 2,
+          "section": 3,
+          "outStartSec": 22,
+          "outEndSec": 38,
+          "srcStartSec": 38,
+          "srcEndSec": 54,
+          "joinFadeIn": true,
+          "joinFadeOut": true,
+          "fadeIn": false,
+          "fadeOut": false
+        }
+      ],
+      "buildUps": [
+        {
+          "startSec": 0,
+          "endSec": 6,
+          "fromHz": 30,
+          "toHz": 1500,
+          "fromGain": 0.5,
+          "toGain": 1
+        }
+      ],
+      "output": [
+        {
+          "speed": 1,
+          "ramps": [
+            {
+              "startSec": 0,
+              "endSec": 6,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        },
+        {
+          "speed": 0.8,
+          "ramps": [
+            {
+              "startSec": 0,
+              "endSec": 7.5,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        },
+        {
+          "speed": 1.17,
+          "ramps": [
+            {
+              "startSec": 0,
+              "endSec": 5.128,
+              "fromHz": 30,
+              "toHz": 1500,
+              "fromGain": 0.5,
+              "toGain": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "sweep": {
+    "ramp": {
+      "startSec": 18.803,
+      "endSec": 32.479,
+      "fromHz": 30,
+      "toHz": 1500,
+      "fromGain": 0.5,
+      "toGain": 1
+    },
+    "steps": [
+      {
+        "atSec": 18.803,
+        "hz": 31.247757740435667
+      },
+      {
+        "atSec": 19.08791666666667,
+        "hz": 33.901121640578715
+      },
+      {
+        "atSec": 19.372833333333332,
+        "hz": 36.77979258659247
+      },
+      {
+        "atSec": 19.65775,
+        "hz": 39.902902241840735
+      },
+      {
+        "atSec": 19.942666666666668,
+        "hz": 43.29120681072918
+      },
+      {
+        "atSec": 20.227583333333335,
+        "hz": 46.96722498455711
+      },
+      {
+        "atSec": 20.5125,
+        "hz": 50.955387600867226
+      },
+      {
+        "atSec": 20.797416666666667,
+        "hz": 55.282200010929536
+      },
+      {
+        "atSec": 21.082333333333334,
+        "hz": 59.97641823445583
+      },
+      {
+        "atSec": 21.367250000000002,
+        "hz": 65.06924007226901
+      },
+      {
+        "atSec": 21.652166666666666,
+        "hz": 70.59451244706342
+      },
+      {
+        "atSec": 21.937083333333334,
+        "hz": 76.58895635024462
+      },
+      {
+        "atSec": 22.222,
+        "hz": 83.09241088984503
+      },
+      {
+        "atSec": 22.50691666666667,
+        "hz": 90.1480980614613
+      },
+      {
+        "atSec": 22.791833333333333,
+        "hz": 97.80291000188126
+      },
+      {
+        "atSec": 23.07675,
+        "hz": 106.10772063448933
+      },
+      {
+        "atSec": 23.361666666666668,
+        "hz": 115.11772377764899
+      },
+      {
+        "atSec": 23.646583333333332,
+        "hz": 124.89279996313117
+      },
+      {
+        "atSec": 23.9315,
+        "hz": 135.4979144024669
+      },
+      {
+        "atSec": 24.216416666666667,
+        "hz": 147.0035487461094
+      },
+      {
+        "atSec": 24.501333333333335,
+        "hz": 159.4861695048814
+      },
+      {
+        "atSec": 24.78625,
+        "hz": 173.0287362468382
+      },
+      {
+        "atSec": 25.071166666666667,
+        "hz": 187.7212529470247
+      },
+      {
+        "atSec": 25.356083333333334,
+        "hz": 203.6613661544024
+      },
+      {
+        "atSec": 25.641,
+        "hz": 220.95501395136475
+      },
+      {
+        "atSec": 25.925916666666666,
+        "hz": 239.71713001883214
+      },
+      {
+        "atSec": 26.210833333333333,
+        "hz": 260.07240748614254
+      },
+      {
+        "atSec": 26.49575,
+        "hz": 282.15612764229485
+      },
+      {
+        "atSec": 26.780666666666665,
+        "hz": 306.11505901615834
+      },
+      {
+        "atSec": 27.065583333333333,
+        "hz": 332.108432800946
+      },
+      {
+        "atSec": 27.3505,
+        "hz": 360.3090011056216
+      },
+      {
+        "atSec": 27.635416666666664,
+        "hz": 390.90418506639327
+      },
+      {
+        "atSec": 27.920333333333332,
+        "hz": 424.0973204486425
+      },
+      {
+        "atSec": 28.20525,
+        "hz": 460.1090090175684
+      },
+      {
+        "atSec": 28.490166666666667,
+        "hz": 499.17858465876645
+      },
+      {
+        "atSec": 28.775083333333335,
+        "hz": 541.5657039925843
+      },
+      {
+        "atSec": 29.060000000000002,
+        "hz": 587.5520720534831
+      },
+      {
+        "atSec": 29.344916666666666,
+        "hz": 637.4433145032917
+      },
+      {
+        "atSec": 29.629833333333334,
+        "hz": 691.571008821079
+      },
+      {
+        "atSec": 29.914749999999998,
+        "hz": 750.2948879689512
+      },
+      {
+        "atSec": 30.199666666666666,
+        "hz": 814.0052311793543
+      },
+      {
+        "atSec": 30.484583333333333,
+        "hz": 883.1254577530507
+      },
+      {
+        "atSec": 30.7695,
+        "hz": 958.1149411061864
+      },
+      {
+        "atSec": 31.05441666666667,
+        "hz": 1039.472061768611
+      },
+      {
+        "atSec": 31.339333333333332,
+        "hz": 1127.7375196236887
+      },
+      {
+        "atSec": 31.62425,
+        "hz": 1223.4979274027792
+      },
+      {
+        "atSec": 31.909166666666664,
+        "hz": 1327.389709316764
+      },
+      {
+        "atSec": 32.19408333333333,
+        "hz": 1440.1033307349414
+      }
+    ]
+  },
+  "samples": [
+    {
+      "atSec": 5.1270000000000024,
+      "cutoffHz": 30,
+      "gain": 0.5
+    },
+    {
+      "atSec": 18.803,
+      "cutoffHz": 30,
+      "gain": 0.5
+    },
+    {
+      "atSec": 22.222,
+      "cutoffHz": 79.77443845417486,
+      "gain": 0.625
+    },
+    {
+      "atSec": 25.641,
+      "cutoffHz": 212.13203435596415,
+      "gain": 0.75
+    },
+    {
+      "atSec": 29.06,
+      "cutoffHz": 564.0904639629589,
+      "gain": 0.875
+    },
+    {
+      "atSec": 32.479,
+      "cutoffHz": 1500,
+      "gain": 1
+    }
+  ],
+  "normalize": [
+    {
+      "input": {
+        "blocks": [
+          {
+            "section": 2,
+            "buildUp": true
+          }
+        ]
+      },
+      "output": {
+        "schemaVersion": "remix-structure/v2",
+        "blocks": [
+          {
+            "section": 2,
+            "buildUp": true
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "schemaVersion": "remix-structure/v1",
+        "blocks": [
+          {
+            "section": 2,
+            "buildUp": true
+          },
+          {
+            "section": 3
+          }
+        ]
+      },
+      "output": {
+        "schemaVersion": "remix-structure/v2",
+        "blocks": [
+          {
+            "section": 2,
+            "buildUp": true
+          },
+          {
+            "section": 3
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "schemaVersion": "remix-structure/v2",
+        "blocks": [
+          {
+            "section": 2,
+            "buildUp": false
+          },
+          {
+            "section": 3
+          }
+        ]
+      },
+      "output": {
+        "schemaVersion": "remix-structure/v1",
+        "blocks": [
+          {
+            "section": 2
+          },
+          {
+            "section": 3
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "blocks": [
+          {
+            "section": 0
+          },
+          {
+            "section": 1
+          },
+          {
+            "section": 2,
+            "buildUp": true
+          },
+          {
+            "section": 3
+          },
+          {
+            "section": 4
+          }
+        ]
+      },
+      "output": {
+        "schemaVersion": "remix-structure/v2",
+        "blocks": [
+          {
+            "section": 0
+          },
+          {
+            "section": 1
+          },
+          {
+            "section": 2,
+            "buildUp": true
+          },
+          {
+            "section": 3
+          },
+          {
+            "section": 4
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "blocks": [
+          {
+            "section": 2,
+            "buildUp": 1
+          }
+        ]
+      },
+      "output": "error"
+    },
+    {
+      "input": {
+        "schemaVersion": "remix-structure/v3",
+        "blocks": [
+          {
+            "section": 2
+          }
+        ]
+      },
+      "output": "error"
+    },
+    {
+      "input": {
+        "blocks": [
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          },
+          {
+            "section": 1,
+            "buildUp": true
+          }
+        ]
+      },
+      "output": "error"
+    }
+  ],
+  "parity": {
+    "windowSeconds": 0.05,
+    "toleranceMaxWindowDb": 0.5,
+    "toleranceMaxDropWindowDb": 2,
+    "toleranceMeanWindowDb": 0.05,
+    "measuredWith": "ffmpeg 6.1.1, pink noise (seed 1908), 2 s blocks with build-ups at blocks 1, 3 and 4 (3 and 4 adjacent)",
+    "measured": [
+      {
+        "case": "speed 1 (adjacent build-ups)",
+        "maxWindowDb": 0.0347,
+        "maxDropWindowDb": 0.9471,
+        "meanWindowDb": 0.0071
+      },
+      {
+        "case": "speed 1.17 (edges off the 1 ms grid)",
+        "maxWindowDb": 0.1952,
+        "maxDropWindowDb": 1.3142,
+        "meanWindowDb": 0.0167
+      }
+    ]
+  }
+}

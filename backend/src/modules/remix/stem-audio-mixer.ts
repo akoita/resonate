@@ -48,8 +48,13 @@ import {
 } from "./remix-fx";
 import {
   JOIN_FADE_SECONDS,
+  BUILDUP_FILTER_Q,
+  buildUpOutputRamps,
+  buildUpRamps,
+  buildUpSweepSteps,
   masterFadeRamps,
-  REMIX_STRUCTURE_DSP_VERSION,
+  remixStructureDspVersion,
+  type RemixBuildUpRamp,
   type RemixMasterFadeRamp,
   type RemixRenderStructure,
   type RemixStructureSegment,
@@ -505,6 +510,70 @@ export function buildMasterFadeVolumeExpression(
 }
 
 /**
+ * Frame size of the build-up stage (#1908): 48 samples = 1 ms at 48 kHz, the
+ * build-up edge grid, so the per-frame masks, gain and cutoff commands land
+ * on the same 1 ms boundaries the preview schedules.
+ */
+export const BUILDUP_STAGE_FRAME_SAMPLES = 48;
+/** Frame size the master chain returns to after the build-up stage. */
+const BUILDUP_STAGE_RECHUNK_SAMPLES = 1024;
+
+/**
+ * The build-up stage (#1908) on the master sum, in OUTPUT time, given
+ * {@link buildUpOutputRamps} (edges on the 1 ms grid):
+ *
+ *   in → [pre…] → 1 ms frames → asplit
+ *     dry: × (1 − inside a build-up)
+ *     wet: asendcmd → highpass@bu (RBJ, Q 1/√2, direct form I) → × gain
+ *   → amix(sum) → back to 1024-sample frames → out
+ *
+ * The wet high-pass runs continuously at the start cutoff; each build-up
+ * steps it through {@link buildUpSweepSteps} (the continuous exponential
+ * sweep, sampled at step midpoints) and resets it to the start cutoff at the
+ * drop — exactly the preview's single BiquadFilterNode automation, stepped.
+ * The wet gain ramps fromGain → toGain inside each build-up and is 0
+ * outside. Numbers only, never user strings. `pre` filters (the master
+ * fades) run before the 1 ms framing.
+ */
+export function buildBuildUpStageGraph(
+  ramps: RemixBuildUpRamp[],
+  input: string,
+  pre: string[],
+  output: string,
+): string[] {
+  const inside = (ramp: RemixBuildUpRamp) =>
+    `gte(t\\,${fxNum(ramp.startSec)})*lt(t\\,${fxNum(ramp.endSec)})`;
+  const mask = ramps.map(inside).join("+");
+  const gain = ramps
+    .map(
+      (ramp) =>
+        `${inside(ramp)}*(${fxNum(ramp.fromGain)}+${fxNum(ramp.toGain - ramp.fromGain)}*(t-${fxNum(ramp.startSec)})/${fxNum(ramp.endSec - ramp.startSec)})`,
+    )
+    .join("+");
+  const commands: string[] = [];
+  ramps.forEach((ramp, index) => {
+    for (const step of buildUpSweepSteps(ramp)) {
+      commands.push(`${fxNum(step.atSec)} highpass@bu f ${fxNum(step.hz)}`);
+    }
+    // Back to the start cutoff at the drop, unless the next build-up starts
+    // right there (its first step sets the cutoff at the same instant).
+    const next = ramps[index + 1];
+    if (!next || next.startSec > ramp.endSec + 1e-9) {
+      commands.push(
+        `${fxNum(ramp.endSec)} highpass@bu f ${fxNum(ramp.fromHz)}`,
+      );
+    }
+  });
+  const fromHz = ramps.length > 0 ? ramps[0].fromHz : 0;
+  return [
+    `${input}${[...pre, `asetnsamples=n=${BUILDUP_STAGE_FRAME_SAMPLES}:p=0`, "asplit=2[bud][buw]"].join(",")}`,
+    `[bud]volume=volume='1-(${mask})':eval=frame[budo]`,
+    `[buw]asendcmd=c='${commands.join("\\;")}',highpass@bu=f=${fxNum(fromHz)}:width_type=q:width=${fxNum(BUILDUP_FILTER_Q)}:transform=di,volume=volume='${gain}':eval=frame[buwo]`,
+    `[budo][buwo]amix=inputs=2:duration=longest:normalize=0,asetnsamples=n=${BUILDUP_STAGE_RECHUNK_SAMPLES}:p=0${output}`,
+  ];
+}
+
+/**
  * Pre/post-roll decoded around every structure run and discarded in-graph
  * (#1899). A cold seek glitches at the cut — an MP3 decoder lacks its bit
  * reservoir and the resampler starts from silence — so each run decodes from
@@ -797,6 +866,11 @@ export function buildFxStemMixFilter(
     ? buildMasterFadeVolumeExpression(masterFadeRamps(segments), speed)
     : null;
   if (fades) masterChain.push(`volume=volume=${fades}:eval=frame`);
+  // Build-ups (#1908) run after the fades, before master tone/warmth.
+  const buildUps = segments
+    ? buildUpOutputRamps(buildUpRamps(segments), speed)
+    : [];
+  const preBuildUp = buildUps.length > 0 ? masterChain.splice(0) : [];
   const masterTone = fxToneFilter(master.tone);
   if (masterTone) masterChain.push(masterTone);
   const warmth = master.warmth ?? 0;
@@ -810,7 +884,12 @@ export function buildFxStemMixFilter(
   graph.push(
     `${dryLabels.join("")}amix=inputs=${dryLabels.length}:duration=longest:normalize=0[sum]`,
   );
-  graph.push(`[sum]${masterChain.join(",")}[mix]`);
+  if (buildUps.length > 0) {
+    graph.push(...buildBuildUpStageGraph(buildUps, "[sum]", preBuildUp, "[bu]"));
+    graph.push(`[bu]${masterChain.join(",")}[mix]`);
+  } else {
+    graph.push(`[sum]${masterChain.join(",")}[mix]`);
+  }
   return { filter: graph.join(";"), needsImpulse };
 }
 
@@ -1066,7 +1145,7 @@ function renderMetadata(
     ...(structure
       ? {
           structure: structure.structure,
-          structureVersion: REMIX_STRUCTURE_DSP_VERSION,
+          structureVersion: remixStructureDspVersion(structure.structure),
         }
       : {}),
     // #1902: the beat recipe + synthesis rules version; a synthesized part

@@ -26,7 +26,7 @@ import {
   NO_SECTION_GRID_ERROR,
   normalizeRemixStructureInput,
   readStoredRemixStructure,
-  REMIX_STRUCTURE_SCHEMA_VERSION,
+  REMIX_STRUCTURE_SCHEMA_VERSION_V1,
   structureBlockCount,
   structureTimeline,
   timelineDurationSec,
@@ -120,7 +120,7 @@ const sectionCount = grid.sections.length;
 
 describe("remix-structure/v1 parity fixture (#1899)", () => {
   it("pins the schema version and constants", () => {
-    expect(fixture.schemaVersion).toBe(REMIX_STRUCTURE_SCHEMA_VERSION);
+    expect(fixture.schemaVersion).toBe(REMIX_STRUCTURE_SCHEMA_VERSION_V1);
     expectClose(JOIN_FADE_SECONDS, fixture.constants.joinFadeSeconds);
     expect(MAX_STRUCTURE_BLOCKS).toBe(fixture.constants.maxBlocks);
   });
@@ -187,7 +187,7 @@ describe("normalizeRemixStructureInput (#1899)", () => {
     ["a string", "extended", /structure must be an object or null/],
     ["an array", [], /structure must be an object or null/],
     ["an unknown top-level key", { blocks: [{ section: 0 }], mode: "x" }, /structure\.mode/],
-    ["a foreign schema version", { schemaVersion: "remix-structure/v2", blocks: [{ section: 0 }] }, /schemaVersion/],
+    ["a foreign schema version", { schemaVersion: "remix-structure/v3", blocks: [{ section: 0 }] }, /schemaVersion/],
     ["missing blocks", {}, /structure\.blocks must be an array/],
     ["too many blocks", { blocks: Array.from({ length: 97 }, () => ({ section: 0 })) }, /1\.\.96 entries/],
     ["a non-object block", { blocks: [1] }, /blocks\[\] must be objects/],

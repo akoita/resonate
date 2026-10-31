@@ -25,7 +25,7 @@ import {
   resetStructure,
   REMIX_STRUCTURE_JOIN_FADE_SECONDS,
   REMIX_STRUCTURE_MAX_BLOCKS,
-  REMIX_STRUCTURE_SCHEMA_VERSION,
+  REMIX_STRUCTURE_SCHEMA_VERSION_V1,
   sameRemixStructure,
   shortEdit,
   structureEditState,
@@ -82,7 +82,7 @@ function expectClose(actual: number, expected: number) {
 
 describe("remix-structure/v1 parity fixture (#1899)", () => {
   it("shares the schema version and constants", () => {
-    expect(fixture.schemaVersion).toBe(REMIX_STRUCTURE_SCHEMA_VERSION);
+    expect(fixture.schemaVersion).toBe(REMIX_STRUCTURE_SCHEMA_VERSION_V1);
     expect(REMIX_STRUCTURE_JOIN_FADE_SECONDS).toBe(
       fixture.constants.joinFadeSeconds,
     );
@@ -176,7 +176,7 @@ describe("normalizeRemixStructure (#1899)", () => {
     expect(normalizeRemixStructure([], 5)).toBeNull();
     expect(
       normalizeRemixStructure(
-        { schemaVersion: "remix-structure/v2", blocks: [{ section: 1 }] },
+        { schemaVersion: "remix-structure/v3", blocks: [{ section: 1 }] },
         5,
       ),
     ).toBeNull();
@@ -352,7 +352,7 @@ describe("structure edit operations (#1899)", () => {
   it("toggles fades and collapses back to null", () => {
     const faded = toggleFade(state(identity, { a: [false, true, true, true, true] }), 4, "out")!;
     expect(faded.structure).toEqual({
-      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
       blocks: [...identity.slice(0, 4), { section: 4, fadeOut: true }],
     });
     expect(faded.masks.a).toEqual([false, true, true, true, true]);
@@ -385,7 +385,7 @@ describe("structure edit operations (#1899)", () => {
 
   it("remaps masks onto a given structure by source section (#1936)", () => {
     const target = {
-      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
       blocks: [{ section: 1 }, { section: 1 }, { section: 3, fadeOut: true }],
     };
     const result = remapToStructure(

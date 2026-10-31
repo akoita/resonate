@@ -1,5 +1,5 @@
 /**
- * Remix Studio structure blocks, recipe `remix-structure/v1` (#1899).
+ * Remix Studio structure blocks, recipe `remix-structure/v2` (#1899, #1908).
  *
  * A structure is an ordered sequence of the source section grid's sections
  * (1..{@link MAX_STRUCTURE_BLOCKS} blocks): sections can repeat, be dropped
@@ -18,15 +18,60 @@
  * (timeline position) once a structure applies; with no structure the blocks
  * are the grid sections, so every existing mask keeps its meaning.
  *
+ * Build-ups (#1908, `remix-structure/v2`): a block can carry `buildUp: true`
+ * — a rising high-pass sweep plus a gain ramp across it, leading into the
+ * next block (the drop). v2 only adds that field: a structure without
+ * build-ups still normalizes to `remix-structure/v1` (byte-identical recipe,
+ * timeline and render), and stored v1 rows read unchanged. The build-up DSP
+ * rules are {@link REMIX_STRUCTURE_BUILDUP_DSP_VERSION}, pinned by
+ * `remix-structure-v2.parity.json`; the ffmpeg stage is measured against a
+ * per-sample model of the WebAudio graph in
+ * `remix-structure-buildup.integration.spec.ts`.
+ *
  * Structure is deterministic editing, not AI: it never changes a render's
  * grounding, costs nothing, and never interpolates user strings into a graph.
  */
 
 import type { SectionGrid, SectionInterval } from "./remix-arrangement";
 
-export const REMIX_STRUCTURE_SCHEMA_VERSION = "remix-structure/v1";
+/** The original schema: blocks with fades only (#1899). */
+export const REMIX_STRUCTURE_SCHEMA_VERSION_V1 = "remix-structure/v1";
+/** Current schema: v1 plus `buildUp` per block (#1908). */
+export const REMIX_STRUCTURE_SCHEMA_VERSION = "remix-structure/v2";
+export type RemixStructureSchemaVersion =
+  | typeof REMIX_STRUCTURE_SCHEMA_VERSION_V1
+  | typeof REMIX_STRUCTURE_SCHEMA_VERSION;
 /** Version of the timeline/fade rules below, recorded with every render. */
 export const REMIX_STRUCTURE_DSP_VERSION = "remix-structure-dsp/v1";
+/**
+ * Timeline/fade rules plus the build-up stage (#1908); recorded instead of
+ * {@link REMIX_STRUCTURE_DSP_VERSION} when a structure has build-ups.
+ */
+export const REMIX_STRUCTURE_BUILDUP_DSP_VERSION = "remix-structure-dsp/v2";
+
+/** Build-up high-pass cutoff at the block start, Hz (#1908). */
+export const BUILDUP_START_HZ = 30;
+/** Build-up high-pass cutoff at the block end (just before the drop), Hz. */
+export const BUILDUP_END_HZ = 1500;
+/** Build-up gain at the block start (−6 dB), ramping linearly to 1. */
+export const BUILDUP_START_GAIN = 0.5;
+/** Butterworth Q (linear) of the build-up high-pass, RBJ cookbook. */
+export const BUILDUP_FILTER_Q = Math.SQRT1_2;
+/**
+ * The render approximates the continuous exponential sweep with this many
+ * equal steps per build-up (each at its midpoint cutoff); measured against
+ * the continuous preview (see the v2 parity fixture).
+ */
+export const BUILDUP_SWEEP_STEPS = 48;
+/**
+ * Build-up edges snap to this output-time grid in both engines (1 ms = the
+ * render stage's 48-sample frame at 48 kHz), so the drop lands on the same
+ * sample in each.
+ */
+export const BUILDUP_EDGE_GRID_PER_SECOND = 1000;
+/** Build-up blocks per structure (bounds the render's command list). */
+export const MAX_BUILDUP_BLOCKS = 24;
+export const TOO_MANY_BUILDUPS_ERROR = `A remix can have at most ${MAX_BUILDUP_BLOCKS} build-ups.`;
 /** Click-free join fade where the audio jumps between blocks. */
 export const JOIN_FADE_SECONDS = 0.01;
 export const MAX_STRUCTURE_BLOCKS = 96;
@@ -54,10 +99,13 @@ export type RemixStructureBlock = {
   fadeIn?: true;
   /** Whole-mix fade out across the block (omitted when false). */
   fadeOut?: true;
+  /** Build-up across the block (#1908, v2; omitted when false). */
+  buildUp?: true;
 };
 
 export type RemixStructure = {
-  schemaVersion: typeof REMIX_STRUCTURE_SCHEMA_VERSION;
+  /** v2 exactly when a block has a build-up; v1 otherwise. */
+  schemaVersion: RemixStructureSchemaVersion;
   blocks: RemixStructureBlock[];
 };
 
@@ -75,6 +123,26 @@ export type RemixStructureSegment = {
   joinFadeOut: boolean;
   fadeIn: boolean;
   fadeOut: boolean;
+  /**
+   * Build-up across the block (#1908). Present only when true, so v1
+   * timelines (and the v1 parity fixture) keep their exact shape.
+   */
+  buildUp?: true;
+};
+
+/**
+ * One build-up (#1908): across [startSec, endSec) the whole mix runs
+ * through a high-pass whose cutoff rises exponentially fromHz → toHz, times
+ * a gain rising linearly fromGain → toGain; outside every build-up the mix
+ * is untouched (the high-pass is switched out).
+ */
+export type RemixBuildUpRamp = {
+  startSec: number;
+  endSec: number;
+  fromHz: number;
+  toHz: number;
+  fromGain: number;
+  toGain: number;
 };
 
 /** A linear whole-mix gain ramp on the timeline. */
@@ -131,10 +199,11 @@ export function normalizeRemixStructureInput(
   }
   if (
     value.schemaVersion !== undefined &&
-    value.schemaVersion !== REMIX_STRUCTURE_SCHEMA_VERSION
+    value.schemaVersion !== REMIX_STRUCTURE_SCHEMA_VERSION &&
+    value.schemaVersion !== REMIX_STRUCTURE_SCHEMA_VERSION_V1
   ) {
     return {
-      error: `structure.schemaVersion must be "${REMIX_STRUCTURE_SCHEMA_VERSION}"`,
+      error: `structure.schemaVersion must be "${REMIX_STRUCTURE_SCHEMA_VERSION}" or "${REMIX_STRUCTURE_SCHEMA_VERSION_V1}"`,
     };
   }
   const rawBlocks = value.blocks;
@@ -153,9 +222,14 @@ export function normalizeRemixStructureInput(
       return { error: "structure.blocks[] must be objects" };
     }
     for (const key of Object.keys(raw)) {
-      if (key !== "section" && key !== "fadeIn" && key !== "fadeOut") {
+      if (
+        key !== "section" &&
+        key !== "fadeIn" &&
+        key !== "fadeOut" &&
+        key !== "buildUp"
+      ) {
         return {
-          error: `structure.blocks[].${key} is not supported (allowed: section, fadeIn, fadeOut)`,
+          error: `structure.blocks[].${key} is not supported (allowed: section, fadeIn, fadeOut, buildUp)`,
         };
       }
     }
@@ -173,27 +247,58 @@ export function normalizeRemixStructureInput(
             : "structure.blocks[].section must be a non-negative integer",
       };
     }
-    for (const fade of ["fadeIn", "fadeOut"] as const) {
-      if (raw[fade] !== undefined && typeof raw[fade] !== "boolean") {
-        return { error: `structure.blocks[].${fade} must be a boolean` };
+    for (const flag of ["fadeIn", "fadeOut", "buildUp"] as const) {
+      if (raw[flag] !== undefined && typeof raw[flag] !== "boolean") {
+        return { error: `structure.blocks[].${flag} must be a boolean` };
       }
     }
     blocks.push({
       section,
       ...(raw.fadeIn === true ? { fadeIn: true as const } : {}),
       ...(raw.fadeOut === true ? { fadeOut: true as const } : {}),
+      ...(raw.buildUp === true ? { buildUp: true as const } : {}),
     });
   }
+  const buildUps = blocks.filter((block) => block.buildUp).length;
+  if (buildUps > MAX_BUILDUP_BLOCKS) return { error: TOO_MANY_BUILDUPS_ERROR };
 
   const identity =
     sectionCount !== null &&
     blocks.length === sectionCount &&
     blocks.every(
       (block, index) =>
-        block.section === index && !block.fadeIn && !block.fadeOut,
+        block.section === index &&
+        !block.fadeIn &&
+        !block.fadeOut &&
+        !block.buildUp,
     );
   if (identity) return { value: null };
-  return { value: { schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION, blocks } };
+  return {
+    value: {
+      // v1 stays v1 (and byte-identical) until a build-up needs v2.
+      schemaVersion:
+        buildUps > 0
+          ? REMIX_STRUCTURE_SCHEMA_VERSION
+          : REMIX_STRUCTURE_SCHEMA_VERSION_V1,
+      blocks,
+    },
+  };
+}
+
+/** True when any block carries a build-up (#1908). */
+export function structureHasBuildUps(
+  structure: Pick<RemixStructure, "blocks"> | null | undefined,
+): boolean {
+  return !!structure && structure.blocks.some((block) => block.buildUp);
+}
+
+/** The DSP rules version a render of this structure records (#1908). */
+export function remixStructureDspVersion(
+  structure: Pick<RemixStructure, "blocks"> | null | undefined,
+): string {
+  return structureHasBuildUps(structure)
+    ? REMIX_STRUCTURE_BUILDUP_DSP_VERSION
+    : REMIX_STRUCTURE_DSP_VERSION;
 }
 
 /**
@@ -210,7 +315,12 @@ export function readStoredRemixStructure(
   sectionCount: number | null,
 ): RemixStructure | null {
   if (!isPlainObject(stored)) return null;
-  if (stored.schemaVersion !== REMIX_STRUCTURE_SCHEMA_VERSION) return null;
+  if (
+    stored.schemaVersion !== REMIX_STRUCTURE_SCHEMA_VERSION &&
+    stored.schemaVersion !== REMIX_STRUCTURE_SCHEMA_VERSION_V1
+  ) {
+    return null;
+  }
   const normalized = normalizeRemixStructureInput(stored, sectionCount);
   return "error" in normalized ? null : normalized.value;
 }
@@ -264,6 +374,7 @@ export function structureTimeline(
       joinFadeOut,
       fadeIn: block.fadeIn === true,
       fadeOut: block.fadeOut === true,
+      ...(block.buildUp === true ? { buildUp: true as const } : {}),
     });
   });
   return segments;
@@ -377,4 +488,91 @@ export function resolveStoredRemixStructure(
     return { structure: null, overCap: true };
   }
   return { structure, overCap: false };
+}
+
+// --- Build-ups (#1908) -------------------------------------------------------
+
+/** Build-up ramps on the timeline, in block order (timeline time). */
+export function buildUpRamps(
+  segments: RemixStructureSegment[],
+): RemixBuildUpRamp[] {
+  return segments
+    .filter((segment) => segment.buildUp === true)
+    .map((segment) => ({
+      startSec: segment.outStartSec,
+      endSec: segment.outEndSec,
+      fromHz: BUILDUP_START_HZ,
+      toHz: BUILDUP_END_HZ,
+      fromGain: BUILDUP_START_GAIN,
+      toGain: 1,
+    }));
+}
+
+/** Snap an output-time second to the build-up edge grid (1 ms). */
+export function snapBuildUpEdge(sec: number): number {
+  return (
+    Math.round(sec * BUILDUP_EDGE_GRID_PER_SECOND) /
+    BUILDUP_EDGE_GRID_PER_SECOND
+  );
+}
+
+/**
+ * The build-ups in OUTPUT time (timeline ÷ speed), edges snapped to the
+ * 1 ms grid; spans that snap to nothing are dropped. Both engines schedule
+ * exactly these spans.
+ */
+export function buildUpOutputRamps(
+  ramps: RemixBuildUpRamp[],
+  speed = 1,
+): RemixBuildUpRamp[] {
+  return ramps
+    .map((ramp) => ({
+      ...ramp,
+      startSec: snapBuildUpEdge(ramp.startSec / speed),
+      endSec: snapBuildUpEdge(ramp.endSec / speed),
+    }))
+    .filter((ramp) => ramp.endSec > ramp.startSec);
+}
+
+function buildUpProgress(ramp: RemixBuildUpRamp, atSec: number): number {
+  const length = ramp.endSec - ramp.startSec;
+  const t = length > 0 ? (atSec - ramp.startSec) / length : 1;
+  return Math.min(1, Math.max(0, t));
+}
+
+/** The exponential cutoff of a build-up at `atSec` (clamped to the span). */
+export function buildUpCutoffHzAt(
+  ramp: RemixBuildUpRamp,
+  atSec: number,
+): number {
+  return (
+    ramp.fromHz *
+    Math.pow(ramp.toHz / ramp.fromHz, buildUpProgress(ramp, atSec))
+  );
+}
+
+/** The linear gain of a build-up at `atSec` (clamped to the span). */
+export function buildUpGainAt(ramp: RemixBuildUpRamp, atSec: number): number {
+  return (
+    ramp.fromGain +
+    (ramp.toGain - ramp.fromGain) * buildUpProgress(ramp, atSec)
+  );
+}
+
+/**
+ * The render's stepped sweep for one (output-time) build-up:
+ * {@link BUILDUP_SWEEP_STEPS} equal steps, each set at its start to the
+ * cutoff at its midpoint.
+ */
+export function buildUpSweepSteps(
+  ramp: RemixBuildUpRamp,
+): Array<{ atSec: number; hz: number }> {
+  const length = ramp.endSec - ramp.startSec;
+  return Array.from({ length: BUILDUP_SWEEP_STEPS }, (_, step) => ({
+    atSec: ramp.startSec + (length * step) / BUILDUP_SWEEP_STEPS,
+    hz: buildUpCutoffHzAt(
+      ramp,
+      ramp.startSec + (length * (step + 0.5)) / BUILDUP_SWEEP_STEPS,
+    ),
+  }));
 }

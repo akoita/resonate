@@ -290,6 +290,7 @@ export function structureTimelineKey(
       segment.joinFadeOut,
       segment.fadeIn,
       segment.fadeOut,
+      segment.buildUp === true,
     ]),
   ]);
 }
