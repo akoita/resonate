@@ -74,6 +74,12 @@ describe("BillingConfig (#2407)", () => {
     expect(new BillingConfig({ ...CONFIGURED, STRIPE_AUTOMATIC_TAX: "true" }).automaticTax).toBe(true);
   });
 
+  it("offers USD only, and adds EUR only with STRIPE_EUR_PRICES=true (#2496)", () => {
+    expect(new BillingConfig(CONFIGURED).currencies).toEqual(["usd"]);
+    expect(new BillingConfig({ ...CONFIGURED, STRIPE_EUR_PRICES: "yes" }).currencies).toEqual(["usd"]);
+    expect(new BillingConfig({ ...CONFIGURED, STRIPE_EUR_PRICES: " TRUE " }).currencies).toEqual(["usd", "eur"]);
+  });
+
   it("builds the SDK gateway with no network call when configured", () => {
     expect(createStripeGateway(new BillingConfig(CONFIGURED))).not.toBeNull();
   });

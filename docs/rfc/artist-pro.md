@@ -264,7 +264,11 @@ manager. Price ids and URLs are central configuration, never in source.
 **Purchase:**
 
 - **Top-up:** Stripe Checkout in one-time payment mode, for fixed packs. The
-  defaults are **$5 minimum, $10 default** (from the pricing proposal).
+  defaults are **$5 minimum, $10 default** (from the pricing proposal), and
+  $25. EU buyers pay **€5, €10 and €25 with VAT included** (#2496).
+- **Credit = pack price:** a pack buys credits equal to the pack's price, in
+  either currency (€10 or $10 → 1,000 credit cents). VAT on EU sales comes out
+  of the margin; #1421 accounts for it.
 - **Consent:** the existing `credit_topup` consent step comes before payment.
   - "Deliver now", the normal choice, credits at once and gives up withdrawal
     for the credits used.
@@ -306,7 +310,7 @@ Each of these must be true. None of them is code in this repository.
 | --- | --- | --- |
 | 1 | The plan's scope | One creator plan, Artist Pro, covering artists, producers and DJs (§3) |
 | 2 | Price | **$14.99/month** (the "creator" price already listed in `business-model.md` Layer 2), with an annual option at 2 months free. Subject to #1421 |
-| 3 | VAT presentation | Prices include VAT in the EU and exclude it elsewhere (Stripe Tax) |
+| 3 | VAT presentation | Prices include VAT in the EU and exclude it elsewhere (Stripe Tax). Implemented in #2496: EUR with VAT included for an EU billing address, USD elsewhere; Artist Pro €14.99/month or €149.90/year |
 | 4 | Contents | The §3 table; stem separation of your own releases stays free |
 | 5 | Allowance | **$3.00 a month** at sell prices, expiring at period end and spent first; never cash-refunded |
 | 6 | Grace on failed payment | 7 days of Pro, then free (nothing is deleted) |

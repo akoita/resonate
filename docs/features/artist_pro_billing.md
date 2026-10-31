@@ -21,6 +21,11 @@ adds **credit packs**: $5, $10 (the default) and $25 of generation credits,
 bought through a one-time Stripe Checkout, also in test mode only. See
 [Credit packs](#credit-packs-1422) below.
 
+[#2496](https://github.com/akoita/resonate/issues/2496) adds **EUR prices with
+VAT included** for buyers with an EU billing address, keeping USD (tax added at
+checkout) elsewhere (RFC §9 decision #3). See
+[Currencies and VAT](#currencies-and-vat-2496) below.
+
 What remains:
 
 | Item | Where |
@@ -32,12 +37,13 @@ What remains:
 | Stripe settings on the scheduled erasure and retention jobs, so they can cancel, pause and resume at Stripe (#2430) | The deployment half, in the private infrastructure repository (with the Stripe keys) |
 | Legal review of the closure, erasure and suspension wording (#2430) | `docs/legal/refund-policy.md`, question 6, before live charging |
 | Credit pack prices in Stripe (`STRIPE_PRICE_CREDITS_5/10/25`) | The deployment half, in the private infrastructure repository |
+| EUR currency options on the Stripe prices, then `STRIPE_EUR_PRICES=true` (#2496) | The deployment half, `resonate-iac#325`; until then every checkout stays USD |
 | Auto-reload and USDC top-up of credits | [#2410](https://github.com/akoita/resonate/issues/2410) |
 | Legal review of the credit refund policy and the delivery wording for credits | RFC §8, before live charging |
 
 **Revenue line (ADR-BM-6):** line 2, Artist Pro, Phase 2. Price: $14.99 a
-month, with an annual option at 2 months free (`docs/rfc/business-model.md`,
-Layer 2b). The price itself lives in Stripe (price ids are configuration). No
+month before tax, or €14.99 with VAT included in the EU, with an annual option
+at 2 months free ($149.90 / €149.90; `docs/rfc/business-model.md`, Layer 2b). The price itself lives in Stripe (price ids are configuration). No
 fee or split changes; ADR-BM-4 is unaffected: Pro sells tools, never a share of
 fans' money and never exposure.
 
@@ -54,8 +60,8 @@ fans' money and never exposure.
 
 `BillingConfig` (`billing_config.ts`) reads `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ARTIST_PRO_MONTHLY`,
-`STRIPE_PRICE_ARTIST_PRO_ANNUAL`, `BILLING_LIVE_MODE`, `STRIPE_AUTOMATIC_TAX`
-and the first `FRONTEND_URL` entry (see `docs/deployment/environment.md`).
+`STRIPE_PRICE_ARTIST_PRO_ANNUAL`, `BILLING_LIVE_MODE`, `STRIPE_AUTOMATIC_TAX`,
+`STRIPE_EUR_PRICES` (#2496) and the first `FRONTEND_URL` entry (see `docs/deployment/environment.md`).
 Billing is available only with all four Stripe variables set and a web
 address known. A live key (`sk_live_…`, `rk_live_…`) is **refused** unless
 `BILLING_LIVE_MODE=true`. When billing is not available, checkout, the portal
@@ -108,8 +114,11 @@ Checkout, in order:
 7. A Checkout Session in subscription mode with `client_reference_id`, the
    price for the interval, the return URLs
    (`/settings?section=usage&billing=success|cancel`) and the consent id in
-   the session and subscription metadata. Stripe Tax is added when
-   `STRIPE_AUTOMATIC_TAX=true`. The consent is linked to the session id.
+   the session and subscription metadata, and an explicit `currency` (#2496;
+   `usd` unless the body names an offered one, otherwise
+   `409 currency_unavailable` before any consent is recorded). Stripe Tax is
+   added when `STRIPE_AUTOMATIC_TAX=true`. The consent is linked to the
+   session id.
 
 ### Account closure, erasure and suspension (#2430)
 
@@ -211,8 +220,9 @@ grants. `GET /usage/summary` shows `source: "stripe_subscription"` and
 `web/src/components/settings/PlanBilling.tsx`, under the plan chip in
 Usage & Billing:
 
-- **Free:** "Artist Pro — $14.99/month or yearly", Subscribe monthly and
-  Subscribe yearly. Choosing one opens the consent step inline: the server
+- **Free:** "Artist Pro — $14.99/month or $149.90/year" (or the EUR prices,
+  #2496), with the tax line for the currency, Subscribe monthly and Subscribe
+  yearly. Choosing one opens the consent step inline: the server
   wording, an unticked box, and Continue to secure checkout (enabled only once
   ticked), then a redirect to Stripe Checkout. Without a confirmed contact
   email, a link to the Email settings replaces the buttons.
@@ -242,8 +252,10 @@ from `docs/rfc/business-model.md` Layer 2b; no fee changes.
 ### Catalogue and configuration
 
 `billing/credit_packs.ts` holds the catalogue on the server: `credits_5`
-(500 cents), `credits_10` (1000, the default) and `credits_25` (2500). A pack
-buys credits equal to its price before tax. The client names a pack id and
+(500 cents), `credits_10` (1000, the default) and `credits_25` (2500), each
+priced the same number of cents in USD (before tax) and EUR (VAT included). A
+pack buys credits equal to the pack's price, whichever currency pays: €10 and
+$10 both buy 1,000 credit cents. The client names a pack id and a currency,
 nothing else: an amount in the request is ignored. Each pack's Stripe price id
 comes from `STRIPE_PRICE_CREDITS_5`, `_10` and `_25`; buying credits is
 available only when billing is (above) **and** all three are set, otherwise
@@ -254,8 +266,8 @@ available yet.
 
 | Route | Auth | What it does |
 | --- | --- | --- |
-| `GET /billing/credits` | JWT | `available`, `testMode`, `contactEmailConfirmed`, the packs and `defaultPackId`, `heldCents`, the 10 most recent purchases (status, hold date, refunds, receipt reference) and the #1776 delivery wording. Releases any hold that has ended first |
-| `POST /billing/credits/checkout` | JWT | `{ packId, consent: { choice: "deliver_now" \| "wait", acknowledgedWaiver, textVersion } }` → `{ url }` |
+| `GET /billing/credits` | JWT | `available`, `testMode`, `contactEmailConfirmed`, `currencies`, the packs (`prices` per currency, `creditsCents`) and `defaultPackId`, `heldCents`, the 10 most recent purchases (status, hold date, refunds, receipt reference) and the #1776 delivery wording. Releases any hold that has ended first |
+| `POST /billing/credits/checkout` | JWT | `{ packId, currency?: "usd" \| "eur", consent: { choice: "deliver_now" \| "wait", acknowledgedWaiver, textVersion } }` → `{ url }` |
 | `POST /billing/credits/purchases/:id/deliver-now` | JWT | `{ acknowledgedWaiver: true, textVersion }` → the state; releases a held purchase now |
 
 Checkout, in order: `503` when unavailable; `409 contact_email_required`
@@ -264,8 +276,9 @@ without a confirmed contact email; the `credit_topup` consent recorded through
 `400 waiver_acknowledgement_required` / `waiver_without_consent`, nothing
 written on refusal) **before** anything is created at Stripe; the person's one
 Stripe customer (shared with the subscription; created with the same
-idempotency key); a Checkout Session in `payment` mode for the pack's price,
-with metadata `purpose: credit_topup`, `userId`, `packId` and `consentId` on
+idempotency key); a Checkout Session in `payment` mode for the pack's price
+in the requested `currency` (`usd` by default; `409 currency_unavailable`
+before any consent when not offered), with metadata `purpose: credit_topup`, `userId`, `packId` and `consentId` on
 the session and the payment intent, and return URLs
 `/settings?section=usage&credits=success|cancel` (success also carries the
 Checkout Session id). Stripe Tax as for subscriptions.
@@ -297,8 +310,15 @@ checks fulfilment and refunds through the real wiring.
   the row, so concurrent reads credit it once. `releaseBasis` records
   `consent`, `hold_elapsed` or `deliver_now_later`. Deliver now later records a
   new `credit_topup` consent linked to the Checkout Session.
-- A paid subtotal or currency that does not match the pack is recorded as
-  `needs_review` and credits nothing (logged as an error).
+- The pack is credited only when Stripe reports its catalogue price in USD or
+  EUR (`paidCurrency` in `credit_packs.ts`): a USD subtotal (before tax) equal
+  to the price, or an EUR subtotal equal to the price. For EUR the check also
+  accepts a subtotal that excludes the included VAT when subtotal plus tax and
+  the total both equal the price, so it holds however Stripe reports inclusive
+  tax. The row records the currency paid (`CreditTopUp.currency`).
+- Anything else (another amount or currency) is recorded as `needs_review`,
+  with the amount and currency Stripe reported, and credits nothing (logged as
+  an error).
 - A `purchase` notice (emailed to the contact address) states the amount, the
   delivery choice and the receipt reference.
 
@@ -310,8 +330,9 @@ is recorded.
 
 A refund is issued in Stripe (for example after a withdrawal within 14 days for
 a "wait" purchase). `charge.refunded` withdraws the refunded share of the
-pack's credits (proportional to the money refunded, all of it on a full
-refund; cumulative across partial refunds):
+pack's credits (proportional to the money refunded over the money charged, in
+the charge's currency, so USD and EUR behave alike; all of it on a full refund;
+cumulative across partial refunds):
 
 - credits already in the balance are taken back with a `reversal` row (reason
   `top_up_refund`, same `paymentRef`), **never below a zero balance**: credits
@@ -325,7 +346,8 @@ charging.**
 
 ### Data
 
-`CreditTopUp` (one row per Checkout Session): pack, price, credits, session and
+`CreditTopUp` (one row per Checkout Session): pack, price and its currency
+(`usd` or `eur`; #2496), credits, session and
 payment intent ids, consent id, delivery, status (`held | credited | refunded |
 needs_review`), hold and release, credited, refunded and reversed amounts.
 Exported, and retained on erasure as a billing record.
@@ -335,8 +357,8 @@ grant or its reversal.
 ### The web
 
 `web/src/components/settings/BuyCredits.tsx`, under the balance in Usage &
-Billing → Credits: the three packs with $10 preselected, "Buy $10.00 of
-credits", then the inline #1776 delivery step (`DeliveryConsentStep`, nothing
+Billing → Credits: the three packs with $10 (or €10) preselected, the tax line
+for the currency, "Buy $10.00 of credits", then the inline #1776 delivery step (`DeliveryConsentStep`, nothing
 selected, an unticked acknowledgement for deliver now) and Continue to secure
 checkout, enabled only once the choice is complete. Held purchases show their
 date and Deliver now (with an unticked acknowledgement); recent purchases show
@@ -344,6 +366,46 @@ status and receipt reference. The `?credits=success` return re-reads the state
 and the balance until the purchase lands. A Test mode note, an email gate, and
 an informative unavailable state with no button. The page's Refresh re-reads
 the packs and purchases too (#2494).
+
+## Currencies and VAT (#2496)
+
+RFC §9 decision #3: prices include VAT in the EU and exclude it elsewhere,
+with Stripe Tax. ADR-BM-6 line 2, Phase 2, test mode until the §8 gates clear;
+no fee or split change.
+
+**The rule** (`billing/billing_currency.ts`): a buyer whose billing address is
+in the EU VAT area pays in **EUR, VAT included**; everyone else pays in
+**USD, with any tax added at checkout**.
+
+- The web asks "Where is your billing address?" in the Plan offer and in Buy
+  credits, only when EUR is offered. The answer is preselected from the
+  browser's time zone (a zone of the EU VAT area, Monaco included; the Canary
+  Islands, Ceuta, Åland, Büsingen and the French overseas regions are outside
+  it), can be changed, applies to both sections, and is remembered in that
+  browser.
+- The person sees every price in that currency, labelled "VAT included" (EUR)
+  or "plus any applicable tax" (USD), and the checkout request names it.
+  Checkout charges exactly that currency, so the price shown is the currency
+  charged.
+- Stripe Tax still taxes by the billing address Checkout collects. An EUR
+  price keeps the same total whatever its tax share (none outside the EU); a
+  USD price gets any tax on top.
+
+**Prices** (display: `ARTIST_PRO_PRICES` in `billing.service.ts` and the pack
+catalogue; Stripe's prices are what is charged): Artist Pro €14.99 a month and
+€149.90 a year; credit packs €5, €10 and €25, at face value (the same credits
+as $5, $10 and $25). VAT on EU sales comes out of the margin, which the #1421
+pricing review accounts for.
+
+**Rollout.** `STRIPE_EUR_PRICES=true` adds EUR to `currencies` in both state
+routes. Set it only once every Stripe price (Artist Pro and the three packs)
+carries a tax-inclusive EUR currency option: Checkout refuses a currency a
+price does not have. Without it every checkout is USD, as before, and the
+question is not shown. Fulfilment accepts EUR either way.
+
+**Edge:** Stripe may refuse a subscription in a second currency for a customer
+that already had one in the other; the checkout then fails with Stripe's error
+and nothing is charged. Test mode only today; revisit with live charging.
 
 ## The monthly generation allowance (#2408)
 

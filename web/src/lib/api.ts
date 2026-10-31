@@ -9,6 +9,7 @@ import { accountRestrictionMessage } from "./accountRestriction";
 import { invalidateStoredAuthSession } from "./authSession";
 import { rememberDjAttribution } from "./discoveryAttribution";
 import { withCurrentMyMixContext } from "./agentMyMix";
+import type { BillingCurrency } from "./billingCurrency";
 import type { RemixBeatRecipe } from "./remixBeat";
 import type { RemixPartRole, RemixParts } from "./remixParts";
 import type { RemixFxRecipe } from "./remixFx";
@@ -8413,6 +8414,8 @@ export function revokeEntitlementGrant(token: string, grantId: string, stepUpPro
 
 // ============ Artist Pro subscription (#2407, Stripe test mode) ============
 
+export type { BillingCurrency } from "./billingCurrency";
+
 export type BillingInterval = "month" | "year";
 export type BillingSubscriptionStatus =
   | "trialing"
@@ -8438,6 +8441,10 @@ export type SubscriptionConsentWording = {
 export type BillingState = {
   /** Whether subscribing works on this server. */
   available: boolean;
+  /** The currencies checkout offers: `["usd"]` until the server enables EUR (#2496). */
+  currencies: BillingCurrency[];
+  /** Artist Pro prices in cents, per interval and currency. Display only. */
+  prices: Record<BillingInterval, Record<BillingCurrency, number>>;
   /** True while only Stripe test keys are accepted: no real card is charged. */
   testMode: boolean;
   contactEmailConfirmed: boolean;
@@ -8467,7 +8474,13 @@ export function getBillingState(token: string) {
  */
 export function startSubscriptionCheckout(
   token: string,
-  input: { interval: BillingInterval; acknowledgedImmediateStart: true; textVersion: string },
+  input: {
+    interval: BillingInterval;
+    acknowledgedImmediateStart: true;
+    textVersion: string;
+    /** The currency the person was shown. 409 `currency_unavailable` if the server does not offer it. */
+    currency?: BillingCurrency;
+  },
 ) {
   return apiRequest<{ url: string }>(
     "/billing/subscription/checkout",
@@ -8487,9 +8500,8 @@ export type CreditPackId = "credits_5" | "credits_10" | "credits_25";
 
 export type CreditPack = {
   id: CreditPackId;
-  label: string;
-  /** The price before tax, in USD cents. */
-  priceCents: number;
+  /** The price in cents, per currency. EUR prices include VAT; USD prices are before tax. */
+  prices: Record<BillingCurrency, number>;
   /** Generation credits the pack buys, in USD cents. */
   creditsCents: number;
   isDefault: boolean;
@@ -8500,8 +8512,12 @@ export type CreditPurchaseStatus = "held" | "credited" | "refunded" | "needs_rev
 export type CreditPurchase = {
   id: string;
   packId: string;
+  /** Already in the purchase's currency, for example "€10 credit pack". */
   label: string;
+  /** The amount paid, in cents of `currency`. */
   priceCents: number;
+  /** "usd" or "eur". */
+  currency: string;
   creditsCents: number;
   delivery: "deliver_now" | "wait" | string;
   status: CreditPurchaseStatus | string;
@@ -8522,6 +8538,8 @@ export type CreditTopUpState = {
   /** True while only Stripe test keys are accepted: no real card is charged. */
   testMode: boolean;
   contactEmailConfirmed: boolean;
+  /** The currencies checkout offers: `["usd"]` until the server enables EUR (#2496). */
+  currencies: BillingCurrency[];
   packs: CreditPack[];
   defaultPackId: CreditPackId;
   /** Credits bought and held for the 14-day withdrawal period. */
@@ -8546,6 +8564,8 @@ export function startCreditCheckout(
   token: string,
   input: {
     packId: CreditPackId;
+    /** The currency the person was shown. 409 `currency_unavailable` if the server does not offer it. */
+    currency?: BillingCurrency;
     consent: { choice: "deliver_now" | "wait"; acknowledgedWaiver: boolean; textVersion: string };
   },
 ) {

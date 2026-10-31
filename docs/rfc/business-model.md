@@ -260,8 +260,10 @@ is ADR-BM-6 line 2, Phase 2.
 **Plan and price:**
 
 - One creator plan for artists, producers and DJs.
-- **$14.99/month**, with an annual option at 2 months free.
-- Prices include VAT in the EU and exclude it elsewhere (Stripe Tax).
+- **$14.99/month**, with an annual option at 2 months free ($149.90/year).
+- Prices include VAT in the EU and exclude it elsewhere (Stripe Tax): EU
+  buyers pay **€14.99/month or €149.90/year, VAT included**; everyone else
+  pays in USD with any tax added at checkout (#2496).
 
 **What Pro adds:**
 
@@ -286,7 +288,9 @@ official stems, payouts, refunds, Shows, and Content Protection.
 **Buying credits:**
 
 - Stripe for v1 (ADR-BM-6). USDC top-up follows on the same ledger.
-- Packs: $5 (the minimum), $10 (the default) and $25.
+- Packs: $5 (the minimum), $10 (the default) and $25; in the EU €5, €10 and
+  €25 with VAT included. A pack buys credits equal to its price in either
+  currency (€10 or $10 → $10.00 of credits); EU VAT comes out of the margin.
 - Bought credits don't expire for at least 24 months.
 
 **Billing rules:**

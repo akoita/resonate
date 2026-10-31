@@ -14,6 +14,10 @@
  *   - a web address for the Checkout return pages is known: the first entry of
  *     `FRONTEND_URL`, or `http://localhost:3001` outside production.
  *
+ * `STRIPE_EUR_PRICES=true` adds EUR (VAT included) to the currencies offered
+ * (#2496, `billing_currency.ts`). Set it only once every Stripe price carries
+ * its EUR currency option; without it every checkout is in USD.
+ *
  * Anything missing or refused disables billing (the routes answer 503
  * `billing_unavailable`) instead of stopping the API from booting. The log
  * names variables, never their values.
@@ -22,6 +26,7 @@
 import { Injectable } from "@nestjs/common";
 import { parseEnvList } from "../../config/env";
 import { writeStructuredLog } from "../shared/structured_logging";
+import type { BillingCurrency } from "./billing_currency";
 
 export type BillingInterval = "month" | "year";
 export const BILLING_INTERVALS: readonly BillingInterval[] = ["month", "year"] as const;
@@ -51,6 +56,8 @@ export class BillingConfig {
   readonly liveMode: boolean;
   /** `STRIPE_AUTOMATIC_TAX=true`: Stripe Tax computes VAT and sales tax at checkout. */
   readonly automaticTax: boolean;
+  /** The currencies checkout offers: USD, plus EUR with `STRIPE_EUR_PRICES=true` (#2496). */
+  readonly currencies: readonly BillingCurrency[];
   /** The web app base the Checkout and Portal return to (no trailing slash), or "" when unknown. */
   readonly frontendUrl: string;
   /** Names of required variables that are unset. */
@@ -66,6 +73,9 @@ export class BillingConfig {
     });
     this.liveMode = read(env, "BILLING_LIVE_MODE").toLowerCase() === "true";
     this.automaticTax = read(env, "STRIPE_AUTOMATIC_TAX").toLowerCase() === "true";
+    this.currencies = Object.freeze(
+      read(env, "STRIPE_EUR_PRICES").toLowerCase() === "true" ? (["usd", "eur"] as const) : (["usd"] as const),
+    );
     const production = read(env, "NODE_ENV") === "production";
     const frontend = parseEnvList(env.FRONTEND_URL)[0] ?? (production ? "" : LOCAL_FRONTEND_URL);
     this.frontendUrl = frontend.replace(/\/+$/, "");

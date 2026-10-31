@@ -215,9 +215,11 @@ under the balance.
 in Stripe **test mode** only. Credits are a cost-plus-margin tool balance; no
 fan→artist payout is touched (ADR-BM-4).
 
-- **Packs:** $5 (the minimum), $10 (the default) and $25, from the server
-  catalogue (`billing/credit_packs.ts`); a pack buys credits equal to its price
-  before tax. The client sends a pack id, never an amount.
+- **Packs:** $5 (the minimum), $10 (the default) and $25, or €5, €10 and €25
+  with VAT included for an EU billing address (#2496), from the server
+  catalogue (`billing/credit_packs.ts`); a pack buys credits equal to the
+  pack's price in either currency (€10 or $10 → 1,000 credit cents). The client
+  sends a pack id and a currency, never an amount.
 - **Consent first:** the `credit_topup` delivery choice (#1776) is recorded
   before the Stripe Checkout Session exists. "Deliver now" credits the balance
   as soon as the payment is confirmed and gives up withdrawal for the credits

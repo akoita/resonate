@@ -9,7 +9,15 @@ import {
   type BillingInterval,
   type BillingState,
 } from "../../lib/api";
+import {
+  formatMoney,
+  priceNote,
+  resolveBillingCurrency,
+  taxLabel,
+  type BillingCurrency,
+} from "../../lib/billingCurrency";
 import { Button } from "../ui/Button";
+import { BillingCurrencyChoice, useBillingCurrencyPreference } from "./BillingCurrencyChoice";
 
 type ToastFn = (toast: {
   type: "success" | "error" | "info" | "warning";
@@ -29,7 +37,25 @@ export type PlanBillingKind =
   | "past_due"
   | "unpaid";
 
-export const ARTIST_PRO_PRICE_HEADLINE = "Artist Pro — $14.99/month or yearly";
+/** The USD prices (cents) shown when the server does not serve a price table. */
+export const DEFAULT_ARTIST_PRO_PRICES: BillingState["prices"] = {
+  month: { usd: 1499, eur: 1499 },
+  year: { usd: 14990, eur: 14990 },
+};
+
+/** "Artist Pro — €14.99/month or €149.90/year", in the currency the person will be charged in (#2496). */
+export function artistProPriceHeadline(prices: BillingState["prices"], currency: BillingCurrency): string {
+  return `Artist Pro — ${formatMoney(prices.month[currency], currency)}/month or ${formatMoney(prices.year[currency], currency)}/year`;
+}
+
+/** The price of one interval with its tax wording: "€14.99/month, VAT included". */
+export function artistProIntervalPrice(
+  prices: BillingState["prices"],
+  interval: BillingInterval,
+  currency: BillingCurrency,
+): string {
+  return `${formatMoney(prices[interval][currency], currency)}/${interval}, ${taxLabel(currency)}`;
+}
 
 const INTERVAL_LABEL: Record<BillingInterval, string> = { month: "Monthly", year: "Yearly" };
 
@@ -74,6 +100,9 @@ export type PlanBillingViewProps = {
   chosenInterval: BillingInterval | null;
   acknowledged: boolean;
   busy?: boolean;
+  /** The currency prices are shown and charged in (default USD). */
+  currency?: BillingCurrency;
+  onCurrencyChange?: (currency: BillingCurrency) => void;
   /** A one-line status after returning from Stripe. */
   returnNotice?: string | null;
   onChoose?: (interval: BillingInterval) => void;
@@ -95,6 +124,8 @@ export function PlanBillingView({
   chosenInterval,
   acknowledged,
   busy = false,
+  currency = "usd",
+  onCurrencyChange,
   returnNotice,
   onChoose,
   onAcknowledge,
@@ -106,6 +137,7 @@ export function PlanBillingView({
   const sub = billing?.subscription ?? null;
   const canManage = Boolean(billing?.available && billing.hasBillingAccount);
   const periodEnd = formatBillingDate(sub?.currentPeriodEnd);
+  const prices = billing?.prices ?? DEFAULT_ARTIST_PRO_PRICES;
   const manageButton = canManage ? (
     <Button variant="ghost" onClick={onManage} disabled={busy}>
       {busy ? "Opening…" : kind === "past_due" || kind === "unpaid" ? "Update your card" : "Manage billing"}
@@ -140,7 +172,7 @@ export function PlanBillingView({
 
       {kind === "unavailable" ? (
         <p className="usage-muted-note">
-          {ARTIST_PRO_PRICE_HEADLINE}. Subscriptions are not available on this server yet.
+          {artistProPriceHeadline(prices, "usd")}. Subscriptions are not available on this server yet.
         </p>
       ) : null}
 
@@ -189,13 +221,19 @@ export function PlanBillingView({
       {kind === "subscribe" && billing ? (
         <div className="plan-billing-offer">
           <p className="plan-billing-headline">
-            <strong>{ARTIST_PRO_PRICE_HEADLINE}</strong>
+            <strong>{artistProPriceHeadline(prices, currency)}</strong>
           </p>
           <p className="usage-muted-note">
             One plan for artists, producers and DJs. Pro tools are free for everyone for now, so subscribing does not
-            change what you can do yet. The exact price, with any tax, is shown on Stripe&rsquo;s secure checkout page
-            before you pay.
+            change what you can do yet. {priceNote(currency)}
           </p>
+
+          <BillingCurrencyChoice
+            currency={currency}
+            offered={billing.currencies ?? ["usd"]}
+            disabled={busy || chosenInterval !== null}
+            onChange={onCurrencyChange}
+          />
 
           {!billing.contactEmailConfirmed ? (
             <p className="plan-billing-email-gate">
@@ -213,7 +251,8 @@ export function PlanBillingView({
             <fieldset className="plan-billing-consent">
               <legend>{billing.consent.heading}</legend>
               <p>
-                You chose <strong>Artist Pro · {INTERVAL_LABEL[chosenInterval]}</strong>.
+                You chose <strong>Artist Pro · {INTERVAL_LABEL[chosenInterval]}</strong> —{" "}
+                {artistProIntervalPrice(prices, chosenInterval, currency)}.
               </p>
               <p>{billing.consent.intro}</p>
               <label className="plan-billing-consent-check">
@@ -275,13 +314,21 @@ export function PlanBillingSection({
   addToast,
   onPlanChanged,
   refreshKey = 0,
+  currencyPreference,
+  onCurrencyChange,
 }: {
   token: string | null | undefined;
   addToast: ToastFn;
   onPlanChanged?: () => void;
   /** Bumped by the page's Refresh to re-read the subscription. */
   refreshKey?: number;
+  /** The shared currency choice (null = automatic). Kept here when the page does not pass it. */
+  currencyPreference?: BillingCurrency | null;
+  onCurrencyChange?: (currency: BillingCurrency) => void;
 }) {
+  const [ownPreference, setOwnPreference] = useBillingCurrencyPreference();
+  const preference = currencyPreference !== undefined ? currencyPreference : ownPreference;
+  const changeCurrency = onCurrencyChange ?? setOwnPreference;
   const [billing, setBilling] = useState<BillingState | null>(null);
   const [error, setError] = useState(false);
   const [chosenInterval, setChosenInterval] = useState<BillingInterval | null>(null);
@@ -340,6 +387,8 @@ export function PlanBillingSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read the return once per token.
   }, [token]);
 
+  const currency = resolveBillingCurrency(billing?.currencies ?? ["usd"], preference);
+
   const handleContinue = async () => {
     if (!token || !billing || !chosenInterval || !acknowledged || busy) return;
     setBusy(true);
@@ -348,6 +397,7 @@ export function PlanBillingSection({
         interval: chosenInterval,
         acknowledgedImmediateStart: true,
         textVersion: billing.consent.version,
+        currency,
       });
       window.location.assign(url);
     } catch (err) {
@@ -362,7 +412,9 @@ export function PlanBillingSection({
               ? "You already have Artist Pro. Use Manage billing."
               : code === "billing_unavailable"
                 ? "Subscriptions are not available on this server yet."
-                : "Could not open the checkout. Please try again.";
+                : code === "currency_unavailable"
+                  ? "Prices in this currency are not available yet. Reload and try again."
+                  : "Could not open the checkout. Please try again.";
       addToast({ type: "error", title: "Checkout not started", message });
       setAcknowledged(false);
       void load();
@@ -388,6 +440,8 @@ export function PlanBillingSection({
       chosenInterval={chosenInterval}
       acknowledged={acknowledged}
       busy={busy}
+      currency={currency}
+      onCurrencyChange={changeCurrency}
       returnNotice={returnNotice}
       onChoose={(interval) => {
         setChosenInterval(interval);

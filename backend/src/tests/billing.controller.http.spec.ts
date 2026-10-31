@@ -84,6 +84,8 @@ describe("Billing (HTTP, #2407)", () => {
     it("validates the checkout body with 400 before anything else", async () => {
       for (const body of [
         { ...validCheckout, interval: "week" },
+        { ...validCheckout, currency: "gbp" },
+        { ...validCheckout, currency: "EUR" },
         { interval: "month", textVersion: SUBSCRIPTION_CONSENT_TEXT_VERSION },
         { ...validCheckout, acknowledgedImmediateStart: "yes" },
         { ...validCheckout, textVersion: undefined },
