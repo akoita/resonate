@@ -36,6 +36,8 @@ export interface PunchlineMomentEditorProps {
   minMs: number;
   maxMs: number;
   rightsLabel: string;
+  /** Kind shown on the live card preview (#1476); the builder owns the pick. */
+  momentKind?: string;
   initial?: PunchlineMomentEditorInitial;
   saving: boolean;
   /** Server-side 400 message (e.g. a rejected range), surfaced inline. */
@@ -74,6 +76,7 @@ export function PunchlineMomentEditor({
   minMs,
   maxMs,
   rightsLabel,
+  momentKind,
   initial,
   saving,
   serverError,
@@ -239,6 +242,7 @@ export function PunchlineMomentEditor({
           <span className="punchline-editor-preview-label">Card preview</span>
           <PunchlineCollectibleCard
             title={title}
+            momentKind={momentKind}
             lyricText={lyricText}
             artworkUrl={artworkUrl.trim() || null}
             durationMs={range.endMs - range.startMs}

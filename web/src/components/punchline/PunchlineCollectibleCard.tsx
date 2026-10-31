@@ -1,4 +1,9 @@
 import React from "react";
+import {
+  momentKindGlyph,
+  momentKindLabel,
+  normalizeMomentKind,
+} from "./punchlineMomentKind";
 import "../../styles/punchline.css";
 import { formatClipDuration, formatEditionLabel, formatPriceCents, maskSensitiveLyric } from "./punchlineDropHelpers";
 
@@ -43,6 +48,11 @@ export interface PunchlineCollectibleCardProps {
   /** Integer cents; 0 renders "Free to claim". */
   priceCents: number;
   rightsLabel: string;
+  /**
+   * Presentation kind (#1476): punchline, crescendo, hook or solo. Drives the
+   * kind chip and `data-kind` flavour; omitted reads as punchline.
+   */
+  momentKind?: string | null;
   /** Shown on published cards. */
   collectedCount?: number;
   /** Animates the waveform ribbon while this moment's clip is playing. */
@@ -61,6 +71,7 @@ export function PunchlineCollectibleCard({
   editionSize,
   priceCents,
   rightsLabel,
+  momentKind,
   collectedCount,
   playing,
   imageLoading,
@@ -76,6 +87,7 @@ export function PunchlineCollectibleCard({
     <div
       className="punchline-card"
       data-testid="punchline-collectible-card"
+      data-kind={normalizeMomentKind(momentKind)}
       style={{ ["--card-hue" as never]: hue }}
     >
       <div className="punchline-card-art">
@@ -118,6 +130,10 @@ export function PunchlineCollectibleCard({
       </div>
 
       <div className="punchline-card-body">
+        <span className="punchline-card-kind">
+          <span aria-hidden="true">{momentKindGlyph(momentKind)}</span>{" "}
+          {momentKindLabel(momentKind)}
+        </span>
         <h5 className="punchline-card-title">{displayTitle}</h5>
         {artworkUrl ? (
           displayLyric ? (

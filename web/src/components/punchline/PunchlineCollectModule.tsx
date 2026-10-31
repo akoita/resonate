@@ -561,6 +561,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                       <div key={moment.id} className="punchline-collect-item">
                         <PunchlineCollectibleCard
                           title={moment.title}
+                          momentKind={moment.momentKind}
                           lyricText={moment.lyricText}
                           artworkUrl={moment.artworkUrl}
                           durationMs={moment.endMs - moment.startMs}

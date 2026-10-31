@@ -2955,7 +2955,11 @@ export async function getLatestReleaseRightsUpgradeRequest(
 
 /** One explainable eligibility failure reason (mirrors the backend gate). */
 export type PunchlineEligibilityReason = {
-  /** Stable machine code, safe for UI/analytics branching. */
+  /**
+   * Stable machine code, safe for UI/analytics branching. A missing source is
+   * `no_source_stem` since #1476; older responses may still say
+   * `no_vocals_stem`.
+   */
   code: string;
   /** Human-readable, UI-renderable message. */
   message: string;
@@ -2978,6 +2982,14 @@ export type PunchlineEligibility = {
   rightsLabel: string;
   rightsSummary: string;
   clipBoundsMs: PunchlineClipBoundsMs;
+  /** Bounds per allowed source layer (#1476); the full mix has a tighter max. */
+  clipBoundsMsByLayer?: Record<string, PunchlineClipBoundsMs>;
+  /** Source layers the server allowlist accepts (#1476). */
+  allowedSourceLayers?: string[];
+  /** Allowed layers this track has processed audio for (#1476). */
+  availableSourceLayers?: string[];
+  /** Kind a new moment defaults to, from the release genre (#1476). */
+  defaultMomentKind?: string;
   track?: {
     id: string;
     releaseId: string;
@@ -3017,6 +3029,11 @@ export type PunchlineMoment = {
   lyricText: string;
   artworkUrl: string | null;
   sourceStemType: string;
+  /**
+   * Presentation kind (#1476): punchline, crescendo, hook or solo. Absent on
+   * payloads from an older server, which means punchline.
+   */
+  momentKind?: string;
   startMs: number;
   endMs: number;
   /** Populated once the drop is published (the extracted MP3 clip). */
@@ -3164,6 +3181,10 @@ export type PunchlineMomentInput = {
   endMs: number;
   editionSize: number;
   priceCents: number;
+  /** Source layer (#1476): `vocals` (default), another stem, or `full`. */
+  sourceStemType?: string;
+  /** Presentation kind (#1476): punchline, crescendo, hook or solo. */
+  momentKind?: string;
 };
 
 export type PunchlineDropListResult = {

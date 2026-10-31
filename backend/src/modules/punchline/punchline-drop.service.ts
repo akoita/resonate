@@ -26,6 +26,16 @@ import {
   PUNCHLINE_SOURCE_STEM_TYPE,
 } from "./punchline-rights";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import {
+  normalizeSourceLayer,
+  resolvePunchlineSourceLayers,
+  sourceLayerLabel,
+} from "./punchline-source";
+import {
+  PUNCHLINE_MOMENT_KINDS,
+  defaultMomentKindForGenre,
+  isPunchlineMomentKind,
+} from "./punchline-kind";
 
 /**
  * Draft + publish APIs for Punchline Drops (#482).
@@ -92,6 +102,17 @@ export interface MomentInput {
   endMs?: number;
   editionSize?: number;
   priceCents?: number;
+  /**
+   * Source layer (#1476): `vocals` (default), another stem type, or `full`
+   * for the full mix. Must be in the configured allowlist and available on
+   * the track.
+   */
+  sourceStemType?: string;
+  /**
+   * Presentation kind (#1476): punchline, crescendo, hook or solo. Omitted on
+   * add → defaults from the release genre.
+   */
+  momentKind?: string;
 }
 
 export interface ListDropsOptions {
@@ -104,6 +125,8 @@ export interface ListDropsOptions {
 }
 
 interface ValidatedMomentFields {
+  sourceStemType: string;
+  momentKind: string;
   title: string;
   lyricText: string;
   artworkUrl: string | null;
@@ -226,6 +249,9 @@ export class PunchlineDropService {
     }
 
     const fields = this.validateMomentFields({
+      sourceStemType: input?.sourceStemType ?? PUNCHLINE_SOURCE_STEM_TYPE,
+      momentKind:
+        input?.momentKind ?? (await this.defaultMomentKindForTrack(drop.trackId)),
       title: input?.title,
       lyricText: input?.lyricText,
       artworkUrl: input?.artworkUrl ?? null,
@@ -235,10 +261,11 @@ export class PunchlineDropService {
       priceCents: input?.priceCents,
     });
 
+    await this.assertSourceLayerAvailable(drop.trackId, fields.sourceStemType);
+
     await prisma.punchlineMoment.create({
       data: {
         dropId: drop.id,
-        sourceStemType: PUNCHLINE_SOURCE_STEM_TYPE,
         rightsLabel: PUNCHLINE_RIGHTS_LABEL,
         ...fields,
       },
@@ -266,6 +293,12 @@ export class PunchlineDropService {
     // Merge provided fields over the stored moment, then validate the whole
     // result so a partial edit can never yield an invalid moment.
     const fields = this.validateMomentFields({
+      sourceStemType:
+        input?.sourceStemType !== undefined
+          ? input.sourceStemType
+          : existing.sourceStemType,
+      momentKind:
+        input?.momentKind !== undefined ? input.momentKind : existing.momentKind,
       title: input?.title !== undefined ? input.title : existing.title,
       lyricText:
         input?.lyricText !== undefined ? input.lyricText : existing.lyricText,
@@ -284,6 +317,13 @@ export class PunchlineDropService {
           ? input.priceCents
           : existing.priceCents,
     });
+
+    if (fields.sourceStemType !== existing.sourceStemType) {
+      await this.assertSourceLayerAvailable(
+        drop.trackId,
+        fields.sourceStemType,
+      );
+    }
 
     await prisma.punchlineMoment.update({
       where: { id: momentId },
@@ -337,6 +377,27 @@ export class PunchlineDropService {
       });
     }
 
+    // Each moment's source layer must still be available (a stem could have
+    // been replaced since the draft) — same no_source_stem reason as the gate.
+    const missingLayers = Array.from(
+      new Set(
+        drop.moments
+          .map((moment) => moment.sourceStemType)
+          .filter((layer) => !eligibility.availableSourceLayers.includes(layer)),
+      ),
+    );
+    if (missingLayers.length > 0) {
+      throw new BadRequestException({
+        code: "track_not_eligible",
+        message:
+          "A moment's source audio is no longer available, so this drop cannot be published.",
+        reasons: missingLayers.map((layer) => ({
+          code: "no_source_stem",
+          message: `No processed ${sourceLayerLabel(layer)} is available for this track. Change the source of the moments that use it.`,
+        })),
+      });
+    }
+
     // Extract each clip sequentially. A PunchlineClipException is already a 400
     // with a stable code; we re-wrap it to name the failing moment so the artist
     // knows which range to fix. Deterministic filenames make a retry idempotent.
@@ -347,6 +408,7 @@ export class PunchlineDropService {
           trackId: drop.trackId,
           startMs: moment.startMs,
           endMs: moment.endMs,
+          sourceLayer: moment.sourceStemType,
         });
         clipUriByMoment.set(moment.id, clip.clipAssetUri);
       } catch (error) {
@@ -597,6 +659,7 @@ export class PunchlineDropService {
     lyricText: string;
     artworkUrl: string | null;
     sourceStemType: string;
+    momentKind?: string;
     startMs: number;
     endMs: number;
     clipAssetUri: string | null;
@@ -1091,6 +1154,7 @@ export class PunchlineDropService {
     lyricText: string;
     artworkUrl: string | null;
     sourceStemType: string;
+    momentKind?: string;
     startMs: number;
     endMs: number;
     clipAssetUri: string | null;
@@ -1105,6 +1169,7 @@ export class PunchlineDropService {
       lyricText: moment.lyricText,
       artworkUrl: moment.artworkUrl,
       sourceStemType: moment.sourceStemType,
+      momentKind: moment.momentKind ?? "punchline",
       startMs: moment.startMs,
       endMs: moment.endMs,
       clipAssetUri: moment.clipAssetUri,
@@ -1146,12 +1211,41 @@ export class PunchlineDropService {
     return trimmed;
   }
 
+  /** Default kind for a new moment on a track, from its release genre. */
+  private async defaultMomentKindForTrack(trackId: string) {
+    const track = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: { release: { select: { genre: true } } },
+    });
+    return defaultMomentKindForGenre(track?.release?.genre);
+  }
+
+  /**
+   * A moment's source layer must have processed audio on the track (#1476).
+   * Reuses the eligibility gate so the reason matches what the UI shows.
+   */
+  private async assertSourceLayerAvailable(trackId: string, layer: string) {
+    const eligibility = await this.eligibilityService.checkEligibility(trackId, {
+      sourceLayer: layer,
+    });
+    const reason = eligibility.reasons.find((r) => r.code === "no_source_stem");
+    if (reason) {
+      throw new BadRequestException({
+        code: "no_source_stem",
+        message: reason.message,
+        reasons: [reason],
+      });
+    }
+  }
+
   /**
    * Validate a fully-resolved moment (used on add and on the merged result of
    * an update). Range length is checked against the SAME bounds the #481 clip
    * service enforces so a range the draft accepts can always be extracted.
    */
   private validateMomentFields(input: {
+    sourceStemType: unknown;
+    momentKind: unknown;
     title: unknown;
     lyricText: unknown;
     artworkUrl: unknown;
@@ -1160,6 +1254,23 @@ export class PunchlineDropService {
     editionSize: unknown;
     priceCents: unknown;
   }): ValidatedMomentFields {
+    const sourceStemType = normalizeSourceLayer(input.sourceStemType);
+    const allowedLayers = resolvePunchlineSourceLayers(this.configService);
+    if (!allowedLayers.includes(sourceStemType)) {
+      throw new BadRequestException({
+        code: "invalid_source_layer",
+        message: `Moment source must be one of: ${allowedLayers.join(", ")}.`,
+      });
+    }
+
+    const momentKind = normalizeSourceLayer(input.momentKind);
+    if (!isPunchlineMomentKind(momentKind)) {
+      throw new BadRequestException({
+        code: "invalid_moment_kind",
+        message: `Moment kind must be one of: ${PUNCHLINE_MOMENT_KINDS.join(", ")}.`,
+      });
+    }
+
     if (typeof input.title !== "string" || input.title.trim().length === 0) {
       throw new BadRequestException("Moment title is required.");
     }
@@ -1221,7 +1332,10 @@ export class PunchlineDropService {
     const endMs = input.endMs as number;
 
     const durationMs = endMs - startMs;
-    const { minMs, maxMs } = resolvePunchlineClipBounds(this.configService);
+    const { minMs, maxMs } = resolvePunchlineClipBounds(
+      this.configService,
+      sourceStemType,
+    );
     if (durationMs < minMs) {
       throw new BadRequestException(
         `Moment clip is ${durationMs}ms; the minimum is ${minMs}ms.`,
@@ -1229,7 +1343,7 @@ export class PunchlineDropService {
     }
     if (durationMs > maxMs) {
       throw new BadRequestException(
-        `Moment clip is ${durationMs}ms; the maximum is ${maxMs}ms.`,
+        `Moment clip is ${durationMs}ms; the maximum for the ${sourceLayerLabel(sourceStemType)} is ${maxMs}ms.`,
       );
     }
 
@@ -1261,6 +1375,8 @@ export class PunchlineDropService {
     }
 
     return {
+      sourceStemType,
+      momentKind,
       title,
       lyricText,
       artworkUrl,

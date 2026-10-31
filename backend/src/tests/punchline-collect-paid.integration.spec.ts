@@ -175,7 +175,8 @@ describe("Punchline paid collect (x402 rail, integration)", () => {
     );
     dropService = new PunchlineDropService(
       eventBus,
-      {} as never,
+      // These tests cover pricing, not source layers: every layer is available.
+      { checkEligibility: async () => ({ reasons: [] }) } as never,
       {} as never,
       {} as never,
       undefined,

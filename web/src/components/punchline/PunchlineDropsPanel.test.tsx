@@ -23,20 +23,21 @@ function makeTrack(
   } as Track;
 }
 
-describe("tracksWithVocalsStem", () => {
-  it("keeps only tracks that have a vocals stem", () => {
+describe("tracksWithVocalsStem (any source layer since #1476)", () => {
+  it("keeps tracks that have any clippable stem or the full mix", () => {
     const tracks = [
       makeTrack("a", ["vocals", "drums"]),
       makeTrack("b", ["drums", "bass"]),
+      makeTrack("e", ["unknown"]),
       makeTrack("c", ["VOCALS"]), // case-insensitive
       makeTrack("d", []),
     ];
     const result = tracksWithVocalsStem(tracks);
-    expect(result.map((t) => t.id)).toEqual(["a", "c"]);
+    expect(result.map((t) => t.id)).toEqual(["a", "b", "c"]);
   });
 
-  it("returns an empty list when no track has a vocal stem", () => {
-    expect(tracksWithVocalsStem([makeTrack("a", ["drums"])])).toEqual([]);
+  it("returns an empty list when no track has a clippable source", () => {
+    expect(tracksWithVocalsStem([makeTrack("a", ["unknown"])])).toEqual([]);
   });
 
   it("handles tracks with no stems array", () => {

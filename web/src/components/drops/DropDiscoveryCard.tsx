@@ -143,6 +143,7 @@ export function DropDiscoveryCard({
       >
         <PunchlineCollectibleCard
           title={moment.title}
+          momentKind={moment.momentKind}
           lyricText={moment.lyricText}
           artworkUrl={moment.artworkUrl}
           durationMs={moment.endMs - moment.startMs}

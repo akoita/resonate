@@ -9,7 +9,7 @@
  *   (c) duration < min → clip_too_short;
  *   (d) duration > max → clip_too_long;
  *   (e) endMs beyond a known source length → range_exceeds_source;
- *   (f) a track with no vocals stem → no_vocals_stem.
+ *   (f) a track with no vocals stem → no_source_stem (#1476).
  *
  * ffmpeg availability: this mirrors remix-stem-audio-mixer.integration.spec.ts
  * exactly — probe `ffmpeg -version` once and gate the ffmpeg-dependent success
@@ -48,7 +48,7 @@ const ARTIST_ID = `${TEST_PREFIX}artist`;
 const RELEASE_ID = `${TEST_PREFIX}release`;
 const TRACK_ID = `${TEST_PREFIX}track`;
 const VOCALS_STEM_ID = `${TEST_PREFIX}vocals`;
-// A separate track with only a non-vocals stem for the no_vocals_stem case.
+// A separate track with only a non-vocals stem for the no_source_stem case.
 const TRACK_NO_VOCALS_ID = `${TEST_PREFIX}track_novox`;
 const TRACK_ENCRYPTED_ID = `${TEST_PREFIX}track_enc`;
 
@@ -175,7 +175,7 @@ describe("Punchline clip extraction (integration)", () => {
     } else {
       // Without ffmpeg the success test is skipped, but the validation tests
       // still need a vocals stem present so they exercise range/length checks
-      // (which run before any ffmpeg work) rather than tripping no_vocals_stem.
+      // (which run before any ffmpeg work) rather than tripping no_source_stem.
       await prisma.stem.create({
         data: {
           id: VOCALS_STEM_ID,
@@ -361,7 +361,7 @@ describe("Punchline clip extraction (integration)", () => {
     ).toBe("range_exceeds_source");
   });
 
-  it("(f) rejects a track with no vocals stem with no_vocals_stem", async () => {
+  it("(f) rejects a track with no vocals stem with no_source_stem", async () => {
     expect(
       await codeOf(() =>
         service.extractClip({
@@ -370,6 +370,6 @@ describe("Punchline clip extraction (integration)", () => {
           endMs: 6000,
         }),
       ),
-    ).toBe("no_vocals_stem");
+    ).toBe("no_source_stem");
   });
 });

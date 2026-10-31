@@ -326,6 +326,45 @@ describe("Punchline Drops draft + publish (integration)", () => {
     expect(moment.rightsLabel).toBe("NON_COMMERCIAL_COLLECTIBLE");
     expect(moment.clipAssetUri).toBeNull();
     expect(moment.collectedCount).toBe(0);
+    // #1476: no genre on the seeded release → the stored default kind.
+    expect(moment.momentKind).toBe("punchline");
+  });
+
+  it("stores an artist-picked kind and rejects an unknown kind or source (#1476)", async () => {
+    const drop = await service.createDraft(OWNER_USER, {
+      trackId: TRACK_ELIGIBLE,
+    });
+    const updated = await service.addMoment(OWNER_USER, drop.id, {
+      ...validMoment(),
+      momentKind: "Crescendo",
+    });
+    expect(updated.moments[0].momentKind).toBe("crescendo");
+
+    const badKind = await responseOf(() =>
+      service.addMoment(OWNER_USER, drop.id, {
+        ...validMoment(),
+        momentKind: "drop",
+      }),
+    );
+    expect(badKind.code).toBe("invalid_moment_kind");
+
+    const badSource = await responseOf(() =>
+      service.addMoment(OWNER_USER, drop.id, {
+        ...validMoment(),
+        sourceStemType: "theremin",
+      }),
+    );
+    expect(badSource.code).toBe("invalid_source_layer");
+
+    // The seeded track has no full-mix row → no_source_stem naming the layer.
+    const noFull = await responseOf(() =>
+      service.addMoment(OWNER_USER, drop.id, {
+        ...validMoment(),
+        sourceStemType: "full",
+      }),
+    );
+    expect(noFull.code).toBe("no_source_stem");
+    expect(String(noFull.message)).toContain("full mix");
   });
 
   it("rejects a moment whose range exceeds the max clip length", async () => {

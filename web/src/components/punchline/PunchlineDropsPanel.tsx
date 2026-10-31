@@ -18,26 +18,22 @@ import {
   publishedDrops,
   selectPunchlineView,
 } from "./punchlineDropHelpers";
+import {
+  availableMomentSources,
+  clipBoundsForLayer,
+  isMissingSourceReason,
+  momentSourceOptions,
+  tracksWithMomentSource,
+} from "./punchlineSourceHelpers";
 import "../../styles/punchline.css";
 
-const VOCALS_STEM_TYPE = "vocals";
-
-type PanelStem = NonNullable<Track["stems"]>[number];
-
-function normalizeStemType(type?: string | null): string {
-  return type?.trim().toLowerCase() ?? "";
-}
-
-function findVocalsStem(track: Track): PanelStem | undefined {
-  return track.stems?.find(
-    (stem) => normalizeStemType(stem.type) === VOCALS_STEM_TYPE,
-  );
-}
-
-/** Tracks with a usable vocal stem are the only ones a drop can be built from. */
-export function tracksWithVocalsStem(tracks: Track[]): Track[] {
-  return tracks.filter((track) => !!findVocalsStem(track));
-}
+/**
+ * Tracks with a pickable source (any stem or the full mix, #1476) are the only
+ * ones a drop can be built from.
+ */
+export const tracksWithSourceForMoments = tracksWithMomentSource;
+/** @deprecated Pre-#1476 name; any source layer now qualifies. */
+export const tracksWithVocalsStem = tracksWithMomentSource;
 
 export interface PunchlineDropsPanelProps {
   releaseId: string;
@@ -51,7 +47,7 @@ export function PunchlineDropsPanel({
   const { token } = useAuth();
   const { addToast } = useToast();
 
-  const vocalsTracks = useMemo(() => tracksWithVocalsStem(tracks), [tracks]);
+  const vocalsTracks = useMemo(() => tracksWithMomentSource(tracks), [tracks]);
 
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(
     vocalsTracks.length === 1 ? vocalsTracks[0].id : null,
@@ -70,8 +66,20 @@ export function PunchlineDropsPanel({
     () => vocalsTracks.find((t) => t.id === selectedTrackId) ?? null,
     [vocalsTracks, selectedTrackId],
   );
-  const vocalsStem = selectedTrack ? findVocalsStem(selectedTrack) : undefined;
-  const durationSeconds = vocalsStem?.durationSeconds ?? null;
+  // Sources the server reports as allowed + processed, with their bounds.
+  const sources = useMemo(() => {
+    if (!selectedTrack || !eligibility) return [];
+    return availableMomentSources(
+      momentSourceOptions(selectedTrack),
+      eligibility,
+    )
+      .filter((option) => (option.durationSeconds ?? 0) > 0)
+      .map((option) => ({
+        ...option,
+        durationSeconds: option.durationSeconds as number,
+        bounds: clipBoundsForLayer(eligibility, option.layer),
+      }));
+  }, [selectedTrack, eligibility]);
 
   useEffect(() => {
     if (!selectedTrackId && vocalsTracks.length === 1) {
@@ -153,7 +161,6 @@ export function PunchlineDropsPanel({
     return null;
   }
 
-  const bounds = eligibility?.clipBoundsMs;
   const view = selectPunchlineView({
     selectedTrackId,
     activeDraft,
@@ -164,7 +171,7 @@ export function PunchlineDropsPanel({
 
   const resumeDraft = newestDraft(myDrops);
   const published = publishedDrops(myDrops);
-  const stemLengthReady = durationSeconds != null && durationSeconds > 0;
+  const stemLengthReady = sources.length > 0;
 
   return (
     <section
@@ -178,7 +185,8 @@ export function PunchlineDropsPanel({
           <span className="punchline-kind-chip">{DROP_KIND_LABEL}</span>
         </h3>
         <p>
-          Turn your track&apos;s best vocal punchlines into collectible moments.
+          Turn your track&apos;s golden moments (a punchline, a hook, a solo,
+          a crescendo) into collectibles, from a stem or the full mix.
         </p>
       </div>
 
@@ -204,7 +212,7 @@ export function PunchlineDropsPanel({
 
       {view === "select-track" && (
         <p className="punchline-hint">
-          Select a track with a vocal stem to build a Punchline Drop.
+          Select a track to build a Punchline Drop.
         </p>
       )}
 
@@ -232,7 +240,14 @@ export function PunchlineDropsPanel({
           </p>
           <ul className="punchline-reasons">
             {eligibility.reasons.map((reason) => (
-              <li key={reason.code}>{reason.message}</li>
+              <li
+                key={reason.code}
+                data-missing-source={
+                  isMissingSourceReason(reason.code) ? "true" : undefined
+                }
+              >
+                {reason.message}
+              </li>
             ))}
           </ul>
         </div>
@@ -279,8 +294,8 @@ export function PunchlineDropsPanel({
 
           {!stemLengthReady ? (
             <p className="punchline-hint">
-              The vocal stem length isn&apos;t available yet, so a drop can&apos;t
-              be built. Try again once processing finishes.
+              The source audio length isn&apos;t available yet, so a drop
+              can&apos;t be built. Try again once processing finishes.
             </p>
           ) : (
             <div className="punchline-overview-cta">
@@ -322,16 +337,12 @@ export function PunchlineDropsPanel({
       {view === "builder" &&
         activeDraft &&
         token &&
-        bounds &&
-        vocalsStem &&
         stemLengthReady && (
           <PunchlineDropBuilder
             token={token}
             drop={activeDraft}
-            stemId={vocalsStem.id}
-            durationSeconds={durationSeconds as number}
-            minMs={bounds.minMs}
-            maxMs={bounds.maxMs}
+            sources={sources}
+            defaultMomentKind={eligibility?.defaultMomentKind}
             onDropChange={onDropChange}
             onExit={() => setActiveDraft(null)}
             addToast={addToast}
@@ -340,11 +351,11 @@ export function PunchlineDropsPanel({
 
       {view === "builder" &&
         activeDraft &&
-        (!bounds || !vocalsStem || !stemLengthReady) && (
+        !stemLengthReady && (
           <div className="punchline-builder">
             <p className="punchline-hint">
               This drop can&apos;t be edited right now because the track&apos;s
-              vocal stem details aren&apos;t available. Reopen the release once
+              source audio details aren&apos;t available. Reopen the release once
               processing finishes.
             </p>
             <button

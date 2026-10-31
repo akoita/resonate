@@ -1,4 +1,5 @@
 import { ConfigService } from "@nestjs/config";
+import { PUNCHLINE_FULL_MIX_LAYER } from "./punchline-source";
 
 /**
  * Punchline clip extraction bounds + output audio policy (#481).
@@ -23,6 +24,14 @@ export const PUNCHLINE_CLIP_MIN_MS = 2000;
 export const PUNCHLINE_CLIP_MAX_MS = 15000;
 
 /**
+ * Default maximum clip length (ms) for a full-mix moment (#1476). A full-mix
+ * clip carries the whole recording (melody, lyrics, arrangement, production),
+ * so it gets two thirds of the stem cap: 10 s still holds a hook, a solo phrase
+ * or a crescendo peak, and stays well short of a 30 s store preview.
+ */
+export const PUNCHLINE_FULL_MIX_CLIP_MAX_MS = 10000;
+
+/**
  * Frozen output encoding policy. 192 kbps / 44.1 kHz / stereo is a good-quality
  * collectible MP3 without the 320 kbps master weight the remix render uses.
  */
@@ -44,9 +53,45 @@ export type PunchlineClipBounds = {
 
 /**
  * Resolve the clip length bounds from env, falling back to the defaults and
- * guarding min < max. Reused so the service and its tests agree on one source.
+ * guarding min < max. A full-mix layer gets the tighter full-mix cap. Reused so the service and its tests agree on one source.
  */
 export function resolvePunchlineClipBounds(
+  configService?: ConfigService,
+  sourceLayer?: string,
+): PunchlineClipBounds {
+  const stemBounds = resolveStemClipBounds(configService);
+  if (sourceLayer !== PUNCHLINE_FULL_MIX_LAYER) {
+    return stemBounds;
+  }
+  // Full mix: tighter cap, never above the stem cap and always above the min.
+  const fullMax = Math.min(
+    readPositiveInt(
+      configService,
+      "PUNCHLINE_FULL_MIX_CLIP_MAX_MS",
+      PUNCHLINE_FULL_MIX_CLIP_MAX_MS,
+    ),
+    stemBounds.maxMs,
+  );
+  return {
+    minMs: stemBounds.minMs,
+    maxMs: fullMax > stemBounds.minMs ? fullMax : stemBounds.maxMs,
+  };
+}
+
+/** Bounds for each allowed source layer, for the clip-selection UI. */
+export function resolvePunchlineClipBoundsByLayer(
+  configService: ConfigService | undefined,
+  layers: readonly string[],
+): Record<string, PunchlineClipBounds> {
+  return Object.fromEntries(
+    layers.map((layer) => [
+      layer,
+      resolvePunchlineClipBounds(configService, layer),
+    ]),
+  );
+}
+
+function resolveStemClipBounds(
   configService?: ConfigService,
 ): PunchlineClipBounds {
   const minMs = readPositiveInt(

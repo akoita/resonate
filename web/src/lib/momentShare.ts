@@ -22,6 +22,7 @@ export interface PublicMomentShare {
     lyricText: string;
     artworkUrl: string | null;
     sourceStemType: string;
+    momentKind?: string;
     startMs: number;
     endMs: number;
     clipAssetUri: string | null;

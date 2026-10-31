@@ -70,6 +70,7 @@ export function MomentPermalinkCard({
     <div className="punchline-collect-item">
       <PunchlineCollectibleCard
         title={share.moment.title}
+        momentKind={share.moment.momentKind}
         lyricText={share.moment.lyricText}
         artworkUrl={share.moment.artworkUrl}
         durationMs={share.moment.endMs - share.moment.startMs}

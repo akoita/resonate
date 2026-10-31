@@ -27,6 +27,24 @@ import {
   formatEditionLabel,
   formatPriceCents,
 } from "./punchlineDropHelpers";
+import {
+  DEFAULT_SOURCE_LAYER,
+  defaultSourceLayer,
+  sourceLayerLabel,
+  type MomentSourceOption,
+} from "./punchlineSourceHelpers";
+import {
+  MOMENT_KINDS,
+  MOMENT_KIND_COPY,
+  momentKindLabel,
+  normalizeMomentKind,
+} from "./punchlineMomentKind";
+
+/** A pickable source with the server clip bounds for its layer (#1476). */
+export type BuilderSource = MomentSourceOption & {
+  durationSeconds: number;
+  bounds: { minMs: number; maxMs: number };
+};
 
 /** Strip the "API 400: " prefix so server messages read naturally inline. */
 function cleanApiError(error: unknown): string {
@@ -42,10 +60,13 @@ type EditorState =
 export interface PunchlineDropBuilderProps {
   token: string;
   drop: PunchlineDrop;
-  stemId: string;
-  durationSeconds: number;
-  minMs: number;
-  maxMs: number;
+  /**
+   * Sources the track can clip from (#1476): stems and/or the full mix, each
+   * with its own bounds. Must not be empty.
+   */
+  sources: BuilderSource[];
+  /** Kind a new moment starts as, from the release genre (#1476). */
+  defaultMomentKind?: string;
   onDropChange: (drop: PunchlineDrop) => void;
   onExit: () => void;
   addToast: (toast: {
@@ -58,15 +79,26 @@ export interface PunchlineDropBuilderProps {
 export function PunchlineDropBuilder({
   token,
   drop,
-  stemId,
-  durationSeconds,
-  minMs,
-  maxMs,
+  sources,
+  defaultMomentKind,
   onDropChange,
   onExit,
   addToast,
 }: PunchlineDropBuilderProps) {
   const isPublished = drop.status === "published";
+
+  // Source picker (#1476): the layer the open moment editor clips from.
+  const [sourceLayer, setSourceLayer] = useState<string>(
+    () => defaultSourceLayer(sources) ?? DEFAULT_SOURCE_LAYER,
+  );
+  // Kind picker (#1476): Punchline, Crescendo, Hook or Solo.
+  const [momentKind, setMomentKind] = useState<string>(() =>
+    normalizeMomentKind(defaultMomentKind),
+  );
+  const activeSource =
+    sources.find((s) => s.layer === sourceLayer) ?? sources[0];
+  // The set bonus is still clipped from the vocals stem server-side.
+  const vocalsSource = sources.find((s) => s.layer === DEFAULT_SOURCE_LAYER);
 
   const [title, setTitle] = useState(drop.title ?? "");
   const [description, setDescription] = useState(drop.description ?? "");
@@ -134,11 +166,21 @@ export function PunchlineDropBuilder({
   const saveMoment = async (input: PunchlineMomentInput) => {
     setEditorSaving(true);
     setEditorError(null);
+    const withSource = {
+      ...input,
+      sourceStemType: activeSource.layer,
+      momentKind,
+    };
     try {
       const updated =
         editor?.mode === "edit"
-          ? await updatePunchlineMoment(drop.id, editor.moment.id, input, token)
-          : await addPunchlineMoment(drop.id, input, token);
+          ? await updatePunchlineMoment(
+              drop.id,
+              editor.moment.id,
+              withSource,
+              token,
+            )
+          : await addPunchlineMoment(drop.id, withSource, token);
       onDropChange(updated);
       setEditor(null);
       addToast({
@@ -276,6 +318,14 @@ export function PunchlineDropBuilder({
                   {formatClipTime(moment.endMs)} ·{" "}
                   {formatClipDuration(moment.endMs - moment.startMs)}
                 </span>
+                <span className="punchline-moment-row-kind">
+                  {momentKindLabel(moment.momentKind)}
+                </span>
+                {moment.sourceStemType !== DEFAULT_SOURCE_LAYER && (
+                  <span className="punchline-moment-row-source">
+                    {sourceLayerLabel(moment.sourceStemType)}
+                  </span>
+                )}
                 <span>{formatEditionLabel(moment.editionSize)}</span>
                 <span>{formatPriceCents(moment.priceCents)}</span>
                 <span className="punchline-moment-row-collected">
@@ -368,6 +418,8 @@ export function PunchlineDropBuilder({
             className="punchline-btn-primary"
             onClick={() => {
               setEditorError(null);
+              setSourceLayer(defaultSourceLayer(sources) ?? DEFAULT_SOURCE_LAYER);
+              setMomentKind(normalizeMomentKind(defaultMomentKind));
               setEditor({ mode: "add" });
             }}
           >
@@ -400,6 +452,14 @@ export function PunchlineDropBuilder({
                   {formatClipTime(moment.endMs)} ·{" "}
                   {formatClipDuration(moment.endMs - moment.startMs)}
                 </span>
+                <span className="punchline-moment-row-kind">
+                  {momentKindLabel(moment.momentKind)}
+                </span>
+                {moment.sourceStemType !== DEFAULT_SOURCE_LAYER && (
+                  <span className="punchline-moment-row-source">
+                    {sourceLayerLabel(moment.sourceStemType)}
+                  </span>
+                )}
                 <span>{formatEditionLabel(moment.editionSize)}</span>
                 <span>{formatPriceCents(moment.priceCents)}</span>
               </div>
@@ -410,6 +470,8 @@ export function PunchlineDropBuilder({
                     className="punchline-link-btn"
                     onClick={() => {
                       setEditorError(null);
+                      setSourceLayer(moment.sourceStemType);
+                      setMomentKind(normalizeMomentKind(moment.momentKind));
                       setEditor({ mode: "edit", moment });
                     }}
                   >
@@ -431,12 +493,55 @@ export function PunchlineDropBuilder({
 
       {/* Moment editor */}
       {editor && (
+        <div className="punchline-field punchline-kind-picker">
+          <label htmlFor="punchline-moment-kind">Kind of moment</label>
+          <select
+            id="punchline-moment-kind"
+            value={momentKind}
+            onChange={(e) => setMomentKind(e.target.value)}
+          >
+            {MOMENT_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {MOMENT_KIND_COPY[kind].label}
+              </option>
+            ))}
+          </select>
+          <span className="punchline-field-hint">
+            {MOMENT_KIND_COPY[normalizeMomentKind(momentKind)].hint} Names the
+            moment on its card; it changes nothing else.
+          </span>
+        </div>
+      )}
+
+      {editor && sources.length > 1 && (
+        <div className="punchline-field punchline-source-picker">
+          <label htmlFor="punchline-moment-source">Source</label>
+          <select
+            id="punchline-moment-source"
+            value={activeSource.layer}
+            onChange={(e) => setSourceLayer(e.target.value)}
+          >
+            {sources.map((source) => (
+              <option key={source.layer} value={source.layer}>
+                {source.label}
+              </option>
+            ))}
+          </select>
+          <span className="punchline-field-hint">
+            Clip the moment from one stem or from the full mix. A full-mix
+            moment has a shorter maximum length than a stem moment.
+          </span>
+        </div>
+      )}
+
+      {editor && (
         <PunchlineMomentEditor
           mode={editor.mode}
-          stemId={stemId}
-          durationSeconds={durationSeconds}
-          minMs={minMs}
-          maxMs={maxMs}
+          momentKind={momentKind}
+          stemId={activeSource.stemId}
+          durationSeconds={activeSource.durationSeconds}
+          minMs={activeSource.bounds.minMs}
+          maxMs={activeSource.bounds.maxMs}
           rightsLabel={drop.rightsLabel}
           initial={
             editor.mode === "edit"
@@ -465,14 +570,14 @@ export function PunchlineDropBuilder({
       )}
 
       {/* Set bonus (#488) — draft-only, hidden while the moment editor is open */}
-      {!editor && (
+      {!editor && vocalsSource && (
         <PunchlineSetBonusEditor
           token={token}
           drop={drop}
-          stemId={stemId}
-          durationSeconds={durationSeconds}
-          minMs={minMs}
-          maxMs={maxMs}
+          stemId={vocalsSource.stemId}
+          durationSeconds={vocalsSource.durationSeconds}
+          minMs={vocalsSource.bounds.minMs}
+          maxMs={vocalsSource.bounds.maxMs}
           onDropChange={onDropChange}
           addToast={addToast}
         />
