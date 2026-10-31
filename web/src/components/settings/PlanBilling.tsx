@@ -265,18 +265,22 @@ const CONFIRM_POLL_MS = 3000;
 const CONFIRM_POLL_TRIES = 5;
 
 /**
- * Container for {@link PlanBillingView}: reads `GET /billing/subscription`,
- * handles the `?billing=success|cancel|portal` return (refreshing until the
- * webhook lands), and redirects to Stripe Checkout or the Customer Portal.
+ * Container for {@link PlanBillingView}: reads `GET /billing/subscription`
+ * (again whenever `refreshKey` changes, #2494), handles the
+ * `?billing=success|cancel|portal` return (refreshing until the webhook lands),
+ * and redirects to Stripe Checkout or the Customer Portal.
  */
 export function PlanBillingSection({
   token,
   addToast,
   onPlanChanged,
+  refreshKey = 0,
 }: {
   token: string | null | undefined;
   addToast: ToastFn;
   onPlanChanged?: () => void;
+  /** Bumped by the page's Refresh to re-read the subscription. */
+  refreshKey?: number;
 }) {
   const [billing, setBilling] = useState<BillingState | null>(null);
   const [error, setError] = useState(false);
@@ -301,7 +305,7 @@ export function PlanBillingSection({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   // The return from Stripe: show the outcome once, then drop the parameter.
   useEffect(() => {

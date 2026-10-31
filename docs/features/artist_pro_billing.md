@@ -225,6 +225,9 @@ Usage & Billing:
 - A **Test mode** note while only test keys are accepted.
 - The `?billing=success|cancel|portal` return shows the outcome and re-reads
   the state (several times after a success, until the webhook lands).
+- The page's **Refresh** re-reads the subscription along with the usage
+  summary (#2494), so a change made elsewhere (a payment that failed, a
+  cancellation in the portal) shows without a full reload.
 
 User Guide: the Artist Pro subscription section of the AI generation article
 (Usage & Billing) and the withdrawal article.
@@ -339,7 +342,8 @@ checkout, enabled only once the choice is complete. Held purchases show their
 date and Deliver now (with an unticked acknowledgement); recent purchases show
 status and receipt reference. The `?credits=success` return re-reads the state
 and the balance until the purchase lands. A Test mode note, an email gate, and
-an informative unavailable state with no button.
+an informative unavailable state with no button. The page's Refresh re-reads
+the packs and purchases too (#2494).
 
 ## The monthly generation allowance (#2408)
 

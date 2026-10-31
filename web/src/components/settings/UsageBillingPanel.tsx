@@ -459,6 +459,8 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [creditRequestState, setCreditRequestState] = useState<CreditRequestState>("idle");
+  // Bumped by Refresh so the Plan and Credits sections re-read their own state (#2494).
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const load = async () => {
     if (!token) return;
@@ -477,6 +479,11 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- token changes are the reload boundary.
   }, [token]);
+
+  const refresh = () => {
+    setRefreshKey((key) => key + 1);
+    void load();
+  };
 
   const handleRequestCredits = async () => {
     if (!token || creditRequestState !== "idle") return;
@@ -508,7 +515,7 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
             Your plan, generation credits, usage limits, spend by action, and recent activity.
           </p>
         </div>
-        <Button variant="ghost" onClick={load} disabled={loading || !token}>
+        <Button variant="ghost" onClick={refresh} disabled={loading || !token}>
           {loading ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
@@ -521,8 +528,22 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
         retryDisabled={!token}
         onRequestCredits={handleRequestCredits}
         requesting={creditRequestState === "sending"}
-        planExtra={<PlanBillingSection token={token} addToast={addToast} onPlanChanged={() => void load()} />}
-        creditsExtra={<BuyCreditsSection token={token} addToast={addToast} onCreditsChanged={() => void load()} />}
+        planExtra={
+          <PlanBillingSection
+            token={token}
+            addToast={addToast}
+            onPlanChanged={() => void load()}
+            refreshKey={refreshKey}
+          />
+        }
+        creditsExtra={
+          <BuyCreditsSection
+            token={token}
+            addToast={addToast}
+            onCreditsChanged={() => void load()}
+            refreshKey={refreshKey}
+          />
+        }
       />
     </div>
   );
