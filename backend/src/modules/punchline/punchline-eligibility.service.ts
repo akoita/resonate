@@ -20,6 +20,11 @@ import {
   sourceLayerLabel,
   stemTypesForSourceLayer,
 } from "./punchline-source";
+import {
+  PUNCHLINE_DEFAULT_MOMENT_KIND,
+  PunchlineMomentKind,
+  defaultMomentKindForGenre,
+} from "./punchline-kind";
 
 /**
  * A single, explainable failure reason. Every gate that denies a track adds one
@@ -68,6 +73,8 @@ export interface PunchlineEligibilityResult {
   allowedSourceLayers: string[];
   /** Allowed layers this track has processed audio for (empty if none). */
   availableSourceLayers: string[];
+  /** Kind a new moment defaults to, from the release genre (#1476). */
+  defaultMomentKind: PunchlineMomentKind;
   /** The layer that was checked, when the caller asked for one. */
   sourceLayer?: string;
   /** Minimal source snapshot; omitted when the track does not exist. */
@@ -140,6 +147,7 @@ export class PunchlineEligibilityService {
           select: {
             status: true,
             rightsRoute: true,
+            genre: true,
           },
         },
         stems: {
@@ -163,6 +171,7 @@ export class PunchlineEligibilityService {
         ...base,
         eligible: false,
         availableSourceLayers: [],
+        defaultMomentKind: PUNCHLINE_DEFAULT_MOMENT_KIND,
         reasons: [
           {
             code: "track_not_found",
@@ -256,6 +265,7 @@ export class PunchlineEligibilityService {
       eligible: reasons.length === 0,
       reasons,
       availableSourceLayers,
+      defaultMomentKind: defaultMomentKindForGenre(track.release?.genre),
       track: {
         id: track.id,
         releaseId: track.releaseId,

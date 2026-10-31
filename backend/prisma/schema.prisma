@@ -3471,6 +3471,8 @@ model PunchlineMoment {
   lyricText       String                 @db.Text
   artworkUrl      String?
   sourceStemType  String                 @default("vocals")
+  // #1476: presentation skin (punchline, crescendo, hook, solo). Never "drop".
+  momentKind      String                 @default("punchline")
   startMs         Int
   endMs           Int
   clipAssetUri    String?

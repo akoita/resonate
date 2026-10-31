@@ -342,6 +342,7 @@ export function PunchlineDropsPanel({
             token={token}
             drop={activeDraft}
             sources={sources}
+            defaultMomentKind={eligibility?.defaultMomentKind}
             onDropChange={onDropChange}
             onExit={() => setActiveDraft(null)}
             addToast={addToast}

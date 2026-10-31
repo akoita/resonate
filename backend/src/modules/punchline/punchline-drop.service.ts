@@ -31,6 +31,11 @@ import {
   resolvePunchlineSourceLayers,
   sourceLayerLabel,
 } from "./punchline-source";
+import {
+  PUNCHLINE_MOMENT_KINDS,
+  defaultMomentKindForGenre,
+  isPunchlineMomentKind,
+} from "./punchline-kind";
 
 /**
  * Draft + publish APIs for Punchline Drops (#482).
@@ -103,6 +108,11 @@ export interface MomentInput {
    * the track.
    */
   sourceStemType?: string;
+  /**
+   * Presentation kind (#1476): punchline, crescendo, hook or solo. Omitted on
+   * add → defaults from the release genre.
+   */
+  momentKind?: string;
 }
 
 export interface ListDropsOptions {
@@ -116,6 +126,7 @@ export interface ListDropsOptions {
 
 interface ValidatedMomentFields {
   sourceStemType: string;
+  momentKind: string;
   title: string;
   lyricText: string;
   artworkUrl: string | null;
@@ -239,6 +250,8 @@ export class PunchlineDropService {
 
     const fields = this.validateMomentFields({
       sourceStemType: input?.sourceStemType ?? PUNCHLINE_SOURCE_STEM_TYPE,
+      momentKind:
+        input?.momentKind ?? (await this.defaultMomentKindForTrack(drop.trackId)),
       title: input?.title,
       lyricText: input?.lyricText,
       artworkUrl: input?.artworkUrl ?? null,
@@ -284,6 +297,8 @@ export class PunchlineDropService {
         input?.sourceStemType !== undefined
           ? input.sourceStemType
           : existing.sourceStemType,
+      momentKind:
+        input?.momentKind !== undefined ? input.momentKind : existing.momentKind,
       title: input?.title !== undefined ? input.title : existing.title,
       lyricText:
         input?.lyricText !== undefined ? input.lyricText : existing.lyricText,
@@ -644,6 +659,7 @@ export class PunchlineDropService {
     lyricText: string;
     artworkUrl: string | null;
     sourceStemType: string;
+    momentKind?: string;
     startMs: number;
     endMs: number;
     clipAssetUri: string | null;
@@ -1138,6 +1154,7 @@ export class PunchlineDropService {
     lyricText: string;
     artworkUrl: string | null;
     sourceStemType: string;
+    momentKind?: string;
     startMs: number;
     endMs: number;
     clipAssetUri: string | null;
@@ -1152,6 +1169,7 @@ export class PunchlineDropService {
       lyricText: moment.lyricText,
       artworkUrl: moment.artworkUrl,
       sourceStemType: moment.sourceStemType,
+      momentKind: moment.momentKind ?? "punchline",
       startMs: moment.startMs,
       endMs: moment.endMs,
       clipAssetUri: moment.clipAssetUri,
@@ -1193,6 +1211,15 @@ export class PunchlineDropService {
     return trimmed;
   }
 
+  /** Default kind for a new moment on a track, from its release genre. */
+  private async defaultMomentKindForTrack(trackId: string) {
+    const track = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: { release: { select: { genre: true } } },
+    });
+    return defaultMomentKindForGenre(track?.release?.genre);
+  }
+
   /**
    * A moment's source layer must have processed audio on the track (#1476).
    * Reuses the eligibility gate so the reason matches what the UI shows.
@@ -1218,6 +1245,7 @@ export class PunchlineDropService {
    */
   private validateMomentFields(input: {
     sourceStemType: unknown;
+    momentKind: unknown;
     title: unknown;
     lyricText: unknown;
     artworkUrl: unknown;
@@ -1232,6 +1260,14 @@ export class PunchlineDropService {
       throw new BadRequestException({
         code: "invalid_source_layer",
         message: `Moment source must be one of: ${allowedLayers.join(", ")}.`,
+      });
+    }
+
+    const momentKind = normalizeSourceLayer(input.momentKind);
+    if (!isPunchlineMomentKind(momentKind)) {
+      throw new BadRequestException({
+        code: "invalid_moment_kind",
+        message: `Moment kind must be one of: ${PUNCHLINE_MOMENT_KINDS.join(", ")}.`,
       });
     }
 
@@ -1340,6 +1376,7 @@ export class PunchlineDropService {
 
     return {
       sourceStemType,
+      momentKind,
       title,
       lyricText,
       artworkUrl,

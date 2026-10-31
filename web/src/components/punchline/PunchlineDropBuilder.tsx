@@ -33,6 +33,12 @@ import {
   sourceLayerLabel,
   type MomentSourceOption,
 } from "./punchlineSourceHelpers";
+import {
+  MOMENT_KINDS,
+  MOMENT_KIND_COPY,
+  momentKindLabel,
+  normalizeMomentKind,
+} from "./punchlineMomentKind";
 
 /** A pickable source with the server clip bounds for its layer (#1476). */
 export type BuilderSource = MomentSourceOption & {
@@ -59,6 +65,8 @@ export interface PunchlineDropBuilderProps {
    * with its own bounds. Must not be empty.
    */
   sources: BuilderSource[];
+  /** Kind a new moment starts as, from the release genre (#1476). */
+  defaultMomentKind?: string;
   onDropChange: (drop: PunchlineDrop) => void;
   onExit: () => void;
   addToast: (toast: {
@@ -72,6 +80,7 @@ export function PunchlineDropBuilder({
   token,
   drop,
   sources,
+  defaultMomentKind,
   onDropChange,
   onExit,
   addToast,
@@ -81,6 +90,10 @@ export function PunchlineDropBuilder({
   // Source picker (#1476): the layer the open moment editor clips from.
   const [sourceLayer, setSourceLayer] = useState<string>(
     () => defaultSourceLayer(sources) ?? DEFAULT_SOURCE_LAYER,
+  );
+  // Kind picker (#1476): Punchline, Crescendo, Hook or Solo.
+  const [momentKind, setMomentKind] = useState<string>(() =>
+    normalizeMomentKind(defaultMomentKind),
   );
   const activeSource =
     sources.find((s) => s.layer === sourceLayer) ?? sources[0];
@@ -153,7 +166,11 @@ export function PunchlineDropBuilder({
   const saveMoment = async (input: PunchlineMomentInput) => {
     setEditorSaving(true);
     setEditorError(null);
-    const withSource = { ...input, sourceStemType: activeSource.layer };
+    const withSource = {
+      ...input,
+      sourceStemType: activeSource.layer,
+      momentKind,
+    };
     try {
       const updated =
         editor?.mode === "edit"
@@ -301,6 +318,9 @@ export function PunchlineDropBuilder({
                   {formatClipTime(moment.endMs)} ·{" "}
                   {formatClipDuration(moment.endMs - moment.startMs)}
                 </span>
+                <span className="punchline-moment-row-kind">
+                  {momentKindLabel(moment.momentKind)}
+                </span>
                 {moment.sourceStemType !== DEFAULT_SOURCE_LAYER && (
                   <span className="punchline-moment-row-source">
                     {sourceLayerLabel(moment.sourceStemType)}
@@ -399,6 +419,7 @@ export function PunchlineDropBuilder({
             onClick={() => {
               setEditorError(null);
               setSourceLayer(defaultSourceLayer(sources) ?? DEFAULT_SOURCE_LAYER);
+              setMomentKind(normalizeMomentKind(defaultMomentKind));
               setEditor({ mode: "add" });
             }}
           >
@@ -431,6 +452,9 @@ export function PunchlineDropBuilder({
                   {formatClipTime(moment.endMs)} ·{" "}
                   {formatClipDuration(moment.endMs - moment.startMs)}
                 </span>
+                <span className="punchline-moment-row-kind">
+                  {momentKindLabel(moment.momentKind)}
+                </span>
                 {moment.sourceStemType !== DEFAULT_SOURCE_LAYER && (
                   <span className="punchline-moment-row-source">
                     {sourceLayerLabel(moment.sourceStemType)}
@@ -447,6 +471,7 @@ export function PunchlineDropBuilder({
                     onClick={() => {
                       setEditorError(null);
                       setSourceLayer(moment.sourceStemType);
+                      setMomentKind(normalizeMomentKind(moment.momentKind));
                       setEditor({ mode: "edit", moment });
                     }}
                   >
@@ -467,6 +492,27 @@ export function PunchlineDropBuilder({
       )}
 
       {/* Moment editor */}
+      {editor && (
+        <div className="punchline-field punchline-kind-picker">
+          <label htmlFor="punchline-moment-kind">Kind of moment</label>
+          <select
+            id="punchline-moment-kind"
+            value={momentKind}
+            onChange={(e) => setMomentKind(e.target.value)}
+          >
+            {MOMENT_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {MOMENT_KIND_COPY[kind].label}
+              </option>
+            ))}
+          </select>
+          <span className="punchline-field-hint">
+            {MOMENT_KIND_COPY[normalizeMomentKind(momentKind)].hint} Names the
+            moment on its card; it changes nothing else.
+          </span>
+        </div>
+      )}
+
       {editor && sources.length > 1 && (
         <div className="punchline-field punchline-source-picker">
           <label htmlFor="punchline-moment-source">Source</label>
@@ -490,8 +536,8 @@ export function PunchlineDropBuilder({
 
       {editor && (
         <PunchlineMomentEditor
-          key={activeSource.layer}
           mode={editor.mode}
+          momentKind={momentKind}
           stemId={activeSource.stemId}
           durationSeconds={activeSource.durationSeconds}
           minMs={activeSource.bounds.minMs}

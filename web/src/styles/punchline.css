@@ -1911,3 +1911,23 @@
     align-items: flex-start;
   }
 }
+
+/* Golden Moments kinds + sources (#1476) */
+.punchline-card-kind {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--card-accent, #a78bfa);
+  margin-bottom: 4px;
+}
+
+.punchline-moment-row-kind,
+.punchline-moment-row-source {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--r-primary, #a78bfa);
+}
