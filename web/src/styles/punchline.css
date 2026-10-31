@@ -1575,6 +1575,21 @@
   color: var(--r-danger, #f87171);
 }
 
+/* #1917: tailored collectible shares — "Post on X" sits beside Share. */
+.punchline-share-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.punchline-drop-share {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .punchline-collect-head-chips {
   display: flex;
   flex-direction: column;

@@ -11,6 +11,8 @@ import {
   type PublicMomentShare,
 } from "../../../lib/momentShare";
 import { MomentPermalinkCard } from "../../../components/punchline/MomentPermalinkCard";
+import { MomentShareButton } from "../../../components/punchline/MomentShareButton";
+import { dropShareMessage, type DropShareInput } from "../../../lib/collectibleShare";
 import { formatPriceCents } from "../../../components/punchline/punchlineDropHelpers";
 import { resolveClipUrl } from "../../../components/punchline/punchlineCollectHelpers";
 import {
@@ -94,6 +96,16 @@ export default async function MomentPermalinkPage({ params, searchParams }: Prop
   const left = editionsRemaining(share.moment);
   const clipUrl = resolveClipUrl(share.moment.clipAssetUri);
   const footer = [share.artistName, share.track.title].filter(Boolean).join(" · ");
+  // Visitor share (#1917): invites people to collect this moment, with the
+  // price or "free" stated honestly. Never the collector's edition details.
+  const shareInput: DropShareInput = {
+    dropTitle: share.drop.title,
+    trackTitle: share.track.title,
+    artistName: share.artistName,
+    lyricText: share.moment.lyricText,
+    moments: [share.moment],
+  };
+  const nativeShare = dropShareMessage(shareInput, "native");
 
   return (
     <main
@@ -132,6 +144,18 @@ export default async function MomentPermalinkPage({ params, searchParams }: Prop
         >
           Collect this moment
         </Link>
+        <div className="punchline-collect-actions" style={{ justifyContent: "center" }}>
+          <MomentShareButton
+            momentId={share.moment.id}
+            dropId={share.drop.id}
+            context="permalink"
+            trigger="drop_page"
+            shareTitle={nativeShare.title}
+            shareText={nativeShare.text}
+            xText={dropShareMessage(shareInput, "x").text}
+            label="Share this moment"
+          />
+        </div>
       </section>
     </main>
   );

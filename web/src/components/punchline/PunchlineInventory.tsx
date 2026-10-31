@@ -10,7 +10,10 @@ import type {
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
 import { resolveClipUrl } from "./punchlineCollectHelpers";
 import { MomentShareButton } from "./MomentShareButton";
-import { momentShareText } from "../../lib/momentShare";
+import {
+  collectedMomentShareMessage,
+  type CollectedMomentShareInput,
+} from "../../lib/collectibleShare";
 import "../../styles/punchline.css";
 
 /**
@@ -317,19 +320,7 @@ export function PunchlineInventory({
                     >
                       {playingId === item.id ? "■" : "▶"}
                     </button>
-                    <MomentShareButton
-                      momentId={item.moment.id}
-                      dropId={item.drop.id}
-                      collectibleId={item.id}
-                      context="inventory"
-                      shareTitle="A moment I collected on Resonate"
-                      shareText={momentShareText({
-                        lyricText: item.moment.lyricText,
-                        artistName: item.drop.artistName,
-                      })}
-                      className="punchline-btn-secondary punchline-collect-play"
-                      label="Share"
-                    />
+                    <InventoryShareButton item={item} />
                   </div>
                 </div>
               </div>
@@ -342,3 +333,38 @@ export function PunchlineInventory({
 }
 
 export default PunchlineInventory;
+
+/** Tailored share copy for an owned edition (#1917): edition number, paid vs free. */
+export function inventoryShareInput(item: PunchlineCollectibleItem): CollectedMomentShareInput {
+  return {
+    lyricText: item.moment.lyricText,
+    artistName: item.drop.artistName,
+    trackTitle: item.drop.trackTitle,
+    editionNumber: item.editionNumber,
+    editionSize: item.editionSize,
+    pricePaidCents: item.pricePaidCents,
+    held: item.delivery?.state === "held",
+    // Remaining supply is unknown here: the free invite stays generic.
+    editionsLeft: null,
+  };
+}
+
+/** Share an owned edition from the Moments tab: pride link + tailored copy. */
+function InventoryShareButton({ item }: { item: PunchlineCollectibleItem }) {
+  const input = inventoryShareInput(item);
+  const native = collectedMomentShareMessage(input, "native");
+  return (
+    <MomentShareButton
+      momentId={item.moment.id}
+      dropId={item.drop.id}
+      collectibleId={item.id}
+      context="inventory"
+      trigger="after_collect"
+      shareTitle={native.title}
+      shareText={native.text}
+      xText={collectedMomentShareMessage(input, "x").text}
+      className="punchline-btn-secondary punchline-collect-play"
+      label="Share"
+    />
+  );
+}

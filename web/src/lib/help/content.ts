@@ -3489,7 +3489,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist", "listener"],
     status: "partial",
-    keywords: ["punchline", "drops", "browse", "gallery", "genre", "sold out", "availability", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc"],
+    keywords: ["punchline", "drops", "browse", "gallery", "genre", "sold out", "availability", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc", "share", "share drop", "share edition"],
     sections: [
       {
         id: "what",
@@ -3573,7 +3573,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Collected a moment you love? Every moment has its own shareable link — open it from the \u201cMoments\u201d tab in your Library (or the Collect section on the release) and tap Share. Whoever opens the link sees a branded preview card with the lyric, the artist, and how many editions are left, and can jump straight to collecting one. If you have made your community profile and collection public, your edition number and name ride along on the card; otherwise the link just shows the moment.",
+            text: "Collected a moment you love? Right after you collect, the Collect section offers Share edition №… next to your new edition, and every moment you own has a Share button in the \u201cMoments\u201d tab of your Library. Share opens your device's share sheet (or copies the link), and the X button opens a ready-to-post message. The message quotes the lyric and names your edition number; you can edit it or not post at all. For a paid collect it also says the artist keeps at least 85% of the sale; for a free claim it never does. Whoever opens the link sees a branded preview card with the lyric, the artist, and how many editions are left, and can jump straight to collecting one. If you have made your community profile and collection public, your name rides along on the linked page; otherwise the link just shows the moment.",
+          },
+          {
+            kind: "paragraph",
+            text: "Haven't collected yet? Each drop in the Collect section has a Share this drop button, and every moment's own page has Share this moment. The message invites friends to collect and says plainly whether the editions are free or what they cost. Moments are personal collectibles: share messages never describe them as an investment or something that earns money.",
           },
           {
             kind: "callout",

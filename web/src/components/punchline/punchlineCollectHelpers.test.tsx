@@ -11,7 +11,12 @@ import {
   resolveClipUrl,
   summarizeCollectableDrops,
 } from "./punchlineCollectHelpers";
-import { CollectButton, PunchlineBonusReveal } from "./PunchlineCollectModule";
+import {
+  CollectButton,
+  CollectedShareAction,
+  DropShareAction,
+  PunchlineBonusReveal,
+} from "./PunchlineCollectModule";
 import { ToastProvider } from "../ui/Toast";
 import {
   PunchlineInventory,
@@ -326,6 +331,88 @@ describe("PunchlineInventory states", () => {
     expect(html).toContain("You own 1 of 2");
     expect(html).toContain("/release/r1");
     expect(html).toContain("The Artist");
+  });
+
+  it("offers a tailored share of the owned edition (#1917)", () => {
+    const html = renderToStaticMarkup(
+      <ToastProvider>
+        <PunchlineInventory items={[collectible()]} loading={false} signedIn={true} />
+      </ToastProvider>,
+    );
+    const xHref = decodeURIComponent(html.match(/href="(https:\/\/x\.com[^"]+)"/)?.[1] ?? "");
+    expect(xHref).toContain("edition №4 of 100");
+    expect(xHref).toContain("?c=");
+    expect(xHref).toContain("utm_campaign=collectible_share");
+  });
+});
+
+describe("tailored collectible shares in the collect module (#1917)", () => {
+  const track = { title: "Track One", artist: "The Artist", releaseId: "r1" };
+  const xText = (html: string) =>
+    new URL((html.match(/href="(https:\/\/x\.com[^"]+)"/)?.[1] ?? "").replace(/&amp;/g, "&"))
+      .searchParams.get("text") ?? "";
+
+  it("prominently offers sharing the edition just collected, with the pride link", () => {
+    const html = renderToStaticMarkup(
+      <ToastProvider>
+        <CollectedShareAction
+          drop={drop()}
+          moment={moment({ priceCents: 250 })}
+          track={track}
+          edition={{ collectibleId: "c9", editionNumber: 9, pricePaidCents: 250, held: false }}
+          editionsLeft={10}
+          prominent
+        />
+      </ToastProvider>,
+    );
+    expect(html).toContain("Share edition №9");
+    expect(html).toContain("punchline-btn-primary");
+    expect(html).toContain("c%3Dc9");
+    expect(xText(html)).toContain("I collected edition №9 of 100 on Resonate.");
+    expect(xText(html)).toContain("at least 85% of the sale");
+  });
+
+  it("never makes the sale claim for a free claim", () => {
+    const html = renderToStaticMarkup(
+      <ToastProvider>
+        <CollectedShareAction
+          drop={drop()}
+          moment={moment()}
+          track={track}
+          edition={{ collectibleId: "c1", editionNumber: 1, pricePaidCents: 0, held: false }}
+          editionsLeft={10}
+          prominent={false}
+        />
+      </ToastProvider>,
+    );
+    expect(html).toContain(">Share<");
+    expect(xText(html)).toContain("Free to collect while editions last.");
+    expect(xText(html)).not.toContain("85%");
+  });
+
+  it("renders a drop share with honest price copy, linking the release", () => {
+    const html = renderToStaticMarkup(
+      <ToastProvider>
+        <DropShareAction
+          drop={drop({ moments: [moment({ priceCents: 199 })] })}
+          track={track}
+          collectedCount={(m) => m.collectedCount}
+        />
+      </ToastProvider>,
+    );
+    expect(html).toContain("Share this drop");
+    expect(html).toContain("%2Frelease%2Fr1%3Ffocus%3Dmoments");
+    expect(xText(html)).toContain("$1.99 an edition.");
+    expect(xText(html)).toContain("at least 85% of each sale");
+  });
+
+  it("hides the drop share when the track has no public release", () => {
+    const html = renderToStaticMarkup(
+      <ToastProvider>
+        <DropShareAction drop={drop()} track={{ ...track, releaseId: "" }} collectedCount={() => 0} />
+      </ToastProvider>,
+    );
+    expect(html).toBe("");
   });
 });
 
