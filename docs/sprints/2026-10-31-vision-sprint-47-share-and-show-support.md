@@ -1,13 +1,35 @@
 # Vision Sprint 47: Share what you did, show who you back
 
-**Status:** ◐ In progress — started 2026-10-31 under the owner's delegated
-authority for the night of 2026-10-31 (plan, build and merge until 07:00).
+**Status:** ✅ Closed 2026-10-31. All three items and one follow-up (#2480)
+have merged PRs.
 **Milestone:** none created (the session cannot create milestones); issues are
 tracked from this doc.
 **Goal:** Every fan action worth telling people about (licensing a stem,
 publishing a remix, backing a show, collecting) offers a tailored share, fans
 can choose to show supporter and collector badges without revealing what they
 spent or hold, and an owner can cancel an active listing.
+
+## Outcome
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #1915 | The stem license purchase and remix publish now offer tailored shares (`marketplace.license_shared`, `remix.published_shared`). The 85% line appears only when the stem's creator made the sale. The listening share keeps its live campaign line, by decision recorded in the Player Action Layer page. The epic is closed | #2485 |
+| #1106 | Supporter and collector badges are hidden by default and opted into per type. Each badge is redacted (no wallet, spend, amount or token) and disappears on revocation, expiry, resale, the campaign ending, or a ban | #2483 |
+| #284 | "Cancel listing" on active and expiring rows in the Listing Manager, in one smart-account confirmation, with the row flipping to cancelled once confirmed | #2479 |
+| #2480 (follow-up) | "Edit listing" changes price or terms in one step: cancel and relist travel in one batched confirmation, and a failure leaves the old listing active | #2482 |
+
+**Decisions to review:**
+
+- The listening share keeps its campaign line (#1915).
+- Analytics names use the US spelling `license`, matching the codebase.
+
+**Carry-over:**
+
+- The partner verifier API (#1107) and the Discord / artist-site pilot (#1108).
+- There is no UI yet for artists or operators to grant badges or set expiry.
+- After an edit, the replaced listing is still reported relistable once the
+  indexer records the cancel, as with any cancelled listing.
+- Help screenshots for the new share controls and badges were not refreshed.
 
 ## Why this theme
 

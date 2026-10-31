@@ -1,12 +1,29 @@
 # Vision Sprint 45: Cheap to run, ready to charge, easy to share
 
-**Status:** ◐ In progress — started 2026-10-31 under the owner's delegated
-authority ("work as much as you can before the credit reset").
+**Status:** ✅ Closed 2026-10-31. All five items have merged PRs. #2436 stays
+open for the owner's laptop check.
 **Milestone:** Vision Sprint 45: Cheap to run, ready to charge, easy to share.
 **Goal:** The web app stays cheap to run while idle, account erasure can never
 leave a person being charged by Stripe, fans can share a show campaign or a
 collectible at the moment they act, and the remix-parts integration suite stops
 flaking on CI.
+
+## Outcome
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #2430 | Erasure and closure cancel a live Stripe subscription immediately, idempotent and audited, before the account goes. Suspension pauses collection and reinstatement resumes it. The billing email follows the account email, and the retention job prunes old `StripeEvent` rows | #2473 |
+| #2436 | Off-screen and hidden-tab animation loops hold still, reduced motion stops them, and the remaining timers back off while hidden. Measured in headless Chromium | #2472 |
+| #1916 | The campaign page and the after-signal and after-pledge states offer a tailored share with refund-honest copy, recorded as `shows.campaign_shared` | #2471 |
+| #1917 | Every collect or claim success state and every drop page offers a tailored, no-yield share | #2470 |
+| #2461 | The remix-parts happy path keeps the stub drift measurable, so the conform assertion is deterministic | #2475 |
+
+**Carry-over:**
+
+- #2436 stays open: the owner's check on a mid-range laptop is the last
+  acceptance step.
+- The refund and cancellation wording from #2430 needs legal review.
+- Live charging stays off (#2409). Stripe keys are still resonate-iac#325.
 
 ## Why this theme
 

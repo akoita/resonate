@@ -1,12 +1,33 @@
 # Vision Sprint 46: Remix goes further, dependencies stay honest
 
-**Status:** ◐ In progress — started 2026-10-31 under the owner's delegated
-authority for the night of 2026-10-31 (plan, build and merge until 07:00).
+**Status:** ✅ Closed 2026-10-31. All four items have merged PRs. #1903 stays
+open for its remaining slices.
 **Milestone:** none created yet (the session could not create milestones);
 issues are tracked from this doc.
 **Goal:** A remixer can add a build-up into a drop and open a Pro mode with
 per-stem mixing controls, free for everyone behind the entitlement seam, and
 what CI builds for the contracts is exactly what the gitlinks pin.
+
+## Outcome
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #1908 | Any structure block can be a Build-up: a rising high-pass sweep (30 Hz to 1.5 kHz) and a gain ramp into the next block, in the preview and the render, with measured parity. `remix-structure/v2` is stored only when a build-up exists, so existing recipes are unchanged | #2484 |
+| #1903 (slice) | Per-block EQ and pan had already shipped (S6a, #1940), so this sprint shipped S6b: a per-stem Punch compressor in `remix-fx/v4`, ffmpeg `acompressor` in the render and a faithful AudioWorklet port in the preview, pinned by a live-ffmpeg fixture. Behind `remix.pro` with policy `everyone` | #2481 |
+| #2423 | Every contract gitlink is the pin CI builds; `install-deps.sh` reads them from the gitlinks | #2477 |
+| Dependencies | Electron 42.11.16 (#2456). multer and qs patched in the backend with an override instead of a NestJS major (#2476, replacing #2450). #2449 and #2417 were superseded and closed | #2456, #2476 |
+
+**Unplanned:** a flaky admin step-up test (the tampered MAC was sometimes
+unchanged because of base64url padding bits) was fixed in #2486.
+
+**Carry-over:**
+
+- #1903 stays open for S6c grid correction, S6d cue and loop points with the
+  DJ export, S6e automation lanes, and S6f stem export and mashups.
+- The multer override in `backend/package.json` should go once NestJS ships a
+  release that depends on the patched multer.
+- Build-ups use one fixed curve; per-block depth or shape and automatic
+  build-ups are not planned yet.
 
 ## Why this theme
 
