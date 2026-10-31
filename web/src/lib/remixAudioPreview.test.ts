@@ -70,6 +70,11 @@ class FakeParam {
     this.events.push(["ramp", value, time]);
     return this;
   }
+  exponentialRampToValueAtTime(value: number, time: number) {
+    this.value = value;
+    this.events.push(["exp", value, time]);
+    return this;
+  }
   cancelScheduledValues(time: number) {
     this.events.push(["cancel", 0, time]);
     return this;
@@ -1484,6 +1489,50 @@ describe("createStemPreviewEngine structure (#1899)", () => {
       ["set", 1, 0.03 + 38],
       ["ramp", 0, 0.03 + 54],
     ]);
+  });
+
+  it("adds the build-up stage after the master fade only with build-ups (#1908)", async () => {
+    const { engine, contexts } = setup();
+    // 0..6 pickup, 6..22 builds up, then 22..38: the drop at 22.
+    const timeline = structureTimeline(structureGrid, [
+      { section: 0 },
+      { section: 1, buildUp: true },
+      { section: 2 },
+    ]);
+    await engine.play({ stems: [stems[0]], soloStemId: null, timeline });
+    const context = contexts[0];
+    const section = structuredSectionGain(context.sources[0]);
+    const masterFade = section.connections[0] as FakeGain;
+    const [dry, filter] = masterFade.connections as [FakeGain, FakeBiquad];
+    expect(filter).toBeInstanceOf(FakeBiquad);
+    expect(filter.type).toBe("highpass");
+    expect(filter.Q.value).toBeCloseTo(biquadQDb(Math.SQRT1_2), 12);
+    const wet = filter.connections[0] as FakeGain;
+    const out = dry.connections[0] as FakeGain;
+    expect(wet.connections).toEqual([out]);
+    expect(out.connections).toEqual([context.compressor]);
+    expect(dry.gain.events).toEqual([
+      ["set", 1, 0.03],
+      ["set", 0, 0.03 + 6],
+      ["set", 1, 0.03 + 22],
+    ]);
+    expect(wet.gain.events).toEqual([
+      ["set", 0, 0.03],
+      ["set", 0.5, 0.03 + 6],
+      ["ramp", 1, 0.03 + 22],
+      ["set", 0, 0.03 + 22],
+    ]);
+    expect(filter.frequency.events).toEqual([
+      ["set", 30, 0.03],
+      ["set", 30, 0.03 + 6],
+      ["exp", 1500, 0.03 + 22],
+      ["set", 30, 0.03 + 22],
+    ]);
+
+    // Without build-ups the master fade feeds the limiter directly.
+    await engine.play({ stems: [stems[0]], soloStemId: null, timeline: reorderRepeat });
+    const plain = structuredSectionGain(context.sources[context.sources.length - 1]);
+    expect((plain.connections[0] as FakeGain).connections).toEqual([context.compressor]);
   });
 
   it("places the master fade after the reverb return, before master tone", async () => {

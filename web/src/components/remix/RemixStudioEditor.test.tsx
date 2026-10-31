@@ -79,7 +79,7 @@ import {
 } from "../../lib/remixAudioPreview";
 import RemixStudioPage from "../../app/remix/studio/[projectId]/page";
 import { blockActionResult } from "./RemixSessionLanes";
-import { REMIX_STRUCTURE_SCHEMA_VERSION } from "../../lib/remixStructure";
+import { REMIX_STRUCTURE_SCHEMA_VERSION_V1 } from "../../lib/remixStructure";
 import { describeRemix } from "../../lib/remixDescribe";
 import {
   defaultBeat,
@@ -2082,7 +2082,7 @@ describe("structure blocks (#1899)", () => {
     sections,
   });
   const repeated = {
-    schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+    schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
     blocks: [{ section: 0 }, { section: 1 }, { section: 1 }, { section: 2 }, { section: 3 }],
   };
 
@@ -2121,7 +2121,7 @@ describe("structure blocks (#1899)", () => {
         project({
           sectionGrid,
           structure: {
-            schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+            schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
             blocks: [0, 1, 2, 3].map((section) => ({ section })),
           },
         }),
@@ -2142,7 +2142,7 @@ describe("structure blocks (#1899)", () => {
     const next = editsWithStructure(edits, result);
     expect(buildProjectPatch(plain, next)).toEqual({
       structure: {
-        schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+        schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
         blocks: [0, 1, 2, 2, 3].map((section) => ({ section })),
       },
       // The off column is copied with its block; the null mask stays null.
@@ -2297,7 +2297,7 @@ describe("Describe it (#1900)", () => {
     const edits = { ...initialEdits(project({ sectionGrid })), title: "Typed meanwhile" };
     const effects = { schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { speed: 0.85 } };
     const structure = {
-      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+      schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
       blocks: [0, 1, 2].map((section) => ({ section })),
     };
     const next = applyDescribedEdits(edits, {
@@ -2390,7 +2390,7 @@ describe("Describe it (#1900)", () => {
       const edits = {
         ...withLanes(),
         structure: {
-          schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+          schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
           blocks: [{ section: 2 }, { section: 1 }],
         },
         beat: { ...beat, blocks: [false, true] },
@@ -2662,7 +2662,7 @@ describe("Reset to original (#1910)", () => {
         master: { space: 0.4 },
       },
       structure: {
-        schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+        schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION_V1,
         blocks: [{ section: 0 }, { section: 0 }, { section: 1 }, { section: 2 }, { section: 3 }],
       },
       beat: defaultBeat("boom_bap"),

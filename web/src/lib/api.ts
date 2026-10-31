@@ -7357,7 +7357,7 @@ export type RemixProject = {
    * (free for everyone for now). Absent = not offered.
    */
   entitlements?: RemixProjectEntitlements;
-  /** Structure recipe `remix-structure/v1` (#1899); null/absent = original order. */
+  /** Structure recipe `remix-structure/v1`, or v2 with build-ups (#1899, #1908); null/absent = original order. */
   structure?: RemixStructure | null;
   /**
    * Server-derived output timeline segments (#1899): the grid's sections in
@@ -7437,7 +7437,7 @@ export type RemixProjectPatch = {
    */
   effects?: RemixFxRecipe | null;
   /**
-   * Structure recipe `remix-structure/v1` (#1899); null = original order.
+   * Structure recipe `remix-structure/v1`, or v2 with build-ups (#1899, #1908); null = original order.
    * Send the remapped per-block stem masks in the same PATCH.
    */
   structure?: RemixStructure | null;
