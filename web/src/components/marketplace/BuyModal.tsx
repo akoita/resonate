@@ -38,6 +38,8 @@ import { StemSourceBadge } from "../stem/StemSourceBadge";
 import { LICENSE_PLAIN_TERMS, STEM_SOURCE_DESCRIPTIONS, type StemSource } from "../../lib/stemSource";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { PurchaseHandoff } from "./PurchaseHandoff";
+import { LicenseShare, type LicenseShareSubject } from "./LicenseShare";
+import { isArtistSale } from "../../lib/fanActionShare";
 import type { Listing } from "../../lib/contracts";
 import "../../styles/buy-modal.css";
 import { DeliveryConsentStep, useConsentWording } from "../consent/DeliveryConsentStep";
@@ -87,6 +89,9 @@ interface BuyModalProps {
   /** Source catalog track: enables "Open in Remix Studio" after a remix-ready purchase (#2042). */
   trackId?: string;
   trackTitle?: string;
+  /** Stem part (vocals, drums, …) and artist, for the tailored share after a purchase (#1915). */
+  stemType?: string | null;
+  artistName?: string | null;
   listingChainId?: number;
   initialListing?: IndexedListingSnapshot;
   licenseType?: LicenseType;
@@ -115,8 +120,8 @@ const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
  * caller may refresh, consume, or swap underneath the open modal.
  */
 export type CompletedPurchase =
-  | { method: "onchain"; licenseType: LicenseType; txHash: string; waited?: boolean }
-  | { method: "x402"; licenseType: LicenseType; result: X402PaymentResult };
+  | { method: "onchain"; licenseType: LicenseType; txHash: string; waited?: boolean; share?: LicenseShareSubject }
+  | { method: "x402"; licenseType: LicenseType; result: X402PaymentResult; share?: LicenseShareSubject };
 
 export type BuyModalView = "success" | "loading" | "consumed" | "listing" | "not_found";
 
@@ -178,6 +183,8 @@ export function BuyModal({
   artistId,
   trackId,
   trackTitle,
+  stemType,
+  artistName,
   listingChainId,
   initialListing,
   licenseType = "personal",
@@ -248,6 +255,16 @@ export function BuyModal({
   const listingLoading = !initialListingForSelection && onchainListingLoading;
   const { data: stemData } = useStemData(listing?.tokenId);
   const { feeBps: protocolFeeBps } = useProtocolFee();
+  // What the post-purchase share may say (#1915), captured at success: the
+  // stem token to link, and whether the creator made the sale (85% claim).
+  const shareSubjectFor = (method: "onchain" | "x402"): LicenseShareSubject | undefined =>
+    listing
+      ? {
+          tokenId: listing.tokenId.toString(),
+          listingId: selectedListingId?.toString(),
+          artistSale: isArtistSale({ method, seller: listing.seller, creator: stemData?.creator }),
+        }
+      : undefined;
   const canQuoteOnchain = !listingChainMismatch && selectedListingId !== undefined;
   const { quote, loading: quoteLoading } = useBuyQuote(canQuoteOnchain ? selectedListingId : undefined, amount);
   const { buy, pending, error } = useBuyStem();
@@ -468,6 +485,7 @@ export function BuyModal({
         licenseType: selectedLicense,
         txHash: hash,
         waited: delivery.choice === "wait",
+        share: shareSubjectFor("onchain"),
       });
       onSuccess?.(hash, {
         licenseType: selectedLicense,
@@ -532,7 +550,7 @@ export function BuyModal({
         onPayer: setX402Payer,
       });
       setX402Result(result);
-      setCompleted({ method: "x402", licenseType: selectedLicense, result });
+      setCompleted({ method: "x402", licenseType: selectedLicense, result, share: shareSubjectFor("x402") });
     } catch (err) {
       setX402Error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -571,6 +589,8 @@ export function BuyModal({
             x402DownloadUrl={x402DownloadUrl}
             trackId={trackId}
             trackTitle={trackTitle}
+            stemType={stemType}
+            artistName={artistName}
             stemId={stemId}
             onDone={onClose}
           />
@@ -946,6 +966,8 @@ export function PurchaseSuccessPanel({
   x402DownloadUrl,
   trackId,
   trackTitle,
+  stemType,
+  artistName,
   stemId,
   onDone,
 }: {
@@ -953,6 +975,8 @@ export function PurchaseSuccessPanel({
   x402DownloadUrl?: string | null;
   trackId?: string;
   trackTitle?: string;
+  stemType?: string | null;
+  artistName?: string | null;
   stemId?: string;
   onDone: () => void;
 }) {
@@ -1038,6 +1062,17 @@ export function PurchaseSuccessPanel({
           />
         </div>
       ) : null}
+
+      {/* Offered, never automatic (#1915): a tailored share of the license. */}
+      {completed.share && (
+        <LicenseShare
+          subject={completed.share}
+          licenseType={completed.licenseType}
+          stemType={stemType}
+          trackTitle={trackTitle}
+          artistName={artistName}
+        />
+      )}
 
       <div className="buy-modal__actions">
         <button

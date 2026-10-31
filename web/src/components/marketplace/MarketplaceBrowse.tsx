@@ -959,6 +959,8 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                     artistId={buyModalListing.artistId}
                     trackId={buyModalListing.listing.stem?.trackId}
                     trackTitle={buyModalListing.listing.stem?.track}
+                    stemType={buyModalListing.listing.stem?.type}
+                    artistName={buyModalListing.listing.stem?.artist}
                     listingChainId={buyModalListing.chainId}
                     licenseType={buyModalListing.licenseType}
                     initialListing={buyModalListing.listing}

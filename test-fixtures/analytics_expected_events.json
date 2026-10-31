@@ -224,6 +224,26 @@
     }
   },
   {
+    "eventName": "marketplace.license_shared",
+    "payload": {
+      "tokenId": "42",
+      "listingId": "7",
+      "channel": "x",
+      "trigger": "after_purchase",
+      "source": "buy_modal"
+    }
+  },
+  {
+    "eventName": "remix.published_shared",
+    "payload": {
+      "releaseId": "release-1",
+      "projectId": "project-1",
+      "channel": "copy",
+      "trigger": "after_publish",
+      "source": "remix_studio"
+    }
+  },
+  {
     "eventName": "artist.upload_step_completed",
     "payload": {
       "releaseId": "release-1",

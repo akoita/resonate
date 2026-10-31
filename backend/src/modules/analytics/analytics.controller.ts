@@ -115,6 +115,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "marketplace.checkout_started",
   "marketplace.purchase_intent",
   "marketplace.owner_inventory_viewed",
+  "marketplace.license_shared",
   "artist.upload_started",
   "artist.upload_step_completed",
   "artist.catalog_viewed",
@@ -145,6 +146,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "remix.studio_opened",
   "remix.studio_saved",
   "remix.studio_action_unavailable",
+  "remix.published_shared",
   "shows.signal_created",
   "shows.campaign_created",
   "shows.campaign_visuals_updated",
@@ -537,7 +539,11 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
           ? normalizePlaylistSharePayload(sanitizeProductPayload(body.payload))
           : eventName === "shows.campaign_shared"
             ? normalizeCampaignSharePayload(sanitizeProductPayload(body.payload))
-            : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
+            : eventName === "marketplace.license_shared"
+              ? normalizeLicenseSharePayload(sanitizeProductPayload(body.payload))
+              : eventName === "remix.published_shared"
+                ? normalizeRemixSharePayload(sanitizeProductPayload(body.payload))
+                : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
 }
@@ -689,6 +695,57 @@ function normalizeCampaignSharePayload(payload: Record<string, unknown>) {
     throw new BadRequestException("campaignId is required");
   }
   return { campaignId, channel: payload.channel, trigger: payload.trigger };
+}
+
+// Stem token and listing ids are on-chain uint256 values: digits only.
+const ONCHAIN_ID_PATTERN = /^\d{1,78}$/;
+
+function requireShareChannel(payload: Record<string, unknown>) {
+  if (typeof payload.channel !== "string" || !TRACK_SHARE_CHANNELS.has(payload.channel)) {
+    throw new BadRequestException("Invalid share channel");
+  }
+  return payload.channel;
+}
+
+/**
+ * #1915: `marketplace.license_shared` carries the stem token id, the listing
+ * id when known, an enum channel, and the `after_purchase` trigger only. No
+ * price, payment method, receipt, transaction, or wallet.
+ */
+function normalizeLicenseSharePayload(payload: Record<string, unknown>) {
+  const channel = requireShareChannel(payload);
+  if (payload.trigger !== "after_purchase") {
+    throw new BadRequestException("Invalid share trigger");
+  }
+  const tokenId = typeof payload.tokenId === "string" ? payload.tokenId.trim() : "";
+  if (!ONCHAIN_ID_PATTERN.test(tokenId)) {
+    throw new BadRequestException("tokenId is required");
+  }
+  const listingId = typeof payload.listingId === "string" ? payload.listingId.trim() : "";
+  if (listingId && !ONCHAIN_ID_PATTERN.test(listingId)) {
+    throw new BadRequestException("Invalid listingId");
+  }
+  return { tokenId, ...(listingId ? { listingId } : {}), channel, trigger: payload.trigger };
+}
+
+/**
+ * #1915: `remix.published_shared` carries the remix release id, the project
+ * id when known, an enum channel, and the `after_publish` trigger only.
+ */
+function normalizeRemixSharePayload(payload: Record<string, unknown>) {
+  const channel = requireShareChannel(payload);
+  if (payload.trigger !== "after_publish") {
+    throw new BadRequestException("Invalid share trigger");
+  }
+  const releaseId = typeof payload.releaseId === "string" ? payload.releaseId.trim() : "";
+  if (!CAMPAIGN_ID_PATTERN.test(releaseId)) {
+    throw new BadRequestException("releaseId is required");
+  }
+  const projectId = typeof payload.projectId === "string" ? payload.projectId.trim() : "";
+  if (projectId && !CAMPAIGN_ID_PATTERN.test(projectId)) {
+    throw new BadRequestException("Invalid projectId");
+  }
+  return { releaseId, ...(projectId ? { projectId } : {}), channel, trigger: payload.trigger };
 }
 
 function normalizePlayerControlPayload(eventName: string, payload: Record<string, unknown>) {

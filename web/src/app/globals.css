@@ -1534,6 +1534,35 @@ a {
   transform: translateY(-2px);
 }
 
+/* Tailored share offered right after a fan action (#1915). */
+.action-share {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: left;
+}
+
+.action-share__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.action-share__row {
+  padding-bottom: 0;
+}
+
+.action-share__status {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
 .studio-meta {
   font-size: 14px;
   color: var(--color-muted);

@@ -87,6 +87,16 @@ authenticated pseudonymous user playback lifecycle events through
   those three fields and rejects unknown enums or a non-id-shaped
   `campaignId`; no amount, tier, wallet, or location. Arrivals carry
   `utm_campaign=show_campaign_share`.
+- `marketplace.license_shared` — a buyer shared a stem license from the
+  purchase success view (#1915): `tokenId` and optional `listingId` (digits
+  only), `channel` enum x/facebook/reddit/native/copy, `trigger`
+  `after_purchase`, at pseudonymous tier. The backend keeps only those fields
+  and rejects unknown enums or non-numeric ids; no price, payment method,
+  receipt, transaction, or wallet. Arrivals carry `utm_campaign=license_share`.
+- `remix.published_shared` — a remixer shared a remix they just published from
+  Remix Studio (#1915): `releaseId`, optional `projectId` (id-shaped),
+  `channel` enum, `trigger` `after_publish`, at pseudonymous tier, with the
+  same strict normalizer. Arrivals carry `utm_campaign=remix_share`.
 - `playlist.shared` — a listener copied a public playlist link from the owner
   share control or the public playlist page (`channel` enum `copy_link`,
   `playlistId`) at pseudonymous tier. The backend keeps only those two fields

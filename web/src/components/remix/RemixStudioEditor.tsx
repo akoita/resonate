@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
+import { RemixPublishShare } from "./RemixPublishShare";
 import {
   deleteRemixDraftVersion,
   deleteRemixPartTake,
@@ -3298,6 +3299,15 @@ export function RemixStudioEditor({
                   )}
                   <RemixSellCta commerce={project.commerce} />
                 </div>
+                {project.publishedReleaseId && (
+                  <RemixPublishShare
+                    releaseId={project.publishedReleaseId}
+                    projectId={project.id}
+                    remixTitle={project.title}
+                    sourceTrackTitle={project.source?.trackTitle}
+                    sourceArtistName={project.source?.artistName}
+                  />
+                )}
               </section>
             )}
 

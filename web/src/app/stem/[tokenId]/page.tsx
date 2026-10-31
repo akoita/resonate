@@ -679,6 +679,9 @@ export default function StemDetailPage() {
                 <BuyModal
                     listingId={BigInt(buyListing.listingId)}
                     stemId={catalogStemId ?? undefined}
+                    trackTitle={attr("Track") ?? primaryListing?.stem?.track ?? undefined}
+                    stemType={stemType}
+                    artistName={attr("Artist") ?? primaryListing?.stem?.artist ?? null}
                     listingChainId={buyListing.chainId}
                     licenseType={buyListing.licenseType}
                     stemSource={isStemSource(meta?.properties?.stem_source) ? meta?.properties?.stem_source : null}

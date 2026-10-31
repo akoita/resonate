@@ -137,6 +137,21 @@ buyer and machine-commerce surfaces strict about availability.
   payment shows the library link only when it settled through the marketplace
   (`contract_backed`), since only then does a purchase row exist. Business
   model: ADR-BM-6 Line 3 (marketplace); no fee, price, or payout change.
+- The success view also offers a tailored **license share** (#1915, parent of
+  the fan-action shares): **Share what you licensed** with X, Facebook,
+  Reddit, the native share sheet and copy link. Copy comes from
+  `web/src/lib/fanActionShare.ts` ("I licensed the vocals stem of "<track>"
+  by <artist> on Resonate", plus "to remix it" / "for commercial use" for
+  those tiers) and links the public stem page `/stem/<tokenId>` with
+  `utm_campaign=license_share`. It never states the price, payment method,
+  receipt, transaction, or wallet. The at-least-85% claim appears only when
+  the stem's creator made the sale (x402 checkout, or a wallet purchase whose
+  listing seller is the on-chain creator); a resale leaves it out, since the
+  reseller is paid. X posts fit 280 characters with links counted as 23;
+  Reddit titles fit 300. Shares record `marketplace.license_shared` with the
+  token id, listing id, channel and `trigger=after_purchase` only. The share
+  is offered only when the listing's token is known. Business model: ADR-BM-6
+  Line 3 (marketplace take-rate), distribution only; no fee change.
 
 ## How To Use
 
@@ -283,6 +298,7 @@ cd backend && npm run test:integration -- --runInBand --testPathPattern=agent_ca
 cd backend && npm run test:integration -- multi_tier_listing
 cd backend && npm run test -- listing_intent_matching.spec.ts metadata_notify_listing.controller.http.spec.ts
 cd web && ./node_modules/.bin/vitest run src/lib/ownedStems.test.ts src/components/marketplace/PurchaseHandoff.test.tsx
+cd web && ./node_modules/.bin/vitest run src/lib/fanActionShare.test.ts src/components/marketplace/BuyModal.test.tsx src/components/share
 cd web && ./node_modules/.bin/vitest run src/lib/multiTierListing.test.ts src/lib/marketplaceStemGroups.test.ts src/components/marketplace/TierPicker.test.tsx src/components/marketplace/ListStemModal.test.tsx
 ```
 

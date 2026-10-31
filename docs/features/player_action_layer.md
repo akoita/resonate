@@ -137,6 +137,17 @@ share and changes no fees, payouts, or monetization mechanics.
   on Resonate`, with the 85% parenthetical only when for sale. The system share
   sheet uses the X text without hashtags; Facebook takes only the link and
   reads the release page metadata.
+- **Listening share stays a listening signal (#1915).** Collectible, drop,
+  license, and remix details never join this share; each has its own tailored
+  share at the moment the fan acts (`collectibleShare.ts`, `campaignShare.ts`,
+  `fanActionShare.ts`). **Decision on the campaign line (2026-10-31):** keep
+  it. With the campaign share (#1916) shipped, we revisited the one exception
+  #1913 kept and chose to retain it: a live show campaign is the artist's own
+  call to action, it appears only while the campaign is active, it makes no
+  money or ticket claim, and removing it would cut
+  the only path from a listening share to a campaign for listeners who have
+  not visited the campaign page. The tailored campaign share remains the
+  richer post after a pledge or signal.
 - **Release card.** The release page description reads
   `Listen to "<title>" by <artist> on Resonate — <details>.`, adding "Stream it
   or remix the stems" only when the release has mixer stems, within a
