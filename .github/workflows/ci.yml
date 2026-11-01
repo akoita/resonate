@@ -180,6 +180,7 @@ jobs:
         run: |
           npm run security:npm-lifecycles
           npm run test:security:npm-lifecycles
+          npm run test:security:release-advisories
 
       - name: Verify release contract
         run: |

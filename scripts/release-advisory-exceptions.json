@@ -1,0 +1,12 @@
+{
+  "exceptions": [
+    {
+      "ghsa": "GHSA-mrhx-c7xc-m3w5",
+      "package": "zod",
+      "projects": ["web"],
+      "expires": "2026-11-30",
+      "reason": "zod 3.25.76 is pinned inside @x402/core and @x402/evm; zod 3 has no fixed release. @x402/* 2.29.0 moves to zod ^4.6.6 and clears the npm release-age cutoff on 2026-11-04.",
+      "tracking": "Upgrade @x402/* to 2.29 in its own payment-path PR"
+    }
+  ]
+}
