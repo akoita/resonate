@@ -854,7 +854,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "set repeats", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj"],
+    keywords: ["A–B", "passage", "finite repeats", "set repeats", "save queue", "add to queue", "play next", "queue from catalog", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj"],
     sections: [
       {
         id: "playing",
@@ -896,6 +896,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Use Play next or Add to queue on a track, selected tracks, an album, or a playlist. Multi-track additions keep their displayed order and already-queued tracks are skipped.",
+              "You can queue a card without opening it. In the catalog and on Home, point at a release, artist, playlist, or track card and select its queue button (always shown on touch screens), or right-click the card, then choose Play next or Add to queue. An artist adds all of their tracks, newest release first. Add to queue never starts playback.",
               "Shuffle plays every eligible queued track once before Repeat All begins another cycle. Tracks added during shuffle join the current cycle.",
               "Choose Save queue as playlist beside Queue Manifest to keep the whole queue in its displayed order, including tracks already played. Give it a name and folder. An unchanged playlist offers View playlist instead; changing its queue lets you save a new playlist without overwriting the original. Review any tracks that cannot be saved before confirming.",
               "Open Loop and repeat in the player bar or full player. Set A and B in seconds, or mark your current position with Set A here and Set B here, then choose Loop passage. Seeking stays within that passage until you clear it; changing tracks clears the loop.",

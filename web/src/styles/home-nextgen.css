@@ -1614,6 +1614,30 @@
   transform: scale(1.04);
 }
 
+/* Queueable artist card: the queue button is a sibling of the card link,
+ * placed by an overlay box that mirrors the portrait square (10px card
+ * padding, aspect-ratio 1) so it can sit on the portrait's lower-right edge. */
+.home-ng .ng-cat-artist-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.home-ng .ng-cat-artist__queue {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  aspect-ratio: 1;
+  pointer-events: none;
+}
+
+.home-ng .ng-cat-artist__queue .card-queue-btn {
+  position: absolute;
+  right: 6%;
+  bottom: 6%;
+  pointer-events: auto;
+}
+
 .home-ng .ng-cat-artist__name,
 .home-ng .ng-cat-artist__meta,
 .home-ng .ng-cat-artist__genre {

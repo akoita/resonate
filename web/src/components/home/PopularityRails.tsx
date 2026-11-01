@@ -90,9 +90,12 @@ function RankBadge({ rank }: { rank: number }) {
 export function TrendingNowRail({
   state,
   genreLabel,
+  queueable = false,
 }: {
   state: RailState<TrendingTrackItem>;
   genreLabel?: string;
+  /** Offer Play Next / Add to Queue on each tile. Needs the player provider. */
+  queueable?: boolean;
 }) {
   if (state.status === "loading") return null;
   const meta = <span className="ng-shelf__meta">Last 7 days</span>;
@@ -146,6 +149,11 @@ export function TrendingNowRail({
           meta={listenersLabel(item.uniqueListeners)}
           badge={<RankBadge rank={item.rank} />}
           aiDisclosure={item.aiDisclosure}
+          queueTarget={
+            queueable
+              ? { kind: "track", title: item.title, releaseId: item.releaseId, trackId: item.trackId }
+              : undefined
+          }
         />
       ))}
     </HomeShelf>
@@ -163,9 +171,12 @@ export function TopArtistsRail({
   state,
   genreLabel,
   coverFallbacks,
+  queueable = false,
 }: {
   state: RailState<TopArtistItem>;
   genreLabel?: string;
+  /** Offer Play Next / Add to Queue (all of the artist's tracks) on each tile. */
+  queueable?: boolean;
   /** Newest release cover per artist id, used when `imageUrl` is missing. */
   coverFallbacks?: Record<string, ArtistCoverFallback>;
 }) {
@@ -225,6 +236,9 @@ export function TopArtistsRail({
           title={a.name}
           meta={listenersLabel(a.uniqueListeners)}
           badge={<RankBadge rank={a.rank} />}
+          queueTarget={
+            queueable ? { kind: "artistRef", title: a.name, artistId: a.artistId, name: a.name } : undefined
+          }
         />
       ))}
     </HomeShelf>

@@ -150,3 +150,16 @@ export function StemsIcon() {
     </Glyph>
   );
 }
+
+/** Queue list with a play mark: the card button that opens the queue menu.
+ *  Distinct from the add-to-playlist "list +" glyph that sits beside it. */
+export function QueueIcon() {
+  return (
+    <Glyph>
+      <line x1="3" y1="6" x2="15" y2="6" />
+      <line x1="3" y1="12" x2="11" y2="12" />
+      <line x1="3" y1="18" x2="9" y2="18" />
+      <polygon points="14 12 21 16.5 14 21 14 12" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}

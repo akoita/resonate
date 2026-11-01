@@ -86,6 +86,18 @@ present in the active queue, update the queue immediately, and persist for the
 browser playback session. Removing an entry reconciles the current position and
 the active shuffle cycle.
 
+Cards can be queued without opening them or starting playback. Catalog release,
+artist and public playlist cards, the home catalog snapshot, and the home
+recommendation rails (personalized feed, Trending Now, Top Artists) show a queue
+button on hover or keyboard focus (always visible on touch), and right-clicking
+the card opens the same **Play Next / Add to Queue** menu. A release queues its
+tracks, an artist queues every track of their public releases (newest release
+first), a playlist queues its streamable tracks, and a feed or trending tile
+queues that one track. Cards that only carry ids fetch the tracks when the
+listener chooses a menu entry. **Add to Queue** never starts playback; **Play
+Next** keeps the existing rule that an empty queue starts with the added
+tracks. The shared pieces are `CardQueueButton` and `lib/cardQueue.ts`.
+
 Shuffle keeps a played set and navigation history instead of choosing each next
 track independently. A track does not repeat automatically until every eligible
 unique queue entry has played. Added entries join the current cycle; removed
@@ -250,11 +262,14 @@ Manual:
 6. Confirm disabled/planned actions show safe reasons.
 7. Add a track, selection, album, and playlist; confirm source order is retained,
    duplicates are skipped, and the current track is not interrupted.
-8. Enable shuffle and confirm every queued track plays once before Repeat All
+8. On `/catalog` (Releases, Artists, Playlists) and the home rails, hover a
+   card, open its queue button or right-click it, and choose Add to Queue;
+   confirm nothing starts playing and the toast reports the queued tracks.
+9. Enable shuffle and confirm every queued track plays once before Repeat All
    starts another cycle; add and remove entries during the cycle.
-9. Mute and unmute with pointer and keyboard, then enter and exit immersive mode
+10. Mute and unmute with pointer and keyboard, then enter and exit immersive mode
    with its button and Escape; confirm playback position and queue stay unchanged.
-10. Play a published track and use each Broadcast Signal button; confirm the
+11. Play a published track and use each Broadcast Signal button; confirm the
     link opens `/release/<id>` with `utm_campaign=listening_share` and the X
     and Reddit drafts carry the track copy. Play a device file and confirm the
     panel shows the published-tracks note instead of buttons.

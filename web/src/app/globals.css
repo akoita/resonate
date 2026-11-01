@@ -5312,6 +5312,77 @@ a {
   }
 }
 
+/*
+ * Queue button on cards (CardQueueButton.tsx): artwork-corner control that
+ * opens the Play Next / Add to Queue menu. Hover-capable pointers reveal it on
+ * hover or focus of the card ([data-card-queue]); touch devices always see it.
+ * Surfaces with their own action row (catalog release cards) pass their own
+ * class instead.
+ */
+.card-queue-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: rgba(10, 10, 18, 0.66);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+}
+
+.card-queue-btn:hover:not(:disabled),
+.card-queue-btn[aria-expanded="true"] {
+  background: rgba(124, 92, 255, 0.9);
+}
+
+.card-queue-btn:focus-visible {
+  outline: 2px solid var(--color-ds-primary, #9880ff);
+  outline-offset: 2px;
+}
+
+.card-queue-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.card-queue-btn[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+@media (hover: hover) {
+  [data-card-queue] .card-queue-btn {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  [data-card-queue]:hover .card-queue-btn,
+  [data-card-queue]:focus-within .card-queue-btn,
+  [data-card-queue] .card-queue-btn[aria-expanded="true"],
+  [data-card-queue] .card-queue-btn[aria-busy="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  [data-card-queue]:hover .card-queue-btn:disabled:not([aria-busy="true"]) {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-queue-btn {
+    transition: none;
+  }
+}
+
 .library-item-artwork {
   position: relative;
   width: 48px;
