@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import type { PunchlineMomentInput } from "../../lib/api";
+import type { PunchlineMomentInput, SuggestedMomentRange } from "../../lib/api";
 import {
   clampClipRange,
   formatClipDuration,
@@ -41,6 +41,9 @@ export interface PunchlineMomentEditorProps {
   momentKind?: string;
   /** The moment's source layer: a vocal moment asks for a lyric, others a caption (#2522). */
   sourceLayer?: string;
+  /** Suggested ranges for this layer (#1476 slice 3); a click applies one. */
+  suggestions?: SuggestedMomentRange[];
+  suggestionsState?: "loading" | "ready" | "error";
   initial?: PunchlineMomentEditorInitial;
   saving: boolean;
   /** Server-side 400 message (e.g. a rejected range), surfaced inline. */
@@ -81,6 +84,8 @@ export function PunchlineMomentEditor({
   rightsLabel,
   momentKind,
   sourceLayer,
+  suggestions,
+  suggestionsState,
   initial,
   saving,
   serverError,
@@ -273,6 +278,14 @@ export function PunchlineMomentEditor({
           onChange={setRange}
           onPreviewError={onPreviewError}
         />
+        <SuggestedRanges
+          state={suggestionsState}
+          ranges={suggestions}
+          current={range}
+          onPick={(picked) =>
+            setRange(clampClipRange(picked, durationMs, minMs, maxMs))
+          }
+        />
         <div className="punchline-selection-summary">
           Selected: {formatClipTime(range.startMs)} → {formatClipTime(range.endMs)}{" "}
           · {formatClipDuration(range.endMs - range.startMs)}
@@ -313,6 +326,58 @@ export function PunchlineMomentEditor({
               : "Save moment"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Suggestion chips above the selection summary (#1476 slice 3). */
+export function SuggestedRanges({
+  state,
+  ranges,
+  current,
+  onPick,
+}: {
+  state?: "loading" | "ready" | "error";
+  ranges?: SuggestedMomentRange[];
+  current: ClipRange;
+  onPick: (range: ClipRange) => void;
+}) {
+  if (!state) return null;
+  if (state === "loading") {
+    return (
+      <p className="punchline-suggestions punchline-field-hint" role="status">
+        Listening for standout moments…
+      </p>
+    );
+  }
+  if (state === "error" || !ranges || ranges.length === 0) {
+    return (
+      <p className="punchline-suggestions punchline-field-hint">
+        No suggestions for this source. Pick the range by ear.
+      </p>
+    );
+  }
+  return (
+    <div className="punchline-suggestions" role="group" aria-label="Suggested ranges">
+      <span className="punchline-field-hint">Suggested:</span>
+      {ranges.map((range) => {
+        const active = range.startMs === current.startMs && range.endMs === current.endMs;
+        return (
+          <button
+            key={`${range.startMs}-${range.endMs}`}
+            type="button"
+            className={`punchline-suggestion-chip${active ? " is-active" : ""}`}
+            aria-pressed={active}
+            title={range.reason === "lift" ? `Lifts ${range.liftDb} dB out of the part before` : "One of the loudest stretches"}
+            onClick={() => onPick({ startMs: range.startMs, endMs: range.endMs })}
+          >
+            {formatClipTime(range.startMs)}–{formatClipTime(range.endMs)}
+            <span className="punchline-suggestion-reason">
+              {range.reason === "lift" ? "lift" : "peak"}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

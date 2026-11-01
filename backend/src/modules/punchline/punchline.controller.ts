@@ -29,6 +29,8 @@ import { minutes } from "../shared/rate_limits";
 
 /** A paid collect: generous for a person retrying, tight for a script (each call may verify a signature on-chain). */
 const SMART_ACCOUNT_COLLECT_RATE_LIMIT = { limit: 10, ttl: minutes(1) } as const;
+/** Suggested moment ranges: plenty for an artist switching layers, tight for a script. */
+const SUGGESTED_RANGES_RATE_LIMIT = { limit: 20, ttl: minutes(1) } as const;
 
 @Controller("punchline")
 export class PunchlineController {
@@ -200,6 +202,22 @@ export class PunchlineController {
     @Body() body: SetDropUnlockInput,
   ) {
     return this.unlockService.setDropUnlock(req.user.userId, dropId, body ?? {});
+  }
+
+  /**
+   * Suggested ranges for a new moment (#1476 slice 3), owner only. Each call
+   * may decode the source layer with ffmpeg (cached afterwards), so it is
+   * rate-limited.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: SUGGESTED_RANGES_RATE_LIMIT })
+  @Get("drops/:dropId/suggested-ranges")
+  suggestRanges(
+    @Req() req: any,
+    @Param("dropId") dropId: string,
+    @Query("sourceLayer") sourceLayer?: string,
+  ) {
+    return this.dropService.suggestRanges(req.user.userId, dropId, sourceLayer);
   }
 
   /** Remove the drop's set bonus (owner + draft only). */

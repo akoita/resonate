@@ -3447,6 +3447,25 @@ export async function listMyPunchlineCollectibles(token: string) {
   }>(`/punchline/me/collectibles`, {}, token);
 }
 
+/** A suggested moment range (#1476 slice 3): a loud stretch or a lift. */
+export type SuggestedMomentRange = {
+  startMs: number;
+  endMs: number;
+  loudnessDb: number;
+  liftDb: number;
+  reason: "peak" | "lift";
+};
+
+/** Suggested ranges for a new moment on an owned drop, per source layer (#1476 slice 3). */
+export async function getPunchlineSuggestedRanges(dropId: string, sourceLayer: string, token: string) {
+  const query = new URLSearchParams({ sourceLayer });
+  return apiRequest<{ sourceLayer: string; tempoBpm: number | null; ranges: SuggestedMomentRange[] }>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/suggested-ranges?${query.toString()}`,
+    {},
+    token,
+  );
+}
+
 /** Configure (create/replace) a draft drop's complete-set bonus (#488). */
 export async function setPunchlineDropUnlock(
   dropId: string,

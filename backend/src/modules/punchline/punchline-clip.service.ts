@@ -12,6 +12,7 @@ import {
 } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
 import { PUNCHLINE_SOURCE_STEM_TYPE } from "./punchline-rights";
+import { loudnessEnvelope, SUGGEST_SAMPLE_RATE, SUGGEST_WINDOW_MS } from "./punchline-suggest";
 import {
   normalizeSourceLayer,
   sourceLayerLabel,
@@ -30,6 +31,27 @@ export const PUNCHLINE_CLIP_SERVICE = "PUNCHLINE_CLIP_SERVICE";
 // Trimming + re-encoding a <=15s clip is quick; keep a bounded timeout so a
 // wedged ffmpeg can never hang the request. Mirrors the mixer's guard shape.
 const FFMPEG_TIMEOUT_MS = 60_000;
+
+/** Largest decoded scan kept in memory: 8 kHz mono 16-bit is ~16 KB/s, so ~1 h. */
+const LOUDNESS_SCAN_MAX_BYTES = 64 * 1024 * 1024;
+/** Scans kept per process, oldest dropped first (#1476 slice 3). */
+const LOUDNESS_CACHE_LIMIT = 200;
+
+/** A source layer's loudness over time, for suggested moment ranges. */
+export type PunchlineLoudnessScan = {
+  stemId: string;
+  windowMs: number;
+  durationMs: number;
+  envelope: number[];
+  tempoBpm: number | null;
+  firstBeatSec: number | null;
+};
+
+function featureNumber(features: unknown, key: string): number | null {
+  if (!features || typeof features !== "object" || Array.isArray(features)) return null;
+  const value = (features as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
 /** Stable machine codes callers (and #482) can branch on. */
 export type PunchlineClipErrorCode =
@@ -102,6 +124,7 @@ export type PunchlineClipResult = {
 @Injectable()
 export class PunchlineClipService {
   private readonly logger = new Logger(PunchlineClipService.name);
+  private readonly loudnessCache = new Map<string, PunchlineLoudnessScan>();
 
   constructor(
     private readonly storageProvider: StorageProvider,
@@ -243,6 +266,80 @@ export class PunchlineClipService {
       byteSize: buffer.length,
       mimeType: PUNCHLINE_CLIP_AUDIO_POLICY.outputMimeType,
     };
+  }
+
+  /**
+   * Loudness over time of a track's source layer (#1476 slice 3), decoded once
+   * with ffmpeg and cached per stem and stored asset. Carries the stem's
+   * measured tempo and first beat (#1184) so suggestions can snap to the grid.
+   */
+  async measureLoudness(trackId: string, layer?: string): Promise<PunchlineLoudnessScan> {
+    const sourceLayer = normalizeSourceLayer(layer) || PUNCHLINE_SOURCE_STEM_TYPE;
+    const stem = await prisma.stem.findFirst({
+      where: { trackId, type: { in: stemTypesForSourceLayer(sourceLayer) } },
+      orderBy: { isCurrent: "desc" },
+      select: {
+        id: true,
+        uri: true,
+        data: true,
+        isEncrypted: true,
+        encryptionMetadata: true,
+        audioFeatures: true,
+      },
+    });
+    if (!stem) {
+      throw new PunchlineClipException(
+        "no_source_stem",
+        `Track ${trackId} has no ${sourceLayerLabel(sourceLayer)} to scan.`,
+      );
+    }
+    const cacheKey = `${stem.id}|${stem.uri}`;
+    const cached = this.loudnessCache.get(cacheKey);
+    if (cached) return cached;
+
+    const audio = await this.loadStemAudio(stem);
+    if (!audio || audio.length === 0) {
+      throw new PunchlineClipException(
+        "source_asset_missing",
+        `Source stem ${stem.id} audio could not be loaded.`,
+      );
+    }
+    const workDir = await mkdtemp(join(tmpdir(), "punchline-scan-"));
+    let pcm: Buffer;
+    try {
+      const inputPath = join(workDir, "source.audio");
+      await writeFile(inputPath, audio);
+      const { stdout } = await execFileAsync(
+        "ffmpeg",
+        ["-hide_banner", "-loglevel", "error", "-i", inputPath, "-vn", "-ac", "1", "-ar", String(SUGGEST_SAMPLE_RATE), "-f", "s16le", "pipe:1"],
+        { timeout: FFMPEG_TIMEOUT_MS, encoding: "buffer", maxBuffer: LOUDNESS_SCAN_MAX_BYTES },
+      );
+      pcm = stdout as Buffer;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`ffmpeg loudness scan failed for stem ${stem.id}: ${message}`);
+      throw new PunchlineClipException(
+        "extraction_failed",
+        "The source audio could not be scanned.",
+      );
+    } finally {
+      await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+
+    const scan: PunchlineLoudnessScan = {
+      stemId: stem.id,
+      windowMs: SUGGEST_WINDOW_MS,
+      durationMs: Math.floor((pcm.length / 2 / SUGGEST_SAMPLE_RATE) * 1000),
+      envelope: loudnessEnvelope(pcm, SUGGEST_SAMPLE_RATE, SUGGEST_WINDOW_MS),
+      tempoBpm: featureNumber(stem.audioFeatures, "tempoBpm"),
+      firstBeatSec: featureNumber(stem.audioFeatures, "firstBeatSec"),
+    };
+    if (this.loudnessCache.size >= LOUDNESS_CACHE_LIMIT) {
+      const oldest = this.loudnessCache.keys().next().value;
+      if (oldest !== undefined) this.loudnessCache.delete(oldest);
+    }
+    this.loudnessCache.set(cacheKey, scan);
+    return scan;
   }
 
   /**

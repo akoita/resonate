@@ -433,6 +433,12 @@ describe("Punchline Drops draft + publish (integration)", () => {
     expect(afterRemove.moments).toHaveLength(0);
   });
 
+  it("suggests ranges only to the drop owner and only on allowed layers (#1476 slice 3)", async () => {
+    const drop = await service.createDraft(OWNER_USER, { trackId: TRACK_ELIGIBLE });
+    await expect(service.suggestRanges(STRANGER_USER, drop.id, "vocals")).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.suggestRanges(OWNER_USER, drop.id, "kazoo")).rejects.toThrow("not allowed");
+  });
+
   it("rejects a stranger mutating another artist's drop with Forbidden", async () => {
     const drop = await service.createDraft(OWNER_USER, {
       trackId: TRACK_ELIGIBLE,
