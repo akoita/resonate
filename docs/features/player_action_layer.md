@@ -312,6 +312,15 @@ queue and fair-shuffle rules. Finite and infinite repeats replace each other.
 A–B loops take priority without consuming counts. Finite plans survive in-app
 navigation, but are not persisted across browser sessions.
 
+**Set repeats** in any single-track menu (queue rows, library, playlists,
+release and browse rows) sets a track plan for a track that is not playing.
+The count is held per track (`scheduledRepeats` in the player context) and
+becomes the track plan when that track next starts, emitting
+`player.repeat_count_set` then; on the playing track it acts like the panel.
+A count of 0 cancels it. A queue plan in progress keeps the single repeat slot,
+so the scheduled count waits for a later start of that track. Queue rows show a
+↻N badge. Scheduled counts live in memory only, like other finite plans.
+
 ### Analytics and API
 
 `POST /playlists` accepts optional `queueContext` with `origin: player_queue`,

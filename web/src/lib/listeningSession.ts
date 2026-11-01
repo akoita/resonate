@@ -30,6 +30,39 @@ export function consumeRepeat(plan: FiniteRepeat): { replay: boolean; plan: Fini
     : { replay: false, plan: null };
 }
 
+/** Additional repeats scheduled for tracks that are not playing yet, keyed by queue track id. */
+export type ScheduledRepeats = Readonly<Record<string, number>>;
+
+/** Schedule (count ≥ 1) or cancel (count 0) the additional repeats a track gets when it next plays. */
+export function scheduleTrackRepeat(schedule: ScheduledRepeats, trackId: string, count: number): ScheduledRepeats | null {
+  if (!trackId || !Number.isSafeInteger(count) || count < 0) return null;
+  const next = { ...schedule };
+  if (count === 0) delete next[trackId];
+  else next[trackId] = count;
+  return next;
+}
+
+/** The scheduled count for a track, matched by queue id or catalog id. */
+export function scheduledRepeatFor(schedule: ScheduledRepeats, track: Pick<LocalTrack, "id" | "catalogTrackId">) {
+  const key = scheduledRepeatKey(schedule, track);
+  return key ? schedule[key] : 0;
+}
+
+/** Hand a track's scheduled repeats to the player as it starts; the schedule entry is used once. */
+export function takeScheduledRepeat(schedule: ScheduledRepeats, track: Pick<LocalTrack, "id" | "catalogTrackId">): { plan: FiniteRepeat | null; schedule: ScheduledRepeats } {
+  const key = scheduledRepeatKey(schedule, track);
+  if (!key) return { plan: null, schedule };
+  const next = { ...schedule };
+  delete next[key];
+  return { plan: createFiniteRepeat("track", schedule[key]), schedule: next };
+}
+
+function scheduledRepeatKey(schedule: ScheduledRepeats, track: Pick<LocalTrack, "id" | "catalogTrackId">) {
+  if (schedule[track.id]) return track.id;
+  if (track.catalogTrackId && schedule[track.catalogTrackId]) return track.catalogTrackId;
+  return null;
+}
+
 export function queueSnapshot(queue: readonly LocalTrack[]) {
   const seen = new Set<string>();
   const trackIds: string[] = [];

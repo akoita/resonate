@@ -12,6 +12,9 @@ interface UIState {
     toggleSidebar: () => void;
     tracksToAddToPlaylist: LocalTrack[] | null;
     setTracksToAddToPlaylist: (tracks: LocalTrack[] | null) => void;
+    /** Track whose "Set repeats…" dialog is open, from any track menu. */
+    trackForRepeats: LocalTrack | null;
+    setTrackForRepeats: (track: LocalTrack | null) => void;
     resaleModal: {
         isOpen: boolean;
         stemId: string;
@@ -33,6 +36,8 @@ export const useUIStore = create<UIState>((set) => ({
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
     tracksToAddToPlaylist: null,
     setTracksToAddToPlaylist: (tracks) => set({ tracksToAddToPlaylist: tracks }),
+    trackForRepeats: null,
+    setTrackForRepeats: (track) => set({ trackForRepeats: track }),
     resaleModal: null,
     setResaleModal: (modal) => set({
         resaleModal: modal ? { ...modal, isOpen: true } : null
