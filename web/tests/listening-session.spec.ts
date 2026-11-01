@@ -208,7 +208,10 @@ test('finite plans survive navigation and seeking but track selection cancels th
   await seedPlayer(page);
   const controls = page.getByRole('main').locator('details.listening-controls');
   await controls.locator('summary').click();
-  await controls.getByLabel('Additional repeats').fill('2');
+  // The field starts at 1; the stepper takes it to 2, and − is disabled again back at 1.
+  await expect(controls.getByRole('button', { name: 'Decrease repeat count' })).toBeDisabled();
+  await controls.getByRole('button', { name: 'Increase repeat count' }).click();
+  await expect(controls.getByLabel('Additional repeats')).toHaveValue('2');
   await controls.getByRole('button', { name: 'Set repeats', exact: true }).click();
   await page.getByRole('main').getByRole('slider', { name: 'Playback position' }).fill('50');
   await expect(controls.getByText(/2 remaining/)).toBeVisible();

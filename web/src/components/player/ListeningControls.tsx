@@ -92,8 +92,8 @@ export function ListeningControls() {
             <span className="lc-unit" aria-hidden="true">×</span>
             {/* Native spinners are hidden for the console look, so the field gets its own − / + keys. */}
             <span className="lc-stepper">
-              <button type="button" className="lc-step" aria-label="Decrease additional repeats" aria-controls={`${ids}-count`} disabled={!(Number(count) > 1)} onClick={() => setCount(c => stepRepeatCount(c, -1))}>−</button>
-              <button type="button" className="lc-step" aria-label="Increase additional repeats" aria-controls={`${ids}-count`} onClick={() => setCount(c => stepRepeatCount(c, 1))}>+</button>
+              <button type="button" className="lc-step" aria-label="Decrease repeat count" aria-controls={`${ids}-count`} disabled={!(Number(count) > 1)} onClick={() => setCount(c => stepRepeatCount(c, -1))}>−</button>
+              <button type="button" className="lc-step" aria-label="Increase repeat count" aria-controls={`${ids}-count`} onClick={() => setCount(c => stepRepeatCount(c, 1))}>+</button>
             </span>
           </span>
         </div>
