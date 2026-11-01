@@ -260,6 +260,7 @@ function GlobalCatalogPageContent() {
                           release={release}
                           onPlay={handlePlayRelease}
                           actions={releaseActions(release)}
+                          queueable
                         />
                       ))}
                     </div>
@@ -270,7 +271,7 @@ function GlobalCatalogPageContent() {
                   filteredArtists.length > 0 ? (
                     <div className="ng-cat-grid">
                       {filteredArtists.map((artist) => (
-                        <CatalogArtistCard key={artist.key} artist={artist} />
+                        <CatalogArtistCard key={artist.key} artist={artist} queueable />
                       ))}
                     </div>
                   ) : (
@@ -289,7 +290,7 @@ function GlobalCatalogPageContent() {
                 ) : filteredPlaylists.length > 0 ? (
                   <div className="ng-cat-grid">
                     {filteredPlaylists.map((playlist) => (
-                      <CatalogPlaylistCard key={playlist.id} playlist={playlist} />
+                      <CatalogPlaylistCard key={playlist.id} playlist={playlist} queueable />
                     ))}
                   </div>
                 ) : (

@@ -294,6 +294,26 @@
   z-index: 2;
 }
 
+/* Queue button (CardQueueButton): top-right, opposite the badge chip. */
+.home-ng .ng-tile__queue-slot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.home-ng .ng-tile--round .ng-tile__queue-slot {
+  /* Top-centre: the circle clips the corners, and the rank chip sits at the
+   * bottom-centre. */
+  top: 6px;
+  right: auto;
+  left: calc(50% - 17px);
+}
+
+.home-ng .ng-tile--queueable.ng-tile--square .ng-tile__badge {
+  max-width: calc(100% - 64px);
+}
+
 .home-ng .ng-tile__action {
   width: 42px;
   height: 42px;

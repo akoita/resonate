@@ -10,6 +10,7 @@ import {
 } from "../../lib/catalogDisplay";
 import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
 import { HomeReleaseArtwork } from "../home/HomeReleaseArtwork";
+import { CardQueueButton } from "../ui/CardQueueButton";
 
 /*
  * Action icons are rendered as literal ligatures so the Material Symbols subset
@@ -37,18 +38,22 @@ const CARD_ARTWORK_SIZES = "(max-width: 640px) 50vw, 220px";
  * Artwork-first release card shared by `/catalog` and the home catalog
  * snapshot. The title link is stretched over the whole card, so the play and
  * secondary action buttons stay sibling interactive elements (never nested in
- * the link).
+ * the link). With `queueable`, the card also offers Play Next / Add to Queue
+ * from a hover button and a right-click menu, without opening or playing it.
  */
 export function CatalogReleaseCard({
   release,
   onSelect,
   onPlay,
   actions,
+  queueable = false,
 }: {
   release: Release;
   onSelect?: (release: Release) => void;
   onPlay?: (release: Release) => void;
   actions?: CatalogCardAction[];
+  /** Offer queueing from the card. Needs the player provider. */
+  queueable?: boolean;
 }) {
   const canPlay = Boolean(onPlay) && (release.tracks?.length ?? 0) > 0;
   const addedAt = getCatalogSortTime(release);
@@ -59,14 +64,20 @@ export function CatalogReleaseCard({
   ].filter(Boolean).join(" · ");
 
   return (
-    <article className="ng-cat-card">
+    <article className="ng-cat-card" data-card-queue={queueable ? "" : undefined}>
       <div className="ng-cat-card__art">
         <span className="ng-cat-card__media">
           <CatalogReleaseArtwork release={release} />
         </span>
-        {actions && actions.length > 0 && (
+        {((actions && actions.length > 0) || queueable) && (
           <div className="ng-cat-card__actions">
-            {actions.map((action) => (
+            {queueable && (
+              <CardQueueButton
+                className="ng-cat-card__action"
+                target={{ kind: "release", title: release.title, release }}
+              />
+            )}
+            {actions?.map((action) => (
               <button
                 key={action.label}
                 type="button"

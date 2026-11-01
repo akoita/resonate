@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { AiDisclosure } from "../../lib/api";
+import type { CardQueueTarget } from "../../lib/cardQueue";
+import { CardQueueButton } from "../ui/CardQueueButton";
 import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
 
 /*
@@ -11,6 +13,8 @@ import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
  * optional floating action circle (bottom-right) overlay it, over a shallow
  * bottom shade. The action button is a sibling of the art link — never nested
  * inside it — so the tile has no interactive-inside-interactive markup.
+ * With a `queueTarget`, a queue button (top-right) and a right-click menu
+ * offer Play Next / Add to Queue without opening or playing the item.
  */
 
 export function HomeTile({
@@ -25,6 +29,7 @@ export function HomeTile({
   aiDisclosure,
   showAiDisclosure = true,
   action,
+  queueTarget,
   shape = "square",
 }: {
   href: string;
@@ -39,10 +44,15 @@ export function HomeTile({
   /** Artist tiles carry no track disclosure, so they opt out of the badge. */
   showAiDisclosure?: boolean;
   action?: ReactNode;
+  /** What the tile queues. Needs the player provider. */
+  queueTarget?: CardQueueTarget;
   shape?: "square" | "round";
 }) {
   return (
-    <article className={`ng-tile ng-tile--${shape}`}>
+    <article
+      className={`ng-tile ng-tile--${shape}${queueTarget ? " ng-tile--queueable" : ""}`}
+      data-card-queue={queueTarget ? "" : undefined}
+    >
       <div className="ng-tile__art">
         <Link
           href={href}
@@ -55,6 +65,11 @@ export function HomeTile({
         </Link>
         {badge ? <span className="ng-tile__badge">{badge}</span> : null}
         {action ? <div className="ng-tile__action-slot">{action}</div> : null}
+        {queueTarget ? (
+          <div className="ng-tile__queue-slot">
+            <CardQueueButton target={queueTarget} />
+          </div>
+        ) : null}
       </div>
       <div className="ng-tile__body">
         <Link href={href} className="ng-tile__title" onClick={onOpen} tabIndex={-1}>

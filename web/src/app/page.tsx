@@ -1041,6 +1041,7 @@ export default function Home() {
         <HomeFeedRails
           feed={reveal.feedSlot === "content" ? homeFeed : null}
           startingSeed={startingSeed}
+          queueable
           onOpen={(item, railId, position) => emitRecommendationClick(item.id, railId, position)}
           onStartSession={(item, railId, position) => {
             emitRecommendationClick(item.id, railId, position);
@@ -1053,7 +1054,7 @@ export default function Home() {
             mount waits for `reveal` (data arrived AND the feed above has
             settled, #2254) and the skeleton holds the slot until then (#1491). */}
         {reveal.trending === "content" ? (
-          <TrendingNowRail state={trendingRail} genreLabel={popularityGenre} />
+          <TrendingNowRail state={trendingRail} genreLabel={popularityGenre} queueable />
         ) : (
           <TrendingNowRailSkeleton />
         )}
@@ -1064,6 +1065,7 @@ export default function Home() {
             state={topArtists}
             genreLabel={popularityGenre}
             coverFallbacks={artistCoverFallbacks}
+            queueable
           />
         ) : (
           <TopArtistsRailSkeleton />
@@ -1144,6 +1146,7 @@ export default function Home() {
                       onSelect={() => recordCatalogSearchResultClick("release", release.id, index + 1)}
                       onPlay={handlePlayCatalogRelease}
                       actions={releaseActions(release)}
+                      queueable
                     />
                   ))}
                 </div>
@@ -1163,6 +1166,7 @@ export default function Home() {
                       key={artist.key}
                       artist={artist}
                       onSelect={() => recordCatalogSearchResultClick("artist", artist.artistId ?? artist.key, index + 1)}
+                      queueable
                     />
                   ))}
                 </div>
@@ -1201,6 +1205,7 @@ export default function Home() {
                       key={playlist.id}
                       playlist={playlist}
                       onSelect={() => recordCatalogSearchResultClick("playlist", playlist.id, index + 1)}
+                      queueable
                     />
                   ))}
                 </div>

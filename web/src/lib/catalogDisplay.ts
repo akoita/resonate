@@ -16,6 +16,9 @@ export type CatalogArtistSummary = {
   latestRelease?: Release;
   latestAt: number;
   genres: Set<string>;
+  /** Every release this artist is credited on, in input order (the catalog
+   *  passes them newest first), so the card can queue all their tracks. */
+  releases: Release[];
 };
 
 export type CatalogStemSummary = {
@@ -172,12 +175,14 @@ function summarizeArtists(
           latestRelease: release,
           latestAt,
           genres: new Set(release.genre ? [release.genre] : []),
+          releases: [release],
         });
         continue;
       }
 
       existing.releaseCount += 1;
       existing.stemCount += stemCount;
+      existing.releases.push(release);
       if (release.genre) existing.genres.add(release.genre);
       if (!existing.artistId && artistId) existing.artistId = artistId;
       if (latestAt > existing.latestAt) {

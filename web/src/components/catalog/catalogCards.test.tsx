@@ -119,6 +119,7 @@ describe("CatalogArtistCard", () => {
     latestRelease: makeRelease(),
     latestAt: Date.now(),
     genres: new Set(["Pop"]),
+    releases: [makeRelease()],
   };
 
   it("pluralizes counts and links to the credited profile", () => {
