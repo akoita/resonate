@@ -2,6 +2,7 @@ import { Type } from "class-transformer";
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -19,9 +20,12 @@ export class SaveLibraryTrackDto {
   @IsString()
   id?: string;
 
-  @IsOptional()
-  @IsString()
-  source?: string;
+  /**
+   * Required (#2505): "local" is a device file, "remote" a platform track or
+   * stem. The service rejects a row that mixes the two.
+   */
+  @IsIn(["local", "remote"])
+  source!: "local" | "remote";
 
   @IsString()
   title!: string;

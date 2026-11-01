@@ -2373,6 +2373,11 @@ model LibraryTrack {
   userId String
   source String @default("local") // "local" | "remote"
 
+  // The id the client knows this row by (a `local_…` file id, an owned stem
+  // id). Unique per user only, so two listeners can hold the same stem and no
+  // write can reach another listener's row (#2505). Playlists may store it.
+  clientKey String?
+
   // Core metadata
   title       String
   artist      String?
@@ -2405,6 +2410,7 @@ model LibraryTrack {
 
   @@unique([userId, sourcePath, fileSize])
   @@unique([userId, catalogTrackId])
+  @@unique([userId, clientKey])
   @@index([userId])
 }
 

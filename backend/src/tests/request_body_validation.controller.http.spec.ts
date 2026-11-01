@@ -68,10 +68,11 @@ const SUITES: Array<{ controller: Type<unknown>; cases: Case[] }> = [
   {
     controller: LibraryController,
     cases: [
-      { name: "save a track", verb: "post", url: "/library/tracks", bad: { title: 5 }, ok: { title: "t" } },
-      { name: "save a track with a fractional year", verb: "post", url: "/library/tracks", bad: { title: "t", year: 1999.5 }, ok: { title: "t", year: 1999 } },
+      { name: "save a track", verb: "post", url: "/library/tracks", bad: { title: 5, source: "local" }, ok: { title: "t", source: "local" } },
+      { name: "save a track without a source", verb: "post", url: "/library/tracks", bad: { title: "t" }, ok: { title: "t", source: "remote" } },
+      { name: "save a track with a fractional year", verb: "post", url: "/library/tracks", bad: { title: "t", source: "local", year: 1999.5 }, ok: { title: "t", source: "local", year: 1999 } },
       { name: "save tracks", verb: "post", url: "/library/tracks/batch", bad: { tracks: "x" }, ok: { tracks: [] } },
-      { name: "save tracks with a bad entry", verb: "post", url: "/library/tracks/batch", bad: { tracks: [{ title: 3 }] }, ok: { tracks: [{ title: "t" }] } },
+      { name: "save tracks with a bad entry", verb: "post", url: "/library/tracks/batch", bad: { tracks: [{ title: 3, source: "local" }] }, ok: { tracks: [{ title: "t", source: "local" }] } },
       { name: "delete tracks", verb: "delete", url: "/library/tracks/batch", bad: { ids: "x" }, ok: { ids: [] } },
     ],
   },

@@ -5,6 +5,7 @@ import { LibraryService } from '../modules/library/library.service';
 import { authToken, createControllerTestApp } from './e2e-helpers';
 
 const mockLibraryService = {
+  saveTrack: jest.fn().mockResolvedValue({ id: 'local_1' }),
   deleteTrack: jest.fn().mockResolvedValue({ id: 'track-1' }),
   deleteTracks: jest.fn().mockResolvedValue({ count: 2 }),
   clearLocalTracks: jest.fn().mockResolvedValue({ count: 1 }),
@@ -47,5 +48,26 @@ describe('LibraryController (HTTP)', () => {
     expect(res.body).toEqual({ count: 1 });
     expect(mockLibraryService.clearLocalTracks).toHaveBeenCalledWith('user-1');
     expect(mockLibraryService.deleteTrack).not.toHaveBeenCalled();
+  });
+
+  it('requires a known source on POST /library/tracks (#2505)', async () => {
+    await request(app.getHttpServer())
+      .post('/library/tracks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'No source' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/library/tracks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'Odd source', source: 'release' })
+      .expect(400);
+    expect(mockLibraryService.saveTrack).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .post('/library/tracks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: 'local_1', title: 'Song', source: 'local' })
+      .expect(201);
+    expect(mockLibraryService.saveTrack).toHaveBeenCalledWith('user-1', expect.objectContaining({ source: 'local' }));
   });
 });

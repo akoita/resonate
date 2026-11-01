@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import {
     LOCAL_FILE_AVAILABILITY,
@@ -129,10 +129,95 @@ export interface SaveTrackInput {
     previewUrl?: string | null;
 }
 
+export const LIBRARY_SOURCES = ["local", "remote"] as const;
+export type LibrarySource = (typeof LIBRARY_SOURCES)[number];
+
+/** Client ids for device files: `local_<time>_<random>` (see web localLibrary). */
+const LOCAL_CLIENT_KEY = /^local_[A-Za-z0-9_-]{1,120}$/;
+const MAX_CLIENT_KEY_LENGTH = 200;
+
+/**
+ * Fields that describe a platform track, a stem or a purchase. A device-local
+ * file never carries any of them: if it did, availability, takedowns, public
+ * playlists and analytics would treat a private file as a release (#2505).
+ */
+const CATALOG_ONLY_FIELDS = [
+    "catalogTrackId",
+    "remoteUrl",
+    "remoteArtworkUrl",
+    "previewUrl",
+    "stemType",
+    "tokenId",
+    "listingId",
+    "purchaseDate",
+] as const;
+
+function present(value: unknown): boolean {
+    return value !== undefined && value !== null && value !== "";
+}
+
+function hasCatalogReference(data: SaveTrackInput): boolean {
+    if (present(data.catalogTrackId)) return true;
+    const refs = collectCatalogReferences({ id: "", source: "remote", ...data });
+    return refs.trackIds.size > 0 || refs.releaseIds.size > 0 || refs.stemIds.size > 0;
+}
+
+/**
+ * Check a library write against the local/catalog boundary and return the
+ * source and client key to store. Throws 400 on a row that mixes the two.
+ */
+export function validateLibraryTrackInput(data: SaveTrackInput): { source: LibrarySource; clientKey: string | null } {
+    const source = data.source;
+    if (source !== "local" && source !== "remote") {
+        throw new BadRequestException('source must be "local" or "remote"');
+    }
+    const clientKey = present(data.id) ? String(data.id) : null;
+    if (clientKey && clientKey.length > MAX_CLIENT_KEY_LENGTH) {
+        throw new BadRequestException("id is too long");
+    }
+
+    if (source === "local") {
+        const mixed = CATALOG_ONLY_FIELDS.filter((field) => present(data[field]));
+        if (data.isOwned) mixed.push("isOwned" as never);
+        if (mixed.length > 0) {
+            throw new BadRequestException(
+                `A local file cannot carry catalog fields: ${mixed.join(", ")}`,
+            );
+        }
+        if (clientKey && !LOCAL_CLIENT_KEY.test(clientKey)) {
+            throw new BadRequestException("A local file id must start with local_");
+        }
+        return { source, clientKey };
+    }
+
+    if (present(data.sourcePath) || present(data.fileSize)) {
+        throw new BadRequestException("A catalog track cannot carry local file fields");
+    }
+    if (clientKey && LOCAL_CLIENT_KEY.test(clientKey)) {
+        throw new BadRequestException("A catalog track cannot use a local file id");
+    }
+    if (!hasCatalogReference(data)) {
+        throw new BadRequestException("A catalog track needs a catalog reference");
+    }
+    return { source, clientKey };
+}
+
+/**
+ * The id a client sees: the key it saved the row under when there is one, so
+ * device files and owned stems keep the ids their playlists already store.
+ */
+export function presentLibraryTrack<T extends { id: string; clientKey?: string | null }>(track: T): T {
+    return track.clientKey ? { ...track, id: track.clientKey } : track;
+}
+
 @Injectable()
 export class LibraryService {
     async saveTrack(userId: string, data: SaveTrackInput) {
-        const source = data.source || "local";
+        return presentLibraryTrack(await this.writeTrack(userId, data));
+    }
+
+    private async writeTrack(userId: string, data: SaveTrackInput) {
+        const { source, clientKey } = validateLibraryTrackInput(data);
         const trackData = {
             userId,
             source,
@@ -143,24 +228,23 @@ export class LibraryService {
             year: data.year,
             genre: data.genre,
             duration: data.duration,
-            sourcePath: data.sourcePath,
-            fileSize: data.fileSize,
-            catalogTrackId: data.catalogTrackId,
-            remoteUrl: data.remoteUrl,
-            remoteArtworkUrl: data.remoteArtworkUrl,
-            stemType: data.stemType,
-            tokenId: data.tokenId,
-            listingId: data.listingId,
-            purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
-            isOwned: data.isOwned ?? false,
-            previewUrl: data.previewUrl,
+            sourcePath: source === "local" ? data.sourcePath : null,
+            fileSize: source === "local" ? data.fileSize : null,
+            catalogTrackId: source === "remote" ? data.catalogTrackId : null,
+            remoteUrl: source === "remote" ? data.remoteUrl : null,
+            remoteArtworkUrl: source === "remote" ? data.remoteArtworkUrl : null,
+            stemType: source === "remote" ? data.stemType : null,
+            tokenId: source === "remote" ? data.tokenId : null,
+            listingId: source === "remote" ? data.listingId : null,
+            purchaseDate: source === "remote" && data.purchaseDate ? new Date(data.purchaseDate) : null,
+            isOwned: source === "remote" ? data.isOwned ?? false : false,
+            previewUrl: source === "remote" ? data.previewUrl : null,
         };
 
         // Remote catalog tracks: ALWAYS dedup per-user by (userId, catalogTrackId)
         // and let the row id be a generated per-user uuid. The client-provided
-        // `id` for a catalog track is the SHARED catalog track id, so honoring it
-        // as the primary key would let one user's save overwrite another user's
-        // row (hijacking its `userId`). Keep this branch ahead of the id branch.
+        // `id` for a catalog track is the SHARED catalog track id, so it is
+        // never stored as a key.
         if (source === "remote" && data.catalogTrackId) {
             return prisma.libraryTrack.upsert({
                 where: {
@@ -174,12 +258,27 @@ export class LibraryService {
             });
         }
 
-        // If an ID is provided (local files, owned stems, etc.), upsert by ID.
-        if (data.id) {
+        // Every other row the client names (device files, owned stems) is keyed
+        // per user. The primary key is always server-generated, so no write can
+        // reach a row another listener owns.
+        if (clientKey) {
+            // The same file saved under a new id (a cleared browser, a second
+            // device) is the same row.
+            if (source === "local" && data.sourcePath && data.fileSize) {
+                const sameFile = await prisma.libraryTrack.findUnique({
+                    where: {
+                        userId_sourcePath_fileSize: { userId, sourcePath: data.sourcePath, fileSize: data.fileSize },
+                    },
+                    select: { id: true },
+                });
+                if (sameFile) {
+                    return prisma.libraryTrack.update({ where: { id: sameFile.id }, data: trackData });
+                }
+            }
             return prisma.libraryTrack.upsert({
-                where: { id: data.id },
+                where: { userId_clientKey: { userId, clientKey } },
                 update: trackData,
-                create: { id: data.id, ...trackData },
+                create: { ...trackData, clientKey },
             });
         }
 
@@ -231,7 +330,7 @@ export class LibraryService {
         }
 
         if (catalogTrackIds.size === 0 && catalogReleaseIds.size === 0 && catalogStemIds.size === 0) {
-            return withAvailability(tracks, new Map());
+            return withAvailability(tracks, new Map()).map(presentLibraryTrack);
         }
 
         const [existingCatalogTracks, existingCatalogReleases, existingCatalogStems] = await Promise.all([
@@ -290,7 +389,7 @@ export class LibraryService {
         const availability = await resolveTrackAvailability(catalogTrackIds);
 
         if (staleTrackIds.length === 0) {
-            return withAvailability(tracks, availability, catalogIdentities);
+            return withAvailability(tracks, availability, catalogIdentities).map(presentLibraryTrack);
         }
 
         await prisma.libraryTrack.deleteMany({
@@ -321,7 +420,7 @@ export class LibraryService {
             tracks.filter((track) => !staleTrackIds.includes(track.id)),
             availability,
             catalogIdentities,
-        );
+        ).map(presentLibraryTrack);
     }
 
     async getTrack(userId: string, id: string) {
@@ -331,9 +430,11 @@ export class LibraryService {
         }
         const [annotated] = withAvailability(
             [track],
-            await resolveTrackAvailability(collectCatalogReferences(track).trackIds),
+            track.source === "local"
+                ? new Map()
+                : await resolveTrackAvailability(collectCatalogReferences(track).trackIds),
         );
-        return annotated;
+        return presentLibraryTrack(annotated!);
     }
 
     async deleteTrack(userId: string, id: string) {
@@ -341,12 +442,12 @@ export class LibraryService {
         if (!track) {
             throw new NotFoundException("Library track not found");
         }
-        return prisma.libraryTrack.delete({ where: { id: track.id } });
+        return presentLibraryTrack(await prisma.libraryTrack.delete({ where: { id: track.id } }));
     }
 
     async deleteTracks(userId: string, ids: string[]) {
         return prisma.libraryTrack.deleteMany({
-            where: { id: { in: ids }, userId },
+            where: { userId, OR: [{ id: { in: ids } }, { clientKey: { in: ids } }] },
         });
     }
 
@@ -384,7 +485,10 @@ function withAvailability<
     creditedArtistName?: string | null;
 }> {
     return tracks.map((track) => {
-        const [catalogTrackId] = Array.from(collectCatalogReferences(track).trackIds);
+        // A device file is never a catalog track, whatever fields it carries.
+        const [catalogTrackId] = track.source === "local"
+            ? []
+            : Array.from(collectCatalogReferences(track).trackIds);
         if (!catalogTrackId) {
             return { ...track, availability: LOCAL_FILE_AVAILABILITY };
         }
@@ -398,13 +502,14 @@ function withAvailability<
 }
 
 /**
- * Resolve a LibraryTrack owned by `userId` from either its per-user `id` or its
- * shared `catalogTrackId`. Frontend callers may still pass a catalog id for
- * tracks added before the per-user-row fix, so accept both.
+ * Resolve a LibraryTrack owned by `userId` from its per-user `id`, the
+ * `clientKey` the client saved it under, or its shared `catalogTrackId`.
+ * Frontend callers may still pass a catalog id for tracks added before the
+ * per-user-row fix, so accept all three — always scoped to the owner.
  */
 async function findOwnedLibraryTrack(userId: string, id: string) {
     const track = await prisma.libraryTrack.findFirst({
-        where: { userId, OR: [{ id }, { catalogTrackId: id }] },
+        where: { userId, OR: [{ id }, { clientKey: id }, { catalogTrackId: id }] },
     });
     return track;
 }
