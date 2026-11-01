@@ -337,6 +337,27 @@ A count of 0 cancels it. A queue plan in progress keeps the single repeat slot,
 so the scheduled count waits for a later start of that track. Queue rows show a
 ↻N badge. Scheduled counts live in memory only, like other finite plans.
 
+**Multi-select in track lists.** The player queue and the playlist page let a
+listener select several rows: Shift+click for a range from the anchor,
+Ctrl/Cmd+click to toggle a row, Ctrl/Cmd+Shift+click to add a range; on the
+focused list ↑/↓ (Home/End) move and select one row, Shift extends from the
+anchor, Ctrl/Cmd+↑/↓ moves without selecting and Ctrl/Cmd+Space toggles,
+Ctrl/Cmd+A selects all, Enter plays, Delete removes and Escape clears. A plain
+click still plays. The model is pure (`web/src/lib/listSelection.ts`, unit
+tested) and wired by `useListSelection`; the list is an ARIA `listbox` with
+`aria-multiselectable` and `aria-activedescendant`. The selection clears
+whenever the list's rows change, so an index never points at another track.
+A `TrackSelectionBar` above the list and the right-click menu on a selected row
+offer the same actions: queue: Play next, Loop these (replaces the queue with
+the selection and sets Repeat All), Set repeats (the same count on each track,
+via the Set repeats dialog), Add to playlist, Remove from queue (one
+`removeQueueTracks` call; the playing track keeps playing if it survives);
+playlist: Play, Loop these, Play next, Add to queue, Set repeats, Add to
+playlist, Remove from playlist (one confirmed write, `removeTracksFromPlaylist`).
+A queue row's own menu now adds *its* track to a playlist (it used to add the
+playing track) and offers Remove from queue. The library track list keeps its
+earlier checkbox selection; moving it to the shared model is a follow-up.
+
 ### Analytics and API
 
 `POST /playlists` accepts optional `queueContext` with `origin: player_queue`,

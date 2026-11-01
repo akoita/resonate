@@ -1,7 +1,7 @@
 "use client";
 import { ListeningControls } from "../../components/player/ListeningControls";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SocialShare from "../../components/social/SocialShare";
 import { hasMixerStems, releaseIdFromStreamUrl, type ShareableTrack } from "../../lib/listeningShare";
@@ -28,7 +28,10 @@ import { PlayerDjQueueHeader, isDjSetTrack } from "../../components/player/Playe
 import { PlayerQueueDjMark } from "../../components/player/PlayerQueueDjMark";
 import { useDjSet } from "../../lib/agentDjSet";
 import { launchRemixStudio } from "../../components/remix/remixStudioLauncher";
-import { AddToPlaylistIcon } from "../../components/ui/MenuIcons";
+import { AddToPlaylistIcon, LoopIcon, PlayNextIcon, RemoveIcon, RepeatIcon } from "../../components/ui/MenuIcons";
+import { TrackSelectionBar } from "../../components/player/TrackSelectionBar";
+import { useListSelection } from "../../lib/useListSelection";
+import { useUIStore } from "../../lib/uiStore";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -65,6 +68,8 @@ function PlayerContent() {
     playQueue,
     artworkUrl,
     removeFromQueue,
+    removeQueueTracks,
+    setRepeatMode,
     mixerMode,
     toggleMixerMode,
     trackRepeatsFor,
@@ -72,7 +77,25 @@ function PlayerContent() {
 
   const { addToast } = useToast();
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, indices: number[] } | null>(null);
+  const setTracksToAddToPlaylist = useUIStore((state) => state.setTracksToAddToPlaylist);
+  const setTrackForRepeats = useUIStore((state) => state.setTrackForRepeats);
+  const queueListRef = useRef<HTMLDivElement>(null);
+  const playQueueRow = useCallback((index: number) => {
+    void playQueue(queue, index, { navigation: true });
+  }, [playQueue, queue]);
+  const removeQueueRows = useCallback((indices: number[]) => {
+    removeQueueTracks(indices);
+    addToast({ type: "info", title: indices.length === 1 ? "Removed from queue" : `${indices.length} tracks removed from queue` });
+  }, [removeQueueTracks, addToast]);
+  // Shift/Ctrl/Cmd+click and the keyboard select rows; a plain click still plays.
+  const queueSelection = useListSelection({
+    count: queue.length,
+    resetKey: queue.map((track) => track.id).join("\u0000"),
+    listRef: queueListRef,
+    onActivate: playQueueRow,
+    onRemove: removeQueueRows,
+  });
   // The last loaded response is kept across track changes (rendered inert
   // while the next track's actions load) so the console does not jump.
   const [trackActions, setTrackActions] = useState<PlayerTrackActionsResponse | null>(null);
@@ -325,16 +348,42 @@ function PlayerContent() {
     });
   };
 
-  const handleContextMenu = (e: React.MouseEvent, track: LocalTrack) => {
+  const handleContextMenu = (e: React.MouseEvent, index: number) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, track });
+    setContextMenu({ x: e.clientX, y: e.clientY, indices: queueSelection.contextTargets(index) });
   };
 
-  const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
-    ...queueActions.contextMenuItems(track),
-    { separator: true, label: "", onClick: () => { } },
-    { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setShowAddToPlaylist(true) },
-  ];
+  /** Everything that applies to several queue rows at once. */
+  const getSelectionItems = (indices: number[]): ContextMenuItem[] => {
+    const tracks = indices.map((index) => queue[index]).filter((track): track is LocalTrack => Boolean(track));
+    const count = tracks.length;
+    return [
+      { label: "Play Next", icon: <PlayNextIcon />, onClick: () => queueActions.queue(tracks, "next") },
+      { label: "Loop These", icon: <LoopIcon />, onClick: () => {
+        // Keep only these tracks in the queue and play them on repeat.
+        setRepeatMode("all");
+        void playQueue(tracks, 0);
+        addToast({ type: "success", title: `Looping ${count} track${count === 1 ? "" : "s"}`, message: "The rest of the queue was cleared." });
+      } },
+      { label: "Set Repeats…", icon: <RepeatIcon />, onClick: () => setTrackForRepeats(tracks) },
+      { separator: true, label: "", onClick: () => { } },
+      { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist(tracks) },
+      { label: "Remove from Queue", icon: <RemoveIcon />, variant: "destructive", onClick: () => removeQueueRows(indices) },
+    ];
+  };
+
+  const getTrackContextMenuItems = (indices: number[]): ContextMenuItem[] => {
+    if (indices.length > 1) return getSelectionItems(indices);
+    const track = queue[indices[0]];
+    if (!track) return [];
+    return [
+      ...queueActions.contextMenuItems(track),
+      { separator: true, label: "", onClick: () => { } },
+      // The row's own track, not whatever is playing.
+      { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist([track]) },
+      { label: "Remove from Queue", icon: <RemoveIcon />, variant: "destructive", onClick: () => removeQueueRows(indices) },
+    ];
+  };
 
   const lastProcessedTrackId = useRef<string | null>(null);
 
@@ -634,19 +683,27 @@ function PlayerContent() {
           <PlayerDjQueueHeader queue={queue} />
           <SaveQueuePlaylist />
           <ListeningControls key={currentTrack?.id} />
+          <TrackSelectionBar
+            compact
+            count={queueSelection.selected.length}
+            items={getSelectionItems(queueSelection.selected)}
+            onClear={queueSelection.clear}
+          />
           <div
+            ref={queueListRef}
             className="queue-list"
             style={{ overflowY: "auto", paddingRight: "8px" }}
             tabIndex={0}
-            aria-label="Playback queue"
+            aria-label="Playback queue. Shift or Ctrl-click to select several tracks."
+            {...(queue.length > 0 ? queueSelection.listProps : {})}
           >
             {queue.length > 0 ? (
               queue.map((track, idx) => (
                 <div
                   key={`${track.id}-${idx}`}
-                  className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""}`}
-                  onClick={() => playQueue(queue, idx, { navigation: true })}
-                  onContextMenu={(e) => handleContextMenu(e, track)}
+                  className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""} ${queueSelection.isSelected(idx) ? "is-selected" : ""} ${queueSelection.isFocused(idx) ? "is-focused" : ""}`}
+                  {...queueSelection.rowProps(idx)}
+                  onContextMenu={(e) => handleContextMenu(e, idx)}
                 >
                   <div className="queue-item-left">
                     <div className="queue-item-name">{track.title}</div>
@@ -723,7 +780,7 @@ function PlayerContent() {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={getTrackContextMenuItems(contextMenu.track)}
+          items={getTrackContextMenuItems(contextMenu.indices)}
           onClose={() => setContextMenu(null)}
         />
       )}

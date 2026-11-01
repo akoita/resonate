@@ -222,3 +222,35 @@ test('finite plans survive navigation and seeking but track selection cancels th
   await expect(page.getByRole('main').getByText('Test b', { exact: true }).first()).toBeVisible();
   await expect(controls.locator('summary')).not.toContainText('repeats left');
 });
+
+test('queue rows multi-select with mouse and keyboard, and act on the whole selection', async ({ page }) => {
+  await seedPlayer(page);
+  const list = page.getByRole('listbox', { name: /Playback queue/ });
+  const row = (title: string) => list.getByRole('option', { name: new RegExp(`^${title} `) });
+  const bar = page.getByRole('toolbar', { name: /selected track/ });
+
+  // A plain click still plays; Shift+click selects the range from it.
+  await row('Test a').click();
+  await row('Test c').click({ modifiers: ['Shift'] });
+  await expect(bar).toHaveAccessibleName('3 selected tracks');
+  await expect(list.getByRole('option', { selected: true })).toHaveCount(3);
+
+  // Ctrl/Cmd+click toggles one row out; Esc clears.
+  await row('Test b').click({ modifiers: ['ControlOrMeta'] });
+  await expect(list.getByRole('option', { selected: true })).toHaveCount(2);
+  await list.press('Escape');
+  await expect(bar).toHaveCount(0);
+
+  // Keyboard: Ctrl/Cmd+A selects all; Shift+↑ from the last row picks two.
+  await list.press('ControlOrMeta+a');
+  await expect(bar).toHaveAccessibleName('3 selected tracks');
+  await list.press('End');
+  await list.press('Shift+ArrowUp');
+  await expect(bar).toHaveAccessibleName('2 selected tracks');
+
+  // Remove acts on the whole selection.
+  await bar.getByRole('button', { name: 'Remove from Queue' }).click();
+  await expect(list.getByRole('option')).toHaveCount(1);
+  await expect(row('Test a')).toBeVisible();
+  await waitForPersistedQueueLength(page, 1);
+});

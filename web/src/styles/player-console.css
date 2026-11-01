@@ -922,3 +922,115 @@
     animation: none;
   }
 }
+
+/* ---------- Multi-select in track lists (queue, playlist) ----------
+ * Shift/Ctrl/Cmd+click and the keyboard select rows; a plain click plays.
+ * Selected rows take a solid primary tint and a left rule, so they stay
+ * distinct from the playing row (accent wash) and from hover. */
+.queue-item.is-selected,
+.queue-item.is-selected:hover {
+  background: rgba(196, 181, 253, 0.16);
+  border-color: rgba(196, 181, 253, 0.45);
+  box-shadow: inset 3px 0 0 var(--r-primary);
+}
+
+.queue-item.queue-item-active.is-selected {
+  background: rgba(124, 92, 255, 0.28);
+}
+
+/* The keyboard row: only drawn while the list itself has keyboard focus. */
+.queue-list:focus-visible { outline: none; }
+.queue-list:focus-visible .queue-item.is-focused,
+.library-list:focus-visible .library-item.is-focused {
+  outline: 2px solid var(--r-primary);
+  outline-offset: -2px;
+}
+.library-list:focus-visible { outline: none; }
+
+.library-list .library-item.playlist-track-item.selected,
+.library-list .library-item.playlist-track-item.selected:hover {
+  background: rgba(196, 181, 253, 0.16);
+  border-color: rgba(196, 181, 253, 0.45);
+  box-shadow: inset 3px 0 0 var(--r-primary);
+}
+
+.track-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+  padding: 6px 8px 6px 12px;
+  color: #fff;
+  background: rgba(139, 92, 246, 0.14);
+  border: 1px solid rgba(196, 181, 253, 0.35);
+  border-radius: 10px;
+}
+
+.track-selection-bar__count {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  margin-right: auto;
+}
+
+.track-selection-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.track-selection-bar__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.track-selection-bar.is-compact .track-selection-bar__action {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.track-selection-bar__action:hover:not(:disabled) {
+  background: rgba(196, 181, 253, 0.2);
+}
+
+.track-selection-bar__action:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 1px;
+}
+
+.track-selection-bar__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.track-selection-bar__action.is-destructive {
+  color: #fca5a5;
+}
+
+.track-selection-bar__action.is-destructive:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 107, 107, 0.3);
+}
+
+.track-selection-bar__clear {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.track-selection-bar__icon {
+  display: inline-flex;
+}

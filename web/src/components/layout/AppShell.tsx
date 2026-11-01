@@ -73,7 +73,7 @@ export default function AppShell({
           onClose={() => setTracksToAddToPlaylist(null)}
         />
         <TrackRepeatsDialog
-          track={trackForRepeats}
+          tracks={trackForRepeats}
           onClose={() => setTrackForRepeats(null)}
         />
         <ResaleModal

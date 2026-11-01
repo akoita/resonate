@@ -151,6 +151,24 @@ export function StemsIcon() {
   );
 }
 
+/** Loop a set of tracks (repeat all), distinct from the per-track repeat count. */
+export function LoopIcon() {
+  return (
+    <Glyph>
+      <path d="M12 12c-2-2.7-3.6-4-5.5-4a4 4 0 0 0 0 8c1.9 0 3.5-1.3 5.5-4Zm0 0c2 2.7 3.6 4 5.5 4a4 4 0 0 0 0-8c-1.9 0-3.5 1.3-5.5 4Z" />
+    </Glyph>
+  );
+}
+
+export function ClearIcon() {
+  return (
+    <Glyph>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </Glyph>
+  );
+}
+
 /** Queue list with a play mark: the card button that opens the queue menu.
  *  Distinct from the add-to-playlist "list +" glyph that sits beside it. */
 export function QueueIcon() {

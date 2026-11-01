@@ -112,6 +112,7 @@ import {
     appendQueueTracks,
     createShuffleCycleState,
     insertQueueTracksNext,
+    removeQueueIndices,
     reconcileShuffleCycle,
     shuffleNext,
     shufflePrevious,
@@ -165,6 +166,9 @@ interface PlayerContextType {
     addTracksToQueue: (tracks: LocalTrack[]) => QueueBatchResult;
     playTracksNext: (tracks: LocalTrack[]) => QueueBatchResult;
     removeFromQueue: (index: number) => void;
+    /** Remove several queue positions in one step. */
+    removeQueueTracks: (indices: number[]) => void;
+    setRepeatMode: (mode: "none" | "one" | "all") => void;
     // Mixer support
     mixerMode: boolean;
     toggleMixerMode: () => void;
@@ -1552,12 +1556,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return playTracksNext([track]);
     }, [playTracksNext]);
 
-    const removeFromQueue = useCallback((index: number) => {
+    const removeQueueTracks = useCallback((indices: number[]) => {
         const currentQueue = queueRef.current;
-        if (index < 0 || index >= currentQueue.length) return;
-        if (index === currentIndexRef.current && isSeekingRef.current) return;
-        const nextQueue = currentQueue.filter((_, queueIndex) => queueIndex !== index);
         const activeIndex = currentIndexRef.current;
+        const result = removeQueueIndices(currentQueue, activeIndex, indices);
+        if (result.queue.length === currentQueue.length) return;
+        if (result.currentRemoved && isSeekingRef.current) return;
+        const nextQueue = result.queue;
         queueRef.current = nextQueue;
 
         if (nextQueue.length === 0) {
@@ -1574,9 +1579,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        const nextIndex = index < activeIndex
-            ? activeIndex - 1
-            : Math.min(activeIndex, nextQueue.length - 1);
+        const nextIndex = result.currentIndex;
         setQueue(nextQueue);
         setCurrentIndex(nextIndex);
         currentIndexRef.current = nextIndex;
@@ -1585,8 +1588,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             nextQueue.map((track) => track.id),
             nextQueue[nextIndex]?.id ?? null,
         );
-        if (index === activeIndex) void playQueue(nextQueue, nextIndex, { navigation: true });
+        if (result.currentRemoved) void playQueue(nextQueue, nextIndex, { navigation: true });
     }, [playQueue, safePause, clearFiniteRepeat]);
+
+    const removeFromQueue = useCallback((index: number) => {
+        removeQueueTracks([index]);
+    }, [removeQueueTracks]);
+
+    /** Set the repeat mode directly (the toggle cycles none → all → one). */
+    const setRepeatModeTo = useCallback((mode: "none" | "one" | "all") => {
+        clearFiniteRepeat();
+        repeatModeRef.current = mode;
+        setRepeatMode(mode);
+    }, [clearFiniteRepeat]);
 
     const toggleMixerMode = useCallback(() => {
         mixerAudioActiveRef.current = false;
@@ -1674,6 +1688,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         addTracksToQueue,
         playTracksNext,
         removeFromQueue,
+        removeQueueTracks,
+        setRepeatMode: setRepeatModeTo,
         mixerMode,
         toggleMixerMode,
         mixerVolumes,
@@ -1685,7 +1701,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         duration, artworkUrl, volume, muted, shuffle, repeatMode, playQueue, nextTrack,
         prevTrack, togglePlay, toggleShuffle, toggleRepeatMode, seek, setVolume, toggleMute,
         stop, addToQueue, playNextInQueue, addTracksToQueue, playTracksNext, removeFromQueue,
-        mixerMode, toggleMixerMode, mixerVolumes,
+        removeQueueTracks, setRepeatModeTo, mixerMode, toggleMixerMode, mixerVolumes,
         setMixerVolumes,
     ]);
 

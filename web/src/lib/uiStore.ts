@@ -12,9 +12,9 @@ interface UIState {
     toggleSidebar: () => void;
     tracksToAddToPlaylist: LocalTrack[] | null;
     setTracksToAddToPlaylist: (tracks: LocalTrack[] | null) => void;
-    /** Track whose "Set repeats…" dialog is open, from any track menu. */
-    trackForRepeats: LocalTrack | null;
-    setTrackForRepeats: (track: LocalTrack | null) => void;
+    /** Track(s) whose "Set repeats…" dialog is open, from any track menu or a multi-selection. */
+    trackForRepeats: LocalTrack | LocalTrack[] | null;
+    setTrackForRepeats: (track: LocalTrack | LocalTrack[] | null) => void;
     resaleModal: {
         isOpen: boolean;
         stemId: string;
