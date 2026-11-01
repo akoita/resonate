@@ -1,7 +1,10 @@
 # Vision Sprint 43: Fair deposits, and the Artist Pro plan
 
-**Status:** Owner-approved 2026-10-24, including the decision defaults; in
-progress. No due date: it closes when its exit checks pass on staging.
+**Status:** ✅ Closed 2026-11-01. Five of six items closed (#2384, #1759,
+#2385, #2380, #1846). #2379 shipped its partial-package, test and screenshot
+slice (#2393) and package withdrawal (#2512); only threshold tuning on real
+uploads stays open, and it is data-gated, so it moves to the backlog with no
+sprint.
 **Milestone:** [45](https://github.com/akoita/resonate/milestone/45).
 **Goal:** Artists see their Content Protection stake in its real unit and can
 take their own deposit back without an operator. Artist Pro, the current-quarter
