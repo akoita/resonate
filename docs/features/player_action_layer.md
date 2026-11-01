@@ -47,6 +47,11 @@ available right now?
 - API: `GET /catalog/tracks/:trackId/actions`
 - Web helper: `getPlayerTrackActions`
 - Player component: `PlayerActionPanel`
+- Now Playing credits: `NowPlayingCredits` links the album name (and the
+  artwork) to `/release/<releaseId>` and the artist name to `/artist/<artistId>`
+  for catalog tracks. The release id falls back to the stream URL and the
+  actions response, the same way the listening share recovers it; local files
+  keep plain text.
 - Analytics:
   - `player.action_impression`
   - `player.action_selected`
