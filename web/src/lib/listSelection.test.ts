@@ -108,6 +108,19 @@ describe("keyOnList", () => {
     expect(keyOnList(EMPTY_SELECTION, key("Backspace"), 3).kind).toBe("ignored");
   });
 
+  it("opens the keyboard row's menu on the Menu key or Shift+F10, keeping the selection", () => {
+    const state = { selected: new Set([0, 2]), anchor: 0, focus: 2 };
+    for (const input of [key("ContextMenu"), key("F10", { shiftKey: true })]) {
+      const result = keyOnList(state, input, 3);
+      expect(result.kind).toBe("menu");
+      if (result.kind !== "menu") throw new Error("unreachable");
+      expect(result.index).toBe(2);
+      expect(result.state).toBe(state);
+    }
+    expect(keyOnList(EMPTY_SELECTION, key("ContextMenu"), 3).kind).toBe("ignored");
+    expect(keyOnList(state, key("F10"), 3).kind).toBe("ignored");
+  });
+
   it("ignores other keys and empty lists", () => {
     expect(keyOnList(EMPTY_SELECTION, key("x"), 3).kind).toBe("ignored");
     expect(keyOnList(EMPTY_SELECTION, key("ArrowDown"), 0).kind).toBe("ignored");

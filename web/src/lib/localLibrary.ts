@@ -32,7 +32,7 @@ import {
     type Track as CatalogTrack,
 } from "./api";
 import { sanitizeStemUrl } from "./urlUtils";
-import { isLocalFileTrack } from "./trackIdentity";
+import { catalogTrackIdOf, isLocalFileTrack } from "./trackIdentity";
 
 const isMixerStemType = (type?: string | null) => {
     const normalized = type?.trim().toLowerCase();
@@ -520,6 +520,41 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
     }
 
     return null;
+}
+
+function knownDuration(value: number | null | undefined): number | null {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** The longest stem duration, which is the track's length when the row has none. */
+function stemDuration(track: { stems?: ReadonlyArray<{ durationSeconds?: number | null }> | null }): number | null {
+    const lengths = (track.stems ?? [])
+        .map((stem) => knownDuration(stem.durationSeconds))
+        .filter((value): value is number => value !== null);
+    return lengths.length > 0 ? Math.max(...lengths) : null;
+}
+
+/**
+ * The track with its length filled in when the stored copy lacks one.
+ *
+ * Catalog tracks saved to the browser before their duration was recorded
+ * show "--:--" in a playlist while the shared page, read from the server,
+ * shows the real length. Use the stems' length first, then ask the catalog.
+ * Device files and anything the catalog cannot answer are returned unchanged.
+ */
+export async function withKnownDuration(track: LocalTrack): Promise<LocalTrack> {
+    if (knownDuration(track.duration) !== null) return track;
+    const fromStems = stemDuration(track);
+    if (fromStems !== null) return { ...track, duration: fromStems };
+    const catalogId = catalogTrackIdOf(track);
+    if (!catalogId) return track;
+    try {
+        const catalogTrack = await getCatalogTrack(catalogId, getToken());
+        const fromCatalog = catalogTrack ? stemDuration(catalogTrack) : null;
+        return fromCatalog !== null ? { ...track, duration: fromCatalog } : track;
+    } catch {
+        return track;
+    }
 }
 
 /**

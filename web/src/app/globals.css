@@ -4969,11 +4969,7 @@ a {
   }
 }
 
-/* Playlist Detail specific item layout */
-.playlist-track-item {
-  grid-template-columns: 24px 48px 1.5fr 80px 120px !important;
-  gap: 1rem !important;
-}
+/* Playlist rows: layout lives with the shared row in styles/playlists.css. */
 
 .library-item.dragging {
   opacity: 0.4;

@@ -24,13 +24,19 @@ interface Options {
   onActivate: (index: number) => void;
   /** Delete/Backspace with rows selected. */
   onRemove?: (indices: number[]) => void;
+  /**
+   * Menu key or Shift+F10 on the keyboard row: open its actions menu, the
+   * same one the row's "⋯" button and a right-click open. Without it, the
+   * keys keep their browser default.
+   */
+  onMenu?: (index: number) => void;
 }
 
 /**
  * Wires the pure selection model (`listSelection.ts`) to a rendered list.
  * Spread `rowProps(i)` on each row and `listProps` on the list.
  */
-export function useListSelection({ count, resetKey, listRef, onActivate, onRemove }: Options) {
+export function useListSelection({ count, resetKey, listRef, onActivate, onRemove, onMenu }: Options) {
   const [state, setState] = useState<ListSelection>(EMPTY_SELECTION);
   const idPrefix = useId().replace(/:/g, "");
   const rowId = (index: number) => `${idPrefix}-row-${index}`;
@@ -66,12 +72,14 @@ export function useListSelection({ count, resetKey, listRef, onActivate, onRemov
     if (event.target !== event.currentTarget) return;
     const result = keyOnList(state, event, count);
     if (result.kind === "ignored") return;
+    if (result.kind === "menu" && !onMenu) return;
     event.preventDefault();
     event.stopPropagation();
     setState(result.state);
     if (result.kind === "activate") onActivate(result.index);
     if (result.kind === "remove") onRemove?.(selectedIndices(result.state));
-  }, [state, count, onActivate, onRemove]);
+    if (result.kind === "menu") onMenu?.(result.index);
+  }, [state, count, onActivate, onRemove, onMenu]);
 
   /**
    * Right-click: keep a multi-row selection when the row is part of it, so

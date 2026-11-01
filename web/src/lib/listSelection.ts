@@ -82,7 +82,9 @@ export type KeyResult =
   /** Enter on a row: the caller plays it. */
   | { kind: "activate"; index: number; state: ListSelection }
   /** Delete/Backspace with rows selected: the caller removes them. */
-  | { kind: "remove"; state: ListSelection };
+  | { kind: "remove"; state: ListSelection }
+  /** Menu key or Shift+F10 on a row: the caller opens that row's actions menu. */
+  | { kind: "menu"; index: number; state: ListSelection };
 
 /** Keyboard handling for a focused list of `count` rows. */
 export function keyOnList(state: ListSelection, input: KeyInput, count: number): KeyResult {
@@ -113,6 +115,11 @@ export function keyOnList(state: ListSelection, input: KeyInput, count: number):
     if (selected.has(focus)) selected.delete(focus);
     else selected.add(focus);
     return { kind: "select", state: { selected, anchor: focus, focus } };
+  }
+
+  if (input.key === "ContextMenu" || (input.shiftKey && input.key === "F10")) {
+    if (focus === null) return { kind: "ignored" };
+    return { kind: "menu", index: focus, state };
   }
 
   if (input.key === "Delete" || input.key === "Backspace") {
