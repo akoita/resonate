@@ -143,17 +143,39 @@ export function EditLocalDetailsDialog({
     const [artist, setArtist] = useState((mode === "album" ? first?.albumArtist || first?.artist : first?.artist) ?? "");
     const [album, setAlbum] = useState(first?.album ?? "");
     const [artwork, setArtwork] = useState<File | null>(null);
-    const [preview, setPreview] = useState<string | null>(null);
+    const [previewReady, setPreviewReady] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const ids = useId().replace(/:/g, "");
 
+    // Draw the chosen image on a canvas: it is decoded as an image and never
+    // handed to the page as a URL.
+    const previewRef = useRef<HTMLCanvasElement>(null);
     useEffect(() => {
         if (!artwork) return;
-        const url = URL.createObjectURL(artwork);
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- preview follows the chosen file
-        setPreview(url);
-        return () => URL.revokeObjectURL(url);
+        let cancelled = false;
+        void createImageBitmap(artwork).then(
+            (bitmap) => {
+                const canvas = previewRef.current;
+                if (cancelled || !canvas) return bitmap.close();
+                const side = Math.min(bitmap.width, bitmap.height);
+                canvas.width = 144;
+                canvas.height = 144;
+                canvas.getContext("2d")?.drawImage(
+                    bitmap,
+                    (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side,
+                    0, 0, 144, 144,
+                );
+                bitmap.close();
+                setPreviewReady(true);
+            },
+            () => {
+                if (cancelled) return;
+                setArtwork(null);
+                setError("That file isn't an image this browser can read.");
+            },
+        );
+        return () => { cancelled = true; };
     }, [artwork]);
 
     if (!first) return null;
@@ -203,18 +225,23 @@ export function EditLocalDetailsDialog({
                     : "Changes apply to your library only. The file on disk is not changed."}
             </p>
             <div className="local-file-dialog__art">
-                {preview ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={preview} alt="New cover" />
-                ) : (
-                    <span className="ms-icon" aria-hidden="true">image</span>
-                )}
+                <canvas
+                    ref={previewRef}
+                    role="img"
+                    aria-label="New cover"
+                    hidden={!artwork || !previewReady}
+                />
+                {(!artwork || !previewReady) && <span className="ms-icon" aria-hidden="true">image</span>}
                 <input
                     id={`${ids}-art`}
                     type="file"
                     accept="image/*"
                     className="local-file-dialog__file"
-                    onChange={(e) => setArtwork(e.target.files?.[0] ?? null)}
+                    onChange={(e) => {
+                        setPreviewReady(false);
+                        setError(null);
+                        setArtwork(e.target.files?.[0] ?? null);
+                    }}
                 />
                 <label className="local-file-dialog__btn" htmlFor={`${ids}-art`}>
                     {artwork ? "Change image" : "Choose cover image"}

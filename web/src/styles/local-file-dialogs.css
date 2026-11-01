@@ -72,7 +72,7 @@
   gap: 12px;
 }
 
-.local-file-dialog__art img,
+.local-file-dialog__art canvas,
 .local-file-dialog__art > .ms-icon {
   width: 72px;
   height: 72px;
@@ -153,6 +153,10 @@
 
 .local-file-dialog__btn--primary:hover:not(:disabled) {
   background: #6a4ae8;
+}
+
+.local-file-dialog__art canvas[hidden] {
+  display: none;
 }
 
 .local-file-dialog__art input:focus-visible + label,
