@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consumeRepeat, createFiniteRepeat, stepRepeatCount, queueSnapshot, queueSourceKind, validateSegment } from "./listeningSession";
+import { consumeRepeat, createFiniteRepeat, stepRepeatCount, queueSnapshot, queueSourceKind, scheduleTrackRepeat, scheduledRepeatFor, takeScheduledRepeat, validateSegment } from "./listeningSession";
 import { createShuffleCycleState, shuffleNext } from "./playerQueue";
 import type { LocalTrack } from "./localLibrary";
 const track = (id: string, extra = {}): LocalTrack => ({ id, title: id, artist: null, album: null, albumArtist: null, year: null, genre: null, duration: 100, createdAt: "", catalogTrackId: id, ...extra });
@@ -32,6 +32,22 @@ describe("listening sessions", () => {
       expect(result.replay).toBe(true); expect(result.plan?.remaining).toBe(remaining); plan = result.plan!;
     }
     expect(consumeRepeat(plan)).toEqual({ replay: false, plan: null });
+  });
+  it("schedules repeats for a track that is not playing, and cancels with 0", () => {
+    const set = scheduleTrackRepeat({}, "b", 3)!;
+    expect(set).toEqual({ b: 3 });
+    expect(scheduledRepeatFor(set, track("b"))).toBe(3);
+    expect(scheduledRepeatFor(set, track("x", { catalogTrackId: "b" }))).toBe(3);
+    expect(scheduledRepeatFor(set, track("a"))).toBe(0);
+    expect(scheduleTrackRepeat(set, "b", 0)).toEqual({});
+    for (const bad of [-1, 1.5, NaN]) expect(scheduleTrackRepeat(set, "b", bad)).toBeNull();
+    expect(set).toEqual({ b: 3 });
+  });
+  it("hands a scheduled count to the player once, as a track repeat", () => {
+    const taken = takeScheduledRepeat({ b: 2, c: 1 }, track("b"));
+    expect(taken.plan).toEqual({ target: "track", configured: 2, remaining: 2 });
+    expect(taken.schedule).toEqual({ c: 1 });
+    expect(takeScheduledRepeat(taken.schedule, track("b"))).toEqual({ plan: null, schedule: { c: 1 } });
   });
   it("each repeated shuffle cycle includes every track, without an immediate boundary repeat", () => {
     const ids = ["a", "b", "c"];

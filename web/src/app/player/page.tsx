@@ -65,7 +65,8 @@ function PlayerContent() {
     artworkUrl,
     removeFromQueue,
     mixerMode,
-    toggleMixerMode
+    toggleMixerMode,
+    trackRepeatsFor,
   } = usePlayer();
 
   const { addToast } = useToast();
@@ -654,6 +655,12 @@ function PlayerContent() {
                     ) : null}
                   </div>
                   <div className="queue-item-right">
+                    {trackRepeatsFor(track) > 0 && (
+                      <span className="queue-item-repeats" title={`${trackRepeatsFor(track)} additional repeats`}>
+                        <span aria-hidden="true">↻</span>{trackRepeatsFor(track)}
+                        <span className="visually-hidden"> additional repeats</span>
+                      </span>
+                    )}
                     <span className="queue-item-duration">{formatDuration(track.duration)}</span>
                     <button
                       type="button"
