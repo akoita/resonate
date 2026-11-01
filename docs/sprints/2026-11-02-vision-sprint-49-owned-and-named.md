@@ -36,13 +36,16 @@ Solo) everywhere it appears, not just on the collectible card.
 | 1 | P0 | Known issue | [#2511](https://github.com/akoita/resonate/issues/2511) | `isOwned`, `tokenId` and `listingId` on catalog library rows are derived from the account's holdings (`StemPurchase` / wallet ownership); any client value is ignored. Closes epic #2503 |
 | 2 | P1 | Usability | [#2522](https://github.com/akoita/resonate/issues/2522) | Library Moments tab and profile cards show the moment kind; non-vocal moments ask for a caption, not a lyric; the set-bonus clip follows the set's source layer |
 | 3 | P1 | Known issue (owner) | [#2436](https://github.com/akoita/resonate/issues/2436) | Carried from Sprint 45. The owner runs the idle CPU/GPU/memory check on staging (steps in the issue thread). Close if fine; if GPU stays high on Home or Shows, one PR swaps the blur behind those two surfaces for a solid fill |
-| 4 | P2 | Business value | [#1476](https://github.com/akoita/resonate/issues/1476) slice 3 | The moment builder suggests ranges from a loudness scan of the chosen layer, snapped to the measured beat grid, that the artist can accept or adjust. Closes #1476. Waiting on an owner call (see Re-scope log) |
+| 4 | P2 | Business value | [#1476](https://github.com/akoita/resonate/issues/1476) slice 3 | The moment builder suggests ranges from a loudness scan of the chosen layer, snapped to the measured beat grid, that the artist can accept or adjust. Closes #1476. On-demand ffmpeg loudness scan, owner's call 2026-11-01 (#2526) |
 
 ## Re-scope log
 
 - 2026-11-01: #2511 (#2524) and #2522 (#2525) opened. Slice 3 found to need an
   energy-over-time scan that #1184 does not store. Owner asked whether to build
   an on-demand ffmpeg loudness scan or defer the slice.
+- 2026-11-01: owner chose the on-demand scan. Slice 3 opened as #2526 (stacked
+  on #2525). #2525 also gained the set-bonus editor previewing the same layer
+  the bonus is cut from.
 
 ## Defaults taken (owner may override in review)
 
