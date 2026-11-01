@@ -17,6 +17,7 @@ import { useAddToPlaylist } from "../../../../components/library/useAddToPlaylis
 import { usePlayer } from "../../../../lib/playerContext";
 import { useQueueActions } from "../../../../lib/useQueueActions";
 import { getArtworkUrl, listTracks, type LocalTrack } from "../../../../lib/localLibrary";
+import { AddToPlaylistIcon } from "../../../../components/ui/MenuIcons";
 
 const UNKNOWN_ALBUM = "Unknown Album";
 
@@ -45,7 +46,7 @@ export default function LibraryArtistPage() {
   const { openAddToPlaylist } = useAddToPlaylist();
   const addToPlaylistItem = (list: LocalTrack[]) => ({
     label: "Add to Playlist",
-    icon: "🎵",
+    icon: <AddToPlaylistIcon />,
     onClick: () => openAddToPlaylist(list),
   });
 
