@@ -135,10 +135,11 @@
 .playlist-saved-card.is-unavailable { opacity: 0.55; cursor: not-allowed; border-bottom-color: rgba(255, 255, 255, 0.15); }
 
 /* Public playlist viewer */
+/* Full width, like a playlist opened inside the Library: a narrow centred
+ * column left most of a wide screen empty and read as a different page. */
 .pl-public-shell {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 6rem;
+  width: 100%;
+  padding: 0 0 6rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -231,12 +232,14 @@
 .pl-hero-rename:hover { color: var(--color-accent); }
 .pl-hero-rename:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
 .pl-hero-actions .ui-btn svg { margin-right: 0.35rem; vertical-align: -2px; }
-.pl-owner .pl-hero { margin-bottom: 1.5rem; }
+.pl-owner .pl-hero,
+.pl-embedded .pl-hero { margin-bottom: 1.5rem; }
 
 /* Playlist track rows, shared by the owner page and the public link.
  * # (a drag grip on hover for the owner) · artwork · title · length · ⋯
  * Scoped through the list so it outranks the library's generic row grids,
  * including the phone layout in globals.css. */
+:is(.pl-tracks, .pl-public-tracks) .library-list { gap: 4px; }
 :is(.pl-tracks, .pl-public-tracks) .library-list > .library-item.pl-track {
   grid-template-columns: 32px 48px minmax(0, 1fr) 56px 36px;
   gap: 1rem;
