@@ -1,4 +1,5 @@
 import type { LocalTrack } from "./localLibrary";
+import { catalogTrackIdOf } from "./trackIdentity";
 import { getDiscoveryAttribution } from "./discoveryAttribution";
 import type { QueueSource } from "./listeningSession";
 import type { PlaybackLocalHourBucket, PlaybackWeekdayKind } from "./api";
@@ -278,8 +279,9 @@ export function buildPlaybackLifecyclePayload(input: {
   };
 }
 
+/** A device-local file never becomes a catalog play (#2507). */
 function getPlaybackAnalyticsTrackId(track: LocalTrack) {
-  return track.catalogTrackId || (track.source === "remote" ? track.id : undefined);
+  return catalogTrackIdOf(track) ?? undefined;
 }
 
 /** Select session provenance only when this actual playback belongs to the active set. */

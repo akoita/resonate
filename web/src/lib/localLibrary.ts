@@ -32,6 +32,7 @@ import {
     type Track as CatalogTrack,
 } from "./api";
 import { sanitizeStemUrl } from "./urlUtils";
+import { isLocalFileTrack } from "./trackIdentity";
 
 const isMixerStemType = (type?: string | null) => {
     const normalized = type?.trim().toLowerCase();
@@ -170,10 +171,7 @@ export type LocalPlaybackProblem =
 
 export type TrackPlayback = { url: string; problem: null } | { url: null; problem: LocalPlaybackProblem | "no_audio" };
 
-/** A device-local file the listener imported, as opposed to a platform release track. */
-export function isLocalFileTrack(track: Pick<LocalTrack, "source">): boolean {
-    return track.source === "local";
-}
+export { isLocalFileTrack };
 
 /** A local file whose library row exists, but whose file lives on another device. */
 export function isOnOtherDevice(track: Pick<LocalTrack, "source" | "available">): boolean {
@@ -414,12 +412,17 @@ export async function saveTracksMetadata(
     tracks: LocalTrack[],
     source: "local" | "remote" = "remote"
 ): Promise<LocalTrack[]> {
+    // Device files are saved by the folder scan, under their own source. A
+    // queue or DJ set that contains one must never re-save it as a catalog
+    // row (#2505); the server would reject the whole batch.
+    const catalogTracks = source === "remote" ? tracks.filter((t) => !isLocalFileTrack(t)) : tracks;
+    if (catalogTracks.length === 0) return tracks;
     const token = getToken();
     if (token) {
         try {
             const apiTracks = await saveLibraryTracksAPI(
                 token,
-                tracks.map((t) => localTrackToApi(t, source))
+                catalogTracks.map((t) => localTrackToApi(t, source))
             );
             return apiTracks.map(apiTrackToLocal);
         } catch (err) {

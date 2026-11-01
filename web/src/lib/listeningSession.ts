@@ -1,4 +1,5 @@
 import type { LocalTrack } from "./localLibrary";
+import { catalogTrackIdOf } from "./trackIdentity";
 
 export type QueueSource = { playlistId: string; trackIds: string[]; publicPlaylist?: boolean } | null;
 export type SegmentLoop = { start: number; end: number };
@@ -76,7 +77,7 @@ export function queueSnapshot(queue: readonly LocalTrack[]) {
   const trackIds: string[] = [];
   const invalid: LocalTrack[] = [];
   for (const track of queue) {
-    const id = track.catalogTrackId || (track.source !== "local" && !track.blobKey && track.remoteUrl ? track.id : null);
+    const id = catalogTrackIdOf(track);
     if (!id) { invalid.push(track); continue; }
     if (!seen.has(id)) { trackIds.push(id); seen.add(id); }
   }
