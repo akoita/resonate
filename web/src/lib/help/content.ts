@@ -1711,7 +1711,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Playlists are private by default. Flip a playlist to public and anyone with the link can listen and save it to their own library as a live reference — when you edit the playlist, their copy updates too.",
+            text: "Playlists are private by default. Flip a playlist to public and anyone with the link can listen and save it to their own library as a live reference — when you edit the playlist, their copy updates too. A playlist you saved opens inside your library, in the Playlists tab, with the same layout as your own playlists; use Back to Playlists to return to the list.",
           },
           {
             kind: "paragraph",

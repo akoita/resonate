@@ -33,6 +33,13 @@ import {
 
 interface PublicPlaylistViewProps {
   playlistId: string;
+  /**
+   * Set when a saved playlist is opened inside the Library: the view then
+   * fills the Library pane like the listener's own playlists and gets a
+   * "Back to Playlists" button. Without it, it is the standalone page a
+   * shared link opens.
+   */
+  onBack?: () => void;
 }
 
 /**
@@ -96,7 +103,14 @@ export function PublicPlaylistTrackRow({
   );
 }
 
-export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
+export function PublicPlaylistView({ playlistId, onBack }: PublicPlaylistViewProps) {
+  const embedded = Boolean(onBack);
+  const shellClass = embedded ? "library-detail pl-embedded" : "pl-public-shell";
+  const backButton = onBack ? (
+    <div className="library-detail-back">
+      <Button variant="ghost" onClick={onBack}>← Back to Playlists</Button>
+    </div>
+  ) : null;
   const router = useRouter();
   const { token } = useAuth();
   const { addToast } = useToast();
@@ -226,7 +240,8 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
 
   if (loading) {
     return (
-      <div className="pl-public-shell">
+      <div className={shellClass}>
+        {backButton}
         <div className="pl-public-skeleton" aria-busy="true" aria-label="Loading playlist" />
       </div>
     );
@@ -234,16 +249,21 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
 
   if (notFound || !playlist) {
     return (
-      <div className="pl-public-shell">
+      <div className={shellClass}>
+        {backButton}
         <div className="pl-public-empty glass-panel">
           <div className="pl-public-empty-icon">🔒</div>
           <h1 className="pl-public-empty-title">This playlist isn’t available</h1>
           <p className="pl-public-empty-sub">
             It may be private, or the link may be incorrect.
           </p>
-          <Link href="/library?tab=playlists" className="ui-btn ui-btn-primary">
-            Go to your library
-          </Link>
+          {onBack ? (
+            <Button variant="primary" onClick={onBack}>Back to Playlists</Button>
+          ) : (
+            <Link href="/library?tab=playlists" className="ui-btn ui-btn-primary">
+              Go to your library
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -254,7 +274,8 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
   const heroArtUrl = heroArt ? `${API_BASE}${heroArt}` : null;
 
   return (
-    <div className="pl-public-shell">
+    <div className={shellClass}>
+      {backButton}
       <PlaylistHero
         artUrl={heroArtUrl}
         name={playlist.name}

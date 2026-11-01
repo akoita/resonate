@@ -45,11 +45,14 @@ interface PlaylistTabProps {
     tracks: LocalTrack[];
     artworkUrls: Map<string, string>;
     onSelectPlaylist: (playlist: Playlist) => void;
+    /** Open a saved (someone else's public) playlist inside the Library. */
+    onSelectSavedPlaylist?: (playlistId: string) => void;
 }
 
 export function PlaylistTab({
     artworkUrls,
     onSelectPlaylist,
+    onSelectSavedPlaylist,
 }: PlaylistTabProps) {
     const [playlists, setPlaylists] = useState<Playlist[]>([]);
     const [folders, setFolders] = useState<PlaylistFolder[]>([]);
@@ -385,7 +388,11 @@ export function PlaylistTab({
                             <div
                                 key={saved.savedPlaylistId}
                                 className={`playlist-card playlist-saved-card ${saved.available ? "" : "is-unavailable"}`}
-                                onClick={() => saved.available && router.push(`/playlist/${saved.id}`)}
+                                onClick={() => {
+                                    if (!saved.available) return;
+                                    if (onSelectSavedPlaylist) onSelectSavedPlaylist(saved.id);
+                                    else router.push(`/playlist/${saved.id}`);
+                                }}
                                 title={saved.available ? "Open playlist" : "This playlist is no longer available"}
                             >
                                 {saved.available ? (

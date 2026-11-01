@@ -74,6 +74,7 @@ import {
 import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { EditLocalDetailsDialog, FileLocationDialog } from "../../components/library/LocalFileDialogs";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
+import { PublicPlaylistView } from "../../components/library/PublicPlaylistView";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -154,6 +155,8 @@ function LibraryPageContent() {
     }, [activeTab]);
     const [selectedAlbum, setSelectedAlbum] = useState<{ name: string; artist: string; releaseId?: string | null } | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+    /** A saved public playlist, opened inside the Library like an own one. */
+    const [selectedSavedPlaylistId, setSelectedSavedPlaylistId] = useState<string | null>(null);
     const [playlistCount, setPlaylistCount] = useState(0);
     const { setTracksToAddToPlaylist, setResaleModal } = useUIStore();
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -444,6 +447,7 @@ function LibraryPageContent() {
             const playlistId = searchParams.get("playlist");
             // A stale or unreachable deep link falls back to the playlist list rather than a blank tab.
             if (playlistId) void getPlaylist(playlistId).then(setSelectedPlaylist).catch(() => setSelectedPlaylist(null));
+            setSelectedSavedPlaylistId(searchParams.get("saved"));
         } else if (tab && ["tracks", "artists", "albums", "stems", "ai_creations", "moments"].includes(tab)) {
             setActiveTab(tab as ViewTab);
             setSelectedAlbum(null);
@@ -1464,11 +1468,18 @@ function LibraryPageContent() {
                                                 playlistId={selectedPlaylist.id}
                                                 onBack={() => setSelectedPlaylist(null)}
                                             />
+                                        ) : selectedSavedPlaylistId ? (
+                                            <PublicPlaylistView
+                                                key={selectedSavedPlaylistId}
+                                                playlistId={selectedSavedPlaylistId}
+                                                onBack={() => setSelectedSavedPlaylistId(null)}
+                                            />
                                         ) : (
                                             <PlaylistTab
                                                 tracks={tracks}
                                                 artworkUrls={artworkUrls}
                                                 onSelectPlaylist={(p) => setSelectedPlaylist(p)}
+                                                onSelectSavedPlaylist={setSelectedSavedPlaylistId}
                                             />
                                         )
                                     )}
