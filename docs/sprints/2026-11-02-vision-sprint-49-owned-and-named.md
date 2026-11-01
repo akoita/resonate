@@ -21,9 +21,10 @@ Solo) everywhere it appears, not just on the collectible card.
   Moments tab and public profile cards still call every moment a Punchline, the
   builder still asks instrumental moments for a "lyric", and the set-bonus clip
   is still cut from vocals (#2522).
-- **The audio features slice 3 needs already exist.** #1184 (stem tempo, beats
-  and energy in the Demucs worker) is closed, so #1476 slice 3 (suggested
-  moment ranges from measured features) is no longer blocked.
+- **Slice 3 is a stretch, and only half unblocked.** #1184 (closed) stores one
+  summary per stem: tempo, first beat, key, overall energy and onset density.
+  It has no energy-over-time curve, so a suggested range needs a new loudness
+  scan of the chosen layer (re-scoped 2026-11-01, see below).
 - **Small, low-risk sprint after the 45–48 night run and today's library
   and player work.** It finishes tails instead of opening new surfaces, so the
   owner's review queue (below) doesn't grow much.
@@ -35,7 +36,13 @@ Solo) everywhere it appears, not just on the collectible card.
 | 1 | P0 | Known issue | [#2511](https://github.com/akoita/resonate/issues/2511) | `isOwned`, `tokenId` and `listingId` on catalog library rows are derived from the account's holdings (`StemPurchase` / wallet ownership); any client value is ignored. Closes epic #2503 |
 | 2 | P1 | Usability | [#2522](https://github.com/akoita/resonate/issues/2522) | Library Moments tab and profile cards show the moment kind; non-vocal moments ask for a caption, not a lyric; the set-bonus clip follows the set's source layer |
 | 3 | P1 | Known issue (owner) | [#2436](https://github.com/akoita/resonate/issues/2436) | Carried from Sprint 45. The owner runs the idle CPU/GPU/memory check on staging (steps in the issue thread). Close if fine; if GPU stays high on Home or Shows, one PR swaps the blur behind those two surfaces for a solid fill |
-| 4 | P2 | Business value | [#1476](https://github.com/akoita/resonate/issues/1476) slice 3 | The moment builder suggests ranges from measured energy and beats (a swell, a hook, a solo) that the artist can accept or adjust. Closes #1476 |
+| 4 | P2 | Business value | [#1476](https://github.com/akoita/resonate/issues/1476) slice 3 | The moment builder suggests ranges from a loudness scan of the chosen layer, snapped to the measured beat grid, that the artist can accept or adjust. Closes #1476. Waiting on an owner call (see Re-scope log) |
+
+## Re-scope log
+
+- 2026-11-01: #2511 (#2524) and #2522 (#2525) opened. Slice 3 found to need an
+  energy-over-time scan that #1184 does not store. Owner asked whether to build
+  an on-demand ffmpeg loudness scan or defer the slice.
 
 ## Defaults taken (owner may override in review)
 
