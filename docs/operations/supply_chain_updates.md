@@ -68,6 +68,46 @@ accepting Dependabot's newest major tag. Digest-pin the reviewed multi-platform
 manifest and validate the resulting image reference with the repository's
 Docker base-image check.
 
+## Security alert triage
+
+The repository's Security tab is the single queue for Dependabot and code
+scanning alerts. Every open alert must be in one of three states: a fix is in a
+pull request, a fix is waiting on an upstream release or the release-age
+cutoff, or the alert is dismissed with a written reason.
+
+Target times run from when the alert opens:
+
+| Severity | Runtime dependency or code finding | Development-only dependency |
+| --- | --- | --- |
+| Critical | Fix or mitigate within 2 days | 7 days |
+| High | 7 days | 30 days |
+| Moderate | 30 days | Next monthly routine batch |
+| Low | Next monthly routine batch | Next monthly routine batch, or dismiss |
+
+Triage order:
+
+1. Check reachability. A package that only runs in tests, linting, or desktop
+   packaging cannot be reached by a request to a deployed service. Record that
+   in the dismissal reason rather than silently ignoring the alert.
+2. Prefer a lockfile-only fix inside the existing semver range
+   (`npm update <package> --package-lock-only --ignore-scripts` in the affected
+   project). Do not use `npm audit fix --force`; it proposes major upgrades or
+   downgrades of unrelated packages.
+3. Respect the npm `min-release-age=7` cutoff. A fix newer than seven days
+   waits for the cutoff unless the alert is critical and reachable; record that
+   urgent exception in the pull request.
+4. When no fix exists, or the fix needs an upstream major release, dismiss as
+   **Risk is tolerable** or **Vulnerable code not actually used** with the
+   reason and a revisit condition, or keep the alert open with a linked issue.
+   Use **Inaccurate** only for a wrong advisory match.
+5. Fixes for payment, custody, authentication, and contract code (for example
+   `@x402/*`, wallet, and signing libraries) never ride in a bulk lockfile
+   refresh. They get their own pull request and the full validation ladder.
+
+Code scanning alerts follow the same table. Fix the finding, or dismiss it as
+**False positive** or **Used in tests** with the reasoning in the dismissal
+comment, so the next scan does not reopen the discussion.
+
 ## GitHub Actions
 
 1. Wait at least seven days after a release unless the PR documents an urgent
