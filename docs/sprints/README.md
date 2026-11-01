@@ -47,16 +47,12 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest closed: [Vision Sprint 48 — Golden moments in every genre](2026-10-31-vision-sprint-48-golden-moments.md)
-on 2026-10-31, after Vision Sprints 45–47, all run the same night under the
-owner's delegated authority. Waiting on the owner: Stripe test keys
+Latest closed: [Vision Sprint 49 — Owned means owned, every moment named](2026-11-02-vision-sprint-49-owned-and-named.md)
+on 2026-11-01. Waiting on the owner: Stripe test keys
 (resonate-iac#325), the #1421 pricing sign-off, legal review of the consent,
-refund and cancellation wording, the #2367 remix-challenge decision, and the
-#2436 laptop check.
-Current: [Vision Sprint 49 — Owned means owned, every moment named](2026-11-02-vision-sprint-49-owned-and-named.md),
-owner-approved 2026-11-01. Vision Sprint 43 closed on
-2026-11-01; its last item, #2379 threshold tuning, is data-gated and moved to
-the backlog.
+refund and cancellation wording, and the #2367 remix-challenge decision.
+The #2436 idle-GPU follow-up continues in its own thread.
+Current: none. Vision Sprint 49 closed on 2026-11-01.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -109,4 +105,4 @@ the backlog.
 | [2026-10-31](2026-10-31-vision-sprint-46-remix-goes-further.md) | Vision Sprint 46 — Remix goes further, dependencies stay honest (build-ups, Pro mode slice 1, contract pin source of truth, security dependency bumps) | ✅ Closed 2026-10-31 — #1908 (#2484), #1903 S6b punch (#2481), #2423 (#2477), dependency bumps (#2456, #2476); #1903 open for its remaining slices |
 | [2026-10-31](2026-10-31-vision-sprint-47-share-and-show-support.md) | Vision Sprint 47 — Share what you did, show who you back (licence and remix shares, supporter/collector badges, listing cancellation) | ✅ Closed 2026-10-31 — #1915 closed (#2485), #1106 (#2483), #284 (#2479) and follow-up #2480 edit listing (#2482) |
 | [2026-10-31](2026-10-31-vision-sprint-48-golden-moments.md) | Vision Sprint 48 — Golden moments in every genre (any source layer and the full mix for collectible moments, genre skins) | ✅ Closed 2026-10-31 — #1476 slices 1 and 2 (#2489): any stem or the full mix (10 s cap), moment kinds; slice 3 open |
-| [2026-11-02](2026-11-02-vision-sprint-49-owned-and-named.md) | Vision Sprint 49 — Owned means owned, every moment named (library ownership from holdings, moment kinds on every surface, idle-cost check, suggested moment ranges) | ◐ In progress — owner-approved 2026-11-01 |
+| [2026-11-02](2026-11-02-vision-sprint-49-owned-and-named.md) | Vision Sprint 49 — Owned means owned, every moment named (library ownership from holdings, moment kinds on every surface, idle-cost check, suggested moment ranges) | ✅ Closed 2026-11-01 — #2511 (#2524, closes epic #2503), #2522 (#2525), #1476 slice 3 (#2526, closes #1476); #2436 owner check done, follow-up in its own thread |

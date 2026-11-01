@@ -1,12 +1,22 @@
 # Vision Sprint 49: Owned means owned, every moment named
 
-**Status:** ◐ In progress. Owner-approved 2026-11-01, including the proposed
-defaults.
-**Milestone:** to be created by the owner (the agent session cannot create or
-close milestones).
+**Status:** ✅ Closed 2026-11-01. #2511 (#2524), #2522 (#2525) and #1476 slice 3
+(#2526) merged; epic #2503 and #1476 closed. #2436 had the owner's laptop check
+(a hidden tab drops to about 0; visible Home still loads the GPU) and continues
+in its own thread.
+**Milestone:** none. The owner keeps the sprint docs as the record.
 **Goal:** What the library says you own comes only from what you actually
 hold, and a golden moment reads as the right kind (Punchline, Crescendo, Hook,
 Solo) everywhere it appears, not just on the collectible card.
+
+## Outcome
+
+| Issue | Result | PR |
+| --- | --- | --- |
+| #2511 | Catalog library rows take `isOwned`, `tokenId`, `listingId` and `purchaseDate` from the account's purchases and active listings, on save and on every read; client values are ignored. Closes epic #2503 | #2524 |
+| #2522 | Moments tab and profile cards show the moment kind; non-vocal moments ask for a caption; the set bonus is cut from (and previewed on) the layer most moments use | #2525 |
+| #1476 slice 3 | Owner-only suggested ranges from an on-demand, cached ffmpeg loudness scan, snapped to the beat grid, shown as chips in the moment editor. Closes #1476 | #2526 |
+| #2436 | Owner check done: hidden tab about 0; visible Home GPU still high. Follow-up continues in its own thread | — |
 
 ## Why this theme
 
