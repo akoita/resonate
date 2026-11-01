@@ -82,6 +82,7 @@ import {
     publicReleaseHref,
     sharedLibraryReleaseId,
 } from "../../lib/artistRoutes";
+import { AddToPlaylistIcon, DeleteIcon, DownloadIcon, InfoIcon, PlayIcon, SellIcon, StemsIcon } from "../../components/ui/MenuIcons";
 
 type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations" | "moments";
 
@@ -585,11 +586,11 @@ function LibraryPageContent() {
             x: e.clientX,
             y: e.clientY,
             items: [
-                { label: "Play Artist", icon: "▶️", onClick: () => playQueue(artistTracks, 0) },
+                { label: "Play Artist", icon: <PlayIcon />, onClick: () => playQueue(artistTracks, 0) },
                 ...queueActions.contextMenuItems(artistTracks),
                 { separator: true, label: "", onClick: () => { } },
-                { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(artistTracks) },
-                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(artistTracks, artistName) },
+                { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist(artistTracks) },
+                { label: "Remove from library", icon: <DeleteIcon />, variant: "destructive", onClick: () => requestRemoval(artistTracks, artistName) },
             ]
         });
     };
@@ -600,11 +601,11 @@ function LibraryPageContent() {
             x: e.clientX,
             y: e.clientY,
             items: [
-                { label: "Play Album", icon: "▶️", onClick: () => playQueue(albumTracks, 0) },
+                { label: "Play Album", icon: <PlayIcon />, onClick: () => playQueue(albumTracks, 0) },
                 ...queueActions.contextMenuItems(albumTracks),
                 { separator: true, label: "", onClick: () => { } },
-                { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(albumTracks) },
-                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(albumTracks, `${albumName} by ${artistName}`) },
+                { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist(albumTracks) },
+                { label: "Remove from library", icon: <DeleteIcon />, variant: "destructive", onClick: () => requestRemoval(albumTracks, `${albumName} by ${artistName}`) },
             ]
         });
     };
@@ -615,7 +616,7 @@ function LibraryPageContent() {
             // sitting there doing nothing (#1793).
             ...(isPlayableEntry(track) ? queueActions.contextMenuItems(track) : []),
             { separator: true, label: "", onClick: () => { } },
-            { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
+            { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist([track]) },
         ];
 
         if (track.isOwned) {
@@ -623,21 +624,15 @@ function LibraryPageContent() {
                 { separator: true, label: "", onClick: () => { } },
                 { 
                     label: "Download Stem", 
-                    icon: "⬇️", 
+                    icon: <DownloadIcon />, 
                     onClick: () => handleStemDownload(track) 
                 }
             );
 
             if (track.tokenId && !track.listingId) {
                 items.push({
-                    label: "Add to Playlist",
-                    icon: "➕",
-                    onClick: () => setTracksToAddToPlaylist([track])
-                });
-                
-                items.push({
                     label: "Resell Stem",
-                    icon: "💰",
+                    icon: <SellIcon />,
                     onClick: () => setResaleModal({
                         stemId: track.id,
                         tokenId: track.tokenId!,
@@ -648,8 +643,8 @@ function LibraryPageContent() {
         }
 
         items.push(track.isOwned
-            ? { label: "Why can't I remove this?", icon: "ℹ️", onClick: () => requestRemoval([track], track.title) }
-            : { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval([track], track.title) });
+            ? { label: "Why can't I remove this?", icon: <InfoIcon />, onClick: () => requestRemoval([track], track.title) }
+            : { label: "Remove from library", icon: <DeleteIcon />, variant: "destructive", onClick: () => requestRemoval([track], track.title) });
 
         return items;
     };
@@ -920,17 +915,17 @@ function LibraryPageContent() {
                             <TrackActionMenu
                                 actions={[
                                     ...(availability.playable ? queueActions.actionMenuItems(track) : []),
-                                    { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
+                                    { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist([track]) },
                                     ...(track.stemType && track.tokenId
                                         ? [{
                                             label: "View stem page",
-                                            icon: "🎛️",
+                                            icon: <StemsIcon />,
                                             onClick: () => router.push(`/stem/${track.tokenId}`),
                                         }]
                                         : []),
                                     track.isOwned
-                                        ? { label: "Why can't I remove this?", icon: "ℹ️", onClick: () => requestRemoval([track], track.title) }
-                                        : { label: "Remove from library", icon: "🗑️", variant: "destructive" as const, onClick: () => requestRemoval([track], track.title) },
+                                        ? { label: "Why can't I remove this?", icon: <InfoIcon />, onClick: () => requestRemoval([track], track.title) }
+                                        : { label: "Remove from library", icon: <DeleteIcon />, variant: "destructive" as const, onClick: () => requestRemoval([track], track.title) },
                                 ]}
                             />
                         </div>
@@ -1009,7 +1004,7 @@ function LibraryPageContent() {
                         <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
                             <TrackActionMenu actions={[
                                 ...queueActions.actionMenuItems(tracksForArtist(artist.name)),
-                                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(tracksForArtist(artist.name), artist.name) },
+                                { label: "Remove from library", icon: <DeleteIcon />, variant: "destructive", onClick: () => requestRemoval(tracksForArtist(artist.name), artist.name) },
                             ]} />
                         </div>
                     </div>
@@ -1072,7 +1067,7 @@ function LibraryPageContent() {
                         <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
                             <TrackActionMenu actions={[
                                 ...queueActions.actionMenuItems(album.tracks),
-                                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(album.tracks, `${album.name} by ${album.artist}`) },
+                                { label: "Remove from library", icon: <DeleteIcon />, variant: "destructive", onClick: () => requestRemoval(album.tracks, `${album.name} by ${album.artist}`) },
                             ]} />
                         </div>
                     </div>

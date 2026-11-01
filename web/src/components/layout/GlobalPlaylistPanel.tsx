@@ -33,6 +33,7 @@ import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
 import type { QueueFeedbackMode } from "../../lib/queueFeedback";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
+import { AddToQueueIcon, DeleteIcon, PlayNextIcon, RemoveIcon, RenameIcon } from "../ui/MenuIcons";
 
 interface GlobalPlaylistPanelProps {
     isOpen: boolean;
@@ -197,11 +198,11 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             x: e.clientX,
             y: e.clientY,
             items: [
-                { label: "Play Next", icon: "⏭️", onClick: () => { void queuePlaylist(p, "next"); } },
-                { label: "Add to Queue", icon: "➕", onClick: () => { void queuePlaylist(p, "queue"); } },
+                { label: "Play Next", icon: <PlayNextIcon />, onClick: () => { void queuePlaylist(p, "next"); } },
+                { label: "Add to Queue", icon: <AddToQueueIcon />, onClick: () => { void queuePlaylist(p, "queue"); } },
                 { separator: true, label: "", onClick: () => { } },
-                { label: "Rename", icon: "✏️", onClick: () => setModalState({ type: 'rename-playlist', isOpen: true, targetId: p.id, initialValue: p.name }) },
-                { label: "Delete", icon: "🗑️", variant: "destructive", onClick: () => handleDeletePlaylist(p.id, p.name) },
+                { label: "Rename", icon: <RenameIcon />, onClick: () => setModalState({ type: 'rename-playlist', isOpen: true, targetId: p.id, initialValue: p.name }) },
+                { label: "Delete", icon: <DeleteIcon />, variant: "destructive", onClick: () => handleDeletePlaylist(p.id, p.name) },
             ]
         });
     };
@@ -213,8 +214,8 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             x: e.clientX,
             y: e.clientY,
             items: [
-                { label: "Rename", icon: "✏️", onClick: () => setModalState({ type: 'rename-folder', isOpen: true, targetId: f.id, initialValue: f.name }) },
-                { label: "Delete", icon: "🗑️", variant: "destructive", onClick: () => handleDeleteFolder(f.id, f.name) },
+                { label: "Rename", icon: <RenameIcon />, onClick: () => setModalState({ type: 'rename-folder', isOpen: true, targetId: f.id, initialValue: f.name }) },
+                { label: "Delete", icon: <DeleteIcon />, variant: "destructive", onClick: () => handleDeleteFolder(f.id, f.name) },
             ]
         });
     };
@@ -228,7 +229,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             items: [
                 ...queueActions.contextMenuItems(track),
                 { separator: true, label: "", onClick: () => { } },
-                { label: "Remove from Playlist", icon: "❌", variant: "destructive", onClick: () => handleRemoveTrack(p.id, track.id) },
+                { label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => handleRemoveTrack(p.id, track.id) },
             ]
         });
     };

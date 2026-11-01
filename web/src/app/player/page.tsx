@@ -28,6 +28,7 @@ import { PlayerDjQueueHeader, isDjSetTrack } from "../../components/player/Playe
 import { PlayerQueueDjMark } from "../../components/player/PlayerQueueDjMark";
 import { useDjSet } from "../../lib/agentDjSet";
 import { launchRemixStudio } from "../../components/remix/remixStudioLauncher";
+import { AddToPlaylistIcon } from "../../components/ui/MenuIcons";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -332,7 +333,7 @@ function PlayerContent() {
   const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
     ...queueActions.contextMenuItems(track),
     { separator: true, label: "", onClick: () => { } },
-    { label: "Add to Playlist", icon: "🎵", onClick: () => setShowAddToPlaylist(true) },
+    { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setShowAddToPlaylist(true) },
   ];
 
   const lastProcessedTrackId = useRef<string | null>(null);
