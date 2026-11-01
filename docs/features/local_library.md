@@ -42,6 +42,28 @@ music on Resonate for others stays an artist operation (release upload).
   `available: false` and render greyed out as **On another device**. The
   library toggle *Show files on other devices* (also in Settings › Library,
   stored per device) hides them.
+- **Telling them apart.** Every own file shows a **My file** badge, and the
+  Tracks tab has an *All / Resonate / My files* filter once the library holds
+  any (`matchesLibraryOriginFilter`, `isOwnFileTrack` in `trackIdentity.ts`).
+- **Untagged files and folder covers.** When a file has no tags the scanner
+  names it from the file name (track number and slug hyphens removed) and
+  takes the album and artist from its folders (`…/Artist/Album/`, disc
+  folders such as `CD2` skipped, generic names such as `Music` ignored). With
+  no embedded cover it uses a sidecar image in the same folder (`cover.jpg`,
+  `Folder.jpg`, `front.jpg`, `AlbumArt*_Large.jpg`, `AlbumArtSmall.jpg`, or a
+  folder's only image). See `localFileNaming.ts`. Rows imported before this
+  are repaired on the next scan, unless the listener edited them.
+- **Duplicates.** A file reached from two added folders (a parent and its
+  subfolder) is matched by file name + size as well as by path, and a folder
+  inside another added folder is scanned only from the outer one.
+- **Editing.** *Edit details* on a track and *Edit album* on a local album
+  change the title, artist, album and cover of the listener's own files only
+  (`updateLocalTrack`, which refuses catalog rows). Names sync to the library;
+  the cover stays on the device. Files on disk are not changed.
+- **File location.** The track menu shows the file's path starting at the
+  added folder (browsers never expose the drive or the folders above it),
+  copies it, and *Open folder* opens the system file picker in that folder
+  (`showOpenFilePicker({ startIn })`).
 - **Legacy copies.** Audio copied into IndexedDB before #2503 still plays; a
   rescan that links the file on disk deletes the copy.
 

@@ -1618,7 +1618,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Save tracks to your library, find the stems you bought, organize them into playlists, and share a playlist publicly — by link or in the global catalog.",
     category: "library",
     audiences: ["listener", "producer"],
-    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog", "stems", "my stems", "purchased stems", "my purchases", "license", "remix-ready", "upgrade", "local files", "my music folder", "another device", "on another device"],
+    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog", "stems", "my stems", "purchased stems", "my purchases", "license", "remix-ready", "upgrade", "local files", "my music folder", "another device", "on another device", "my file", "edit album", "album art", "cover", "file location"],
     sections: [
       {
         id: "library",
@@ -1638,7 +1638,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Your own files play only on the device where you added their folder. On your other devices they still appear in your library and playlists, greyed out and marked On another device, so nothing goes missing. Add the same folder on that device and they become playable there too. If you would rather not see them, turn off Show files on other devices in your library or in Settings › Library. If a file was moved, renamed or deleted, rescan the folder in Settings › Library.",
+            text: "Your own files play only on the device where you added their folder. On your other devices they still appear in your library and playlists, greyed out and marked On another device, so nothing goes missing. Add the same folder on that device and they become playable there too. If you would rather not see them, turn off Show files on other devices in your library or in Settings › Library. If a file was moved, renamed or deleted, rescan the folder in Settings › Library. Your own files carry a My file badge, and the All / Resonate / My files filter above your tracks shows one kind at a time. A file without tags is named from its file name and folders, and a cover image kept in the folder (such as Folder.jpg or cover.jpg) becomes its artwork. To fix a name or set a cover yourself, choose Edit details in the track menu, or Edit album on one of your albums; this never changes the file on disk or anything on Resonate. File location in the track menu shows where the file is and opens its folder.",
           },
           {
             kind: "paragraph",

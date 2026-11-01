@@ -11,9 +11,18 @@
  * links those rows to this device instead of importing them again.
  */
 import { extractMetadata } from "./metadataExtractor";
-import { attachFileHandle, saveTrack, listTracks, listLocalTrackOmissions, LocalTrack } from "./localLibrary";
+import {
+    attachFileHandle,
+    saveTrack,
+    listTracks,
+    listLocalTrackOmissions,
+    updateLocalTrack,
+    LocalTrack,
+} from "./localLibrary";
+import { fileNameOf, folderMetadataFromPath, pickFolderArtwork, titleFromFileName } from "./localFileNaming";
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|flac|aiff|m4a|ogg|wma|aac)$/i;
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp)$/i;
 
 export interface ScanProgress {
     phase: "scanning" | "checking" | "indexing" | "complete";
@@ -31,29 +40,50 @@ interface FileEntry {
     path: string;
 }
 
+/** Each folder's sidecar cover image, keyed by the folder's relative path ("" for the picked folder). */
+type FolderArtwork = Map<string, FileSystemFileHandle>;
+
+function folderOf(path: string): string {
+    const slash = path.lastIndexOf("/");
+    return slash === -1 ? "" : path.slice(0, slash);
+}
+
 /**
- * Recursively collect all audio files from a directory
+ * Recursively collect all audio files from a directory, and each folder's
+ * cover image when it keeps one beside the tracks (Folder.jpg, cover.jpg…).
  */
 async function collectAudioFiles(
     dirHandle: FileSystemDirectoryHandle,
     files: FileEntry[] = [],
-    path: string = ""
+    path: string = "",
+    artwork: FolderArtwork = new Map(),
 ): Promise<FileEntry[]> {
+    const images = new Map<string, FileSystemFileHandle>();
     for await (const entry of dirHandle.values()) {
         const entryPath = path ? `${path}/${entry.name}` : entry.name;
 
         if (entry.kind === "directory") {
-            await collectAudioFiles(entry, files, entryPath);
+            await collectAudioFiles(entry, files, entryPath, artwork);
         } else if (entry.kind === "file" && AUDIO_EXTENSIONS.test(entry.name)) {
             files.push({ handle: entry, path: entryPath });
+        } else if (entry.kind === "file" && IMAGE_EXTENSIONS.test(entry.name)) {
+            images.set(entry.name, entry);
         }
     }
+    const cover = pickFolderArtwork([...images.keys()]);
+    if (cover) artwork.set(path, images.get(cover)!);
     return files;
 }
 
 type ExistingIndex = {
     /** "path:size" → the local library row for that file. */
     byFile: Map<string, LocalTrack>;
+    /**
+     * "name:size" → the row for that file, whatever folder it was reached
+     * from. Adding a parent folder and one of its subfolders reaches the same
+     * file under two relative paths; it is still one track.
+     */
+    byName: Map<string, LocalTrack>;
     /** Keys to skip without a row to link: removed files, legacy title matches. */
     skip: Set<string>;
 };
@@ -64,12 +94,15 @@ type ExistingIndex = {
 async function buildExistingIndex(): Promise<ExistingIndex> {
     const tracks = await listTracks();
     const byFile = new Map<string, LocalTrack>();
+    const byName = new Map<string, LocalTrack>();
     const skip = new Set<string>();
 
     for (const track of tracks) {
         if (track.source !== "local") continue;
         if (track.sourcePath && track.fileSize) {
             byFile.set(`${track.sourcePath}:${track.fileSize}`, track);
+            const nameKey = `${fileNameOf(track.sourcePath)}:${track.fileSize}`;
+            if (!byName.has(nameKey)) byName.set(nameKey, track);
         } else if (track.title) {
             // Rows imported before paths were recorded can only match by title.
             skip.add(`title:${track.title}`);
@@ -80,7 +113,44 @@ async function buildExistingIndex(): Promise<ExistingIndex> {
         skip.add(key);
     }
 
-    return { byFile, skip };
+    return { byFile, byName, skip };
+}
+
+function findExisting(index: ExistingIndex, path: string, size: number): LocalTrack | undefined {
+    return index.byFile.get(`${path}:${size}`) ?? index.byName.get(`${fileNameOf(path)}:${size}`);
+}
+
+/** Tags the file lacks, filled from its file name and folders. */
+function fallbackMetadata(path: string, rootName: string) {
+    return {
+        title: titleFromFileName(fileNameOf(path)),
+        ...folderMetadataFromPath(path, rootName),
+    };
+}
+
+/**
+ * A row imported before folder fallbacks: its title is the raw file name and
+ * it has no artist or album. Edited rows never match, so edits stay.
+ */
+function needsNameRepair(track: LocalTrack, path: string): boolean {
+    const rawName = fileNameOf(path).replace(/\.[^/.]+$/, "");
+    return track.title === rawName && !track.artist && !track.album;
+}
+
+async function readFolderArtwork(
+    artwork: FolderArtwork,
+    cache: Map<string, Promise<Blob | null>>,
+    path: string,
+): Promise<Blob | null> {
+    const folder = folderOf(path);
+    const handle = artwork.get(folder);
+    if (!handle) return null;
+    let pending = cache.get(folder);
+    if (!pending) {
+        pending = handle.getFile().then((file) => file as Blob, () => null);
+        cache.set(folder, pending);
+    }
+    return pending;
 }
 
 /**
@@ -101,7 +171,9 @@ export async function scanAndIndex(
         currentFile: "",
     });
 
-    const audioFiles = await collectAudioFiles(dirHandle);
+    const folderArtwork: FolderArtwork = new Map();
+    const audioFiles = await collectAudioFiles(dirHandle, [], "", folderArtwork);
+    const artworkCache = new Map<string, Promise<Blob | null>>();
 
     // Phase 2: Build index of existing tracks for O(1) lookup
     onProgress?.({
@@ -122,17 +194,43 @@ export async function scanAndIndex(
         const file = await handle.getFile();
         const key = `${path}:${file.size}`;
         const titleKey = `title:${file.name.replace(/\.[^/.]+$/, "")}`;
-        const existing = existingIndex.byFile.get(key);
+        const existing = findExisting(existingIndex, path, file.size);
 
-        if (existing) {
-            // Already in the library: make sure this device can play it.
+        if (existing && !existing.id) {
+            // A second copy of a file this scan is already importing.
+            skipped++;
+        } else if (existing) {
+            // Already in the library: make sure this device can play it, and
+            // give rows imported before folder fallbacks their names and cover.
             if (!existing.available) await attachFileHandle(existing, handle);
+            try {
+                await repairExisting(existing, path);
+            } catch (error) {
+                console.warn(`[Scanner] Could not refresh ${path}:`, error);
+            }
             skipped++;
         } else if (existingIndex.skip.has(key) || existingIndex.skip.has(titleKey)) {
             skipped++;
         } else {
             toIndex.push({ file, handle, path });
+            // A second copy reached through another folder in this same scan.
+            const placeholder = { id: "", source: "local", sourcePath: path, fileSize: file.size } as LocalTrack;
+            existingIndex.byName.set(`${fileNameOf(path)}:${file.size}`, placeholder);
         }
+    }
+
+    async function repairExisting(existing: LocalTrack, path: string) {
+        if (!existing.id) return;
+        const patch: Partial<LocalTrack> = {};
+        if (needsNameRepair(existing, path)) {
+            const fallback = fallbackMetadata(path, dirHandle.name);
+            if (fallback.title !== existing.title) patch.title = fallback.title;
+            if (fallback.album) patch.album = fallback.album;
+            if (fallback.artist) patch.artist = fallback.artist;
+        }
+        const artwork = existing.artworkKey ? null : await readFolderArtwork(folderArtwork, artworkCache, path);
+        if (Object.keys(patch).length === 0 && !artwork) return;
+        await updateLocalTrack(existing, patch, artwork);
     }
 
     // Phase 3: Index only new files
@@ -151,18 +249,22 @@ export async function scanAndIndex(
 
         try {
             const metadata = await extractMetadata(file);
+            const fallback = fallbackMetadata(path, dirHandle.name);
+            const rawName = file.name.replace(/\.[^/.]+$/, "");
+            const hasTitleTag = Boolean(metadata.title && metadata.title !== rawName);
+            const artwork = metadata.artworkBlob ?? await readFolderArtwork(folderArtwork, artworkCache, path);
 
             const newTrack = await saveTrack({ handle }, {
-                title: metadata.title || file.name.replace(/\.[^/.]+$/, ""),
-                artist: metadata.artist,
+                title: hasTitleTag ? metadata.title! : fallback.title,
+                artist: metadata.artist ?? fallback.artist,
                 albumArtist: metadata.albumArtist,
-                album: metadata.album,
+                album: metadata.album ?? fallback.album,
                 year: metadata.year,
                 genre: metadata.genre,
                 duration: metadata.duration,
                 sourcePath: path,
                 fileSize: file.size,
-            }, metadata.artworkBlob);
+            }, artwork);
 
             // Notify UI immediately after saving
             onTrackAdded?.(newTrack);
@@ -200,7 +302,7 @@ export async function countNewFiles(
         const key = `${path}:${file.size}`;
         const titleKey = `title:${file.name.replace(/\.[^/.]+$/, "")}`;
 
-        if (!existingIndex.byFile.has(key) && !existingIndex.skip.has(key) && !existingIndex.skip.has(titleKey)) {
+        if (!findExisting(existingIndex, path, file.size) && !existingIndex.skip.has(key) && !existingIndex.skip.has(titleKey)) {
             newCount++;
         }
     }

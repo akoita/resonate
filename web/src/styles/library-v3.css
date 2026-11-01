@@ -357,6 +357,27 @@
   vertical-align: middle;
 }
 
+/* The listener's own device files, told apart from Resonate tracks. */
+.library-v3 .library-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.library-v3 .library-origin-badge .ms-icon {
+  font-size: 1.15em;
+}
+
 .library-v3 .library-license-badge--remix {
   border-color: rgba(168, 85, 247, 0.4);
   background: rgba(168, 85, 247, 0.14);
