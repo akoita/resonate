@@ -217,6 +217,52 @@ describe('LibraryService (integration)', () => {
     }
   });
 
+  it('keeps the stream URL and duration when a catalog track is re-saved in a partial shape', async () => {
+    // Regression: Sonic Radar and other surfaces saved catalog tracks without a
+    // stream URL or duration. The upsert wrote those nulls over the existing
+    // row, so the owner's playlist played nothing ("no playable audio") while
+    // the public copy of the same playlist still played.
+    const streamPath = `/catalog/releases/${releaseId}/tracks/${catalogTrackId}/stream`;
+    const userId3 = `${TEST_PREFIX}user3`;
+    await prisma.user.create({ data: { id: userId3, email: `${userId3}@test.resonate` } });
+    try {
+      const first = await service.saveTrack(userId3, {
+        id: catalogTrackId, source: 'remote', title: 'Live Catalog Track', catalogTrackId,
+        remoteUrl: streamPath, duration: 243,
+      });
+      await service.saveTrack(userId3, {
+        id: catalogTrackId, source: 'remote', title: 'Live Catalog Track', catalogTrackId,
+        remoteUrl: null, previewUrl: null, duration: null,
+      });
+
+      const row = await prisma.libraryTrack.findUnique({ where: { id: first.id } });
+      expect(row).toMatchObject({ remoteUrl: streamPath, duration: 243 });
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { userId: userId3 } });
+      await prisma.user.deleteMany({ where: { id: userId3 } });
+    }
+  });
+
+  it('serves a playable stream path for a catalog row that already lost its URL', async () => {
+    const userId4 = `${TEST_PREFIX}user4`;
+    await prisma.user.create({ data: { id: userId4, email: `${userId4}@test.resonate` } });
+    try {
+      const row = await prisma.libraryTrack.create({
+        data: { userId: userId4, source: 'remote', title: 'Live Catalog Track', catalogTrackId },
+      });
+      const streamPath = `/catalog/releases/${releaseId}/tracks/${catalogTrackId}/stream`;
+
+      expect(await service.getTrack(userId4, row.id)).toMatchObject({ remoteUrl: streamPath, releaseId });
+      expect((await service.listTracks(userId4)).find((track) => track.id === row.id)).toMatchObject({
+        remoteUrl: streamPath,
+        releaseId,
+      });
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { userId: userId4 } });
+      await prisma.user.deleteMany({ where: { id: userId4 } });
+    }
+  });
+
   it('purges catalog-id playlist references when a remote track is stale', async () => {
     // Post per-user-row fix, LibraryTrack.id is a generated uuid but the frontend
     // adds catalog tracks to playlists by their SHARED catalog id. Stale cleanup

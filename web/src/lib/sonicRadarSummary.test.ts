@@ -221,6 +221,12 @@ describe("pendingItemToLocalTrack", () => {
         });
     });
 
+    it("carries the stream URL, because this shape is saved to the library", () => {
+        // A save without it overwrote the owner's library row and the track
+        // stopped playing from their playlists.
+        expect(pendingItemToLocalTrack(pending("t3")).remoteUrl).toBe(getReleaseTrackStreamUrl("r-t3", "t3"));
+    });
+
     it("omits artwork when there is none", () => {
         expect(pendingItemToLocalTrack(pending("t2", { artworkUrl: null })).remoteArtworkUrl).toBeUndefined();
     });

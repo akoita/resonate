@@ -25,16 +25,17 @@ export function catalogItemToLocalTrack(item: CatalogTrackFields): LocalTrack {
         catalogTrackId: item.trackId,
         artistId: item.artistId,
         releaseId: item.releaseId,
+        // Always carry the stream URL: this shape is saved to the library, and
+        // a remote row saved without one overwrote the existing row's URL and
+        // left the track unplayable in the owner's playlists.
+        remoteUrl: getReleaseTrackStreamUrl(item.releaseId, item.trackId),
         remoteArtworkUrl: item.artworkUrl || undefined,
     };
 }
 
 /** A catalog track that can be played straight from the catalog without saving it. */
 export function catalogItemToPlayableTrack(item: CatalogTrackFields): LocalTrack {
-    return {
-        ...catalogItemToLocalTrack(item),
-        remoteUrl: getReleaseTrackStreamUrl(item.releaseId, item.trackId),
-    };
+    return catalogItemToLocalTrack(item);
 }
 
 export function pendingItemToLocalTrack(item: DiscoveryJournalPendingItem): LocalTrack {
