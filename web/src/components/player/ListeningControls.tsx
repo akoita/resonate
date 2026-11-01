@@ -1,6 +1,7 @@
 "use client";
 import { useId, useState } from "react";
 import { usePlayer } from "../../lib/playerContext";
+import { stepRepeatCount } from "../../lib/listeningSession";
 
 /** Console copy shows clock time; the fields stay in seconds so a passage can be set to a tenth. */
 function clock(seconds: number) {
@@ -86,9 +87,14 @@ export function ListeningControls() {
         </div>
         <div className="lc-rack">
           <label className="lc-designator lc-designator--wide" htmlFor={`${ids}-count`}>Additional repeats</label>
-          <span className="lc-well">
+          <span className="lc-well lc-well--stepper">
             <input id={`${ids}-count`} type="number" min="1" step="1" value={count} onChange={e => setCount(e.target.value)} />
             <span className="lc-unit" aria-hidden="true">×</span>
+            {/* Native spinners are hidden for the console look, so the field gets its own − / + keys. */}
+            <span className="lc-stepper">
+              <button type="button" className="lc-step" aria-label="Decrease additional repeats" aria-controls={`${ids}-count`} disabled={!(Number(count) > 1)} onClick={() => setCount(c => stepRepeatCount(c, -1))}>−</button>
+              <button type="button" className="lc-step" aria-label="Increase additional repeats" aria-controls={`${ids}-count`} onClick={() => setCount(c => stepRepeatCount(c, 1))}>+</button>
+            </span>
           </span>
         </div>
         <div className="lc-row">

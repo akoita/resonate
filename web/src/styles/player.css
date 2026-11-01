@@ -248,6 +248,55 @@ details.listening-controls[open] .lc-caret {
   font-size: 11px;
 }
 
+/* Repeat count: the well widens to hold its own − / + keys. */
+.lc-well--stepper {
+  max-width: 176px;
+}
+
+.lc-stepper {
+  display: inline-flex;
+  align-self: stretch;
+  border-left: 1px solid var(--r-outline-variant);
+}
+
+.lc-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--r-on-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.lc-step + .lc-step {
+  border-left: 1px solid var(--r-outline-variant);
+}
+
+.lc-step:last-child {
+  border-radius: 0 var(--r-radius-xs) var(--r-radius-xs) 0;
+}
+
+.lc-step:hover:not(:disabled) {
+  color: var(--r-primary-soft);
+  background: rgba(124, 92, 255, 0.15);
+}
+
+.lc-step:focus-visible {
+  outline: 2px solid rgba(124, 92, 255, 0.7);
+  outline-offset: -2px;
+}
+
+.lc-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .lc-readout {
   flex: 0 0 auto;
   min-width: 42px;

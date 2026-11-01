@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consumeRepeat, createFiniteRepeat, queueSnapshot, queueSourceKind, validateSegment } from "./listeningSession";
+import { consumeRepeat, createFiniteRepeat, stepRepeatCount, queueSnapshot, queueSourceKind, validateSegment } from "./listeningSession";
 import { createShuffleCycleState, shuffleNext } from "./playerQueue";
 import type { LocalTrack } from "./localLibrary";
 const track = (id: string, extra = {}): LocalTrack => ({ id, title: id, artist: null, album: null, albumArtist: null, year: null, genre: null, duration: 100, createdAt: "", catalogTrackId: id, ...extra });
@@ -46,5 +46,17 @@ describe("listening sessions", () => {
       }
       expect(new Set(heard).size).toBe(3);
     }
+  });
+  it("steps the repeat-count field by one and keeps it inside the accepted range", () => {
+    expect(stepRepeatCount("1", 1)).toBe("2");
+    expect(stepRepeatCount("4", -1)).toBe("3");
+    expect(stepRepeatCount("1", -1)).toBe("1");
+    expect(stepRepeatCount("", 1)).toBe("1");
+    expect(stepRepeatCount("abc", -1)).toBe("1");
+    expect(stepRepeatCount("0", 1)).toBe("1");
+    expect(stepRepeatCount("2.5", 1)).toBe("3");
+    expect(stepRepeatCount("2.5", -1)).toBe("2");
+    expect(stepRepeatCount(String(Number.MAX_SAFE_INTEGER), 1)).toBe(String(Number.MAX_SAFE_INTEGER));
+    for (const step of [1, -1] as const) expect(createFiniteRepeat("track", Number(stepRepeatCount("7", step)))).not.toBeNull();
   });
 });
