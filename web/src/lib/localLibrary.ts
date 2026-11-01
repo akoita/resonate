@@ -656,6 +656,11 @@ export async function resolveTrackPlayback(track: LocalTrack): Promise<TrackPlay
     if (track.previewUrl) return { url: sanitizeStemUrl(track.previewUrl) || track.previewUrl, problem: null };
     // Rows cached before `source` was recorded.
     if (track.blobKey) return resolveLocalFileUrl(track);
+    // A whole catalog track whose saved row lost its URL still streams from
+    // the catalog: never tell the listener it has no audio.
+    if (track.source === "remote" && !track.stemType && track.catalogTrackId && track.releaseId) {
+        return { url: getReleaseTrackStreamUrl(track.releaseId, track.catalogTrackId), problem: null };
+    }
     return { url: null, problem: "no_audio" };
 }
 

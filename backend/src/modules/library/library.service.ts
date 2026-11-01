@@ -106,6 +106,53 @@ function collectCatalogReferences(track: {
     return { trackIds, releaseIds, stemIds };
 }
 
+const EMPTY_CATALOG_REFERENCES: ReturnType<typeof collectCatalogReferences> = {
+    trackIds: new Set<string>(),
+    releaseIds: new Set<string>(),
+    stemIds: new Set<string>(),
+};
+
+/** Fields a re-save of a catalog track must never blank out once known. */
+const PRESERVED_CATALOG_FIELDS = ["remoteUrl", "previewUrl", "remoteArtworkUrl", "duration"] as const;
+
+/**
+ * The update half of a re-save of a remote catalog track.
+ *
+ * Several surfaces save a catalog track in a partial shape (no stream URL, no
+ * duration). Writing those nulls over the existing row left the owner's own
+ * library copy without any audio URL, so the track stopped playing from their
+ * playlists while the public copy of the same playlist still played.
+ */
+export function catalogResaveUpdate<T extends Record<string, unknown>>(trackData: T): T {
+    const update: Record<string, unknown> = { ...trackData };
+    for (const field of PRESERVED_CATALOG_FIELDS) {
+        if (update[field] === null || update[field] === undefined) delete update[field];
+    }
+    return update as T;
+}
+
+/**
+ * A playable stream path for a catalog library row that has lost its own URL.
+ * Stem rows play their preview URL and local rows play a device blob, so only
+ * whole-track remote rows are derived. Returns null when nothing is needed or
+ * the release is unknown.
+ */
+export function derivedCatalogStreamPath(
+    track: {
+        source: string;
+        stemType?: string | null;
+        remoteUrl?: string | null;
+        previewUrl?: string | null;
+    },
+    catalogTrackId: string | undefined,
+    releaseId: string | undefined,
+): string | null {
+    if (track.source !== "remote" || track.stemType) return null;
+    if (track.remoteUrl || track.previewUrl) return null;
+    if (!catalogTrackId || !releaseId) return null;
+    return `/catalog/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(catalogTrackId)}/stream`;
+}
+
 export interface SaveTrackInput {
     id?: string;
     source?: string;
@@ -253,7 +300,7 @@ export class LibraryService {
                         catalogTrackId: data.catalogTrackId,
                     },
                 },
-                update: trackData,
+                update: catalogResaveUpdate(trackData),
                 create: trackData,
             });
         }
@@ -428,11 +475,19 @@ export class LibraryService {
         if (!track) {
             throw new NotFoundException("Library track not found");
         }
+        // A device file is never a catalog track, whatever fields it carries.
+        const references = track.source === "local"
+            ? EMPTY_CATALOG_REFERENCES
+            : collectCatalogReferences(track);
+        const [catalogTrackId] = Array.from(references.trackIds);
+        const catalogTrack = catalogTrackId
+            ? await prisma.track.findUnique({ where: { id: catalogTrackId }, select: { releaseId: true } })
+            : null;
         const [annotated] = withAvailability(
             [track],
-            track.source === "local"
-                ? new Map()
-                : await resolveTrackAvailability(collectCatalogReferences(track).trackIds),
+            await resolveTrackAvailability(references.trackIds),
+            new Map(),
+            catalogTrack && catalogTrackId ? new Map([[catalogTrackId, catalogTrack.releaseId]]) : new Map(),
         );
         return presentLibraryTrack(annotated!);
     }
@@ -473,11 +528,13 @@ function withAvailability<
         remoteUrl?: string | null;
         remoteArtworkUrl?: string | null;
         previewUrl?: string | null;
+        stemType?: string | null;
     },
 >(
     tracks: T[],
     availability: Map<string, TrackAvailability>,
     catalogIdentities: Map<string, CatalogLibraryIdentity> = new Map(),
+    catalogReleaseIds: Map<string, string> = new Map(),
 ): Array<T & {
     availability: TrackAvailability;
     releaseId?: string;
@@ -486,15 +543,22 @@ function withAvailability<
 }> {
     return tracks.map((track) => {
         // A device file is never a catalog track, whatever fields it carries.
-        const [catalogTrackId] = track.source === "local"
-            ? []
-            : Array.from(collectCatalogReferences(track).trackIds);
+        const references = track.source === "local"
+            ? EMPTY_CATALOG_REFERENCES
+            : collectCatalogReferences(track);
+        const [catalogTrackId] = Array.from(references.trackIds);
         if (!catalogTrackId) {
             return { ...track, availability: LOCAL_FILE_AVAILABILITY };
         }
         const identity = catalogIdentities.get(catalogTrackId);
+        const releaseId =
+            identity?.releaseId ?? catalogReleaseIds.get(catalogTrackId) ?? Array.from(references.releaseIds)[0];
+        // Self-heal rows an earlier partial save left without an audio URL.
+        const derivedRemoteUrl = derivedCatalogStreamPath(track, catalogTrackId, releaseId);
         return {
             ...track,
+            ...(derivedRemoteUrl ? { remoteUrl: derivedRemoteUrl } : {}),
+            ...(releaseId ? { releaseId } : {}),
             availability: availability.get(catalogTrackId) ?? REMOVED_AVAILABILITY,
             ...(identity || {}),
         };
