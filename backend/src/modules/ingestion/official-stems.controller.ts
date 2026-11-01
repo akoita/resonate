@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Param,
   Post,
   Request,
@@ -72,5 +73,23 @@ export class OfficialStemsController {
     } finally {
       await cleanupIngestionMultipartRequest(req);
     }
+  }
+
+  /**
+   * DELETE /ingestion/releases/:releaseId/tracks/:trackId/official-stems/:stemType (#2379)
+   *
+   * Withdraws one unminted official part: it comes off sale and stays as
+   * history. 404 when there is no such part on sale, 409 once it is minted.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("releases/:releaseId/tracks/:trackId/official-stems/:stemType")
+  @Throttle({ default: { limit: 10, ttl: seconds(60) } })
+  async withdraw(
+    @Param("releaseId") releaseId: string,
+    @Param("trackId") trackId: string,
+    @Param("stemType") stemType: string,
+    @Request() req: any,
+  ) {
+    return this.officialStems.withdrawPart({ releaseId, trackId, stemType, userId: req.user?.userId });
   }
 }

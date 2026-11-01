@@ -3276,6 +3276,16 @@ function ReleaseDetailsContent() {
                   .map((s) => s.type),
               }))}
               releaseStatus={release.status}
+              onWithdrawn={(trackId, _stemType, withdrawnStemIds) => {
+                const gone = new Set(withdrawnStemIds);
+                setRelease((previous) => previous ? {
+                  ...previous,
+                  tracks: previous.tracks?.map((track) => track.id === trackId ? {
+                    ...track,
+                    stems: track.stems?.filter((stem) => !gone.has(stem.id)),
+                  } : track),
+                } : previous);
+              }}
             />
             <StemPricingPanel releaseId={release.id} tracks={pricingTracks} />
           </>

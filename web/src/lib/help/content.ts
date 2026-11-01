@@ -1974,7 +1974,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "marketplace",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["sell", "list", "listing", "official stems", "lossless", "wav", "flac", "upload stems", "mint", "manage listings", "relist", "cancel listing", "edit listing", "change price", "unlist", "stop selling", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
+    keywords: ["sell", "list", "listing", "official stems", "withdraw official stem", "remove official stem", "lossless", "wav", "flac", "upload stems", "mint", "manage listings", "relist", "cancel listing", "edit listing", "change price", "unlist", "stop selling", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
     sections: [
       {
         id: "listing",
@@ -2039,7 +2039,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/official-stems-panel.png`,
-              alt: "The Official stems panel on a release page. Golden Road shows green Vocals and Bass chips and a Replace official stems button. Lantern Season has its upload form open: one row each for vocals, drums, bass, guitar, piano and other, with three files chosen (name and size, Change and remove buttons) and a purple Upload 3 parts button.",
+              alt: "The Official stems panel on a release page. Golden Road shows green Vocals and Bass chips, each with a × to withdraw it, and a Replace official stems button. Lantern Season has its upload form open: one row each for vocals, drums, bass, guitar, piano and other, with three files chosen (name and size, Change and remove buttons) and a purple Upload 3 parts button.",
               caption: "Official stems on your release page: a track with official vocals and bass on sale, and the upload form open on another track with three parts chosen. Sample data.",
               width: 991,
               height: 706,
@@ -2051,6 +2051,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "A part replaces only its own type",
             text: "Uploading a vocals part replaces your earlier official vocals and leaves your other official parts on sale. A part that has already been minted cannot be replaced, so leave it out of the new upload. If a part is refused, nothing from that upload is saved and every part that failed is listed with its reason.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Withdrawing a part",
+            text: "To take an official part off sale without uploading a new one, press the × on its chip in Official stems and confirm. Buyers who already licensed it keep their files, and a Separated (AI) stem of the same part stays on sale. A part that has been minted cannot be withdrawn.",
           },
           {
             kind: "callout",

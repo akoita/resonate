@@ -39,6 +39,7 @@ import {
     queueableTracks,
     resolveAvailability,
 } from "./trackAvailability";
+import { RemoveIcon } from "../ui/MenuIcons";
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -157,7 +158,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
         ...queueActions.contextMenuItems(track),
         { separator: true, label: "", onClick: () => { } },
-        { label: "Remove from Playlist", icon: "❌", variant: "destructive", onClick: () => handleRemoveTrack(track.id) },
+        { label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => handleRemoveTrack(track.id) },
     ];
 
     const handlePlayAll = () => {

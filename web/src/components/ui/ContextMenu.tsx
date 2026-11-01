@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useFocusContainment } from "./useFocusContainment";
 
@@ -101,18 +101,31 @@ export function ContextMenu({
         if (nextIndex !== undefined) focusItem(nextIndex);
     };
 
-    const style = {
-        top: y,
-        left: x,
-    };
+    // Open at the pointer, but flip or nudge the menu so it never spills past
+    // the viewport edge (a right-click near the bottom of a long list used to
+    // cut off the last entries).
+    // Adjusted on the DOM node directly: React only rewrites `style` when x/y
+    // change, which re-runs this effect anyway.
+    useLayoutEffect(() => {
+        const menu = menuRef.current;
+        if (!menu) return;
+        const margin = 8;
+        const { width, height } = menu.getBoundingClientRect();
+        let left = x;
+        let top = y;
+        if (left + width > window.innerWidth - margin) left = Math.max(margin, x - width);
+        if (top + height > window.innerHeight - margin) top = Math.max(margin, y - height);
+        menu.style.top = `${top}px`;
+        menu.style.left = `${left}px`;
+    }, [x, y, items.length]);
 
     if (typeof document === "undefined") return null;
 
     return createPortal(
         <div
             ref={menuRef}
-            className="fixed z-[9999] min-w-[200px] bg-[#1E1E1E]/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl py-1.5 animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
-            style={style}
+            className="context-menu"
+            style={{ top: y, left: x }}
             role="menu"
             aria-label={ariaLabel}
             tabIndex={-1}
@@ -123,7 +136,7 @@ export function ContextMenu({
                 <div key={`${item.label}-${index}`}>
                     {item.separator && (
                         <div
-                            className="h-[1px] bg-white/5 my-1"
+                            className="context-menu-separator"
                             role="separator"
                             aria-hidden="true"
                         />
@@ -144,19 +157,14 @@ export function ContextMenu({
                                 item.onClick();
                                 onClose();
                             }}
-                            className={`w-full text-left px-4 py-2 text-[13px] font-medium flex items-center gap-3 hover:bg-white/10 transition-all active:scale-95
-                  ${item.variant === "destructive" ? "text-red-400 hover:text-red-300 hover:bg-red-500/10" : "text-white/80 hover:text-white"}
-                `}
+                            className={`context-menu-item${item.variant === "destructive" ? " context-menu-item--destructive" : ""}`}
                         >
                             {item.icon && (
-                                <span
-                                    className="w-5 h-5 flex items-center justify-center text-sm opacity-80"
-                                    aria-hidden="true"
-                                >
+                                <span className="context-menu-icon" aria-hidden="true">
                                     {item.icon}
                                 </span>
                             )}
-                            <span>{item.label}</span>
+                            <span className="context-menu-label">{item.label}</span>
                         </button>
                     )}
                 </div>
