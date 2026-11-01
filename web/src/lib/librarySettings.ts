@@ -94,27 +94,41 @@ export async function addLibrarySourceHandle(
     return true;
 }
 
+/** Whether `inner` is `outer` or a folder inside it. */
+async function isWithin(outer: FileSystemDirectoryHandle, inner: FileSystemDirectoryHandle): Promise<boolean> {
+    try {
+        if (await (outer as FileSystemHandle).isSameEntry(inner)) return true;
+        if (typeof outer.resolve === "function") return (await outer.resolve(inner)) !== null;
+    } catch {
+        // A handle that can no longer be read never hides another one.
+    }
+    return false;
+}
+
 /**
- * Return library source handles deduplicated by same entry (so we don't scan the same folder twice).
+ * Return the library folders to scan: the same folder added twice, or a folder
+ * inside another added folder, is scanned once, from the outer folder. Scanning
+ * both would reach the same files under two paths.
  */
 export async function getUniqueLibrarySourceHandles(): Promise<FileSystemDirectoryHandle[]> {
     const handles = await getLibrarySourceHandles();
     if (handles.length <= 1) return handles;
     if (typeof (handles[0] as FileSystemHandle).isSameEntry !== "function") return handles;
-    const unique: FileSystemDirectoryHandle[] = [];
+    let unique: FileSystemDirectoryHandle[] = [];
     for (const h of handles) {
-        let isDup = false;
+        let covered = false;
         for (const u of unique) {
-            try {
-                if (await (h as FileSystemHandle).isSameEntry(u)) {
-                    isDup = true;
-                    break;
-                }
-            } catch {
-                // ignore
+            if (await isWithin(u, h)) {
+                covered = true;
+                break;
             }
         }
-        if (!isDup) unique.push(h);
+        if (covered) continue;
+        const kept: FileSystemDirectoryHandle[] = [];
+        for (const u of unique) {
+            if (!(await isWithin(h, u))) kept.push(u);
+        }
+        unique = [...kept, h];
     }
     return unique;
 }

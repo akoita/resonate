@@ -11,6 +11,7 @@ import {
     deleteTracks,
     getArtworkUrl,
     saveTracksMetadata,
+    isLocalFileTrack,
     isOnOtherDevice,
     LocalTrack,
 } from "../../lib/localLibrary";
@@ -35,6 +36,12 @@ import {
     // renamePlaylist,
 } from "../../lib/playlistStore";
 import { formatDuration } from "../../lib/metadataExtractor";
+import {
+    isOwnFileTrack,
+    LIBRARY_ORIGIN_FILTERS,
+    matchesLibraryOriginFilter,
+    type LibraryOriginFilter,
+} from "../../lib/trackIdentity";
 import { useToast } from "../../components/ui/Toast";
 import { PunchlineInventory } from "../../components/punchline/PunchlineInventory";
 import { listMyPunchlineCollectibles, listMyPunchlineUnlocks, type PunchlineCollectibleItem, type PunchlineUnlockGrantItem } from "../../lib/api";
@@ -65,6 +72,7 @@ import {
     type StemLicenseFilter,
 } from "../../lib/ownedStems";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
+import { EditLocalDetailsDialog, FileLocationDialog } from "../../components/library/LocalFileDialogs";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
@@ -108,6 +116,30 @@ function LibraryPageContent() {
     const { addToast } = useToast();
     const autoScan = useAutoScan();
     const [artworkUrls, setArtworkUrls] = useState<Map<string, string>>(new Map());
+    // The listener's own files: where one lives, and editing names and covers.
+    const [locationTrack, setLocationTrack] = useState<LocalTrack | null>(null);
+    const [editRequest, setEditRequest] = useState<{ tracks: LocalTrack[]; mode: "track" | "album" } | null>(null);
+    const handleLocalEditsSaved = async (updated: LocalTrack[]) => {
+        const byId = new Map(updated.map((t) => [t.id, t]));
+        setTracks((previous) => previous.map((t) => byId.get(t.id) ?? t));
+        const urls = await Promise.all(updated.map(async (t) => [t.id, await getArtworkUrl(t)] as const));
+        setArtworkUrls((previous) => {
+            const next = new Map(previous);
+            for (const [id, url] of urls) if (url) next.set(id, url);
+            return next;
+        });
+        // Renaming an album moves its files to another album page.
+        if (editRequest?.mode === "album" && updated[0]?.album) {
+            const albumArtist = updated[0].albumArtist || updated[0].artist || "Unknown Artist";
+            router.replace(libraryAlbumHref(updated[0].album, albumArtist));
+        }
+    };
+    const localFileActions = (track: LocalTrack) => isLocalFileTrack(track)
+        ? [
+            { label: "Edit details", icon: "✏️", onClick: () => setEditRequest({ tracks: [track], mode: "track" }) },
+            { label: "File location", icon: "📁", onClick: () => setLocationTrack(track) },
+        ]
+        : [];
     const [hoveredArtwork, setHoveredArtwork] = useState<{ url: string; title: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState<ViewTab>("tracks");
@@ -181,6 +213,12 @@ function LibraryPageContent() {
         setShowOtherDeviceTracks(show);
         void updateLibrarySettings({ showOtherDeviceTracks: show }).catch(() => undefined);
     };
+    // Tracks tab: everything, Resonate tracks, or the listener's own files.
+    const [originFilter, setOriginFilter] = useState<LibraryOriginFilter>("all");
+    const ownFileCount = useMemo(
+        () => unifiedTracks.filter((t) => !t.stemType && isOwnFileTrack(t)).length,
+        [unifiedTracks],
+    );
     // Library › Stems license filter (#2042)
     const [stemLicenseFilter, setStemLicenseFilter] = useState<StemLicenseFilter>("all");
 
@@ -191,6 +229,9 @@ function LibraryPageContent() {
         // In "Tracks" tab, only show stems if toggle is ON
         if (activeTab === "tracks" && !showStems) {
             source = source.filter(t => !t.stemType); // exclude stems
+        }
+        if (activeTab === "tracks" && ownFileCount > 0) {
+            source = source.filter((t) => matchesLibraryOriginFilter(t, originFilter));
         }
         // In "Stems" tab, only show stems, narrowed by the license filter
         else if (activeTab === "stems") {
@@ -204,7 +245,7 @@ function LibraryPageContent() {
             (t.artist && t.artist.toLowerCase().includes(q)) ||
             (t.album && t.album.toLowerCase().includes(q))
         );
-    }, [unifiedTracks, ownedStems, activeTab, searchQuery, showStems, stemLicenseFilter, showOtherDeviceTracks]);
+    }, [unifiedTracks, ownedStems, activeTab, searchQuery, showStems, stemLicenseFilter, showOtherDeviceTracks, originFilter, ownFileCount]);
 
     // Source tracks with two or more remix-ready stems in view: one Remix
     // Studio session can load them together (#2042).
@@ -617,6 +658,7 @@ function LibraryPageContent() {
             ...(isPlayableEntry(track) ? queueActions.contextMenuItems(track) : []),
             { separator: true, label: "", onClick: () => { } },
             { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist([track]) },
+            ...localFileActions(track),
         ];
 
         if (track.isOwned) {
@@ -855,6 +897,15 @@ function LibraryPageContent() {
                                     </button>
                                 </>
                             )}
+                            {isOwnFileTrack(track) && (
+                                <span
+                                    className="library-origin-badge"
+                                    title="Your own file. It stays private and plays only on the device that has it."
+                                >
+                                    <span className="ms-icon" aria-hidden="true">folder</span>
+                                    My file
+                                </span>
+                            )}
                             <TrackUnavailableNote availability={availability} />
                         </div>
                         <div
@@ -916,6 +967,7 @@ function LibraryPageContent() {
                                 actions={[
                                     ...(availability.playable ? queueActions.actionMenuItems(track) : []),
                                     { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist([track]) },
+                                    ...localFileActions(track),
                                     ...(track.stemType && track.tokenId
                                         ? [{
                                             label: "View stem page",
@@ -1139,6 +1191,14 @@ function LibraryPageContent() {
                             >
                                 Add Album to Playlist
                             </Button>
+                            {albumTracks.some(isLocalFileTrack) && (
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => setEditRequest({ tracks: albumTracks.filter(isLocalFileTrack), mode: "album" })}
+                                >
+                                    Edit album
+                                </Button>
+                            )}
                             {catalogReleaseId ? (
                                 <Link href={publicReleaseHref(catalogReleaseId)}>
                                     <Button variant="ghost">View catalog release</Button>
@@ -1275,6 +1335,29 @@ function LibraryPageContent() {
                                             className={`library-tab ${selected ? "active" : ""}`}
                                             aria-pressed={selected}
                                             onClick={() => setStemLicenseFilter(option.value)}
+                                        >
+                                            {option.label}{" "}
+                                            <span className="library-tab__count">{count}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {activeTab === "tracks" && ownFileCount > 0 && (
+                            <div className="library-stem-filter" role="group" aria-label="Filter tracks by origin">
+                                {LIBRARY_ORIGIN_FILTERS.map((option) => {
+                                    const count = unifiedTracks.filter(
+                                        (t) => !t.stemType && matchesLibraryOriginFilter(t, option.value),
+                                    ).length;
+                                    const selected = originFilter === option.value;
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            className={`library-tab ${selected ? "active" : ""}`}
+                                            aria-pressed={selected}
+                                            onClick={() => setOriginFilter(option.value)}
                                         >
                                             {option.label}{" "}
                                             <span className="library-tab__count">{count}</span>
@@ -1569,6 +1652,18 @@ function LibraryPageContent() {
                         y={contextMenu.y}
                         items={contextMenu.items}
                         onClose={() => setContextMenu(null)}
+                    />
+                )}
+
+                {locationTrack && (
+                    <FileLocationDialog track={locationTrack} onClose={() => setLocationTrack(null)} />
+                )}
+                {editRequest && (
+                    <EditLocalDetailsDialog
+                        tracks={editRequest.tracks}
+                        mode={editRequest.mode}
+                        onClose={() => setEditRequest(null)}
+                        onSaved={(updated) => void handleLocalEditsSaved(updated)}
                     />
                 )}
 

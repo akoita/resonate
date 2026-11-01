@@ -5354,6 +5354,34 @@ export async function uploadOfficialStems(
   );
 }
 
+export type OfficialStemWithdrawResponse = {
+  releaseId: string;
+  trackId: string;
+  stemType: string;
+  /** The stem rows taken off sale; they stay as history. */
+  withdrawnStemIds: string[];
+  /** Official stem types of the track still on sale. */
+  remaining: string[];
+};
+
+/**
+ * Withdraws one unminted official part of a track (#2379): it comes off sale
+ * and the separated stem of the same type, if any, stays. The server answers
+ * 409 `official_stems_already_minted` once the part has been minted.
+ */
+export async function withdrawOfficialStem(
+  token: string,
+  releaseId: string,
+  trackId: string,
+  stemType: OfficialStemType,
+) {
+  return apiRequest<OfficialStemWithdrawResponse>(
+    `/ingestion/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(trackId)}/official-stems/${encodeURIComponent(stemType)}`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
 export async function updateReleaseArtwork(
   token: string,
   releaseId: string,

@@ -32,6 +32,15 @@ describe("OfficialStemsPanel (#1976)", () => {
     expect(html).toContain('class="ui-btn ui-btn-sm ui-btn-ghost"');
   });
 
+  it("offers to withdraw each official part, and nothing for a track without one (#2379)", () => {
+    const html = renderToStaticMarkup(<OfficialStemsPanel releaseId="r1" releaseStatus="published" tracks={tracks} />);
+    expect(html).toContain('aria-label="Withdraw the official vocals part of Day Drive"');
+    expect(html).toContain('aria-label="Withdraw the official bass part of Day Drive"');
+    expect(html).not.toContain("part of Night Drive");
+    // The confirmation is closed until a chip is pressed.
+    expect(html).not.toContain("Keep on sale");
+  });
+
   it("is hidden while the release is still processing", () => {
     expect(renderToStaticMarkup(<OfficialStemsPanel releaseId="r1" releaseStatus="processing" tracks={tracks} />)).toBe("");
     expect(renderToStaticMarkup(<OfficialStemsPanel releaseId="r1" releaseStatus="ready" tracks={[]} />)).toBe("");

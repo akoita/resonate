@@ -6,7 +6,7 @@
  * public side doors, and the migration backfill.
  */
 import { ConfigService } from "@nestjs/config";
-import { BadRequestException, ConflictException, ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { prisma } from "../db/prisma";
@@ -486,6 +486,54 @@ describe("official stems (integration)", () => {
       expect(row.uri).toMatch(/\.flac\/blob$/);
       expect(row.durationSeconds).toBeCloseTo(20, 1);
     }, 60_000);
+  });
+
+  describe("withdrawing a part (#2379)", () => {
+    const withdrawAs = (userId: string | undefined, stemType: string) =>
+      service.withdrawPart({ releaseId: PARTIAL_RELEASE, trackId: PARTIAL_TRACK, stemType, userId });
+    const withdraw = (stemType: string) => withdrawAs(OWNER, stemType);
+    const current = (type?: string) =>
+      prisma.stem.findMany({ where: { trackId: PARTIAL_TRACK, isCurrent: true, ...(type ? { type } : {}) }, orderBy: { id: "asc" } });
+
+    it("answers 401 without a user and 403 for an account that does not manage the release", async () => {
+      await expect(withdrawAs(undefined, "piano")).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(withdrawAs(OTHER, "piano")).rejects.toBeInstanceOf(ForbiddenException);
+      expect((await current("piano")).filter((row) => row.source === "official")).toHaveLength(1);
+    });
+
+    it("takes the official part off sale, keeps it as history, and leaves the separated stem and other parts alone", async () => {
+      const piano = (await current("piano")).find((row) => row.source === "official")!;
+      const result = await withdraw("piano");
+      expect(result.withdrawnStemIds).toEqual([piano.id]);
+      expect(result.remaining).toEqual(PART_NAMES.filter((name) => name !== "piano").sort());
+      const row = await prisma.stem.findUniqueOrThrow({ where: { id: piano.id } });
+      expect(row.isCurrent).toBe(false);
+      expect(row.uri).toBe(piano.uri);
+      // The separated piano is still sold.
+      expect((await current("piano")).map((stem) => stem.source)).toEqual(["separated"]);
+    });
+
+    it("answers 404 when there is no official part of that type on sale, and 400 for an unknown type", async () => {
+      const gone = await withdraw("piano").catch((e) => e);
+      expect(gone).toBeInstanceOf(NotFoundException);
+      expect(gone.getResponse()).toEqual(expect.objectContaining({ code: "official_stems_part_not_found" }));
+      await expect(withdraw("original")).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("refuses a minted part", async () => {
+      const guitar = (await current("guitar")).find((row) => row.source === "official")!;
+      await prisma.stemNftMint.create({
+        data: {
+          stemId: guitar.id, tokenId: BigInt(910005), chainId: 31337, contractAddress: "0x0000000000000000000000000000000000000001",
+          creatorAddress: BUYER, royaltyBps: 500, remixable: true, metadataUri: "ipfs://z", transactionHash: `0x${P}mint_w`,
+          blockNumber: BigInt(1), mintedAt: new Date(),
+        },
+      });
+      const error = await withdraw("guitar").catch((e) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.getResponse()).toEqual(expect.objectContaining({ code: "official_stems_already_minted" }));
+      expect((await prisma.stem.findUniqueOrThrow({ where: { id: guitar.id } })).isCurrent).toBe(true);
+    });
   });
 
   describe("separation results", () => {

@@ -4,13 +4,13 @@
  * the client (403 off the rights route, 400 with a readable reason).
  */
 import request from "supertest";
-import { BadRequestException, ForbiddenException, INestApplication } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, INestApplication } from "@nestjs/common";
 import { OfficialStemsController } from "../modules/ingestion/official-stems.controller";
 import { OfficialStemsService } from "../modules/ingestion/official-stems.service";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
 import { wavBuffer, syntheticStems } from "./official_stems_fixtures";
 
-const service = { uploadPackage: jest.fn() };
+const service = { uploadPackage: jest.fn(), withdrawPart: jest.fn() };
 const URL = "/ingestion/releases/rel-1/tracks/trk-1/official-stems";
 
 describe("POST /ingestion/releases/:releaseId/tracks/:trackId/official-stems", () => {
@@ -99,5 +99,48 @@ describe("POST /ingestion/releases/:releaseId/tracks/:trackId/official-stems", (
       .expect(400);
     expect(res.body.issues[0].code).toBe("duration_mismatch");
     expect(res.body.message).toContain("203.0 s");
+  });
+});
+
+describe("DELETE /ingestion/releases/:releaseId/tracks/:trackId/official-stems/:stemType", () => {
+  let app: INestApplication;
+  const DELETE_URL = `${URL}/vocals`;
+
+  beforeAll(async () => {
+    app = await createControllerTestApp(OfficialStemsController, [
+      { provide: OfficialStemsService, useValue: service },
+    ]);
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service.withdrawPart.mockResolvedValue({ releaseId: "rel-1", trackId: "trk-1", stemType: "vocals", withdrawnStemIds: ["s-1"], remaining: ["bass"] });
+  });
+
+  it("answers 401 without a JWT", async () => {
+    await request(app.getHttpServer()).delete(DELETE_URL).expect(401);
+    expect(service.withdrawPart).not.toHaveBeenCalled();
+  });
+
+  it("hands the part type and the account to the service", async () => {
+    const res = await request(app.getHttpServer())
+      .delete(DELETE_URL)
+      .set("Authorization", `Bearer ${authToken("artist-user")}`)
+      .expect(200);
+    expect(service.withdrawPart).toHaveBeenCalledWith({ releaseId: "rel-1", trackId: "trk-1", stemType: "vocals", userId: "artist-user" });
+    expect(res.body.remaining).toEqual(["bass"]);
+  });
+
+  it("answers 409 for a minted part", async () => {
+    service.withdrawPart.mockRejectedValueOnce(
+      new ConflictException({ code: "official_stems_already_minted", message: "The official vocals part has been minted, so it cannot be withdrawn" }),
+    );
+    const res = await request(app.getHttpServer())
+      .delete(DELETE_URL)
+      .set("Authorization", `Bearer ${authToken("artist-user")}`)
+      .expect(409);
+    expect(res.body.code).toBe("official_stems_already_minted");
   });
 });

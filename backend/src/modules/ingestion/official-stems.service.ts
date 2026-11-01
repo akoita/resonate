@@ -93,6 +93,16 @@ export type OfficialStemUploadResult = {
   summedLevel: { differenceDb: number; envelopeCorrelation: number | null } | null;
 };
 
+export type OfficialStemWithdrawResult = {
+  releaseId: string;
+  trackId: string;
+  stemType: string;
+  /** The rows taken off sale; they stay as history. */
+  withdrawnStemIds: string[];
+  /** Official stem types of the track still on sale. */
+  remaining: string[];
+};
+
 @Injectable()
 export class OfficialStemsService {
   constructor(
@@ -397,6 +407,84 @@ export class OfficialStemsService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Withdraws one unminted official part of a track (#2379): the part comes off
+   * sale exactly as a replaced part does (its row becomes historical, so x402,
+   * listings and crate quotes stop offering it, and earlier receipts still point
+   * at it). Nothing is deleted. A minted part cannot be withdrawn, because its
+   * token is already out in the world. Separated stems are never touched.
+   *
+   * Withdrawing takes nothing new onto sale, so it is allowed whatever the
+   * release's rights route or status; only the authority rule applies.
+   */
+  async withdrawPart(input: {
+    releaseId: string;
+    trackId: string;
+    stemType: string;
+    userId: string | undefined;
+  }): Promise<OfficialStemWithdrawResult> {
+    const { releaseId, trackId, userId } = input;
+    if (!userId) throw new UnauthorizedException();
+    const stemType = input.stemType.toLowerCase();
+    if (!isOfficialStemType(stemType)) {
+      throw new BadRequestException({
+        code: "official_stems_unknown_type",
+        message: "Choose one of the official stem types: vocals, drums, bass, guitar, piano or other",
+      });
+    }
+    if (!(await hasReleaseManagementAccess(userId, releaseId, "track_audio"))) {
+      throw new ForbiddenException({
+        code: "official_stems_forbidden",
+        message: "Only an account that manages this release can withdraw its official stems",
+      });
+    }
+    const track = await prisma.track.findUnique({ where: { id: trackId, releaseId }, select: { id: true } });
+    if (!track) throw new NotFoundException("Track not found in this release");
+
+    const result = await prisma.$transaction(async (tx) => {
+      // The same lock as an upload, so a withdrawal and a package never cross.
+      await tx.$queryRaw`SELECT "id" FROM "Release" WHERE "id" = ${releaseId} FOR UPDATE`;
+      if (!(await hasReleaseManagementAccess(userId, releaseId, "track_audio", tx))) {
+        throw new ForbiddenException({
+          code: "official_stems_forbidden",
+          message: "Only an account that manages this release can withdraw its official stems",
+        });
+      }
+      const parts = await tx.stem.findMany({
+        where: { trackId, isCurrent: true, source: "official", type: stemType },
+        select: { id: true, nftMint: { select: { id: true } } },
+      });
+      if (parts.length === 0) {
+        throw new NotFoundException({
+          code: "official_stems_part_not_found",
+          message: `This track has no official ${stemType} part on sale`,
+        });
+      }
+      if (parts.some((part) => part.nftMint)) {
+        throw new ConflictException({
+          code: "official_stems_already_minted",
+          message: `The official ${stemType} part has been minted, so it cannot be withdrawn`,
+        });
+      }
+      await tx.stem.updateMany({
+        where: { id: { in: parts.map((part) => part.id) } },
+        data: { isCurrent: false },
+      });
+      const remaining = await tx.stem.findMany({
+        where: { trackId, isCurrent: true, source: "official" },
+        select: { type: true },
+      });
+      return {
+        withdrawn: parts.map((part) => part.id),
+        remaining: [...new Set(remaining.map((stem) => stem.type))].sort(),
+      };
+    });
+
+    this.catalogService.invalidateCache();
+    logger.log(`Official ${stemType} part withdrawn from track ${trackId} of release ${releaseId}`);
+    return { releaseId, trackId, stemType, withdrawnStemIds: result.withdrawn, remaining: result.remaining };
   }
 
   /**

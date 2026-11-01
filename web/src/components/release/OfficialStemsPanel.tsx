@@ -4,9 +4,11 @@ import React, { useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
+  ApiRequestError,
   OFFICIAL_STEM_TYPES,
   getOfficialStemFileValidationError,
   uploadOfficialStems,
+  withdrawOfficialStem,
   type OfficialStemType,
 } from "../../lib/api";
 import {
@@ -15,10 +17,12 @@ import {
   describeOfficialStemUpload,
   formatFileSize,
   officialStemRejectionIssues,
+  officialStemWithdrawMessage,
   stemTypeLabel,
   type OfficialStemIssue,
 } from "../../lib/officialStems";
 import { StemSourceBadge } from "../stem/StemSourceBadge";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import "../../styles/stem-pricing.css";
 
 interface OfficialStemsPanelProps {
@@ -30,6 +34,8 @@ interface OfficialStemsPanelProps {
     /** Stem types that already have a current official stem. */
     officialTypes: string[];
   }>;
+  /** Called after a part is withdrawn, so the page can drop those stems from its other panels. */
+  onWithdrawn?: (trackId: string, stemType: string, withdrawnStemIds: string[]) => void;
 }
 
 type ChosenFiles = Partial<Record<OfficialStemType, File>>;
@@ -155,7 +161,7 @@ export function OfficialStemsUploadForm({
  * (#1976, ADR-TE-7). Official stems are checked against the published mix and
  * sold as "Official", next to the "Separated (AI)" stems Resonate makes itself.
  */
-export function OfficialStemsPanel({ releaseId, releaseStatus, tracks }: OfficialStemsPanelProps) {
+export function OfficialStemsPanel({ releaseId, releaseStatus, tracks, onWithdrawn }: OfficialStemsPanelProps) {
   const { token } = useAuth();
   const { addToast } = useToast();
   const [openTrackId, setOpenTrackId] = useState<string | null>(null);
@@ -167,6 +173,9 @@ export function OfficialStemsPanel({ releaseId, releaseStatus, tracks }: Officia
   const [issues, setIssues] = useState<OfficialStemIssue[]>([]);
   const [inputKeys, setInputKeys] = useState<Partial<Record<OfficialStemType, number>>>({});
   const [uploaded, setUploaded] = useState<Record<string, string[]>>({});
+  /** The part the artist asked to withdraw, waiting for confirmation. */
+  const [pendingWithdraw, setPendingWithdraw] = useState<{ trackId: string; trackTitle: string; type: OfficialStemType } | null>(null);
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
 
   if (releaseStatus && releaseStatus !== "ready" && releaseStatus !== "published") return null;
   if (tracks.length === 0) return null;
@@ -233,6 +242,31 @@ export function OfficialStemsPanel({ releaseId, releaseStatus, tracks }: Officia
     }
   };
 
+  const withdraw = async (trackId: string, type: OfficialStemType) => {
+    if (!token) return;
+    const key = `${trackId}:${type}`;
+    setWithdrawing(key);
+    try {
+      const result = await withdrawOfficialStem(token, releaseId, trackId, type);
+      setUploaded((current) => ({ ...current, [trackId]: result.remaining }));
+      onWithdrawn?.(trackId, type, result.withdrawnStemIds);
+      addToast({
+        type: "success",
+        title: "Official stem withdrawn",
+        message: `Your official ${type} part is no longer on sale.`,
+      });
+    } catch (err) {
+      const minted = err instanceof ApiRequestError && err.status === 409;
+      addToast({
+        type: "error",
+        title: minted ? "This part has been minted" : "The part could not be withdrawn",
+        message: err instanceof Error ? err.message : "Try again in a moment.",
+      });
+    } finally {
+      setWithdrawing((current) => (current === key ? null : current));
+    }
+  };
+
   return (
     <section className="official-stems-panel" data-testid="official-stems-panel" aria-labelledby="official-stems-title">
       <h3 id="official-stems-title">Official stems</h3>
@@ -252,7 +286,23 @@ export function OfficialStemsPanel({ releaseId, releaseStatus, tracks }: Officia
                 {have.length > 0 ? (
                   <ul className="official-stems-chips" aria-label={`Official stems of ${track.trackTitle}`}>
                     {have.map((type) => (
-                      <li key={type} className="official-stems-chip">{stemTypeLabel(type)}</li>
+                      <li key={type} className="official-stems-chip">
+                        {stemTypeLabel(type)}
+                        {(OFFICIAL_STEM_TYPES as readonly string[]).includes(type) && (
+                          <button
+                            type="button"
+                            className="official-stems-chip__withdraw"
+                            aria-label={`Withdraw the official ${type} part of ${track.trackTitle}`}
+                            title="Withdraw from sale"
+                            disabled={uploading || withdrawing === `${track.trackId}:${type}`}
+                            onClick={() =>
+                              setPendingWithdraw({ trackId: track.trackId, trackTitle: track.trackTitle, type: type as OfficialStemType })
+                            }
+                          >
+                            ×
+                          </button>
+                        )}
+                      </li>
                     ))}
                   </ul>
                 ) : (
@@ -289,6 +339,20 @@ export function OfficialStemsPanel({ releaseId, releaseStatus, tracks }: Officia
           </div>
         );
       })}
+      <ConfirmDialog
+        isOpen={pendingWithdraw !== null}
+        title={pendingWithdraw ? `Withdraw the official ${pendingWithdraw.type} part?` : "Withdraw the official part?"}
+        message={pendingWithdraw ? officialStemWithdrawMessage(pendingWithdraw.type, pendingWithdraw.trackTitle) : ""}
+        confirmLabel="Withdraw"
+        cancelLabel="Keep on sale"
+        variant="danger"
+        onCancel={() => setPendingWithdraw(null)}
+        onConfirm={async () => {
+          const target = pendingWithdraw;
+          setPendingWithdraw(null);
+          if (target) await withdraw(target.trackId, target.type);
+        }}
+      />
     </section>
   );
 }

@@ -74,11 +74,14 @@ export function HomeFeedRails({
   startingSeed,
   onOpen,
   onStartSession,
+  queueable = false,
 }: {
   feed: HomeFeedResponse | null;
   startingSeed?: string | null;
   onOpen?: (item: HomeFeedItem, railId: string, position: number) => void;
   onStartSession?: (item: HomeFeedItem, railId: string, position: number) => void;
+  /** Offer Play Next / Add to Queue on each tile. Needs the player provider. */
+  queueable?: boolean;
 }) {
   if (feed === null) return null;
 
@@ -153,6 +156,11 @@ export function HomeFeedRails({
                     )
                   }
                   aiDisclosure={item.aiDisclosure}
+                  queueTarget={
+                    queueable
+                      ? { kind: "track", title: item.title, releaseId: item.releaseId, trackId: item.id }
+                      : undefined
+                  }
                   action={
                     onStartSession ? (
                       <button

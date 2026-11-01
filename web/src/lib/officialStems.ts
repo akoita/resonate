@@ -57,3 +57,12 @@ export const OFFICIAL_STEMS_FORM_HINT =
 
 /** Accepted formats and size, shown on every picker row. */
 export const OFFICIAL_STEMS_ACCEPTED_FORMATS = "WAV or FLAC, up to 300 MB each";
+
+/** The confirmation shown before an official part is withdrawn. */
+export function officialStemWithdrawMessage(type: string, trackTitle: string): string {
+  return (
+    `Your official ${type} part of "${trackTitle}" comes off sale. Buyers who already licensed it keep their files. ` +
+    `A separated (AI) ${type} stem, if the track has one, stays on sale. You can upload a new official part at any time. ` +
+    "A part that has been minted cannot be withdrawn."
+  );
+}

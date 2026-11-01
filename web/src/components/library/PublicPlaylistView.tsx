@@ -21,33 +21,13 @@ import {
   type PublicPlaylistView as PublicPlaylist,
   type PublicPlaylistTrack,
 } from "../../lib/api";
-import type { LocalTrack } from "../../lib/localLibrary";
+import { publicPlaylistTrackToLocal as toLocalTrack } from "../../lib/publicPlaylistTracks";
 import {
   TrackUnavailableNote,
   isPlayableEntry,
   queueableTracks,
   resolveAvailability,
 } from "./trackAvailability";
-
-/** Map a resolved public track into the player's LocalTrack shape. */
-function toLocalTrack(t: PublicPlaylistTrack): LocalTrack {
-  return {
-    id: t.id,
-    title: t.title,
-    artist: t.artist,
-    albumArtist: null,
-    album: t.album,
-    year: null,
-    genre: null,
-    duration: t.duration,
-    createdAt: new Date().toISOString(),
-    catalogTrackId: t.catalogTrackId,
-    releaseId: t.releaseId,
-    remoteUrl: t.streamPath ? `${API_BASE}${t.streamPath}` : undefined,
-    remoteArtworkUrl: t.artworkPath ? `${API_BASE}${t.artworkPath}` : undefined,
-    source: "remote",
-  };
-}
 
 interface PublicPlaylistViewProps {
   playlistId: string;

@@ -854,7 +854,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj"],
+    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog"],
     sections: [
       {
         id: "playing",
@@ -896,6 +896,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Use Play next or Add to queue on a track, selected tracks, an album, or a playlist. Multi-track additions keep their displayed order and already-queued tracks are skipped.",
+              "You can queue a card without opening it. In the catalog and on Home, point at a release, artist, playlist, or track card and select its queue button (always shown on touch screens), or right-click the card, then choose Play next or Add to queue. An artist adds all of their tracks, newest release first. Add to queue never starts playback.",
               "Shuffle plays every eligible queued track once before Repeat All begins another cycle. Tracks added during shuffle join the current cycle.",
               "Choose Save queue as playlist beside Queue Manifest to keep the whole queue in its displayed order, including tracks already played. Give it a name and folder. An unchanged playlist offers View playlist instead; changing its queue lets you save a new playlist without overwriting the original. Review any tracks that cannot be saved before confirming.",
               "Open Loop and repeat in the player bar or full player. Set A and B in seconds, or mark your current position with Set A here and Set B here, then choose Loop passage. Seeking stays within that passage until you clear it; changing tracks clears the loop.",
@@ -1618,7 +1619,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Save tracks to your library, find the stems you bought, organize them into playlists, and share a playlist publicly — by link or in the global catalog.",
     category: "library",
     audiences: ["listener", "producer"],
-    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog", "stems", "my stems", "purchased stems", "my purchases", "license", "remix-ready", "upgrade", "local files", "my music folder", "another device", "on another device"],
+    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog", "stems", "my stems", "purchased stems", "my purchases", "license", "remix-ready", "upgrade", "local files", "my music folder", "another device", "on another device", "my file", "edit album", "album art", "cover", "file location"],
     sections: [
       {
         id: "library",
@@ -1638,7 +1639,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Your own files play only on the device where you added their folder. On your other devices they still appear in your library and playlists, greyed out and marked On another device, so nothing goes missing. Add the same folder on that device and they become playable there too. If you would rather not see them, turn off Show files on other devices in your library or in Settings › Library. If a file was moved, renamed or deleted, rescan the folder in Settings › Library.",
+            text: "Your own files play only on the device where you added their folder. On your other devices they still appear in your library and playlists, greyed out and marked On another device, so nothing goes missing. Add the same folder on that device and they become playable there too. If you would rather not see them, turn off Show files on other devices in your library or in Settings › Library. If a file was moved, renamed or deleted, rescan the folder in Settings › Library. Your own files carry a My file badge, and the All / Resonate / My files filter above your tracks shows one kind at a time. A file without tags is named from its file name and folders, and a cover image kept in the folder (such as Folder.jpg or cover.jpg) becomes its artwork. To fix a name or set a cover yourself, choose Edit details in the track menu, or Edit album on one of your albums; this never changes the file on disk or anything on Resonate. File location in the track menu shows where the file is and opens its folder.",
           },
           {
             kind: "paragraph",
@@ -1975,7 +1976,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "marketplace",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["sell", "list", "listing", "official stems", "lossless", "wav", "flac", "upload stems", "mint", "manage listings", "relist", "cancel listing", "edit listing", "change price", "unlist", "stop selling", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
+    keywords: ["sell", "list", "listing", "official stems", "withdraw official stem", "remove official stem", "lossless", "wav", "flac", "upload stems", "mint", "manage listings", "relist", "cancel listing", "edit listing", "change price", "unlist", "stop selling", "expire", "price", "license tier", "several tiers", "multiple licenses", "editions", "personal", "remix license", "commercial license", "marketplace", "payout", "verified human", "eligible for payouts"],
     sections: [
       {
         id: "listing",
@@ -2040,7 +2041,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/official-stems-panel.png`,
-              alt: "The Official stems panel on a release page. Golden Road shows green Vocals and Bass chips and a Replace official stems button. Lantern Season has its upload form open: one row each for vocals, drums, bass, guitar, piano and other, with three files chosen (name and size, Change and remove buttons) and a purple Upload 3 parts button.",
+              alt: "The Official stems panel on a release page. Golden Road shows green Vocals and Bass chips, each with a × to withdraw it, and a Replace official stems button. Lantern Season has its upload form open: one row each for vocals, drums, bass, guitar, piano and other, with three files chosen (name and size, Change and remove buttons) and a purple Upload 3 parts button.",
               caption: "Official stems on your release page: a track with official vocals and bass on sale, and the upload form open on another track with three parts chosen. Sample data.",
               width: 991,
               height: 706,
@@ -2052,6 +2053,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "A part replaces only its own type",
             text: "Uploading a vocals part replaces your earlier official vocals and leaves your other official parts on sale. A part that has already been minted cannot be replaced, so leave it out of the new upload. If a part is refused, nothing from that upload is saved and every part that failed is listed with its reason.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Withdrawing a part",
+            text: "To take an official part off sale without uploading a new one, press the × on its chip in Official stems and confirm. Buyers who already licensed it keep their files, and a Separated (AI) stem of the same part stays on sale. A part that has been minted cannot be withdrawn.",
           },
           {
             kind: "callout",

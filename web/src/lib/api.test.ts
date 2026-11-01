@@ -2354,4 +2354,22 @@ describe('API Client', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
   });
+
+  describe('withdrawOfficialStem (#2379)', () => {
+    it('sends DELETE to the part of the track', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ releaseId: 'r 1', trackId: 't/2', stemType: 'vocals', withdrawnStemIds: ['s1'], remaining: ['bass'] }),
+      });
+
+      const result = await api.withdrawOfficialStem('tok', 'r 1', 't/2', 'vocals');
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/ingestion/releases/r%201/tracks/t%2F2/official-stems/vocals');
+      expect(options.method).toBe('DELETE');
+      expect(options.headers.get('Authorization')).toBe('Bearer tok');
+      expect(result.remaining).toEqual(['bass']);
+    });
+  });
 });

@@ -349,6 +349,59 @@ export async function attachFileHandle(track: LocalTrack, handle: FileSystemFile
     }
 }
 
+/** The handle that links a local track to its file on this device, if any. */
+export async function getFileHandle(trackId: string): Promise<FileSystemFileHandle | null> {
+    return fileHandleStore.getItem<FileSystemFileHandle>(trackId);
+}
+
+/** The fields a listener may edit on one of their own files. */
+export type LocalTrackEdit = Partial<Pick<LocalTrack, "title" | "artist" | "albumArtist" | "album" | "year" | "genre">>;
+
+/**
+ * Edit one of the listener's own files: its names, and its cover on this
+ * device. Catalog tracks are never edited here; a release's metadata belongs
+ * to its artist.
+ */
+export async function updateLocalTrack(
+    track: LocalTrack,
+    edit: LocalTrackEdit,
+    artworkBlob?: Blob | null,
+): Promise<LocalTrack> {
+    if (!isLocalFileTrack(track)) throw new Error("Only your own files can be edited");
+    const cached = await trackStore.getItem<LocalTrack>(track.id);
+    const { available, ...base } = { ...(cached ?? {}), ...track };
+
+    const patch: LocalTrackEdit = {};
+    for (const [key, value] of Object.entries(edit) as Array<[keyof LocalTrackEdit, unknown]>) {
+        if (value === undefined) continue;
+        const normalized = typeof value === "string" ? value.trim() || null : value;
+        if (key === "title" && !normalized) continue; // a track always has a title
+        (patch as Record<string, unknown>)[key] = normalized;
+    }
+
+    let artworkKey = base.artworkKey ?? null;
+    if (artworkBlob) {
+        const previousKey = artworkKey;
+        artworkKey = `artwork_${track.id}_${Date.now()}`;
+        await artworkStore.setItem(artworkKey, await makeArtworkThumbnail(artworkBlob));
+        if (previousKey) {
+            await artworkStore.removeItem(previousKey);
+            const url = artworkUrlCache.get(previousKey);
+            if (url) URL.revokeObjectURL(url);
+            artworkUrlCache.delete(previousKey);
+        }
+    }
+
+    const updated: LocalTrack = { ...base, ...patch, artworkKey, source: "local" };
+    await trackStore.setItem(track.id, updated);
+
+    const token = getToken();
+    if (token && Object.keys(patch).length > 0) {
+        await saveLibraryTrackAPI(token, localTrackToApi(updated, "local"));
+    }
+    return { ...updated, available };
+}
+
 /** Mark a local track available only when this device links its file. */
 async function withDeviceAvailability(track: LocalTrack): Promise<LocalTrack> {
     if (!isLocalFileTrack(track)) return track;

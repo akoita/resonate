@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { API_BASE, type PublicPlaylistSummary, type PublicPlaylistTrack } from "../../lib/api";
 import { formatCount } from "../../lib/catalogDisplay";
+import { CardQueueButton } from "../ui/CardQueueButton";
 
 /**
  * A public playlist as it appears in catalog/discovery grids. Uses the same
@@ -11,18 +12,29 @@ import { formatCount } from "../../lib/catalogDisplay";
 export function CatalogPlaylistCard({
   playlist,
   onSelect,
+  queueable = false,
 }: {
   playlist: PublicPlaylistSummary;
   onSelect?: (playlist: PublicPlaylistSummary) => void;
+  /** Offer Play Next / Add to Queue from the card. Needs the player provider. */
+  queueable?: boolean;
 }) {
   const owner = playlist.ownerDisplayName?.trim();
 
   return (
-    <article className="ng-cat-card ng-cat-card--playlist">
+    <article className="ng-cat-card ng-cat-card--playlist" data-card-queue={queueable ? "" : undefined}>
       <div className="ng-cat-card__art">
         <span className="ng-cat-card__media">
           <CatalogPlaylistThumb playlist={playlist} />
         </span>
+        {queueable && playlist.trackCount > 0 && (
+          <div className="ng-cat-card__actions">
+            <CardQueueButton
+              className="ng-cat-card__action"
+              target={{ kind: "playlist", title: playlist.name, playlistId: playlist.id }}
+            />
+          </div>
+        )}
       </div>
       <div className="ng-cat-card__body">
         <h3 className="ng-cat-card__title">
