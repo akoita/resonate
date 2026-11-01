@@ -718,6 +718,15 @@
   font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;
   color: #6ee7b7; background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.4);
 }
+.official-stems-chip__withdraw {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  margin: 0 -4px 0 6px; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+  font-size: 0.9rem; line-height: 1; color: inherit; background: transparent; opacity: 0.7;
+}
+.official-stems-chip__withdraw:hover:not(:disabled),
+.official-stems-chip__withdraw:focus-visible { opacity: 1; background: rgba(16, 185, 129, 0.25); }
+.official-stems-chip__withdraw:focus-visible { outline: 2px solid #6ee7b7; outline-offset: 1px; }
+.official-stems-chip__withdraw:disabled { cursor: default; opacity: 0.4; }
 .official-stems-panel__form { display: grid; gap: 12px; margin-top: 14px; }
 .official-stems-panel__hint { font-size: 0.8rem; line-height: 1.5; color: var(--text-secondary, #94a3b8); margin: 0; }
 .official-stems-panel__error { color: #fca5a5; font-size: 0.85rem; margin: 0; }

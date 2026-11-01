@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiRequestError } from "./api";
-import { OFFICIAL_STEMS_FORM_HINT, describeOfficialStemUpload, formatFileSize, officialStemRejectionIssues, stemTypeLabel } from "./officialStems";
+import { OFFICIAL_STEMS_FORM_HINT, describeOfficialStemUpload, formatFileSize, officialStemRejectionIssues, officialStemWithdrawMessage, stemTypeLabel } from "./officialStems";
 
 const stem = (type: string) => ({ id: `s_${type}`, type, source: "official" as const, mimeType: "audio/wav", durationSeconds: 200 });
 
@@ -56,5 +56,15 @@ describe("official stem upload messages (#2379)", () => {
     expect(formatFileSize(12.34 * 1024 * 1024)).toBe("12.3 MB");
     expect(formatFileSize(240 * 1024 * 1024)).toBe("240 MB");
     expect(stemTypeLabel("vocals")).toBe("Vocals");
+  });
+});
+
+describe("withdrawing an official part (#2379)", () => {
+  it("says what comes off sale, what stays, and that a minted part is locked", () => {
+    const message = officialStemWithdrawMessage("vocals", "Night Drive");
+    expect(message).toContain('official vocals part of "Night Drive" comes off sale');
+    expect(message).toContain("already licensed it keep their files");
+    expect(message).toContain("separated (AI) vocals stem");
+    expect(message).toContain("minted cannot be withdrawn");
   });
 });

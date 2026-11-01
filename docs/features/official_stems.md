@@ -13,8 +13,9 @@ issue: 1976
 decision ADR-TE-7 in [taste-engine-decisions.md](../strategy/taste-engine-decisions.md),
 accepted 2026-10-24). Vision Sprint 43 ([#2379](https://github.com/akoita/resonate/issues/2379),
 owner-approved 2026-10-24) allows partial packages and closes the test and guide
-gaps; tuning the thresholds on real packages and removing a package stay open in
-#2379 (see [Known limits](#known-limits)). Revenue line: ADR-BM-6 Line 3, marketplace take-rate 10%,
+gaps, and an artist can withdraw an unminted official part (owner-approved
+2026-11-01). Tuning the thresholds on real packages stays open in #2379
+(data-gated, see [Known limits](#known-limits)). Revenue line: ADR-BM-6 Line 3, marketplace take-rate 10%,
 phase 2. No fee, split or price changes; the artist still keeps at least 85%
 (ADR-BM-4). The stem source is catalog metadata, not an on-chain field: no
 contract changes.
@@ -139,6 +140,30 @@ minted part does not block replacing another part: leave it out of the package.
 A track audio replacement makes every current stem, official ones included,
 historical, because the parts no longer match the mix.
 
+## Withdrawing a part
+
+`DELETE /ingestion/releases/:releaseId/tracks/:trackId/official-stems/:stemType`
+(JWT, 10 requests a minute, #2379) takes one official part off sale without a
+replacement. It is the same move a replacement makes, without the new file:
+
+- the current official row of that type becomes historical (`isCurrent = false`);
+  nothing is deleted, so earlier buyers still download it with their settled
+  x402 proof and old receipts keep pointing at it, while new quotes, listings,
+  crate quotes and x402 challenges stop offering it;
+- the separated stem of the same type, if any, is untouched;
+- a minted part cannot be withdrawn (409 `official_stems_already_minted`): its
+  token is already out in the world;
+- 404 `official_stems_part_not_found` when there is no official part of that
+  type on sale, 400 `official_stems_unknown_type` for a type outside the six;
+- the same authority rule as an upload (403 `official_stems_forbidden`), but
+  not the rights-route or release-status gates, because withdrawing puts
+  nothing new on sale. It takes the release lock an upload takes, so the two
+  never cross.
+
+The response lists `withdrawnStemIds` and the official types still on sale
+(`remaining`). On the release page each official chip has a × that asks for
+confirmation first.
+
 ## Delivery
 
 - `POST /encryption/download` and `POST /encryption/decrypt` use `Stem.mimeType`
@@ -199,8 +224,9 @@ backend image already installs.
 
 ## Known limits
 
-- No way yet to delete an official package or part without replacing it
-  (open in #2379).
+- Withdrawing takes a part off sale; it does not delete the stored file, which
+  earlier buyers still need. There is no artist-facing erasure of an official
+  part.
 - Every threshold is a first version tuned on synthetic fixtures, not on real
   artist packages (data-gated, open in #2379): the 6 dB summed-level tolerance (a
   mix with heavy master-bus processing may need more), the per-part offset margin
@@ -225,10 +251,11 @@ backend image already installs.
   six-part fixture song, and a real FLAC decode through ffmpeg that skips with a
   stated reason when ffmpeg is not on `PATH`), `stem_source_media.spec.ts`,
   `crate_export.spec.ts`, `crate_selection.spec.ts`, `x402.quote.spec.ts`,
-  `x402.receipt.spec.ts`, `official-stems.controller.http.spec.ts`.
+  `x402.receipt.spec.ts`, `official-stems.controller.http.spec.ts` (upload and
+  withdraw routes).
 - Integration (Postgres, ffmpeg, AES encryption, local storage):
   `official_stems.integration.spec.ts` (partial packages, retire-only-supplied,
-  minted part, complete package, real FLAC part), `crate_quote.integration.spec.ts`
+  minted part, complete package, real FLAC part, withdrawing a part), `crate_quote.integration.spec.ts`
   (the same stem type sold as Official and as Separated (AI): the quote follows
   the crate's `stemSource` filter and never counts both),
   `crate_export.integration.spec.ts`, `metadata.controller.integration.spec.ts`,
