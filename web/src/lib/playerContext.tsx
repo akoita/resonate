@@ -74,6 +74,20 @@ const decryptedBlobCache = new Map<string, string>();
 // Promises for in-flight decryption to allow waiting
 const decryptionPromises = new Map<string, Promise<string>>();
 
+/** Plain words for why a track did not load (#2503). */
+function playbackProblemMessage(title: string, problem: TrackPlayback["problem"]): string {
+    switch (problem) {
+        case "other_device":
+            return `"${title}" is a file on another device. It plays only where it was added.`;
+        case "needs_permission":
+            return `Resonate needs your permission to read "${title}" from your music folder. Press play again and allow access.`;
+        case "missing":
+            return `"${title}" was moved, renamed or deleted on this device. Rescan your library folders in Settings.`;
+        default:
+            return `"${title}" has no playable audio on this device or on Resonate.`;
+    }
+}
+
 export type RepeatMode = "none" | "one" | "all";
 import { useAuth } from "../components/auth/AuthProvider";
 import { useToast } from "../components/ui/Toast";
@@ -81,7 +95,7 @@ import { useToast } from "../components/ui/Toast";
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { isClientTelemetryRefused, recordPlaybackCompleted, recordPlaybackEvent } from "./api";
 import { isProductAnalyticsAllowed, noteServerRefusal } from "./analyticsConsent";
-import { LocalTrack, getTrackUrl, getArtworkUrl, savePlayerState, loadPlayerState } from "./localLibrary";
+import { LocalTrack, resolveTrackPlayback, getArtworkUrl, savePlayerState, loadPlayerState, type TrackPlayback } from "./localLibrary";
 import {
     buildPlaybackCompletedPayload,
     buildPlaybackLifecyclePayload,
@@ -766,7 +780,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         // Synchronous pause to preserve user gesture
         // But only if we are actually changing something
-        const url = await getTrackUrl(track);
+        const playback = await resolveTrackPlayback(track);
+        const url = playback.url;
         if (requestId !== playbackRequestRef.current) return;
 
         if (currentTrackIdRef.current === track.id && currentTrackUrlRef.current === url) {
@@ -811,7 +826,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             addToast({
                 type: "error",
                 title: "This track can't be played",
-                message: `"${track.title}" has no playable audio on this device or on Resonate.`,
+                message: playbackProblemMessage(track.title, playback.problem),
             });
             return;
         }

@@ -50,7 +50,11 @@ export const WITHDRAWN_REASON = "The artist withdrew this from streaming. It may
 export const GENERIC_UNAVAILABLE_REASON = "No longer available.";
 
 /** A device-local file that is not on this device. */
-export const OTHER_DEVICE_REASON = "This file is on another device.";
+export const OTHER_DEVICE_REASON =
+    "This file is on another device. Add the same folder here to play it on this device too.";
+
+/** Short label for a device-local file that is not on this device. */
+export const OTHER_DEVICE_LABEL = "On another device";
 
 /**
  * The server answers `unavailable` with a machine code, not a sentence. A
@@ -112,6 +116,12 @@ export function resolveAvailability(entry: AvailabilityBearing | null | undefine
         : WITHDRAWN_REASON,
     };
   }
+  // The server cannot see devices: it reports every local file as
+  // "local_file". Whether it plays here is this device's call.
+  if (state && state.state === "unavailable" && state.reason === "local_file") {
+    if (entry.available === true) return AVAILABLE;
+    return { playable: false, label: OTHER_DEVICE_LABEL, reason: OTHER_DEVICE_REASON };
+  }
   if (state && state.state === "unavailable") {
     return {
       playable: false,
@@ -125,7 +135,7 @@ export function resolveAvailability(entry: AvailabilityBearing | null | undefine
     return { playable: false, label: UNAVAILABLE_LABEL, reason: GENERIC_UNAVAILABLE_REASON };
   }
   if (entry.available === false) {
-    return { playable: false, label: UNAVAILABLE_LABEL, reason: OTHER_DEVICE_REASON };
+    return { playable: false, label: OTHER_DEVICE_LABEL, reason: OTHER_DEVICE_REASON };
   }
   return AVAILABLE;
 }

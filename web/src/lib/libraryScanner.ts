@@ -4,9 +4,14 @@
  * 
  * OPTIMIZATION: Uses path+size based deduplication to avoid
  * re-scanning already indexed files on each app load.
+ *
+ * Files are never copied into the browser: a scan stores a handle to each file
+ * and the player reads it from disk (#2503). Scanning a folder whose files are
+ * already in the library (a rescan, or the same folder on a second device)
+ * links those rows to this device instead of importing them again.
  */
 import { extractMetadata } from "./metadataExtractor";
-import { saveTrack, listTracks, listLocalTrackOmissions, LocalTrack } from "./localLibrary";
+import { attachFileHandle, saveTrack, listTracks, listLocalTrackOmissions, LocalTrack } from "./localLibrary";
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|flac|aiff|m4a|ogg|wma|aac)$/i;
 
@@ -46,29 +51,36 @@ async function collectAudioFiles(
     return files;
 }
 
+type ExistingIndex = {
+    /** "path:size" → the local library row for that file. */
+    byFile: Map<string, LocalTrack>;
+    /** Keys to skip without a row to link: removed files, legacy title matches. */
+    skip: Set<string>;
+};
+
 /**
  * Build an index of existing tracks by path+size for fast lookup
  */
-async function buildExistingIndex(): Promise<Map<string, number>> {
+async function buildExistingIndex(): Promise<ExistingIndex> {
     const tracks = await listTracks();
-    const index = new Map<string, number>();
+    const byFile = new Map<string, LocalTrack>();
+    const skip = new Set<string>();
 
     for (const track of tracks) {
+        if (track.source !== "local") continue;
         if (track.sourcePath && track.fileSize) {
-            // Key: "path:size" for exact match
-            index.set(`${track.sourcePath}:${track.fileSize}`, 1);
-        }
-        // Also index by title for backwards compatibility
-        if (track.title) {
-            index.set(`title:${track.title}`, 1);
+            byFile.set(`${track.sourcePath}:${track.fileSize}`, track);
+        } else if (track.title) {
+            // Rows imported before paths were recorded can only match by title.
+            skip.add(`title:${track.title}`);
         }
     }
 
     for (const key of await listLocalTrackOmissions()) {
-        index.set(key, 1);
+        skip.add(key);
     }
 
-    return index;
+    return { byFile, skip };
 }
 
 /**
@@ -103,18 +115,23 @@ export async function scanAndIndex(
     const existingIndex = await buildExistingIndex();
 
     // Identify which files need indexing
-    const toIndex: { file: File; path: string }[] = [];
+    const toIndex: { file: File; handle: FileSystemFileHandle; path: string }[] = [];
     let skipped = 0;
 
     for (const { handle, path } of audioFiles) {
         const file = await handle.getFile();
         const key = `${path}:${file.size}`;
         const titleKey = `title:${file.name.replace(/\.[^/.]+$/, "")}`;
+        const existing = existingIndex.byFile.get(key);
 
-        if (existingIndex.has(key) || existingIndex.has(titleKey)) {
+        if (existing) {
+            // Already in the library: make sure this device can play it.
+            if (!existing.available) await attachFileHandle(existing, handle);
+            skipped++;
+        } else if (existingIndex.skip.has(key) || existingIndex.skip.has(titleKey)) {
             skipped++;
         } else {
-            toIndex.push({ file, path });
+            toIndex.push({ file, handle, path });
         }
     }
 
@@ -122,7 +139,7 @@ export async function scanAndIndex(
     let added = 0;
 
     for (let i = 0; i < toIndex.length; i++) {
-        const { file, path } = toIndex[i]!;
+        const { file, handle, path } = toIndex[i]!;
 
         onProgress?.({
             phase: "indexing",
@@ -135,7 +152,7 @@ export async function scanAndIndex(
         try {
             const metadata = await extractMetadata(file);
 
-            const newTrack = await saveTrack(file, {
+            const newTrack = await saveTrack({ handle }, {
                 title: metadata.title || file.name.replace(/\.[^/.]+$/, ""),
                 artist: metadata.artist,
                 albumArtist: metadata.albumArtist,
@@ -183,7 +200,7 @@ export async function countNewFiles(
         const key = `${path}:${file.size}`;
         const titleKey = `title:${file.name.replace(/\.[^/.]+$/, "")}`;
 
-        if (!existingIndex.has(key) && !existingIndex.has(titleKey)) {
+        if (!existingIndex.byFile.has(key) && !existingIndex.skip.has(key) && !existingIndex.skip.has(titleKey)) {
             newCount++;
         }
     }

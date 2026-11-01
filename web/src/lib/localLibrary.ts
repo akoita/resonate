@@ -2,8 +2,13 @@
  * Local Library - Hybrid storage for user library tracks
  *
  * Track metadata → PostgreSQL via Library API (authoritative source)
- * Audio blobs    → IndexedDB (device-local only)
- * Artwork blobs  → IndexedDB (device-local only)
+ * File handles   → IndexedDB (device-local only). The audio stays on disk:
+ *                  Resonate keeps a File System Access handle and reads the
+ *                  file when it plays, so the library never copies audio into
+ *                  browser storage (#2503).
+ * Audio blobs    → IndexedDB, legacy only: copies made before #2503. They are
+ *                  dropped as soon as a rescan links the file on disk.
+ * Artwork        → IndexedDB (device-local only), stored as a small thumbnail
  * Player state   → IndexedDB (device-local only)
  *
  * Uses localforage for cross-browser IndexedDB abstraction
@@ -57,6 +62,12 @@ const playerStore = localforage.createInstance({
 const omissionStore = localforage.createInstance({
     name: "resonate",
     storeName: "libraryOmissions",
+});
+
+/** Track id → FileSystemFileHandle for files that live on this device. */
+const fileHandleStore = localforage.createInstance({
+    name: "resonate",
+    storeName: "fileHandles",
 });
 
 function localSourceKey(track: LocalTrack): string | null {
@@ -148,6 +159,27 @@ export interface LocalTrack {
     available?: boolean;
 }
 
+/** Why a local track cannot play here, when it cannot. */
+export type LocalPlaybackProblem =
+    /** The file was imported on another device; nothing links it here. */
+    | "other_device"
+    /** Linked on this device, but the browser has not been allowed to read it. */
+    | "needs_permission"
+    /** Linked on this device, but the file was moved, renamed or deleted. */
+    | "missing";
+
+export type TrackPlayback = { url: string; problem: null } | { url: null; problem: LocalPlaybackProblem | "no_audio" };
+
+/** A device-local file the listener imported, as opposed to a platform release track. */
+export function isLocalFileTrack(track: Pick<LocalTrack, "source">): boolean {
+    return track.source === "local";
+}
+
+/** A local file whose library row exists, but whose file lives on another device. */
+export function isOnOtherDevice(track: Pick<LocalTrack, "source" | "available">): boolean {
+    return isLocalFileTrack(track) && track.available === false;
+}
+
 /**
  * Convert an API LibraryTrack to a LocalTrack
  */
@@ -211,57 +243,134 @@ function localTrackToApi(
     };
 }
 
+/** Longest edge of the artwork thumbnail kept per local track. */
+const ARTWORK_THUMBNAIL_EDGE = 320;
+/** Artwork below this size is kept as-is; it is already thumbnail-sized. */
+const ARTWORK_KEEP_AS_IS_BYTES = 48 * 1024;
+
 /**
- * Save a local track (from filesystem scan) to the library.
- * Audio blob → IndexedDB, metadata → API
+ * Shrink embedded cover art before keeping it on the device. A 3000 px cover
+ * per track adds up to hundreds of megabytes over a large library, and the
+ * library only ever shows it at thumbnail size. Falls back to the original
+ * when the browser cannot decode or re-encode it.
+ */
+export async function makeArtworkThumbnail(blob: Blob): Promise<Blob> {
+    if (blob.size <= ARTWORK_KEEP_AS_IS_BYTES) return blob;
+    if (typeof createImageBitmap !== "function" || typeof OffscreenCanvas === "undefined") return blob;
+    try {
+        const bitmap = await createImageBitmap(blob);
+        const scale = Math.min(1, ARTWORK_THUMBNAIL_EDGE / Math.max(bitmap.width, bitmap.height));
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = new OffscreenCanvas(width, height);
+        const context = canvas.getContext("2d");
+        if (!context) return blob;
+        context.drawImage(bitmap, 0, 0, width, height);
+        bitmap.close?.();
+        const thumbnail = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.82 });
+        return thumbnail.size < blob.size ? thumbnail : blob;
+    } catch {
+        return blob;
+    }
+}
+
+/**
+ * Save a local track (from a folder scan) to the library.
+ *
+ * Only a handle to the file is kept on this device — never a copy of the
+ * audio — and only metadata goes to the API. The file plays on this device
+ * alone; every other device sees the row as "on another device".
  */
 export async function saveTrack(
-    file: File,
-    metadata: Omit<LocalTrack, "id" | "blobKey" | "artworkKey" | "createdAt">,
+    source: { handle: FileSystemFileHandle },
+    metadata: Omit<LocalTrack, "id" | "blobKey" | "artworkKey" | "createdAt" | "source">,
     artworkBlob?: Blob | null
 ): Promise<LocalTrack> {
     const id = `local_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-    const blobKey = `blob_${id}`;
 
-    // Store the audio blob locally
-    await blobStore.setItem(blobKey, file);
-
-    // Store artwork if provided
     let artworkKey: string | null = null;
     if (artworkBlob) {
         artworkKey = `artwork_${id}`;
-        await artworkStore.setItem(artworkKey, artworkBlob);
+        await artworkStore.setItem(artworkKey, await makeArtworkThumbnail(artworkBlob));
     }
 
-    // Build track object
     const track: LocalTrack = {
         id,
         ...metadata,
-        blobKey,
         artworkKey,
         source: "local",
         createdAt: new Date().toISOString(),
     };
 
-    // Save metadata to IndexedDB (local fallback) and API
+    // Device cache first, so the row stays playable here even if the API is down.
+    await fileHandleStore.setItem(id, source.handle);
     await trackStore.setItem(id, track);
 
     const token = getToken();
     if (token) {
         try {
             const apiTrack = await saveLibraryTrackAPI(token, localTrackToApi(track, "local"));
-            // Update local with server-assigned ID if different
             if (apiTrack.id !== id) {
                 track.id = apiTrack.id;
-                await trackStore.removeItem(id);
-                await trackStore.setItem(apiTrack.id, track);
+                await moveDeviceEntry(id, apiTrack.id, track);
             }
         } catch (err) {
-            console.warn("[Library] Failed to save track to API, kept in IndexedDB:", err);
+            console.warn("[Library] Failed to save track to API, kept on this device:", err);
         }
     }
 
-    return track;
+    return { ...track, available: true };
+}
+
+async function moveDeviceEntry(fromId: string, toId: string, track: LocalTrack): Promise<void> {
+    const handle = await fileHandleStore.getItem<FileSystemFileHandle>(fromId);
+    if (handle) await fileHandleStore.setItem(toId, handle);
+    await fileHandleStore.removeItem(fromId);
+    await trackStore.removeItem(fromId);
+    await trackStore.setItem(toId, track);
+}
+
+/**
+ * Link a file on disk to a library row that already exists — a rescan of the
+ * same folder, or the same folder added on a second device. The row becomes
+ * playable here, and any legacy in-browser copy of the audio is dropped.
+ */
+export async function attachFileHandle(track: LocalTrack, handle: FileSystemFileHandle): Promise<void> {
+    if (!isLocalFileTrack(track)) return;
+    await fileHandleStore.setItem(track.id, handle);
+    const cached = await trackStore.getItem<LocalTrack>(track.id);
+    if (cached?.blobKey) {
+        await blobStore.removeItem(cached.blobKey);
+        const { blobKey: _legacyBlobKey, ...rest } = cached;
+        void _legacyBlobKey;
+        await trackStore.setItem(track.id, rest);
+    } else if (!cached) {
+        const { available: _available, ...rest } = track;
+        void _available;
+        await trackStore.setItem(track.id, rest);
+    }
+}
+
+/** Mark a local track available only when this device links its file. */
+async function withDeviceAvailability(track: LocalTrack): Promise<LocalTrack> {
+    if (!isLocalFileTrack(track)) return track;
+    if (await fileHandleStore.getItem(track.id)) return { ...track, available: true };
+    const blobKey = track.blobKey ?? (await trackStore.getItem<LocalTrack>(track.id))?.blobKey;
+    const hasLegacyCopy = blobKey ? (await blobStore.keys()).includes(blobKey) : false;
+    return { ...track, available: hasLegacyCopy };
+}
+
+/** Ids of local tracks this device can reach (linked file or legacy copy). */
+async function listDeviceTrackIds(): Promise<Set<string>> {
+    const ids = new Set<string>(await fileHandleStore.keys());
+    // Compare keys only: reading a legacy blob would pull the audio into memory.
+    const legacyBlobKeys = new Set(await blobStore.keys());
+    if (legacyBlobKeys.size > 0) {
+        await trackStore.iterate<LocalTrack, void>((value, key) => {
+            if (value?.blobKey && legacyBlobKeys.has(value.blobKey)) ids.add(key);
+        });
+    }
+    return ids;
 }
 
 /**
@@ -330,7 +439,7 @@ export async function saveTracksMetadata(
 export async function getTrack(id: string): Promise<LocalTrack | null> {
     // Try IndexedDB first (fast, works offline)
     const localTrack = await trackStore.getItem<LocalTrack>(id);
-    if (localTrack) return enrichStemTrackUrl(localTrack);
+    if (localTrack) return withDeviceAvailability(await enrichStemTrackUrl(localTrack));
 
     // Fallback 1: try Library API
     const token = getToken();
@@ -338,7 +447,7 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
         try {
             const apiTrack = await getLibraryTrackAPI(id, token);
             const track = apiTrackToLocal(apiTrack);
-            return enrichStemTrackUrl(track);
+            return withDeviceAvailability(await enrichStemTrackUrl(track));
         } catch {
             // not in user's library — try catalog next
         }
@@ -451,34 +560,108 @@ async function enrichStemTrackUrl(track: LocalTrack): Promise<LocalTrack> {
 }
 
 /**
- * Get the audio blob for a track
+ * Get the legacy in-browser copy of a track's audio (imports made before
+ * #2503). New imports never create one.
  */
 export async function getTrackBlob(blobKey: string): Promise<Blob | null> {
     return blobStore.getItem<Blob>(blobKey);
 }
 
-// In-memory cache for track URLs to avoid recreating object URLs
-const trackUrlCache = new Map<string, string>();
+/**
+ * Object URLs for local files. A URL made from a File on disk does not copy the
+ * audio, but each one pins the File until revoked, so only the few most recent
+ * stay alive.
+ */
+const LOCAL_URL_CACHE_LIMIT = 4;
+const trackUrlCache = new Map<string, { url: string; lastModified: number; size: number }>();
+
+function rememberTrackUrl(id: string, entry: { url: string; lastModified: number; size: number }) {
+    const previous = trackUrlCache.get(id);
+    if (previous && previous.url !== entry.url) URL.revokeObjectURL(previous.url);
+    trackUrlCache.delete(id);
+    trackUrlCache.set(id, entry);
+    while (trackUrlCache.size > LOCAL_URL_CACHE_LIMIT) {
+        const [oldestId, oldest] = trackUrlCache.entries().next().value as [string, { url: string }];
+        URL.revokeObjectURL(oldest.url);
+        trackUrlCache.delete(oldestId);
+    }
+}
+
+type ReadPermissionHandle = FileSystemFileHandle & {
+    queryPermission?: (descriptor: { mode: "read" }) => Promise<PermissionState>;
+    requestPermission?: (descriptor: { mode: "read" }) => Promise<PermissionState>;
+};
+
+async function ensureReadPermission(handle: ReadPermissionHandle): Promise<boolean> {
+    if (typeof handle.queryPermission !== "function") return true;
+    if ((await handle.queryPermission({ mode: "read" })) === "granted") return true;
+    if (typeof handle.requestPermission !== "function") return false;
+    try {
+        // Needs a user gesture; pressing play is one.
+        return (await handle.requestPermission({ mode: "read" })) === "granted";
+    } catch {
+        return false;
+    }
+}
+
+async function resolveLocalFileUrl(track: LocalTrack): Promise<TrackPlayback> {
+    const handle = await fileHandleStore.getItem<ReadPermissionHandle>(track.id);
+    if (handle) {
+        if (!(await ensureReadPermission(handle))) return { url: null, problem: "needs_permission" };
+        let file: File;
+        try {
+            file = await handle.getFile();
+        } catch (error) {
+            const name = (error as { name?: string })?.name;
+            if (name === "NotAllowedError" || name === "SecurityError") {
+                return { url: null, problem: "needs_permission" };
+            }
+            return { url: null, problem: "missing" };
+        }
+        const cached = trackUrlCache.get(track.id);
+        if (cached && cached.lastModified === file.lastModified && cached.size === file.size) {
+            return { url: cached.url, problem: null };
+        }
+        const url = URL.createObjectURL(file);
+        rememberTrackUrl(track.id, { url, lastModified: file.lastModified, size: file.size });
+        return { url, problem: null };
+    }
+
+    // Legacy: a copy made before #2503.
+    const blobKey = track.blobKey ?? (await trackStore.getItem<LocalTrack>(track.id))?.blobKey;
+    if (blobKey) {
+        const cached = trackUrlCache.get(track.id);
+        if (cached) return { url: cached.url, problem: null };
+        const blob = await getTrackBlob(blobKey);
+        if (blob) {
+            const url = URL.createObjectURL(blob);
+            rememberTrackUrl(track.id, { url, lastModified: 0, size: blob.size });
+            return { url, problem: null };
+        }
+    }
+    return { url: null, problem: "other_device" };
+}
 
 /**
- * Get a playable URL for a track (creates object URL from blob)
- * Uses in-memory cache to avoid recreating URLs on each call
+ * Resolve what the player should load for a track, and why not when nothing.
+ * Local files resolve only on the device that links them; everything else
+ * streams from the platform.
+ */
+export async function resolveTrackPlayback(track: LocalTrack): Promise<TrackPlayback> {
+    if (isLocalFileTrack(track)) return resolveLocalFileUrl(track);
+    if (track.remoteUrl) return { url: sanitizeStemUrl(track.remoteUrl) || track.remoteUrl, problem: null };
+    if (track.previewUrl) return { url: sanitizeStemUrl(track.previewUrl) || track.previewUrl, problem: null };
+    // Rows cached before `source` was recorded.
+    if (track.blobKey) return resolveLocalFileUrl(track);
+    return { url: null, problem: "no_audio" };
+}
+
+/**
+ * Get a playable URL for a track. Prefer {@link resolveTrackPlayback} where the
+ * reason for a failure matters.
  */
 export async function getTrackUrl(track: LocalTrack): Promise<string | null> {
-    if (track.remoteUrl) return sanitizeStemUrl(track.remoteUrl) || track.remoteUrl;
-    if (track.previewUrl) return sanitizeStemUrl(track.previewUrl) || track.previewUrl;
-    if (!track.blobKey) return null;
-
-    // Check cache first
-    const cached = trackUrlCache.get(track.blobKey);
-    if (cached) return cached;
-
-    const blob = await getTrackBlob(track.blobKey);
-    if (!blob) return null;
-
-    const url = URL.createObjectURL(blob);
-    trackUrlCache.set(track.blobKey, url);
-    return url;
+    return (await resolveTrackPlayback(track)).url;
 }
 
 // In-memory cache for artwork URLs to avoid recreating object URLs
@@ -518,14 +701,17 @@ export async function listTracks(): Promise<LocalTrack[]> {
             const tracks = apiTracks.map(apiTrackToLocal);
             await pruneRemoteCacheNotInApi(tracks);
 
-            // For local tracks, check if the blob is available on this device
+            // The API knows a local track exists; only this device knows
+            // whether it links the file. Merge the device cache back in
+            // (artwork, legacy copy) and mark the rest "on another device".
+            const deviceIds = await listDeviceTrackIds();
             for (const track of tracks) {
-                if (track.source === "local") {
-                    if (track.blobKey) {
-                        const blob = await blobStore.getItem(track.blobKey);
-                        track.available = blob !== null;
-                    } else {
-                        track.available = false;
+                if (isLocalFileTrack(track)) {
+                    track.available = deviceIds.has(track.id);
+                    if (track.available) {
+                        const cached = await trackStore.getItem<LocalTrack>(track.id);
+                        if (cached?.artworkKey) track.artworkKey = cached.artworkKey;
+                        if (cached?.blobKey) track.blobKey = cached.blobKey;
                     }
                 } else {
                     // Remote tracks are always available
@@ -545,9 +731,13 @@ export async function listTracks(): Promise<LocalTrack[]> {
     // authenticated API read fails, keep remote catalog rows out of the
     // fallback so deleted backend content is not resurrected from cache.
     const tracks: LocalTrack[] = [];
+    const deviceIds = await listDeviceTrackIds();
     await trackStore.iterate<LocalTrack, void>((value) => {
         if (!token || value.source !== "remote") {
-            tracks.push({ ...value, available: true });
+            tracks.push({
+                ...value,
+                available: isLocalFileTrack(value) ? deviceIds.has(value.id) : true,
+            });
         }
     });
     return tracks.sort(
@@ -597,6 +787,12 @@ async function removeCachedTrack(id: string): Promise<void> {
     const track = await trackStore.getItem<LocalTrack>(id);
     if (track?.blobKey) await blobStore.removeItem(track.blobKey);
     if (track?.artworkKey) await artworkStore.removeItem(track.artworkKey);
+    await fileHandleStore.removeItem(id);
+    const cachedUrl = trackUrlCache.get(id);
+    if (cachedUrl) {
+        URL.revokeObjectURL(cachedUrl.url);
+        trackUrlCache.delete(id);
+    }
     await trackStore.removeItem(id);
 }
 
@@ -640,7 +836,10 @@ export async function clearLibrary(): Promise<void> {
     await trackStore.clear();
     await blobStore.clear();
     await artworkStore.clear();
+    await fileHandleStore.clear();
     await omissionStore.clear();
+    for (const { url } of trackUrlCache.values()) URL.revokeObjectURL(url);
+    trackUrlCache.clear();
 }
 
 /**
