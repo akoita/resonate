@@ -106,7 +106,7 @@ import {
 } from "./playerQueue";
 import { setPlayerVolume, togglePlayerMute } from "./playerVolume";
 
-import { queueSourceKind, validateSegment, createFiniteRepeat, consumeRepeat, type SegmentLoop, type FiniteRepeat, type QueueSource, type QueuePlayOptions } from "./listeningSession";
+import { queueSourceKind, validateSegment, createFiniteRepeat, consumeRepeat, scheduleTrackRepeat, scheduledRepeatFor, takeScheduledRepeat, type SegmentLoop, type FiniteRepeat, type QueueSource, type QueuePlayOptions, type ScheduledRepeats } from "./listeningSession";
 
 import { recordProductAnalyticsFromBrowser, type ProductAnalyticsEventName, type ProductAnalyticsPayload } from "./productAnalytics";
 
@@ -117,6 +117,11 @@ interface PlayerContextType {
     finiteRepeat: FiniteRepeat | null;
     setFiniteRepeat: (target: "track" | "queue", count: number) => boolean;
     clearFiniteRepeat: () => void;
+    /** Additional repeats for any track: applies now if it is playing, otherwise when it next starts. 0 cancels. */
+    setTrackRepeats: (track: LocalTrack, count: number) => boolean;
+    /** Additional repeats set for a track: the live remaining count if it is playing, else its scheduled count. */
+    trackRepeatsFor: (track: LocalTrack) => number;
+    scheduledRepeats: ScheduledRepeats;
     queueSource: QueueSource;
     queueSourceKind: ReturnType<typeof queueSourceKind>;
     currentTrack: LocalTrack | null;
@@ -453,6 +458,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const segmentLoopRef = useRef<SegmentLoop | null>(null);
     const [finiteRepeat, setFiniteRepeatState] = useState<FiniteRepeat | null>(null);
     const finiteRepeatRef = useRef<FiniteRepeat | null>(null);
+    const [scheduledRepeats, setScheduledRepeatsState] = useState<ScheduledRepeats>({});
+    const scheduledRepeatsRef = useRef<ScheduledRepeats>({});
     const [queueSource, setQueueSource] = useState<QueueSource>(null);
     const queueSourceRef = useRef<QueueSource>(null);
     const [queue, setQueue] = useState<LocalTrack[]>([]);
@@ -537,6 +544,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         updateFiniteRepeat(plan);
         return true;
     }, [reportControl, updateFiniteRepeat]);
+    const updateScheduledRepeats = useCallback((schedule: ScheduledRepeats) => {
+        scheduledRepeatsRef.current = schedule;
+        setScheduledRepeatsState(schedule);
+    }, []);
+    const isCurrentTrack = useCallback((track: LocalTrack) => {
+        const active = queueRef.current[currentIndexRef.current];
+        return !!active && (active.id === track.id || (!!track.catalogTrackId && active.catalogTrackId === track.catalogTrackId));
+    }, []);
+    const setTrackRepeats = useCallback((track: LocalTrack, count: number) => {
+        if (!Number.isSafeInteger(count) || count < 0) return false;
+        if (isCurrentTrack(track)) {
+            if (count > 0) return setFiniteRepeat("track", count);
+            if (finiteRepeatRef.current?.target === "track") clearFiniteRepeat();
+            return true;
+        }
+        const next = scheduleTrackRepeat(scheduledRepeatsRef.current, track.id, count);
+        if (!next) return false;
+        updateScheduledRepeats(next);
+        return true;
+    }, [isCurrentTrack, setFiniteRepeat, clearFiniteRepeat, updateScheduledRepeats]);
+    const trackRepeatsFor = useCallback((track: LocalTrack) => {
+        if (isCurrentTrack(track)) return finiteRepeat?.target === "track" ? finiteRepeat.remaining : 0;
+        return scheduledRepeatFor(scheduledRepeats, track);
+    }, [isCurrentTrack, finiteRepeat, scheduledRepeats]);
     const clearSegmentLoop = useCallback(() => {
         const loop = segmentLoopRef.current;
         if (loop) reportControl("player.segment_loop_disabled", { startMs: loop.start * 1000, endMs: loop.end * 1000, segmentDurationMs: (loop.end - loop.start) * 1000 });
@@ -879,7 +910,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         // Update queue state
         const queueWasReplaced = normalizedList.length !== queueRef.current.length
             || normalizedList.some((track, index) => track.id !== queueRef.current[index]?.id);
-        if (currentTrackIdRef.current !== trackToPlay.id) {
+        const trackChanged = currentTrackIdRef.current !== trackToPlay.id;
+        if (trackChanged) {
             segmentLoopRef.current = null;
             setSegmentLoopState(null);
             if (finiteRepeatRef.current?.target === "track") clearFiniteRepeat();
@@ -898,6 +930,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setCurrentIndex(normalizedIndex);
         queueRef.current = normalizedList;
         currentIndexRef.current = normalizedIndex;
+        // Repeats set from a track's menu before it played start counting now.
+        // A queue repeat in progress keeps the single repeat slot; the
+        // scheduled count then waits for a later play of this track.
+        if (trackChanged && finiteRepeatRef.current?.target !== "queue") {
+            const taken = takeScheduledRepeat(scheduledRepeatsRef.current, trackToPlay);
+            if (taken.plan) {
+                updateScheduledRepeats(taken.schedule);
+                reportControl("player.repeat_count_set", { ...taken.plan });
+                updateFiniteRepeat(taken.plan);
+            }
+        }
         if (shuffleRef.current) {
             shuffleCycleRef.current = queueWasReplaced
                 ? createShuffleCycleState(trackToPlay.id)
@@ -910,7 +953,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         devLog("playQueue: playing track", trackToPlay.id, "at index", normalizedIndex);
         await playTrack(trackToPlay, requestId);
-    }, [playTrack, clearFiniteRepeat]);
+    }, [playTrack, clearFiniteRepeat, updateScheduledRepeats, updateFiniteRepeat, reportControl]);
 
     const nextTrack = useCallback((autoAdvance = false) => {
         const q = queueRef.current;
@@ -1586,6 +1629,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const contextValue = React.useMemo<PlayerContextType>(() => ({
         segmentLoop, setSegmentLoop, clearSegmentLoop, finiteRepeat, setFiniteRepeat, clearFiniteRepeat,
+        setTrackRepeats, trackRepeatsFor, scheduledRepeats,
         queueSource,
         queueSourceKind: queueSourceKind(queue, queueSource),
         currentTrack,
@@ -1621,6 +1665,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setMixerVolumes,
     }), [
         segmentLoop, setSegmentLoop, clearSegmentLoop, finiteRepeat, setFiniteRepeat, clearFiniteRepeat,
+        setTrackRepeats, trackRepeatsFor, scheduledRepeats,
         queueSource, currentTrack, queue, currentIndex, isPlaying, progress, currentTime,
         duration, artworkUrl, volume, muted, shuffle, repeatMode, playQueue, nextTrack,
         prevTrack, togglePlay, toggleShuffle, toggleRepeatMode, seek, setVolume, toggleMute,

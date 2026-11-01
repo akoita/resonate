@@ -14,6 +14,7 @@ import AnalyticsConsentPrompt from "../analytics/AnalyticsConsentPrompt";
 import AccountClosureNotice from "../settings/AccountClosureNotice";
 import PlatformNoticeBanner from "../notifications/PlatformNoticeBanner";
 import AccountStatusBanner from "../account/AccountStatusBanner";
+import { TrackRepeatsDialog } from "../player/TrackRepeatsDialog";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
 import { LegalFooter } from "../legal/LegalFooter";
 
@@ -28,7 +29,9 @@ export default function AppShell({
     tracksToAddToPlaylist,
     setTracksToAddToPlaylist,
     resaleModal,
-    setResaleModal
+    setResaleModal,
+    trackForRepeats,
+    setTrackForRepeats,
   } = useUIStore();
 
   return (
@@ -68,6 +71,10 @@ export default function AppShell({
         <AddToPlaylistModal
           tracks={tracksToAddToPlaylist}
           onClose={() => setTracksToAddToPlaylist(null)}
+        />
+        <TrackRepeatsDialog
+          track={trackForRepeats}
+          onClose={() => setTrackForRepeats(null)}
         />
         <ResaleModal
           modal={resaleModal}

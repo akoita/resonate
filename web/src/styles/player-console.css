@@ -178,6 +178,49 @@
   color: var(--r-on-surface-muted);
 }
 
+/* Additional repeats set from the row menu (or running now). */
+.queue-item-repeats {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: var(--color-accent, currentColor);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Set repeats…" dialog: − [count] + */
+.track-repeats-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.track-repeats-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  padding-left: 16px;
+}
+
+.track-repeats-step {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.track-repeats-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .queue-item-duration {
   min-width: 34px;
   text-align: right;
