@@ -130,6 +130,49 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+  # GitHub advisory-database lookup of the dependencies this pull request adds
+  # or changes, via the dependency-graph compare API (the same data the
+  # dependency-review action uses, without adding a third-party action). It is
+  # deterministic, so it fails red on a new high or critical advisory and also
+  # runs on Dependabot PRs. Whether it blocks merge is a `main` ruleset choice.
+  # No checkout: pull request code is never executed here.
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Block new high or critical vulnerable dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/dependency-graph/compare/${BASE_SHA}...${HEAD_SHA}" \
+            > "${RUNNER_TEMP}/dependency-diff.json"
+          jq -r '
+            [.[][] | select(.change_type == "added") as $dep
+              | ($dep.vulnerabilities // [])[]
+              | select(.severity == "high" or .severity == "critical")
+              | "\(.severity)\t\($dep.manifest)\t\($dep.name)@\($dep.version)\t\(.advisory_ghsa_id)\t\(.advisory_summary)"]
+            | unique[]' "${RUNNER_TEMP}/dependency-diff.json" > "${RUNNER_TEMP}/blocking.tsv"
+          added="$(jq '[.[][] | select(.change_type == "added")] | length' "${RUNNER_TEMP}/dependency-diff.json")"
+          {
+            echo "### Dependency review"
+            echo "- dependencies added or changed: ${added}"
+            echo "- new high/critical advisories: $(wc -l < "${RUNNER_TEMP}/blocking.tsv")"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          if [[ -s "${RUNNER_TEMP}/blocking.tsv" ]]; then
+            while IFS=$'\t' read -r severity manifest package ghsa summary; do
+              echo "::error file=${manifest}::${severity}: ${package} (${ghsa}) ${summary}"
+            done < "${RUNNER_TEMP}/blocking.tsv"
+            echo "Upgrade to a fixed version, or record a written exception in the PR before merging." >&2
+            exit 1
+          fi
+          echo "No new high or critical advisories in added or changed dependencies."
+
   release-plane-evidence:
     name: Release Plane Evidence
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
