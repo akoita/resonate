@@ -23,6 +23,14 @@ export function createFiniteRepeat(target: FiniteRepeat["target"], count: number
     ? { target, configured: count, remaining: count } : null;
 }
 
+/** Nudges the repeat-count field by one, holding it inside the count createFiniteRepeat accepts. */
+export function stepRepeatCount(value: string, delta: 1 | -1): string {
+  const parsed = Number(value);
+  if (value.trim() === "" || !Number.isFinite(parsed) || parsed < 1) return "1";
+  const next = (Number.isInteger(parsed) ? parsed : delta > 0 ? Math.floor(parsed) : Math.ceil(parsed)) + delta;
+  return String(Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, next)));
+}
+
 /** Called only at a natural track end or a complete queue cycle. */
 export function consumeRepeat(plan: FiniteRepeat): { replay: boolean; plan: FiniteRepeat | null } {
   return plan.remaining > 0

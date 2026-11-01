@@ -304,7 +304,8 @@ are seconds within a known track duration. The timeline highlights the range;
 seeking is clamped within it, and B returns to A. Editing applies on Update
 passage; Clear passage restores normal playback. Track changes clear markers.
 
-Finite repeats count **additional** replays. A track plan advances after its last
+Finite repeats count **additional** replays (minimum 1; the field has − / + step
+buttons because the console hides native number spinners). A track plan advances after its last
 replay; a queue plan finishes after its last complete cycle. Manual seeking does
 not consume counts; selecting/skipping another track cancels a track plan.
 Queue replacement/clear cancels a queue plan; additions/removals follow existing
