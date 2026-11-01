@@ -155,18 +155,51 @@ numbers are unchanged within noise (Home 0.8 → 1.2 paints/s is whether the 9 s
 campaign rotation lands once or twice in the 10 s window); on-screen loops
 are untouched, so nothing a person can see changes.
 
+### Follow-up: on-screen loops on an untouched page
+
+The owner's laptop pass (Chrome Task Manager, staging, signed in, player
+paused) showed the hidden-tab fix working (the tab and the GPU process near 0
+once hidden), but on a visible, untouched Home the **GPU process sat at ~97%**
+and the tab at ~31% CPU.
+
+The main-thread probe could not see this, because the cost is in the
+compositor and GPU process. Reading per-process CPU time instead
+(`SystemInfo.getProcessInfo` over CDP, headless Chromium rendering through
+SwiftShader) reproduced it: GPU process ~98% on Home. Holding loops one at a
+time showed that **any single running loop**, even the 6px kicker-dot ring,
+keeps it at 80–98%. A running animation makes the compositor produce a frame
+every vsync, and each frame re-composites the whole page, including every
+`backdrop-filter` surface (with blur removed, one loop still cost ~50%). So
+making each loop cheaper cannot fix this; the frames have to stop.
+
+`IdleAnimationGuard` now also marks loops `data-idle-paused` once nobody has
+touched the page for 20 s (pointer, keyboard, wheel, touch or scroll, listened
+to in the capture phase). Any input removes the marks and the loops resume
+from where they stopped, so someone using the page sees the same motion.
+Loops named like loading indicators (`spin`, `shimmer`, `skeleton`,
+`loading`, `progress`) keep running while the user is idle, because a frozen
+spinner reads as a hang; they are still held off-screen and in hidden tabs.
+
+GPU-process CPU, same container, production build, 1440×900, 8 s windows:
+
+| Route | Untouched, first 10 s | Untouched, after 20 s |
+| --- | --- | --- |
+| Home | 98.5% | 6.4% |
+| Player | 98.9% | 0.0% |
+| Shows | 98.1% | 0.0% |
+| Library | 1.3% | 0.0% |
+
+Moving the mouse brings Home straight back to the same motion (and cost).
+
 ### Remaining
 
-- **Laptop and GPU numbers.** The acceptance criteria ask for idle CPU %, GPU %,
-  JS heap, and idle FPS from the Chrome Task Manager on a mid-range laptop. A
-  container has no GPU process, so this run reports the main-thread and paint
-  equivalents above; the laptop pass is left for a human.
-- **Backdrop-filter over motion.** Composited motion under a blurred surface
-  still costs GPU work per frame. On Home, the ping ring passes behind the
-  blurred campaign rail. On Shows, the two intro stat cards float while
-  carrying `backdrop-filter`. Both now hold still when off-screen or hidden;
-  while on-screen they still move. Decide on the laptop GPU numbers whether
-  they need a solid fill (a visible change, so it needs a design call).
+- **Laptop and GPU numbers after the idle hold.** Repeat the Chrome Task
+  Manager reading on Home, Player and Shows after leaving the page untouched
+  for 30 s. The acceptance criteria also ask for heap and idle FPS.
+- **Cost while someone is using the page.** While loops run, the whole page is
+  re-composited every frame, and the blurred surfaces dominate that cost. Cutting
+  it further means fewer or smaller `backdrop-filter` surfaces on Home, Player
+  and Shows, which is a visible change and needs a design call.
 - **Allowlisted legacy loops.** The allowlist in `animationBudget.test.ts`
   lists the paint-property loops that remain: loading skeletons, plus active
   states such as live-session pulses, mixer glows, Sonic Radar, and Punchline.

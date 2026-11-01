@@ -56,7 +56,10 @@ Keep the visuals; pay for them on the compositor.
 - Off-screen and hidden-tab loops are held still for you: the root layout
   mounts `IdleAnimationGuard` (`src/lib/idleAnimationGuard.ts`), which marks
   any element running an infinite animation with `data-idle-paused` while it
-  is out of view or the tab is hidden. Pause a loop for your own reasons with
+  is out of view, the tab is hidden, or nobody has touched the page for 20 s
+  (any input resumes it). Loops named like loading indicators (`spin`,
+  `shimmer`, `skeleton`, `loading`, `progress`) keep running while the user is
+  idle, so name a new loading loop that way. Pause a loop for your own reasons with
   CSS (`animation-play-state` or a class), never with `Animation.pause()`,
   which would fight the guard.
 - Pollers and countdowns use `registerVisibleInterval` from

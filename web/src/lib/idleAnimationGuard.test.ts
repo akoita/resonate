@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { IDLE_PAUSED_ATTRIBUTE, startIdleAnimationGuard } from "./idleAnimationGuard";
 
-type FakeAnimation = { effect: { target: FakeElement; getTiming: () => { iterations: number } } };
+type FakeAnimation = {
+  animationName?: string;
+  effect: { target: FakeElement; getTiming: () => { iterations: number } };
+};
 
 class FakeElement {
   attrs = new Set<string>();
@@ -19,8 +22,8 @@ class FakeElement {
   get paused() {
     return this.attrs.has(IDLE_PAUSED_ATTRIBUTE);
   }
-  loop(iterations = Infinity) {
-    this.animations.push({ effect: { target: this, getTiming: () => ({ iterations }) } });
+  loop(iterations = Infinity, animationName = "ping") {
+    this.animations.push({ animationName, effect: { target: this, getTiming: () => ({ iterations }) } });
     return this;
   }
 }
@@ -67,10 +70,38 @@ function setup(initiallyHidden = false) {
     }
   }
 
-  const start = () =>
+  let clock = 0;
+  const pending = new Map<number, { at: number; handler: () => void }>();
+  let nextId = 1;
+  const timers = {
+    setTimeout: (handler: () => void, ms: number) => {
+      const id = nextId++;
+      pending.set(id, { at: clock + ms, handler });
+      return id;
+    },
+    clearTimeout: (id: unknown) => {
+      pending.delete(id as number);
+    },
+    now: () => clock,
+  };
+  const advance = (ms: number) => {
+    const until = clock + ms;
+    for (;;) {
+      const due = [...pending.entries()].filter(([, t]) => t.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!due) break;
+      pending.delete(due[0]);
+      clock = due[1].at;
+      due[1].handler();
+    }
+    clock = until;
+  };
+
+  const start = (idleAfterMs = IDLE_MS) =>
     startIdleAnimationGuard({
       doc: doc as never,
       IntersectionObserverCtor: FakeObserver as never,
+      idleAfterMs,
+      timers,
     });
   const intersect = (target: FakeElement, isIntersecting: boolean) => callback([{ target, isIntersecting }]);
   const setHidden = (hidden: boolean) => {
@@ -78,8 +109,19 @@ function setup(initiallyHidden = false) {
     doc.fire("visibilitychange");
   };
 
-  return { doc, observed, start, intersect, setHidden, isDisconnected: () => disconnected };
+  return {
+    doc,
+    observed,
+    start,
+    intersect,
+    setHidden,
+    advance,
+    pendingTimers: () => pending.size,
+    isDisconnected: () => disconnected,
+  };
 }
+
+const IDLE_MS = 20_000;
 
 describe("startIdleAnimationGuard (#2436)", () => {
   it("pauses an infinite loop while it is off-screen and resumes it on screen", () => {
@@ -169,6 +211,84 @@ describe("startIdleAnimationGuard (#2436)", () => {
     expect(ping.paused).toBe(false);
     expect(env.isDisconnected()).toBe(true);
     expect(env.doc.listenerCount()).toBe(0);
+  });
+
+  it("holds on-screen loops once nobody has touched the page, and resumes on input", () => {
+    const env = setup();
+    const ping = new FakeElement().loop();
+    env.start();
+    env.doc.fire("animationstart", ping);
+
+    env.advance(IDLE_MS - 1);
+    expect(ping.paused).toBe(false);
+    env.advance(1);
+    expect(ping.paused).toBe(true);
+
+    env.doc.fire("pointermove");
+    expect(ping.paused).toBe(false);
+    env.advance(IDLE_MS);
+    expect(ping.paused).toBe(true);
+  });
+
+  it("restarts the idle countdown on every input", () => {
+    const env = setup();
+    const ping = new FakeElement().loop();
+    env.start();
+    env.doc.fire("animationstart", ping);
+
+    env.advance(IDLE_MS - 1000);
+    env.doc.fire("keydown");
+    env.advance(IDLE_MS - 1000);
+    expect(ping.paused).toBe(false);
+    env.doc.fire("scroll");
+    env.advance(IDLE_MS - 1);
+    expect(ping.paused).toBe(false);
+    env.advance(1);
+    expect(ping.paused).toBe(true);
+  });
+
+  it("holds a loop that starts while the user is idle", () => {
+    const env = setup();
+    env.start();
+    env.advance(IDLE_MS);
+    const late = new FakeElement().loop();
+    env.doc.fire("animationstart", late);
+    expect(late.paused).toBe(true);
+  });
+
+  it("keeps loading indicators running while the user is idle, but not off-screen", () => {
+    const env = setup();
+    const spinner = new FakeElement().loop(Infinity, "aid-spin");
+    const skeleton = new FakeElement().loop(Infinity, "ng-shimmer");
+    const mixed = new FakeElement().loop(Infinity, "spin").loop(Infinity, "glow");
+    env.start();
+    for (const element of [spinner, skeleton, mixed]) env.doc.fire("animationstart", element);
+
+    env.advance(IDLE_MS);
+    expect(spinner.paused).toBe(false);
+    expect(skeleton.paused).toBe(false);
+    expect(mixed.paused).toBe(true);
+
+    env.intersect(spinner, false);
+    expect(spinner.paused).toBe(true);
+  });
+
+  it("does not hold anything for idleness when idleAfterMs is 0", () => {
+    const env = setup();
+    const ping = new FakeElement().loop();
+    env.start(0);
+    env.doc.fire("animationstart", ping);
+    env.advance(IDLE_MS * 10);
+    expect(ping.paused).toBe(false);
+    expect(env.pendingTimers()).toBe(0);
+  });
+
+  it("clears its idle timer on cleanup", () => {
+    const env = setup();
+    const stop = env.start();
+    expect(env.pendingTimers()).toBe(1);
+    stop();
+    expect(env.pendingTimers()).toBe(0);
   });
 
   it("is a no-op without a document", () => {
